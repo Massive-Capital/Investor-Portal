@@ -53,7 +53,6 @@ function HeaderWithHint({
         size={14}
         strokeWidth={2}
         aria-label={hint}
-        title={hint}
       />
     </span>
   )

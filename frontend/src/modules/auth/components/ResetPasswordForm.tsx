@@ -16,7 +16,7 @@ import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import "./reset_password_form.css";
 import { decodeJwtPayload } from "../utils/decode-jwt-payload";
 
-interface ResetTokenPayload {
+interface ResetTokenPayload extends Record<string, unknown> {
   email?: string;
   purpose?: string;
   exp?: number;

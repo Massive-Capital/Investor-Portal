@@ -59,8 +59,8 @@ function ProfileMenuRow({
 }
 
 export function TopNavBar({
-  userName = "Thulasi V",
-  userEmail = "thulasiv557@gmail.com",
+  userName = "John Doe",
+  // userEmail = "thulasiv557@gmail.com",
 }: TopNavBarProps) {
   const initials = initialsFromFullName(userName)
   const { mode, switchToInvesting, switchToSyndicating } = usePortalMode()

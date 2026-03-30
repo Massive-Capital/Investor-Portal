@@ -1,4 +1,3 @@
-import React from "react";
 import poweredBy from "@/assets/images/poweredby.svg"
 import "./footer_form.css";
 const FooterForm = () => {

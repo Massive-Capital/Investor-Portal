@@ -101,7 +101,9 @@ export default function SignupForm() {
     confirmPassword: "",
   });
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) {
     const { name, value } = e.target;
     if (name === "phone") {
       setSignUpFormData((prev) => ({

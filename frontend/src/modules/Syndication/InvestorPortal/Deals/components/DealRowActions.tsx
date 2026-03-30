@@ -25,11 +25,11 @@ export function DealRowActions({
 
   useLayoutEffect(() => {
     if (!open) return
-    const trigger = wrapRef.current
-    const menu = menuRef.current
-    if (!trigger || !menu) return
 
     function syncPosition() {
+      const trigger = wrapRef.current
+      const menu = menuRef.current
+      if (!trigger || !menu) return
       const r = trigger.getBoundingClientRect()
       const mw = menu.offsetWidth || 180
       const mh = menu.offsetHeight || 120
@@ -51,7 +51,8 @@ export function DealRowActions({
     syncPosition()
     const raf = requestAnimationFrame(syncPosition)
     const ro = new ResizeObserver(syncPosition)
-    ro.observe(menu)
+    const menuEl = menuRef.current
+    if (menuEl) ro.observe(menuEl)
     window.addEventListener("scroll", syncPosition, true)
     window.addEventListener("resize", syncPosition)
     return () => {

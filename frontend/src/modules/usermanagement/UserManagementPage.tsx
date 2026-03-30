@@ -55,7 +55,6 @@ import {
   MEMBER_STATUS_EDIT_OPTIONS,
   PLATFORM_INVITE_ROLE_OPTIONS,
   formatMemberUsername,
-  isInvitedPlaceholderUsername,
   formatValue,
   normalizeMemberStatusForEdit,
   rowDisplayName,

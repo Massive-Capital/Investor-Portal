@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../middleware/jwtUser.js";
-import { isPlatformAdminRole } from "../constants/roles.js";
+// import { isPlatformAdminRole } from "../constants/roles.js";
 import {
   COMPANY_AUDIT_ACTION_EDIT,
   COMPANY_AUDIT_ACTION_SUSPEND,
@@ -8,7 +7,10 @@ import {
   listCompanies,
   updateCompany,
   type CompanyAuditAction,
-} from "../services/company.service.js";
+} from "../../services/company.service.js";
+// } from "../services/company.service.js";
+import { getJwtUser } from "../../middleware/jwtUser.js";
+import { isPlatformAdminRole } from "../../constants/roles.js";
 
 export async function getCompanies(req: Request, res: Response): Promise<void> {
   const user = getJwtUser(req);

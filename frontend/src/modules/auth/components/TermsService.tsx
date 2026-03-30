@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import "./termpolicy.css";
 import companyLogo from "@/assets/images/massive-capital-logo.png";
 import { useNavigate } from "react-router-dom";
