@@ -42,6 +42,13 @@ function CompanyRoute() {
   return <CompanyPage />;
 }
 
+function CustomersRoute() {
+  const token = sessionStorage.getItem(SESSION_BEARER_KEY);
+  if (!token) return <Navigate to="/signin" replace />;
+  if (!canAccessCompanyPage()) return <Navigate to="/" replace />;
+  return <CompanyPage variant="customers" />;
+}
+
 function App() {
   return (
     <>
@@ -123,7 +130,8 @@ function App() {
               element={<PlaceholderPage title="Refer a friend" />}
             />
             <Route path="support" element={<PlaceholderPage title="Support" />} />
-            <Route path="company" element={<CompanyRoute />} />
+            <Route path="settings" element={<CompanyRoute />} />
+            <Route path="customers" element={<CustomersRoute />} />
             <Route path="billing" element={<PlaceholderPage title="Billing" />} />
             <Route path="members" element={<MembersLayout />}>
               <Route index element={<UserManagementPage />} />

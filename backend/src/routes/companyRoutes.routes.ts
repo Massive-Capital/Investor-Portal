@@ -3,7 +3,7 @@ import {
   getCompanies,
   patchCompany,
   postCompany,
-} from "../controllers/company.controller.js";
+} from "../controllers/company/company.controller.js";
 
 const router = Router();
 

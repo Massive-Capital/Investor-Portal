@@ -40,10 +40,6 @@ import {
   canEditCompanyWorkspace,
   isPlatformAdmin,
 } from "../../common/auth/roleUtils";
-import {
-  formatMemberUsername,
-  rowDisplayName,
-} from "../usermanagement/memberAdminShared";
 import { CompanyContactAttributesTab } from "./CompanyContactAttributesTab";
 import { CompanyEmailSettingsTab } from "./CompanyEmailSettingsTab";
 import { CompanyOfferingsPageTab } from "./CompanyOfferingsPageTab";
@@ -71,38 +67,6 @@ function readSessionCompanyName(): string {
     /* ignore */
   }
   return "";
-}
-
-type CompanyDetailTab = "settings" | "email" | "contact" | "offerings" | "members";
-
-const COMPANY_VIEW_TAB_DEFS: { id: CompanyDetailTab; label: string }[] = [
-  { id: "settings", label: "Settings" },
-  { id: "email", label: "Email settings" },
-  { id: "contact", label: "Contact attributes" },
-  { id: "offerings", label: "Offerings page" },
-  { id: "members", label: "Members" },
-];
-
-function memberRowOrgId(row: Record<string, unknown>): string {
-  return String(row.organization_id ?? row.organizationId ?? "").trim();
-}
-
-function memberRoleLabel(role: unknown): string {
-  const r = String(role ?? "").trim();
-  if (!r) return "—";
-  return r
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-}
-
-function memberUserStatusLabel(row: Record<string, unknown>): string {
-  const raw = String(row.userStatus ?? "").trim();
-  if (!raw) return "—";
-  const low = raw.toLowerCase();
-  if (low === "active") return "Active";
-  if (low === "inactive" || low === "suspended") return "Inactive";
-  return raw;
 }
 
 type CompanyRow = {
@@ -191,7 +155,14 @@ function sortValue(row: CompanyRow, key: SortKey): string | number {
   }
 }
 
-export default function CompanyPage() {
+export type CompanyPageVariant = "default" | "customers";
+
+type CompanyPageProps = {
+  variant?: CompanyPageVariant;
+};
+
+export default function CompanyPage({ variant = "default" }: CompanyPageProps = {}) {
+  const customersStandalone = variant === "customers";
   const apiV1 = getApiV1Base();
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   const platformAdmin = isPlatformAdmin();
@@ -203,12 +174,11 @@ export default function CompanyPage() {
   const [sortKey, setSortKey] = useState<SortKey>("company");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [toolbarNotice, setToolbarNotice] = useState("");
-  const [companyPageTab, setCompanyPageTab] = useState<CompanyPageTab>("settings");
+  const [companyPageTab, setCompanyPageTab] = useState<CompanyPageTab>(() =>
+    variant === "customers" && isPlatformAdmin() ? "companies" : "settings",
+  );
   const [companiesPage, setCompaniesPage] = useState(1);
   const [companiesPageSize, setCompaniesPageSize] = useState(10);
-  const [companyModalMembersPage, setCompanyModalMembersPage] = useState(1);
-  const [companyModalMembersPageSize, setCompanyModalMembersPageSize] =
-    useState(10);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -217,10 +187,6 @@ export default function CompanyPage() {
   const [addOk, setAddOk] = useState("");
 
   const [viewRow, setViewRow] = useState<CompanyRow | null>(null);
-  const [companyViewTab, setCompanyViewTab] = useState<CompanyDetailTab>("settings");
-  const [companyMembers, setCompanyMembers] = useState<Record<string, unknown>[]>([]);
-  const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
-  const [companyMembersError, setCompanyMembersError] = useState("");
   const [editRow, setEditRow] = useState<CompanyRow | null>(null);
   const [editName, setEditName] = useState("");
   const [editStatus, setEditStatus] = useState("active");
@@ -276,81 +242,6 @@ export default function CompanyPage() {
     void loadCompanies();
   }, [loadCompanies]);
 
-  const companyDetailTabs = useMemo(() => {
-    if (platformAdmin) return COMPANY_VIEW_TAB_DEFS;
-    return COMPANY_VIEW_TAB_DEFS.filter((t) => t.id !== "members");
-  }, [platformAdmin]);
-
-  useEffect(() => {
-    if (viewRow?.id) setCompanyViewTab("settings");
-  }, [viewRow?.id]);
-
-  useEffect(() => {
-    setCompanyModalMembersPage(1);
-  }, [viewRow?.id]);
-
-  useEffect(() => {
-    if (!platformAdmin && companyViewTab === "members")
-      setCompanyViewTab("settings");
-  }, [platformAdmin, companyViewTab]);
-
-  useEffect(() => {
-    const companyId = platformAdmin
-      ? String(viewRow?.id ?? "").trim()
-      : "";
-    if (!companyId || !token || !apiV1) {
-      setCompanyMembers([]);
-      setCompanyMembersLoading(false);
-      setCompanyMembersError("");
-      return;
-    }
-    let cancelled = false;
-    setCompanyMembersLoading(true);
-    setCompanyMembersError("");
-    void (async () => {
-      try {
-        const res = await fetch(`${apiV1}/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = (await res.json().catch(() => ({}))) as {
-          users?: unknown;
-          message?: string;
-        };
-        if (cancelled) return;
-        if (!res.ok) {
-          setCompanyMembers([]);
-          setCompanyMembersError(data.message || "Could not load members.");
-          setCompanyMembersLoading(false);
-          return;
-        }
-        const list = Array.isArray(data.users) ? data.users : [];
-        const normalized = list.filter(
-          (x): x is Record<string, unknown> =>
-            x !== null && typeof x === "object" && !Array.isArray(x),
-        );
-        setCompanyMembers(
-          normalized.filter((row) => memberRowOrgId(row) === companyId),
-        );
-      } catch {
-        if (!cancelled) {
-          setCompanyMembers([]);
-          setCompanyMembersError("Unable to connect.");
-        }
-      } finally {
-        if (!cancelled) setCompanyMembersLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [platformAdmin, viewRow?.id, token, apiV1]);
-
-  const activeCompanyDetailTab = useMemo(() => {
-    const allowed = new Set(companyDetailTabs.map((t) => t.id));
-    if (allowed.has(companyViewTab)) return companyViewTab;
-    return "settings";
-  }, [companyDetailTabs, companyViewTab]);
-
   const sessionCompanyName = useMemo(
     () => (token ? readSessionCompanyName() : ""),
     [token],
@@ -369,9 +260,8 @@ export default function CompanyPage() {
       { id: "contact", label: "Contact attributes" },
       { id: "offerings", label: "Offerings page" },
     ];
-    if (platformAdmin) tabs.push({ id: "companies", label: "Companies" });
     return tabs;
-  }, [platformAdmin]);
+  }, []);
 
   const activeCompanyPageTab = useMemo(() => {
     const allowed = new Set(companyPageTabDefs.map((t) => t.id));
@@ -380,9 +270,14 @@ export default function CompanyPage() {
   }, [companyPageTabDefs, companyPageTab]);
 
   useEffect(() => {
+    if (customersStandalone) return;
     const allowed = new Set(companyPageTabDefs.map((t) => t.id));
     if (!allowed.has(companyPageTab)) setCompanyPageTab("settings");
-  }, [companyPageTabDefs, companyPageTab]);
+  }, [companyPageTabDefs, companyPageTab, customersStandalone]);
+
+  useEffect(() => {
+    if (customersStandalone && platformAdmin) setCompanyPageTab("companies");
+  }, [customersStandalone, platformAdmin]);
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -433,32 +328,6 @@ export default function CompanyPage() {
     const start = (companiesPageSafe - 1) * companiesPageSize;
     return sortedRows.slice(start, start + companiesPageSize);
   }, [sortedRows, companiesPageSafe, companiesPageSize]);
-
-  const companyModalMembersTotalPages = Math.max(
-    1,
-    Math.ceil(companyMembers.length / companyModalMembersPageSize),
-  );
-
-  useEffect(() => {
-    if (companyModalMembersPage > companyModalMembersTotalPages) {
-      setCompanyModalMembersPage(companyModalMembersTotalPages);
-    }
-  }, [companyModalMembersPage, companyModalMembersTotalPages]);
-
-  const companyModalMembersPageSafe = Math.min(
-    companyModalMembersPage,
-    companyModalMembersTotalPages,
-  );
-
-  const companyModalPaginatedMembers = useMemo(() => {
-    const start =
-      (companyModalMembersPageSafe - 1) * companyModalMembersPageSize;
-    return companyMembers.slice(start, start + companyModalMembersPageSize);
-  }, [
-    companyMembers,
-    companyModalMembersPageSafe,
-    companyModalMembersPageSize,
-  ]);
 
   const openMenuContext = useMemo(() => {
     if (!actionMenuCompanyId) return null;
@@ -787,7 +656,7 @@ export default function CompanyPage() {
       <section className="um_page company_page">
         <h2 className="um_title um_title_with_icon">
           <Building2 className="um_title_icon" size={26} strokeWidth={1.75} aria-hidden />
-          Company
+          {customersStandalone ? "Customers" : "Company"}
         </h2>
         <div className="um_panel">
           <p className="um_hint">
@@ -797,7 +666,7 @@ export default function CompanyPage() {
             >
               Sign in
             </Link>{" "}
-            to view companies.
+            {customersStandalone ? "to view customers." : "to view companies."}
           </p>
         </div>
       </section>
@@ -810,9 +679,9 @@ export default function CompanyPage() {
         <div className="um_header_row">
           <h2 className="um_title um_title_with_icon">
             <Building2 className="um_title_icon" size={26} strokeWidth={1.75} aria-hidden />
-            Company
+            {customersStandalone ? "Customers" : "Company"}
           </h2>
-          {platformAdmin ? (
+          {platformAdmin && customersStandalone ? (
             <button
               type="button"
               className="um_btn_primary"
@@ -825,91 +694,109 @@ export default function CompanyPage() {
         </div>
       </div>
 
-      <div className="um_members_tabs_outer">
-        <div
-          className="um_members_tabs_row"
-          role="tablist"
-          aria-label="Company page sections"
-        >
-          {companyPageTabDefs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`cp-page-tab-${tab.id}`}
-              aria-selected={activeCompanyPageTab === tab.id}
-              aria-controls={`cp-page-panel-${tab.id}`}
-              className={`um_members_tab${
-                activeCompanyPageTab === tab.id ? " um_members_tab_active" : ""
-              }`}
-              onClick={() => setCompanyPageTab(tab.id)}
-            >
-              <span>{tab.label}</span>
-            </button>
-          ))}
+      {!customersStandalone ? (
+        <div className="um_members_tabs_outer">
+          <div
+            className="um_members_tabs_row"
+            role="tablist"
+            aria-label="Company page sections"
+          >
+            {companyPageTabDefs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`cp-page-tab-${tab.id}`}
+                aria-selected={activeCompanyPageTab === tab.id}
+                aria-controls={`cp-page-panel-${tab.id}`}
+                className={`um_members_tab${
+                  activeCompanyPageTab === tab.id ? " um_members_tab_active" : ""
+                }`}
+                onClick={() => setCompanyPageTab(tab.id)}
+              >
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="um_members_tab_content">
-        <div
-          className="um_panel um_members_tab_panel"
-          id="cp-page-panel-settings"
-          role="tabpanel"
-          aria-labelledby="cp-page-tab-settings"
-          hidden={activeCompanyPageTab !== "settings"}
-        >
-          <CompanySettingsTabPanel
-            initialCompanyName={effectiveCompanyName}
-            readOnly={!canEditWorkspace}
-          />
-        </div>
+        {!customersStandalone ? (
+          <>
+            <div
+              className="um_panel um_members_tab_panel"
+              id="cp-page-panel-settings"
+              role="tabpanel"
+              aria-labelledby="cp-page-tab-settings"
+              hidden={activeCompanyPageTab !== "settings"}
+            >
+              <CompanySettingsTabPanel
+                initialCompanyName={effectiveCompanyName}
+                readOnly={!canEditWorkspace}
+              />
+            </div>
 
-        <div
-          className="um_panel um_members_tab_panel"
-          id="cp-page-panel-email"
-          role="tabpanel"
-          aria-labelledby="cp-page-tab-email"
-          hidden={activeCompanyPageTab !== "email"}
-        >
-          <CompanyEmailSettingsTab
-            companyName={effectiveCompanyName}
-            readOnly={!canEditWorkspace}
-          />
-        </div>
+            <div
+              className="um_panel um_members_tab_panel"
+              id="cp-page-panel-email"
+              role="tabpanel"
+              aria-labelledby="cp-page-tab-email"
+              hidden={activeCompanyPageTab !== "email"}
+            >
+              <CompanyEmailSettingsTab
+                companyName={effectiveCompanyName}
+                readOnly={!canEditWorkspace}
+              />
+            </div>
 
-        <div
-          className="um_panel um_members_tab_panel"
-          id="cp-page-panel-contact"
-          role="tabpanel"
-          aria-labelledby="cp-page-tab-contact"
-          hidden={activeCompanyPageTab !== "contact"}
-        >
-          <CompanyContactAttributesTab
-            companyName={effectiveCompanyName}
-            readOnly={!canEditWorkspace}
-          />
-        </div>
+            <div
+              className="um_panel um_members_tab_panel"
+              id="cp-page-panel-contact"
+              role="tabpanel"
+              aria-labelledby="cp-page-tab-contact"
+              hidden={activeCompanyPageTab !== "contact"}
+            >
+              <CompanyContactAttributesTab
+                companyName={effectiveCompanyName}
+                readOnly={!canEditWorkspace}
+              />
+            </div>
 
-        <div
-          className="um_panel um_members_tab_panel"
-          id="cp-page-panel-offerings"
-          role="tabpanel"
-          aria-labelledby="cp-page-tab-offerings"
-          hidden={activeCompanyPageTab !== "offerings"}
-        >
-          <CompanyOfferingsPageTab
-            companyName={effectiveCompanyName}
-            readOnly={!canEditWorkspace}
-          />
-        </div>
+            <div
+              className="um_panel um_members_tab_panel"
+              id="cp-page-panel-offerings"
+              role="tabpanel"
+              aria-labelledby="cp-page-tab-offerings"
+              hidden={activeCompanyPageTab !== "offerings"}
+            >
+              <CompanyOfferingsPageTab
+                companyName={effectiveCompanyName}
+                readOnly={!canEditWorkspace}
+              />
+            </div>
+          </>
+        ) : null}
 
-        {platformAdmin ? (
+        {customersStandalone && !platformAdmin ? (
+          <div className="um_panel um_members_tab_panel">
+            <p className="um_hint">
+              The customer company directory is available to platform administrators. Use{" "}
+              <Link to="/settings" style={{ color: "var(--main-auth-button-color, #2563eb)" }}>
+                Settings
+              </Link>{" "}
+              for your organization profile.
+            </p>
+          </div>
+        ) : null}
+
+        {platformAdmin && customersStandalone ? (
           <div
             className="um_panel um_members_tab_panel cp_companies_tab_panel"
             id="cp-page-panel-companies"
             role="tabpanel"
-            aria-labelledby="cp-page-tab-companies"
-            hidden={activeCompanyPageTab !== "companies"}
+            aria-label="Customer companies"
+            hidden={false}
           >
             <div className="um_toolbar">
               <div className="um_search_wrap">
@@ -1200,120 +1087,30 @@ export default function CompanyPage() {
                 <X size={20} strokeWidth={2} aria-hidden />
               </button>
             </div>
-            <div className="cp_view_shell">
-              <nav className="cp_view_nav" aria-label="Company sections">
-                {companyDetailTabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={
-                      activeCompanyDetailTab === tab.id
-                        ? "cp_view_nav_btn cp_view_nav_btn_active"
-                        : "cp_view_nav_btn"
-                    }
-                    aria-current={activeCompanyDetailTab === tab.id ? "page" : undefined}
-                    onClick={() => setCompanyViewTab(tab.id)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
+            <div className="cp_view_shell cp_view_shell_single">
               <div className="cp_view_panel">
-                {activeCompanyDetailTab === "settings" ? (
-                  <div className="um_view_grid">
-                    <ViewReadonlyField
-                      Icon={Building2}
-                      label="Company name"
-                      value={viewRow.name}
-                    />
-                    <ViewReadonlyField
-                      Icon={Activity}
-                      label="Status"
-                      value={<StatusWithDot {...companyStatusForUi(viewRow)} />}
-                    />
-                    <ViewReadonlyField
-                      Icon={Users}
-                      label="Users"
-                      value={String(viewRow.userCount ?? 0)}
-                    />
-                    <ViewReadonlyField
-                      Icon={LayoutGrid}
-                      label="Deals"
-                      value={String(viewRow.dealCount ?? 0)}
-                    />
-                  </div>
-                ) : null}
-                {activeCompanyDetailTab === "email" ? (
-                  <p className="cp_view_panel_hint">
-                    Outbound email and notification settings for this company will appear
-                    here.
-                  </p>
-                ) : null}
-                {activeCompanyDetailTab === "contact" ? (
-                  <p className="cp_view_panel_hint">
-                    Contact and profile attributes for this company will appear here.
-                  </p>
-                ) : null}
-                {activeCompanyDetailTab === "offerings" ? (
-                  <CompanyOfferingsPageTab companyName={String(viewRow.name ?? "").trim() || "Company"} />
-                ) : null}
-                {activeCompanyDetailTab === "members" && platformAdmin ? (
-                  <>
-                    {companyMembersLoading ? (
-                      <p className="um_hint" role="status">
-                        Loading members…
-                      </p>
-                    ) : null}
-                    {companyMembersError ? (
-                      <p className="um_msg_error" role="alert">
-                        {companyMembersError}
-                      </p>
-                    ) : null}
-                    {!companyMembersLoading &&
-                    !companyMembersError &&
-                    companyMembers.length === 0 ? (
-                      <p className="um_hint">No members in this company.</p>
-                    ) : null}
-                    {!companyMembersLoading && companyMembers.length > 0 ? (
-                      <div className="cp_members_table_wrap">
-                        <table className="um_table">
-                          <thead>
-                            <tr>
-                              <th scope="col">Name</th>
-                              <th scope="col">Username</th>
-                              <th scope="col">Email</th>
-                              <th scope="col">Role</th>
-                              <th scope="col">User Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {companyModalPaginatedMembers.map((row, idx) => {
-                              const rid = String(row.id ?? "").trim();
-                              const key = rid || `m-${idx}`;
-                              return (
-                                <tr key={key}>
-                                  <td>{rowDisplayName(row)}</td>
-                                  <td>{formatMemberUsername(row.username)}</td>
-                                  <td>{String(row.email ?? "").trim() || "—"}</td>
-                                  <td>{memberRoleLabel(row.role)}</td>
-                                  <td>{memberUserStatusLabel(row)}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        <DataTablePagination
-                          page={companyModalMembersPageSafe}
-                          pageSize={companyModalMembersPageSize}
-                          totalItems={companyMembers.length}
-                          onPageChange={setCompanyModalMembersPage}
-                          onPageSizeChange={setCompanyModalMembersPageSize}
-                          ariaLabel="Company members pagination"
-                        />
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
+                <div className="um_view_grid">
+                  <ViewReadonlyField
+                    Icon={Building2}
+                    label="Company name"
+                    value={viewRow.name}
+                  />
+                  <ViewReadonlyField
+                    Icon={Activity}
+                    label="Status"
+                    value={<StatusWithDot {...companyStatusForUi(viewRow)} />}
+                  />
+                  <ViewReadonlyField
+                    Icon={Users}
+                    label="Users"
+                    value={String(viewRow.userCount ?? 0)}
+                  />
+                  <ViewReadonlyField
+                    Icon={LayoutGrid}
+                    label="Deals"
+                    value={String(viewRow.dealCount ?? 0)}
+                  />
+                </div>
               </div>
             </div>
             <div className="um_modal_actions um_modal_actions_view">

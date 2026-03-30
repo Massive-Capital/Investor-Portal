@@ -13,7 +13,7 @@ import companyRoutes from "./routes/companyRoutes.routes.js";
 import dealFormRoutes from "./routes/dealForm.routes.js";
 
 
-const PORT = process.env.BACKEND_PORT ?? 5003;
+const PORT = process.env.BACKEND_PORT ?? 5004;
 const app = express();
 
 const baseUrl = process.env.BASE_URL?.trim();

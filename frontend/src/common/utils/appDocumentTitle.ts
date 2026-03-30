@@ -24,6 +24,7 @@ export function pageTitleForAppPathname(pathname: string): string {
 
   const exact: Record<string, string> = {
     "/company": "Company",
+    "/customers": "Customers",
     "/billing": "Billing",
     "/members": "Members",
     "/deals": "My deals",

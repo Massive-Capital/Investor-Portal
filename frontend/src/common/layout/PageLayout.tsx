@@ -57,7 +57,8 @@ type ExpandableNavItem = {
 
 const sharedSidebarItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
-  { label: "Company", to: "/company", icon: Building2 },
+  { label: "Settings", to: "/settings", icon: Settings },
+  { label: "Customers", to: "/customers", icon: Building2 },
   { label: "Billing", to: "/billing", icon: CreditCard },
   { label: "Members", to: "/members", icon: Users },
 ]

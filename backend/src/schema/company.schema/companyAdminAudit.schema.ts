@@ -6,8 +6,8 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import { users } from "./auth.schema/signin.js";
-import { companies } from "./company.schema/company.js";
+import { users } from "../auth.schema/signin.js";
+import { companies } from "./company.js";
 
 /** Logged when a platform admin edits or suspends a company. */
 export const companyAdminAuditLogs = pgTable("company_admin_audit_logs", {
