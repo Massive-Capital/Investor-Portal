@@ -1,0 +1,165 @@
+import type { Request, Response } from "express";
+import { eq, sql } from "drizzle-orm";
+import { db } from "../../database/db.js";
+import { companies, users } from "../../schema/schema.js";
+import { createInviteForEmail } from "../../services/invite.service.js";
+import { sendInviteSignupEmail } from "../../services/inviteEmail.service.js";
+import { upsertPendingInvitedUser } from "../../services/invitePendingUser.service.js";
+import {
+  canInviteUsersRole,
+  isInviteAssignableRole,
+  isPlatformAdminRole,
+  PLATFORM_USER,
+} from "../../constants/roles.js";
+import { getJwtUser } from "../../middleware/jwtUser.js";
+
+type InviteBody = {
+  email?: unknown;
+  companyId?: unknown;
+  invitedRole?: unknown;
+};
+
+export async function postInviteUser(req: Request, res: Response): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id || jwtUser.userRole == null || jwtUser.userRole === "") {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  if (!canInviteUsersRole(jwtUser.userRole)) {
+    res.status(403).json({
+      message: "You are not allowed to invite users",
+    });
+    return;
+  }
+
+  const body = req.body as InviteBody;
+  const email = typeof body.email === "string" ? body.email : "";
+  const emailNorm = email.trim().toLowerCase();
+  if (!emailNorm || !emailNorm.includes("@")) {
+    res.status(400).json({ message: "A valid email address is required" });
+    return;
+  }
+
+  try {
+    const [existingComplete] = await db
+      .select({ userSignupCompleted: users.userSignupCompleted })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${emailNorm}`)
+      .limit(1);
+    if (
+      existingComplete &&
+      String(existingComplete.userSignupCompleted ?? "")
+        .trim()
+        .toLowerCase() === "true"
+    ) {
+      res.status(409).json({ message: "A user with this email already exists" });
+      return;
+    }
+  } catch (err) {
+    console.error("postInviteUser email lookup:", err);
+    res.status(500).json({ message: "Could not verify email" });
+    return;
+  }
+
+  let companyContext: { companyId: string | null; companyName: string | null };
+
+  if (isPlatformAdminRole(jwtUser.userRole)) {
+    const companyIdRaw =
+      typeof body.companyId === "string" ? body.companyId.trim() : "";
+    if (!companyIdRaw) {
+      res.status(400).json({ message: "Company is required" });
+      return;
+    }
+    try {
+      const [row] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.id, companyIdRaw))
+        .limit(1);
+      if (!row) {
+        res.status(400).json({ message: "Invalid company" });
+        return;
+      }
+      companyContext = { companyId: row.id, companyName: row.name };
+    } catch (err) {
+      console.error("postInviteUser company lookup:", err);
+      res.status(500).json({ message: "Could not resolve company" });
+      return;
+    }
+  } else {
+    try {
+      const [inviter] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, jwtUser.id))
+        .limit(1);
+      const name = (inviter?.companyName ?? "").toString().trim();
+      const orgId = inviter?.organizationId
+        ? String(inviter.organizationId).trim()
+        : null;
+      companyContext = {
+        companyId: orgId || null,
+        companyName: name || null,
+      };
+    } catch (err) {
+      console.error("postInviteUser inviter lookup:", err);
+      res.status(500).json({ message: "Could not load your profile" });
+      return;
+    }
+  }
+
+  let invitedRoleForJwt: string | null = null;
+  if (isPlatformAdminRole(jwtUser.userRole)) {
+    const raw =
+      typeof body.invitedRole === "string" ? body.invitedRole.trim() : "";
+    invitedRoleForJwt =
+      raw && isInviteAssignableRole(raw) ? raw : PLATFORM_USER;
+  }
+
+  const result = createInviteForEmail(
+    email,
+    companyContext,
+    invitedRoleForJwt,
+  );
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+
+  const roleForPending = invitedRoleForJwt ?? PLATFORM_USER;
+  const pending = await upsertPendingInvitedUser(
+    emailNorm,
+    companyContext,
+    roleForPending,
+    result.inviteExpiresAt,
+  );
+  if (!pending.ok) {
+    res.status(pending.status).json({ message: pending.message });
+    return;
+  }
+
+  const emailResult = await sendInviteSignupEmail(
+    emailNorm,
+    result.signupUrl,
+    result.expiresIn,
+  );
+  if (!emailResult.ok) {
+    console.error(
+      "postInviteUser: could not send invite email to",
+      emailNorm,
+      emailResult.error,
+    );
+  }
+
+  const message = emailResult.ok
+    ? `Invitation email sent to ${emailNorm}. They appear on the members list with account status Invited until they complete signup.`
+    : "Invitation recorded and signup link created, but the email could not be sent. Configure SENDER_EMAIL_ID / SENDER_EMAIL_PASSWORD and EMAIL_SERVICE_TYPE, or share the link below manually.";
+
+  res.status(201).json({
+    message,
+    signupUrl: result.signupUrl,
+    expiresIn: result.expiresIn,
+    emailSent: emailResult.ok,
+  });
+}

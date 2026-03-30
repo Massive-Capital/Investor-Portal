@@ -1,0 +1,80 @@
+.data_table_scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Members-style DataTable: pagination stays fixed; only the table scrolls horizontally if needed */
+.um_table_wrap.data_table_shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.data_table_scroll_region {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.data_table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.data_table th,
+.data_table td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.data_table th {
+  font-weight: 600;
+  color: #334155;
+  background: #f8fafc;
+  white-space: nowrap;
+}
+
+.data_table_sort_btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  text-align: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.data_table_sort_btn:hover {
+  color: #0f172a;
+}
+
+.data_table_th_sorted {
+  color: #0f172a;
+}
+
+.data_table_empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+  border: 1px dashed #e2e8f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.data_table_th_metric {
+  text-align: right;
+}

@@ -1,0 +1,353 @@
+.deals_create_page {
+  --deals-form-field-gap: 1.375rem;
+  --deals-form-label-gap: 0.5rem;
+  text-align: left;
+  width: 100%;
+  max-width: min(42rem, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: 2rem;
+}
+
+.deals_create_breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--portal-text-muted);
+}
+
+.deals_create_breadcrumb a {
+  color: var(--portal-text-muted);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.deals_create_breadcrumb a:hover {
+  color: var(--portal-text);
+  text-decoration: underline;
+}
+
+.deals_create_breadcrumb_sep {
+  opacity: 0.5;
+}
+
+.deals_create_head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.deals_create_title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--portal-text);
+}
+
+.deals_create_cancel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--portal-text-muted);
+  text-decoration: none;
+}
+
+.deals_create_cancel:hover {
+  color: var(--portal-text);
+}
+
+.deals_create_card {
+  padding: 1.5rem 1.75rem 1.65rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-card-radius);
+  background: var(--portal-surface);
+}
+
+.deals_create_section_title {
+  margin: 0 0 1.35rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--portal-border);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--portal-text);
+  letter-spacing: -0.02em;
+}
+
+.deals_create_hint {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.875rem;
+  color: var(--portal-text-muted);
+  line-height: 1.45;
+}
+
+.deals_create_fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--deals-form-field-gap);
+  align-items: stretch;
+}
+
+.deals_create_label_full {
+  width: 100%;
+}
+
+.deals_create_label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--deals-form-label-gap);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text);
+  line-height: 1.35;
+}
+
+.deals_create_label_text {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text);
+}
+
+.deals_create_req {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.deals_create_input,
+.deals_create_select,
+.deals_create_textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-pill-radius);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--portal-text);
+  background: var(--portal-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.deals_create_input:hover,
+.deals_create_select:hover,
+.deals_create_textarea:hover {
+  border-color: #d1d5db;
+}
+
+.deals_create_input:focus-visible,
+.deals_create_select:focus-visible,
+.deals_create_textarea:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: 0 0 0 2px rgb(17 24 39 / 8%);
+}
+
+:root[data-theme="dark"] .deals_create_input:focus-visible,
+:root[data-theme="dark"] .deals_create_select:focus-visible,
+:root[data-theme="dark"] .deals_create_textarea:focus-visible {
+  box-shadow: 0 0 0 2px rgb(249 250 251 / 12%);
+}
+
+.deals_create_input[aria-invalid="true"],
+.deals_create_select[aria-invalid="true"] {
+  border-color: #b91c1c;
+}
+
+.deals_create_textarea {
+  resize: vertical;
+  min-height: 5.5rem;
+}
+
+.deals_create_field_error {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #b91c1c;
+}
+
+.deals_create_upload {
+  margin-top: 0.25rem;
+}
+
+.deals_create_file {
+  font-size: 0.875rem;
+}
+
+.deals_create_upload_help {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--portal-text-muted);
+}
+
+.deals_create_review {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.deals_create_review_block {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--portal-border);
+}
+
+.deals_create_review_block:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.deals_create_review_head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.deals_create_review_head h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--portal-text);
+}
+
+.deals_create_linkish {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.deals_create_dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.35rem 1rem;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 480px) {
+  .deals_create_dl {
+    grid-template-columns: 1fr;
+  }
+}
+
+.deals_create_dl dt {
+  margin: 0;
+  color: var(--portal-text-muted);
+  font-weight: 500;
+}
+
+.deals_create_dl dd {
+  margin: 0;
+  color: var(--portal-text);
+  font-weight: 500;
+}
+
+.deals_create_footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding: 1rem 0 0.25rem;
+  border-top: 1px solid var(--portal-border);
+}
+
+.deals_create_footer_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.deals_create_billing_info {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted);
+}
+
+.deals_create_billing_info_link {
+  font-weight: 600;
+  color: var(--portal-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.deals_create_billing_info_link:hover {
+  color: var(--portal-primary, #111827);
+}
+
+.deals_create_footer_right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-left: auto;
+}
+
+.deals_create_btn_primary {
+  padding: 0.55rem 1.15rem;
+  border: none;
+  border-radius: var(--portal-pill-radius);
+  background: var(--portal-primary);
+  color: #fff;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.deals_create_btn_primary:hover {
+  background: var(--portal-primary-hover);
+}
+
+:root[data-theme="dark"] .deals_create_btn_primary {
+  background: #f9fafb;
+  color: #111827;
+}
+
+.deals_create_btn_secondary {
+  padding: 0.55rem 1.15rem;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-pill-radius);
+  background: var(--portal-surface);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--portal-text);
+  cursor: pointer;
+}
+
+.deals_create_btn_secondary:hover {
+  background: var(--portal-primary-soft);
+}
+
+.deals_create_footer_cancel_link {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 0.35rem 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--portal-text-muted);
+  text-decoration: none;
+}
+
+.deals_create_footer_cancel_link:hover {
+  color: var(--portal-text);
+  text-decoration: underline;
+}

@@ -1,0 +1,87 @@
+/* AuthLayout: full-page shell, background, centered card column */
+
+body:has(.authPage) {
+  background-color: #f6f8fb;
+  overflow-x: hidden;
+}
+
+.authPage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  min-height: 100dvh;
+  padding: clamp(0.5rem, 3vw, 1rem);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
+  background: none;
+  background-image: url(../../assets/images/inital_img.webp);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+
+.authPage .authContent,
+.authPage .loginData,
+.authPage .loginCred,
+.authPage .loginForm {
+  background: none;
+}
+
+.authPage .loginForm {
+  background-color: white;
+}
+
+.authContent {
+  width: 100%;
+  max-width: 610px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.loginData {
+  display: flex;
+  gap: 2em;
+  border-radius: 5px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.loginCred {
+  display: flex;
+  align-content: center;
+  align-items: center;
+  padding: clamp(0.25rem, 2vw, 10px);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+}
+
+.loginForm {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  /* padding: clamp(1rem, 4vw, 2rem); */
+  padding: 2em 5em;
+  border-radius: 5px;
+  box-sizing: border-box;
+}
+
+.companyLogo {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+
+.companyLogo img,
+.companyLogo__img {
+  width: 12em;
+  max-width: min(100%, 12em);
+  height: auto;
+}

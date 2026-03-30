@@ -1,0 +1,184 @@
+.form_mandatory_star {
+  margin-inline-start: 0.28em;
+  color: #b91c1c;
+  font-weight: 700;
+  font-size: 0.95em;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+:root[data-theme="dark"] .form_mandatory_star {
+  color: #f87171;
+}
+
+/* Label + star on one line without wrapping between text and * */
+.form_label_inline_row {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 0;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.form_label_inline_row > span:first-child {
+  min-width: 0;
+}
+
+.form_label_toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.form_label_toolbar_spread {
+  justify-content: space-between;
+}
+
+.form_tooltip_root {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.form_tooltip_trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.2rem;
+  border: none;
+  border-radius: var(--portal-pill-radius, 9999px);
+  background: transparent;
+  color: var(--portal-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.form_tooltip_trigger:hover {
+  color: var(--portal-text);
+  background: var(--portal-primary-soft);
+}
+
+.form_tooltip_trigger:focus-visible {
+  outline: 2px solid var(--portal-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.form_tooltip_panel {
+  position: absolute;
+  z-index: 1080;
+  display: inline-block;
+  width: max-content;
+  max-width: min(18.5rem, calc(100vw - 1.5rem));
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateZ(0);
+  transition:
+    opacity 0.18s ease,
+    visibility 0.18s ease;
+}
+
+.form_tooltip_panel[data-placement="top"] {
+  bottom: calc(100% + 10px);
+  left: 50%;
+  translate: -50% 0;
+}
+
+.form_tooltip_panel[data-placement="bottom"] {
+  top: calc(100% + 10px);
+  left: 50%;
+  translate: -50% 0;
+}
+
+.form_tooltip_panel[data-visible="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.form_tooltip_surface {
+  position: relative;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  background: var(--form-tooltip-bg);
+  color: var(--form-tooltip-fg);
+  border: 1px solid var(--form-tooltip-border);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 12%),
+    0 10px 24px -4px rgb(0 0 0 / 18%);
+  font-size: 0.8125rem;
+  font-weight: 450;
+  line-height: 1.45;
+}
+
+:root {
+  --form-tooltip-bg: #1f2937;
+  --form-tooltip-fg: #f9fafb;
+  --form-tooltip-border: rgb(255 255 255 / 10%);
+}
+
+:root[data-theme="dark"] {
+  --form-tooltip-bg: #374151;
+  --form-tooltip-fg: #f9fafb;
+  --form-tooltip-border: rgb(255 255 255 / 12%);
+}
+
+.form_tooltip_surface p {
+  margin: 0 0 0.45rem;
+}
+
+.form_tooltip_surface p:last-child {
+  margin-bottom: 0;
+}
+
+.form_tooltip_surface ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.form_tooltip_surface li {
+  margin-bottom: 0.3rem;
+}
+
+.form_tooltip_surface li:last-child {
+  margin-bottom: 0;
+}
+
+/* Arrow: tooltip above trigger → triangle points down toward icon */
+.form_tooltip_panel[data-placement="top"] .form_tooltip_arrow {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  translate: -50% 0;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 7px solid var(--form-tooltip-bg);
+}
+
+.form_tooltip_panel[data-placement="bottom"] .form_tooltip_arrow {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  translate: -50% 0;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 7px solid var(--form-tooltip-bg);
+}

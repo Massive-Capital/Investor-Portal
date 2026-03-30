@@ -1,0 +1,210 @@
+.top_navbar {
+  height: 64px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border-bottom: 1px solid lightgray;
+  background-color: var(--portal-chrome-bg);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 1.25rem;
+  font-size: var(--font-size);
+  position: relative;
+  z-index: 20;
+  box-sizing: border-box;
+}
+
+.top_navbar_user_wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.top_navbar_profile_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.35rem 0.25rem 0.35rem 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border-radius: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.top_navbar_profile_btn:hover {
+  background-color: var(--portal-toggle-track);
+}
+
+.top_navbar_chevron {
+  flex-shrink: 0;
+  color: var(--portal-text-muted);
+  transition: transform 0.2s ease;
+}
+
+.top_navbar_chevron_open {
+  transform: rotate(180deg);
+}
+
+.top_navbar_dd {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  /* Avoid 100vw — it ignores scrollbar width and can widen past the layout, causing page horizontal scroll */
+  width: min(18.75rem, calc(100dvw - 2rem));
+  max-width: 300px;
+  box-sizing: border-box;
+  padding: 1rem 0 0.5rem;
+  background: var(--portal-surface);
+  border: 1px solid var(--portal-border);
+  border-radius: 14px;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 8%),
+    0 4px 6px -2px rgb(0 0 0 / 4%);
+}
+
+.top_navbar_dd_header {
+  padding: 0 1rem 0.75rem;
+  text-align: left;
+}
+
+.top_navbar_dd_name {
+  margin: 0 0 0.2rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--portal-text);
+  letter-spacing: -0.01em;
+}
+
+.top_navbar_dd_email {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--portal-text-secondary);
+  word-break: break-all;
+}
+
+.top_navbar_theme {
+  display: flex;
+  margin: 0 1rem 0.75rem;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 10px;
+  background: var(--portal-toggle-track);
+}
+
+.top_navbar_theme_seg {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--portal-text-muted);
+  cursor: pointer;
+}
+
+.top_navbar_theme_seg:hover {
+  color: var(--portal-text);
+}
+
+.top_navbar_theme_seg_active {
+  background: var(--portal-surface);
+  color: var(--portal-text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+
+.top_navbar_dd_rule {
+  margin: 0 0 0.35rem;
+  border: none;
+  border-top: 1px solid var(--portal-border);
+}
+
+.top_navbar_dd_list {
+  margin: 0;
+  padding: 0 0 0.25rem;
+  list-style: none;
+}
+
+.top_navbar_dd_item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 1rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  color: var(--portal-text);
+  cursor: pointer;
+}
+
+.top_navbar_dd_item:hover {
+  background: var(--portal-toggle-track);
+}
+
+.top_navbar_dd_item_icon {
+  flex-shrink: 0;
+  color: var(--portal-text-muted);
+}
+
+.top_navbar_dd_item_logout {
+  color: var(--portal-text);
+}
+
+.top_navbar_dd_item_logout .top_navbar_dd_item_icon {
+  color: #b91c1c;
+}
+
+.top_navbar_dd_item_logout:hover {
+  background: #fef2f2;
+}
+
+:root[data-theme="dark"] .top_navbar_dd_item_logout:hover {
+  background: color-mix(in srgb, #b91c1c 12%, var(--portal-surface));
+}
+
+.top_navbar_avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: #000000;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+:root[data-theme="dark"] .top_navbar_avatar {
+  background: #000000;
+  color: #ffffff;
+}
+
+.top_navbar_user_name {
+  flex: 1 1 0%;
+  min-width: 0;
+  color: var(--portal-text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

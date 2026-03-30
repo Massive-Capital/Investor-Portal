@@ -1,0 +1,273 @@
+import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { db } from "../database/db.js";
+import {
+  companies,
+  companyAdminAuditLogs,
+  deals,
+  users,
+  type CompanyRow,
+} from "../schema/schema.js";
+
+export const COMPANY_AUDIT_ACTION_EDIT = "company_edit";
+export const COMPANY_AUDIT_ACTION_SUSPEND = "company_suspend";
+
+export type CompanyAuditAction =
+  | typeof COMPANY_AUDIT_ACTION_EDIT
+  | typeof COMPANY_AUDIT_ACTION_SUSPEND;
+
+export type CompanyWithStats = {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  userCount: number;
+  dealCount: number;
+};
+
+export async function listCompanies(): Promise<CompanyWithStats[]> {
+  const rows = await db
+    .select({
+      id: companies.id,
+      name: companies.name,
+      status: companies.status,
+      createdAt: companies.createdAt,
+      updatedAt: companies.updatedAt,
+      userCount: sql<number>`(
+        select count(*)::int from ${users} where ${users.organizationId} = ${companies.id}
+      )`,
+      dealCount: sql<number>`(
+        select count(*)::int from ${deals} where ${deals.companyId} = ${companies.id}
+      )`,
+    })
+    .from(companies)
+    .orderBy(desc(companies.createdAt));
+
+  return rows.map((r) => ({
+    ...r,
+    userCount: Number(r.userCount),
+    dealCount: Number(r.dealCount),
+  }));
+}
+
+export async function createCompany(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return { ok: false as const, status: 400, message: "Company name is required" };
+  }
+  const norm = trimmed.toLowerCase();
+  const [nameDup] = await db
+    .select({ id: companies.id })
+    .from(companies)
+    .where(sql`lower(trim(${companies.name})) = ${norm}`)
+    .limit(1);
+  if (nameDup) {
+    return {
+      ok: false as const,
+      status: 409,
+      message: "A company with this name already exists",
+    };
+  }
+  try {
+    const [row] = await db
+      .insert(companies)
+      .values({ name: trimmed })
+      .returning();
+    if (!row) {
+      return {
+        ok: false as const,
+        status: 500,
+        message: "Could not create company",
+      };
+    }
+    return { ok: true as const, company: row };
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? String((err as { code?: string }).code ?? "")
+        : "";
+    if (code === "23505") {
+      return {
+        ok: false as const,
+        status: 409,
+        message: "A company with this name already exists",
+      };
+    }
+    console.error("createCompany:", err);
+    return {
+      ok: false as const,
+      status: 500,
+      message: "Could not create company",
+    };
+  }
+}
+
+export async function updateCompany(
+  id: string,
+  patch: { name?: string; status?: string },
+  audit: {
+    actorUserId: string;
+    reason: string;
+    action: CompanyAuditAction;
+  },
+): Promise<
+  | { ok: true; company: CompanyRow }
+  | { ok: false; status: number; message: string }
+> {
+  const [current] = await db
+    .select()
+    .from(companies)
+    .where(eq(companies.id, id))
+    .limit(1);
+  if (!current) {
+    return { ok: false, status: 404, message: "Company not found" };
+  }
+
+  let nextName = current.name;
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim();
+    if (!trimmed) {
+      return { ok: false, status: 400, message: "Company name is required" };
+    }
+    nextName = trimmed;
+    const norm = nextName.toLowerCase();
+    const [nameDup] = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(
+        and(
+          sql`lower(trim(${companies.name})) = ${norm}`,
+          ne(companies.id, id),
+        ),
+      )
+      .limit(1);
+    if (nameDup) {
+      return {
+        ok: false,
+        status: 409,
+        message: "A company with this name already exists",
+      };
+    }
+  }
+
+  let nextStatus = String(current.status ?? "active").trim().toLowerCase();
+  if (patch.status !== undefined) {
+    const s = patch.status.trim().toLowerCase();
+    if (s !== "active" && s !== "suspended" && s !== "inactive") {
+      return { ok: false, status: 400, message: "Invalid status" };
+    }
+    nextStatus = s;
+  }
+
+  const nameChanging = patch.name !== undefined && nextName !== current.name;
+  const statusChanging =
+    patch.status !== undefined && nextStatus !== current.status;
+
+  if (!nameChanging && !statusChanging) {
+    return { ok: false, status: 400, message: "No changes" };
+  }
+
+  if (audit.action === COMPANY_AUDIT_ACTION_SUSPEND) {
+    if (nameChanging) {
+      return {
+        ok: false,
+        status: 400,
+        message: "Company suspend cannot change the company name",
+      };
+    }
+    if (!statusChanging || nextStatus !== "inactive") {
+      return {
+        ok: false,
+        status: 400,
+        message: "Company suspend requires setting status to inactive",
+      };
+    }
+  }
+
+  const updates: {
+    name?: string;
+    status?: string;
+    updatedAt: Date;
+  } = { updatedAt: new Date() };
+  if (nameChanging) updates.name = nextName;
+  if (statusChanging) updates.status = nextStatus;
+
+  const changesJson: Record<string, { from: string; to: string }> = {};
+  if (nameChanging) {
+    changesJson.name = { from: current.name, to: nextName };
+  }
+  if (statusChanging) {
+    changesJson.status = { from: current.status, to: nextStatus };
+  }
+
+  try {
+    const row = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(companies)
+        .set(updates)
+        .where(eq(companies.id, id))
+        .returning();
+      if (!updated) throw new Error("update_returned_no_row");
+      await tx.insert(companyAdminAuditLogs).values({
+        actorUserId: audit.actorUserId,
+        targetCompanyId: id,
+        action: audit.action,
+        reason: audit.reason,
+        changesJson,
+      });
+      return updated;
+    });
+    return { ok: true, company: row };
+  } catch (err) {
+    if (err instanceof Error && err.message === "update_returned_no_row") {
+      return { ok: false, status: 404, message: "Company not found" };
+    }
+    console.error("updateCompany:", err);
+    return { ok: false, status: 500, message: "Could not update company" };
+  }
+}
+
+export type EnsureCompanyResult =
+  | { ok: true; company: CompanyRow; created: boolean }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Returns an existing company (case-insensitive name match) or inserts a new row.
+ * `created` is true when a new row was inserted.
+ */
+export async function ensureCompanyByName(rawName: string): Promise<EnsureCompanyResult> {
+  const trimmed = rawName.trim();
+  if (!trimmed) {
+    return { ok: false, status: 400, message: "Company name is required" };
+  }
+  const norm = trimmed.toLowerCase();
+  try {
+    const [existing] = await db
+      .select()
+      .from(companies)
+      .where(sql`lower(trim(${companies.name})) = ${norm}`)
+      .limit(1);
+    if (existing) {
+      return { ok: true, company: existing, created: false };
+    }
+    const inserted = await createCompany(trimmed);
+    if (!inserted.ok) {
+      // Concurrent signup with the same new name: treat as join existing company
+      if (inserted.status === 409) {
+        const [race] = await db
+          .select()
+          .from(companies)
+          .where(sql`lower(trim(${companies.name})) = ${norm}`)
+          .limit(1);
+        if (race) {
+          return { ok: true, company: race, created: false };
+        }
+      }
+      return inserted;
+    }
+    return { ok: true, company: inserted.company, created: true };
+  } catch (err) {
+    console.error("ensureCompanyByName:", err);
+    return { ok: false, status: 500, message: "Could not resolve company" };
+  }
+}

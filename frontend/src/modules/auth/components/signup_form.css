@@ -1,0 +1,163 @@
+/* SignupForm: layout + invite flow (only classes used by SignupForm.tsx) */
+
+.authPage:has(.signup_page) .authContent {
+  max-width: min(100%, 900px);
+}
+
+.authPage:has(.signup_page) .loginForm {
+  /* padding: clamp(0.65rem, 2.5vw, 1.1rem); */
+  padding: 2em 5em;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* .authPage:has(.signup_page) .companyLogo__img,
+.authPage:has(.signup_page) .companyLogo img {
+  width: min(11em, 72vw);
+  max-width: min(100%, 11em);
+} */
+
+.authPage:has(.signup_page) .loginCaption {
+ text-align: center;
+  color: black;
+  font-size: 1.1em;
+  font-weight: 700;
+  margin: 1em 0;
+}
+
+body:has(.signup_page) .companyContent {
+  margin-top: 0.4rem;
+}
+
+.authPage:has(.signup_page) {
+  background-color: #f8f8f8;
+}
+
+.signup_page .signup_modal_content {
+  width: 100%;
+  max-width: 900px;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 10px;
+  box-shadow: none;
+  background-color: white;
+  max-height: min(36rem, 72svh);
+  max-height: min(36rem, 72dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.signup_page .settings_form {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.signup_success_signin_btn {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  text-decoration: none;
+}
+
+.signup_success_signin_btn span {
+  margin: 0 0 0 5px;
+  display: flex;
+}
+
+.signup_page .signupForm_row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: stretch;
+  margin: 4px 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.signup_page .signupForm_row .emailData,
+.signup_page .signupForm_row .passwordData {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (min-width: 640px) {
+  .signup_page .signupForm_row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: flex-start;
+  }
+
+  .signup_page .signupForm_row .emailData,
+  .signup_page .signupForm_row .passwordData {
+    flex: 1 1 calc(50% - 0.5rem);
+    width: auto;
+    min-width: 0;
+  }
+}
+
+.signup_page .emailData,
+.signup_page .passwordData {
+  margin: 0 0 4px 0;
+}
+
+.signup_page .loginBtn {
+  display: flex;
+  justify-content: center;
+  margin: 8px 0 0 0;
+}
+
+.signup_page .loginBtn .login-btn {
+  width: 100%;
+  max-width: 20rem;
+  min-width: 0;
+  border-radius: var(--ui-button-border-radius, 25px);
+  padding: 0.45rem 1rem;
+  box-sizing: border-box;
+}
+
+.terms_policy {
+  display: flex;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: gray;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.signup_page .terms_policy label {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.terms_policy input[type="checkbox"] {
+  flex-shrink: 0;
+}
+
+.signup_field_hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #64748b;
+  max-width: 100%;
+}
+
+.terms,
+.policy {
+  color: var(--main-auth-button-color);
+  text-decoration: none;
+}

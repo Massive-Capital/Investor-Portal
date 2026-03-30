@@ -1,0 +1,139 @@
+.tool_style_card {
+  margin: 0;
+  padding: 1.5rem;
+  text-align: left;
+  background: var(--portal-surface);
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-card-radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.tool_style_card_clickable {
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.tool_style_card_clickable:hover {
+  border-color: color-mix(in srgb, var(--portal-text) 18%, var(--portal-border));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+}
+
+.tool_style_card_clickable:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: 0 0 0 2px var(--portal-surface), 0 0 0 4px rgb(107 114 128 / 35%);
+}
+
+.tool_style_card_icon_box {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--portal-icon-box-radius);
+  border: 1px solid var(--portal-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--portal-surface);
+}
+
+.tool_style_card_icon {
+  color: var(--portal-text);
+}
+
+.tool_style_card_title_row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.tool_style_card_title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--portal-text);
+  letter-spacing: -0.01em;
+}
+
+.tool_style_card_hint {
+  display: inline-flex;
+  color: var(--portal-text-muted);
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.tool_style_card_desc {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted);
+}
+
+.tool_style_card_footer {
+  margin-top: 0.15rem;
+  font-size: 0.875rem;
+}
+
+.tool_style_card_footer a {
+  color: var(--portal-text);
+  font-weight: 600;
+  text-decoration: none;
+  margin: 0 0 0 3.5em;
+}
+
+.tool_style_card_footer a:hover {
+  text-decoration: underline;
+}
+
+.tool_style_card_metric_top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.tool_style_card_metric_body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool_style_card_label_cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding-top: 0.15rem;
+}
+
+.tool_style_card_label_inline {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--portal-text-muted);
+}
+
+.tool_style_card_value_lead {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--portal-text);
+}
+
+.tool_style_card_metric_body .tool_style_card_value_lead {
+  margin-top: 0.35rem;
+}

@@ -1,0 +1,289 @@
+.app_shell {
+  display: grid;
+  /* minmax(0,1fr) lets the main column shrink so wide tables scroll inside um_table_wrap instead of growing the page */
+  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-rows: 1fr;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  background-color: var(--portal-page-bg);
+}
+
+.app_sidebar {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--sidebar-bg-color);
+  color: var(--sidebar-text-color);
+  padding: 1.25rem 1rem;
+  font-size: var(--font-size);
+  border-right: 1px solid lightgray;
+}
+
+/* Product lockup: stable surface (no hover “pill”) — hierarchy comes from type, not interaction */
+.app_sidebar_brand {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.85rem;
+  padding: 0.15rem 0.25rem 0.15rem 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.app_sidebar_brand:focus-visible {
+  outline: 2px solid var(--sidebar-text-color);
+  outline-offset: 3px;
+  border-radius: var(--ui-border-radius, 6px);
+}
+
+.app_sidebar_brand .app_sidebar_title {
+  margin: 0 0 0.3rem;
+  font-size: 1.1875rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sidebar-text-color);
+}
+
+.app_sidebar_brand .app_sidebar_mode {
+  margin: 0;
+}
+
+.app_sidebar_brand_static {
+  cursor: default;
+}
+
+.app_sidebar_title {
+  margin-bottom: 1rem;
+  color: var(--sidebar-text-color);
+}
+
+.app_sidebar_mode {
+  color: #8f8f8f;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.app_sidebar_nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app_sidebar_group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.app_sidebar_expand_btn {
+  width: 100%;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--sidebar-text-color);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--portal-pill-radius, 9999px);
+  text-align: left;
+  transition: background-color 0.2s ease;
+}
+
+.app_sidebar_expand_btn:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--sidebar-text-color) 8%,
+    var(--sidebar-bg-color)
+  );
+}
+
+/* Expanded group — subtle tint only; real “active” state is on the child NavLink. */
+.app_sidebar_expand_btn_open {
+  background-color: color-mix(
+    in srgb,
+    var(--sidebar-text-color) 6%,
+    var(--sidebar-bg-color)
+  );
+}
+
+.app_sidebar_expand_btn_open:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--sidebar-text-color) 10%,
+    var(--sidebar-bg-color)
+  );
+}
+
+.app_sidebar_expand_label {
+  flex: 1;
+  min-width: 0;
+}
+
+.app_sidebar_expand_chevron {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.app_sidebar_subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 0.5rem;
+  margin-left: 0.65rem;
+  /* border-left: 1px solid color-mix(
+    in srgb,
+    var(--sidebar-text-color) 15%,
+    var(--sidebar-bg-color)
+  ); */
+}
+
+.app_sidebar_link {
+  text-decoration: none;
+  color: var(--sidebar-text-color);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--portal-pill-radius, 9999px);
+  transition: background-color 0.2s ease;
+}
+
+.app_sidebar_link:hover {
+  background-color: color-mix(in srgb, var(--sidebar-text-color) 8%, var(--sidebar-bg-color));
+}
+
+.app_sidebar_link_active {
+  background-color: var(--sidebar-active);
+  color: var(--sidebar-text-color);
+  font-weight: 600;
+}
+
+.app_sidebar_sublink {
+  padding-left: 0.85rem;
+  border-left: none;
+}
+
+.app_sidebar_sublink_with_icon {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app_sidebar_sublink_icon {
+  flex-shrink: 0;
+  color: var(--sidebar-text-color);
+  opacity: 0.72;
+}
+
+.app_sidebar_sublink_active .app_sidebar_sublink_icon {
+  color: var(--sidebar-text-color);
+  opacity: 1;
+}
+
+.app_sidebar_sublink_active {
+  font-weight: 700;
+  background-color: var(--sidebar-active);
+}
+
+.app_sidebar_sublink_active:hover {
+  background-color: var(--sidebar-active);
+}
+
+.app_main_section {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Scroll column layout only — global App.css radii still apply to .top_navbar */
+.app_main_section > .top_navbar {
+  flex-shrink: 0;
+}
+
+.app_main_content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 20px;
+  margin-left: 30px;
+  padding: 1.25rem 1.5rem 2rem;
+  background: var(--portal-page-bg);
+}
+
+.section_placeholder {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.portal_switch_overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(4px);
+  animation: portal_switch_fade_in 0.2s ease-out;
+}
+
+@keyframes portal_switch_fade_in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.portal_switch_card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.75rem 2.25rem;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow:
+    0 20px 40px -12px rgb(15 23 42 / 25%),
+    0 0 0 1px rgb(226 232 240 / 80%);
+}
+
+.portal_switch_spinner {
+  color: var(--portal-primary);
+  animation: portal_switch_spin 0.85s linear infinite;
+}
+
+@keyframes portal_switch_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.portal_switch_caption {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--portal-text);
+  max-width: 16rem;
+  text-align: center;
+  line-height: 1.35;
+}

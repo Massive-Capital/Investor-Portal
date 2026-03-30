@@ -1,0 +1,129 @@
+.deals_create_assets .deals_create_section_title {
+  margin-bottom: 1.35rem;
+}
+
+.deals_create_fields.asset_step_fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.375rem;
+}
+
+.asset_step_label_full {
+  width: 100%;
+}
+
+.asset_step_input_underline {
+  border: none;
+  border-bottom: 1px solid var(--portal-border);
+  border-radius: 0;
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+}
+
+.asset_step_input_underline:focus {
+  outline: none;
+  border-bottom-color: var(--portal-text);
+  box-shadow: none;
+}
+
+.asset_step_upload_block {
+  grid-column: 1 / -1;
+}
+
+.asset_step_dropzone {
+  position: relative;
+  margin-top: 0.5rem;
+  padding: 2rem 1.25rem;
+  border: 1.5px dashed
+    color-mix(in srgb, var(--portal-text) 22%, var(--portal-border));
+  border-radius: var(--ui-border-radius, 8px);
+  background: color-mix(
+    in srgb,
+    var(--portal-text) 4%,
+    var(--portal-surface)
+  );
+  text-align: center;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.asset_step_dropzone:hover {
+  border-color: color-mix(in srgb, var(--portal-text) 32%, var(--portal-border));
+  background: color-mix(
+    in srgb,
+    var(--portal-text) 6%,
+    var(--portal-surface)
+  );
+}
+
+.asset_step_dropzone_icon {
+  margin: 0 auto 0.75rem;
+  display: block;
+  color: var(--portal-text-muted);
+  opacity: 0.85;
+}
+
+.asset_step_dropzone_text {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--portal-text-muted);
+  line-height: 1.5;
+}
+
+.asset_step_browse {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--portal-primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.asset_step_browse:hover {
+  color: var(--portal-primary-hover);
+}
+
+.asset_step_file_input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.asset_step_file_list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  color: var(--portal-text);
+}
+
+.asset_step_file_list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--portal-border);
+}
+
+.asset_step_remove_file {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.asset_step_remove_file:hover {
+  color: var(--portal-text);
+}

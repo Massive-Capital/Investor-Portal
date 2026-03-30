@@ -1,0 +1,44 @@
+/** Full access: create companies, etc. */
+export const PLATFORM_ADMIN = "platform_admin";
+
+/** Manages members for their organization; no company registry access. */
+export const COMPANY_ADMIN = "company_admin";
+
+/** Standard portal user */
+export const PLATFORM_USER = "platform_user";
+
+/** Company-scoped member (same access profile as platform_user in this app) */
+export const COMPANY_USER = "company_user";
+
+/** Roles a platform admin may assign on invite (stored on the invite JWT). */
+export const INVITE_ASSIGNABLE_ROLES = [
+  PLATFORM_ADMIN,
+  PLATFORM_USER,
+  COMPANY_ADMIN,
+  COMPANY_USER,
+] as const;
+
+export function isInviteAssignableRole(role: string | null | undefined): boolean {
+  const r = String(role ?? "").trim();
+  return (INVITE_ASSIGNABLE_ROLES as readonly string[]).includes(r);
+}
+
+export function isPlatformAdminRole(role: string | null | undefined): boolean {
+  return String(role ?? "").trim() === PLATFORM_ADMIN;
+}
+
+export function isCompanyAdminRole(role: string | null | undefined): boolean {
+  return String(role ?? "").trim() === COMPANY_ADMIN;
+}
+
+const LEGACY_USER = "user";
+
+/** Platform admins, company admins, and standard users may invite (per invite rules). */
+export function canInviteUsersRole(role: string | null | undefined): boolean {
+  const r = String(role ?? "").trim();
+  if (r === "") return false;
+  if (r === LEGACY_USER) return true;
+  return (
+    r === PLATFORM_ADMIN || r === PLATFORM_USER || r === COMPANY_ADMIN
+  );
+}

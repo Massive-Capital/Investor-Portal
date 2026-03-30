@@ -1,0 +1,25 @@
+/* Input component: password suffix alignment */
+
+.input_wrapper__field {
+  position: relative;
+  width: 100%;
+}
+
+.input_wrapper__field .passwordVisible {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.passwordVisible {
+  margin: 0;
+  display: inline;
+  position: absolute;
+  top: 63.6%;
+  right: 2%;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.passwordVisible svg {
+  color: inherit;
+}
