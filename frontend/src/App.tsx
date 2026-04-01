@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import { SESSION_BEARER_KEY } from "./common/auth/sessionKeys";
+import { RequireAuth } from "./common/auth/RequireAuth";
 import { canAccessCompanyPage } from "./common/auth/roleUtils";
 import SigninPage from "./modules/auth/pages/SigninPage";
 import SignupPage from "./modules/auth/pages/SignupPage";
@@ -22,6 +23,10 @@ import { ReportingPage } from "./modules/Syndication/InvestorPortal/Reporting/Re
 import CompanyPage from "./modules/company/CompanyPage";
 import MembersLayout from "./modules/usermanagement/MembersLayout";
 import UserManagementPage from "./modules/usermanagement/UserManagementPage";
+import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
+import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
+import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
+import { MyAccountPasswordPage } from "./modules/myaccount/MyAccountPasswordPage";
 
 type PlaceholderPageProps = {
   title: string;
@@ -54,8 +59,9 @@ function App() {
     <>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<PageLayout />}>
-            <Route index element={<SponsorDashboardPage />} />
+          <Route element={<RequireAuth />}>
+            <Route path="/" element={<PageLayout />}>
+              <Route index element={<SponsorDashboardPage />} />
             <Route path="deals" element={<DealsLayout />}>
               <Route index element={<DealsListPage />} />
               <Route path="investor-emails" element={<InvestorEmailsPage />} />
@@ -124,7 +130,12 @@ function App() {
                 />
               }
             />
-            <Route path="account" element={<PlaceholderPage title="My account" />} />
+            <Route path="account" element={<MyAccountLayout />}>
+              <Route index element={<Navigate to="/account/company" replace />} />
+              <Route path="company" element={<MyAccountCompanyPage />} />
+              <Route path="personal" element={<MyAccountPersonalPage />} />
+              <Route path="password" element={<MyAccountPasswordPage />} />
+            </Route>
             <Route
               path="refer-a-friend"
               element={<PlaceholderPage title="Refer a friend" />}
@@ -135,6 +146,7 @@ function App() {
             <Route path="billing" element={<PlaceholderPage title="Billing" />} />
             <Route path="members" element={<MembersLayout />}>
               <Route index element={<UserManagementPage />} />
+            </Route>
             </Route>
           </Route>
           <Route path="/signin" element={<SigninPage />} />

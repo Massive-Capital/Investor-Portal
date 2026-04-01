@@ -137,6 +137,10 @@
   list-style: none;
 }
 
+.top_navbar_dd_list li{
+  padding: 0 1.5em;
+}
+
 .top_navbar_dd_item {
   display: flex;
   align-items: center;

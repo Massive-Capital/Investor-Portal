@@ -13,7 +13,18 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
-  server:{
-    port:5174,
-  }
+  server: {
+    port: 5174,
+    /** Forward `/api/*` to the Express API (default port matches backend `BACKEND_PORT` / 5004). */
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:5004",
+        changeOrigin: true,
+      },
+      "/uploads": {
+        target: "http://127.0.0.1:5004",
+        changeOrigin: true,
+      },
+    },
+  },
 })

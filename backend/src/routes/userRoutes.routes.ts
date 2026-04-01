@@ -9,11 +9,19 @@ import {
   getUsers,
   patchUser,
 } from "../controllers/userAdmin.controller.js";
+import {
+  patchMyProfile,
+  postChangePassword,
+} from "../controllers/auth/account.controller.js";
 
 const userRoutes = Router();
 
 userRoutes
 .post("/auth/signin", postSignin)
+.post("/auth/change-password", postChangePassword)
+.patch("/auth/me", patchMyProfile)
+/** Same handler — some proxies or clients mishandle PATCH; SPA can use POST. */
+.post("/auth/me", patchMyProfile)
 .post("/auth/signup/:token", postSignup)
 .post("/auth/signup", postSignup)
 .post("/auth/forgot-password", postForgotPassword)

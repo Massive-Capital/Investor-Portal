@@ -7,7 +7,11 @@ import {
   UserRound,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
+import {
+  SESSION_BEARER_KEY,
+  SESSION_USER_DETAILS_KEY,
+} from "../../auth/sessionKeys"
 import { usePortalMode } from "../../context/PortalModeContext"
 import "./top_navbar.css"
 
@@ -23,6 +27,33 @@ function initialsFromFullName(fullName: string): string {
     return parts[0].slice(0, 2).toUpperCase()
   }
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function displayNameFromSessionUser(row: Record<string, unknown>): string {
+  const first = String(row.firstName ?? "").trim()
+  const last = String(row.lastName ?? "").trim()
+  const full = [first, last].filter(Boolean).join(" ")
+  if (full) return full
+  const email = String(row.email ?? "").trim()
+  if (email) return email
+  const username = String(row.username ?? "").trim()
+  if (username) return username
+  return ""
+}
+
+function readSessionUserDisplayName(): string {
+  try {
+    const raw = sessionStorage.getItem(SESSION_USER_DETAILS_KEY)
+    if (!raw) return ""
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed) || parsed.length === 0) return ""
+    const entry = parsed[0]
+    if (entry == null || typeof entry !== "object" || Array.isArray(entry))
+      return ""
+    return displayNameFromSessionUser(entry as Record<string, unknown>)
+  } catch {
+    return ""
+  }
 }
 
 interface ProfileMenuRowProps {
@@ -58,10 +89,29 @@ function ProfileMenuRow({
   )
 }
 
-export function TopNavBar({
-  userName = "John Doe",
-  // userEmail = "thulasiv557@gmail.com",
-}: TopNavBarProps) {
+export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
+  const location = useLocation()
+  const [sessionUserName, setSessionUserName] = useState(() =>
+    readSessionUserDisplayName(),
+  )
+  const userName = userNameProp ?? (sessionUserName || "User")
+
+  useEffect(() => {
+    setSessionUserName(readSessionUserDisplayName())
+  }, [location.pathname])
+
+  useEffect(() => {
+    function onSessionUserUpdated() {
+      setSessionUserName(readSessionUserDisplayName())
+    }
+    window.addEventListener("portal-session-user-updated", onSessionUserUpdated)
+    return () =>
+      window.removeEventListener(
+        "portal-session-user-updated",
+        onSessionUserUpdated,
+      )
+  }, [])
+
   const initials = initialsFromFullName(userName)
   const { mode, switchToInvesting, switchToSyndicating } = usePortalMode()
   const navigate = useNavigate()
@@ -89,7 +139,7 @@ export function TopNavBar({
 
   function handleMyAccount() {
     closeMenu()
-    navigate("/account")
+    navigate("/account/company")
   }
 
   function handleRefer() {
@@ -99,6 +149,8 @@ export function TopNavBar({
 
   function handleLogout() {
     closeMenu()
+    sessionStorage.removeItem(SESSION_BEARER_KEY)
+    sessionStorage.removeItem(SESSION_USER_DETAILS_KEY)
     navigate("/signin")
   }
 

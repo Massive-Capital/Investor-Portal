@@ -71,7 +71,16 @@ const SigninForm = () => {
       } else {
         sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
       }
-      navigate("/", { replace: true });
+      const state = location.state as { from?: string } | undefined;
+      const from = state?.from;
+      const redirectTo =
+        typeof from === "string" &&
+        from.startsWith("/") &&
+        !from.startsWith("//") &&
+        from !== "/signin"
+          ? from
+          : "/";
+      navigate(redirectTo, { replace: true });
     } catch {
       setError("Unable to connect. Please try again later.");
     } finally {

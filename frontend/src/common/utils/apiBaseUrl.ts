@@ -4,7 +4,11 @@
  */
 export function getApiV1Base(): string {
   const raw = (import.meta.env.VITE_BASE_URL ?? "").toString().trim();
-  if (!raw) return "";
+  /** Dev: empty URL → same-origin `/api/v1` (Vite proxy → backend). Avoids calling the SPA server by mistake. */
+  if (!raw) {
+    if (import.meta.env.DEV) return "/api/v1";
+    return "";
+  }
   const base = raw.replace(/\/$/, "");
   if (base.endsWith("/api/v1")) return base;
   return `${base}/api/v1`;
@@ -14,6 +18,11 @@ export function getApiV1Base(): string {
 export function getBackendOrigin(): string {
   const v1 = getApiV1Base();
   if (!v1) return "";
+  /** Same-origin relative API (Vite proxy) — assets use current origin; proxy `/uploads` to backend in dev. */
+  if (v1.startsWith("/")) {
+    if (typeof window !== "undefined") return window.location.origin;
+    return "";
+  }
   if (v1.endsWith("/api/v1")) return v1.slice(0, -"/api/v1".length);
   return v1.replace(/\/api\/v1\/?$/, "");
 }
