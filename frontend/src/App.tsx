@@ -15,14 +15,19 @@ import SponsorDashboardPage from "./modules/Syndication/InvestorPortal/Dashboard
 import DealsLayout from "./modules/Syndication/InvestorPortal/Deals/DealsLayout";
 import { CreateDealPage } from "./modules/Syndication/InvestorPortal/Deals/CreateDealPage";
 import { DealDetailPage } from "./modules/Syndication/InvestorPortal/Deals/DealDetailPage";
+import { DealOfferingPortfolioPage } from "./modules/Syndication/InvestorPortal/Deals/DealOfferingPortfolioPage";
 import { DealsListPage } from "./modules/Syndication/InvestorPortal/Deals/DealsListPage";
 import Opportunities from "./modules/Investing/InvestorPortal/Opportunities/Opportunities";
 import { WorkInProgressPage } from "./common/components/WorkInProgressPage";
 import { InvestorEmailsPage } from "./modules/Syndication/InvestorPortal/InvestorEmails/InvestorEmailsPage";
 import { ReportingPage } from "./modules/Syndication/InvestorPortal/Reporting/ReportingPage";
 import CompanyPage from "./modules/company/CompanyPage";
+import CompanyMembersPage from "./modules/company/CompanyMembersPage";
+import CompanyDealsPage from "./modules/company/CompanyDealsPage";
+import CustomerCompanyLayout from "./modules/company/CustomerCompanyLayout";
 import MembersLayout from "./modules/usermanagement/MembersLayout";
 import UserManagementPage from "./modules/usermanagement/UserManagementPage";
+import ContactsPage from "./modules/contacts/ContactsPage";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
 import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
 import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
@@ -54,10 +59,18 @@ function CustomersRoute() {
   return <CompanyPage variant="customers" />;
 }
 
+/** Match React Router to Vite `base` (`import.meta.env.BASE_URL`) for subpath deploys. */
+function routerBasename(): string | undefined {
+  const raw = import.meta.env.BASE_URL ?? "/";
+  if (raw === "/" || raw === "./") return undefined;
+  const trimmed = raw.replace(/\/+$/, "");
+  return trimmed || undefined;
+}
+
 function App() {
   return (
     <>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename()}>
         <Routes>
           <Route element={<RequireAuth />}>
             <Route path="/" element={<PageLayout />}>
@@ -67,8 +80,22 @@ function App() {
               <Route path="investor-emails" element={<InvestorEmailsPage />} />
               <Route path="reporting" element={<ReportingPage />} />
               <Route path="create" element={<CreateDealPage />} />
+              <Route
+                path=":dealId/offering-portfolio"
+                element={<DealOfferingPortfolioPage />}
+              />
               <Route path=":dealId" element={<DealDetailPage />} />
             </Route>
+            <Route
+              path="leads"
+              element={
+                <WorkInProgressPage
+                  title="Leads"
+                  backTo="/"
+                  backLabel="Dashboard"
+                />
+              }
+            />
             <Route path="investing/opportunities" element={<Opportunities />} />
             <Route
               path="investing/investments"
@@ -142,11 +169,20 @@ function App() {
             />
             <Route path="support" element={<PlaceholderPage title="Support" />} />
             <Route path="settings" element={<CompanyRoute />} />
+            <Route path="customers/:companyId" element={<CustomerCompanyLayout />}>
+              <Route
+                index
+                element={<Navigate to="members" replace />}
+              />
+              <Route path="members" element={<CompanyMembersPage />} />
+              <Route path="deals" element={<CompanyDealsPage />} />
+            </Route>
             <Route path="customers" element={<CustomersRoute />} />
             <Route path="billing" element={<PlaceholderPage title="Billing" />} />
             <Route path="members" element={<MembersLayout />}>
               <Route index element={<UserManagementPage />} />
             </Route>
+            <Route path="contacts" element={<ContactsPage />} />
             </Route>
           </Route>
           <Route path="/signin" element={<SigninPage />} />

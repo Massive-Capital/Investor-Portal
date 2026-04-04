@@ -1,19 +1,19 @@
 .field_info_heading {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.35em;
 }
 
 .field_info_heading_row {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.35em;
   min-width: 0;
 }
 
 .field_info_heading_label {
-  flex: 1;
+  /* flex: 1; */
   min-width: 0;
-  font-size: 0.8125rem;
+  font-size: 0.8125em;
   font-weight: 600;
   color: var(--portal-text);
   line-height: 1.35;
@@ -26,7 +26,7 @@
 }
 
 .field_info_tooltip_inner p {
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.45em;
 }
 
 .field_info_tooltip_inner p:last-child {
@@ -35,11 +35,11 @@
 
 .field_info_tooltip_inner ul {
   margin: 0;
-  padding-left: 1.1rem;
+  padding-left: 1.1em;
 }
 
 .field_info_tooltip_inner li {
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.3em;
 }
 
 .field_info_tooltip_inner li:last-child {
@@ -48,11 +48,11 @@
 
 .field_info_list {
   margin: 0;
-  padding-left: 1.1rem;
+  padding-left: 1.1em;
 }
 
 .field_info_list li {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.35em;
 }
 
 .field_info_list li:last-child {

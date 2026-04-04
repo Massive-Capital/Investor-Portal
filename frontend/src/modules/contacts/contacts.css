@@ -1,0 +1,717 @@
+/* Contacts page — layout matches Members (`um_page`, `um_header_row`, `um_panel`). */
+
+.contacts_page {
+  min-width: 0;
+}
+
+.contacts_um_table tbody tr.contacts_row_suspended td {
+  opacity: 0.78;
+}
+
+.contacts_tab_count {
+  font-weight: 500;
+  color: #64748b;
+}
+
+/* View contact: no inner vertical scroll — body grows with content; overlay scrolls if needed; dialog centered. */
+.contacts_view_modal_overlay.um_modal_overlay {
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contacts_view_modal.um_modal.um_modal_view {
+  max-width: min(36em, 100%);
+  max-height: none;
+  overflow-x: hidden;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.contacts_view_modal .um_modal_head {
+  min-width: 0;
+}
+
+.contacts_view_modal .um_modal_head .um_modal_title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.contacts_view_modal .deals_add_inv_modal_scroll {
+  flex: none;
+  min-height: auto;
+  overflow-x: hidden;
+  overflow-y: visible;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.contacts_view_modal_grid.um_view_grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1em 1.25em;
+  margin-bottom: 0.25em;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .contacts_view_modal_grid.um_view_grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.contacts_view_modal .um_view_field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.contacts_view_modal .um_view_field_box {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+
+.contacts_view_modal .contacts_cell_chips {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.contacts_view_modal .contacts_cell_chip {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.contacts_view_modal_footer.um_modal_actions {
+  justify-content: flex-end;
+  gap: 0.5em;
+  flex-wrap: wrap;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Same table chrome as Members (um_table_wrap + scroll region from DataTable). */
+.contacts_table_panel .data_table_scroll_region,
+.contacts_table_panel .um_table_wrap.data_table_shell {
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.contacts_table_panel .um_table.contacts_um_table {
+  table-layout: fixed;
+  width: 100%;
+  max-width: 100%;
+}
+
+.contacts_table_panel .um_table th,
+.contacts_table_panel .um_table td {
+  vertical-align: middle;
+}
+
+/* Deal count: center header + numeric cell (overrides .um_table td { text-align: left }). */
+.contacts_table_panel .um_table.contacts_um_table th.contacts_th_deals_count,
+.contacts_table_panel .um_table.contacts_um_table td.contacts_td_deals_count {
+  text-align: center;
+}
+
+.contacts_table_panel .um_table.contacts_um_table th.contacts_th_deals_count .um_sort_header_ctl {
+  justify-content: center;
+  text-align: center;
+}
+
+.contacts_table_panel .um_table.contacts_um_table th.contacts_th_deals_count .um_sort_header_label {
+  flex: 0 1 auto;
+}
+
+.contacts_deals_count_num {
+  display: inline-block;
+  min-width: 1.25em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.contacts_deals_count_num--empty {
+  color: var(--portal-text-muted, #94a3b8);
+  font-weight: 500;
+}
+
+.contacts_deals_count_num--value {
+  font-weight: 650;
+  color: var(--portal-text, #0f172a);
+}
+
+/* Under email in User column — syndication deal count (mirrors Deals column). */
+.contacts_user_deal_line {
+  display: block;
+  margin-top: 0.2em;
+  font-size: 0.75em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--portal-text-muted, #64748b);
+  line-height: 1.25;
+}
+
+/* Tag/owner chips — same pill look as Members `um_role_badge` (table + view modal). */
+.contacts_cell_chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+}
+
+.contacts_cell_chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35em 0.75em;
+  border-radius: var(--ui-button-border-radius, 25px);
+  background: #f2f2f2;
+  color: #1e3a5f;
+  font-size: 0.875em;
+  font-weight: 600;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] .contacts_cell_chip {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--portal-text, #f1f5f9);
+}
+
+.contacts_cell_muted {
+  color: var(--portal-text-muted);
+  font-size: 0.875em;
+}
+
+.contacts_required {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+/* Add contact modal: vertical-only scroll; chips/combobox stay within width */
+.add_contact_panel.um_modal {
+  overflow-x: hidden;
+}
+
+.add_contact_panel .deals_add_inv_modal_form,
+.add_contact_panel .deals_add_inv_modal_scroll {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.add_contact_panel .um_field {
+  min-width: 0;
+}
+
+.add_contact_panel .contacts_chips_combobox {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.add_contact_panel .contacts_chips_combobox_input {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.add_contact_owners_field.um_field {
+  margin-top: 1em;
+  margin-bottom: 0;
+}
+
+.add_contact_owners_hint {
+  margin: 0 0 0.55em;
+  font-size: 0.78em;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+}
+
+/* Owners combobox — aligned with tag inputs, distinct chips */
+.add_contact_panel .add_contact_owners_combobox.contacts_chips_combobox {
+  min-height: 2.75em;
+  padding: 0.45em 0.85em;
+  gap: 0.4em;
+  background: var(--portal-surface, #fff);
+  border-color: var(--portal-border, #e2e8f0);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+.add_contact_panel
+  .add_contact_owners_combobox.contacts_chips_combobox
+  .contacts_chip {
+  background: color-mix(
+    in srgb,
+    var(--portal-primary, #2563eb) 12%,
+    var(--portal-primary-soft, #f1f5f9)
+  );
+  color: var(--portal-text, #0f172a);
+  border: 1px solid
+    color-mix(in srgb, var(--portal-primary, #2563eb) 28%, transparent);
+  font-weight: 600;
+}
+
+.add_contact_panel
+  .add_contact_owners_combobox.contacts_chips_combobox
+  .contacts_chips_combobox_input {
+  font-size: 0.95em;
+}
+
+:root[data-theme="dark"]
+  .add_contact_panel
+  .add_contact_owners_combobox.contacts_chips_combobox
+  .contacts_chip {
+  background: color-mix(
+    in srgb,
+    var(--portal-primary, #60a5fa) 14%,
+    var(--portal-surface, #1e293b)
+  );
+  color: var(--portal-text, #f1f5f9);
+  border-color: color-mix(
+    in srgb,
+    var(--portal-primary, #60a5fa) 35%,
+    transparent
+  );
+}
+
+.add_contact_panel .contacts_chip {
+  min-width: 0;
+}
+
+.add_contact_panel .contacts_chip_label {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.add_contact_panel .add_contact_modal_actions {
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.add_contact_panel .add_contact_modal_actions_trailing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+@keyframes add_contact_modal_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.add_contact_panel .add_contact_modal_btn_spin {
+  animation: add_contact_modal_spin 0.85s linear infinite;
+}
+
+/* Add contact — header, steps, sections */
+.add_contact_modal_head {
+  align-items: flex-start;
+}
+
+.add_contact_modal_head .add_contact_modal_head_main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  padding-right: 0.25em;
+}
+
+.add_contact_modal_title.um_modal_title {
+  text-align: center;
+  margin: 0 0 10px 0;
+  line-height: 1.25;
+  font-size: 1.4em;
+  font-weight: 700;
+}
+
+.add_contact_stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em 1em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.add_contact_step_node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  color: var(--portal-text-muted, #64748b);
+  font-size: 0.75em;
+  font-weight: 600;
+}
+
+.add_contact_step_node_active {
+  color: var(--portal-text, #0f172a);
+}
+
+.add_contact_step_node_done {
+  color: var(--portal-primary, #2563eb);
+}
+
+.add_contact_step_dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 50%;
+  font-size: 0.7em;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--portal-border, #e2e8f0);
+  color: var(--portal-text-muted, #64748b);
+}
+
+.add_contact_step_node_active .add_contact_step_dot {
+  background: var(--portal-primary, #2563eb);
+  color: #fff;
+}
+
+.add_contact_step_node_done .add_contact_step_dot {
+  background: color-mix(
+    in srgb,
+    var(--portal-primary, #2563eb) 16%,
+    var(--portal-surface, #fff)
+  );
+  color: var(--portal-primary, #2563eb);
+}
+
+.add_contact_step_line {
+  display: inline-block;
+  width: 2.5em;
+  max-width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--portal-border, #e2e8f0);
+  flex-shrink: 0;
+}
+
+.add_contact_step_line_active {
+  background: color-mix(
+    in srgb,
+    var(--portal-primary, #2563eb) 55%,
+    var(--portal-border, #e2e8f0)
+  );
+}
+
+.add_contact_section {
+  margin-bottom: 0;
+}
+
+.add_contact_section_eyebrow {
+  margin: 0 0 0.65em;
+  font-size: 0.6875em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.add_contact_section_eyebrow_spaced {
+  margin-top: 0.15em;
+}
+
+.add_contact_section_rule {
+  margin: 0.85em 0 1em;
+  border: none;
+  height: 1px;
+  background: var(--portal-border, #e2e8f0);
+}
+
+.add_contact_name_grid {
+  display: grid;
+  gap: 0 1em;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 480px) {
+  .add_contact_name_grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.add_contact_panel .add_contact_field_tight.um_field {
+  margin-bottom: 0.85em;
+}
+
+.add_contact_panel .add_contact_name_grid .um_field:last-child {
+  margin-bottom: 0.85em;
+}
+
+.add_contact_note_textarea.um_field_textarea {
+  min-height: 4.5em;
+  resize: none;
+  line-height: 1.45;
+}
+
+.add_contact_chip_input.deals_add_inv_input {
+  margin-top: 0.35em;
+}
+
+:root[data-theme="dark"] .add_contact_step_dot {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--portal-text-muted, #94a3b8);
+}
+
+:root[data-theme="dark"] .add_contact_step_node_active .add_contact_step_dot {
+  background: var(--portal-primary, #60a5fa);
+  color: #0f172a;
+}
+
+:root[data-theme="dark"] .add_contact_step_line {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.deals_add_inv_modal_panel .um_field .contacts_chip_row {
+  margin-top: 0.35em;
+}
+
+.contacts_chip_row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+}
+
+.contacts_chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.25em 0.45em 0.25em 0.65em;
+  border-radius: 9999px;
+  background: #e2e8f0;
+  color: #0f172a;
+  font-size: 0.8125em;
+  font-weight: 600;
+  max-width: 100%;
+}
+
+:root[data-theme="dark"] .contacts_chip {
+  background: #334155;
+  color: #f1f5f9;
+}
+
+.contacts_chip_remove {
+  display: inline-flex;
+  padding: 0.1em;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.contacts_chip_remove:hover {
+  opacity: 1;
+}
+
+/* Owner(s): chips + typing cursor inside one field (same shell as tag inputs) */
+.contacts_chips_combobox {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35em;
+  min-height: 2.5em;
+  padding: 0.35em 0.65em 0.35em 0.85em;
+  box-sizing: border-box;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--ui-button-border-radius, 25px);
+  background: #fff;
+  cursor: text;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.deals_add_inv_modal_panel .contacts_chips_combobox {
+  width: 100%;
+}
+
+.contacts_chips_combobox_chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  align-items: center;
+  margin: 0;
+}
+
+.contacts_chips_combobox_input {
+  flex: 1 1 10em;
+  min-width: 6em;
+  border: none;
+  margin: 0;
+  padding: 0.4em 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.95em;
+  color: var(--portal-text, #0f172a);
+  outline: none;
+}
+
+.contacts_chips_combobox_input::placeholder {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .contacts_chips_combobox {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--portal-surface, #1e293b);
+}
+
+/* Suspend / activate contact modal */
+.um_modal_overlay.contacts_suspend_overlay {
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.25em;
+}
+
+.um_modal.contacts_suspend_modal {
+  max-width: min(32em, 100%);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.contacts_suspend_modal .um_modal_head {
+  min-width: 0;
+}
+
+.contacts_suspend_modal .um_modal_title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.contacts_suspend_title_icon_suspend {
+  color: #b45309;
+}
+
+.contacts_suspend_title_icon_activate {
+  color: #15803d;
+}
+
+:root[data-theme="dark"] .contacts_suspend_title_icon_suspend {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .contacts_suspend_title_icon_activate {
+  color: #4ade80;
+}
+
+.contacts_suspend_modal_desc {
+  display: flex;
+  gap: 0.65em;
+  align-items: flex-start;
+  margin: 0 0 1em;
+  padding: 0.65em 0.85em;
+  border-radius: 0.5em;
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+.contacts_suspend_modal_desc_icon {
+  flex-shrink: 0;
+  margin-top: 0.1em;
+}
+
+.contacts_suspend_modal_desc_warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+}
+
+.contacts_suspend_modal_desc_warn .contacts_suspend_modal_desc_icon {
+  color: #b45309;
+}
+
+.contacts_suspend_modal_desc_info {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #14532d;
+}
+
+.contacts_suspend_modal_desc_info .contacts_suspend_modal_desc_icon {
+  color: #15803d;
+}
+
+:root[data-theme="dark"] .contacts_suspend_modal_desc_warn {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fde68a;
+}
+
+:root[data-theme="dark"] .contacts_suspend_modal_desc_warn .contacts_suspend_modal_desc_icon {
+  color: #fbbf24;
+}
+
+:root[data-theme="dark"] .contacts_suspend_modal_desc_info {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.3);
+  color: #bbf7d0;
+}
+
+:root[data-theme="dark"] .contacts_suspend_modal_desc_info .contacts_suspend_modal_desc_icon {
+  color: #4ade80;
+}
+
+.contacts_suspend_modal_grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1em 1.25em;
+  margin-bottom: 1em;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .contacts_suspend_modal_grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.contacts_suspend_modal_grid .um_view_field {
+  min-width: 0;
+}
+
+.contacts_suspend_modal_grid .um_view_field_box {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.contacts_suspend_modal_form {
+  min-width: 0;
+}
+
+.contacts_suspend_reason_field {
+  margin-bottom: 0.75em;
+}
+
+.contacts_suspend_reason_textarea {
+  min-height: 5em;
+  resize: vertical;
+}
+
+.contacts_suspend_modal_error {
+  margin-bottom: 0.75em;
+}
+
+.contacts_suspend_modal_actions {
+  margin-top: 0.25em;
+}

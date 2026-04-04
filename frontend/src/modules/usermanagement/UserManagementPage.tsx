@@ -43,6 +43,7 @@ import {
   SESSION_BEARER_KEY,
   SESSION_USER_DETAILS_KEY,
 } from "../../common/auth/sessionKeys";
+import { decodeJwtPayload } from "../auth/utils/decode-jwt-payload";
 import { getApiV1Base } from "../../common/utils/apiBaseUrl";
 import { isCompanyAdmin, isPlatformAdmin } from "../../common/auth/roleUtils";
 import { DataTablePagination } from "../../common/components/DataTablePagination/DataTablePagination";
@@ -54,20 +55,27 @@ import {
   MEMBER_AUDIT_ACTION_SUSPEND,
   MEMBER_STATUS_EDIT_OPTIONS,
   PLATFORM_INVITE_ROLE_OPTIONS,
+  accountInviteIsExpired,
+  accountStatusForUi,
+  accountStatusLabel,
+  assignedDealCountFromRow,
+  companyCellValue,
   formatMemberUsername,
   formatValue,
+  memberInvitePending,
+  memberRoleDisplayName,
+  memberRowIsCurrentUser,
+  memberRowIsInactive,
   normalizeMemberStatusForEdit,
   rowDisplayName,
   syncSessionUserDetailsById,
+  userStatusForUi,
 } from "./memberAdminShared";
+import { ExportMembersModal } from "./ExportMembersModal";
+import { escapeCsvCell, exportAuditLinesForMembers } from "./memberCsv";
+import { notifyMembersExportAudit } from "./membersExportNotifyApi";
 import "./user_management.css";
-
-function escapeCsvCell(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
+import "../Syndication/InvestorPortal/Deals/components/add-investment-modal.css";
 
 function initialsFromRow(row: Record<string, unknown>): string {
   const first = String(row.firstName ?? "").trim();
@@ -81,77 +89,6 @@ function initialsFromRow(row: Record<string, unknown>): string {
   const e = String(row.email ?? "").trim();
   if (e.length >= 2) return e.slice(0, 2).toUpperCase();
   return "?";
-}
-
-function accountStatusLabel(row: Record<string, unknown>): string {
-  const raw = row.userSignupCompleted ?? row.user_signup_completed;
-  const v = String(raw ?? "")
-    .trim()
-    .toLowerCase();
-  if (v === "true") return "Complete";
-  if (v === "false") return "Incomplete";
-  return formatValue(raw);
-}
-
-function memberRowIsInactive(row: Record<string, unknown>): boolean {
-  const s = String(row.userStatus ?? "").trim().toLowerCase();
-  return s === "suspended" || s === "inactive";
-}
-
-function memberInvitePending(row: Record<string, unknown>): boolean {
-  const v = String(
-    row.userSignupCompleted ?? row.user_signup_completed ?? "",
-  )
-    .trim()
-    .toLowerCase();
-  return v === "false";
-}
-
-/** User row status (active = green dot; otherwise coral + label). */
-function userStatusForUi(row: Record<string, unknown>): {
-  positive: boolean;
-  label: string;
-} {
-  const raw = String(row.userStatus ?? "").trim();
-  if (!raw) return { positive: false, label: "—" };
-  const low = raw.toLowerCase();
-  if (low === "active") return { positive: true, label: "Active" };
-  if (low === "inactive" || low === "suspended") {
-    return { positive: false, label: "Inactive" };
-  }
-  const label = raw
-    .split(/[\s_-]+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-  return { positive: false, label };
-}
-
-/** Account signup status (complete = green; invited = blue; expired = coral). */
-function accountStatusForUi(row: Record<string, unknown>): {
-  positive: boolean;
-  label: string;
-  dotTone?: "invited";
-} {
-  const raw = row.userSignupCompleted ?? row.user_signup_completed;
-  const v = String(raw ?? "")
-    .trim()
-    .toLowerCase();
-  if (v === "true") return { positive: true, label: "Complete" };
-  if (v === "false") {
-    const expRaw = row.inviteExpiresAt ?? row.invite_expires_at;
-    if (expRaw) {
-      const t = new Date(String(expRaw)).getTime();
-      if (!Number.isNaN(t) && Date.now() > t) {
-        return { positive: false, label: "Invite expired" };
-      }
-    }
-    return { positive: false, label: "Invited", dotTone: "invited" };
-  }
-  const l = accountStatusLabel(row);
-  if (l === "—") return { positive: false, label: "—" };
-  if (l === "Complete") return { positive: true, label: "Complete" };
-  if (l === "Incomplete") return { positive: false, label: "Incomplete" };
-  return { positive: false, label: l };
 }
 
 function StatusWithDot({
@@ -182,87 +119,21 @@ function StatusWithDot({
 
 /** Label used in badge, sort, export, and search. */
 function roleBadgeLabel(row: Record<string, unknown>): string {
-  const r = String(row.role ?? "").trim().toLowerCase();
-  if (!r) return "—";
-  if (r === "platform_admin") return "Platform Admin";
-  if (r === "company_admin") return "Company admin";
-  if (r === "company_user") return "Company user";
-  if (r === "platform_user" || r === "user") return "Member";
-  const raw = String(row.role ?? "").trim();
-  return (
-    raw
-      .split(/[\s_-]+/)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(" ") || "—"
-  );
+  return memberRoleDisplayName(row.role);
 }
 
 function UserRoleBadge({ row }: { row: Record<string, unknown> }) {
   const r = String(row.role ?? "").trim().toLowerCase();
-  if (!r) {
+  const label = memberRoleDisplayName(row.role);
+  if (!r || label === "—") {
     return <span className="um_status_muted">—</span>;
   }
-  if (r === "platform_admin") {
-    return (
-      <span className="um_role_badge">
-        <ClipboardList
-          className="um_role_badge_icon"
-          size={16}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <span className="um_role_badge_label">Platform Admin</span>
-      </span>
-    );
-  }
-  if (r === "company_admin") {
-    return (
-      <span className="um_role_badge">
-        <ClipboardList
-          className="um_role_badge_icon"
-          size={16}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <span className="um_role_badge_label">Company admin</span>
-      </span>
-    );
-  }
-  if (r === "platform_user" || r === "user") {
-    return (
-      <span className="um_role_badge">
-        <UserCircle
-          className="um_role_badge_icon"
-          size={16}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <span className="um_role_badge_label">Member</span>
-      </span>
-    );
-  }
-  if (r === "company_user") {
-    return (
-      <span className="um_role_badge">
-        <UserCircle
-          className="um_role_badge_icon"
-          size={16}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <span className="um_role_badge_label">Company user</span>
-      </span>
-    );
-  }
-  const raw = String(row.role ?? "").trim();
-  const label =
-    raw
-      .split(/[\s_-]+/)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(" ") || "—";
+  const useAdminStyleIcon =
+    r === "platform_admin" || r === "company_admin";
+  const Icon = useAdminStyleIcon ? ClipboardList : UserCircle;
   return (
     <span className="um_role_badge">
-      <ClipboardList
+      <Icon
         className="um_role_badge_icon"
         size={16}
         strokeWidth={2}
@@ -271,12 +142,6 @@ function UserRoleBadge({ row }: { row: Record<string, unknown> }) {
       <span className="um_role_badge_label">{label}</span>
     </span>
   );
-}
-
-function companyCellValue(row: Record<string, unknown>): string {
-  const raw = row.companyName ?? row.company_name;
-  const s = String(raw ?? "").trim();
-  return s || "—";
 }
 
 function rowOrganizationId(row: Record<string, unknown>): string | undefined {
@@ -314,7 +179,12 @@ function rowMatchesSearch(
   return hay.includes(q);
 }
 
-type MemberSortKey = "user" | "company" | "role" | "status" | "accountStatus";
+type MemberSortKey =
+  | "user"
+  | "company"
+  | "role"
+  | "status"
+  | "accountStatus";
 
 function memberSortValue(
   row: Record<string, unknown>,
@@ -350,6 +220,9 @@ function buildSortColumns(showCompany: boolean): {
     { key: "role", label: "User role" },
     { key: "status", label: "User Status" },
     { key: "accountStatus", label: "Account status" },
+    /* Deals: hidden on /members only; still shown on /customers/:companyId/members (CompanyMembersPage).
+    { key: "deals", label: "Deals" },
+    */
   );
   return base;
 }
@@ -414,21 +287,21 @@ const ROLE_MATRIX_GROUPS: RoleMatrixGroupDef[] = [
   },
   {
     id: "company",
-    sectionTitle: "Company Users",
+    sectionTitle: "Company Members",
     sectionDescription:
       "Organization-level roles for people tied to a company and its membership.",
     headerIcon: Building2,
     cards: [
       {
         id: "company-administrator",
-        title: "Company administrator",
+        title: "Company Admin",
         description:
           "Manage members and invitations for your organization. First signup that creates a new company name is promoted to this role automatically.",
         cardIcon: "shield-check",
       },
       {
-        id: "company-user",
-        title: "Company user",
+        id: "company-member",
+        title: "Company Member",
         description:
           "Day-to-day portal use for your team, including invites to an existing organization and typical employees without admin privileges (for example when assigned via a platform-admin invite).",
         cardIcon: "layout-grid",
@@ -462,7 +335,7 @@ function MembersRoleIconBox({
 }
 
 function MembersRoleInfoPanel() {
-  // Company admins: Company Users only. Platform admins (and other non–company-admin viewers here): Platform + Company.
+  // Company admins: Company Members section only. Platform admins (and other non–company-admin viewers here): Platform + Company.
   const roleMatrixGroups = isCompanyAdmin()
     ? ROLE_MATRIX_GROUPS.filter((g) => g.id === "company")
     : ROLE_MATRIX_GROUPS;
@@ -513,6 +386,14 @@ function MembersRoleInfoPanel() {
 export default function UserManagementPage() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   const apiV1 = getApiV1Base();
+
+  const currentUserId = useMemo(() => {
+    if (!token) return "";
+    const p = decodeJwtPayload<{ id?: unknown }>(token);
+    const id = p?.id;
+    if (id == null || id === "") return "";
+    return String(id).trim().toLowerCase();
+  }, [token]);
 
   const [memberRows, setMemberRows] =
     useState<Record<string, unknown>[]>(readSessionMemberRows);
@@ -596,7 +477,7 @@ export default function UserManagementPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteCompanyId, setInviteCompanyId] = useState("");
-  const [inviteInvitedRole, setInviteInvitedRole] = useState("platform_user");
+  const [inviteInvitedRole, setInviteInvitedRole] = useState("");
   const [inviteCompanies, setInviteCompanies] = useState<
     { id: string; name: string }[]
   >([]);
@@ -608,6 +489,7 @@ export default function UserManagementPage() {
   const [membersPage, setMembersPage] = useState(1);
   const [membersPageSize, setMembersPageSize] = useState(10);
   const [toolbarNotice, setToolbarNotice] = useState("");
+  const [membersExportOpen, setMembersExportOpen] = useState(false);
   const [sortKey, setSortKey] = useState<MemberSortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null);
@@ -807,40 +689,6 @@ export default function UserManagementPage() {
     [token, apiV1],
   );
 
-  function exportMembersCsv() {
-    const headers = [
-      "Name",
-      "Username",
-      "Email",
-      ...(showCompanyColumn ? ["Company"] : []),
-      "User role",
-      "User Status",
-      "Account status",
-    ];
-    const lines = [headers.map(escapeCsvCell).join(",")];
-    for (const row of sortedRows) {
-      const line = [
-        rowDisplayName(row),
-        formatMemberUsername(row.username),
-        formatValue(row.email),
-        ...(showCompanyColumn ? [companyCellValue(row)] : []),
-        roleBadgeLabel(row),
-        userStatusForUi(row).label,
-        accountStatusForUi(row).label,
-      ];
-      lines.push(line.map((c) => escapeCsvCell(c)).join(","));
-    }
-    const blob = new Blob([lines.join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "members.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   function exportRowCsv(row: Record<string, unknown>) {
     const headers = [
       "Name",
@@ -850,6 +698,7 @@ export default function UserManagementPage() {
       "User role",
       "User Status",
       "Account status",
+      "Assigned deals",
     ];
     const vals = [
       rowDisplayName(row),
@@ -859,6 +708,7 @@ export default function UserManagementPage() {
       roleBadgeLabel(row),
       userStatusForUi(row).label,
       accountStatusForUi(row).label,
+      String(assignedDealCountFromRow(row)),
     ];
     const line = [
       headers.map(escapeCsvCell).join(","),
@@ -877,6 +727,10 @@ export default function UserManagementPage() {
     a.download = `member-${safe}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    void notifyMembersExportAudit({
+      rowCount: 1,
+      exportedMemberLines: exportAuditLinesForMembers([row]),
+    });
     closeActionMenu();
     setToolbarNotice("");
     toast.success("Member exported", `Saved as ${a.download}`);
@@ -919,7 +773,7 @@ export default function UserManagementPage() {
     setInviteOpen(true);
     setInviteEmail("");
     setInviteCompanyId("");
-    setInviteInvitedRole("platform_user");
+    setInviteInvitedRole("");
     setInviteCompaniesError("");
     setInviteError("");
   }
@@ -931,6 +785,10 @@ export default function UserManagementPage() {
   }
 
   function openEditMember(row: Record<string, unknown>) {
+    if (memberRowIsCurrentUser(row, currentUserId)) {
+      toast.error("Cannot edit", "You cannot edit your own account here.");
+      return;
+    }
     setEditRow(row);
     const rawRole = String(row.role ?? "").trim();
     const roleForEdit =
@@ -948,6 +806,10 @@ export default function UserManagementPage() {
   }
 
   function openSuspendMember(row: Record<string, unknown>) {
+    if (memberRowIsCurrentUser(row, currentUserId)) {
+      toast.error("Cannot change status", "You cannot suspend or activate your own account here.");
+      return;
+    }
     setSuspendRow(row);
     setSuspendReason("");
     setSuspendErr("");
@@ -962,6 +824,10 @@ export default function UserManagementPage() {
   async function submitEditMember(e: React.FormEvent) {
     e.preventDefault();
     if (!editRow || !token || !apiV1) return;
+    if (memberRowIsCurrentUser(editRow, currentUserId)) {
+      setEditErr("You cannot edit your own account.");
+      return;
+    }
     const id = String(editRow.id ?? "").trim();
     if (!id) {
       setEditErr("Missing member id.");
@@ -1019,6 +885,10 @@ export default function UserManagementPage() {
   async function submitSuspendMember(e: React.FormEvent) {
     e.preventDefault();
     if (!suspendRow || !token || !apiV1) return;
+    if (memberRowIsCurrentUser(suspendRow, currentUserId)) {
+      setSuspendErr("You cannot suspend or activate your own account.");
+      return;
+    }
     const id = String(suspendRow.id ?? "").trim();
     if (!id) {
       setSuspendErr("Missing member id.");
@@ -1149,13 +1019,17 @@ export default function UserManagementPage() {
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !apiV1) return;
+    if (showCompanyColumn && !inviteInvitedRole.trim()) {
+      setInviteError("Please select a role.");
+      return;
+    }
     setInviteLoading(true);
     setInviteError("");
     try {
       const result = await sendInviteForEmail(
         inviteEmail,
         showCompanyColumn ? inviteCompanyId : undefined,
-        showCompanyColumn ? inviteInvitedRole : undefined,
+        showCompanyColumn ? inviteInvitedRole.trim() : undefined,
       );
       if (!result.ok) {
         setInviteError(result.message);
@@ -1287,7 +1161,7 @@ export default function UserManagementPage() {
             <button
               type="button"
               className="um_toolbar_export_btn"
-              onClick={exportMembersCsv}
+              onClick={() => setMembersExportOpen(true)}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
               <span>Export all members</span>
@@ -1420,6 +1294,11 @@ export default function UserManagementPage() {
                       <td>
                         <StatusWithDot {...rowAccountStatus} />
                       </td>
+                      {/* Deals column: hidden here; customers company Members tab uses CompanyMembersPage.
+                      <td className="um_td_numeric">
+                        {assignedDealCountFromRow(row)}
+                      </td>
+                      */}
                       <td className="um_td_actions">
                         <div className="um_kebab_root">
                           <button
@@ -1516,7 +1395,15 @@ export default function UserManagementPage() {
                   type="button"
                   role="menuitem"
                   className="um_kebab_menuitem"
-                  disabled={memberInvitePending(openMenuContext.row)}
+                  disabled={
+                    memberInvitePending(openMenuContext.row) ||
+                    memberRowIsCurrentUser(openMenuContext.row, currentUserId)
+                  }
+                  title={
+                    memberRowIsCurrentUser(openMenuContext.row, currentUserId)
+                      ? "You cannot edit your own account here."
+                      : undefined
+                  }
                   onClick={() => {
                     closeActionMenu();
                     openEditMember(openMenuContext.row);
@@ -1531,7 +1418,15 @@ export default function UserManagementPage() {
                   type="button"
                   role="menuitem"
                   className="um_kebab_menuitem"
-                  disabled={memberInvitePending(openMenuContext.row)}
+                  disabled={
+                    memberInvitePending(openMenuContext.row) ||
+                    memberRowIsCurrentUser(openMenuContext.row, currentUserId)
+                  }
+                  title={
+                    memberRowIsCurrentUser(openMenuContext.row, currentUserId)
+                      ? "You cannot suspend or activate your own account here."
+                      : undefined
+                  }
                   onClick={() => {
                     closeActionMenu();
                     openSuspendMember(openMenuContext.row);
@@ -1562,7 +1457,10 @@ export default function UserManagementPage() {
                   type="button"
                   role="menuitem"
                   className="um_kebab_menuitem"
-                  disabled={reinviteBusyId === openMenuContext.rowId}
+                  disabled={
+                    !accountInviteIsExpired(openMenuContext.row) ||
+                    reinviteBusyId === openMenuContext.rowId
+                  }
                   onClick={() =>
                     void reinviteRow(
                       openMenuContext.row,
@@ -1937,17 +1835,18 @@ export default function UserManagementPage() {
 
       {inviteOpen ? (
         <div
-          className="um_modal_overlay"
+          className="um_modal_overlay deals_add_inv_modal_overlay"
           role="presentation"
-          onClick={(e) => {
+          onMouseDown={(e) => {
             if (e.target === e.currentTarget) closeInviteModal();
           }}
         >
           <div
-            className="um_modal"
+            className="um_modal um_modal_view deals_add_inv_modal_panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="um-invite-title"
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="um_modal_head">
               <h3 id="um-invite-title" className="um_modal_title">
@@ -1962,79 +1861,85 @@ export default function UserManagementPage() {
                 <X size={20} strokeWidth={2} aria-hidden />
               </button>
             </div>
-            <form onSubmit={submitInvite}>
-              <div className="um_field">
-                <label htmlFor="um-invite-email" className="um_field_label_row">
-                  <Mail className="um_field_label_icon" size={17} aria-hidden />
-                  <span>Email</span>
-                </label>
-                <input
-                  id="um-invite-email"
-                  type="email"
-                  autoComplete="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  required
-                  disabled={inviteLoading}
-                />
-              </div>
-              {showCompanyColumn ? (
+            <form
+              className="deals_add_inv_modal_form"
+              onSubmit={submitInvite}
+            >
+              <div className="deals_add_inv_modal_scroll">
                 <div className="um_field">
-                  <label htmlFor="um-invite-company" className="um_field_label_row">
-                    <Building2 className="um_field_label_icon" size={17} aria-hidden />
-                    <span>Company</span>
+                  <label htmlFor="um-invite-email" className="um_field_label_row">
+                    <Mail className="um_field_label_icon" size={17} aria-hidden />
+                    <span>Email</span>
                   </label>
-                  <select
-                    id="um-invite-company"
-                    className="um_field_select"
-                    value={inviteCompanyId}
-                    onChange={(e) => setInviteCompanyId(e.target.value)}
-                    required
-                    disabled={inviteLoading || !!inviteCompaniesError}
-                    aria-invalid={!!inviteCompaniesError}
-                  >
-                    <option value="">Select a company</option>
-                    {inviteCompanies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              {showCompanyColumn ? (
-                <div className="um_field">
-                  <label htmlFor="um-invite-role" className="um_field_label_row">
-                    <UserCog className="um_field_label_icon" size={17} aria-hidden />
-                    <span>Role</span>
-                  </label>
-                  <select
-                    id="um-invite-role"
-                    className="um_field_select"
-                    value={inviteInvitedRole}
-                    onChange={(e) => setInviteInvitedRole(e.target.value)}
+                  <input
+                    id="um-invite-email"
+                    type="email"
+                    autoComplete="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="name@company.com"
                     required
                     disabled={inviteLoading}
-                  >
-                    {PLATFORM_INVITE_ROLE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
-              ) : null}
-              {inviteError ? (
-                <p className="um_msg_error um_modal_form_error" role="alert">
-                  {inviteError}
-                </p>
-              ) : null}
-              {inviteCompaniesError ? (
-                <p className="um_msg_error um_modal_form_error" role="alert">
-                  {inviteCompaniesError}
-                </p>
-              ) : null}
+                {showCompanyColumn ? (
+                  <div className="um_field">
+                    <label htmlFor="um-invite-company" className="um_field_label_row">
+                      <Building2 className="um_field_label_icon" size={17} aria-hidden />
+                      <span>Company</span>
+                    </label>
+                    <select
+                      id="um-invite-company"
+                      className="um_field_select"
+                      value={inviteCompanyId}
+                      onChange={(e) => setInviteCompanyId(e.target.value)}
+                      required
+                      disabled={inviteLoading || !!inviteCompaniesError}
+                      aria-invalid={!!inviteCompaniesError}
+                    >
+                      <option value="">Select a company</option>
+                      {inviteCompanies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {showCompanyColumn ? (
+                  <div className="um_field">
+                    <label htmlFor="um-invite-role" className="um_field_label_row">
+                      <UserCog className="um_field_label_icon" size={17} aria-hidden />
+                      <span>Role</span>
+                    </label>
+                    <select
+                      id="um-invite-role"
+                      className="um_field_select"
+                      value={inviteInvitedRole}
+                      onChange={(e) => setInviteInvitedRole(e.target.value)}
+                      required
+                      disabled={inviteLoading}
+                    >
+                      <option value="">Select a role</option>
+                      {PLATFORM_INVITE_ROLE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {inviteError ? (
+                  <p className="um_msg_error um_modal_form_error" role="alert">
+                    {inviteError}
+                  </p>
+                ) : null}
+                {inviteCompaniesError ? (
+                  <p className="um_msg_error um_modal_form_error" role="alert">
+                    {inviteCompaniesError}
+                  </p>
+                ) : null}
+              </div>
               <div className="um_modal_actions">
                 <button
                   type="button"
@@ -2051,7 +1956,9 @@ export default function UserManagementPage() {
                     inviteLoading ||
                     !inviteEmail.trim() ||
                     (showCompanyColumn &&
-                      (!inviteCompanyId.trim() || !!inviteCompaniesError))
+                      (!inviteCompanyId.trim() ||
+                        !inviteInvitedRole.trim() ||
+                        !!inviteCompaniesError))
                   }
                 >
                   <Send size={16} aria-hidden />
@@ -2062,6 +1969,12 @@ export default function UserManagementPage() {
           </div>
         </div>
       ) : null}
+      <ExportMembersModal
+        open={membersExportOpen}
+        onClose={() => setMembersExportOpen(false)}
+        members={sortedRows}
+        showCompanyColumn={showCompanyColumn}
+      />
     </section>
   );
 }

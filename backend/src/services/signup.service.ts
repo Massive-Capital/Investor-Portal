@@ -45,6 +45,38 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/** Same phone may not be shared by two members (including pending) in one organization. */
+async function assertPhoneUniqueInOrganization(params: {
+  organizationId: string | undefined;
+  phoneDigits: string;
+  excludeUserId?: string;
+}): Promise<SignupResult | null> {
+  const { organizationId, phoneDigits, excludeUserId } = params;
+  if (!organizationId || !phoneDigits) return null;
+
+  const parts = [
+    eq(users.organizationId, organizationId),
+    eq(users.phone, phoneDigits),
+  ];
+  if (excludeUserId) parts.push(ne(users.id, excludeUserId));
+
+  const [hit] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(...parts))
+    .limit(1);
+
+  if (hit) {
+    return {
+      ok: false,
+      status: 409,
+      message:
+        "This phone number is already used by another member in this organization. Use a different number.",
+    };
+  }
+  return null;
+}
+
 export async function registerUser(
   inviteToken: string | undefined,
   body: SignupBody,
@@ -234,6 +266,13 @@ export async function registerUser(
     } else if (applyInviteRole) {
       roleForUser = invitedRoleFromToken!;
     }
+
+    const phoneDup = await assertPhoneUniqueInOrganization({
+      organizationId,
+      phoneDigits: phone,
+      excludeUserId: pendingId,
+    });
+    if (phoneDup) return phoneDup;
 
     if (pendingId && existingByEmail) {
       const orgToSet =

@@ -18,6 +18,38 @@ function authJsonHeaders(): HeadersInit {
   return h
 }
 
+function authGetHeaders(): HeadersInit {
+  const token =
+    typeof sessionStorage !== "undefined"
+      ? sessionStorage.getItem(SESSION_BEARER_KEY)
+      : null
+  const h: HeadersInit = {}
+  if (token) h.Authorization = `Bearer ${token}`
+  return h
+}
+
+/** Loads the signed-in user from the API (JWT). Use for display name when session cache may be stale. */
+export async function fetchMyProfile(): Promise<Record<string, unknown> | null> {
+  const base = getApiV1Base()
+  if (!base) return null
+  try {
+    const res = await fetch(`${base}/auth/me`, {
+      method: "GET",
+      headers: authGetHeaders(),
+      credentials: "include",
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      user?: unknown
+    }
+    if (!res.ok) return null
+    const user = data.user
+    if (!user || typeof user !== "object" || Array.isArray(user)) return null
+    return user as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 /** Parse JSON body; on failure return a synthetic message from raw text (e.g. HTML error pages). */
 async function readJsonResponse(res: Response): Promise<{
   data: Record<string, unknown>

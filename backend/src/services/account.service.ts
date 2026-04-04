@@ -131,6 +131,23 @@ export type OwnProfilePatch = {
   companyName?: string;
 };
 
+/** Current user profile for GET /auth/me (same shape as successful PATCH). */
+export async function getOwnProfile(
+  userId: string,
+): Promise<
+  | { ok: true; user: Record<string, unknown> }
+  | { ok: false; status: number; message: string }
+> {
+  const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) {
+    return { ok: false, status: 404, message: "User not found" };
+  }
+  return {
+    ok: true,
+    user: userDetailsShape(serializeUserForClient(row)),
+  };
+}
+
 export async function updateOwnProfile(
   userId: string,
   patch: OwnProfilePatch,

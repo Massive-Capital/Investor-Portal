@@ -141,10 +141,20 @@ export async function signInWithPassword(
     );
 
     const { passwordHash: _pw, ...userWithoutSecret } = user_table;
+    let displayCompanyName = String(user_table.companyName ?? "").trim();
+    if (!displayCompanyName && user_table.organizationId) {
+      const [coName] = await db
+        .select({ name: companies.name })
+        .from(companies)
+        .where(eq(companies.id, user_table.organizationId))
+        .limit(1);
+      if (coName?.name?.trim()) displayCompanyName = coName.name.trim();
+    }
     const userDetails = [
       {
         ...userWithoutSecret,
-        organization_name: "",
+        companyName: displayCompanyName,
+        organization_name: displayCompanyName,
         organization_id: user_table.organizationId ?? null,
       },
     ];

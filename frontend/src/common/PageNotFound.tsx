@@ -10,13 +10,13 @@ export default function PageNotFound() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "2rem",
+        padding: "2em",
         textAlign: "center",
-        gap: "1rem",
+        gap: "1em",
       }}
     >
       <img src={pageNotFoundImg} alt="" width={280} height={200} />
-      <p style={{ margin: 0, fontSize: "1.1rem", fontWeight: 600 }}>
+      <p style={{ margin: 0, fontSize: "1.1em", fontWeight: 600 }}>
         Page not found
       </p>
       <Link to="/signin" style={{ color: "var(--main-auth-button-color, #2563eb)" }}>

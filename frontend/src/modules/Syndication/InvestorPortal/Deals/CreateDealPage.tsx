@@ -1,5 +1,6 @@
-import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { ArrowLeft, ChevronRight, Loader2, Save } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "../../../../common/components/Toast"
 import { AssetStepForm } from "./components/AssetStepForm"
 import { DealStepForm } from "./components/DealStepForm"
@@ -7,7 +8,10 @@ import { DealsStepper } from "./components/DealsStepper"
 import {
   buildCreateDealFormData,
   createDealMultipart,
+  fetchDealById,
+  updateDealMultipart,
 } from "./api/dealsApi"
+import { mapDealDetailApiToCreateDrafts } from "./createDealFormMap"
 import {
   emptyAssetStepDraft,
   emptyDealStepDraft,
@@ -24,11 +28,10 @@ const STEPS = [
 function DealStepBillingNote() {
   return (
     <p className="deals_create_billing_info" role="note">
-      This deal will be free until your current portal commitment renews on
-      08/15/2026. After that, your default billing method will be charged
-      automatically. To assign a different billing method, go to{" "}
+      Your default billing method will be charged automatically. To assign a
+      different billing method, go to{" "}
       <Link className="deals_create_billing_info_link" to="/billing">
-        {"Settings > Billing"}
+        Billing
       </Link>
       .
     </p>
@@ -37,6 +40,9 @@ function DealStepBillingNote() {
 
 export function CreateDealPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editDealId = searchParams.get("edit")?.trim() || null
+
   const [step, setStep] = useState(0)
   const [dealDraft, setDealDraft] = useState(emptyDealStepDraft)
   const [assetDraft, setAssetDraft] = useState(emptyAssetStepDraft)
@@ -48,6 +54,37 @@ export function CreateDealPage() {
     Partial<Record<keyof AssetStepDraft, string>>
   >({})
   const [saving, setSaving] = useState(false)
+  const [loadingDeal, setLoadingDeal] = useState(Boolean(editDealId))
+
+  useEffect(() => {
+    if (!editDealId) {
+      setLoadingDeal(false)
+      return
+    }
+    let cancelled = false
+    setLoadingDeal(true)
+    void (async () => {
+      try {
+        const detail = await fetchDealById(editDealId)
+        if (cancelled) return
+        const { deal, asset } = mapDealDetailApiToCreateDrafts(detail)
+        setDealDraft(deal)
+        setAssetDraft(asset)
+        setAssetImages([])
+        setStep(0)
+      } catch {
+        if (!cancelled) {
+          toast.error("Could not load deal to edit.")
+          navigate("/deals", { replace: true })
+        }
+      } finally {
+        if (!cancelled) setLoadingDeal(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [editDealId, navigate])
 
   function patchDeal(patch: Partial<DealStepDraft>) {
     setDealDraft((d) => ({ ...d, ...patch }))
@@ -114,7 +151,9 @@ export function CreateDealPage() {
         assetDraft,
         assetImages,
       )
-      const result = await createDealMultipart(formData)
+      const result = editDealId
+        ? await updateDealMultipart(editDealId, formData)
+        : await createDealMultipart(formData)
       if (!result.ok) {
         toast.error(
           result.message,
@@ -124,7 +163,7 @@ export function CreateDealPage() {
         )
         return
       }
-      toast.success("Deal created")
+      toast.success(editDealId ? "Deal updated" : "Deal created")
       navigate("/deals")
     } catch (e) {
       toast.error(
@@ -135,6 +174,18 @@ export function CreateDealPage() {
     }
   }
 
+  const pageTitle = editDealId ? "Edit deal" : "Create deal"
+
+  if (loadingDeal) {
+    return (
+      <div className="deals_create_page">
+        <p className="deals_list_not_found" role="status">
+          Loading deal…
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="deals_create_page">
       <nav className="deals_create_breadcrumb" aria-label="Breadcrumb">
@@ -142,11 +193,11 @@ export function CreateDealPage() {
         <span className="deals_create_breadcrumb_sep" aria-hidden>
           /
         </span>
-        <span aria-current="page">Create deal</span>
+        <span aria-current="page">{pageTitle}</span>
       </nav>
 
       <header className="deals_create_head">
-        <h1 className="deals_create_title">Create deal</h1>
+        <h1 className="deals_create_title">{pageTitle}</h1>
         <Link className="deals_create_cancel" to="/deals">
           Cancel
         </Link>
@@ -173,10 +224,11 @@ export function CreateDealPage() {
       ) : null}
 
       <footer className="deals_create_footer">
-        {step === 0 ? <DealStepBillingNote /> : null}
+        {step === 0 && !editDealId ? <DealStepBillingNote /> : null}
         <div className="deals_create_footer_row">
           {step > 0 ? (
             <button type="button" className="deals_create_btn_secondary" onClick={goBack}>
+              <ArrowLeft size={18} strokeWidth={2} aria-hidden />
               Back
             </button>
           ) : (
@@ -186,6 +238,7 @@ export function CreateDealPage() {
             {step === 0 ? (
               <button type="button" className="deals_create_btn_primary" onClick={goNext}>
                 Next
+                <ChevronRight size={18} strokeWidth={2} aria-hidden />
               </button>
             ) : (
               <>
@@ -195,7 +248,22 @@ export function CreateDealPage() {
                   onClick={() => void saveDeal()}
                   disabled={saving}
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? (
+                    <>
+                      <Loader2
+                        size={18}
+                        strokeWidth={2}
+                        className="deals_create_btn_spin"
+                        aria-hidden
+                      />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save size={18} strokeWidth={2} aria-hidden />
+                      Save
+                    </>
+                  )}
                 </button>
                 {/* <Link className="deals_create_footer_cancel_link" to="/deals">
                   Cancel

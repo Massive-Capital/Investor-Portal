@@ -7,5 +7,5 @@
 }
 
 body:has(.authPage) .poweredBy {
-  margin: clamp(0.75rem, 3vw, 1.25rem) 0 0.35rem 0;
+  margin: clamp(0.75em, 3vw, 1.25em) 0 0.35em 0;
 }

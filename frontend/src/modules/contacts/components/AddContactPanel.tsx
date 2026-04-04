@@ -1,0 +1,860 @@
+import {
+  ArrowLeft,
+  ChevronRight,
+  FileText,
+  List,
+  Loader2,
+  Mail,
+  PenLine,
+  Phone,
+  Save,
+  Tag,
+  User,
+  Users,
+  X,
+} from "lucide-react"
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type SetStateAction,
+} from "react"
+import { fetchMyProfile } from "../../myaccount/accountApi"
+import { getSessionUserDisplayName } from "../../../common/auth/sessionUserDisplayName"
+import type { ContactRow } from "../types/contact.types"
+import "../../Syndication/InvestorPortal/Deals/components/add-investment-modal.css"
+import "../../usermanagement/user_management.css"
+import "../contacts.css"
+
+type AddContactPanelProps = {
+  open: boolean
+  onClose: () => void
+  onSave: (contact: Omit<ContactRow, "id" | "createdByDisplayName">) => void | Promise<void>
+  /** When set, panel edits this contact and calls `onUpdate` on save. */
+  contactToEdit?: ContactRow | null
+  onUpdate?: (
+    id: string,
+    contact: Omit<ContactRow, "id" | "createdByDisplayName">,
+    editReason: string,
+  ) => void | Promise<void>
+  /** Contacts visible for this company (same list as the table); used to enforce unique email and phone within the company before save. */
+  existingContacts?: ContactRow[]
+}
+
+function defaultOwnerChips(): string[] {
+  const n = getSessionUserDisplayName().trim()
+  return n ? [n] : ["User"]
+}
+
+function displayNameFromProfileUser(u: Record<string, unknown>): string {
+  const first = String(u.firstName ?? "").trim()
+  const last = String(u.lastName ?? "").trim()
+  const full = [first, last].filter(Boolean).join(" ")
+  if (full) return full
+  const email = String(u.email ?? "").trim()
+  if (email) return email
+  const username = String(u.username ?? "").trim()
+  if (username) return username
+  return ""
+}
+
+function normalizePhoneDigits(s: string): string {
+  return String(s).replace(/\D/g, "")
+}
+
+function normalizeEmailForCompare(s: string): string {
+  return String(s).trim().toLowerCase()
+}
+
+function ChipRow({
+  items,
+  onRemove,
+  ariaLabel,
+  className,
+}: {
+  items: string[]
+  onRemove: (index: number) => void
+  ariaLabel: string
+  className?: string
+}) {
+  if (items.length === 0) return null
+  return (
+    <div
+      className={["contacts_chip_row", className].filter(Boolean).join(" ")}
+      role="list"
+      aria-label={ariaLabel}
+    >
+      {items.map((t, i) => (
+        <span key={`${t}-${i}`} className="contacts_chip" role="listitem">
+          <span className="contacts_chip_label">{t}</span>
+          <button
+            type="button"
+            className="contacts_chip_remove"
+            onClick={() => onRemove(i)}
+            aria-label={`Remove ${t}`}
+          >
+            <X size={14} strokeWidth={2} aria-hidden />
+          </button>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+export function AddContactPanel({
+  open,
+  onClose,
+  onSave,
+  contactToEdit = null,
+  onUpdate,
+  existingContacts = [],
+}: AddContactPanelProps) {
+  const titleId = useId()
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [email, setEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [note, setNote] = useState("")
+  const [tags, setTags] = useState<string[]>([])
+  const [lists, setLists] = useState<string[]>([])
+  const [owners, setOwners] = useState<string[]>(() => defaultOwnerChips())
+  const [tagInput, setTagInput] = useState("")
+  const [listInput, setListInput] = useState("")
+  const [ownerInput, setOwnerInput] = useState("")
+  const ownerComboboxRef = useRef<HTMLInputElement>(null)
+  const [editReason, setEditReason] = useState("")
+  const [fieldError, setFieldError] = useState<{
+    firstName?: string
+    lastName?: string
+    email?: string
+    phone?: string
+    editReason?: string
+  }>({})
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [step, setStep] = useState<1 | 2>(1)
+
+  const reset = useCallback(() => {
+    setFirstName("")
+    setLastName("")
+    setEmail("")
+    setPhone("")
+    setNote("")
+    setTags([])
+    setLists([])
+    setOwners([])
+    setTagInput("")
+    setListInput("")
+    setOwnerInput("")
+    setEditReason("")
+    setFieldError({})
+    setSubmitError(null)
+    setSubmitting(false)
+    setStep(1)
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    reset()
+    onClose()
+  }, [reset, onClose])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    if (contactToEdit) {
+      setFirstName(contactToEdit.firstName)
+      setLastName(contactToEdit.lastName)
+      setEmail(contactToEdit.email)
+      setPhone(contactToEdit.phone)
+      setNote(contactToEdit.note)
+      setTags([...contactToEdit.tags])
+      setLists([...contactToEdit.lists])
+      setOwners(
+        contactToEdit.owners.length > 0
+          ? [...contactToEdit.owners]
+          : defaultOwnerChips(),
+      )
+      setTagInput("")
+      setListInput("")
+      setOwnerInput("")
+      setEditReason("")
+      setFieldError({})
+      setSubmitError(null)
+      setSubmitting(false)
+      setStep(1)
+    } else {
+      reset()
+    }
+  }, [open, contactToEdit?.id, reset, contactToEdit])
+
+  useEffect(() => {
+    if (!open || contactToEdit) return
+    let cancelled = false
+    void (async () => {
+      const profile = await fetchMyProfile()
+      if (cancelled) return
+      const name = profile
+        ? displayNameFromProfileUser(profile).trim()
+        : ""
+      setOwners(name ? [name] : defaultOwnerChips())
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, contactToEdit])
+
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key === "Escape") handleCancel()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [open, handleCancel])
+
+  function addFromInput(
+    value: string,
+    setter: Dispatch<SetStateAction<string[]>>,
+  ) {
+    const v = value.trim()
+    if (!v) return
+    setter((prev) => (prev.includes(v) ? prev : [...prev, v]))
+  }
+
+  function handleTagKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      addFromInput(tagInput, setTags)
+      setTagInput("")
+    }
+  }
+
+  function handleListKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      addFromInput(listInput, setLists)
+      setListInput("")
+    }
+  }
+
+  function handleOwnerKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      addFromInput(ownerInput, setOwners)
+      setOwnerInput("")
+    }
+  }
+
+  function validateStep1(): boolean {
+    const err: typeof fieldError = {}
+    if (!firstName.trim()) err.firstName = "This field is required."
+    if (!lastName.trim()) err.lastName = "This field is required."
+    if (!email.trim()) err.email = "This field is required."
+    else {
+      const emailNorm = normalizeEmailForCompare(email)
+      const dupEmail = existingContacts.some(
+        (c) =>
+          c.id !== contactToEdit?.id &&
+          normalizeEmailForCompare(c.email) === emailNorm,
+      )
+      if (dupEmail) {
+        err.email =
+          "This email is already used by another contact in your company."
+      }
+    }
+    const phoneNorm = normalizePhoneDigits(phone)
+    if (phoneNorm.length > 0) {
+      const dupPhone = existingContacts.some(
+        (c) =>
+          c.id !== contactToEdit?.id &&
+          normalizePhoneDigits(c.phone) === phoneNorm,
+      )
+      if (dupPhone) {
+        err.phone =
+          "This phone number is already used by another contact in your company."
+      }
+    }
+    setFieldError(err)
+    return Object.keys(err).length === 0
+  }
+
+  function handleFormSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (step === 1) {
+      if (validateStep1()) setStep(2)
+      return
+    }
+    void performSave()
+  }
+
+  async function performSave() {
+    if (!validateStep1()) {
+      setStep(1)
+      return
+    }
+
+    setSubmitError(null)
+    if (contactToEdit) {
+      const er = editReason.trim()
+      if (!er) {
+        setFieldError((f) => ({
+          ...f,
+          editReason: "Enter a reason for this change.",
+        }))
+        return
+      }
+      setFieldError((f) => ({ ...f, editReason: undefined }))
+    }
+    setSubmitting(true)
+    try {
+      const payload = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        note: note.trim(),
+        tags: [...tags],
+        lists: [...lists],
+        owners: owners.length > 0 ? [...owners] : defaultOwnerChips(),
+      }
+      if (contactToEdit) {
+        if (!onUpdate) throw new Error("Update handler is not configured.")
+        await onUpdate(contactToEdit.id, payload, editReason.trim())
+      } else {
+        await onSave(payload)
+      }
+      reset()
+      onClose()
+    } catch (e) {
+      setSubmitError(
+        e instanceof Error ? e.message : "Could not save contact. Try again.",
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) return null
+
+  return (
+    <div
+      className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) handleCancel()
+      }}
+    >
+      <div
+        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="um_modal_head add_contact_modal_head">
+          <div className="add_contact_modal_head_main">
+            <h3 id={titleId} className="um_modal_title add_contact_modal_title">
+              {contactToEdit ? "Edit contact" : "Add contact"}
+            </h3>
+            <div
+              className="add_contact_stepper"
+              role="group"
+              aria-label="Progress"
+            >
+              <div
+                className={
+                  step === 1
+                    ? "add_contact_step_node add_contact_step_node_active"
+                    : "add_contact_step_node add_contact_step_node_done"
+                }
+              >
+                <span
+                  className="add_contact_step_dot"
+                  aria-current={step === 1 ? "step" : undefined}
+                >
+                  1
+                </span>
+                <span className="add_contact_step_label">Details</span>
+              </div>
+              <span
+                className={
+                  step === 2
+                    ? "add_contact_step_line add_contact_step_line_active"
+                    : "add_contact_step_line"
+                }
+                aria-hidden
+              />
+              <div
+                className={
+                  step === 2
+                    ? "add_contact_step_node add_contact_step_node_active"
+                    : "add_contact_step_node"
+                }
+              >
+                <span className="add_contact_step_dot">2</span>
+                <span className="add_contact_step_label">Organize</span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="um_modal_close"
+            onClick={handleCancel}
+            disabled={submitting}
+            aria-label="Close"
+          >
+            <X size={20} strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+
+        <form
+          className="deals_add_inv_modal_form"
+          onSubmit={handleFormSubmit}
+          noValidate
+        >
+          <div className="deals_add_inv_modal_scroll">
+            {submitError ? (
+              <p className="um_msg_error um_modal_form_error" role="alert">
+                {submitError}
+              </p>
+            ) : null}
+
+            {step === 1 ? (
+              <>
+                <div className="add_contact_section">
+                  <div className="add_contact_name_grid">
+                    <div className="um_field add_contact_field_tight">
+                      <label
+                        htmlFor="contact-first"
+                        className="um_field_label_row"
+                      >
+                        <User
+                          className="um_field_label_icon"
+                          size={17}
+                          aria-hidden
+                        />
+                        <span>
+                          First name{" "}
+                          <span className="contacts_required" aria-hidden>
+                            *
+                          </span>
+                        </span>
+                      </label>
+                      <input
+                        id="contact-first"
+                        type="text"
+                        className={
+                          fieldError.firstName
+                            ? "um_field_input_invalid"
+                            : undefined
+                        }
+                        value={firstName}
+                        onChange={(e) => {
+                          setFirstName(e.target.value)
+                          if (fieldError.firstName)
+                            setFieldError((f) => ({
+                              ...f,
+                              firstName: undefined,
+                            }))
+                        }}
+                        autoComplete="given-name"
+                        placeholder="e.g. Jordan"
+                        aria-invalid={Boolean(fieldError.firstName)}
+                        aria-describedby={
+                          fieldError.firstName ? "contact-first-err" : undefined
+                        }
+                      />
+                      {fieldError.firstName ? (
+                        <p
+                          id="contact-first-err"
+                          className="um_field_hint um_field_hint_error"
+                        >
+                          {fieldError.firstName}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="um_field add_contact_field_tight">
+                      <label
+                        htmlFor="contact-last"
+                        className="um_field_label_row"
+                      >
+                        <User
+                          className="um_field_label_icon"
+                          size={17}
+                          aria-hidden
+                        />
+                        <span>
+                          Last name{" "}
+                          <span className="contacts_required" aria-hidden>
+                            *
+                          </span>
+                        </span>
+                      </label>
+                      <input
+                        id="contact-last"
+                        type="text"
+                        className={
+                          fieldError.lastName
+                            ? "um_field_input_invalid"
+                            : undefined
+                        }
+                        value={lastName}
+                        onChange={(e) => {
+                          setLastName(e.target.value)
+                          if (fieldError.lastName)
+                            setFieldError((f) => ({
+                              ...f,
+                              lastName: undefined,
+                            }))
+                        }}
+                        autoComplete="family-name"
+                        placeholder="e.g. Lee"
+                        aria-invalid={Boolean(fieldError.lastName)}
+                        aria-describedby={
+                          fieldError.lastName ? "contact-last-err" : undefined
+                        }
+                      />
+                      {fieldError.lastName ? (
+                        <p
+                          id="contact-last-err"
+                          className="um_field_hint um_field_hint_error"
+                        >
+                          {fieldError.lastName}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="um_field">
+                    <label
+                      htmlFor="contact-email"
+                      className="um_field_label_row"
+                    >
+                      <Mail
+                        className="um_field_label_icon"
+                        size={17}
+                        aria-hidden
+                      />
+                      <span>
+                        Email{" "}
+                        <span className="contacts_required" aria-hidden>
+                          *
+                        </span>
+                      </span>
+                    </label>
+                    <input
+                      id="contact-email"
+                      type="email"
+                      className={
+                        fieldError.email ? "um_field_input_invalid" : undefined
+                      }
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        if (fieldError.email)
+                          setFieldError((f) => ({ ...f, email: undefined }))
+                      }}
+                      autoComplete="email"
+                      placeholder="name@company.com"
+                      aria-invalid={Boolean(fieldError.email)}
+                      aria-describedby={
+                        fieldError.email ? "contact-email-err" : undefined
+                      }
+                    />
+                    {fieldError.email ? (
+                      <p
+                        id="contact-email-err"
+                        className="um_field_hint um_field_hint_error"
+                      >
+                        {fieldError.email}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <hr className="add_contact_section_rule" />
+
+                <div className="add_contact_section">
+                  <div className="um_field">
+                    <label
+                      htmlFor="contact-phone"
+                      className="um_field_label_row"
+                    >
+                      <Phone
+                        className="um_field_label_icon"
+                        size={17}
+                        aria-hidden
+                      />
+                      <span>Phone</span>
+                    </label>
+                    <input
+                      id="contact-phone"
+                      type="tel"
+                      className={
+                        fieldError.phone ? "um_field_input_invalid" : undefined
+                      }
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value)
+                        if (fieldError.phone)
+                          setFieldError((f) => ({ ...f, phone: undefined }))
+                      }}
+                      autoComplete="tel"
+                      placeholder="Mobile or office"
+                      aria-invalid={Boolean(fieldError.phone)}
+                      aria-describedby={
+                        fieldError.phone ? "contact-phone-err" : undefined
+                      }
+                    />
+                    {fieldError.phone ? (
+                      <p
+                        id="contact-phone-err"
+                        className="um_field_hint um_field_hint_error"
+                      >
+                        {fieldError.phone}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="um_field">
+                    <label
+                      htmlFor="contact-note"
+                      className="um_field_label_row"
+                    >
+                      <FileText
+                        className="um_field_label_icon"
+                        size={17}
+                        aria-hidden
+                      />
+                      <span>Note</span>
+                    </label>
+                    <textarea
+                      id="contact-note"
+                      className="um_field_textarea add_contact_note_textarea"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      rows={3}
+                      placeholder="Context for your team (visible internally)"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced">
+                  Tags &amp; lists
+                </p>
+            <div className="um_field">
+              <label htmlFor="contact-tags" className="um_field_label_row">
+                <Tag className="um_field_label_icon" size={17} aria-hidden />
+                <span>Contact tags</span>
+              </label>
+              <ChipRow
+                items={tags}
+                onRemove={(i) =>
+                  setTags((prev) => prev.filter((_, j) => j !== i))
+                }
+                ariaLabel="Selected tags"
+              />
+              <input
+                id="contact-tags"
+                type="text"
+                className="deals_add_inv_field_control deals_add_inv_input add_contact_chip_input"
+                placeholder="Add a tag"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+              />
+            </div>
+
+            <div className="um_field">
+              <label htmlFor="contact-lists" className="um_field_label_row">
+                <List className="um_field_label_icon" size={17} aria-hidden />
+                <span>Lists</span>
+              </label>
+              <ChipRow
+                items={lists}
+                onRemove={(i) =>
+                  setLists((prev) => prev.filter((_, j) => j !== i))
+                }
+                ariaLabel="Selected lists"
+              />
+              <input
+                id="contact-lists"
+                type="text"
+                className="deals_add_inv_field_control deals_add_inv_input add_contact_chip_input"
+                placeholder="Add a list"
+                value={listInput}
+                onChange={(e) => setListInput(e.target.value)}
+                onKeyDown={handleListKeyDown}
+              />
+            </div>
+
+            <div className="um_field add_contact_owners_field">
+              <label
+                htmlFor="contact-owners-input"
+                className="um_field_label_row"
+              >
+                <Users className="um_field_label_icon" size={17} aria-hidden />
+                <span>Owners</span>
+              </label>
+              <p id="contact-owners-hint" className="add_contact_owners_hint">
+                Team members responsible for this contact.
+              </p>
+              <div
+                className="contacts_chips_combobox add_contact_owners_combobox"
+                role="group"
+                aria-label="Owners"
+                onMouseDown={(e: MouseEvent<HTMLDivElement>) => {
+                  const t = e.target as HTMLElement
+                  if (t.closest("button") || t.closest("input")) return
+                  ownerComboboxRef.current?.focus()
+                }}
+              >
+                <ChipRow
+                  className="contacts_chips_combobox_chips"
+                  items={owners}
+                  onRemove={(i) =>
+                    setOwners((prev) => prev.filter((_, j) => j !== i))
+                  }
+                  ariaLabel="Selected owners"
+                />
+                <input
+                  ref={ownerComboboxRef}
+                  id="contact-owners-input"
+                  type="text"
+                  className="contacts_chips_combobox_input"
+                  placeholder={
+                    owners.length === 0 ? "Type a name to add" : "Add another"
+                  }
+                  value={ownerInput}
+                  onChange={(e) => setOwnerInput(e.target.value)}
+                  onKeyDown={handleOwnerKeyDown}
+                  autoComplete="off"
+                  aria-describedby="contact-owners-hint"
+                />
+              </div>
+            </div>
+
+            {contactToEdit ? (
+              <div className="um_field um_field_reason_change">
+                <label
+                  htmlFor="contact-edit-reason"
+                  className="um_field_label_row"
+                >
+                  <PenLine
+                    className="um_field_label_icon"
+                    size={17}
+                    aria-hidden
+                  />
+                  <span>
+                    Reason for this change{" "}
+                    <span className="contacts_required" aria-hidden>
+                      *
+                    </span>
+                  </span>
+                </label>
+                <textarea
+                  id="contact-edit-reason"
+                  className="um_field_textarea add_contact_note_textarea"
+                  value={editReason}
+                  onChange={(e) => {
+                    setEditReason(e.target.value)
+                    if (fieldError.editReason)
+                      setFieldError((f) => ({ ...f, editReason: undefined }))
+                  }}
+                  rows={3}
+                  placeholder="Why are you updating this contact?"
+                  aria-invalid={Boolean(fieldError.editReason)}
+                  aria-describedby={
+                    fieldError.editReason ? "contact-edit-reason-err" : undefined
+                  }
+                />
+                {fieldError.editReason ? (
+                  <p
+                    id="contact-edit-reason-err"
+                    className="um_field_hint um_field_hint_error"
+                  >
+                    {fieldError.editReason}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+              </>
+            )}
+          </div>
+
+          <div className="um_modal_actions add_contact_modal_actions">
+            <button
+              type="button"
+              className="um_btn_secondary"
+              onClick={handleCancel}
+              disabled={submitting}
+            >
+              <X size={16} strokeWidth={2} aria-hidden />
+              Cancel
+            </button>
+            <div className="add_contact_modal_actions_trailing">
+              {step === 2 ? (
+                <button
+                  type="button"
+                  className="um_btn_secondary"
+                  onClick={() => setStep(1)}
+                  disabled={submitting}
+                >
+                  <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+                  Back
+                </button>
+              ) : null}
+              {step === 1 ? (
+                <button type="submit" className="um_btn_primary">
+                  Next
+                  <ChevronRight size={18} strokeWidth={2} aria-hidden />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="um_btn_primary"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2
+                        size={16}
+                        strokeWidth={2}
+                        className="add_contact_modal_btn_spin"
+                        aria-hidden
+                      />
+                      Saving…
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} strokeWidth={2} aria-hidden />
+                      Save
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

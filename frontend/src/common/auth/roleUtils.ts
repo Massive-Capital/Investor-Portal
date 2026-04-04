@@ -65,8 +65,13 @@ export function isCompanyAdmin(): boolean {
   return getStoredUserRole() === COMPANY_ADMIN;
 }
 
-/** Platform or company admins may change company workspace tabs; company users / members are view-only. */
+/** Org-scoped roles may edit workspace tabs when their `organizationId` matches the target company. */
 export function canEditCompanyWorkspace(): boolean {
   const r = getStoredUserRole();
-  return r === PLATFORM_ADMIN || r === COMPANY_ADMIN;
+  return (
+    r === PLATFORM_ADMIN ||
+    r === COMPANY_ADMIN ||
+    r === PLATFORM_USER ||
+    r === COMPANY_USER
+  );
 }

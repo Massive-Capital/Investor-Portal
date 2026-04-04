@@ -11,6 +11,7 @@ import { getUploadsPhysicalRoot } from "./config/uploadPaths.js";
 import userRoutes from "./routes/userRoutes.routes.js";
 import companyRoutes from "./routes/companyRoutes.routes.js";
 import dealFormRoutes from "./routes/dealForm.routes.js";
+import contactRoutes from "./routes/contact.routes.js";
 
 
 const PORT = process.env.BACKEND_PORT ?? 5004;
@@ -74,7 +75,12 @@ app.use("/uploads", express.static(getUploadsPhysicalRoot(), {
   maxAge: "1d",
 }));
 
-app.use("/api/v1", [userRoutes, companyRoutes, dealFormRoutes]);
+app.use("/api/v1", [
+  userRoutes,
+  companyRoutes,
+  dealFormRoutes,
+  contactRoutes,
+]);
 
 console.log("Starting server...");
 

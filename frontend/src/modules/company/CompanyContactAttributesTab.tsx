@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { fetchWorkspaceTabSettings } from "./companyWorkspaceSettingsApi";
+import { useDebouncedWorkspaceTabPersist } from "./useWorkspaceTabPersistence";
 import {
   ArrowDown,
   ArrowUp,
@@ -11,7 +13,28 @@ import { DataTablePagination } from "../../common/components/DataTablePagination
 type Props = {
   companyName: string;
   readOnly?: boolean;
+  workspaceCompanyId?: string;
 };
+
+function parseAttributeRows(raw: unknown): AttributeRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AttributeRow[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : "";
+    if (!id) continue;
+    out.push({
+      id,
+      label: typeof o.label === "string" ? o.label : "",
+      type: typeof o.type === "string" ? o.type : "",
+      createdBy: typeof o.createdBy === "string" ? o.createdBy : "",
+      description: typeof o.description === "string" ? o.description : "",
+      fillRate: typeof o.fillRate === "string" ? o.fillRate : "",
+    });
+  }
+  return out;
+}
 
 type AttributeRow = {
   id: string;
@@ -38,14 +61,54 @@ function HelpTip({ label }: { label: string }) {
 }
 
 export function CompanyContactAttributesTab(props: Props) {
-  const { readOnly = false } = props;
+  const { readOnly = false, workspaceCompanyId } = props;
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("label");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [contactPage, setContactPage] = useState(1);
   const [contactPageSize, setContactPageSize] = useState(10);
 
-  const rows = useMemo<AttributeRow[]>(() => [], []);
+  const [rows, setRows] = useState<AttributeRow[]>([]);
+  const [contactHydrated, setContactHydrated] = useState(!workspaceCompanyId);
+
+  useEffect(() => {
+    if (!workspaceCompanyId) {
+      setContactHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    setContactHydrated(false);
+    void (async () => {
+      const { ok, payload: p } = await fetchWorkspaceTabSettings(
+        workspaceCompanyId,
+        "contact",
+      );
+      if (cancelled) return;
+      if (ok) {
+        const parsed = parseAttributeRows(p.attributes);
+        setRows(parsed);
+      } else {
+        setRows([]);
+      }
+      setContactHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceCompanyId]);
+
+  const contactPayload = useMemo(
+    () => ({ attributes: rows }),
+    [rows],
+  );
+
+  useDebouncedWorkspaceTabPersist(
+    workspaceCompanyId,
+    "contact",
+    readOnly,
+    contactHydrated,
+    contactPayload,
+  );
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

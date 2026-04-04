@@ -30,7 +30,7 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.35em;
   min-width: 0;
   width: 100%;
 }
@@ -52,7 +52,7 @@
   align-items: center;
   justify-content: center;
   margin: 0;
-  padding: 0.2rem;
+  padding: 0.2em;
   border: none;
   border-radius: var(--portal-pill-radius, 9999px);
   background: transparent;
@@ -73,12 +73,43 @@
   outline-offset: 2px;
 }
 
+/* Inline trigger: same tooltip panel as icon mode; hover the cell text */
+.form_tooltip_root_inline {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.form_tooltip_trigger_inline {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: default;
+  border-radius: 4px;
+}
+
+.form_tooltip_trigger_inline:focus-visible {
+  outline: 2px solid var(--portal-primary, #2563eb);
+  outline-offset: 1px;
+}
+
 .form_tooltip_panel {
   position: absolute;
   z-index: 1080;
   display: inline-block;
   width: max-content;
-  max-width: min(18.5rem, calc(100vw - 1.5rem));
+  max-width: min(18.5em, calc(100vw - 1.5em));
   padding: 0;
   margin: 0;
   border: none;
@@ -104,15 +135,73 @@
   translate: -50% 0;
 }
 
+/* Align panel to trigger edge so it stays in viewport (table headers, etc.) */
+.form_tooltip_panel[data-panel-align="start"][data-placement="bottom"] {
+  left: 0;
+  right: auto;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="start"][data-placement="top"] {
+  left: 0;
+  right: auto;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="end"][data-placement="bottom"] {
+  left: auto;
+  right: 0;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="end"][data-placement="top"] {
+  left: auto;
+  right: 0;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="start"][data-placement="top"] .form_tooltip_arrow {
+  left: 12px;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="end"][data-placement="top"] .form_tooltip_arrow {
+  left: auto;
+  right: 12px;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="start"][data-placement="bottom"] .form_tooltip_arrow {
+  left: 12px;
+  translate: none;
+}
+
+.form_tooltip_panel[data-panel-align="end"][data-placement="bottom"] .form_tooltip_arrow {
+  left: auto;
+  right: 12px;
+  translate: none;
+}
+
 .form_tooltip_panel[data-visible="true"] {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 
+/* Portaled to document.body: avoid scroll/overflow clip (tables); position set via inline style */
+.form_tooltip_panel_portaled {
+  bottom: auto !important;
+  right: auto !important;
+  translate: none !important;
+}
+
+.form_tooltip_arrow_portaled_hide {
+  display: none;
+}
+
 .form_tooltip_surface {
   position: relative;
-  padding: 0.65rem 0.85rem;
+  padding: 0.65em 0.85em;
   border-radius: 8px;
   background: var(--form-tooltip-bg);
   color: var(--form-tooltip-fg);
@@ -120,9 +209,12 @@
   box-shadow:
     0 4px 6px -1px rgb(0 0 0 / 12%),
     0 10px 24px -4px rgb(0 0 0 / 18%);
-  font-size: 0.8125rem;
+  font-size: 0.8125em;
   font-weight: 450;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 :root {
@@ -138,7 +230,7 @@
 }
 
 .form_tooltip_surface p {
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.45em;
 }
 
 .form_tooltip_surface p:last-child {
@@ -147,11 +239,11 @@
 
 .form_tooltip_surface ul {
   margin: 0;
-  padding-left: 1.1rem;
+  padding-left: 1.1em;
 }
 
 .form_tooltip_surface li {
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.3em;
 }
 
 .form_tooltip_surface li:last-child {

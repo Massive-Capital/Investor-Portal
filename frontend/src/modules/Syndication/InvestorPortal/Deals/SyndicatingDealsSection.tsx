@@ -1,5 +1,6 @@
 import { ArrowUpDown, LayoutGrid, LayoutList, Search } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import {
   DataTable,
   type DataTableColumn,
@@ -7,9 +8,19 @@ import {
 import { DealCard } from "../../../../common/components/deal-card/DealCard"
 import {
   dealListRowToDealRecord,
+  mergeDealRecordWithInvestorsAndClasses,
   type DealRecord,
 } from "../deals-mock-data"
-import { fetchDealsList } from "./api/dealsApi"
+import {
+  fetchDealInvestorClasses,
+  fetchDealInvestors,
+  fetchDealsList,
+} from "./api/dealsApi"
+import {
+  dateSortValue,
+  formatDealListDateDisplay,
+} from "./dealsListDisplay"
+import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
 import "../Dashboard/sponsor-dashboard.css"
 
 export type DealsSortKey = "createdAt" | "title" | "target"
@@ -21,7 +32,10 @@ export function dealToCardMetrics(deal: DealRecord) {
     { label: "Total funded", value: deal.totalFunded },
     { label: "Total distributions", value: deal.totalDistributions },
     { label: "# of investors", value: deal.investorCount },
-    { label: "Close date", value: deal.closeDate },
+    {
+      label: "Close date",
+      value: formatDealListDateDisplay(deal.closeDate),
+    },
   ]
 }
 
@@ -43,13 +57,40 @@ export function SyndicatingDealsSection({
   const [view, setView] = useState<"grid" | "list">("grid")
   const [sortKey, setSortKey] = useState<DealsSortKey>("createdAt")
   const [deals, setDeals] = useState<DealRecord[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
+      setLoading(true)
       const list = await fetchDealsList()
-      if (!cancelled)
-        setDeals(list.map((r) => dealListRowToDealRecord(r)))
+      if (cancelled) return
+      if (list.length === 0) {
+        setDeals([])
+        setLoading(false)
+        return
+      }
+      const bundles = await Promise.all(
+        list.map(async (row) => {
+          const [payload, classes] = await Promise.all([
+            fetchDealInvestors(row.id),
+            fetchDealInvestorClasses(row.id),
+          ])
+          return { row, payload, classes }
+        }),
+      )
+      if (cancelled) return
+      setDeals(
+        bundles.map(({ row, payload, classes }) =>
+          mergeDealRecordWithInvestorsAndClasses(
+            row,
+            dealListRowToDealRecord(row),
+            payload,
+            classes,
+          ),
+        ),
+      )
+      setLoading(false)
     })()
     return () => {
       cancelled = true
@@ -71,7 +112,13 @@ export function SyndicatingDealsSection({
     if (sortKey === "title")
       rows.sort((a, b) => a.title.localeCompare(b.title))
     if (sortKey === "target")
-      rows.sort((a, b) => b.targetAmount.localeCompare(a.targetAmount))
+      rows.sort((a, b) => {
+        const na = parseMoneyDigits(a.targetAmount)
+        const nb = parseMoneyDigits(b.targetAmount)
+        const da = Number.isFinite(na) ? na : 0
+        const db = Number.isFinite(nb) ? nb : 0
+        return db - da
+      })
     if (sortKey === "createdAt")
       rows.sort((a, b) =>
         (b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
@@ -86,9 +133,12 @@ export function SyndicatingDealsSection({
         header: "Deal",
         sortValue: (row) => (row.title ?? "").toLowerCase(),
         cell: (row) => (
-          <a className="sponsor_dash_table_link" href={`#deal-${row.id}`}>
+          <Link
+            className="sponsor_dash_table_link"
+            to={`/deals/${encodeURIComponent(row.id)}`}
+          >
             {row.title || "—"}
-          </a>
+          </Link>
         ),
       },
       {
@@ -105,14 +155,20 @@ export function SyndicatingDealsSection({
         id: "target",
         header: "Target amount",
         align: "right",
-        sortValue: (row) => row.targetAmount,
+        sortValue: (row) => {
+          const n = parseMoneyDigits(row.targetAmount)
+          return Number.isFinite(n) ? n : 0
+        },
         cell: (row) => row.targetAmount,
       },
       {
         id: "funded",
         header: "Total funded",
         align: "right",
-        sortValue: (row) => row.totalFunded,
+        sortValue: (row) => {
+          const n = parseMoneyDigits(row.totalFunded)
+          return Number.isFinite(n) ? n : 0
+        },
         cell: (row) => row.totalFunded,
       },
       {
@@ -129,8 +185,8 @@ export function SyndicatingDealsSection({
         id: "close",
         header: "Close date",
         align: "right",
-        sortValue: (row) => row.closeDate,
-        cell: (row) => row.closeDate,
+        sortValue: (row) => dateSortValue(row.closeDate),
+        cell: (row) => formatDealListDateDisplay(row.closeDate),
       },
       {
         id: "status",
@@ -153,7 +209,7 @@ export function SyndicatingDealsSection({
       >
         {hideDealsHeading ? null : (
           <h2 id={dealsHeadingId} className="sponsor_dash_section_title">
-            Deals
+            Deals dashboard
           </h2>
         )}
         <div className="sponsor_dash_deals_controls_right">
@@ -228,7 +284,11 @@ export function SyndicatingDealsSection({
       </div>
 
       {view === "grid" ? (
-        gridSorted.length === 0 ? (
+        loading && deals.length === 0 ? (
+          <p className="sponsor_dash_empty" role="status">
+            Loading deals…
+          </p>
+        ) : gridSorted.length === 0 ? (
           <p className="sponsor_dash_empty">
             {query.trim()
               ? "No deals match your search."
@@ -237,14 +297,19 @@ export function SyndicatingDealsSection({
         ) : (
           <div className="sponsor_dash_deals_grid">
             {gridSorted.map((deal) => (
-              <DealCard
+              <Link
                 key={deal.id}
-                title={deal.title}
-                location={deal.location}
-                statusLabel={deal.statusLabel}
-                metrics={dealToCardMetrics(deal)}
-                coverImageUrl={deal.coverImageUrl}
-              />
+                className="deal_card_link"
+                to={`/deals/${encodeURIComponent(deal.id)}`}
+              >
+                <DealCard
+                  title={deal.title}
+                  location={deal.location}
+                  statusLabel={deal.statusLabel}
+                  metrics={dealToCardMetrics(deal)}
+                  coverImageUrl={deal.coverImageUrl}
+                />
+              </Link>
             ))}
           </div>
         )
@@ -254,9 +319,11 @@ export function SyndicatingDealsSection({
           rows={filtered}
           getRowKey={(row, rowIndex) => row.id || `sponsor-deal-${rowIndex}`}
           emptyLabel={
-            query.trim()
-              ? "No deals match your search."
-              : "No deal to display."
+            loading && deals.length === 0
+              ? "Loading deals…"
+              : query.trim()
+                ? "No deals match your search."
+                : "No deal to display."
           }
         />
       )}

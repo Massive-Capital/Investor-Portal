@@ -5,14 +5,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.25rem;
+  padding: 1.25em;
   background: rgb(15 23 42 / 45%);
   backdrop-filter: blur(3px);
 }
 
 .deals_export_modal {
   width: 100%;
-  max-width: 26rem;
+  max-width: 26em;
   max-height: min(85vh, 560px);
   display: flex;
   flex-direction: column;
@@ -28,14 +28,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1rem 1.1rem 0.65rem;
+  gap: 0.75em;
+  padding: 1em 1.1em 0.65em;
   border-bottom: 1px solid var(--portal-border);
 }
 
 .deals_export_modal_title {
   margin: 0;
-  font-size: 1.0625rem;
+  font-size: 1.0625em;
   font-weight: 700;
   color: var(--portal-text);
   letter-spacing: -0.02em;
@@ -45,7 +45,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem;
+  padding: 0.35em;
   margin: 0;
   border: none;
   border-radius: var(--portal-pill-radius);
@@ -61,39 +61,43 @@
 
 .deals_export_modal_hint {
   margin: 0;
-  padding: 0.65rem 1.1rem 0;
-  font-size: 0.8125rem;
+  padding: 0.65em 1.1em 0;
+  font-size: 0.8125em;
   color: var(--portal-text-muted);
   line-height: 1.45;
 }
 
 .deals_export_modal_search {
   position: relative;
-  margin: 0.75rem 1.1rem 0;
+  margin: 0.75em 1.1em 0;
 }
 
 .deals_export_modal_search_input {
   width: 100%;
   height: 40px;
-  padding: 0 2.35rem 0 0.75rem;
+  padding: 0 2.5066667em 0 0.8em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
   font: inherit;
-  font-size: 0.9375rem;
+  font-size: 0.9375em;
   background: var(--portal-surface);
   color: var(--portal-text);
   box-sizing: border-box;
 }
 
-.deals_export_modal_search_input:focus {
+.deals_export_modal_search_input:focus-visible {
   outline: none;
   border-color: var(--portal-text-muted);
-  box-shadow: 0 0 0 2px rgb(17 24 39 / 8%);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
+}
+
+:root[data-theme="dark"] .deals_export_modal_search_input:focus-visible {
+  box-shadow: var(--portal-field-focus-shadow-dark, 0 0 0 2px rgb(249 250 251 / 12%));
 }
 
 .deals_export_modal_search_icon {
   position: absolute;
-  right: 0.5rem;
+  right: 0.5em;
   top: 50%;
   transform: translateY(-50%);
   color: var(--portal-text-muted);
@@ -103,10 +107,10 @@
 .deals_export_modal_select_all {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0.75rem 1.1rem 0;
-  padding: 0.35rem 0;
-  font-size: 0.875rem;
+  gap: 0.5em;
+  margin: 0.75em 1.1em 0;
+  padding: 0.35em 0;
+  font-size: 0.875em;
   font-weight: 600;
   color: var(--portal-text);
   cursor: pointer;
@@ -114,8 +118,8 @@
 }
 
 .deals_export_modal_select_all input {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.05em;
+  height: 1.05em;
   accent-color: var(--portal-text);
   cursor: pointer;
 }
@@ -126,8 +130,8 @@
 }
 
 .deals_export_modal_list {
-  margin: 0.35rem 0.65rem 0;
-  padding: 0 0.35rem;
+  margin: 0.35em 0.65em 0;
+  padding: 0 0.35em;
   list-style: none;
   overflow-y: auto;
   flex: 1;
@@ -145,8 +149,8 @@
 .deals_export_modal_row_label {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.55rem 0.35rem;
+  gap: 0.65em;
+  padding: 0.55em 0.35em;
   cursor: pointer;
   border-radius: var(--portal-pill-radius);
 }
@@ -156,8 +160,8 @@
 }
 
 .deals_export_modal_row_label input {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.05em;
+  height: 1.05em;
   flex-shrink: 0;
   accent-color: var(--portal-text);
   cursor: pointer;
@@ -166,23 +170,23 @@
 .deals_export_modal_row_name {
   flex: 1;
   min-width: 0;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: var(--portal-text);
 }
 
 .deals_export_modal_row_meta {
   flex-shrink: 0;
-  font-size: 0.75rem;
+  font-size: 0.75em;
   font-weight: 500;
   color: var(--portal-text-muted);
 }
 
 .deals_export_modal_empty {
   margin: 0;
-  padding: 1.5rem 0.5rem;
+  padding: 1.5em 0.5em;
   text-align: center;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   color: var(--portal-text-muted);
 }
 
@@ -190,19 +194,19 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.85rem 1.1rem 1rem;
+  gap: 0.5em;
+  padding: 0.85em 1.1em 1em;
   border-top: 1px solid var(--portal-border);
   margin-top: auto;
 }
 
 .deals_export_modal_btn_secondary {
-  padding: 0.5rem 1rem;
+  padding: 0.5em 1em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
   background: var(--portal-surface);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: var(--portal-text);
   cursor: pointer;
@@ -213,12 +217,12 @@
 }
 
 .deals_export_modal_btn_primary {
-  padding: 0.5rem 1rem;
+  padding: 0.5em 1em;
   border: none;
   border-radius: var(--portal-pill-radius);
   background: var(--portal-primary);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: #fff;
   cursor: pointer;

@@ -5,27 +5,27 @@
 }
 
 .myaccount_header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.25em;
 }
 
 .myaccount_title {
-  margin: 0 0 0.35rem;
-  font-size: 1.35rem;
+  margin: 0 0 0.35em;
+  font-size: 1.35em;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -0.02em;
 }
 
 .myaccount_section_title {
-  margin: 0 0 1rem;
-  font-size: 1rem;
+  margin: 0 0 1em;
+  font-size: 1em;
   font-weight: 600;
   color: #0f172a;
 }
 
 .myaccount_readonly_note {
-  margin: 0 0 0.85rem;
-  font-size: 0.8125rem;
+  margin: 0 0 0.85em;
+  font-size: 0.8125em;
   color: #64748b;
   line-height: 1.45;
 }
@@ -33,10 +33,20 @@
 .myaccount_actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
-  padding-top: 1rem;
+  gap: 0.75em;
+  margin-top: 0.25em;
+  padding-top: 1em;
   border-top: 1px solid #f1f5f9;
+}
+
+@keyframes myaccount_btn_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.myaccount_btn_spin {
+  animation: myaccount_btn_spin 0.85s linear infinite;
 }
 
 /* NavLink renders <a>: strip default underline so tabs match Members (button) styling */

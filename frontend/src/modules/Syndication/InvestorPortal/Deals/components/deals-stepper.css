@@ -2,8 +2,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.5rem 1.5rem;
-  margin: 0 0 1.35rem;
+  gap: 0.5em 1.5em;
+  margin: 0 0 1.35em;
   padding: 0;
   list-style: none;
 }
@@ -11,9 +11,9 @@
 .deals_stepper_step {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5em;
   color: var(--portal-text-muted);
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 500;
 }
 
@@ -30,12 +30,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.75em;
+  height: 1.75em;
   border-radius: 9999px;
   border: 1px solid var(--portal-border);
   background: var(--portal-surface);
-  font-size: 0.75rem;
+  font-size: 0.75em;
   font-weight: 700;
 }
 

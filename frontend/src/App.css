@@ -52,6 +52,7 @@ body {
   --portal-page-bg: #f0f0f0;
   --portal-chrome-bg: #f5f5f5;
   --portal-surface: #ffffff;
+  /* --portal-surface: #f8f8f8; */
   --portal-border: #e5e5e5;
   --portal-text: #282828;
   --portal-text-muted: #64748b;
@@ -66,43 +67,154 @@ body {
   --portal-status-raising-text: #166534;
   --portal-status-raising-bg: #dcfce7;
   --portal-danger: #b91c1c;
+  /* Match deal create fields (deals-create.css) for focus ring */
+  --portal-field-focus-shadow: 0 0 0 2px rgb(17 24 39 / 8%);
+  --portal-field-focus-shadow-dark: 0 0 0 2px rgb(249 250 251 / 12%);
 }
 
-input[type="text"],
-input[type="email"],
-input[type="password"] {
-  border: 1px solid lightgray;
-  /* border-radius: 4px; */
-  padding: 5px;
-  font-size: 16px;
-  height: 40px;
-}
 button {
   font-family: "Inter", sans-serif;
   border-radius: var(--ui-button-border-radius);
 }
 
-/* All textareas: 5px radius, no resize */
-textarea {
-  border: 1px solid lightgray;
-  border-radius: 5px;
-  padding: 5px;
-  font-size: 16px;
-  resize: none;
-  min-height: 2.5em;
-  box-sizing: border-box;
+/* Anchor em-based field sizes to parent text size (same as former rem at default 16px). */
+.app_shell {
+  font-size: 1em;
 }
 
-/* COTS-style select: applied to all form selects across the app */
-select {
+/*
+ * Logged-in shell: inputs / textareas / selects match Create Deal field UI (including focus).
+ * Auth routes use AuthLayout (outside `.app_shell`) and `.loginForm .input_field` from auth_forms.css.
+ */
+.app_shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not(
+    [type="submit"]
+  ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not(
+    .deal_assets_search
+  ),
+.app_shell textarea,
+.app_shell select {
+  font-family: inherit;
+  font-size: 0.9375em;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--portal-text);
+  background: var(--portal-surface);
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-pill-radius);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.app_shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not(
+    [type="submit"]
+  ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not(
+    [type="color"]
+  ):not(.um_search_input):not(.sponsor_dash_search_input):not(.deals_export_modal_search_input):not(
+    .deal_assets_search
+  ),
+.app_shell textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  /* 2.5rem / 0.9375rem font ≈ 2.6667em; padding 0.5/0.75 rem as fraction of field font */
+  min-height: 2.6666667em;
+  padding: 0.5333333em 0.8em;
+}
+
+.app_shell textarea {
+  resize: vertical;
+  border-radius: 10px;
+}
+
+.app_shell select {
   display: block;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  min-height: 2.6666667em;
+  padding: 0.5333333em 2.4em 0.5333333em 0.8em;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75em center;
+}
+
+.app_shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not(
+    [type="submit"]
+  ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not([type="color"]):not(
+    .deal_assets_search
+  ):hover:not(:disabled),
+.app_shell textarea:hover:not(:disabled),
+.app_shell select:hover:not(:disabled) {
+  border-color: #d1d5db;
+}
+
+.app_shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not(
+    [type="submit"]
+  ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not(
+    [type="color"]
+  ):not(.deal_assets_search):focus-visible,
+.app_shell textarea:focus-visible,
+.app_shell select:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: var(--portal-field-focus-shadow);
+}
+
+:root[data-theme="dark"]
+  .app_shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not(
+    [type="submit"]
+  ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not(
+    [type="color"]
+  ):not(.deal_assets_search):focus-visible,
+:root[data-theme="dark"] .app_shell textarea:focus-visible,
+:root[data-theme="dark"] .app_shell select:focus-visible {
+  box-shadow: var(--portal-field-focus-shadow-dark);
+}
+
+.app_shell
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]):not(
+    [type="submit"]
+  ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not(
+    [type="color"]
+  ):not(.deal_assets_search)[aria-invalid="true"],
+.app_shell textarea[aria-invalid="true"],
+.app_shell select[aria-invalid="true"] {
+  border-color: var(--portal-danger);
+}
+
+/*
+ * Minimal defaults outside `.app_shell` (legacy / static content). Logged-in fields use `.app_shell`
+ * rules; auth inputs use `.loginForm .input_field` in auth_forms.css.
+ */
+body textarea {
+  box-sizing: border-box;
+  border: 1px solid var(--portal-border, #e5e5e5);
+  border-radius: 10px;
+  padding: 0.5em 0.75em;
+  font-size: 16px;
+  resize: vertical;
+  min-height: 2.5em;
+}
+
+body select {
+  display: block;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid #d1d5db;
-  border-radius: 5px;
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
-  font-size: 0.9375rem;
+  border-radius: var(--portal-card-radius, 8px);
+  /* Match former rem padding at 0.9375×16px field font */
+  padding: 0.5333333em 2.1333333em 0.5333333em 0.8em;
+  font-size: 0.9375em;
   line-height: 1.5;
   min-height: 40px;
   background-color: #fff;
@@ -111,12 +223,7 @@ select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-}
-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  background-position: right 0.75em center;
 }
 
 .invite_user_btn {
@@ -276,7 +383,7 @@ input[type="reset"],
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.25rem;
+  padding: 0.25em;
   border: none;
   background: none;
   cursor: pointer;

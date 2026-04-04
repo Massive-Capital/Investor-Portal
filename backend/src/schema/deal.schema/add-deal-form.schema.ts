@@ -6,10 +6,15 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { companies } from "../company.schema/company.js";
 
 /** Syndication wizard submissions — column names match DB fields. */
 export const addDealForm = pgTable("add_deal_form", {
   id: uuid("id").defaultRandom().primaryKey(),
+  /** Company (customer) that owns this deal — used for directory counts. */
+  organizationId: uuid("organization_id").references(() => companies.id, {
+    onDelete: "set null",
+  }),
   dealName: text("deal_name").notNull(),
   dealType: text("deal_type").notNull().default(""),
   dealStage: text("deal_stage").notNull(),

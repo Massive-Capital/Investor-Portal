@@ -5,7 +5,7 @@
 }
 
 .authPage:has(.signup_page) .loginForm {
-  /* padding: clamp(0.65rem, 2.5vw, 1.1rem); */
+  /* padding: clamp(0.65em, 2.5vw, 1.1em); */
   padding: 2em 5em;
   max-width: 100%;
   box-sizing: border-box;
@@ -26,7 +26,7 @@
 }
 
 body:has(.signup_page) .companyContent {
-  margin-top: 0.4rem;
+  margin-top: 0.4em;
 }
 
 .authPage:has(.signup_page) {
@@ -41,8 +41,8 @@ body:has(.signup_page) .companyContent {
   border-radius: 10px;
   box-shadow: none;
   background-color: white;
-  max-height: min(36rem, 72svh);
-  max-height: min(36rem, 72dvh);
+  max-height: min(36em, 72svh);
+  max-height: min(36em, 72dvh);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -59,8 +59,8 @@ body:has(.signup_page) .companyContent {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  margin-top: 0.5rem;
+  gap: 0.35em;
+  margin-top: 0.5em;
   text-decoration: none;
 }
 
@@ -93,13 +93,13 @@ body:has(.signup_page) .companyContent {
   .signup_page .signupForm_row {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 0.65rem;
+    gap: 0.65em;
     align-items: flex-start;
   }
 
   .signup_page .signupForm_row .emailData,
   .signup_page .signupForm_row .passwordData {
-    flex: 1 1 calc(50% - 0.5rem);
+    flex: 1 1 calc(50% - 0.5em);
     width: auto;
     min-width: 0;
   }
@@ -118,10 +118,10 @@ body:has(.signup_page) .companyContent {
 
 .signup_page .loginBtn .login-btn {
   width: 100%;
-  max-width: 20rem;
+  max-width: 20em;
   min-width: 0;
   border-radius: var(--ui-button-border-radius, 25px);
-  padding: 0.45rem 1rem;
+  padding: 0.45em 1em;
   box-sizing: border-box;
 }
 
@@ -129,8 +129,8 @@ body:has(.signup_page) .companyContent {
   display: flex;
   align-content: flex-start;
   align-items: flex-start;
-  gap: 0.35rem;
-  margin: 0.35rem 0 0;
+  gap: 0.35em;
+  margin: 0.35em 0 0;
   font-size: 11px;
   line-height: 1.35;
   color: gray;
@@ -149,8 +149,8 @@ body:has(.signup_page) .companyContent {
 }
 
 .signup_field_hint {
-  margin: 0.35rem 0 0;
-  font-size: 0.75rem;
+  margin: 0.35em 0 0;
+  font-size: 0.75em;
   line-height: 1.35;
   color: #64748b;
   max-width: 100%;
@@ -160,4 +160,16 @@ body:has(.signup_page) .companyContent {
 .policy {
   color: var(--main-auth-button-color);
   text-decoration: none;
+}
+
+.signup_success_with_footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25em;
+  width: 100%;
+}
+
+.signup_success_footer.companyContent {
+  margin-top: 0.5em;
 }

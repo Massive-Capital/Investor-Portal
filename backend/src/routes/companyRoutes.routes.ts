@@ -4,11 +4,25 @@ import {
   patchCompany,
   postCompany,
 } from "../controllers/company/company.controller.js";
+import { postCompaniesExportNotify } from "../controllers/exportNotify.controller.js";
+import {
+  getWorkspaceTabSettings,
+  putWorkspaceTabSettings,
+} from "../controllers/company/companyWorkspaceSettings.controller.js";
 
 const router = Router();
 
 router.get("/companies", getCompanies);
 router.post("/companies", postCompany);
+router.post("/companies/export-notify", postCompaniesExportNotify);
 router.patch("/companies/:companyId", patchCompany);
+router.get(
+  "/companies/:companyId/workspace-settings/:tabKey",
+  getWorkspaceTabSettings,
+);
+router.put(
+  "/companies/:companyId/workspace-settings/:tabKey",
+  putWorkspaceTabSettings,
+);
 
 export default router;

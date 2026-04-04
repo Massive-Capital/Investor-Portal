@@ -1,7 +1,7 @@
 import type { FormEvent } from "react"
 import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { AtSign, Mail, Phone, User } from "lucide-react"
+import { AtSign, Loader2, Mail, Phone, Save, User } from "lucide-react"
 import { toast } from "../../common/components/Toast"
 import { patchMyProfile } from "./accountApi"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
@@ -161,7 +161,22 @@ export function MyAccountPersonalPage() {
             className="um_btn_primary"
             disabled={isSaving}
           >
-            {isSaving ? "Saving…" : "Save changes"}
+            {isSaving ? (
+              <>
+                <Loader2
+                  size={16}
+                  strokeWidth={2}
+                  className="myaccount_btn_spin"
+                  aria-hidden
+                />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save size={16} strokeWidth={2} aria-hidden />
+                Save changes
+              </>
+            )}
           </button>
         </div>
       </form>

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Code2, Copy, GripVertical, Plus, Trash2 } from "lucide-react";
+import { formatDateDdMmmYyyy } from "../../common/utils/formatDateDisplay";
 import { DataTablePagination } from "../../common/components/DataTablePagination/DataTablePagination";
 import { toast } from "../../common/components/Toast";
+import { fetchWorkspaceTabSettings } from "./companyWorkspaceSettingsApi";
+import { useDebouncedWorkspaceTabPersist } from "./useWorkspaceTabPersistence";
 
 type Props = {
   companyName: string;
   readOnly?: boolean;
+  workspaceCompanyId?: string;
 };
 
 type OfferingRow = {
@@ -46,25 +50,98 @@ const MOCK_OFFERINGS: OfferingRow[] = [
   },
 ];
 
+function parseOfferingRows(raw: unknown): OfferingRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: OfferingRow[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : "";
+    if (!id) continue;
+    out.push({
+      id,
+      name: typeof o.name === "string" ? o.name : "",
+      internalName: typeof o.internalName === "string" ? o.internalName : "",
+      status: typeof o.status === "string" ? o.status : "",
+      closeDate: typeof o.closeDate === "string" ? o.closeDate : "",
+      warnRow: o.warnRow === true,
+    });
+  }
+  return out;
+}
+
 export function CompanyOfferingsPageTab(props: Props) {
-  const { readOnly = false } = props;
+  const { readOnly = false, workspaceCompanyId } = props;
   const pageUrl = PUBLIC_OFFERINGS_PAGE_URL;
   const [visibility, setVisibility] = useState<"hidden" | "visible">("hidden");
   const [disclaimer, setDisclaimer] = useState("");
+  const [offerings, setOfferings] = useState<OfferingRow[]>(() => [
+    ...MOCK_OFFERINGS,
+  ]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [offeringsHydrated, setOfferingsHydrated] = useState(!workspaceCompanyId);
+
+  useEffect(() => {
+    if (!workspaceCompanyId) {
+      setOfferingsHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    setOfferingsHydrated(false);
+    void (async () => {
+      const { ok, payload: p } = await fetchWorkspaceTabSettings(
+        workspaceCompanyId,
+        "offerings",
+      );
+      if (cancelled) return;
+      if (ok) {
+        if (p.visibility === "hidden" || p.visibility === "visible") {
+          setVisibility(p.visibility);
+        }
+        if (typeof p.disclaimer === "string") {
+          setDisclaimer(p.disclaimer);
+        }
+        if (Array.isArray(p.offerings)) {
+          const parsed = parseOfferingRows(p.offerings);
+          setOfferings(parsed.length > 0 ? parsed : [...MOCK_OFFERINGS]);
+        }
+      }
+      setOfferingsHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceCompanyId]);
+
+  const offeringsPayload = useMemo(
+    () => ({
+      visibility,
+      disclaimer,
+      offerings,
+    }),
+    [visibility, disclaimer, offerings],
+  );
+
+  useDebouncedWorkspaceTabPersist(
+    workspaceCompanyId,
+    "offerings",
+    readOnly,
+    offeringsHydrated,
+    offeringsPayload,
+  );
 
   const draftOrPastCount = useMemo(
     () =>
-      MOCK_OFFERINGS.filter(
+      offerings.filter(
         (o) => o.status === "Draft" || o.status === "Past",
       ).length,
-    [],
+    [offerings],
   );
 
   const offeringsTotalPages = Math.max(
     1,
-    Math.ceil(MOCK_OFFERINGS.length / pageSize),
+    Math.ceil(offerings.length / pageSize),
   );
 
   useEffect(() => {
@@ -77,8 +154,8 @@ export function CompanyOfferingsPageTab(props: Props) {
 
   const pageRows = useMemo(() => {
     const start = (offeringsPageSafe - 1) * pageSize;
-    return MOCK_OFFERINGS.slice(start, start + pageSize);
-  }, [offeringsPageSafe, pageSize]);
+    return offerings.slice(start, start + pageSize);
+  }, [offerings, offeringsPageSafe, pageSize]);
 
   async function copyPageLink() {
     try {
@@ -252,7 +329,7 @@ export function CompanyOfferingsPageTab(props: Props) {
                   </td>
                   <td>{row.internalName}</td>
                   <td>{row.status}</td>
-                  <td>{row.closeDate}</td>
+                  <td>{formatDateDdMmmYyyy(row.closeDate)}</td>
                   <td className="um_td_actions">
                     <button
                       type="button"
@@ -272,7 +349,7 @@ export function CompanyOfferingsPageTab(props: Props) {
         <DataTablePagination
           page={offeringsPageSafe}
           pageSize={pageSize}
-          totalItems={MOCK_OFFERINGS.length}
+          totalItems={offerings.length}
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
           pageSizeOptions={[10, 25, 50]}

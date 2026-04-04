@@ -11,6 +11,14 @@ export interface DealListRow {
   investors: string
   closeDateDisplay: string
   createdDateDisplay: string
+  /** Shown in Deals list “Start date” column; falls back to created date in API layer */
+  startDateDisplay?: string
+  /** Shown in “Investments” column when API does not send a dedicated value */
+  investmentsDisplay?: string
+  /** e.g. Class A, LP — from API when available */
+  investorClass?: string
+  /** Client-side or API: archived deals appear under Archives tab */
+  archived?: boolean
   /** City + country from API (dashboard cards / search) */
   locationDisplay?: string
   /** ISO timestamp for sorting */

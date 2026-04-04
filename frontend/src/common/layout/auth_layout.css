@@ -11,7 +11,7 @@ body:has(.authPage) {
   justify-content: center;
   min-height: 100svh;
   min-height: 100dvh;
-  padding: clamp(0.5rem, 3vw, 1rem);
+  padding: clamp(0.5em, 3vw, 1em);
   max-width: 100%;
   box-sizing: border-box;
   overflow-x: clip;
@@ -56,7 +56,7 @@ body:has(.authPage) {
   display: flex;
   align-content: center;
   align-items: center;
-  padding: clamp(0.25rem, 2vw, 10px);
+  padding: clamp(0.25em, 2vw, 10px);
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -67,7 +67,7 @@ body:has(.authPage) {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  /* padding: clamp(1rem, 4vw, 2rem); */
+  /* padding: clamp(1em, 4vw, 2em); */
   padding: 2em 5em;
   border-radius: 5px;
   box-sizing: border-box;

@@ -58,19 +58,37 @@ function serializeUserForClientWithResolvedCompany(
   return base;
 }
 
+const ORG_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function listUsersForAdmin(
   actorRole: string,
   actorOrganizationId: string | null,
+  opts?: { filterOrganizationId?: string | null },
 ): Promise<Record<string, unknown>[] | null> {
   if (isPlatformAdminRole(actorRole)) {
-    const rows = await db
-      .select({
-        ...getTableColumns(users),
-        orgName: companies.name,
-      })
-      .from(users)
-      .leftJoin(companies, eq(users.organizationId, companies.id))
-      .orderBy(desc(users.createdAt));
+    const filterOrg = opts?.filterOrganizationId?.trim() ?? "";
+    const applyOrgFilter =
+      filterOrg.length > 0 && ORG_UUID_RE.test(filterOrg);
+
+    const rows = applyOrgFilter
+      ? await db
+          .select({
+            ...getTableColumns(users),
+            orgName: companies.name,
+          })
+          .from(users)
+          .leftJoin(companies, eq(users.organizationId, companies.id))
+          .where(eq(users.organizationId, filterOrg))
+          .orderBy(desc(users.createdAt))
+      : await db
+          .select({
+            ...getTableColumns(users),
+            orgName: companies.name,
+          })
+          .from(users)
+          .leftJoin(companies, eq(users.organizationId, companies.id))
+          .orderBy(desc(users.createdAt));
     return rows.map((r) => {
       const { orgName, ...userCols } = r;
       return serializeUserForClientWithResolvedCompany(

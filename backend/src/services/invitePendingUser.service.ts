@@ -40,6 +40,18 @@ export async function upsertPendingInvitedUser(
     const completed =
       String(existing.userSignupCompleted ?? "").trim().toLowerCase() === "true";
     if (completed) {
+      const inviteOrg = company.companyId?.trim() ?? "";
+      const memberOrg = existing.organizationId?.trim() ?? "";
+      const sameOrg =
+        inviteOrg !== "" && memberOrg !== "" && inviteOrg === memberOrg;
+      if (sameOrg) {
+        return {
+          ok: false,
+          status: 409,
+          message:
+            "This email is already a member of your organization.",
+        };
+      }
       return {
         ok: false,
         status: 409,

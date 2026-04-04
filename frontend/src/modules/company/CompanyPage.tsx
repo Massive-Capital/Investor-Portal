@@ -7,12 +7,10 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Activity,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
+  Archive,
   Ban,
   Building2,
   ClipboardList,
@@ -28,13 +26,17 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { DataTablePagination } from "../../common/components/DataTablePagination/DataTablePagination";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "../../common/components/data-table/DataTable";
 import { ViewReadonlyField } from "../../common/components/ViewReadonlyField";
 import { toast } from "../../common/components/Toast";
 import { getApiV1Base } from "../../common/utils/apiBaseUrl";
 import {
   SESSION_BEARER_KEY,
   SESSION_USER_DETAILS_KEY,
+  SESSION_WORKSPACE_COMPANY_ID_KEY,
 } from "../../common/auth/sessionKeys";
 import {
   canEditCompanyWorkspace,
@@ -44,6 +46,13 @@ import { CompanyContactAttributesTab } from "./CompanyContactAttributesTab";
 import { CompanyEmailSettingsTab } from "./CompanyEmailSettingsTab";
 import { CompanyOfferingsPageTab } from "./CompanyOfferingsPageTab";
 import { CompanySettingsTabPanel } from "./CompanySettingsTabPanel";
+import { ExportCompaniesModal } from "./ExportCompaniesModal";
+import {
+  escapeCsvCell,
+  exportAuditLinesForCompanies,
+} from "./companyCsv";
+import type { CompanyExportRow } from "./companyCsv";
+import { notifyCompaniesExportAudit } from "./companiesExportNotifyApi";
 import "../usermanagement/user_management.css";
 import "./company_page.css";
 
@@ -54,30 +63,128 @@ type CompanyPageTab =
   | "offerings"
   | "companies";
 
+/** Display name from sign-in `userDetails` (the member’s company, not the directory cache). */
 function readSessionCompanyName(): string {
   try {
     const raw = sessionStorage.getItem(SESSION_USER_DETAILS_KEY);
     if (!raw) return "";
-    const arr = JSON.parse(raw) as unknown;
-    if (Array.isArray(arr) && arr[0] && typeof arr[0] === "object") {
-      const o = arr[0] as Record<string, unknown>;
-      return String(o.companyName ?? o.company_name ?? "").trim();
+    const parsed = JSON.parse(raw) as unknown;
+    let o: Record<string, unknown> | null = null;
+    if (
+      Array.isArray(parsed) &&
+      parsed[0] &&
+      typeof parsed[0] === "object" &&
+      !Array.isArray(parsed[0])
+    ) {
+      o = parsed[0] as Record<string, unknown>;
+    } else if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      o = parsed as Record<string, unknown>;
     }
+    if (!o) return "";
+    const name =
+      o.companyName ??
+      o.company_name ??
+      o.organizationName ??
+      o.organization_name;
+    if (name == null || name === "") return "";
+    return String(name).trim();
+  } catch {
+    /* ignore */
+  }
+    return "";
+}
+
+/** Keep sign-in `userDetails` in sync when the user edits company name on Settings (client-side). */
+function writeSessionCompanyDisplayName(next: string): void {
+  const trimmed = next.trim();
+  try {
+    const raw = sessionStorage.getItem(SESSION_USER_DETAILS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      Array.isArray(parsed) &&
+      parsed[0] &&
+      typeof parsed[0] === "object" &&
+      !Array.isArray(parsed[0])
+    ) {
+      const first = {
+        ...(parsed[0] as Record<string, unknown>),
+        companyName: trimmed,
+        company_name: trimmed,
+        organizationName: trimmed,
+        organization_name: trimmed,
+      };
+      sessionStorage.setItem(
+        SESSION_USER_DETAILS_KEY,
+        JSON.stringify([first, ...parsed.slice(1)]),
+      );
+      return;
+    }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const o = {
+        ...(parsed as Record<string, unknown>),
+        companyName: trimmed,
+        company_name: trimmed,
+        organizationName: trimmed,
+        organization_name: trimmed,
+      };
+      sessionStorage.setItem(SESSION_USER_DETAILS_KEY, JSON.stringify(o));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Organization UUID for workspace settings API (same as `companies.id`). */
+function readSessionOrganizationId(): string {
+  try {
+    const raw = sessionStorage.getItem(SESSION_USER_DETAILS_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as unknown;
+    let o: Record<string, unknown> | null = null;
+    if (
+      Array.isArray(parsed) &&
+      parsed[0] &&
+      typeof parsed[0] === "object" &&
+      !Array.isArray(parsed[0])
+    ) {
+      o = parsed[0] as Record<string, unknown>;
+    } else if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      o = parsed as Record<string, unknown>;
+    }
+    if (!o) return "";
+    const id =
+      o.organization_id ?? o.organizationId ?? o.organizationID;
+    if (id == null || id === "") return "";
+    return typeof id === "string" ? id.trim() : String(id).trim();
   } catch {
     /* ignore */
   }
   return "";
 }
 
-type CompanyRow = {
-  id: string;
-  name: string;
-  status?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  userCount?: number;
-  dealCount?: number;
-};
+function readStoredWorkspaceCompanyId(): string {
+  if (typeof sessionStorage === "undefined") return "";
+  try {
+    const s = sessionStorage.getItem(SESSION_WORKSPACE_COMPANY_ID_KEY);
+    return typeof s === "string" ? s.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+const COMPANY_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type CompanyRow = CompanyExportRow;
 
 const COMPANY_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "active", label: "Active" },
@@ -93,11 +200,9 @@ function companyStatusValueForEdit(row: CompanyRow): string {
   return "active";
 }
 
-function escapeCsvCell(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
+function companyRowIsArchived(row: CompanyRow): boolean {
+  const s = String(row.status ?? "active").trim().toLowerCase();
+  return s === "inactive" || s === "suspended";
 }
 
 function companyStatusForUi(row: CompanyRow): { positive: boolean; label: string } {
@@ -138,22 +243,7 @@ function StatusWithDot({
   );
 }
 
-type SortKey = "company" | "deals" | "users" | "status";
-
-function sortValue(row: CompanyRow, key: SortKey): string | number {
-  switch (key) {
-    case "company":
-      return row.name.toLowerCase();
-    case "deals":
-      return Number(row.dealCount ?? 0);
-    case "users":
-      return Number(row.userCount ?? 0);
-    case "status":
-      return companyStatusForUi(row).label.toLowerCase();
-    default:
-      return "";
-  }
-}
+type CustomersListTab = "active" | "archived";
 
 export type CompanyPageVariant = "default" | "customers";
 
@@ -162,6 +252,7 @@ type CompanyPageProps = {
 };
 
 export default function CompanyPage({ variant = "default" }: CompanyPageProps = {}) {
+  const navigate = useNavigate();
   const customersStandalone = variant === "customers";
   const apiV1 = getApiV1Base();
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
@@ -171,9 +262,10 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [loadError, setLoadError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("company");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [toolbarNotice, setToolbarNotice] = useState("");
+  const [companiesExportOpen, setCompaniesExportOpen] = useState(false);
+  const [customersListTab, setCustomersListTab] =
+    useState<CustomersListTab>("active");
   const [companyPageTab, setCompanyPageTab] = useState<CompanyPageTab>(() =>
     variant === "customers" && isPlatformAdmin() ? "companies" : "settings",
   );
@@ -223,13 +315,27 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         return;
       }
       const list = Array.isArray(data.companies) ? data.companies : [];
+
+      function coalesceCount(
+        row: CompanyRow & { user_count?: unknown; deal_count?: unknown },
+        key: "userCount" | "dealCount",
+      ): number {
+        const snake = key === "userCount" ? row.user_count : row.deal_count;
+        const v = row[key] ?? snake;
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+        if (typeof v === "string" && v.trim() !== "") {
+          const parsed = Number(v.trim());
+          if (Number.isFinite(parsed)) return parsed;
+        }
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      }
+
       setCompanies(
         list.map((c) => ({
           ...c,
-          userCount:
-            typeof c.userCount === "number" ? c.userCount : Number(c.userCount) || 0,
-          dealCount:
-            typeof c.dealCount === "number" ? c.dealCount : Number(c.dealCount) || 0,
+          userCount: coalesceCount(c, "userCount"),
+          dealCount: coalesceCount(c, "dealCount"),
           status: c.status ?? "active",
         })),
       );
@@ -242,16 +348,92 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     void loadCompanies();
   }, [loadCompanies]);
 
+  const [userDetailsRev, setUserDetailsRev] = useState(0);
+
   const sessionCompanyName = useMemo(
     () => (token ? readSessionCompanyName() : ""),
+    [token, userDetailsRev],
+  );
+
+  const sessionOrganizationId = useMemo(
+    () => (token ? readSessionOrganizationId() : ""),
     [token],
   );
 
+  const [platformAdminWorkspaceCompanyId, setPlatformAdminWorkspaceCompanyId] =
+    useState<string>(() => readStoredWorkspaceCompanyId());
+
+  useEffect(() => {
+    if (sessionOrganizationId.trim()) return;
+    if (!platformAdmin || companies.length === 0) return;
+    const pid = platformAdminWorkspaceCompanyId.trim().toLowerCase();
+    const storedOk =
+      pid &&
+      COMPANY_ID_UUID_RE.test(pid) &&
+      companies.some((c) => c.id.trim().toLowerCase() === pid)
+        ? pid
+        : "";
+    const next = (storedOk || companies[0].id).trim().toLowerCase();
+    if (!COMPANY_ID_UUID_RE.test(next)) return;
+    if (next === pid) return;
+    setPlatformAdminWorkspaceCompanyId(next);
+    try {
+      sessionStorage.setItem(SESSION_WORKSPACE_COMPANY_ID_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  }, [
+    sessionOrganizationId,
+    platformAdmin,
+    companies,
+    platformAdminWorkspaceCompanyId,
+  ]);
+
+  /**
+   * Session org when present; otherwise platform admin uses stored/first company from directory
+   * (no picker — still persists workspace JSON for that `companies.id`).
+   */
+  const workspaceCompanyId = useMemo(() => {
+    const fromSession = sessionOrganizationId.trim().toLowerCase();
+    if (COMPANY_ID_UUID_RE.test(fromSession)) return fromSession;
+    if (
+      platformAdmin &&
+      platformAdminWorkspaceCompanyId &&
+      COMPANY_ID_UUID_RE.test(platformAdminWorkspaceCompanyId)
+    ) {
+      return platformAdminWorkspaceCompanyId.trim().toLowerCase();
+    }
+    return "";
+  }, [sessionOrganizationId, platformAdmin, platformAdminWorkspaceCompanyId]);
+
+  const handleCompanyDisplayNamePersisted = useCallback(
+    (name: string) => {
+      writeSessionCompanyDisplayName(name);
+      const wid = workspaceCompanyId.trim().toLowerCase();
+      if (wid) {
+        setCompanies((prev) =>
+          prev.map((c) =>
+            c.id.trim().toLowerCase() === wid ? { ...c, name } : c,
+          ),
+        );
+      }
+      setUserDetailsRev((n) => n + 1);
+    },
+    [workspaceCompanyId],
+  );
+
+  /** Prefer signed-in user’s company from session; directory is fallback (e.g. platform admin). */
   const effectiveCompanyName = useMemo(() => {
-    if (sessionCompanyName) return sessionCompanyName;
-    if (companies.length > 0) return companies[0].name;
+    const fromSession = sessionCompanyName.trim();
+    if (fromSession) return fromSession;
+    if (workspaceCompanyId) {
+      const row = companies.find(
+        (c) => c.id.trim().toLowerCase() === workspaceCompanyId,
+      );
+      if (row?.name?.trim()) return row.name.trim();
+    }
     return "Your company";
-  }, [sessionCompanyName, companies]);
+  }, [workspaceCompanyId, companies, sessionCompanyName]);
 
   const companyPageTabDefs = useMemo(() => {
     const tabs: { id: CompanyPageTab; label: string }[] = [
@@ -279,10 +461,30 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     if (customersStandalone && platformAdmin) setCompanyPageTab("companies");
   }, [customersStandalone, platformAdmin]);
 
+  const customersArchivedCount = useMemo(
+    () => companies.filter((c) => companyRowIsArchived(c)).length,
+    [companies],
+  );
+
+  const customersActiveCount = useMemo(
+    () => companies.filter((c) => !companyRowIsArchived(c)).length,
+    [companies],
+  );
+
+  const customersTabRows = useMemo(() => {
+    if (!customersStandalone) return companies;
+    return companies.filter((c) =>
+      customersListTab === "archived"
+        ? companyRowIsArchived(c)
+        : !companyRowIsArchived(c),
+    );
+  }, [companies, customersStandalone, customersListTab]);
+
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return companies;
-    return companies.filter((c) => {
+    const base = customersStandalone ? customersTabRows : companies;
+    if (!q) return base;
+    return base.filter((c) => {
       const st = companyStatusForUi(c).label.toLowerCase();
       return (
         c.name.toLowerCase().includes(q) ||
@@ -291,29 +493,15 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         st.includes(q)
       );
     });
-  }, [companies, searchQuery]);
-
-  const sortedRows = useMemo(() => {
-    const copy = [...filteredRows];
-    copy.sort((a, b) => {
-      const va = sortValue(a, sortKey);
-      const vb = sortValue(b, sortKey);
-      const cmp =
-        typeof va === "number" && typeof vb === "number"
-          ? va - vb
-          : String(va).localeCompare(String(vb), undefined, { sensitivity: "base" });
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return copy;
-  }, [filteredRows, sortKey, sortDir]);
+  }, [companies, customersStandalone, customersTabRows, searchQuery]);
 
   useEffect(() => {
     setCompaniesPage(1);
-  }, [searchQuery, sortKey, sortDir]);
+  }, [searchQuery, customersListTab]);
 
   const companiesTableTotalPages = Math.max(
     1,
-    Math.ceil(sortedRows.length / companiesPageSize),
+    Math.ceil(filteredRows.length / companiesPageSize),
   );
 
   useEffect(() => {
@@ -324,15 +512,114 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
 
   const companiesPageSafe = Math.min(companiesPage, companiesTableTotalPages);
 
-  const companiesPaginatedRows = useMemo(() => {
-    const start = (companiesPageSafe - 1) * companiesPageSize;
-    return sortedRows.slice(start, start + companiesPageSize);
-  }, [sortedRows, companiesPageSafe, companiesPageSize]);
-
   const openMenuContext = useMemo(() => {
     if (!actionMenuCompanyId) return null;
-    return sortedRows.find((c) => c.id === actionMenuCompanyId) ?? null;
-  }, [actionMenuCompanyId, sortedRows]);
+    return filteredRows.find((c) => c.id === actionMenuCompanyId) ?? null;
+  }, [actionMenuCompanyId, filteredRows]);
+
+  const customerCompaniesColumns: DataTableColumn<CompanyRow>[] = useMemo(
+    () => [
+      {
+        id: "company",
+        header: "Company",
+        sortValue: (row) => row.name.toLowerCase(),
+        tdClassName: "um_td_user",
+        cell: (row) => (
+          <div className="um_user_cell">
+            <div
+              className="um_user_avatar_ring cp_company_avatar"
+              aria-hidden
+            >
+              <Building2 size={18} strokeWidth={2} />
+            </div>
+            <div className="um_user_meta">
+              {customersStandalone && platformAdmin ? (
+                <Link
+                  className="um_user_meta_username cp_company_name_link"
+                  to={`/customers/${encodeURIComponent(row.id)}/members`}
+                >
+                  {row.name}
+                </Link>
+              ) : (
+                <span className="um_user_meta_username">{row.name}</span>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "deals",
+        header: "Deals",
+        sortValue: (row) => Number(row.dealCount ?? 0),
+        align: "center",
+        cell: (row) => String(row.dealCount ?? 0),
+      },
+      {
+        id: "members",
+        header: "Members",
+        sortValue: (row) => Number(row.userCount ?? 0),
+        align: "center",
+        cell: (row) => String(row.userCount ?? 0),
+      },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (row) => companyStatusForUi(row).label.toLowerCase(),
+        cell: (row) => <StatusWithDot {...companyStatusForUi(row)} />,
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        thClassName: "um_th_actions",
+        tdClassName: "um_td_actions",
+        align: "right",
+        cell: (row) => {
+          const menuOpen = actionMenuCompanyId === row.id;
+          return (
+            <div className="um_kebab_root" data-cp-kebab-root={row.id}>
+              <button
+                type="button"
+                className="um_kebab_trigger"
+                data-cp-kebab-trigger={row.id}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                aria-label={`Actions for ${row.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActionMenuCompanyId((id) =>
+                    id === row.id ? null : row.id,
+                  );
+                }}
+              >
+                <MoreHorizontal size={18} aria-hidden />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    [customersStandalone, platformAdmin, actionMenuCompanyId],
+  );
+
+  const customersCompaniesPagination = useMemo(
+    () => ({
+      page: companiesPageSafe,
+      pageSize: companiesPageSize,
+      totalItems: filteredRows.length,
+      onPageChange: setCompaniesPage,
+      onPageSizeChange: setCompaniesPageSize,
+      ariaLabel:
+        customersListTab === "archived"
+          ? "Archived companies table pagination"
+          : "Active companies table pagination",
+    }),
+    [
+      companiesPageSafe,
+      companiesPageSize,
+      filteredRows.length,
+      customersListTab,
+    ],
+  );
 
   const updateKebabMenuPosition = useCallback(() => {
     if (!actionMenuCompanyId) {
@@ -403,56 +690,8 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     return () => document.removeEventListener("keydown", onKey);
   }, [actionMenuCompanyId]);
 
-  const toggleSort = useCallback((key: SortKey) => {
-    setSortKey((prevKey) => {
-      if (prevKey === key) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-        return prevKey;
-      }
-      setSortDir("asc");
-      return key;
-    });
-  }, []);
-
-  const sortColumns: { key: SortKey; label: string }[] = [
-    { key: "company", label: "Company" },
-    { key: "deals", label: "Deals" },
-    { key: "users", label: "Users" },
-    { key: "status", label: "Status" },
-  ];
-
-  function exportCompaniesCsv() {
-    const headers = ["Company", "Deals", "Users", "Status", "Created"];
-    const lines = [headers.map(escapeCsvCell).join(",")];
-    for (const row of sortedRows) {
-      lines.push(
-        [
-          row.name,
-          String(row.dealCount ?? 0),
-          String(row.userCount ?? 0),
-          companyStatusForUi(row).label,
-          row.createdAt
-            ? new Date(row.createdAt).toISOString()
-            : "—",
-        ]
-          .map(escapeCsvCell)
-          .join(","),
-      );
-    }
-    const blob = new Blob([lines.join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "companies.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Companies exported", "Saved as companies.csv");
-  }
-
   function exportRowCsv(row: CompanyRow) {
-    const headers = ["Company", "Deals", "Users", "Status", "Company ID"];
+    const headers = ["Company", "Deals", "Members", "Status", "Company ID"];
     const vals = [
       row.name,
       String(row.dealCount ?? 0),
@@ -475,6 +714,10 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+    void notifyCompaniesExportAudit({
+      rowCount: 1,
+      exportedCompanyLines: exportAuditLinesForCompanies([row]),
+    });
     setActionMenuCompanyId(null);
     setToolbarNotice("");
     toast.success("Company exported", `Saved as ${filename}`);
@@ -694,6 +937,59 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         </div>
       </div>
 
+      {platformAdmin && customersStandalone ? (
+        <div className="um_members_tabs_outer">
+          <div
+            className="um_members_tabs_row"
+            role="tablist"
+            aria-label="Customer company lists"
+          >
+            <button
+              type="button"
+              id="cp-customers-tab-active"
+              role="tab"
+              aria-selected={customersListTab === "active"}
+              aria-controls="cp-customers-panel-active"
+              aria-label={`Active companies, ${customersActiveCount}`}
+              className={`um_members_tab${
+                customersListTab === "active" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => {
+                setCustomersListTab("active");
+                setToolbarNotice("");
+              }}
+            >
+              <Activity size={18} strokeWidth={1.75} aria-hidden />
+              <span>Active</span>
+              <span className="cp_customers_tab_count" aria-hidden>
+                ({customersActiveCount})
+              </span>
+            </button>
+            <button
+              type="button"
+              id="cp-customers-tab-archived"
+              role="tab"
+              aria-selected={customersListTab === "archived"}
+              aria-controls="cp-customers-panel-archived"
+              aria-label={`Archived companies, ${customersArchivedCount}`}
+              className={`um_members_tab${
+                customersListTab === "archived" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => {
+                setCustomersListTab("archived");
+                setToolbarNotice("");
+              }}
+            >
+              <Archive size={18} strokeWidth={1.75} aria-hidden />
+              <span>Archived</span>
+              <span className="cp_customers_tab_count" aria-hidden>
+                ({customersArchivedCount})
+              </span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {!customersStandalone ? (
         <div className="um_members_tabs_outer">
           <div
@@ -734,6 +1030,8 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <CompanySettingsTabPanel
                 initialCompanyName={effectiveCompanyName}
                 readOnly={!canEditWorkspace}
+                workspaceCompanyId={workspaceCompanyId || undefined}
+                onCompanyDisplayNamePersisted={handleCompanyDisplayNamePersisted}
               />
             </div>
 
@@ -747,6 +1045,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <CompanyEmailSettingsTab
                 companyName={effectiveCompanyName}
                 readOnly={!canEditWorkspace}
+                workspaceCompanyId={workspaceCompanyId || undefined}
               />
             </div>
 
@@ -760,6 +1059,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <CompanyContactAttributesTab
                 companyName={effectiveCompanyName}
                 readOnly={!canEditWorkspace}
+                workspaceCompanyId={workspaceCompanyId || undefined}
               />
             </div>
 
@@ -773,6 +1073,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <CompanyOfferingsPageTab
                 companyName={effectiveCompanyName}
                 readOnly={!canEditWorkspace}
+                workspaceCompanyId={workspaceCompanyId || undefined}
               />
             </div>
           </>
@@ -793,9 +1094,18 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         {platformAdmin && customersStandalone ? (
           <div
             className="um_panel um_members_tab_panel cp_companies_tab_panel"
-            id="cp-page-panel-companies"
+            id={
+              customersListTab === "archived"
+                ? "cp-customers-panel-archived"
+                : "cp-customers-panel-active"
+            }
             role="tabpanel"
             aria-label="Customer companies"
+            aria-labelledby={
+              customersListTab === "archived"
+                ? "cp-customers-tab-archived"
+                : "cp-customers-tab-active"
+            }
             hidden={false}
           >
             <div className="um_toolbar">
@@ -810,13 +1120,21 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                     setSearchQuery(e.target.value);
                     setToolbarNotice("");
                   }}
-                  aria-label="Search companies"
+                  aria-label={
+                    customersListTab === "archived"
+                      ? "Search archived companies"
+                      : "Search active companies"
+                  }
                 />
               </div>
               <div className="um_toolbar_actions">
                 <button
                   type="button"
                   className="um_btn_toolbar"
+                  disabled={
+                    customersListTab === "archived" ||
+                    customersTabRows.length === 0
+                  }
                   onClick={() =>
                     setToolbarNotice("Bulk suspend for companies is not available yet.")
                   }
@@ -827,10 +1145,15 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                 <button
                   type="button"
                   className="um_toolbar_export_btn"
-                  onClick={exportCompaniesCsv}
+                  onClick={() => setCompaniesExportOpen(true)}
+                  disabled={customersTabRows.length === 0}
                 >
                   <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export all companies</span>
+                  <span>
+                    {customersListTab === "archived"
+                      ? "Export archived"
+                      : "Export all companies"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -843,126 +1166,27 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <p className="um_msg_error">{loadError}</p>
             ) : companies.length === 0 ? (
               <p className="um_hint">No companies yet.</p>
+            ) : customersTabRows.length === 0 ? (
+              <p className="um_hint">
+                {customersListTab === "archived"
+                  ? "No archived companies. Suspend a company from Active to move it here."
+                  : "No active companies."}
+              </p>
             ) : filteredRows.length === 0 ? (
               <p className="um_hint">No companies match your search.</p>
             ) : (
-              <>
-                <div className="um_table_wrap">
-                  <table className="um_table um_table_sortable">
-                    <thead>
-                      <tr>
-                        {sortColumns.map(({ key, label }) => {
-                          const active = sortKey === key;
-                          const ariaSort = active
-                            ? sortDir === "asc"
-                              ? "ascending"
-                              : "descending"
-                            : "none";
-                          return (
-                            <th key={key} scope="col" aria-sort={ariaSort}>
-                              <button
-                                type="button"
-                                className="um_sort_header_ctl"
-                                onClick={() => toggleSort(key)}
-                                aria-label={
-                                  active
-                                    ? `${label}, sorted ${sortDir === "asc" ? "ascending" : "descending"}. Click to reverse.`
-                                    : `Sort by ${label}`
-                                }
-                              >
-                                <span className="um_sort_header_label">{label}</span>
-                                {active ? (
-                                  sortDir === "asc" ? (
-                                    <ArrowUp
-                                      size={14}
-                                      className="um_sort_header_icon"
-                                      aria-hidden
-                                    />
-                                  ) : (
-                                    <ArrowDown
-                                      size={14}
-                                      className="um_sort_header_icon"
-                                      aria-hidden
-                                    />
-                                  )
-                                ) : (
-                                  <ArrowUpDown
-                                    size={14}
-                                    className="um_sort_header_icon um_sort_header_icon_idle"
-                                    aria-hidden
-                                  />
-                                )}
-                              </button>
-                            </th>
-                          );
-                        })}
-                        <th scope="col" className="um_th_actions">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {companiesPaginatedRows.map((row) => {
-                        const menuOpen = actionMenuCompanyId === row.id;
-                        const st = companyStatusForUi(row);
-                        return (
-                          <tr key={row.id}>
-                            <td className="um_td_user">
-                              <div className="um_user_cell">
-                                <div
-                                  className="um_user_avatar_ring cp_company_avatar"
-                                  aria-hidden
-                                >
-                                  <Building2 size={18} strokeWidth={2} />
-                                </div>
-                                <div className="um_user_meta">
-                                  <span className="um_user_meta_username">{row.name}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td>{row.dealCount ?? 0}</td>
-                            <td>{row.userCount ?? 0}</td>
-                            <td>
-                              <StatusWithDot {...st} />
-                            </td>
-                            <td className="um_td_actions">
-                              <div
-                                className="um_kebab_root"
-                                data-cp-kebab-root={row.id}
-                              >
-                                <button
-                                  type="button"
-                                  className="um_kebab_trigger"
-                                  data-cp-kebab-trigger={row.id}
-                                  aria-expanded={menuOpen}
-                                  aria-haspopup="menu"
-                                  aria-label={`Actions for ${row.name}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActionMenuCompanyId((id) =>
-                                      id === row.id ? null : row.id,
-                                    );
-                                  }}
-                                >
-                                  <MoreHorizontal size={18} aria-hidden />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <DataTablePagination
-                  page={companiesPageSafe}
-                  pageSize={companiesPageSize}
-                  totalItems={sortedRows.length}
-                  onPageChange={setCompaniesPage}
-                  onPageSizeChange={setCompaniesPageSize}
-                  ariaLabel="Companies table pagination"
+              <div className="cp_company_tab_table_wrap">
+                <DataTable
+                  visualVariant="members"
+                  membersTableClassName="um_table_members"
+                  initialSort={{ columnId: "company", direction: "asc" }}
+                  columns={customerCompaniesColumns}
+                  rows={filteredRows}
+                  getRowKey={(row) => row.id}
+                  emptyLabel="No companies match your search."
+                  pagination={customersCompaniesPagination}
                 />
-              </>
+              </div>
             )}
           </div>
         ) : null}
@@ -998,27 +1222,54 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   View
                 </button>
               </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="um_kebab_menuitem"
-                  disabled={!platformAdmin}
-                  onClick={() => {
-                    setActionMenuCompanyId(null);
-                    if (!platformAdmin) {
-                      setToolbarNotice(
-                        "Only platform administrators can edit a company.",
+              {customersStandalone && platformAdmin ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="um_kebab_menuitem"
+                    onClick={() => {
+                      setActionMenuCompanyId(null);
+                      navigate(
+                        `/customers/${encodeURIComponent(openMenuContext.id)}/members`,
                       );
-                      return;
-                    }
-                    openEdit(openMenuContext);
-                  }}
-                >
-                  <Pencil className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  Edit
-                </button>
-              </li>
+                    }}
+                  >
+                    <Users
+                      className="um_kebab_menuitem_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    Members &amp; deals
+                  </button>
+                </li>
+              ) : null}
+              {!(
+                customersStandalone && customersListTab === "archived"
+              ) ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="um_kebab_menuitem"
+                    disabled={!platformAdmin}
+                    onClick={() => {
+                      setActionMenuCompanyId(null);
+                      if (!platformAdmin) {
+                        setToolbarNotice(
+                          "Only platform administrators can edit a company.",
+                        );
+                        return;
+                      }
+                      openEdit(openMenuContext);
+                    }}
+                  >
+                    <Pencil className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                    Edit
+                  </button>
+                </li>
+              ) : null}
               <li role="none">
                 <button
                   type="button"
@@ -1102,7 +1353,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   />
                   <ViewReadonlyField
                     Icon={Users}
-                    label="Users"
+                    label="Members"
                     value={String(viewRow.userCount ?? 0)}
                   />
                   <ViewReadonlyField
@@ -1403,6 +1654,12 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
           </div>
         </div>
       ) : null}
+      <ExportCompaniesModal
+        open={companiesExportOpen}
+        onClose={() => setCompaniesExportOpen(false)}
+        companies={customersTabRows}
+        listKind={customersListTab}
+      />
     </section>
   );
 }

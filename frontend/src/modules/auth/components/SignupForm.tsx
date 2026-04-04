@@ -203,7 +203,7 @@ export default function SignupForm() {
             invite.
           </p>
         </div>
-        <p className="forgotPassword" style={{ marginTop: "1rem" }}>
+        <p className="forgotPassword" style={{ marginTop: "1em" }}>
           <Link to={LOGIN_PATH}>
             <span>Back to sign in</span>
           </Link>
@@ -214,24 +214,31 @@ export default function SignupForm() {
 
   if (isConfirmSignup) {
     return (
-      <div
-        className="authMessage authMessage--success"
-        style={{
-          flexDirection: "column",
-          alignItems: "center",
-          textAlign: "center",
-          gap: "1rem",
-        }}
-      >
-        <CheckCircle size={48} aria-hidden className="authMessage__icon" />
-        <p className="loginSuccess" style={{ fontSize: "1rem" }}>
-          Your account has been{" "}
-          <span style={{ fontWeight: 600 }}>successfully activated.</span>
-        </p>
-        <p className="contentTwo">Redirecting to sign in in a few seconds…</p>
-        <Link to={LOGIN_PATH} className="login-btn signup_success_signin_btn">
-          Sign in <ArrowRight width={20} aria-hidden />
-        </Link>
+      <div className="signup_success_with_footer">
+        <div
+          className="authMessage authMessage--success"
+          style={{
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: "1em",
+          }}
+        >
+          <CheckCircle size={48} aria-hidden className="authMessage__icon" />
+          <p className="loginSuccess" style={{ fontSize: "1em" }}>
+            Your account has been{" "}
+            <span style={{ fontWeight: 600 }}>successfully activated.</span>
+          </p>
+          <p className="contentTwo">Redirecting to sign in in a few seconds…</p>
+          <Link to={LOGIN_PATH} className="login-btn signup_success_signin_btn">
+            Sign in <ArrowRight width={20} aria-hidden />
+          </Link>
+        </div>
+        <div className="companyContent signup_success_footer">
+          <div className="contentOne">
+            <FooterForm />
+          </div>
+        </div>
       </div>
     );
   }

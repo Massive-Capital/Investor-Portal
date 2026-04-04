@@ -3,7 +3,8 @@ import {
   FormTooltip,
   MandatoryFieldMark,
 } from "../../../../../common/components/form-tooltip/FormTooltip"
-import { SEC_TYPE_OPTIONS } from "../../../../../common/components/constants/sec-type-options"
+// import { SEC_TYPE_OPTIONS } from "../../../../../common/components/constants/sec-type-options"
+import { SEC_TYPE_OPTIONS } from "../constants/sec-type-options";
 import {
   DEAL_FORM_TYPE_OPTIONS,
   DEAL_STAGE_CHOICES,
@@ -189,7 +190,7 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
         </fieldset>
 
         <label className="deals_create_label deals_create_label_full">
-          <span className="form_label_toolbar form_label_toolbar_spread">
+          <span className="form_label_toolbar">
             <span className="form_label_inline_row">
               <span>SEC type</span>
               <MandatoryFieldMark />
@@ -221,7 +222,7 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
         </label>
 
         <label className="deals_create_label deal_step_close_date_wrap">
-          <span className="form_label_toolbar form_label_toolbar_spread">
+          <span className="form_label_toolbar">
             <span>Close date</span>
             <FormTooltip
               label="About close date"

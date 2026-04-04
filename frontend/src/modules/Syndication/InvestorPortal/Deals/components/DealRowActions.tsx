@@ -1,4 +1,12 @@
-import { Archive, Eye, MoreHorizontal, Trash2 } from "lucide-react"
+import {
+  AppWindow,
+  Archive,
+  ArchiveRestore,
+  Eye,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
@@ -6,14 +14,21 @@ import { useNavigate } from "react-router-dom"
 interface DealRowActionsProps {
   dealId: string
   dealName: string
+  archived?: boolean
+  /** Opens read-only deal preview (e.g. modal). */
+  onPreviewDeal?: () => void
   onArchived?: () => void
+  onRestored?: () => void
   onDeleted?: () => void
 }
 
 export function DealRowActions({
   dealId,
   dealName,
+  archived = false,
+  onPreviewDeal,
   onArchived,
+  onRestored,
   onDeleted,
 }: DealRowActionsProps) {
   const navigate = useNavigate()
@@ -82,21 +97,38 @@ export function DealRowActions({
     }
   }, [open, close])
 
+  function handlePreviewDeal() {
+    close()
+    onPreviewDeal?.()
+  }
+
   function handleViewDeal() {
     close()
-    navigate(`/deals/${dealId}`)
+    navigate(`/deals/${encodeURIComponent(dealId)}`)
+  }
+
+  function handleEditDeal() {
+    close()
+    navigate(`/deals/create?edit=${encodeURIComponent(dealId)}`)
   }
 
   function handleArchiveDeal() {
     const label = dealName.trim() || "this deal"
     if (
       !window.confirm(
-        `Archive “${label}”? You can restore it later when archive is connected to the server.`,
+        `Archive “${label}”? You can restore it from the Archives tab.`,
       )
     )
       return
     close()
     onArchived?.()
+  }
+
+  function handleRestoreDeal() {
+    const label = dealName.trim() || "this deal"
+    if (!window.confirm(`Restore “${label}” to active deals?`)) return
+    close()
+    onRestored?.()
   }
 
   function handleDeleteDeal() {
@@ -130,6 +162,19 @@ export function DealRowActions({
               className="um_kebab_menu um_kebab_menu--portal"
               role="menu"
             >
+              {onPreviewDeal ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    className="um_kebab_menuitem"
+                    role="menuitem"
+                    onClick={handlePreviewDeal}
+                  >
+                    <Eye className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                    Preview deal
+                  </button>
+                </li>
+              ) : null}
               <li role="none">
                 <button
                   type="button"
@@ -137,8 +182,8 @@ export function DealRowActions({
                   role="menuitem"
                   onClick={handleViewDeal}
                 >
-                  <Eye className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  View Deal
+                  <AppWindow className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                  View deal
                 </button>
               </li>
               <li role="none">
@@ -146,11 +191,34 @@ export function DealRowActions({
                   type="button"
                   className="um_kebab_menuitem"
                   role="menuitem"
-                  onClick={handleArchiveDeal}
+                  onClick={handleEditDeal}
                 >
-                  <Archive className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  Archive Deal
+                  <Pencil className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                  Edit Deal
                 </button>
+              </li>
+              <li role="none">
+                {archived ? (
+                  <button
+                    type="button"
+                    className="um_kebab_menuitem"
+                    role="menuitem"
+                    onClick={handleRestoreDeal}
+                  >
+                    <ArchiveRestore className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                    Restore deal
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="um_kebab_menuitem"
+                    role="menuitem"
+                    onClick={handleArchiveDeal}
+                  >
+                    <Archive className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                    Archive deal
+                  </button>
+                )}
               </li>
               <li role="none">
                 <button

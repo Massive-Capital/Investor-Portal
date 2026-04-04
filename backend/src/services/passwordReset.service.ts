@@ -4,7 +4,10 @@ import { sql } from "drizzle-orm";
 import { db } from "../database/db.js";
 import { users } from "../schema/schema.js";
 import { getJwtSecret } from "../config/auth.js";
-import emailConfig from "../functions/emailconfig.js";
+import emailConfig, {
+  outgoingMailCcBcc,
+  smtpEnvelopeForSendMail,
+} from "../functions/emailconfig.js";
 import { buildResetPasswordEmailHtml } from "../functions/resetPasswordEmail.template.js";
 
 const BCRYPT_ROUNDS = 10;
@@ -72,12 +75,20 @@ export async function requestPasswordResetWithEmail(
     try {
       const transporter = emailConfig();
       const fromAddress = process.env.SENDER_EMAIL_ID?.trim() || "";
+      const ccBcc = outgoingMailCcBcc();
       await transporter.sendMail({
         from: {
           name: SENDER_DISPLAY_NAME,
           address: fromAddress,
         },
         to: email,
+        ...ccBcc,
+        envelope: smtpEnvelopeForSendMail({
+          fromAddress,
+          to: email,
+          cc: ccBcc.cc,
+          bcc: ccBcc.bcc,
+        }),
         subject: "Reset your Investor Portal password",
         html: buildResetPasswordEmailHtml(resetLink),
       });

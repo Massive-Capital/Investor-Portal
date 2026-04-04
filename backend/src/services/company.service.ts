@@ -1,9 +1,9 @@
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../database/db.js";
+import { addDealForm } from "../schema/deal.schema/add-deal-form.schema.js";
 import {
   companies,
   companyAdminAuditLogs,
-  deals,
   users,
   type CompanyRow,
 } from "../schema/schema.js";
@@ -25,29 +25,103 @@ export type CompanyWithStats = {
   dealCount: number;
 };
 
-export async function listCompanies(): Promise<CompanyWithStats[]> {
-  const rows = await db
-    .select({
-      id: companies.id,
-      name: companies.name,
-      status: companies.status,
-      createdAt: companies.createdAt,
-      updatedAt: companies.updatedAt,
-      userCount: sql<number>`(
-        select count(*)::int from ${users} where ${users.organizationId} = ${companies.id}
-      )`,
-      dealCount: sql<number>`(
-        select count(*)::int from ${deals} where ${deals.companyId} = ${companies.id}
-      )`,
-    })
-    .from(companies)
-    .orderBy(desc(companies.createdAt));
+function normalizeCompanyNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
 
-  return rows.map((r) => ({
-    ...r,
-    userCount: Number(r.userCount),
-    dealCount: Number(r.dealCount),
-  }));
+export async function listCompanies(): Promise<CompanyWithStats[]> {
+  /**
+   * Counts use grouped queries (not correlated subqueries) so they stay aligned
+   * with list APIs: `GET /users?organizationId=…`, `GET /deals?organizationId=…`,
+   * plus legacy rows with null `organization_id` and matching free-text names.
+   */
+  const [
+    rows,
+    orgUserCounts,
+    legacyUserNameCounts,
+    orgDealCounts,
+    legacyDealNameCounts,
+  ] = await Promise.all([
+    db
+      .select({
+        id: companies.id,
+        name: companies.name,
+        status: companies.status,
+        createdAt: companies.createdAt,
+        updatedAt: companies.updatedAt,
+      })
+      .from(companies)
+      .orderBy(desc(companies.createdAt)),
+    db
+      .select({
+        organizationId: users.organizationId,
+        cnt: sql<number>`count(*)::int`,
+      })
+      .from(users)
+      .where(isNotNull(users.organizationId))
+      .groupBy(users.organizationId),
+    db
+      .select({
+        nameNorm: sql<string>`lower(trim(${users.companyName}))`,
+        cnt: sql<number>`count(*)::int`,
+      })
+      .from(users)
+      .where(isNull(users.organizationId))
+      .groupBy(sql`lower(trim(${users.companyName}))`),
+    db
+      .select({
+        organizationId: addDealForm.organizationId,
+        cnt: sql<number>`count(*)::int`,
+      })
+      .from(addDealForm)
+      .where(isNotNull(addDealForm.organizationId))
+      .groupBy(addDealForm.organizationId),
+    db
+      .select({
+        nameNorm: sql<string>`lower(trim(${addDealForm.owningEntityName}))`,
+        cnt: sql<number>`count(*)::int`,
+      })
+      .from(addDealForm)
+      .where(isNull(addDealForm.organizationId))
+      .groupBy(sql`lower(trim(${addDealForm.owningEntityName}))`),
+  ]);
+
+  const byOrgId = new Map<string, number>();
+  for (const r of orgUserCounts) {
+    const id = r.organizationId;
+    if (id) byOrgId.set(id, Number(r.cnt));
+  }
+
+  const byLegacyName = new Map<string, number>();
+  for (const r of legacyUserNameCounts) {
+    const k = String(r.nameNorm ?? "").trim();
+    if (k) byLegacyName.set(k, Number(r.cnt));
+  }
+
+  const byDealOrgId = new Map<string, number>();
+  for (const r of orgDealCounts) {
+    const id = r.organizationId;
+    if (id) byDealOrgId.set(id, Number(r.cnt));
+  }
+
+  const byLegacyDealName = new Map<string, number>();
+  for (const r of legacyDealNameCounts) {
+    const k = String(r.nameNorm ?? "").trim();
+    if (k) byLegacyDealName.set(k, Number(r.cnt));
+  }
+
+  return rows.map((r) => {
+    const userByOrg = byOrgId.get(r.id) ?? 0;
+    const userByName = byLegacyName.get(normalizeCompanyNameKey(r.name)) ?? 0;
+    const dealByOrg = byDealOrgId.get(r.id) ?? 0;
+    const dealByName =
+      byLegacyDealName.get(normalizeCompanyNameKey(r.name)) ?? 0;
+    return {
+      ...r,
+      userCount: userByOrg + userByName,
+      dealCount: dealByOrg + dealByName,
+    };
+  });
 }
 
 export async function createCompany(name: string) {

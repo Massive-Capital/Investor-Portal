@@ -1,27 +1,22 @@
-import {
-  type ComponentType,
-  useEffect,
-  useRef,
-  useState,
-} from "react"
+import { type ComponentType, useEffect } from "react"
 import {
   Briefcase,
   Building2,
-  ChevronDown,
-  ChevronRight,
+  ContactRound,
   CreditCard,
   FileText,
   Files,
   LayoutDashboard,
-  Landmark,
   Mail,
   Settings,
   Star,
   TrendingUp,
   UserCircle,
+  UserPlus,
   Users,
 } from "lucide-react"
-import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
+import { isPlatformAdmin } from "../auth/roleUtils"
 import { TopNavBar } from "../components/TopNavBar/TopNavBar"
 import {
   PortalModeProvider,
@@ -43,20 +38,21 @@ type NavItem = {
   children?: undefined
 }
 
-type NavChild = {
-  label: string
-  to: string
-  icon?: SidebarIcon
-}
-
-type ExpandableNavItem = {
-  label: string
-  icon: SidebarIcon
-  children: NavChild[]
+/** Deals list, create, or deal detail — not investor-emails / reporting (their own nav items). */
+function isSyndicatingDealsNavActive(pathname: string): boolean {
+  const p = pathname.replace(/\/$/, "") || "/"
+  if (p === "/deals") return true
+  if (p.startsWith("/deals/investor-emails")) return false
+  if (p.startsWith("/deals/reporting")) return false
+  if (p === "/deals/create") return true
+  if (p.startsWith("/deals/")) return true
+  return false
 }
 
 const sharedSidebarItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
+  { label: "Leads", to: "/leads", icon: UserPlus },
+  { label: "All contacts", to: "/contacts", icon: ContactRound },
   { label: "Settings", to: "/settings", icon: Settings },
   { label: "Customers", to: "/customers", icon: Building2 },
   { label: "Billing", to: "/billing", icon: CreditCard },
@@ -64,7 +60,7 @@ const sharedSidebarItems: NavItem[] = [
 ]
 
 /** Syndicating — unique `to` per item so only one NavLink is active */
-const syndicationPortalChildren: NavChild[] = [
+const syndicationPortalNavItems: NavItem[] = [
   { label: "Deals", to: "/deals", icon: Briefcase },
   { label: "Investor emails", to: "/deals/investor-emails", icon: Mail },
   { label: "Reporting", to: "/deals/reporting", icon: Files },
@@ -86,35 +82,6 @@ function PageLayoutInner() {
   const location = useLocation()
   const { mode, portalSwitchOverlay } = usePortalMode()
 
-  const isSyndicationUnderPortal =
-    mode === "syndicating" &&
-    syndicationPortalChildren.some((c) => {
-      const path = c.to
-      return location.pathname === path || location.pathname.startsWith(`${path}/`)
-    })
-
-  const [investorPortalOpen, setInvestorPortalOpen] = useState(
-    () => isSyndicationUnderPortal,
-  )
-  /** Tracks prior route so we collapse the group when leaving /deals/*, not when toggling on other pages. */
-  const wasSyndicationUnderPortal = useRef(false)
-
-  useEffect(() => {
-    if (mode !== "syndicating") {
-      wasSyndicationUnderPortal.current = false
-      return
-    }
-    if (isSyndicationUnderPortal) {
-      setInvestorPortalOpen(true)
-      wasSyndicationUnderPortal.current = true
-      return
-    }
-    if (wasSyndicationUnderPortal.current) {
-      setInvestorPortalOpen(false)
-      wasSyndicationUnderPortal.current = false
-    }
-  }, [mode, isSyndicationUnderPortal, location.pathname])
-
   useEffect(() => {
     if (!portalSwitchOverlay) return
     const prev = document.body.style.overflow
@@ -128,14 +95,17 @@ function PageLayoutInner() {
     setAppDocumentTitle(pageTitleForAppPathname(location.pathname))
   }, [location.pathname])
 
-  const sidebarItems: (NavItem | ExpandableNavItem)[] = [
+  /** Dashboard → Leads → Contacts → Deals (syndication) → … → Settings, Customers (platform admin only), … */
+  const sharedSidebarTail = isPlatformAdmin()
+    ? sharedSidebarItems.slice(3)
+    : sharedSidebarItems.slice(3).filter((item) => item.to !== "/customers")
+
+  const sidebarItems: NavItem[] = [
     sharedSidebarItems[0],
-    {
-      label: "Investor Portal",
-      icon: Landmark,
-      children: syndicationPortalChildren,
-    },
-    ...sharedSidebarItems.slice(1),
+    sharedSidebarItems[1],
+    sharedSidebarItems[2],
+    ...syndicationPortalNavItems,
+    ...sharedSidebarTail,
   ]
 
   const modeLabel =
@@ -174,82 +144,39 @@ function PageLayoutInner() {
           </>
         ) : (
           <>
-            <button
-              type="button"
-              className="app_sidebar_brand"
-              onClick={() => setInvestorPortalOpen((open) => !open)}
-              aria-expanded={investorPortalOpen}
-              aria-controls="sidebar-investor-portal-subnav"
-            >
+            <div className="app_sidebar_brand app_sidebar_brand_static">
               <h1 className="app_sidebar_title">Investor Portal</h1>
               <p className="app_sidebar_mode">{modeLabel}</p>
-            </button>
+            </div>
             <nav className="app_sidebar_nav">
               {sidebarItems.map((item) => {
-                if ("children" in item && item.children) {
-                  const ExpandIcon = investorPortalOpen ? ChevronDown : ChevronRight
-                  const ParentIcon = item.icon
+                const { label, to, icon: Icon } = item
+
+                if (to === "/deals") {
+                  const dealsActive = isSyndicatingDealsNavActive(
+                    location.pathname,
+                  )
                   return (
-                    <div key={item.label} className="app_sidebar_group">
-                      <button
-                        type="button"
-                        className={`app_sidebar_expand_btn${investorPortalOpen ? " app_sidebar_expand_btn_open" : ""}`}
-                        onClick={() => setInvestorPortalOpen((v) => !v)}
-                        aria-expanded={investorPortalOpen}
-                        aria-controls="sidebar-investor-portal-subnav"
-                        id="sidebar-investor-portal-trigger"
-                      >
-                        <ParentIcon size={18} />
-                        <span className="app_sidebar_expand_label">{item.label}</span>
-                        <ExpandIcon
-                          size={16}
-                          className="app_sidebar_expand_chevron"
-                          aria-hidden
-                        />
-                      </button>
-                      <div
-                        id="sidebar-investor-portal-subnav"
-                        className="app_sidebar_subnav"
-                        role="region"
-                        aria-labelledby="sidebar-investor-portal-trigger"
-                        hidden={!investorPortalOpen}
-                      >
-                        {item.children.map((child) => {
-                          const ChildIcon = child.icon
-                          const useEnd = child.to === "/deals"
-                          return (
-                            <NavLink
-                              key={`${child.label}-${child.to}`}
-                              to={child.to}
-                              end={useEnd}
-                              className={({ isActive }) =>
-                                `app_sidebar_link app_sidebar_sublink app_sidebar_sublink_with_icon${isActive ? " app_sidebar_sublink_active" : ""}`
-                              }
-                            >
-                              {ChildIcon ? (
-                                <ChildIcon
-                                  size={18}
-                                  className="app_sidebar_sublink_icon"
-                                  aria-hidden
-                                />
-                              ) : null}
-                              <span>{child.label}</span>
-                            </NavLink>
-                          )
-                        })}
-                      </div>
-                    </div>
+                    <Link
+                      key={label}
+                      to={to}
+                      className={`app_sidebar_link${dealsActive ? " app_sidebar_link_active" : ""}`}
+                      aria-current={dealsActive ? "page" : undefined}
+                    >
+                      <Icon size={18} />
+                      <span>{label}</span>
+                    </Link>
                   )
                 }
 
-                const { label, to, icon: Icon } = item
+                const linkEnd = to === "/"
                 return (
                   <NavLink
                     key={label}
                     to={to}
-                    end={to === "/"}
+                    end={linkEnd}
                     className={({ isActive }) =>
-                      `app_sidebar_link ${isActive ? "app_sidebar_link_active" : ""}`
+                      `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
                     }
                   >
                     <Icon size={18} />

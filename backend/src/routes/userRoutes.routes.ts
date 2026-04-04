@@ -8,8 +8,10 @@ import {
   getMemberAuditLogs,
   getUsers,
   patchUser,
+  postMembersExportNotify,
 } from "../controllers/userAdmin.controller.js";
 import {
+  getMyProfile,
   patchMyProfile,
   postChangePassword,
 } from "../controllers/auth/account.controller.js";
@@ -19,6 +21,7 @@ const userRoutes = Router();
 userRoutes
 .post("/auth/signin", postSignin)
 .post("/auth/change-password", postChangePassword)
+.get("/auth/me", getMyProfile)
 .patch("/auth/me", patchMyProfile)
 /** Same handler — some proxies or clients mishandle PATCH; SPA can use POST. */
 .post("/auth/me", patchMyProfile)
@@ -28,6 +31,7 @@ userRoutes
 .post("/auth/reset-password", postResetPassword)
 .post("/auth/invite", postInviteUser)
 .get("/users", getUsers)
+.post("/users/export-notify", postMembersExportNotify)
 .get("/users/:userId/audit-logs", getMemberAuditLogs)
 .patch("/users/:userId", patchUser);
 

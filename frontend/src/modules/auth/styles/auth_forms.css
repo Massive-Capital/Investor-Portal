@@ -22,11 +22,11 @@
 .loginForm .input_wrapper label {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.35em;
   font-weight: 500;
   color: #000;
   margin: 0.5em 0 0.5em 0;
-  font-size: 0.9rem;
+  font-size: 0.9em;
 }
 
 .loginForm .input_wrapper label span {
@@ -49,7 +49,7 @@
   width: 100%;
   height: 36px;
   min-height: 36px;
-  padding: 0 0.6rem;
+  padding: 0 0.6em;
   box-sizing: border-box;
 }
 
@@ -70,11 +70,11 @@
 }
 
 .loginForm .input_wrapper__field .input_field {
-  padding-right: 2.5rem;
+  padding-right: 2.5em;
 }
 
 .loginCaption {
-  /* margin: clamp(0.35rem, 2vw, 10px) 0; */
+  /* margin: clamp(0.35em, 2vw, 10px) 0; */
  text-align: center;
   color: black;
   font-size: 1.1em;
@@ -83,10 +83,10 @@
 }
 
 .pwdCaption {
-  font-size: 0.9rem;
+  font-size: 0.9em;
   color: #64748b;
   text-align: center;
-  margin: 0 0 0.85rem 0;
+  margin: 0 0 0.85em 0;
   line-height: 1.45;
 }
 
@@ -147,7 +147,7 @@
 
 .authMessage {
   display: flex;
-  gap: 0.4rem;
+  gap: 0.4em;
   margin: 0.5em 0;
 }
 
@@ -213,7 +213,7 @@
 }
 
 .companyContent {
-  margin-top: clamp(0.75rem, 3vw, 1.25rem);
+  margin-top: clamp(0.75em, 3vw, 1.25em);
 }
 
 .contentTwo {

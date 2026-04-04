@@ -2,8 +2,30 @@ import type { Request, Response } from "express";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   changePasswordForUser,
+  getOwnProfile,
   updateOwnProfile,
 } from "../../services/account.service.js";
+
+export async function getMyProfile(req: Request, res: Response): Promise<void> {
+  try {
+    const jwtUser = getJwtUser(req);
+    if (!jwtUser?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
+    const result = await getOwnProfile(jwtUser.id);
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message });
+      return;
+    }
+    res.status(200).json({ user: result.user });
+  } catch (err) {
+    console.error("getMyProfile:", err);
+    res.status(500).json({
+      message: "Could not load profile. Please try again.",
+    });
+  }
+}
 
 export async function postChangePassword(req: Request, res: Response): Promise<void> {
   try {

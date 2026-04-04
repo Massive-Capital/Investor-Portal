@@ -3,11 +3,16 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react"
+import { createPortal } from "react-dom"
 import "./form-tooltip.css"
+
+export type FormTooltipPanelAlign = "center" | "start" | "end"
 
 export interface FormTooltipProps {
   content: ReactNode
@@ -15,9 +20,60 @@ export interface FormTooltipProps {
   label: string
   placement?: "top" | "bottom"
   className?: string
+  /**
+   * Horizontal alignment of the panel relative to the trigger.
+   * Use `start` for left-column headers (avoids clipping off the left edge),
+   * `end` for right-aligned headers.
+   */
+  panelAlign?: FormTooltipPanelAlign
+  /**
+   * `icon` — default (i) button. `inline` — hover/focus the given `children` (same panel styling as icon mode).
+   */
+  triggerMode?: "icon" | "inline"
+  /** Required when `triggerMode` is `inline`: visible label/cell text that opens the tooltip. */
+  children?: ReactNode
+  /**
+   * When false, the panel opens only from clicking the trigger (not from hovering).
+   * Use for table header info icons where hover feels redundant next to click.
+   */
+  openOnHover?: boolean
 }
 
 const LEAVE_MS = 180
+const VIEWPORT_PAD = 12
+const GAP = 10
+/** Above stacked UI (e.g. deal preview modal uses ~12100) */
+const TOOLTIP_Z = 11500
+
+function computeFixedPosition(args: {
+  triggerRect: DOMRect
+  placement: "top" | "bottom"
+  panelAlign: FormTooltipPanelAlign
+  panelWidth: number
+  panelHeight: number
+}): { top: number; left: number } {
+  const { triggerRect, placement, panelAlign, panelWidth, panelHeight } = args
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const maxW = Math.min(296, vw - VIEWPORT_PAD * 2)
+  const w = Math.min(Math.max(panelWidth, 1), maxW)
+
+  let left = triggerRect.left
+  if (panelAlign === "center")
+    left = triggerRect.left + triggerRect.width / 2 - w / 2
+  else if (panelAlign === "end") left = triggerRect.right - w
+  else left = triggerRect.left
+
+  left = Math.max(VIEWPORT_PAD, Math.min(left, vw - VIEWPORT_PAD - w))
+
+  let top: number
+  if (placement === "bottom") top = triggerRect.bottom + GAP
+  else top = triggerRect.top - GAP - panelHeight
+
+  top = Math.max(VIEWPORT_PAD, Math.min(top, vh - VIEWPORT_PAD - panelHeight))
+
+  return { top, left }
+}
 
 export function MandatoryFieldMark() {
   return (
@@ -32,11 +88,17 @@ export function FormTooltip({
   label,
   placement = "top",
   className = "",
+  panelAlign = "center",
+  triggerMode = "icon",
+  children,
+  openOnHover = true,
 }: FormTooltipProps) {
   const tooltipId = useId()
   const rootRef = useRef<HTMLSpanElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [open, setOpen] = useState(false)
+  const [fixedStyle, setFixedStyle] = useState<CSSProperties>({})
 
   const clearLeaveTimer = useCallback(() => {
     if (leaveTimerRef.current) {
@@ -55,6 +117,50 @@ export function FormTooltip({
     leaveTimerRef.current = setTimeout(() => setOpen(false), LEAVE_MS)
   }, [clearLeaveTimer])
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setFixedStyle({})
+      return
+    }
+    const root = rootRef.current
+    const panel = panelRef.current
+    if (!root || !panel) return
+
+    function position() {
+      const rEl = rootRef.current
+      const pEl = panelRef.current
+      if (!rEl || !pEl) return
+      const triggerRect = rEl.getBoundingClientRect()
+      const w = pEl.offsetWidth
+      const h = pEl.offsetHeight
+      const { top, left } = computeFixedPosition({
+        triggerRect,
+        placement,
+        panelAlign,
+        panelWidth: w,
+        panelHeight: h,
+      })
+      setFixedStyle({
+        position: "fixed",
+        top,
+        left,
+        zIndex: TOOLTIP_Z,
+        maxWidth: "min(18.5em, calc(100vw - 1.5em))",
+      })
+    }
+
+    position()
+    const ro = new ResizeObserver(() => position())
+    ro.observe(panel)
+    window.addEventListener("resize", position)
+    window.addEventListener("scroll", position, true)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener("resize", position)
+      window.removeEventListener("scroll", position, true)
+    }
+  }, [open, placement, panelAlign, content])
+
   useEffect(() => {
     return () => clearLeaveTimer()
   }, [clearLeaveTimer])
@@ -71,8 +177,10 @@ export function FormTooltip({
   useEffect(() => {
     if (!open) return
     function onDocMouseDown(e: MouseEvent) {
-      const el = rootRef.current
-      if (el && !el.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (rootRef.current?.contains(t)) return
+      if (panelRef.current?.contains(t)) return
+      setOpen(false)
     }
     document.addEventListener("mousedown", onDocMouseDown)
     return () => document.removeEventListener("mousedown", onDocMouseDown)
@@ -83,35 +191,69 @@ export function FormTooltip({
     setOpen((v) => !v)
   }
 
-  const rootClass = `form_tooltip_root ${className}`.trim()
+  function handleRootMouseLeave(e: React.MouseEvent) {
+    const rel = e.relatedTarget as Node | null
+    if (rel && panelRef.current?.contains(rel)) return
+    scheduleHide()
+  }
+
+  function handlePanelMouseLeave(e: React.MouseEvent) {
+    const rel = e.relatedTarget as Node | null
+    if (rel && rootRef.current?.contains(rel)) return
+    scheduleHide()
+  }
+
+  const rootClass = `form_tooltip_root${triggerMode === "inline" ? " form_tooltip_root_inline" : ""} ${className}`.trim()
+
+  const panelInner = (
+    <div
+      ref={panelRef}
+      id={tooltipId}
+      role="tooltip"
+      className="form_tooltip_panel form_tooltip_panel_portaled"
+      data-placement={placement}
+      data-panel-align={panelAlign}
+      data-visible={open}
+      style={fixedStyle}
+      onMouseEnter={show}
+      onMouseLeave={handlePanelMouseLeave}
+    >
+      <div className="form_tooltip_surface">{content}</div>
+      <span className="form_tooltip_arrow form_tooltip_arrow_portaled_hide" aria-hidden />
+    </div>
+  )
 
   return (
     <span
       ref={rootRef}
       className={rootClass}
-      onMouseEnter={show}
-      onMouseLeave={scheduleHide}
+      onMouseEnter={openOnHover ? show : undefined}
+      onMouseLeave={handleRootMouseLeave}
     >
-      <button
-        type="button"
-        className="form_tooltip_trigger"
-        aria-label={label}
-        aria-expanded={open}
-        aria-describedby={open ? tooltipId : undefined}
-        onClick={handleTriggerClick}
-      >
-        <Info size={16} strokeWidth={2} aria-hidden />
-      </button>
-      <div
-        id={tooltipId}
-        role="tooltip"
-        className="form_tooltip_panel"
-        data-placement={placement}
-        data-visible={open}
-      >
-        <div className="form_tooltip_surface">{content}</div>
-        <span className="form_tooltip_arrow" aria-hidden />
-      </div>
+      {triggerMode === "inline" ? (
+        <button
+          type="button"
+          className="form_tooltip_trigger_inline"
+          aria-label={label}
+          aria-expanded={open}
+          aria-describedby={open ? tooltipId : undefined}
+          onClick={handleTriggerClick}
+        >
+          {children}
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="form_tooltip_trigger"
+          aria-label={label}
+          aria-expanded={open}
+          aria-describedby={open ? tooltipId : undefined}
+          onClick={handleTriggerClick}
+        >
+          <Info size={16} strokeWidth={2} aria-hidden />
+        </button>
+      )}
+      {open ? createPortal(panelInner, document.body) : null}
     </span>
   )
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../config/uploadPaths.js";
 import { db } from "../database/db.js";
 import {
@@ -9,6 +9,7 @@ import {
   type AddDealFormInsert,
   type AddDealFormRow,
 } from "../schema/deal.schema/add-deal-form.schema.js";
+import { companies } from "../schema/schema.js";
 
 const UPLOAD_SUBDIR = "deal-assets";
 
@@ -128,6 +129,7 @@ export async function saveDealAssetFiles(params: {
 export async function insertAddDealForm(
   input: CreateDealFormInput,
   assetRelativePaths: string[],
+  organizationId?: string | null,
 ): Promise<AddDealFormRow> {
   const validationErrors = validateCreateInput(input);
   if (validationErrors) {
@@ -139,6 +141,7 @@ export async function insertAddDealForm(
   }
 
   const row: AddDealFormInsert = {
+    organizationId: organizationId ?? null,
     dealName: input.dealName.trim(),
     dealType: input.dealType.trim(),
     dealStage: input.dealStage.trim(),
@@ -164,6 +167,80 @@ export async function listAddDealForms(): Promise<AddDealFormRow[]> {
   return db.select().from(addDealForm).orderBy(desc(addDealForm.createdAt));
 }
 
+/**
+ * Who may list deals: `seesAllDeals` → every row; else → deals for the viewer’s
+ * company (`organization_id` + legacy owning-entity name — `listAddDealFormsByOrganizationId`).
+ */
+export type DealViewerScope = {
+  organizationId: string | null;
+  isPlatformAdmin: boolean;
+  /** Syndication list/detail: all deals (platform admin, or platform_user with no org). */
+  seesAllDeals: boolean;
+};
+
+export async function listAddDealFormsForViewer(
+  scope: DealViewerScope,
+): Promise<AddDealFormRow[]> {
+  if (scope.seesAllDeals) {
+    return db.select().from(addDealForm).orderBy(desc(addDealForm.createdAt));
+  }
+  if (!scope.organizationId) {
+    return [];
+  }
+  return listAddDealFormsByOrganizationId(scope.organizationId);
+}
+
+export async function listAddDealFormsByOrganizationId(
+  organizationId: string,
+): Promise<AddDealFormRow[]> {
+  const [company] = await db
+    .select({ name: companies.name })
+    .from(companies)
+    .where(eq(companies.id, organizationId))
+    .limit(1);
+  const nameKey = company?.name?.trim().toLowerCase() ?? "";
+
+  if (!nameKey) {
+    return db
+      .select()
+      .from(addDealForm)
+      .where(eq(addDealForm.organizationId, organizationId))
+      .orderBy(desc(addDealForm.createdAt));
+  }
+
+  return db
+    .select()
+    .from(addDealForm)
+    .where(
+      or(
+        eq(addDealForm.organizationId, organizationId),
+        and(
+          isNull(addDealForm.organizationId),
+          sql`lower(trim(${addDealForm.owningEntityName})) = ${nameKey}`,
+        ),
+      ),
+    )
+    .orderBy(desc(addDealForm.createdAt));
+}
+
+/** True if the deal row is visible under that company (FK or legacy name match). */
+export async function isAddDealFormInOrganizationScope(
+  row: AddDealFormRow,
+  organizationId: string,
+): Promise<boolean> {
+  if (row.organizationId === organizationId) return true;
+  if (row.organizationId != null) return false;
+  const [company] = await db
+    .select({ name: companies.name })
+    .from(companies)
+    .where(eq(companies.id, organizationId))
+    .limit(1);
+  const cn = company?.name?.trim().toLowerCase() ?? "";
+  if (!cn) return false;
+  const on = row.owningEntityName?.trim().toLowerCase() ?? "";
+  return on === cn;
+}
+
 export async function getAddDealFormById(
   id: string,
 ): Promise<AddDealFormRow | undefined> {
@@ -173,4 +250,55 @@ export async function getAddDealFormById(
     .where(eq(addDealForm.id, id))
     .limit(1);
   return rows[0];
+}
+
+export async function updateAddDealFormById(
+  id: string,
+  input: CreateDealFormInput,
+  newAssetRelativePaths: string[],
+  options?: { organizationId?: string | null },
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+
+  const validationErrors = validateCreateInput(input);
+  if (validationErrors) {
+    const err = new Error("VALIDATION") as Error & {
+      fieldErrors: DealFormFieldErrors;
+    };
+    err.fieldErrors = validationErrors;
+    throw err;
+  }
+
+  const prevPaths = existing.assetImagePath?.split(";").filter(Boolean) ?? [];
+  const mergedPaths = [...prevPaths, ...newAssetRelativePaths];
+  const assetImagePath =
+    mergedPaths.length > 0 ? mergedPaths.join(";") : existing.assetImagePath;
+
+  const backfillOrg =
+    !existing.organizationId && options?.organizationId
+      ? { organizationId: options.organizationId }
+      : {};
+
+  const [updated] = await db
+    .update(addDealForm)
+    .set({
+      ...backfillOrg,
+      dealName: input.dealName.trim(),
+      dealType: input.dealType.trim(),
+      dealStage: input.dealStage.trim(),
+      secType: input.secType.trim(),
+      closeDate: input.closeDate?.trim() || null,
+      owningEntityName: input.owningEntityName.trim(),
+      fundsRequiredBeforeGpSign: input.fundsRequiredBeforeGpSign!,
+      autoSendFundingInstructions: input.autoSendFundingInstructions!,
+      propertyName: input.propertyName.trim(),
+      country: input.country.trim(),
+      city: input.city.trim(),
+      assetImagePath,
+    })
+    .where(eq(addDealForm.id, id))
+    .returning();
+
+  return updated;
 }

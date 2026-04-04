@@ -1,7 +1,16 @@
 import { assetImagePathToUrl } from "../../../common/utils/apiBaseUrl"
 import type { DealDetailApi } from "./Deals/api/dealsApi"
+import {
+  acceptedAmountForPayload,
+  formatUsdDashboardAmount,
+  fundedAmountForPayload,
+  targetAmountNumberForDeal,
+} from "./Deals/dealsDashboardMoney"
+import type { DealInvestorClass } from "./Deals/types/deal-investor-class.types"
+import type { DealInvestorsPayload } from "./Deals/types/deal-investors.types"
 import type { DealListRow } from "./Deals/types/deals.types"
 import { DEAL_STAGE_CHOICES } from "./Deals/types/deals.types"
+import { formatInvestorCountDisplay } from "./Deals/dealsListDisplay"
 
 export interface DealRecord {
   id: string
@@ -23,18 +32,56 @@ export interface DealRecord {
   coverImageUrl?: string
 }
 
-export const dealsDashboardMetrics = {
-  reviewCount: "2",
-  billingQuota: "$51MM",
-  totalTarget: "$75.28MM",
-  totalDistributions: "$3.49MM",
-  investmentCount: "864",
-  contactCount: "1,584",
-}
-
 export function dealStageLabel(code: string): string {
   const found = DEAL_STAGE_CHOICES.find((c) => c.value === code)
   return found?.label ?? code
+}
+
+/**
+ * Merge investors payload + optional investor classes into a dashboard deal row.
+ * Target = sum of class offering sizes, else list raise target. Distributions = accepted sum.
+ */
+export function mergeDealRecordWithInvestorsAndClasses(
+  listRow: DealListRow,
+  base: DealRecord,
+  payload: DealInvestorsPayload | undefined | null,
+  classes: DealInvestorClass[] | undefined | null,
+): DealRecord {
+  const cls = classes ?? []
+  const targetNum = targetAmountNumberForDeal(listRow, cls)
+  const targetAmount = formatUsdDashboardAmount(targetNum)
+
+  if (!payload) {
+    return {
+      ...base,
+      targetAmount,
+      totalAccepted: formatUsdDashboardAmount(0),
+      totalFunded: formatUsdDashboardAmount(0),
+      totalDistributions: formatUsdDashboardAmount(0),
+      investorCount: formatInvestorCountDisplay("0"),
+    }
+  }
+
+  const acceptedNum = acceptedAmountForPayload(payload)
+  const fundedNum = fundedAmountForPayload(payload)
+
+  return {
+    ...base,
+    targetAmount,
+    totalAccepted: formatUsdDashboardAmount(acceptedNum),
+    totalFunded: formatUsdDashboardAmount(fundedNum),
+    totalDistributions: formatUsdDashboardAmount(acceptedNum),
+    investorCount: formatInvestorCountDisplay(String(payload.investors.length)),
+  }
+}
+
+/** Merge without investor classes (raise target only). Prefer mergeDealRecordWithInvestorsAndClasses when you have classes. */
+export function mergeDealRecordWithInvestorsPayload(
+  base: DealRecord,
+  payload: DealInvestorsPayload | undefined | null,
+): DealRecord {
+  const listRow = { id: base.id, raiseTarget: base.targetAmount } as DealListRow
+  return mergeDealRecordWithInvestorsAndClasses(listRow, base, payload, [])
 }
 
 export function dealListRowToDealRecord(row: DealListRow): DealRecord {

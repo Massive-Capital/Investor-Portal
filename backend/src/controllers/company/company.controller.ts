@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-// import { isPlatformAdminRole } from "../constants/roles.js";
+import { eq } from "drizzle-orm";
 import {
   COMPANY_AUDIT_ACTION_EDIT,
   COMPANY_AUDIT_ACTION_SUSPEND,
@@ -8,10 +8,31 @@ import {
   updateCompany,
   type CompanyAuditAction,
 } from "../../services/company.service.js";
-// } from "../services/company.service.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
+import { db } from "../../database/db.js";
+import { users } from "../../schema/schema.js";
+import { getUserContactsExportAuditFields } from "../../services/contact.service.js";
+import { sanitizeExportedLinesForNotify } from "../../services/exportNotifySanitize.js";
+import { sendWorkspaceExportAuditNotification } from "../../services/workspaceExportAudit.service.js";
 
+function bodyString(v: unknown): string {
+  return typeof v === "string" ? v : v != null ? String(v) : "";
+}
+
+function jsonForCmdLog(value: unknown): string {
+  return JSON.stringify(
+    value,
+    (_k, v) => (v instanceof Date ? v.toISOString() : v),
+    2,
+  );
+}
+
+/**
+ * Set `LOG_COMPANIES_RESPONSE=1` when starting the API to print the full
+ * `GET /companies` JSON in the terminal (counts, ids, names) for debugging
+ * mismatches vs. the Members tab (`GET /users?organizationId=...`).
+ */
 export async function getCompanies(req: Request, res: Response): Promise<void> {
   const user = getJwtUser(req);
   if (!user?.id) {
@@ -20,6 +41,15 @@ export async function getCompanies(req: Request, res: Response): Promise<void> {
   }
   try {
     const rows = await listCompanies();
+    const logCompanies =
+      process.env.LOG_COMPANIES_RESPONSE === "1" ||
+      process.env.LOG_COMPANIES_RESPONSE === "true";
+    if (logCompanies) {
+      console.log(
+        "[GET /companies] response body:",
+        jsonForCmdLog({ companies: rows }),
+      );
+    }
     res.status(200).json({ companies: rows });
   } catch (err) {
     console.error("getCompanies:", err);
@@ -128,4 +158,89 @@ export async function patchCompany(req: Request, res: Response): Promise<void> {
     message: "Company updated",
     company: result.company,
   });
+}
+
+/** After companies (customers) CSV export from the UI; same audit inbox as contacts. */
+export async function postCompaniesExportNotify(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const [actor] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, jwtUser.id))
+    .limit(1);
+  if (!actor) {
+    res.status(401).json({ message: "User not found" });
+    return;
+  }
+
+  const role = String(actor.role ?? "").trim();
+  if (!isPlatformAdminRole(role)) {
+    res.status(403).json({ message: "Not allowed" });
+    return;
+  }
+
+  const b = req.body as Record<string, unknown>;
+  const rowCountRaw = b.rowCount;
+  const rowCount =
+    typeof rowCountRaw === "number" && Number.isFinite(rowCountRaw)
+      ? Math.max(0, Math.floor(rowCountRaw))
+      : typeof rowCountRaw === "string" && /^\d+$/.test(rowCountRaw.trim())
+        ? Math.max(0, parseInt(rowCountRaw.trim(), 10))
+        : null;
+
+  if (rowCount === null || rowCount < 1) {
+    res.status(400).json({ message: "rowCount must be a positive integer" });
+    return;
+  }
+
+  const exportedLines = sanitizeExportedLinesForNotify(
+    b.exportedCompanyLines ?? b.exportedLines,
+  );
+
+  try {
+    const audit = await getUserContactsExportAuditFields(jwtUser.id);
+    const exporterEmail =
+      audit.email || bodyString(jwtUser.email).trim();
+    const exporterLabel =
+      audit.displayName.trim() || exporterEmail || jwtUser.id;
+
+    const result = await sendWorkspaceExportAuditNotification("companies", {
+      exporterDisplayName: exporterLabel,
+      exporterEmail,
+      exporterOrgName: audit.orgName || "—",
+      rowCount,
+      exportedSampleLines: exportedLines,
+    });
+
+    if (result.status === "sent") {
+      res.status(200).json({ notified: true });
+      return;
+    }
+    if (result.status === "skipped_no_recipient") {
+      res.status(200).json({
+        notified: false,
+        message:
+          "SENDER_Update_EMAIL_ID (or CONTACTS_EXPORT_NOTIFY_EMAIL) is not set; no notification was sent.",
+      });
+      return;
+    }
+    res.status(200).json({
+      notified: false,
+      message: "Export notification email could not be sent. Check email configuration.",
+    });
+  } catch (err) {
+    console.error("postCompaniesExportNotify:", err);
+    res.status(200).json({
+      notified: false,
+      message: "Export notification email could not be sent.",
+    });
+  }
 }

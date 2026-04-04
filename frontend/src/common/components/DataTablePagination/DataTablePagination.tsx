@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import "./data_table_pagination.css";
 
 export type DataTablePaginationProps = {
@@ -55,7 +56,9 @@ export function DataTablePagination({
           className="um_table_pagination_btn"
           disabled={safePage <= 1}
           onClick={() => onPageChange(safePage - 1)}
+          aria-label="Previous page"
         >
+          <ChevronLeft size={16} strokeWidth={2} aria-hidden />
           Prev
         </button>
         {pageNumbers.map((n) => (
@@ -74,8 +77,10 @@ export function DataTablePagination({
           className="um_table_pagination_btn"
           disabled={safePage >= totalPages}
           onClick={() => onPageChange(safePage + 1)}
+          aria-label="Next page"
         >
           Next
+          <ChevronRight size={16} strokeWidth={2} aria-hidden />
         </button>
         {onPageSizeChange ? (
           <label className="um_table_pagination_page_size">

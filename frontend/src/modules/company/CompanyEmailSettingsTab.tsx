@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CircleHelp, Mail, PenLine } from "lucide-react";
+import { fetchWorkspaceTabSettings } from "./companyWorkspaceSettingsApi";
+import { useDebouncedWorkspaceTabPersist } from "./useWorkspaceTabPersistence";
 
 type Props = {
   companyName: string;
   readOnly?: boolean;
+  workspaceCompanyId?: string;
 };
 
 /** Shown for From / Reply-to / Notification addresses in the email settings UI */
@@ -23,8 +26,47 @@ function HelpTip({ label }: { label: string }) {
 }
 
 export function CompanyEmailSettingsTab(props: Props) {
-  const { readOnly = false } = props;
+  const { readOnly = false, workspaceCompanyId } = props;
   const [textDirection, setTextDirection] = useState("ltr");
+  const [emailHydrated, setEmailHydrated] = useState(!workspaceCompanyId);
+
+  useEffect(() => {
+    if (!workspaceCompanyId) {
+      setEmailHydrated(true);
+      return;
+    }
+    let cancelled = false;
+    setEmailHydrated(false);
+    void (async () => {
+      const { ok, payload: p } = await fetchWorkspaceTabSettings(
+        workspaceCompanyId,
+        "email",
+      );
+      if (cancelled) return;
+      if (ok && typeof p.textDirection === "string") {
+        if (p.textDirection === "rtl" || p.textDirection === "ltr") {
+          setTextDirection(p.textDirection);
+        }
+      }
+      setEmailHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceCompanyId]);
+
+  const emailPayload = useMemo(
+    () => ({ textDirection }),
+    [textDirection],
+  );
+
+  useDebouncedWorkspaceTabPersist(
+    workspaceCompanyId,
+    "email",
+    readOnly,
+    emailHydrated,
+    emailPayload,
+  );
 
   return (
     <div className="cp_email_layout cp_email_layout_single">

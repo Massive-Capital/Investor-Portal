@@ -4,12 +4,12 @@
   max-width: 1280px;
   margin-top: 20px;
   /* Space between radio control and its text (CardRadioGroup, offerings visibility, etc.) */
-  --cp-radio-label-gap: 0.55rem;
+  --cp-radio-label-gap: 0.55em;
 }
 
 /* Tighter title → tabs; avoid oversized gap from .um_header_row margin collapse */
 .company_page .um_members_header_block .um_header_row {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.65em;
 }
 
 .company_page .um_members_tab_content {
@@ -20,12 +20,243 @@
   display: none !important;
 }
 
+/* Tab counts — match deals list `.deals_tabs_count` / contacts `.contacts_tab_count` */
+.cp_customers_tab_count,
+.cp_company_detail_tab_count {
+  margin-inline-start: 0.15em;
+  font-size: 0.875em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--portal-text-muted, #64748b);
+  white-space: nowrap;
+}
+
 .cp_company_avatar {
   background: #000;
 }
 
 .cp_company_avatar svg {
   color: #fff;
+}
+
+/* Customers table: company name → members page (class must not contain "_btn" or App.css applies pill radius) */
+a.cp_company_name_link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.15em;
+  border-radius: 0;
+  transition:
+    color 0.15s ease,
+    text-decoration-color 0.15s ease;
+}
+
+a.cp_company_name_link:hover {
+  color: black;
+  text-decoration-color: black;
+}
+
+a.cp_company_name_link:focus-visible {
+  outline: 2px solid black;
+  outline-offset: 2px;
+  border-radius: 0;
+}
+
+/* Customer company detail: tab links (NavLink) */
+a.cp_company_detail_tab {
+  text-decoration: none;
+  color: inherit;
+}
+
+a.cp_company_deal_name_link {
+  font-weight: 600;
+  color: black;
+  text-decoration: none;
+}
+
+a.cp_company_deal_name_link:hover {
+  text-decoration: underline;
+}
+
+a.cp_company_deal_name_link:focus-visible {
+  outline: 2px solid black;
+  outline-offset: 2px;
+}
+
+/* Company members page (route /customers/:id/members) — panel/table use shared .um_panel + .um_table_wrap */
+
+.cp_company_members_page_header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85em;
+  margin-bottom: 1.15em;
+  min-width: 0;
+}
+
+/* Align with shared `um_btn_secondary` (Members / Contacts toolbars) */
+.cp_company_members_back_btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.65em;
+  height: 2.65em;
+  flex-shrink: 0;
+  margin-top: 0.12em;
+  border: 1px solid #e2e8f0;
+  border-radius: 25px;
+  background: #fff;
+  color: #334155;
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.cp_company_members_back_btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.cp_company_members_back_btn:focus-visible {
+  outline: 2px solid black;
+  outline-offset: 2px;
+}
+
+/* Customer company → Members / Deals tabs: same DataTable shell as Contacts */
+.cp_company_tab_panel_inner {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cp_company_tab_toolbar {
+  margin-bottom: 0.85em;
+}
+
+.cp_company_tab_toolbar_hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875em;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.cp_company_tab_toolbar_strong {
+  font-weight: 650;
+  color: #334155;
+}
+
+.cp_company_tab_table_wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Customer company → Members: Deals column must stay visible (counts from API). */
+.cp_company_tab_table_wrap .um_table_members .cp_company_members_deals_th,
+.cp_company_tab_table_wrap .um_table_members .cp_company_members_deals_td {
+  min-width: 4.5em;
+  width: 5.5em;
+  max-width: 6em;
+  text-align: center;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp_company_tab_table_wrap .um_table_members .cp_company_members_deals_value {
+  display: inline-block;
+  min-width: 1.25em;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* No horizontal scroll inside company tab DataTables (members / customers list) */
+.cp_company_tab_table_wrap > .um_table_wrap.data_table_shell {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.cp_company_tab_table_wrap .data_table_scroll_region {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+.cp_company_cell_muted {
+  color: #475569;
+  font-size: 0.9em;
+}
+
+.cp_company_deals_table .cp_company_deal_name_td {
+  width: 26%;
+  max-width: 0;
+  vertical-align: middle;
+}
+
+.cp_company_deals_table .cp_company_deal_name_link {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+  font-weight: 600;
+  color: black;
+}
+
+.cp_company_deals_table .cp_company_deal_name_link:hover {
+  text-decoration: underline;
+}
+
+.cp_company_deals_table .cp_company_deal_meta_td {
+  vertical-align: middle;
+  font-size: 0.9em;
+}
+
+.cp_company_deals_table .cp_company_deal_date_th,
+.cp_company_deals_table .cp_company_deal_date_td {
+  white-space: nowrap;
+  font-size: 0.88em;
+}
+
+.cp_company_deals_table .cp_company_deal_num_th,
+.cp_company_deals_table .cp_company_deal_num_td {
+  width: 5.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.um_members_tab_content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cp_company_members_title_block {
+  min-width: 0;
+  flex: 1;
+}
+
+.cp_company_members_company_title {
+  margin: 0;
+  font-size: clamp(1.25em, 2.5vw, 1.65em);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.cp_company_members_context {
+  margin: 0.3em 0 0;
+  font-size: 0.875em;
+  font-weight: 500;
+  color: #64748b;
 }
 
 .cp_view_shell {
@@ -50,11 +281,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
+  gap: 0.45em;
   margin: 0;
-  padding: 0.5rem 1.05rem;
+  padding: 0.5em 1.05em;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: #fafafa;
   background: #0a0a0a;
@@ -90,18 +321,18 @@
 
 /* Company → Settings tab (org settings layout) */
 .cp_settings_root {
-  padding: 0.15rem 0 0.5rem;
+  padding: 0.15em 0 0.5em;
 }
 
-/* Match field row labels to card radio option text (0.875rem) */
+/* Match field row labels to card radio option text (0.875em) */
 .cp_settings_root .cp_settings_field_label .um_view_field_label {
-  font-size: 0.875rem;
+  font-size: 0.875em;
   line-height: 1.4;
 }
 
 .cp_settings_section {
-  margin-bottom: 0.5rem;
-  padding-bottom: 1.75rem;
+  margin-bottom: 0.5em;
+  padding-bottom: 1.75em;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -112,8 +343,8 @@
 }
 
 .cp_settings_h3 {
-  margin: 0 0 1rem;
-  font-size: 1rem;
+  margin: 0 0 1em;
+  font-size: 1em;
   font-weight: 700;
   color: #0f172a;
   letter-spacing: -0.01em;
@@ -122,7 +353,7 @@
 .cp_settings_h3_with_icon {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5em;
 }
 
 .cp_settings_h3_icon {
@@ -135,26 +366,26 @@
 }
 
 .cp_settings_help_after_heading {
-  margin: 0 0 0.15rem;
+  margin: 0 0 0.15em;
 }
 
 .cp_settings_row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.65rem 1.25rem;
+  gap: 0.65em 1.25em;
   width: 100%;
 }
 
 .cp_settings_row_spaced {
-  margin-top: 1.25rem;
+  margin-top: 1.25em;
 }
 
 /* Logo / background / favicon: stack label + help above controls */
 .cp_settings_row_media_column {
   flex-direction: column;
   align-items: stretch;
-  gap: 0.85rem;
+  gap: 0.85em;
 }
 
 .cp_settings_row_media_column .cp_settings_label_col {
@@ -174,7 +405,7 @@
 .cp_settings_row_vertical {
   flex-direction: column;
   align-items: stretch;
-  gap: 0.85rem;
+  gap: 0.85em;
 }
 
 .cp_settings_row_vertical .cp_settings_label_col {
@@ -195,7 +426,7 @@
 }
 
 .cp_settings_row_media_column .cp_settings_field_head .um_view_field_icon {
-  margin-top: 0.12rem;
+  margin-top: 0.12em;
 }
 
 /* General settings: label + value/input stay on one horizontal line */
@@ -250,7 +481,7 @@
 }
 
 .cp_settings_row:not(.cp_settings_row_general) .cp_settings_field_head .um_view_field_icon {
-  margin-top: 0.12rem;
+  margin-top: 0.12em;
   flex-shrink: 0;
 }
 
@@ -260,7 +491,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.5em;
 }
 
 .cp_settings_control .cp_settings_value_row {
@@ -269,14 +500,14 @@
 
 .cp_settings_value_text {
   display: block;
-  font-size: 0.95rem;
+  font-size: 0.95em;
   font-weight: 500;
   color: #0f172a;
   margin: 0;
 }
 
 .cp_settings_value_mono {
-  font-size: 0.9rem;
+  font-size: 0.9em;
   font-weight: 500;
   color: #0f172a;
   font-family: ui-monospace, monospace;
@@ -286,53 +517,88 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 0.75rem;
+  gap: 0.5em 0.75em;
+}
+
+/* Stack radios / customize under label; Edit actions align on the row */
+.cp_settings_edit_field_block {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+
+.cp_settings_media_edit_row {
+  align-items: flex-start;
 }
 
 .cp_settings_edit_btn {
   margin-top: 0;
 }
 
+/* Company name: readonly pill matches editable styling (value looks the same; field is disabled until Edit). */
+.cp_settings_name_edit_row .cp_settings_pill_input_field:disabled {
+  cursor: default;
+  color: #0f172a;
+  opacity: 1;
+  -webkit-text-fill-color: #0f172a;
+}
+
 .cp_settings_help_in_row {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   color: #64748b;
   line-height: 1.5;
 }
 
 .cp_settings_help_under_label {
-  margin-top: 0.5rem;
+  margin-top: 0.5em;
 }
 
 .cp_settings_text_input {
   flex: 1 1 200px;
   min-width: 0;
   box-sizing: border-box;
-  padding: 0.55rem 1rem;
+  padding: 0.55em 1em;
   border: 1px solid #e2e8f0;
   border-radius: var(--ui-button-border-radius, 25px);
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.95em;
 }
 
-.cp_settings_text_input:focus {
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
-  border-color: #2563eb;
-}
-
-/* Company name: single pill (readonly or edit); no inner box */
-.cp_settings_name_edit_row .cp_settings_pill_input_wrap {
-  flex: 1 1 160px;
+/* Company name: pill styling on the input only */
+.cp_settings_name_edit_row .cp_settings_pill_input_field {
+  flex: 0 1 auto;
+  width: 16em;
+  max-width: 100%;
   min-width: 0;
+  box-sizing: border-box;
+  display: block;
+  min-height: 2.5em;
+  padding: 0.55em 1em;
+  margin: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.95em;
+  font-weight: 500;
+  color: #0f172a;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
 }
 
-.cp_settings_value_pill,
-.cp_settings_pill_input_wrap {
+.cp_settings_value_pill {
   display: flex;
   align-items: center;
-  padding: 0 1rem;
-  min-height: 2.5rem;
+  padding: 0 1em;
+  min-height: 2.5em;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
   background: #fff;
@@ -342,55 +608,21 @@
     box-shadow 0.15s ease;
 }
 
-.cp_settings_pill_input_wrap {
-  gap: 0;
-}
-
-.cp_settings_pill_input_wrap:focus-within {
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
-  border-color: #2563eb;
-}
-
 .cp_settings_value_pill {
   flex: 0 1 auto;
   min-width: 0;
   width: fit-content;
   max-width: 100%;
-  font-size: 0.95rem;
+  font-size: 0.95em;
   font-weight: 500;
   color: #0f172a;
   line-height: 1.4;
   word-break: break-word;
 }
 
-.cp_settings_pill_input_wrap input.cp_settings_pill_input_field,
-.cp_settings_pill_input_field {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #0f172a;
-  border: 0;
-  border-style: none;
-  border-width: 0;
-  border-radius: 0;
-  box-shadow: none;
-  appearance: none;
-  -webkit-appearance: none;
-  outline: none;
-}
-
-.cp_settings_pill_input_field:focus,
-.cp_settings_pill_input_field:focus-visible {
-  outline: none;
-  box-shadow: none;
-  border: 0;
+.cp_settings_name_edit_row .cp_settings_pill_input_field:focus-visible {
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.25);
 }
 
 .cp_settings_pill_input_field::placeholder {
@@ -400,17 +632,17 @@
 /* Pill-shaped controls (match modal value capsules) */
 .cp_settings_input_pill {
   border-radius: 999px;
-  min-height: 2.5rem;
+  min-height: 2.5em;
   box-sizing: border-box;
 }
 
 select.cp_settings_input_pill.um_field_select {
-  padding-left: 1.1rem;
-  padding-right: 2rem;
+  padding-left: 1.1em;
+  padding-right: 2em;
 }
 
 .cp_settings_input_pill_area {
-  border-radius: 1.75rem;
+  border-radius: 1.75em;
 }
 
 .cp_settings_readonly_pill.um_view_field_box {
@@ -422,7 +654,7 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_settings_portal_mono {
   font-family: ui-monospace, monospace;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 500;
 }
 
@@ -442,14 +674,14 @@ select.cp_settings_input_pill.um_field_select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.5em;
   width: 100%;
-  min-height: 2.5rem;
+  min-height: 2.8571429em;
   margin: 0;
-  padding: 0.5rem 0.9rem 0.5rem 1.1rem;
+  padding: 0.5em 0.9em 0.5em 1.1em;
   box-sizing: border-box;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 500;
   color: #0f172a;
   text-align: left;
@@ -464,16 +696,6 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_distribution_select_trigger:hover {
   border-color: #cbd5e1;
-}
-
-.cp_distribution_select_trigger:focus {
-  outline: none;
-}
-
-.cp_distribution_select_trigger:focus-visible {
-  outline: 2px solid #93c5fd;
-  outline-offset: 2px;
-  border-color: #2563eb;
 }
 
 .cp_distribution_select_value {
@@ -501,7 +723,7 @@ select.cp_settings_input_pill.um_field_select {
   right: 0;
   top: calc(100% + 6px);
   z-index: 40;
-  padding: 0.35rem 0;
+  padding: 0.35em 0;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -515,18 +737,18 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_distribution_select_divider {
   height: 1px;
-  margin: 0.25rem 0.65rem;
+  margin: 0.25em 0.65em;
   background: #e2e8f0;
 }
 
 .cp_distribution_select_row {
   display: flex;
   align-items: flex-start;
-  gap: 0.65rem;
+  gap: 0.65em;
   margin: 0;
-  padding: 0.5rem 0.85rem;
+  padding: 0.5em 0.85em;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 500;
   color: #334155;
   line-height: 1.35;
@@ -544,10 +766,10 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_distribution_select_checkbox {
   flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
-  margin: 0.15rem 0 0;
-  accent-color: var(--main-auth-button-color, #2563eb);
+  width: 1em;
+  height: 1em;
+  margin: 0.15em 0 0;
+  accent-color: black;
   cursor: pointer;
 }
 
@@ -557,9 +779,9 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_settings_help {
-  margin: 0 0 0.85rem;
+  margin: 0 0 0.85em;
   max-width: 640px;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   color: #64748b;
   line-height: 1.5;
 }
@@ -567,12 +789,12 @@ select.cp_settings_input_pill.um_field_select {
 .cp_tag_multiselect {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  gap: 0.45em;
   align-items: center;
-  padding: 0.55rem 0.65rem;
+  padding: 0.55em 0.65em;
   border: 1px solid #e2e8f0;
   border-radius: var(--ui-button-border-radius, 25px);
-  min-height: 2.85rem;
+  min-height: 2.85em;
   background: #fafafa;
   width: 100%;
   max-width: 640px;
@@ -582,11 +804,11 @@ select.cp_settings_input_pill.um_field_select {
 .cp_tag_pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.55rem;
+  gap: 0.35em;
+  padding: 0.3em 0.55em;
   border-radius: 999px;
   background: #e2e8f0;
-  font-size: 0.78rem;
+  font-size: 0.78em;
   font-weight: 500;
   color: #334155;
   line-height: 1.25;
@@ -613,14 +835,14 @@ select.cp_settings_input_pill.um_field_select {
   max-width: 440px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 1rem;
+  padding: 1em;
   background: #fff;
 }
 
 .cp_media_preview {
   min-height: 140px;
   border-radius: 10px;
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.85em;
   overflow: hidden;
 }
 
@@ -629,17 +851,17 @@ select.cp_settings_input_pill.um_field_select {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.5em;
   background: linear-gradient(160deg, #f8fafc 0%, #e2e8f0 100%);
   color: #475569;
 }
 
 .cp_media_preview_label {
-  font-size: 0.85rem;
+  font-size: 0.85em;
   font-weight: 600;
   color: #334155;
   text-align: center;
-  padding: 0 0.5rem;
+  padding: 0 0.5em;
 }
 
 .cp_media_preview_bg {
@@ -656,7 +878,7 @@ select.cp_settings_input_pill.um_field_select {
 .cp_media_actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.5em;
 }
 
 .cp_media_actions .um_btn_secondary,
@@ -666,14 +888,14 @@ select.cp_settings_input_pill.um_field_select {
 .cp_settings_control > .um_btn_primary {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.4em;
 }
 
 /* Settings / media: secondary actions as black text, no fill (Edit, Delete, Copy, Upload, Cancel) */
 .cp_media_actions .um_btn_secondary,
 .cp_settings_value_row .um_btn_secondary,
 .cp_settings_control > .um_btn_secondary {
-  padding: 0.4rem 0.75rem;
+  padding: 0.4em 0.75em;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: transparent;
@@ -757,7 +979,7 @@ select.cp_settings_input_pill.um_field_select {
 .cp_email_layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) min(320px, 100%);
-  gap: 1.75rem 2rem;
+  gap: 1.75em 2em;
   align-items: start;
   max-width: 1100px;
 }
@@ -772,8 +994,8 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_email_section {
-  margin-bottom: 1.75rem;
-  padding-bottom: 1.5rem;
+  margin-bottom: 1.75em;
+  padding-bottom: 1.5em;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -784,16 +1006,16 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_email_section_title {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+  margin: 0 0 0.5em;
+  font-size: 1em;
   font-weight: 700;
   color: #0f172a;
 }
 
 .cp_email_section_desc {
-  margin: 0 0 0.85rem;
-  max-width: 42rem;
-  font-size: 0.875rem;
+  margin: 0 0 0.85em;
+  max-width: 42em;
+  font-size: 0.875em;
   color: #64748b;
   line-height: 1.55;
 }
@@ -802,11 +1024,11 @@ select.cp_settings_input_pill.um_field_select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.4em;
   margin: 0;
-  padding: 0.5rem 1rem;
+  padding: 0.5em 1em;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: #0f172a;
   background: transparent;
@@ -831,16 +1053,16 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_email_btn_sm {
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8125rem;
+  padding: 0.4em 0.75em;
+  font-size: 0.8125em;
 }
 
 .cp_email_row {
   display: grid;
   grid-template-columns: minmax(0, 220px) 1fr;
-  gap: 0.75rem 1.5rem;
+  gap: 0.75em 1.5em;
   align-items: start;
-  padding: 1rem 0;
+  padding: 1em 0;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -849,14 +1071,14 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_email_row_editor {
-  padding-top: 0.5rem;
+  padding-top: 0.5em;
 }
 
 .cp_email_row_label {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.875rem;
+  gap: 0.35em;
+  font-size: 0.875em;
   font-weight: 600;
   color: #334155;
 }
@@ -865,8 +1087,8 @@ select.cp_settings_input_pill.um_field_select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.25em;
+  height: 1.25em;
   padding: 0;
   border: none;
   border-radius: 999px;
@@ -884,7 +1106,7 @@ select.cp_settings_input_pill.um_field_select {
 .cp_email_row_actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.5em;
   align-items: center;
 }
 
@@ -894,7 +1116,7 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_email_muted_line {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   color: #64748b;
   line-height: 1.5;
 }
@@ -919,8 +1141,8 @@ select.cp_settings_input_pill.um_field_select {
 .cp_email_address_row {
   display: grid;
   grid-template-columns: minmax(0, 220px) 1fr;
-  gap: 0.75rem 1.5rem;
-  padding: 1rem 0;
+  gap: 0.75em 1.5em;
+  padding: 1em 0;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -932,15 +1154,15 @@ select.cp_settings_input_pill.um_field_select {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.65rem;
+  gap: 0.65em;
   min-width: 0;
 }
 
 .cp_email_address_value {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  font-size: 0.9375rem;
+  gap: 0.45em;
+  font-size: 0.9375em;
   font-weight: 500;
   color: #0f172a;
   word-break: break-all;
@@ -953,7 +1175,7 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_email_test_hint {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   color: #64748b;
   line-height: 1.5;
 }
@@ -962,8 +1184,8 @@ select.cp_settings_input_pill.um_field_select {
   width: 100%;
   max-width: 320px;
   box-sizing: border-box;
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  padding: 0.5em 2em 0.5em 0.75em;
+  font-size: 0.875em;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background-color: #fff;
@@ -981,15 +1203,15 @@ select.cp_settings_input_pill.um_field_select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
+  gap: 0.5em;
+  padding: 0.65em 1em;
   background: #f8fafc;
   border-bottom: 1px solid #e5e7eb;
   color: #0f172a;
 }
 
 .cp_email_checklist_title {
-  font-size: 0.9375rem;
+  font-size: 0.9375em;
   font-weight: 700;
   color: #0f172a;
 }
@@ -998,8 +1220,8 @@ select.cp_settings_input_pill.um_field_select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.75em;
+  height: 1.75em;
   padding: 0;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
@@ -1014,18 +1236,18 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_email_checklist_body {
-  padding: 1rem 1rem 1.1rem;
+  padding: 1em 1em 1.1em;
 }
 
 .cp_email_checklist_intro {
-  margin: 0 0 0.85rem;
-  font-size: 0.8125rem;
+  margin: 0 0 0.85em;
+  font-size: 0.8125em;
   color: #475569;
   line-height: 1.5;
 }
 
 .cp_email_checklist_list {
-  margin: 0 0 1rem;
+  margin: 0 0 1em;
   padding: 0;
   list-style: none;
 }
@@ -1033,8 +1255,8 @@ select.cp_settings_input_pill.um_field_select {
 .cp_email_checklist_item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
+  gap: 0.5em;
+  font-size: 0.8125em;
   color: #334155;
   flex-wrap: wrap;
 }
@@ -1043,8 +1265,8 @@ select.cp_settings_input_pill.um_field_select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.25em;
+  height: 1.25em;
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -1057,7 +1279,7 @@ select.cp_settings_input_pill.um_field_select {
 .cp_email_progress {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.35em;
 }
 
 .cp_email_progress_track {
@@ -1075,7 +1297,7 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_email_progress_label {
-  font-size: 0.75rem;
+  font-size: 0.75em;
   font-weight: 600;
   color: #64748b;
 }
@@ -1097,9 +1319,9 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_contact_intro {
-  margin: 0 0 1.25rem;
-  max-width: 48rem;
-  font-size: 0.875rem;
+  margin: 0 0 1.25em;
+  max-width: 48em;
+  font-size: 0.875em;
   color: #64748b;
   line-height: 1.55;
 }
@@ -1109,29 +1331,23 @@ select.cp_settings_input_pill.um_field_select {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem 1rem;
-  margin-bottom: 1rem;
+  gap: 0.75em 1em;
+  margin-bottom: 1em;
 }
 
 .cp_contact_search_pill {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5em;
   flex: 1 1 200px;
   max-width: 380px;
-  min-height: 2.5rem;
-  padding: 0 1rem;
+  min-height: 2.5em;
+  padding: 0 1em;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
   background: #fff;
   box-sizing: border-box;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.cp_contact_search_pill:focus-within {
-  border-color: #2563eb;
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
 }
 
 .cp_contact_search_icon {
@@ -1144,15 +1360,11 @@ select.cp_settings_input_pill.um_field_select {
   min-width: 0;
   border: none;
   margin: 0;
-  padding: 0.35rem 0;
+  padding: 0.35em 0;
   background: transparent;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   color: #0f172a;
-}
-
-.cp_contact_search_input:focus {
-  outline: none;
 }
 
 .cp_contact_search_input::placeholder {
@@ -1164,9 +1376,9 @@ select.cp_settings_input_pill.um_field_select {
   align-items: center;
   justify-content: center;
   margin: 0;
-  padding: 0.5rem 0.85rem;
+  padding: 0.5em 0.85em;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: #0f172a;
   background: transparent;
@@ -1192,7 +1404,7 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_contact_table_wrap {
-  margin-top: 0.25rem;
+  margin-top: 0.25em;
 }
 
 .cp_contact_table thead th {
@@ -1204,7 +1416,7 @@ select.cp_settings_input_pill.um_field_select {
 .cp_contact_th_inner {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.35em;
   flex-wrap: wrap;
 }
 
@@ -1218,8 +1430,8 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_contact_empty_cell {
   text-align: center;
-  padding: 2rem 1rem !important;
-  font-size: 0.875rem;
+  padding: 2em 1em !important;
+  font-size: 0.875em;
   color: #64748b;
   vertical-align: middle;
 }
@@ -1227,12 +1439,12 @@ select.cp_settings_input_pill.um_field_select {
 /* —— Company → Offerings page tab —— */
 .cp_offerings_root {
   max-width: 1100px;
-  padding: 0.15rem 0 0.5rem;
+  padding: 0.15em 0 0.5em;
 }
 
 .cp_offerings_section {
-  margin-bottom: 1.75rem;
-  padding-bottom: 1.5rem;
+  margin-bottom: 1.75em;
+  padding-bottom: 1.5em;
   border-bottom: 1px solid #e5e7eb;
 }
 
@@ -1243,8 +1455,8 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_offerings_section_title {
-  margin: 0 0 1rem;
-  font-size: 1rem;
+  margin: 0 0 1em;
+  font-size: 1em;
   font-weight: 700;
   color: #0f172a;
 }
@@ -1253,8 +1465,8 @@ select.cp_settings_input_pill.um_field_select {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.65rem 1.25rem;
-  margin-bottom: 1.15rem;
+  gap: 0.65em 1.25em;
+  margin-bottom: 1.15em;
 }
 
 .cp_offerings_field_row_disclaimer {
@@ -1267,10 +1479,10 @@ select.cp_settings_input_pill.um_field_select {
   min-width: 160px;
   max-width: 240px;
   box-sizing: border-box;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: #475569;
-  padding-top: 0.4rem;
+  padding-top: 0.4em;
   line-height: 1.4;
 }
 
@@ -1282,20 +1494,20 @@ select.cp_settings_input_pill.um_field_select {
 .cp_offerings_link_block {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.65em;
   max-width: 100%;
 }
 
 .cp_offerings_url_box {
   box-sizing: border-box;
   width: 100%;
-  max-width: 42rem;
-  padding: 0.55rem 0.85rem;
+  max-width: 42em;
+  padding: 0.55em 0.85em;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
   font-family: ui-monospace, monospace;
-  font-size: 0.8125rem;
+  font-size: 0.8125em;
   font-weight: 500;
   color: #334155;
   word-break: break-all;
@@ -1305,18 +1517,18 @@ select.cp_settings_input_pill.um_field_select {
 .cp_offerings_link_actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.5em;
 }
 
 .cp_offerings_btn_outline {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.4em;
   margin: 0;
-  padding: 0.5rem 1rem;
+  padding: 0.5em 1em;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 600;
   color: #0f172a;
   background: transparent;
@@ -1338,21 +1550,21 @@ select.cp_settings_input_pill.um_field_select {
 .cp_offerings_visibility {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem 1.5rem;
+  gap: 1em 1.5em;
   align-items: center;
 }
 
 .cp_offerings_radio_option {
   display: inline-flex;
   align-items: center;
-  gap: var(--cp-radio-label-gap, 0.75rem);
+  gap: var(--cp-radio-label-gap, 0.75em);
   box-sizing: border-box;
-  padding: 0.5rem 1rem;
+  padding: 0.5em 1em;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
   background: #fff;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   font-weight: 500;
   line-height: 1.4;
   color: #334155;
@@ -1414,35 +1626,20 @@ select.cp_settings_input_pill.um_field_select {
   background: #0f172a;
 }
 
-.cp_offerings_radio_option:focus-within {
-  outline: 2px solid color-mix(in srgb, #0f172a 35%, transparent);
-  outline-offset: 2px;
-}
-
-.cp_offerings_radio_option:focus-within .cp_offerings_radio_face {
-  outline: none;
-}
-
 .cp_offerings_disclaimer {
   box-sizing: border-box;
   width: 100%;
-  max-width: 42rem;
-  min-height: 7.5rem;
+  max-width: 42em;
+  min-height: 7.5em;
   margin: 0;
-  padding: 0.65rem 0.85rem;
+  padding: 0.65em 0.85em;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   line-height: 1.5;
   color: #0f172a;
-  resize: vertical;
-}
-
-.cp_offerings_disclaimer:focus {
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
-  border-color: #2563eb;
+  resize: none;
 }
 
 .cp_offerings_disclaimer::placeholder {
@@ -1454,8 +1651,8 @@ select.cp_settings_input_pill.um_field_select {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem 1rem;
-  margin-bottom: 0.85rem;
+  gap: 0.75em 1em;
+  margin-bottom: 0.85em;
 }
 
 .cp_offerings_table_section_head .cp_offerings_section_title {
@@ -1463,18 +1660,18 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_offerings_alert {
-  margin-bottom: 1rem;
-  padding: 0.65rem 1rem;
+  margin-bottom: 1em;
+  padding: 0.65em 1em;
   border: 1px solid #fde047;
   border-radius: 8px;
   background: #fef9c3;
   color: #854d0e;
-  font-size: 0.875rem;
+  font-size: 0.875em;
   line-height: 1.5;
 }
 
 .cp_offerings_table_wrap {
-  margin-top: 0.25rem;
+  margin-top: 0.25em;
 }
 
 .cp_offerings_table thead th {
@@ -1484,17 +1681,17 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_offerings_th_drag {
-  width: 2.25rem;
-  padding-left: 0.5rem !important;
-  padding-right: 0.25rem !important;
+  width: 2.25em;
+  padding-left: 0.5em !important;
+  padding-right: 0.25em !important;
 }
 
 .cp_offerings_td_drag {
-  width: 2.25rem;
+  width: 2.25em;
   vertical-align: middle;
   text-align: center;
-  padding-left: 0.35rem !important;
-  padding-right: 0.25rem !important;
+  padding-left: 0.35em !important;
+  padding-right: 0.25em !important;
 }
 
 .cp_offerings_drag {
@@ -1515,7 +1712,7 @@ select.cp_settings_input_pill.um_field_select {
   font: inherit;
   font-size: inherit;
   font-weight: 500;
-  color: var(--main-auth-button-color, #2563eb);
+  color: black;
   text-align: left;
   cursor: pointer;
   text-decoration: none;
@@ -1530,7 +1727,7 @@ select.cp_settings_input_pill.um_field_select {
   align-items: center;
   justify-content: center;
   margin: 0;
-  padding: 0.35rem;
+  padding: 0.35em;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: transparent;
@@ -1564,3 +1761,4 @@ select.cp_settings_input_pill.um_field_select {
     width: 100%;
   }
 }
+

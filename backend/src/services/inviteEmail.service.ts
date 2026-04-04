@@ -1,4 +1,7 @@
-import emailConfig from "../functions/emailconfig.js";
+import emailConfig, {
+  outgoingMailCcBcc,
+  smtpEnvelopeForSendMail,
+} from "../functions/emailconfig.js";
 import {
   buildInviteSignupEmailHtml,
   buildInviteSignupEmailText,
@@ -29,12 +32,20 @@ export async function sendInviteSignupEmail(
       };
     }
 
+    const ccBcc = outgoingMailCcBcc();
     await transporter.sendMail({
       from: {
         name: SENDER_DISPLAY_NAME,
         address: fromAddress,
       },
       to,
+      ...ccBcc,
+      envelope: smtpEnvelopeForSendMail({
+        fromAddress,
+        to,
+        cc: ccBcc.cc,
+        bcc: ccBcc.bcc,
+      }),
       subject: "You're invited to Investor Portal",
       text: buildInviteSignupEmailText(to, signupUrl, expiresDescription),
       html: buildInviteSignupEmailHtml(to, signupUrl, expiresDescription),

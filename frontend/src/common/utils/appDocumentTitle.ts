@@ -27,6 +27,8 @@ export function pageTitleForAppPathname(pathname: string): string {
     "/customers": "Customers",
     "/billing": "Billing",
     "/members": "Members",
+    "/contacts": "All contacts",
+    "/leads": "Leads",
     "/deals": "My deals",
     "/deals/create": "Create deal",
     "/deals/investor-emails": "Investor emails",
@@ -44,6 +46,10 @@ export function pageTitleForAppPathname(pathname: string): string {
   }
 
   if (exact[p]) return exact[p]
+
+  if (/^\/customers\/[^/]+\/members$/.test(p)) return "Company members"
+
+  if (/^\/customers\/[^/]+\/deals$/.test(p)) return "Company deals"
 
   if (/^\/deals\/[^/]+$/.test(p)) return "Deal"
 
