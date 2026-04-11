@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
@@ -37,6 +38,11 @@ export interface FormTooltipProps {
    * Use for table header info icons where hover feels redundant next to click.
    */
   openOnHover?: boolean
+  /**
+   * When false, the trigger is a `<span role="button">` instead of `<button>`.
+   * Use inside another `<button>` (e.g. sortable DataTable headers) — nested buttons are invalid HTML.
+   */
+  nativeButtonTrigger?: boolean
 }
 
 const LEAVE_MS = 180
@@ -92,6 +98,7 @@ export function FormTooltip({
   triggerMode = "icon",
   children,
   openOnHover = true,
+  nativeButtonTrigger = true,
 }: FormTooltipProps) {
   const tooltipId = useId()
   const rootRef = useRef<HTMLSpanElement>(null)
@@ -167,11 +174,11 @@ export function FormTooltip({
 
   useEffect(() => {
     if (!open) return
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false)
+    function onWindowKeyDown(ev: globalThis.KeyboardEvent) {
+      if (ev.key === "Escape") setOpen(false)
     }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
+    window.addEventListener("keydown", onWindowKeyDown)
+    return () => window.removeEventListener("keydown", onWindowKeyDown)
   }, [open])
 
   useEffect(() => {
@@ -190,6 +197,19 @@ export function FormTooltip({
     clearLeaveTimer()
     setOpen((v) => !v)
   }
+
+  function handleTriggerKeyDown(e: KeyboardEvent) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      handleTriggerClick()
+    }
+  }
+
+  const triggerAria = {
+    "aria-label": label,
+    "aria-expanded": open,
+    "aria-describedby": open ? tooltipId : undefined,
+  } as const
 
   function handleRootMouseLeave(e: React.MouseEvent) {
     const rel = e.relatedTarget as Node | null
@@ -231,27 +251,47 @@ export function FormTooltip({
       onMouseLeave={handleRootMouseLeave}
     >
       {triggerMode === "inline" ? (
-        <button
-          type="button"
-          className="form_tooltip_trigger_inline"
-          aria-label={label}
-          aria-expanded={open}
-          aria-describedby={open ? tooltipId : undefined}
-          onClick={handleTriggerClick}
-        >
-          {children}
-        </button>
-      ) : (
+        nativeButtonTrigger ? (
+          <button
+            type="button"
+            className="form_tooltip_trigger_inline"
+            {...triggerAria}
+            onClick={handleTriggerClick}
+          >
+            {children}
+          </button>
+        ) : (
+          <span
+            role="button"
+            tabIndex={0}
+            className="form_tooltip_trigger_inline"
+            {...triggerAria}
+            onClick={handleTriggerClick}
+            onKeyDown={handleTriggerKeyDown}
+          >
+            {children}
+          </span>
+        )
+      ) : nativeButtonTrigger ? (
         <button
           type="button"
           className="form_tooltip_trigger"
-          aria-label={label}
-          aria-expanded={open}
-          aria-describedby={open ? tooltipId : undefined}
+          {...triggerAria}
           onClick={handleTriggerClick}
         >
           <Info size={16} strokeWidth={2} aria-hidden />
         </button>
+      ) : (
+        <span
+          role="button"
+          tabIndex={0}
+          className="form_tooltip_trigger"
+          {...triggerAria}
+          onClick={handleTriggerClick}
+          onKeyDown={handleTriggerKeyDown}
+        >
+          <Info size={16} strokeWidth={2} aria-hidden />
+        </span>
       )}
       {open ? createPortal(panelInner, document.body) : null}
     </span>

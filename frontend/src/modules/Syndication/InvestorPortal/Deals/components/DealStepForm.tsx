@@ -12,7 +12,13 @@ import {
   type YesNo,
 } from "../types/deals.types"
 import { FieldInfoHeading } from "./FieldInfoHeading"
+import { DealsCreateDropdownSelect } from "./DealsCreateDropdownSelect"
 import "./deal-step-form.css"
+
+const DEAL_TYPE_DROPDOWN_OPTIONS = [
+  { value: "", label: "Select type…" },
+  ...DEAL_FORM_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+]
 
 interface DealStepFormProps {
   draft: DealStepDraft
@@ -34,6 +40,7 @@ function YesNoRadios({
   onChange,
   error,
   noIsCommon,
+  yesIsCommon,
   required: isRequired,
 }: {
   name: string
@@ -44,6 +51,7 @@ function YesNoRadios({
   onChange: (v: YesNo) => void
   error?: string
   noIsCommon?: boolean
+  yesIsCommon?: boolean
   required?: boolean
 }) {
   return (
@@ -69,8 +77,11 @@ function YesNoRadios({
             />
             <span>
               {v === "yes" ? "Yes" : "No"}
+              {v === "yes" && yesIsCommon ? (
+                <span className="deal_step_yesno_common"> (Standard)</span>
+              ) : null}
               {v === "no" && noIsCommon ? (
-                <span className="deal_step_yesno_common"> (most common)</span>
+                <span className="deal_step_yesno_common"> (Standard)</span>
               ) : null}
             </span>
           </label>
@@ -92,34 +103,32 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
       className="deals_create_card"
       aria-labelledby="create-step-deal"
     >
-      <h2 id="create-step-deal" className="deals_create_section_title">
+      <h2 id="create-step-deal" className="deals_create_section_title deals_create_step_card_title">
         Deal
       </h2>
       <div className="deals_create_fields deal_step_grid">
-        <label className="deals_create_label">
-          <span className="form_label_toolbar">
-            <span className="form_label_inline_row">
-              <span>Deal name</span>
-              <MandatoryFieldMark />
-            </span>
-            <FormTooltip
-              label="About deal name"
-              content={
-                <p>
-                  The name shown to your team and investors for this deal. You
-                  can change it later where allowed.
-                </p>
-              }
-            />
-          </span>
+        <div className="deals_create_label_full deal_step_owning_block">
+          <FieldInfoHeading
+            titleId="deal-name-heading"
+            label="Deal name"
+            required
+            infoContent={
+              <p>
+                The name shown to your team and investors for this deal. You
+                can change it later where allowed.
+              </p>
+            }
+          />
           <input
+            id="deal-name-input"
             className="deals_create_input"
             value={draft.dealName}
             onChange={(e) => onChange({ dealName: e.target.value })}
+            aria-labelledby="deal-name-heading"
             aria-invalid={Boolean(errors.dealName)}
           />
           <FieldError message={errors.dealName} />
-        </label>
+        </div>
 
         <div className="deals_create_label deal_step_deal_type_wrap">
           <div className="deal_step_deal_type_label_row">
@@ -136,19 +145,13 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
               }
             />
           </div>
-          <select
+          <DealsCreateDropdownSelect
             id="deal-type-select"
-            className="deals_create_select"
+            options={DEAL_TYPE_DROPDOWN_OPTIONS}
             value={draft.dealType}
-            onChange={(e) => onChange({ dealType: e.target.value })}
-          >
-            <option value="">Select type…</option>
-            {DEAL_FORM_TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onChange({ dealType: v })}
+            placeholder="Select type…"
+          />
         </div>
 
         <fieldset className="deal_step_fieldset deals_create_label_full">
@@ -206,18 +209,13 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
               }
             />
           </span>
-          <select
-            className="deals_create_select"
+          <DealsCreateDropdownSelect
+            options={[...SEC_TYPE_OPTIONS]}
             value={draft.secType}
-            onChange={(e) => onChange({ secType: e.target.value })}
-            aria-invalid={Boolean(errors.secType)}
-          >
-            {SEC_TYPE_OPTIONS.map((o) => (
-              <option key={o.value || "empty"} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onChange({ secType: v })}
+            placeholder="Select SEC type…"
+            invalid={Boolean(errors.secType)}
+          />
           <FieldError message={errors.secType} />
         </label>
 
@@ -305,7 +303,7 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
             value={draft.autoFundingAfterGpCountersigns}
             onChange={(v) => onChange({ autoFundingAfterGpCountersigns: v })}
             error={errors.autoFundingAfterGpCountersigns}
-            noIsCommon
+            yesIsCommon
           />
         </div>
       </div>

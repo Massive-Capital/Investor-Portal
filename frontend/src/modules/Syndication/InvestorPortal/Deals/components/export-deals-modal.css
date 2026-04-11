@@ -78,7 +78,8 @@
   padding: 0 2.5066667em 0 0.8em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.9375em;
   background: var(--portal-surface);
   color: var(--portal-text);
@@ -205,7 +206,8 @@
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
   background: var(--portal-surface);
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: var(--portal-text);
@@ -221,7 +223,8 @@
   border: none;
   border-radius: var(--portal-pill-radius);
   background: var(--portal-primary);
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: #fff;

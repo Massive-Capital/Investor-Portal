@@ -1,0 +1,80 @@
+/* Deal Members tab shell — table chrome comes from deal-investors-tab.css + user_management.css (same as Investors tab). */
+/* Narrow Sl. no. column */
+.deal_inv_table_panel .deal_members_th_sl,
+.deal_inv_table_panel .deal_members_td_sl {
+  width: 2.75rem;
+  max-width: 3.25rem;
+  min-width: 2.5rem;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+  box-sizing: border-box;
+}
+
+/* Deal Members: single User column (avatar + name + email) matches Members page */
+.deal_inv_td_user_cell {
+  min-width: 220px;
+  vertical-align: middle;
+}
+
+.deal_member_user_name_row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.deal_member_user_name_row .um_user_meta_username {
+  min-width: 0;
+}
+
+.deal_members_tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25em;
+  min-width: 0;
+}
+
+/* Add Member: right-aligned; drop global .um_header_row bottom margin (spacing uses .deal_members_tab gap) */
+.deal_members_tab .deal_members_header_row.um_header_row {
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+
+/* Investors tab uses the same shell spacing as Deal Members when both classes apply */
+.deal_inv_populated.deal_members_tab {
+  gap: 1.25em;
+}
+
+.deal_members_actions_cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.deal_members_action_icon_btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--um-border-subtle, #d8dee8);
+  border-radius: 6px;
+  background: var(--um-surface-raised, #fff);
+  color: var(--um-text-muted, #3d4a5c);
+  cursor: pointer;
+}
+
+.deal_members_action_icon_btn:hover {
+  background: var(--um-surface-hover, #f0f4f9);
+  color: var(--um-text, #1a2332);
+}
+
+.deal_members_action_icon_btn:focus-visible {
+  outline: 2px solid var(--um-focus-ring, #2563eb);
+  outline-offset: 1px;
+}

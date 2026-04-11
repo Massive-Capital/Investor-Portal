@@ -8,28 +8,32 @@ import {
   PenLine,
   Phone,
   Save,
+  Search,
   Tag,
   User,
   Users,
   X,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import {
   useCallback,
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
   type FormEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type RefObject,
   type SetStateAction,
 } from "react"
 import { fetchMyProfile } from "../../myaccount/accountApi"
 import { getSessionUserDisplayName } from "../../../common/auth/sessionUserDisplayName"
 import type { ContactRow } from "../types/contact.types"
-import "../../Syndication/InvestorPortal/Deals/components/add-investment-modal.css"
+import "../../Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_modal.css"
 import "../../usermanagement/user_management.css"
 import "../contacts.css"
 
@@ -46,7 +50,15 @@ type AddContactPanelProps = {
   ) => void | Promise<void>
   /** Contacts visible for this company (same list as the table); used to enforce unique email and phone within the company before save. */
   existingContacts?: ContactRow[]
+  /**
+   * Tag / list names from the Tags & Lists tabs (including unused catalog entries).
+   * Merged into searchable dropdowns so pre-created labels appear when searching.
+   */
+  catalogTagNames?: string[] | undefined
+  catalogListNames?: string[] | undefined
 }
+
+const NO_CATALOG_NAMES: string[] = []
 
 function defaultOwnerChips(): string[] {
   const n = getSessionUserDisplayName().trim()
@@ -71,6 +83,51 @@ function normalizePhoneDigits(s: string): string {
 
 function normalizeEmailForCompare(s: string): string {
   return String(s).trim().toLowerCase()
+}
+
+/** ASCII-oriented check suitable for CRM sign-up style addresses (not full RFC 5322). */
+function isValidEmailFormat(raw: string): boolean {
+  const s = raw.trim()
+  if (!s) return false
+  if (s.length > 254) return false
+  const parts = s.split("@")
+  if (parts.length !== 2) return false
+  const [local, domain] = parts
+  if (!local || local.length > 64 || !domain || domain.length > 253) return false
+  if (domain.startsWith(".") || domain.endsWith(".") || domain.includes("..")) {
+    return false
+  }
+  if (!domain.includes(".")) return false
+  if (
+    !/^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~.-]+$/.test(local) ||
+    local.startsWith(".") ||
+    local.endsWith(".") ||
+    local.includes("..")
+  ) {
+    return false
+  }
+  const labels = domain.split(".")
+  for (const label of labels) {
+    if (
+      !label ||
+      label.length > 63 ||
+      !/^[a-zA-Z0-9-]+$/.test(label) ||
+      label.startsWith("-") ||
+      label.endsWith("-")
+    ) {
+      return false
+    }
+  }
+  const tld = labels[labels.length - 1] ?? ""
+  return tld.length >= 2 && /[a-zA-Z]/.test(tld)
+}
+
+/** When phone is left blank it is valid; otherwise require E.164-style digit count (7–15). */
+function isValidOptionalPhone(raw: string): boolean {
+  const trimmed = String(raw).trim()
+  if (!trimmed) return true
+  const digits = normalizePhoneDigits(raw)
+  return digits.length >= 7 && digits.length <= 15
 }
 
 function ChipRow({
@@ -108,6 +165,225 @@ function ChipRow({
   )
 }
 
+function mergeUniqueStringsFromContacts(
+  existingContacts: ContactRow[],
+  field: "tags" | "lists",
+  currentSelection: string[],
+): string[] {
+  const byLower = new Map<string, string>()
+  for (const c of existingContacts) {
+    for (const raw of c[field]) {
+      const t = raw.trim()
+      if (!t) continue
+      const lk = t.toLowerCase()
+      if (!byLower.has(lk)) byLower.set(lk, t)
+    }
+  }
+  for (const raw of currentSelection) {
+    const t = raw.trim()
+    if (!t) continue
+    const lk = t.toLowerCase()
+    if (!byLower.has(lk)) byLower.set(lk, t)
+  }
+  return Array.from(byLower.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  )
+}
+
+/** Union of catalog names and contact-derived pool (deduped by case-insensitive key). */
+function mergeCatalogIntoOptionPool(
+  fromContacts: string[],
+  catalogNames: string[],
+): string[] {
+  const byLower = new Map<string, string>()
+  for (const raw of catalogNames) {
+    const t = raw.trim()
+    if (!t) continue
+    const lk = t.toLowerCase()
+    if (!byLower.has(lk)) byLower.set(lk, t)
+  }
+  for (const raw of fromContacts) {
+    const t = raw.trim()
+    if (!t) continue
+    const lk = t.toLowerCase()
+    if (!byLower.has(lk)) byLower.set(lk, t)
+  }
+  return Array.from(byLower.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  )
+}
+
+type SearchableMultiSelectFieldProps = {
+  label: string
+  Icon: LucideIcon
+  inputId: string
+  listboxId: string
+  selected: string[]
+  onToggle: (canonicalValue: string) => void
+  onAddUnique: (value: string) => void
+  options: string[]
+  search: string
+  onSearchChange: (s: string) => void
+  open: boolean
+  onOpenChange: (next: boolean) => void
+  fieldRef: RefObject<HTMLDivElement | null>
+  placeholder: string
+  emptyHint: string
+  onFocusOpen: () => void
+}
+
+function SearchableMultiSelectField({
+  label,
+  Icon,
+  inputId,
+  listboxId,
+  selected,
+  onToggle,
+  onAddUnique,
+  options,
+  search,
+  onSearchChange,
+  open,
+  onOpenChange,
+  fieldRef,
+  placeholder,
+  emptyHint,
+  onFocusOpen,
+}: SearchableMultiSelectFieldProps) {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return options
+    return options.filter((o) => o.toLowerCase().includes(q))
+  }, [options, search])
+
+  const qTrim = search.trim()
+  const exactInPool = options.some((o) => o.toLowerCase() === qTrim.toLowerCase())
+  const showCreate = qTrim.length > 0 && !exactInPool
+
+  useEffect(() => {
+    if (!open) return
+    function onPtr(e: PointerEvent) {
+      const el = fieldRef.current
+      if (!el || !(e.target instanceof Node) || el.contains(e.target)) return
+      onOpenChange(false)
+    }
+    document.addEventListener("pointerdown", onPtr, true)
+    return () => document.removeEventListener("pointerdown", onPtr, true)
+  }, [open, onOpenChange, fieldRef])
+
+  function itemSelected(name: string) {
+    return selected.some((t) => t.toLowerCase() === name.toLowerCase())
+  }
+
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      if (!qTrim) return
+      if (showCreate) {
+        onAddUnique(qTrim)
+        onSearchChange("")
+        return
+      }
+      const exact = options.find((o) => o.toLowerCase() === qTrim.toLowerCase())
+      onAddUnique(exact ?? qTrim)
+      onSearchChange("")
+    }
+    if (e.key === "Escape") {
+      e.preventDefault()
+      onOpenChange(false)
+    }
+  }
+
+  return (
+    <div className="um_field add_contact_multiselect_field" ref={fieldRef}>
+      <label htmlFor={inputId} className="um_field_label_row">
+        <Icon className="um_field_label_icon" size={17} strokeWidth={2} aria-hidden />
+        <span>{label}</span>
+      </label>
+      <ChipRow
+        items={selected}
+        onRemove={(i) => onToggle(selected[i] ?? "")}
+        ariaLabel={`Selected ${label.toLowerCase()}`}
+      />
+      <div className="add_contact_multiselect_control">
+        <Search
+          className="add_contact_multiselect_search_icon"
+          size={18}
+          strokeWidth={2}
+          aria-hidden
+        />
+        <input
+          id={inputId}
+          type="search"
+          className="add_contact_multiselect_search_input deals_add_inv_input"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          placeholder={placeholder}
+          value={search}
+          onChange={(e) => {
+            onSearchChange(e.target.value)
+            onOpenChange(true)
+          }}
+          onFocus={() => {
+            onFocusOpen()
+            onOpenChange(true)
+          }}
+          onKeyDown={handleSearchKeyDown}
+          autoComplete="off"
+        />
+      </div>
+      {open ? (
+        <div
+          id={listboxId}
+          className="add_contact_multiselect_panel"
+          role="listbox"
+          aria-label={label}
+          aria-multiselectable="true"
+        >
+          {showCreate ? (
+            <button
+              type="button"
+              className="add_contact_multiselect_create"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onAddUnique(qTrim)
+                onSearchChange("")
+              }}
+            >
+              Create &quot;{qTrim}&quot;
+            </button>
+          ) : null}
+          {filtered.length === 0 && !showCreate ? (
+            <p className="add_contact_multiselect_empty">{emptyHint}</p>
+          ) : null}
+          {filtered.map((opt) => {
+            const checked = itemSelected(opt)
+            return (
+              <label
+                key={opt}
+                className="add_contact_multiselect_row"
+                id="list_tag"
+                role="option"
+                aria-selected={checked}
+              >
+                <input
+                  type="checkbox"
+                  className="add_contact_multiselect_checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(opt)}
+                />
+                <span className="add_contact_multiselect_row_label">{opt}</span>
+              </label>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function AddContactPanel({
   open,
   onClose,
@@ -115,8 +391,16 @@ export function AddContactPanel({
   contactToEdit = null,
   onUpdate,
   existingContacts = [],
+  catalogTagNames,
+  catalogListNames,
 }: AddContactPanelProps) {
+  const catalogTagPool = catalogTagNames ?? NO_CATALOG_NAMES
+  const catalogListPool = catalogListNames ?? NO_CATALOG_NAMES
   const titleId = useId()
+  const tagListboxId = useId()
+  const listListboxId = useId()
+  const tagFieldRef = useRef<HTMLDivElement>(null)
+  const listFieldRef = useRef<HTMLDivElement>(null)
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
@@ -127,6 +411,8 @@ export function AddContactPanel({
   const [owners, setOwners] = useState<string[]>(() => defaultOwnerChips())
   const [tagInput, setTagInput] = useState("")
   const [listInput, setListInput] = useState("")
+  const [tagPickerOpen, setTagPickerOpen] = useState(false)
+  const [listPickerOpen, setListPickerOpen] = useState(false)
   const [ownerInput, setOwnerInput] = useState("")
   const ownerComboboxRef = useRef<HTMLInputElement>(null)
   const [editReason, setEditReason] = useState("")
@@ -152,6 +438,8 @@ export function AddContactPanel({
     setOwners([])
     setTagInput("")
     setListInput("")
+    setTagPickerOpen(false)
+    setListPickerOpen(false)
     setOwnerInput("")
     setEditReason("")
     setFieldError({})
@@ -171,7 +459,7 @@ export function AddContactPanel({
       setFirstName(contactToEdit.firstName)
       setLastName(contactToEdit.lastName)
       setEmail(contactToEdit.email)
-      setPhone(contactToEdit.phone)
+      setPhone(normalizePhoneDigits(contactToEdit.phone))
       setNote(contactToEdit.note)
       setTags([...contactToEdit.tags])
       setLists([...contactToEdit.lists])
@@ -182,6 +470,8 @@ export function AddContactPanel({
       )
       setTagInput("")
       setListInput("")
+      setTagPickerOpen(false)
+      setListPickerOpen(false)
       setOwnerInput("")
       setEditReason("")
       setFieldError({})
@@ -208,6 +498,44 @@ export function AddContactPanel({
       cancelled = true
     }
   }, [open, contactToEdit])
+
+  const tagOptionPool = useMemo(
+    () =>
+      mergeCatalogIntoOptionPool(
+        mergeUniqueStringsFromContacts(existingContacts, "tags", tags),
+        catalogTagPool,
+      ),
+    [existingContacts, tags, catalogTagPool],
+  )
+
+  const listOptionPool = useMemo(
+    () =>
+      mergeCatalogIntoOptionPool(
+        mergeUniqueStringsFromContacts(existingContacts, "lists", lists),
+        catalogListPool,
+      ),
+    [existingContacts, lists, catalogListPool],
+  )
+
+  const toggleTagValue = useCallback((canonical: string) => {
+    const t = canonical.trim()
+    if (!t) return
+    setTags((prev) => {
+      const i = prev.findIndex((x) => x.toLowerCase() === t.toLowerCase())
+      if (i >= 0) return prev.filter((_, idx) => idx !== i)
+      return [...prev, t]
+    })
+  }, [])
+
+  const toggleListValue = useCallback((canonical: string) => {
+    const t = canonical.trim()
+    if (!t) return
+    setLists((prev) => {
+      const i = prev.findIndex((x) => x.toLowerCase() === t.toLowerCase())
+      if (i >= 0) return prev.filter((_, idx) => idx !== i)
+      return [...prev, t]
+    })
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -236,22 +564,6 @@ export function AddContactPanel({
     setter((prev) => (prev.includes(v) ? prev : [...prev, v]))
   }
 
-  function handleTagKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      addFromInput(tagInput, setTags)
-      setTagInput("")
-    }
-  }
-
-  function handleListKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      addFromInput(listInput, setLists)
-      setListInput("")
-    }
-  }
-
   function handleOwnerKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault()
@@ -264,8 +576,11 @@ export function AddContactPanel({
     const err: typeof fieldError = {}
     if (!firstName.trim()) err.firstName = "This field is required."
     if (!lastName.trim()) err.lastName = "This field is required."
-    if (!email.trim()) err.email = "This field is required."
-    else {
+    if (!email.trim()) {
+      err.email = "This field is required."
+    } else if (!isValidEmailFormat(email)) {
+      err.email = "Enter a valid email address (e.g. name@company.com)."
+    } else {
       const emailNorm = normalizeEmailForCompare(email)
       const dupEmail = existingContacts.some(
         (c) =>
@@ -277,16 +592,22 @@ export function AddContactPanel({
           "This email is already used by another contact in your company."
       }
     }
-    const phoneNorm = normalizePhoneDigits(phone)
-    if (phoneNorm.length > 0) {
-      const dupPhone = existingContacts.some(
-        (c) =>
-          c.id !== contactToEdit?.id &&
-          normalizePhoneDigits(c.phone) === phoneNorm,
-      )
-      if (dupPhone) {
+    const phoneTrim = phone.trim()
+    if (phoneTrim.length > 0) {
+      if (!isValidOptionalPhone(phone)) {
         err.phone =
-          "This phone number is already used by another contact in your company."
+          "Enter a valid phone number with 7–15 digits, or leave blank."
+      } else {
+        const phoneNorm = normalizePhoneDigits(phone)
+        const dupPhone = existingContacts.some(
+          (c) =>
+            c.id !== contactToEdit?.id &&
+            normalizePhoneDigits(c.phone) === phoneNorm,
+        )
+        if (dupPhone) {
+          err.phone =
+            "This phone number is already used by another contact in your company."
+        }
       }
     }
     setFieldError(err)
@@ -355,16 +676,12 @@ export function AddContactPanel({
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) handleCancel()
-      }}
     >
       <div
         className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="um_modal_head add_contact_modal_head">
           <div className="add_contact_modal_head_main">
@@ -605,18 +922,26 @@ export function AddContactPanel({
                     </label>
                     <input
                       id="contact-phone"
-                      type="tel"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={15}
                       className={
                         fieldError.phone ? "um_field_input_invalid" : undefined
                       }
                       value={phone}
                       onChange={(e) => {
-                        setPhone(e.target.value)
+                        const digits = normalizePhoneDigits(e.target.value).slice(
+                          0,
+                          15,
+                        )
+                        setPhone(digits)
                         if (fieldError.phone)
                           setFieldError((f) => ({ ...f, phone: undefined }))
                       }}
                       autoComplete="tel"
-                      placeholder="Mobile or office"
+                      placeholder="15551234567"
+                      title="Digits only, 7–15 characters"
                       aria-invalid={Boolean(fieldError.phone)}
                       aria-describedby={
                         fieldError.phone ? "contact-phone-err" : undefined
@@ -660,51 +985,43 @@ export function AddContactPanel({
                 <p className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced">
                   Tags &amp; lists
                 </p>
-            <div className="um_field">
-              <label htmlFor="contact-tags" className="um_field_label_row">
-                <Tag className="um_field_label_icon" size={17} aria-hidden />
-                <span>Contact tags</span>
-              </label>
-              <ChipRow
-                items={tags}
-                onRemove={(i) =>
-                  setTags((prev) => prev.filter((_, j) => j !== i))
-                }
-                ariaLabel="Selected tags"
-              />
-              <input
-                id="contact-tags"
-                type="text"
-                className="deals_add_inv_field_control deals_add_inv_input add_contact_chip_input"
-                placeholder="Add a tag"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-              />
-            </div>
+            <SearchableMultiSelectField
+              label="Contact tags"
+              Icon={Tag}
+              inputId="contact-tags-search"
+              listboxId={tagListboxId}
+              selected={tags}
+              onToggle={toggleTagValue}
+              onAddUnique={(v) => addFromInput(v, setTags)}
+              options={tagOptionPool}
+              search={tagInput}
+              onSearchChange={setTagInput}
+              open={tagPickerOpen}
+              onOpenChange={setTagPickerOpen}
+              fieldRef={tagFieldRef}
+              placeholder="Search or pick a tag…"
+              emptyHint="No matches—type to add, or choose from your Tags tab."
+              onFocusOpen={() => setListPickerOpen(false)}
+            />
 
-            <div className="um_field">
-              <label htmlFor="contact-lists" className="um_field_label_row">
-                <List className="um_field_label_icon" size={17} aria-hidden />
-                <span>Lists</span>
-              </label>
-              <ChipRow
-                items={lists}
-                onRemove={(i) =>
-                  setLists((prev) => prev.filter((_, j) => j !== i))
-                }
-                ariaLabel="Selected lists"
-              />
-              <input
-                id="contact-lists"
-                type="text"
-                className="deals_add_inv_field_control deals_add_inv_input add_contact_chip_input"
-                placeholder="Add a list"
-                value={listInput}
-                onChange={(e) => setListInput(e.target.value)}
-                onKeyDown={handleListKeyDown}
-              />
-            </div>
+            <SearchableMultiSelectField
+              label="Lists"
+              Icon={List}
+              inputId="contact-lists-search"
+              listboxId={listListboxId}
+              selected={lists}
+              onToggle={toggleListValue}
+              onAddUnique={(v) => addFromInput(v, setLists)}
+              options={listOptionPool}
+              search={listInput}
+              onSearchChange={setListInput}
+              open={listPickerOpen}
+              onOpenChange={setListPickerOpen}
+              fieldRef={listFieldRef}
+              placeholder="Search or pick a list…"
+              emptyHint="No matches—type to add, or choose from your Lists tab."
+              onFocusOpen={() => setTagPickerOpen(false)}
+            />
 
             <div className="um_field add_contact_owners_field">
               <label

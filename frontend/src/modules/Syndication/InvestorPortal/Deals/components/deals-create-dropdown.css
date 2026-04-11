@@ -1,0 +1,105 @@
+/**
+ * Deal create flow — DropdownSelect theming.
+ * Trigger stays inside `.deals_create_flow` (CSS variables apply).
+ * Panel is portaled to `body` — option rows use explicit rem (same scale as --deals-control-size).
+ */
+
+.deals_create_flow .deals_create_dropdown_select .portal_dropdown_select_trigger {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--deals-control-size, 1rem);
+  font-weight: 400;
+  line-height: var(--deals-control-line-height, 1.45);
+  min-height: var(--deals-control-height, 2.75rem);
+  padding: var(--deals-control-padding-y, 0.5rem)
+    var(--deals-control-padding-x, 0.75rem);
+  border-radius: var(--portal-pill-radius);
+  border-color: var(--portal-border);
+}
+
+.deals_create_flow .deals_create_dropdown_select .portal_dropdown_select_trigger:hover:not(:disabled) {
+  border-color: #d1d5db;
+}
+
+.deals_create_flow .deals_create_dropdown_select .portal_dropdown_select_trigger:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
+}
+
+:root[data-theme="dark"]
+  .deals_create_flow
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger:focus-visible {
+  box-shadow: var(
+    --portal-field-focus-shadow-dark,
+    0 0 0 2px rgb(249 250 251 / 12%)
+  );
+}
+
+.deals_create_flow .deals_create_dropdown_select .portal_dropdown_select_trigger_invalid {
+  border-color: #b91c1c;
+}
+
+/* Portaled panel — not under .deals_create_flow in the DOM */
+.deals_create_dropdown_panel.portal_dropdown_select_panel {
+  border-radius: 10px;
+  max-height: min(320px, 55vh);
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_heading {
+  font-size: 0.75rem;
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_option {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_header_btn,
+.deals_create_dropdown_panel .portal_dropdown_select_footer_btn {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.875rem;
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_search {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_search:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_empty {
+  font-size: 0.9375rem;
+}
+
+/* Asset step — match `.asset_step_input_underline` text fields */
+.deals_create_flow
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger.asset_step_input_underline {
+  /* border: none; */
+  border: 1px solid #d1d5db;
+  border-radius: 0;
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+}
+
+.deals_create_flow
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger.asset_step_input_underline:focus-visible {
+  outline: none;
+  border-bottom-color: var(--portal-text);
+  box-shadow: none;
+}
+
+.deals_create_flow
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger_invalid.asset_step_input_underline {
+  border-bottom-color: #b91c1c;
+}

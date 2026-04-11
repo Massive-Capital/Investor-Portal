@@ -1,6 +1,6 @@
 /**
  * Fallback when GET /users returns no rows (offline / no API base).
- * Prefer live directory from `fetchUsersForMemberSelect` in AddInvestmentModal.
+ * Prefer live directory from `fetchUsersForMemberSelect` in the add-deal-member form.
  */
 export const MEMBER_SELECT_OPTIONS = [
   { value: "", label: "Select member" },

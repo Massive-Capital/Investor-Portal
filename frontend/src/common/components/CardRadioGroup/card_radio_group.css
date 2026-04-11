@@ -30,7 +30,7 @@
     box-shadow 0.15s ease;
 }
 
-.card_radio_card:hover:not(.card_radio_card_selected) {
+.card_radio_card:hover:not(.card_radio_card_selected):not(:has(.card_radio_input:disabled)) {
   border-color: #c8c8c8;
 }
 
@@ -91,8 +91,8 @@
   flex: 1 1 auto;
   min-width: 0;
   font-size: 1em;
-  font-weight: inherit;
-  line-height: inherit;
+  font-weight: 500;
+  line-height: 1.35;
   text-align: start;
 }
 
@@ -106,9 +106,12 @@
 }
 
 .card_radio_card:has(.card_radio_input:disabled) {
-  cursor: default;
-  pointer-events: none;
+  cursor: not-allowed;
   opacity: 0.88;
+}
+
+.card_radio_card:has(.card_radio_input:disabled):hover {
+  cursor: not-allowed;
 }
 
 .card_radio_card:focus-within {

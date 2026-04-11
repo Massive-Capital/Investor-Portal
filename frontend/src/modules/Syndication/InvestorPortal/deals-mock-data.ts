@@ -1,5 +1,6 @@
 import { assetImagePathToUrl } from "../../../common/utils/apiBaseUrl"
 import type { DealDetailApi } from "./Deals/api/dealsApi"
+import { collectDealGalleryUrls } from "./Deals/utils/offeringGalleryUrls"
 import {
   acceptedAmountForPayload,
   formatUsdDashboardAmount,
@@ -33,8 +34,18 @@ export interface DealRecord {
 }
 
 export function dealStageLabel(code: string): string {
-  const found = DEAL_STAGE_CHOICES.find((c) => c.value === code)
-  return found?.label ?? code
+  const raw = String(code ?? "").trim()
+  if (!raw) return ""
+  const normalized =
+    raw === "raising_capital"
+      ? "capital_raising"
+      : raw === "asset_managing"
+        ? "managing_asset"
+        : raw.toLowerCase() === "draft"
+          ? "Draft"
+          : raw
+  const found = DEAL_STAGE_CHOICES.find((c) => c.value === normalized)
+  return found?.label ?? normalized
 }
 
 /**
@@ -86,7 +97,9 @@ export function mergeDealRecordWithInvestorsPayload(
 
 export function dealListRowToDealRecord(row: DealListRow): DealRecord {
   const loc = row.locationDisplay?.trim()
-  const cover = assetImagePathToUrl(row.assetImagePath ?? null)
+  const coverFromPick = row.galleryCoverImageUrl?.trim()
+  const cover =
+    coverFromPick || assetImagePathToUrl(row.assetImagePath ?? null)
   return {
     id: row.id,
     title: row.dealName ?? "",
@@ -109,6 +122,10 @@ export function dealListRowToDealRecord(row: DealListRow): DealRecord {
 
 export function dealDetailApiToRecord(d: DealDetailApi): DealRecord {
   const loc = [d.city, d.country].filter((x) => x?.trim()).join(", ")
+  const galleryFirst = collectDealGalleryUrls(d)[0]
+  const coverPick = d.galleryCoverImageUrl?.trim()
+  const cover =
+    coverPick || galleryFirst || assetImagePathToUrl(d.assetImagePath ?? null)
   return {
     id: d.id,
     title: d.dealName,
@@ -125,5 +142,6 @@ export function dealDetailApiToRecord(d: DealDetailApi): DealRecord {
     createdDateDisplay: d.listRow.createdDateDisplay,
     closeDateDisplay: d.listRow.closeDateDisplay,
     createdAt: d.createdAt,
+    ...(cover ? { coverImageUrl: cover } : {}),
   }
 }

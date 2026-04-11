@@ -13,12 +13,18 @@
 }
 
 .asset_step_input_underline {
-  border: none;
-  border-bottom: 1px solid var(--portal-border);
+  /* border: none; */
+  border: 1px solid var(--portal-border);
   border-radius: 0;
   padding-left: 0;
   padding-right: 0;
   background: transparent;
+  /* Match boxed fields: same type scale and min height as .deals_create_input */
+  min-height: var(--deals-control-height, 2.75rem);
+  font-size: var(--deals-control-size, 0.9375rem);
+  line-height: var(--deals-control-line-height, 1.45);
+  padding-top: var(--deals-control-padding-y, 0.5rem);
+  padding-bottom: var(--deals-control-padding-y, 0.5rem);
 }
 
 .asset_step_input_underline:focus {
@@ -29,6 +35,54 @@
 
 .asset_step_upload_block {
   grid-column: 1 / -1;
+}
+
+.asset_step_upload_eyebrow {
+  display: block;
+  margin-top: 0.85em;
+  margin-bottom: 0.35em;
+  font-size: var(--deals-label-size, 0.8125rem);
+  font-weight: 600;
+  color: var(--portal-text-muted, #475569);
+  letter-spacing: 0.01em;
+}
+
+.asset_step_existing_images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5em 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asset_step_existing_item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.asset_step_existing_thumb_wrap {
+  width: 5.5rem;
+  height: 5.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--portal-border);
+  background: color-mix(
+    in srgb,
+    var(--portal-text) 6%,
+    var(--portal-surface)
+  );
+  flex-shrink: 0;
+}
+
+.asset_step_existing_thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .asset_step_dropzone {
@@ -75,7 +129,8 @@
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-weight: 600;
   color: var(--portal-primary);
   cursor: pointer;
@@ -116,7 +171,8 @@
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.8125em;
   font-weight: 600;
   color: var(--portal-text-muted);

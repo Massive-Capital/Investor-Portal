@@ -25,6 +25,13 @@ export interface DealListRow {
   createdAt?: string
   /** Relative paths under uploads/, joined with `;` when multiple */
   assetImagePath?: string | null
+  /** Full URL (https or data:image) for dashboard / preview hero when set */
+  galleryCoverImageUrl?: string
+  /** From list API — used to detect incomplete deal form (Draft badge) */
+  secType?: string
+  owningEntityName?: string
+  propertyName?: string
+  city?: string
 }
 
 export type DealTypeOption = "equity" | "debt" | "real_estate" | "other"
@@ -62,47 +69,56 @@ export interface DealFormTypeOption {
 export const DEAL_FORM_TYPE_OPTIONS: DealFormTypeOption[] = [
   { value: "direct_syndication", label: "Direct syndication (most common)" },
   { value: "fund", label: "Fund" },
-  {
-    value: "flexible_fund",
-    label: "Flexible fund",
-    infoText: "LPs select specific holdings in the fund to invest in.",
-  },
-  { value: "spv_fund", label: "SPV fund" },
-  { value: "angel_investment", label: "Angel Investment" },
-  {
-    value: "qualified_opportunity_fund",
-    label: "Qualified opportunity fund",
-  },
-  { value: "reit", label: "REIT" },
-  {
-    value: "delaware_statutory_trust_1031",
-    label: "Delaware statutory trust (1031 exchange)",
-  },
+  // {
+  //   value: "flexible_fund",
+  //   label: "Flexible fund",
+  //   infoText: "LPs select specific holdings in the fund to invest in.",
+  // },
+  // { value: "spv_fund", label: "SPV fund" },
+  // { value: "angel_investment", label: "Angel Investment" },
+  // {
+  //   value: "qualified_opportunity_fund",
+  //   label: "Qualified opportunity fund",
+  // },
+  // { value: "reit", label: "REIT" },
+  // {
+  //   value: "delaware_statutory_trust_1031",
+  //   label: "Delaware statutory trust (1031 exchange)",
+  // },
   { value: "exchange_1031", label: "1031 exchange" },
   {
     value: "direct_syndication_1031",
     label: "Direct syndication with 1031 exchange",
   },
+  {
+    value: "JV (Joint Venture)",
+    label: "JV (Joint Venture)",
+  },
 ]
 
 /** Step 1 — Deal form (wizard) */
-export type DealStageOption = "raising_capital" | "asset_managing" | "liquidated"
+export type DealStageOption ="Draft"| "capital_raising" | "managing_asset" | "liquidated"
 
 export interface DealStageChoice {
   value: DealStageOption
   label: string
-  hint: string
+  hint?: string
 }
 
 export const DEAL_STAGE_CHOICES: DealStageChoice[] = [
   {
-    value: "raising_capital",
-    label: "Raising capital",
+    value: "Draft",
+    label: "Draft",
+    // hint: "Actively raising equity.",
+  },
+  {
+    value: "capital_raising",
+    label: "Capital Raising",
     hint: "Actively raising equity.",
   },
   {
-    value: "asset_managing",
-    label: "Asset managing",
+    value: "managing_asset",
+    label: "Managing Asset",
     hint: "Fully funded and closed the deal. Currently managing the asset.",
   },
   {
@@ -110,6 +126,20 @@ export const DEAL_STAGE_CHOICES: DealStageChoice[] = [
     label: "Liquidated",
     hint: "Property sold.",
   },
+  //   value: "raising_capital",
+  //   label: "Raising capital",
+  //   hint: "Actively raising equity.",
+  // },
+  // {
+  //   value: "asset_managing",
+  //   label: "Asset managing",
+  //   hint: "Fully funded and closed the deal. Currently managing the asset.",
+  // },
+  // {
+  //   value: "liquidated",
+  //   label: "Liquidated",
+  //   hint: "Property sold.",
+  // },
 ]
 
 export type YesNo = "yes" | "no"

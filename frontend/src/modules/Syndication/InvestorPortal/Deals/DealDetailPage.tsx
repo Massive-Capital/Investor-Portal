@@ -2,28 +2,56 @@ import type { LucideIcon } from "lucide-react"
 import {
   ArrowLeft,
   BarChart3,
-  Bookmark,
+  File,
   FileSignature,
   FileText,
   Megaphone,
-  PhoneForwarded,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
   Users,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { dealDetailApiToRecord, type DealRecord } from "../deals-mock-data"
+import {
+  dealDetailApiToRecord,
+  dealStageLabel,
+  type DealRecord,
+} from "../deals-mock-data"
+import { getSessionUserEmail } from "../../../../common/auth/sessionUserEmail"
 import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
-import { fetchDealById, type DealDetailApi } from "./api/dealsApi"
-import { DealInvestorsTab } from "./components/DealInvestorsTab"
+import {
+  buildDealOfferingPreviewShareUrl,
+  deleteDealMemberRoster,
+  fetchDealById,
+  fetchDealMembers,
+  isDealDetailFormIncomplete,
+  postDealMemberInvitationEmail,
+  type DealDetailApi,
+} from "./api/dealsApi"
+import { dealStageChipClassName } from "./utils/dealStageChip"
+import { ADD_MEMBER_DRAFT_ROW_ID } from "./deal-members/add-investment/addMemberDraftInvestorRow"
+import {
+  clearAddMemberDraft,
+  loadAddMemberDraft,
+} from "./deal-members/add-investment/addMemberFormDraftStorage"
+import {
+  DealInvestorsTab,
+  type DealInvestorsTabHandle,
+} from "./components/DealInvestorsTab"
+import { DealMembersTab } from "./deal-members"
+import { DealEsignTemplatesTab } from "./components/DealEsignTemplatesTab"
 import { DealOfferingDetailsTab } from "./components/DealOfferingDetailsTab"
+import type { DealInvestorRow } from "./types/deal-investors.types"
+import {
+  resolveViewerDealMemberRole,
+  visibleDealDetailTabIds,
+} from "./utils/dealDetailTabVisibility"
+import { toast } from "../../../../common/components/Toast"
+import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
+import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
 import "../../../usermanagement/user_management.css"
 import "./deals-list.css"
 
+/** Deal detail: `/deals/:dealId`. Tab **Deal Members** (`deal_members`) renders `DealMembersTab` (root `deal_members_tab` in deal-members/tab/deal-members.css). */
 interface DealDetailTabDef {
   id: string
   label: string
@@ -31,25 +59,66 @@ interface DealDetailTabDef {
 }
 
 const DEAL_DETAIL_TABS: DealDetailTabDef[] = [
-  { id: "investors", label: "Investors", icon: Users },
-  { id: "reservations", label: "Reservations", icon: Bookmark },
   { id: "offering_details", label: "Offering Details", icon: FileText },
-  { id: "insights", label: "Insights", icon: BarChart3 },
+  { id: "documents", label: "Documents", icon: File },
   { id: "esign_templates", label: "eSign Templates", icon: FileSignature },
-  { id: "subscriptions", label: "Subscriptions", icon: RefreshCw },
-  { id: "accreditations", label: "Accreditations", icon: ShieldCheck },
-  { id: "capital_calls", label: "Capital Calls", icon: PhoneForwarded },
-  // Distributions tab deferred — add back with e.g. Wallet icon when wired up.
-  { id: "investor_deck", label: "Investor deck", icon: Sparkles },
-  { id: "updates", label: "Updates", icon: Megaphone },
+  { id: "investors", label: "Investors", icon: Users },
+  { id: "investor_communication", label: "Investor Communication ", icon: BarChart3 },
+  { id: "distributions", label: "Distributions", icon: BarChart3 },
+  { id: "deal_members", label: "Deal Members", icon: Users },
 ]
 
 export function DealDetailPage() {
   const { dealId } = useParams()
-  const [activeTab, setActiveTab] = useState<string>("investors")
+  const [activeTab, setActiveTab] = useState<string>("offering_details")
   const [addInvestmentOpen, setAddInvestmentOpen] = useState(false)
+  /** True while shared Add/Edit investment modal is open (add or edit) — hides session draft row in Deal Members table. */
+  const [sharedInvestmentModalOpen, setSharedInvestmentModalOpen] =
+    useState(false)
+  /** Which flow opened the shared modal — drives “Add Member” vs “Add Investor” title. */
+  const [investmentModalEntry, setInvestmentModalEntry] = useState<
+    "member" | "investor"
+  >("member")
+  /** Add-member modal: restore session draft (draft row) vs empty form (“Add Member” button). */
+  const [restoreAddMemberSessionDraft, setRestoreAddMemberSessionDraft] =
+    useState(true)
+  const [dealMembersRefreshKey, setDealMembersRefreshKey] = useState(0)
+  const dealInvestorsTabRef = useRef<DealInvestorsTabHandle>(null)
   const [deal, setDeal] = useState<DealRecord | null | undefined>(undefined)
   const [dealDetailApi, setDealDetailApi] = useState<DealDetailApi | null>(null)
+  const [memberRosterForTabs, setMemberRosterForTabs] = useState<
+    DealInvestorRow[]
+  >([])
+
+  useEffect(() => {
+    if (!dealId?.trim()) return
+    let cancelled = false
+    void fetchDealMembers(dealId).then((rows) => {
+      if (!cancelled) setMemberRosterForTabs(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [dealId, dealMembersRefreshKey])
+
+  const viewerDealTabIds = useMemo(() => {
+    const role = resolveViewerDealMemberRole(
+      memberRosterForTabs,
+      getSessionUserEmail(),
+    )
+    return visibleDealDetailTabIds(role)
+  }, [memberRosterForTabs])
+
+  const dealDetailTabsVisible = useMemo(
+    () => DEAL_DETAIL_TABS.filter((t) => viewerDealTabIds.has(t.id)),
+    [viewerDealTabIds],
+  )
+
+  useEffect(() => {
+    if (dealDetailTabsVisible.length === 0) return
+    if (!dealDetailTabsVisible.some((t) => t.id === activeTab))
+      setActiveTab(dealDetailTabsVisible[0].id)
+  }, [dealDetailTabsVisible, activeTab])
 
   useEffect(() => {
     if (!dealId) {
@@ -88,8 +157,10 @@ export function DealDetailPage() {
       setAppDocumentTitle("Deal not found")
       return
     }
-    setAppDocumentTitle(deal.title.trim() || "Deal")
-  }, [dealId, deal])
+    const title =
+      dealDetailApi?.dealName?.trim() || deal.title.trim() || "Deal"
+    setAppDocumentTitle(title)
+  }, [dealId, deal, dealDetailApi?.dealName])
 
   useEffect(() => {
     const el = document.getElementById(`deal-tab-${activeTab}`)
@@ -100,6 +171,121 @@ export function DealDetailPage() {
       block: "nearest",
     })
   }, [activeTab])
+
+  const displayName =
+    dealDetailApi?.dealName?.trim() ||
+    (deal !== undefined && deal !== null ? deal.title : "")
+  const displayStage =
+    deal !== undefined && deal !== null && dealDetailApi?.dealStage
+      ? dealStageLabel(dealDetailApi.dealStage)
+      : ""
+
+  const dealFormIncomplete =
+    dealDetailApi != null && isDealDetailFormIncomplete(dealDetailApi)
+
+  const announcementTitle =
+    dealDetailApi?.dealAnnouncementTitle?.trim() ?? ""
+  const announcementMessage =
+    dealDetailApi?.dealAnnouncementMessage?.trim() ?? ""
+  const showDealAnnouncement =
+    Boolean(announcementTitle) || Boolean(announcementMessage)
+
+  const hideStagePillBecauseDraftBadge =
+    dealFormIncomplete &&
+    dealDetailApi != null &&
+    String(dealDetailApi.dealStage ?? "").trim().toLowerCase() === "draft"
+
+  const offeringLinkAvailable = useMemo(
+    () => dealHasOfferingShareLink(dealDetailApi),
+    [dealDetailApi],
+  )
+
+  const handleCopyMemberOfferingLink = useCallback(
+    async (_row: DealInvestorRow) => {
+      if (!dealId?.trim() || !dealDetailApi || !dealHasOfferingShareLink(dealDetailApi))
+        return
+      try {
+        const url = await buildDealOfferingPreviewShareUrl(dealId.trim(), {
+          previewToken: dealDetailApi.offeringPreviewToken,
+        })
+        await navigator.clipboard.writeText(url)
+        toast.success(
+          "Link copied",
+          "The offering preview link was copied to your clipboard.",
+        )
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not copy the offering link."
+        toast.error("Could not copy link", msg)
+      }
+    },
+    [dealId, dealDetailApi],
+  )
+
+  const handleSendMemberInvitationMail = useCallback(
+    async (row: DealInvestorRow) => {
+      const email = row.userEmail?.trim()
+      if (!email || email === "—") {
+        toast.error("No email address", "This row has no email to send to.")
+        return
+      }
+      if (!dealId) return
+      const name = row.displayName?.trim()
+      const result = await postDealMemberInvitationEmail(dealId, {
+        to_email: email,
+        member_display_name: name && name !== "—" ? name : undefined,
+      })
+      if (result.ok) {
+        toast.success(
+          "Invitation sent",
+          "The member invitation email was sent using your server mail settings.",
+        )
+        void dealInvestorsTabRef.current?.refetchInvestors()
+      } else {
+        toast.error("Could not send email", result.message)
+      }
+    },
+    [dealId],
+  )
+
+  const handleDeleteMember = useCallback(
+    async (row: DealInvestorRow) => {
+      if (row.id === ADD_MEMBER_DRAFT_ROW_ID && dealId) {
+        const draft = loadAddMemberDraft(dealId)
+        const autosavedRosterId = draft?.backendInvestmentId?.trim()
+        if (autosavedRosterId) {
+          const del = await deleteDealMemberRoster(dealId, autosavedRosterId)
+          if (!del.ok) {
+            toast.error("Could not remove member", del.message)
+            return
+          }
+        }
+        clearAddMemberDraft(dealId)
+        toast.success(
+          "Draft removed",
+          autosavedRosterId
+            ? "The add-member draft and its autosaved roster entry were removed."
+            : "The unsaved add-member draft was discarded.",
+        )
+        setDealMembersRefreshKey((k) => k + 1)
+        void dealInvestorsTabRef.current?.refetchInvestors()
+        return
+      }
+      if (!dealId?.trim()) return
+      const result = await deleteDealMemberRoster(dealId, row.id)
+      if (result.ok) {
+        toast.success(
+          "Member removed",
+          "This member was removed from the deal.",
+        )
+        setDealMembersRefreshKey((k) => k + 1)
+        void dealInvestorsTabRef.current?.refetchInvestors()
+      } else {
+        toast.error("Could not remove member", result.message)
+      }
+    },
+    [dealId],
+  )
 
   if (!dealId)
     return (
@@ -128,32 +314,38 @@ export function DealDetailPage() {
       </div>
     )
 
-  const displayName = deal.title
-
   return (
     <div className="deals_list_page deals_detail_page">
-      {/* Breadcrumb: Home › Deals › {deal name}
-      <nav className="deals_list_breadcrumb" aria-label="Breadcrumb">
-        <Link to="/">
-          <Home size={16} strokeWidth={2} aria-hidden />
-          <span className="visually_hidden">Home</span>
-        </Link>
-        <ChevronRight
-          size={14}
-          className="deals_list_breadcrumb_sep"
-          aria-hidden
-        />
-        <Link to="/deals">Deals</Link>
-        <ChevronRight
-          size={14}
-          className="deals_list_breadcrumb_sep"
-          aria-hidden
-        />
-        <span aria-current="page">{displayName}</span>
-      </nav>
-      */}
-
       <header className="deals_list_head">
+        {showDealAnnouncement ? (
+          <div
+            className="deal_detail_announcement_banner"
+            role="region"
+            aria-label="Deal announcement"
+          >
+            <Megaphone
+              size={16}
+              strokeWidth={2}
+              className="deal_detail_announcement_banner_icon"
+              aria-hidden
+            />
+            <div className="deal_detail_announcement_banner_body">
+              <p className="deal_detail_announcement_banner_label">
+                Announcement
+              </p>
+              {announcementTitle ? (
+                <p className="deal_detail_announcement_banner_title">
+                  {announcementTitle}
+                </p>
+              ) : null}
+              {announcementMessage ? (
+                <p className="deal_detail_announcement_banner_message">
+                  {announcementMessage}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="deals_list_title_row">
           <Link
             className="deals_list_back_circle"
@@ -162,19 +354,27 @@ export function DealDetailPage() {
           >
             <ArrowLeft size={20} strokeWidth={2} aria-hidden />
           </Link>
-          <h1 className="deals_list_title">{displayName}</h1>
+          <div className="deals_detail_title_stack">
+            <div className="deals_list_name_with_draft deals_detail_title_name_block">
+              <h1 className="deals_list_title">{displayName}</h1>
+              {dealFormIncomplete ? (
+                <span
+                  className="deals_list_draft_badge"
+                  title="Deal details are incomplete or not finalized"
+                >
+                  Draft
+                </span>
+              ) : null}
+            </div>
+            {!hideStagePillBecauseDraftBadge && displayStage ? (
+              <span
+                className={dealStageChipClassName(dealDetailApi?.dealStage)}
+              >
+                {displayStage}
+              </span>
+            ) : null}
+          </div>
         </div>
-        <button
-          type="button"
-          className="deals_list_add_btn"
-          onClick={() => {
-            setActiveTab("investors")
-            setAddInvestmentOpen(true)
-          }}
-        >
-          <Plus size={18} strokeWidth={2} aria-hidden />
-          Add Investment
-        </button>
       </header>
 
       <div className="um_members_tabs_outer deals_tabs_outer">
@@ -184,7 +384,7 @@ export function DealDetailPage() {
             role="tablist"
             aria-label="Deal sections"
           >
-            {DEAL_DETAIL_TABS.map((tab) => {
+            {dealDetailTabsVisible.map((tab) => {
               const isActive = activeTab === tab.id
               const TabIcon = tab.icon
               return (
@@ -212,27 +412,90 @@ export function DealDetailPage() {
         </TabsScrollStrip>
       </div>
 
-      <div className="um_members_tab_content">
+      <div
+        className={
+          activeTab === "deal_members"
+            ? "um_members_tab_content deal_members_tab"
+            : "um_members_tab_content"
+        }
+      >
         <div
           id="deal-detail-tabpanel"
           className="deal_detail_tab_panel"
           role="tabpanel"
           aria-labelledby={`deal-tab-${activeTab}`}
         >
-        {activeTab === "investors" ? (
-          <DealInvestorsTab
-            dealId={dealId}
-            dealName={displayName}
-            dealDetail={dealDetailApi}
-            addInvestmentOpen={addInvestmentOpen}
-            onAddInvestmentClose={() => setAddInvestmentOpen(false)}
-            onOpenAddInvestment={() => {
-              setActiveTab("investors")
-              setAddInvestmentOpen(true)
+        {activeTab === "investors" || activeTab === "deal_members" ? (
+          <>
+            {activeTab === "deal_members" ? (
+              <DealMembersTab
+                dealId={dealId}
+                offeringLinkAvailable={offeringLinkAvailable}
+                addInvestmentOpen={addInvestmentOpen}
+                sharedInvestmentModalOpen={sharedInvestmentModalOpen}
+                investorsRefreshKey={dealMembersRefreshKey}
+                onAddMember={() => {
+                  setInvestmentModalEntry("member")
+                  setRestoreAddMemberSessionDraft(false)
+                  setAddInvestmentOpen(true)
+                }}
+                onEditMember={(row: DealInvestorRow) => {
+                  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) {
+                    setInvestmentModalEntry("member")
+                    setRestoreAddMemberSessionDraft(true)
+                    setAddInvestmentOpen(true)
+                    return
+                  }
+                  dealInvestorsTabRef.current?.openEditInvestor(row)
+                }}
+                onCopyMemberOfferingLink={handleCopyMemberOfferingLink}
+                onSendMemberInvitationMail={handleSendMemberInvitationMail}
+                onDeleteMember={handleDeleteMember}
+                onViewMember={(row) => {
+                  dealInvestorsTabRef.current?.openViewInvestor(row)
+                }}
+              />
+            ) : null}
+            <DealInvestorsTab
+              ref={dealInvestorsTabRef}
+              dealId={dealId}
+              dealName={displayName}
+              dealDetail={dealDetailApi}
+              addInvestmentOpen={addInvestmentOpen}
+              onSharedInvestmentModalOpenChange={setSharedInvestmentModalOpen}
+              modalOnly={activeTab === "deal_members"}
+              onAddInvestmentClose={() => setAddInvestmentOpen(false)}
+              onOpenFullInvestmentModal={() => {
+                setInvestmentModalEntry("investor")
+                setRestoreAddMemberSessionDraft(true)
+                setAddInvestmentOpen(true)
+              }}
+              addInvestmentEntry={
+                activeTab === "investors"
+                  ? "investor"
+                  : investmentModalEntry
+              }
+              restoreAddMemberSessionDraft={restoreAddMemberSessionDraft}
+              onInvestorsChanged={() =>
+                setDealMembersRefreshKey((k) => k + 1)
+              }
+              onSendInvitationMail={handleSendMemberInvitationMail}
+              onCopyOfferingLink={handleCopyMemberOfferingLink}
+              onDeleteMember={handleDeleteMember}
+              offeringLinkAvailable={offeringLinkAvailable}
+            />
+          </>
+        ) : activeTab === "offering_details" && dealDetailApi ? (
+          <DealOfferingDetailsTab
+            detail={dealDetailApi}
+            onDealUpdated={(d) => {
+              setDealDetailApi(d)
+              setDeal(dealDetailApiToRecord(d))
+              notifyDealsListRefetch()
             }}
           />
-        ) : activeTab === "offering_details" && dealDetailApi ? (
-          <DealOfferingDetailsTab detail={dealDetailApi} />
+        ) : activeTab === "esign_templates" ? (
+          <DealEsignTemplatesTab dealId={dealId} />
         ) : (
           <div className="deal_detail_wip_wrap" role="status">
             <p className="deal_detail_wip_title">Working in progress</p>

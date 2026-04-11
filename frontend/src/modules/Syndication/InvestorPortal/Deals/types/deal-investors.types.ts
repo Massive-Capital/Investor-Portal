@@ -40,6 +40,15 @@ export interface DealInvestorRow {
   commitmentAmountRaw?: string
   extraContributionAmounts?: string[]
   docSignedDateIso?: string
+  /** Portal user who added this member (`deal_member.added_by` → `users` display name). */
+  addedByDisplayName?: string
+  /**
+   * Member invitation email was sent (from API e.g. `invitation_mail_sent`).
+   * When true, actions show “Invitation sent” (disabled); when false, “Send invitation email”.
+   */
+  invitationMailSent?: boolean
+  /** `lp_roster` = row from `deal_lp_investor` only (no `deal_investment`). */
+  investorKind?: "investment" | "lp_roster"
 }
 
 export interface DealInvestorsPayload {

@@ -1,0 +1,97 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1890000000000,
+      "tag": "0000_baseline_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1744300800000,
+      "tag": "0000_deferred_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776000000000,
+      "tag": "0001_add_deal_form_offering_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776100000000,
+      "tag": "0002_add_key_highlights_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776200000000,
+      "tag": "0003_add_deal_announcement",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776300000000,
+      "tag": "0004_add_offering_overview_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776400000000,
+      "tag": "0005_offering_visibility_dashboard",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776500000000,
+      "tag": "0006_offering_overview_asset_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776600000000,
+      "tag": "0007_offering_gallery_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776700000000,
+      "tag": "0008_add_deal_form_address_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776800000000,
+      "tag": "0009_offering_preview_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1890100000000,
+      "tag": "0010_seed_platform_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1890200000000,
+      "tag": "0011_seed_companies",
+      "breakpoints": true
+    }
+  ]
+}

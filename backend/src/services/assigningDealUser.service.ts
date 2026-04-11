@@ -2,6 +2,8 @@ import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db, pool } from "../database/db.js";
 import { assigningDealUser, contact, users } from "../schema/schema.js";
 import { dealInvestment } from "../schema/deal.schema/deal-investment.schema.js";
+import { dealLpInvestor } from "../schema/deal.schema/deal-lp-investor.schema.js";
+import { dealMember } from "../schema/deal.schema/deal-member.schema.js";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,8 +22,8 @@ function contactIdAsUserUuid(raw: string): string | null {
 
 /**
  * Keeps `assigning_deal_user` in sync with distinct UUID `contact_id` values on
- * `deal_investment` for this deal. Only ids that exist in `users` are stored
- * (`contact_id` may be a CRM contact uuid or other non-portal id).
+ * `deal_investment`, `deal_member`, and `deal_lp_investor` for this deal. Only ids that exist in
+ * `users` are stored (`contact_id` may be a CRM contact uuid or other non-portal id).
  */
 export async function reconcileAssigningDealUsersForDeal(
   dealId: string,
@@ -32,10 +34,25 @@ export async function reconcileAssigningDealUsersForDeal(
     .from(dealInvestment)
     .where(eq(dealInvestment.dealId, dealId));
 
+  const memberRows = await db
+    .select({ contactMemberId: dealMember.contactMemberId })
+    .from(dealMember)
+    .where(eq(dealMember.dealId, dealId));
+
+  const lpRows = await db
+    .select({ contactMemberId: dealLpInvestor.contactMemberId })
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, dealId));
+
   const uuidCandidates = [
     ...new Set(
-      invRows
-        .map((r) => contactIdAsUserUuid(r.contactId ?? ""))
+      [
+        ...invRows.map((r) => contactIdAsUserUuid(r.contactId ?? "")),
+        ...memberRows.map((r) =>
+          contactIdAsUserUuid(r.contactMemberId ?? ""),
+        ),
+        ...lpRows.map((r) => contactIdAsUserUuid(r.contactMemberId ?? "")),
+      ]
         .filter((id): id is string => id != null),
     ),
   ];

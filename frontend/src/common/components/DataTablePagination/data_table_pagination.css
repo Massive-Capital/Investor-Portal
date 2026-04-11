@@ -15,7 +15,8 @@
 
 .um_table_pagination_range {
   margin: 0;
-  font-size: 0.8125em;
+  font-size: 0.9375rem;
+  font-family: var(--portal-font-sans, "Inter", sans-serif);
   color: #64748b;
 }
 
@@ -41,8 +42,9 @@
   height: 2.25em;
   margin: 0;
   padding: 0 0.5em;
-  font: inherit;
-  font-size: 0.8125em;
+  font-family: var(--portal-font-sans, "Inter", sans-serif);
+  font-style: normal;
+  font-size: 0.9375rem;
   font-weight: 600;
   color: #475569;
   background: #fff;
@@ -94,8 +96,9 @@
 .um_table_pagination_select {
   margin: 0;
   padding: 0.35em 2em 0.35em 0.65em;
-  font: inherit;
-  font-size: 0.8125em;
+  font-family: var(--portal-font-sans, "Inter", sans-serif);
+  font-style: normal;
+  font-size: 0.9375rem;
   font-weight: 500;
   color: #334155;
   background: #fff;

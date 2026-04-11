@@ -5,8 +5,10 @@ dotenv.config({ path: ".env.local" });
 
 import express from "express";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
-import { initDB } from "./database/db.js";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { db, pool } from "./database/db.js";
 import { getUploadsPhysicalRoot } from "./config/uploadPaths.js";
 import userRoutes from "./routes/userRoutes.routes.js";
 import companyRoutes from "./routes/companyRoutes.routes.js";
@@ -84,9 +86,28 @@ app.use("/api/v1", [
 
 console.log("Starting server...");
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function runMigrations(): Promise<void> {
+  const migrationsFolder = path.resolve(__dirname, "..", "migrations");
+  await migrate(db, { migrationsFolder });
+  console.log("Database migrations applied.");
+}
+
+/** Ensures the pool can open a connection (no SQL executed here). */
+async function verifyPoolConnection(): Promise<void> {
+  const client = await pool.connect();
+  client.release();
+  console.log("Database pool ready");
+}
+
 try {
-  //** Calling database function
-  await initDB();
+  await verifyPoolConnection();
+  if (process.env.SKIP_DB_MIGRATIONS === "1") {
+    console.warn("SKIP_DB_MIGRATIONS=1 — migrations were not applied.");
+  } else {
+    await runMigrations();
+  }
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

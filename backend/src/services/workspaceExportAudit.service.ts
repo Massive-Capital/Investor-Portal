@@ -12,7 +12,9 @@ export type WorkspaceExportAuditKind =
   | "contacts"
   | "members"
   | "companies"
-  | "deals";
+  | "deals"
+  | "deal_investors"
+  | "deal_members";
 
 export type WorkspaceExportAuditInput = {
   exporterDisplayName: string;
@@ -65,6 +67,20 @@ function copyForKind(kind: WorkspaceExportAuditKind): {
         htmlTitle: "Deals exported",
         intro: "A user exported the deals list from the workspace.",
         subjectEntity: "Deals",
+      };
+    case "deal_investors":
+      return {
+        textTitle: "Deal investors export — Investor Portal",
+        htmlTitle: "Deal investors exported",
+        intro: "A user exported investor rows for a deal.",
+        subjectEntity: "Deal investors",
+      };
+    case "deal_members":
+      return {
+        textTitle: "Deal members export — Investor Portal",
+        htmlTitle: "Deal members exported",
+        intro: "A user exported deal member rows.",
+        subjectEntity: "Deal members",
       };
     case "contacts":
     default:

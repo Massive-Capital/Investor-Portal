@@ -1,3 +1,38 @@
+/** Single LP waterfall / hurdle row (stored inside `advanced_options_json`). */
+export interface LpHurdleItem {
+  id: string
+  expanded: boolean
+  upsideLpPct: string
+  upsideGpPct: string
+  cocReturnPct: string
+  hurdleName: string
+  preferredReturnType: string
+  finalHurdle: string
+  advancedOpen: boolean
+  /** Advanced (hurdle-level) */
+  catchUpPreferredReturns: string
+  honorOnlyOnCapitalEvent: string
+  dayCountConvention: string
+  compoundingPeriod: string
+  startDateOverride: string
+  endDate: string
+}
+
+export interface InvestorClassAdvancedForm {
+  investmentType: string
+  /** Class-level preferred return (Mezzanine main form). */
+  classPreferredReturnType: string
+  entityLegalOwnershipPct: string
+  entityLegalOwnershipFrozen: boolean
+  distributionSharePct: string
+  distributionShareFrozen: boolean
+  maximumInvestment: string
+  targetIrr: string
+  assetTags: string[]
+  waitlistStatus: string
+  hurdles: LpHurdleItem[]
+}
+
 export interface DealInvestorClass {
   id: string
   dealId: string
@@ -6,10 +41,13 @@ export interface DealInvestorClass {
   entityName: string
   startDate: string
   offeringSize: string
+  raiseAmountDistributions: string
+  billingRaiseQuota: string
   minimumInvestment: string
   pricePerUnit: string
   status: string
   visibility: string
+  advancedOptionsJson: string
   createdAt: string
   updatedAt: string
 }
@@ -20,8 +58,11 @@ export interface DealInvestorClassFormValues {
   entityName: string
   startDate: string
   offeringSize: string
+  raiseAmountDistributions: string
+  billingRaiseQuota: string
   minimumInvestment: string
   pricePerUnit: string
   status: string
   visibility: string
+  advanced: InvestorClassAdvancedForm
 }

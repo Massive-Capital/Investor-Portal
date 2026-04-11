@@ -24,12 +24,31 @@ function parseInput(b: Record<string, unknown>): InvestorClassInput {
     entityName: bodyString(b.entity_name ?? b.entityName).trim(),
     startDate: bodyString(b.start_date ?? b.startDate).trim(),
     offeringSize: bodyString(b.offering_size ?? b.offeringSize).trim(),
+    raiseAmountDistributions: bodyString(
+      b.raise_amount_distributions ?? b.raiseAmountDistributions,
+    ).trim(),
+    billingRaiseQuota: bodyString(
+      b.billing_raise_quota ?? b.billingRaiseQuota,
+    ).trim(),
     minimumInvestment: bodyString(
       b.minimum_investment ?? b.minimumInvestment,
     ).trim(),
     pricePerUnit: bodyString(b.price_per_unit ?? b.pricePerUnit).trim(),
     status: bodyString(b.status).trim() || "draft",
     visibility: bodyString(b.visibility).trim(),
+    advancedOptionsJson: (() => {
+      const raw = b.advanced_options_json ?? b.advancedOptionsJson;
+      if (raw == null) return "{}";
+      if (typeof raw === "string") {
+        const t = raw.trim();
+        return t === "" ? "{}" : t;
+      }
+      try {
+        return JSON.stringify(raw);
+      } catch {
+        return "{}";
+      }
+    })(),
   };
 }
 

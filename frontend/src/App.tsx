@@ -2,7 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import { SESSION_BEARER_KEY } from "./common/auth/sessionKeys";
 import { RequireAuth } from "./common/auth/RequireAuth";
-import { canAccessCompanyPage } from "./common/auth/roleUtils";
+import {
+  canAccessCompanyPage,
+  isPlatformAdmin,
+} from "./common/auth/roleUtils";
 import SigninPage from "./modules/auth/pages/SigninPage";
 import SignupPage from "./modules/auth/pages/SignupPage";
 import ForgotPasswordPage from "./modules/auth/pages/ForgotPasswordPage";
@@ -14,6 +17,9 @@ import PageLayout from "./common/layout/PageLayout";
 import SponsorDashboardPage from "./modules/Syndication/InvestorPortal/Dashboard/SponsorDashboardPage";
 import DealsLayout from "./modules/Syndication/InvestorPortal/Deals/DealsLayout";
 import { CreateDealPage } from "./modules/Syndication/InvestorPortal/Deals/CreateDealPage";
+import { AddDealAssetPage } from "./modules/Syndication/InvestorPortal/Deals/AddDealAssetPage";
+import { AddDealInvestorClassPage } from "./modules/Syndication/InvestorPortal/Deals/AddDealInvestorClassPage";
+import { EditDealInvestorClassPage } from "./modules/Syndication/InvestorPortal/Deals/EditDealInvestorClassPage";
 import { DealDetailPage } from "./modules/Syndication/InvestorPortal/Deals/DealDetailPage";
 import { DealOfferingPortfolioPage } from "./modules/Syndication/InvestorPortal/Deals/DealOfferingPortfolioPage";
 import { DealsListPage } from "./modules/Syndication/InvestorPortal/Deals/DealsListPage";
@@ -56,6 +62,9 @@ function CustomersRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
   if (!canAccessCompanyPage()) return <Navigate to="/" replace />;
+  if (!isPlatformAdmin()) {
+    return <Navigate to="/settings" replace />;
+  }
   return <CompanyPage variant="customers" />;
 }
 
@@ -83,6 +92,22 @@ function App() {
               <Route
                 path=":dealId/offering-portfolio"
                 element={<DealOfferingPortfolioPage />}
+              />
+              <Route
+                path=":dealId/investor-classes/new"
+                element={<AddDealInvestorClassPage />}
+              />
+              <Route
+                path=":dealId/investor-classes/:classId/edit"
+                element={<EditDealInvestorClassPage />}
+              />
+              <Route
+                path=":dealId/assets/:assetId/edit"
+                element={<AddDealAssetPage />}
+              />
+              <Route
+                path=":dealId/assets/new"
+                element={<AddDealAssetPage />}
               />
               <Route path=":dealId" element={<DealDetailPage />} />
             </Route>
@@ -185,6 +210,10 @@ function App() {
             <Route path="contacts" element={<ContactsPage />} />
             </Route>
           </Route>
+          <Route
+            path="/offering_portfolio"
+            element={<DealOfferingPortfolioPage />}
+          />
           <Route path="/signin" element={<SigninPage />} />
           <Route path="/signup/:token" element={<SignupPage />} />
           <Route path="/signup" element={<SignupPage />} />

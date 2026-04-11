@@ -46,7 +46,7 @@ import "../../../../usermanagement/user_management.css"
 import "./add-investment-modal.css"
 
 const INVESTOR_CLASS_UNAVAILABLE_HINT =
-  "Please complete the Offering Details section to assign an investor class."
+  "Please complete the Classes section to assign an investor class."
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
@@ -384,7 +384,7 @@ export function AddInvestmentModal({
     }
     if (noDealClasses) {
       setError(
-        "Add at least one investor class in Offering Details before recording an investment.",
+        "Add at least one investor class in the Classes section before recording an investment.",
       )
       return false
     }
@@ -492,16 +492,12 @@ export function AddInvestmentModal({
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <div
         className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="um_modal_head add_contact_modal_head">
           <div className="add_contact_modal_head_main">

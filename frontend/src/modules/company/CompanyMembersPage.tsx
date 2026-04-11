@@ -705,6 +705,7 @@ export default function CompanyMembersPage() {
       {
         id: "actions",
         header: "Actions",
+        align: "center",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions",
         cell: (row, rowIndex = 0) => {
@@ -967,9 +968,6 @@ export default function CompanyMembersPage() {
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setViewRow(null)
-          }}
         >
           <div
             className="um_modal um_modal_view"
@@ -1055,9 +1053,6 @@ export default function CompanyMembersPage() {
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !editSaving) closeEditMember()
-          }}
         >
           <div
             className="um_modal um_modal_view"
@@ -1196,10 +1191,6 @@ export default function CompanyMembersPage() {
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !suspendSaving)
-              closeSuspendMember()
-          }}
         >
           <div
             className="um_modal um_modal_view"

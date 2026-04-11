@@ -32,7 +32,8 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   color: inherit;
 }
 
@@ -89,7 +90,8 @@
   border: none;
   background: transparent;
   cursor: pointer;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   color: var(--sidebar-text-color);
   display: flex;
   align-items: center;

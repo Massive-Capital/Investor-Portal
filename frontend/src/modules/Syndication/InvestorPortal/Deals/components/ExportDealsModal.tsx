@@ -1,82 +1,20 @@
 import { Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { dealStageLabel } from "../../deals-mock-data"
+import { toast } from "../../../../../common/components/Toast"
+import { notifyDealsExportAudit } from "../api/dealsExportNotifyApi"
+import type { DealListRow } from "../types/deals.types"
 import {
-  DEAL_FORM_TYPE_OPTIONS,
-  DEAL_TYPE_LABELS,
-  type DealListRow,
-  type DealTypeOption,
-} from "../types/deals.types"
+  buildDealsListExportCsv,
+  downloadDealsListExportCsv,
+  exportAuditLinesForDealListRows,
+} from "../utils/dealsListExportCsv"
 import "./export-deals-modal.css"
 
 interface ExportDealsModalProps {
   open: boolean
   onClose: () => void
   deals: DealListRow[]
-}
-
-function dealTypeLabel(code: string): string {
-  if (code === "—" || !code) return "—"
-  const fromForm = DEAL_FORM_TYPE_OPTIONS.find((o) => o.value === code)
-  if (fromForm) return fromForm.label
-  const k = code as DealTypeOption
-  return DEAL_TYPE_LABELS[k] ?? code
-}
-
-function escapeCsvCell(value: string): string {
-  if (/[",\n\r]/.test(value))
-    return `"${value.replace(/"/g, '""')}"`
-  return value
-}
-
-function buildDealsCsv(rows: DealListRow[]): string {
-  const headers = [
-    "Deal name",
-    "Deal type",
-    "Deal stage",
-    "Total in progress",
-    "Total accepted",
-    "Raise target",
-    "Distributions",
-    "Investors",
-    "Close date",
-    "Created date",
-  ]
-  const lines = [headers.map(escapeCsvCell).join(",")]
-  for (const row of rows) {
-    lines.push(
-      [
-        row.dealName,
-        dealTypeLabel(row.dealType),
-        dealStageLabel(row.dealStage),
-        row.totalInProgress,
-        row.totalAccepted,
-        row.raiseTarget,
-        row.distributions,
-        row.investors,
-        row.closeDateDisplay,
-        row.createdDateDisplay,
-      ]
-        .map(escapeCsvCell)
-        .join(","),
-    )
-  }
-  return `\uFEFF${lines.join("\r\n")}`
-}
-
-function downloadCsv(content: string, filename: string) {
-  const blob = new Blob([content], {
-    type: "text/csv;charset=utf-8;",
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.rel = "noopener"
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
 }
 
 export function ExportDealsModal({
@@ -158,9 +96,15 @@ export function ExportDealsModal({
   function handleExportExcel() {
     const chosen = deals.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
-    const csv = buildDealsCsv(chosen)
+    const csv = buildDealsListExportCsv(chosen)
     const stamp = new Date().toISOString().slice(0, 10)
-    downloadCsv(csv, `deals-export-${stamp}.csv`)
+    const filename = `deals-export-${stamp}.csv`
+    downloadDealsListExportCsv(csv, filename)
+    void notifyDealsExportAudit({
+      rowCount: chosen.length,
+      exportedDealLines: exportAuditLinesForDealListRows(chosen),
+    })
+    toast.success("Deals exported", `Saved as ${filename}`)
     onClose()
   }
 
@@ -170,9 +114,6 @@ export function ExportDealsModal({
     <div
       className="deals_export_modal_overlay"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <div
         ref={panelRef}
@@ -253,7 +194,7 @@ export function ExportDealsModal({
                   />
                   <span className="deals_export_modal_row_name">{row.dealName}</span>
                   <span className="deals_export_modal_row_meta">
-                    {row.dealStage}
+                    {dealStageLabel(row.dealStage)}
                   </span>
                 </label>
               </li>

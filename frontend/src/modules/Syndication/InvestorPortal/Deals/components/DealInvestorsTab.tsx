@@ -9,20 +9,46 @@ import {
   Landmark,
   ListOrdered,
   PiggyBank,
+  Plus,
   Search,
   Tag,
   UserRound,
   Users,
   UserX,
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { AddInvestmentModal } from "./AddInvestmentModal"
-import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay"
-import { DealInvestorRowActions } from "./DealInvestorRowActions"
-import { DealInvestorViewModal } from "./DealInvestorViewModal"
-import type { AddInvestmentFormValues } from "../types/add-investment.types"
-import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react"
+import { AddInvestmentModal } from "../deal-members"
+import {
+  addInvestmentFormToRow,
+  ADD_MEMBER_DRAFT_ROW_ID,
+  buildAddMemberDraftInvestorRow,
+  investorRowShowsDraftBadge,
+} from "../deal-members/add-investment/addMemberDraftInvestorRow"
+import {
+  ADD_MEMBER_DRAFT_UPDATED_EVENT,
+  clearAddMemberDraft,
+  isAddMemberSessionDraftRedundantWithApiRows,
+  loadAddMemberDraft,
+} from "../deal-members/add-investment/addMemberFormDraftStorage"
+import { notifyDealInvestorsExportAudit } from "../api/dealInvestorsExportNotifyApi"
+import { DealMemberUserCell } from "./DealMemberUserCell"
+import { DealInvestorRoleBadge } from "./DealInvestorRoleBadge"
+import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal"
+import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay"
+import { DealMemberRowActions } from "../deal-members/components/DealMemberRowActions"
+import { AddLpInvestorModal } from "./AddLpInvestorModal"
+import { DealInvestorViewModal } from "./DealInvestorViewModal"
+import type { AddInvestmentFormValues } from "../deal-members"
+import {
+  displayInvestorCommittedAmount,
   formatMoneyFieldDisplay,
   parseMoneyDigits,
 } from "../utils/offeringMoneyFormat"
@@ -35,18 +61,26 @@ import { ToolStyleCard } from "../../../../../common/components/tool-style-card/
 import {
   fetchDealInvestorClasses,
   fetchDealInvestors,
+  isDealDetailFormIncomplete,
   postDealInvestment,
+  postDealLpInvestor,
   putDealInvestment,
+  putDealLpInvestor,
   type DealDetailApi,
 } from "../api/dealsApi"
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
 import {
   investorProfileIdFromLabel,
-  investorProfileLabel,
-  investorRoleLabel,
   investorRoleSelectValueFromStored,
+  isLpInvestorRole,
 } from "../constants/investor-profile"
 import { formatMemberUsername } from "../../../../usermanagement/memberAdminShared"
+import {
+  buildDealInvestorsExportCsv,
+  downloadDealExportCsv,
+  exportAuditLinesForDealInvestorRows,
+} from "../utils/dealInvestorExportCsv"
+import { dealInvestorStatusDisplayLabel } from "../utils/dealInvestorTableDisplay"
 import type {
   DealInvestorRow,
   DealInvestorsKpis,
@@ -56,12 +90,32 @@ import "../../../../usermanagement/user_management.css"
 import "../../Dashboard/sponsor-dashboard.css"
 import "../deals-list.css"
 import "../deal-investors-tab.css"
+import "../deal-members/tab/deal-members.css"
 
-function escapeCsvCell(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`
+export interface DealInvestorsTabHandle {
+  openViewInvestor: (row: DealInvestorRow) => void
+  openEditInvestor: (row: DealInvestorRow) => void
+  /** Refetch LP investors from the API without remounting (e.g. after member delete). */
+  refetchInvestors: () => Promise<void>
+}
+
+/** Same compact “Add Investors” modal as add — `deal_lp_investor` rows, not full investment form. */
+function shouldUseLpInvestorsModalForEdit(row: DealInvestorRow): boolean {
+  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false
+  if (row.investorKind === "lp_roster") return true
+  if (row.investorKind === "investment") return false
+  return isLpInvestorRole(row.investorRole ?? "")
+}
+
+/** LP tab row, or add-member draft with a contact picked but role not set yet. */
+function isLpInvestorsTabRow(r: DealInvestorRow): boolean {
+   if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
+    if (isLpInvestorRole(r.investorRole ?? "")) return true
+    const role = String(r.investorRole ?? "").trim()
+    const unset = !role || role === "—"
+    return unset && Boolean(r.contactId?.trim())
   }
-  return value
+  return isLpInvestorRole(r.investorRole ?? "")
 }
 
 interface DealInvestorsTabProps {
@@ -70,73 +124,32 @@ interface DealInvestorsTabProps {
   /** When set, KPI cards can show offering size from deal / investor classes if API KPIs are empty. */
   dealDetail?: DealDetailApi | null
   addInvestmentOpen: boolean
+  /** Hide KPI/table; only host Add Investment modal (e.g. when Deal Members tab is open). */
+  modalOnly?: boolean
   onAddInvestmentClose: () => void
-  onOpenAddInvestment: () => void
-}
-
-function memberNameFromContactId(id: string): string {
-  const m: Record<string, string> = {
-    rebecca_duffy: "Rebecca Duffy",
-    nigam_family: "Nigam Family LLC",
-    j_smith: "J. Smith",
-  }
-  return m[id] || id || "—"
-}
-
-function userFromContactId(contactId: string): {
-  userDisplayName: string
-  userEmail: string
-} {
-  const m: Record<string, { userDisplayName: string; userEmail: string }> = {
-    rebecca_duffy: {
-      userDisplayName: "rduffy",
-      userEmail: "rebecca.duffy@example.com",
-    },
-    nigam_family: {
-      userDisplayName: "anigam",
-      userEmail: "contact@nigamfamily.com",
-    },
-    j_smith: {
-      userDisplayName: "jsmith",
-      userEmail: "j.smith@example.com",
-    },
-  }
-  return m[contactId] ?? { userDisplayName: "—", userEmail: "—" }
-}
-
-function initialsFromUserRow(
-  userDisplayName: string,
-  memberDisplayName: string,
-): string {
-  const src =
-    userDisplayName.trim() && userDisplayName !== "—"
-      ? userDisplayName
-      : memberDisplayName
-  const t = src.trim()
-  if (!t || t === "—") return "?"
-  const parts = t.split(/[\s@._-]+/).filter(Boolean)
-  if (parts.length >= 2)
-    return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2)
-  return t.slice(0, 2).toUpperCase()
-}
-
-function formatSignedDateDisplay(iso: string): string {
-  return formatDateDdMmmYyyy(iso)
-}
-
-function formatCommittedFromForm(v: AddInvestmentFormValues): string {
-  const raw = [v.commitmentAmount, ...v.extraContributionAmounts]
-  const nums = raw
-    .map((s) => parseFloat(String(s).replace(/[^0-9.-]/g, "")))
-    .filter((n) => Number.isFinite(n))
-  if (nums.length === 0) return v.commitmentAmount.trim() || "—"
-  const sum = nums.reduce((a, b) => a + b, 0)
-  if (sum === 0) return "—"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(sum)
+  /** Opens the full add/edit investment modal (Deal Members flow + draft “Continue editing”). */
+  onOpenFullInvestmentModal?: () => void
+  /** Mirrors deal detail state: drives “Add Investor” vs “Add Member” modal title. */
+  addInvestmentEntry?: "member" | "investor"
+  /**
+   * Add mode: restore autosaved add-member draft (default true). Deal detail sets false for
+   * “Add Member” (empty form without clearing the table draft row); draft “Continue editing” uses true.
+   */
+  restoreAddMemberSessionDraft?: boolean
+  /** Called after investors are added or updated — refreshes the Deal Members table only. */
+  onInvestorsChanged?: () => void
+  /** Send member invitation email from the Investors table row menu. */
+  onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>
+  /** Copy offering link (same as Deal Members). */
+  onCopyOfferingLink?: (row: DealInvestorRow) => void
+  /**
+   * When true, “Copy offering link” is enabled (Offering Details → “Only visible with link”).
+   */
+  offeringLinkAvailable?: boolean
+  /** Remove member / roster row (same as Deal Members). */
+  onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>
+  /** Fires when Add or Edit investment modal is open — hide session draft row in Deal Members table. */
+  onSharedInvestmentModalOpenChange?: (open: boolean) => void
 }
 
 function parseCommittedCellToNumber(s: string | undefined): number {
@@ -200,6 +213,7 @@ function dealInvestorRowToFormValues(row: DealInvestorRow): AddInvestmentFormVal
     commitmentAmount: row.commitmentAmountRaw?.trim() ?? "",
     extraContributionAmounts: [...(row.extraContributionAmounts ?? [])],
     documentFileName: null,
+    sendInvitationMail: "no",
   }
 }
 
@@ -212,54 +226,6 @@ function resolveInvestorClassLabelForRow(
   const byId = classes.find((c) => c.id === t)
   if (byId) return byId.name.trim() || byId.id
   return t
-}
-
-function addInvestmentFormToRow(
-  v: AddInvestmentFormValues,
-  dealId: string,
-): DealInvestorRow {
-  const fallback = userFromContactId(v.contactId)
-  const displayName =
-    v.contactDisplayName?.trim() || memberNameFromContactId(v.contactId)
-  const userEmail = v.contactEmail?.trim() || fallback.userEmail
-  const userDisplayName =
-    v.contactUsername !== undefined
-      ? formatMemberUsername(v.contactUsername)
-      : fallback.userDisplayName
-  return {
-    id: `inv-${dealId}-${Date.now()}`,
-    displayName,
-    entitySubtitle: investorProfileLabel(v.profileId),
-    userDisplayName,
-    userEmail,
-    investorClass: v.investorClass || "—",
-    investorRole: investorRoleLabel(v.investorRole),
-    status: v.status || "—",
-    committed: formatCommittedFromForm(v),
-    signedDate: formatSignedDateDisplay(v.docSignedDate),
-    fundedDate: "—",
-    selfAccredited: "—",
-    verifiedAccLabel: "Not Started",
-  }
-}
-
-function DealInvestorsEmpty({ onInvite }: { onInvite: () => void }) {
-  return (
-    <div className="um_panel deal_inv_empty_panel">
-      <div className="deal_inv_empty_state">
-        <p className="deal_inv_empty_title">
-          Investments Will Be Listed Here
-        </p>
-        <button
-          type="button"
-          className="deals_list_add_btn deal_inv_empty_cta"
-          onClick={onInvite}
-        >
-          Invite Contacts
-        </button>
-      </div>
-    </div>
-  )
 }
 
 function VerifiedAccBadge({ label }: { label: string }) {
@@ -336,21 +302,33 @@ function DealInvestorsPopulated({
   dealDetail,
   investorClasses,
   onEditInvestor,
-  onViewInvestor,
+  onAddInvestor,
+  onContinueDraftEdit,
+  onSendInvitationMail,
+  onCopyOfferingLink,
+  onDeleteMember,
+  offeringLinkAvailable,
 }: {
   initialPayload: DealInvestorsPayload
   dealId: string
   dealDetail?: DealDetailApi | null
   investorClasses: DealInvestorClass[]
   onEditInvestor: (row: DealInvestorRow) => void
-  onViewInvestor: (row: DealInvestorRow) => void
+  onAddInvestor: () => void
+  onContinueDraftEdit?: () => void
+  onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>
+  onCopyOfferingLink?: (row: DealInvestorRow) => void
+  onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>
+  offeringLinkAvailable: boolean
 }) {
   const [query, setQuery] = useState("")
+  const [exportModalOpen, setExportModalOpen] = useState(false)
   const [rows, setRows] = useState<DealInvestorRow[]>(initialPayload.investors)
   const kpis = useMemo((): DealInvestorsKpis => {
     const base = initialPayload.kpis
     const sum = rows.reduce(
-      (acc, r) => acc + parseCommittedCellToNumber(r.committed),
+      (acc, r) =>
+        acc + parseCommittedCellToNumber(displayInvestorCommittedAmount(r)),
       0,
     )
     const count = rows.length
@@ -494,55 +472,36 @@ function DealInvestorsPopulated({
     [page, pageSize, filtered.length],
   )
 
+  const exportModalRows = useMemo(
+    () => filtered.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID),
+    [filtered],
+  )
+
   const columns: DataTableColumn<DealInvestorRow>[] = useMemo(
     () => [
       {
-        id: "member",
-        header: "Member",
+        id: "user",
+        header: "User",
         sortValue: (row) =>
           `${row.displayName} ${row.entitySubtitle} ${formatMemberUsername(row.userDisplayName)} ${row.userEmail}`.toLowerCase(),
-        tdClassName: "deal_inv_td_member",
-        cell: (row) => {
-          const initials = initialsFromUserRow(
-            row.userDisplayName,
-            row.displayName,
-          )
-          const line1 = String(row.displayName ?? "").trim() || "—"
-          const profileName = String(row.entitySubtitle ?? "").trim() || "—"
-          return (
-            <div className="deal_inv_identity_cell">
-              <div className="deal_inv_identity_avatar" aria-hidden>
-                <span className="deal_inv_identity_initials">{initials}</span>
-              </div>
-              <div className="deal_inv_identity_text">
-                <span
-                  className="deal_inv_identity_line1 deal_inv_identity_ellipsis"
-                  title={line1 !== "—" ? line1 : undefined}
-                >
-                  {line1}
-                </span>
-                <span
-                  className="deal_inv_identity_line2 deal_inv_identity_ellipsis"
-                  title={profileName !== "—" ? profileName : undefined}
-                >
-                  {profileName}
-                </span>
-              </div>
-            </div>
-          )
-        },
+        tdClassName: "um_td_user deal_inv_td_user_cell",
+        cell: (row) => (
+          <DealMemberUserCell
+            row={row}
+            isDraft={investorRowShowsDraftBadge(row)}
+          />
+        ),
       },
       {
         id: "role",
         header: "Role",
         sortValue: (row) => (row.investorRole ?? "").trim().toLowerCase(),
-        tdClassName: "deal_inv_td_role deal_inv_td_ellipsis",
-        cell: (row) => (
-          <DealInvEllipsisText text={investorRoleLabel(row.investorRole ?? "")} />
-        ),
+        tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
+        cell: (row) => <DealInvestorRoleBadge investorRole={row.investorRole} />,
       },
       {
         id: "investorClass",
+        align: "center",
         header: (
           <span className="deal_inv_th_investor_class_head">
             <span>Investor Class</span>
@@ -558,11 +517,14 @@ function DealInvestorsPopulated({
                 placement="bottom"
                 panelAlign="start"
                 openOnHover={false}
+                nativeButtonTrigger={false}
               />
             ) : null}
           </span>
         ),
-        tdClassName: "deal_inv_td_investor_class deal_inv_td_investor_class_cell",
+        thClassName: "deals_th_align_center",
+        tdClassName:
+          "deal_inv_td_investor_class deal_inv_td_investor_class_cell deal_inv_td_investor_class_center",
         sortValue: (row) => {
           const a = (row.investorClass ?? "").trim()
           if (a) return a.toLowerCase()
@@ -589,20 +551,24 @@ function DealInvestorsPopulated({
       {
         id: "status",
         header: "Status",
-        sortValue: (row) => row.status ?? "",
+        sortValue: (row) =>
+          dealInvestorStatusDisplayLabel(row).toLowerCase(),
         tdClassName: "deal_inv_td_ellipsis",
-        cell: (row) => <DealInvEllipsisText text={row.status ?? "—"} />,
+        cell: (row) => (
+          <DealInvEllipsisText text={dealInvestorStatusDisplayLabel(row)} />
+        ),
       },
       {
         id: "committed",
         header: "Committed",
         align: "right",
-        sortValue: (row) => row.committed ?? "",
-        tdClassName: "deal_inv_td_ellipsis deal_inv_td_committed",
+        thClassName: "deals_th_align_right",
+        sortValue: (row) => displayInvestorCommittedAmount(row),
+        tdClassName: "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
         cell: (row) => (
           <DealInvEllipsisText
-            text={formatMoneyFieldDisplay(row.committed)}
             alignEnd
+            text={displayInvestorCommittedAmount(row)}
           />
         ),
       },
@@ -638,16 +604,34 @@ function DealInvestorsPopulated({
       },
       {
         id: "actions",
-        header: "Action",
-        align: "right",
+        header: "Actions",
+        align: "center",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (row) => (
-          <DealInvestorRowActions
-            investorLabel={row.displayName}
-            onViewDetails={() => onViewInvestor(row)}
-            onEdit={() => onEditInvestor(row)}
-          />
+          <div className="deal_members_actions_cell">
+            <DealMemberRowActions
+              row={row}
+              draftRow={row.id === ADD_MEMBER_DRAFT_ROW_ID}
+              invitationMailSent={row.invitationMailSent === true}
+              offeringLinkAvailable={offeringLinkAvailable}
+              onEdit={(r) => {
+                if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
+                  if (onContinueDraftEdit) onContinueDraftEdit()
+                  else onAddInvestor()
+                  return
+                }
+                onEditInvestor(r)
+              }}
+              onCopyLink={(r) => onCopyOfferingLink?.(r)}
+              onSendInvite={(r) => {
+                void onSendInvitationMail?.(r)
+              }}
+              onDelete={(r) => {
+                void onDeleteMember?.(r)
+              }}
+            />
+          </div>
         ),
       },
     ],
@@ -655,58 +639,24 @@ function DealInvestorsPopulated({
       dealAllClassNamesLine,
       investorClasses.length,
       onEditInvestor,
-      onViewInvestor,
+      onAddInvestor,
+      onContinueDraftEdit,
+      onSendInvitationMail,
+      onCopyOfferingLink,
+      onDeleteMember,
+      offeringLinkAvailable,
     ],
   )
 
-  function exportInvestorsCsv() {
-    const headers = [
-      "Member name",
-      "Profile",
-      "Role",
-      "Investor class",
-      "Status",
-      "Committed",
-      "Signed",
-      "Funded",
-      "Self accredited",
-      "Verified accreditation",
-      "Username",
-      "Email",
-    ]
-    const lines = [headers.map(escapeCsvCell).join(",")]
-    for (const row of filtered) {
-      const invClass =
-        (row.investorClass ?? "").trim() ||
-        dealAllClassNamesLine.trim() ||
-        "—"
-      const roleForCsv = investorRoleLabel(row.investorRole ?? "")
-      const line = [
-        row.displayName,
-        row.entitySubtitle,
-        roleForCsv,
-        invClass,
-        row.status,
-        formatMoneyFieldDisplay(row.committed),
-        row.signedDate,
-        row.fundedDate,
-        row.selfAccredited,
-        row.verifiedAccLabel,
-        row.userDisplayName,
-        row.userEmail,
-      ]
-      lines.push(line.map((c) => escapeCsvCell(String(c ?? ""))).join(","))
-    }
-    const csv = `\ufeff${lines.join("\r\n")}`
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8",
+  function handleExportInvestors(selected: DealInvestorRow[]) {
+    const csv = buildDealInvestorsExportCsv(selected, dealAllClassNamesLine)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const safeDeal = dealId.replace(/[^\w-]+/g, "_").slice(0, 36)
+    downloadDealExportCsv(csv, `deal-investors-${safeDeal}-${stamp}.csv`)
+    void notifyDealInvestorsExportAudit(dealId, {
+      rowCount: selected.length,
+      exportedLines: exportAuditLinesForDealInvestorRows(selected),
     })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `deal-investors-${dealId.replace(/[^\w-]+/g, "_").slice(0, 36)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const kpiMetricCards = useMemo(
@@ -774,13 +724,24 @@ function DealInvestorsPopulated({
   )
 
   return (
-    <div className="deal_inv_populated">
+    <div className="deal_inv_populated deal_members_tab">
       <section
         className="sponsor_dash_metrics deal_inv_kpi_metrics"
         aria-label="Deal investment summary"
       >
         {kpiMetricCards}
       </section>
+
+      <div className="um_header_row deal_inv_investors_cta_row">
+        <button
+          type="button"
+          className="deals_list_add_btn"
+          onClick={onAddInvestor}
+        >
+          <Plus size={18} strokeWidth={2} aria-hidden />
+          Add Investor
+        </button>
+      </div>
 
       <div className="deal_inv_controls">
         {/* Share with lead sponsor + Send email (deferred)
@@ -923,6 +884,18 @@ function DealInvestorsPopulated({
         </section>
       </div>
 
+      <ExportDealInvestorRowsModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Export deal investors"
+        hint="Search and select investors, then export to Excel (CSV format)."
+        searchPlaceholder="Search investors…"
+        searchAriaLabel="Search investors in export list"
+        listAriaLabel="Deal investors to export"
+        rows={exportModalRows}
+        onExportExcel={handleExportInvestors}
+      />
+
       <div className="um_panel um_members_tab_panel deal_inv_table_panel">
         <div className="um_toolbar deal_inv_table_um_toolbar">
           <div className="um_search_wrap">
@@ -937,23 +910,10 @@ function DealInvestorsPopulated({
             />
           </div>
           <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
-            <label className="deal_inv_rows_per_page">
-              <span className="deal_inv_rows_per_page_label">Rows per page</span>
-              <select
-                className="deal_inv_rows_per_page_select"
-                value={String(pageSize)}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                aria-label="Rows per page"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-              </select>
-            </label>
             <button
               type="button"
               className="um_toolbar_export_btn"
-              onClick={exportInvestorsCsv}
+              onClick={() => setExportModalOpen(true)}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
               <span>Export all investors</span>
@@ -967,22 +927,43 @@ function DealInvestorsPopulated({
           columns={columns}
           rows={filtered}
           getRowKey={(row, i) => row.id || `inv-${dealId}-${i}`}
-          emptyLabel="No investors match your filters."
-          pagination={filtered.length > 0 ? pagination : undefined}
+          getRowClassName={(row) =>
+            investorRowShowsDraftBadge(row) ? "deal_inv_row_draft" : undefined
+          }
+          emptyLabel="No LP investors match your filters."
+          pagination={pagination}
         />
       </div>
     </div>
   )
 }
 
-export function DealInvestorsTab({
-  dealId,
-  dealName,
-  dealDetail,
-  addInvestmentOpen,
-  onAddInvestmentClose,
-  onOpenAddInvestment,
-}: DealInvestorsTabProps) {
+export const DealInvestorsTab = forwardRef<
+  DealInvestorsTabHandle,
+  DealInvestorsTabProps
+>(function DealInvestorsTab(
+  {
+    dealId,
+    dealName,
+    dealDetail,
+    addInvestmentOpen,
+    modalOnly = false,
+    onAddInvestmentClose,
+    onOpenFullInvestmentModal,
+    addInvestmentEntry = "member",
+    restoreAddMemberSessionDraft = true,
+    onInvestorsChanged,
+    onSendInvitationMail,
+    onCopyOfferingLink,
+    onDeleteMember,
+    onSharedInvestmentModalOpenChange,
+    offeringLinkAvailable = false,
+  },
+  ref,
+) {
+  const [addLpInvestorOpen, setAddLpInvestorOpen] = useState(false)
+  /** “Continue editing” on draft row: prefill AddLpInvestorModal from session add-member draft. */
+  const [lpResumeAddMemberDraft, setLpResumeAddMemberDraft] = useState(false)
   const [payload, setPayload] = useState<DealInvestorsPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [localAddedInvestors, setLocalAddedInvestors] = useState<
@@ -990,9 +971,20 @@ export function DealInvestorsTab({
   >([])
   const [investorClasses, setInvestorClasses] = useState<DealInvestorClass[]>([])
   const [editRow, setEditRow] = useState<DealInvestorRow | null>(null)
+  const [editLpRow, setEditLpRow] = useState<DealInvestorRow | null>(null)
   const [viewInvestorRow, setViewInvestorRow] = useState<DealInvestorRow | null>(
     null,
   )
+  const [addMemberDraftTick, setAddMemberDraftTick] = useState(0)
+
+  useEffect(() => {
+    function onDraftUpdated() {
+      setAddMemberDraftTick((t) => t + 1)
+    }
+    window.addEventListener(ADD_MEMBER_DRAFT_UPDATED_EVENT, onDraftUpdated)
+    return () =>
+      window.removeEventListener(ADD_MEMBER_DRAFT_UPDATED_EVENT, onDraftUpdated)
+  }, [])
 
   const editFormInitialValues = useMemo(
     () => (editRow ? dealInvestorRowToFormValues(editRow) : null),
@@ -1004,20 +996,89 @@ export function DealInvestorsTab({
     [investorClasses, dealDetail],
   )
 
-  const handleEditInvestor = useCallback((row: DealInvestorRow) => {
-    setViewInvestorRow(null)
-    setEditRow(row)
-  }, [])
+  const handleEditInvestor = useCallback(
+    (row: DealInvestorRow) => {
+      setViewInvestorRow(null)
+      setLpResumeAddMemberDraft(false)
+      /** Dismiss “Add investment” so `addInvestmentOpen` is false; otherwise the effect
+       * below clears `editRow` while the modal stays in add mode and session draft POSTs again. */
+      onAddInvestmentClose()
+      if (shouldUseLpInvestorsModalForEdit(row)) {
+        setEditRow(null)
+        setEditLpRow(row)
+        return
+      }
+      setEditLpRow(null)
+      setEditRow(row)
+    },
+    [onAddInvestmentClose],
+  )
+
+  const handleContinueDraftInvestor = useCallback(() => {
+    const draft = loadAddMemberDraft(dealId)
+    if (draft && isLpInvestorRole(draft.form.investorRole ?? "")) {
+      setLpResumeAddMemberDraft(true)
+      setAddLpInvestorOpen(true)
+      return
+    }
+    onOpenFullInvestmentModal?.()
+  }, [dealId, onOpenFullInvestmentModal])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openViewInvestor: (row: DealInvestorRow) => {
+        setViewInvestorRow(row)
+      },
+      openEditInvestor: (row: DealInvestorRow) => {
+        setViewInvestorRow(null)
+        setLpResumeAddMemberDraft(false)
+        onAddInvestmentClose()
+        if (shouldUseLpInvestorsModalForEdit(row)) {
+          setEditRow(null)
+          setEditLpRow(row)
+          return
+        }
+        setEditLpRow(null)
+        setEditRow(row)
+      },
+      refetchInvestors: async () => {
+        const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
+        setPayload(data)
+      },
+    }),
+    [dealId, onAddInvestmentClose],
+  )
 
   useEffect(() => {
-    if (addInvestmentOpen) setEditRow(null)
+    if (addInvestmentOpen) {
+      setEditRow(null)
+      setEditLpRow(null)
+    }
   }, [addInvestmentOpen])
+
+  useLayoutEffect(() => {
+    onSharedInvestmentModalOpenChange?.(
+      Boolean(
+        addInvestmentOpen ||
+          editRow !== null ||
+          editLpRow !== null ||
+          addLpInvestorOpen,
+      ),
+    )
+  }, [
+    addInvestmentOpen,
+    editRow,
+    editLpRow,
+    addLpInvestorOpen,
+    onSharedInvestmentModalOpenChange,
+  ])
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       setLoading(true)
-      const data = await fetchDealInvestors(dealId)
+      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
       if (!cancelled) {
         setPayload(data)
         setLoading(false)
@@ -1042,9 +1103,38 @@ export function DealInvestorsTab({
     setLocalAddedInvestors([])
   }, [dealId])
 
+  const sessionDraftRow = useMemo((): DealInvestorRow | null => {
+    void addMemberDraftTick
+    return buildAddMemberDraftInvestorRow(dealId, investorClasses)
+  }, [dealId, investorClasses, addMemberDraftTick])
+
   const mergedInvestors = useMemo(() => {
-    return [...(payload?.investors ?? []), ...localAddedInvestors]
-  }, [payload, localAddedInvestors])
+    const combined = [...(payload?.investors ?? []), ...localAddedInvestors]
+    const lpOnly = combined.filter((r) => isLpInvestorsTabRow(r))
+    const draftRedundantWithApi = isAddMemberSessionDraftRedundantWithApiRows(
+      dealId,
+      combined,
+    )
+    const showDraft =
+      sessionDraftRow &&
+      !draftRedundantWithApi &&
+      !editRow &&
+      !editLpRow &&
+      !addInvestmentOpen &&
+      !addLpInvestorOpen &&
+      isLpInvestorsTabRow(sessionDraftRow)
+    if (showDraft) return [...lpOnly, sessionDraftRow]
+    return lpOnly
+  }, [
+    dealId,
+    payload,
+    localAddedInvestors,
+    sessionDraftRow,
+    editRow,
+    editLpRow,
+    addInvestmentOpen,
+    addLpInvestorOpen,
+  ])
 
   const mergedPayload = useMemo((): DealInvestorsPayload | null => {
     if (!payload) return null
@@ -1055,7 +1145,20 @@ export function DealInvestorsTab({
     values: AddInvestmentFormValues,
     subscriptionDocument: File | null,
   ) {
-    const result = await postDealInvestment(dealId, values, subscriptionDocument)
+    const draftMeta = loadAddMemberDraft(dealId)
+    const autosavedId = draftMeta?.backendInvestmentId?.trim()
+    const result = isLpInvestorRole(values.investorRole)
+      ? autosavedId
+        ? await putDealLpInvestor(dealId, autosavedId, values)
+        : await postDealLpInvestor(dealId, values)
+      : autosavedId
+        ? await putDealInvestment(
+            dealId,
+            autosavedId,
+            values,
+            subscriptionDocument,
+          )
+        : await postDealInvestment(dealId, values, subscriptionDocument)
     if (!result.ok) throw new Error(result.message)
     const valuesForDisplay: AddInvestmentFormValues = {
       ...values,
@@ -1069,21 +1172,18 @@ export function DealInvestorsTab({
         ...prev,
         addInvestmentFormToRow(valuesForDisplay, dealId),
       ])
-    } else if (import.meta.env.VITE_USE_MOCK_DEAL_INVESTORS === "true") {
-      setLocalAddedInvestors((prev) => [
-        ...prev,
-        addInvestmentFormToRow(valuesForDisplay, dealId),
-      ])
     } else {
       setLocalAddedInvestors([])
-      const data = await fetchDealInvestors(dealId)
+      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
       setPayload(data)
     }
     onAddInvestmentClose()
+    onInvestorsChanged?.()
   }
 
   function handleCloseInvestmentModal() {
     setEditRow(null)
+    setEditLpRow(null)
     onAddInvestmentClose()
   }
 
@@ -1092,13 +1192,18 @@ export function DealInvestorsTab({
     subscriptionDocument: File | null,
   ) {
     if (editRow) {
-      const result = await putDealInvestment(
-        dealId,
-        editRow.id,
-        values,
-        subscriptionDocument,
-      )
+      const result =
+        editRow.investorKind === "lp_roster"
+          ? await putDealLpInvestor(dealId, editRow.id, values)
+          : await putDealInvestment(
+              dealId,
+              editRow.id,
+              values,
+              subscriptionDocument,
+            )
       if (!result.ok) throw new Error(result.message)
+      /** Stale add-member session draft would still append a draft row — same person appears twice. */
+      clearAddMemberDraft(dealId)
       if (result.mode === "client") {
         setPayload((prev) => {
           if (!prev) return prev
@@ -1122,16 +1227,21 @@ export function DealInvestorsTab({
         })
         setEditRow(null)
         onAddInvestmentClose()
+        onInvestorsChanged?.()
         return
       }
       setEditRow(null)
       onAddInvestmentClose()
-      const data = await fetchDealInvestors(dealId)
+      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
       setPayload(data)
+      onInvestorsChanged?.()
       return
     }
     await handleSaveAddInvestment(values, subscriptionDocument)
   }
+
+  /** Investors table/KPI (`modalOnly` false): always use Add/Edit Investor chrome. Deal Members tab (`modalOnly` true) follows parent `addInvestmentEntry` for Add/Edit Member vs shared flows. */
+  const addEntryForModal = modalOnly ? addInvestmentEntry : "investor"
 
   const modal = (
     <AddInvestmentModal
@@ -1142,14 +1252,76 @@ export function DealInvestorsTab({
       defaultOfferingLabel={dealName}
       mode={editRow ? "edit" : "add"}
       initialValues={editFormInitialValues}
-      prefillKey={editRow?.id ?? "add-investment"}
+      prefillKey={
+        editRow?.id ??
+        (restoreAddMemberSessionDraft ? "add-restore-draft" : "add-fresh")
+      }
+      addEntry={addEntryForModal}
+      restoreAddMemberSessionDraft={restoreAddMemberSessionDraft}
+      onBackendAutosave={async (detail) => {
+        const data = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: true,
+        })
+        setPayload(data)
+        if (detail?.createdInvestment) onInvestorsChanged?.()
+      }}
+      dealBlocksInvitationEmails={
+        dealDetail != null &&
+        (String(dealDetail.dealStage ?? "").trim().toLowerCase() ===
+          "draft" ||
+          isDealDetailFormIncomplete(dealDetail))
+      }
     />
   )
+
+  const lpBlocksInvites =
+    dealDetail != null &&
+    (String(dealDetail.dealStage ?? "").trim().toLowerCase() === "draft" ||
+      isDealDetailFormIncomplete(dealDetail))
+
+  const lpInvestorModal = (
+    <AddLpInvestorModal
+      dealId={dealId}
+      open={addLpInvestorOpen || editLpRow !== null}
+      mode={editLpRow ? "edit" : "add"}
+      editRow={editLpRow}
+      resumeAddMemberDraft={lpResumeAddMemberDraft}
+      dealBlocksInvitationEmails={lpBlocksInvites}
+      onClose={() => {
+        setAddLpInvestorOpen(false)
+        setEditLpRow(null)
+        setLpResumeAddMemberDraft(false)
+      }}
+      onSaved={async () => {
+        setLocalAddedInvestors([])
+        setEditLpRow(null)
+        const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
+        setPayload(data)
+        onInvestorsChanged?.()
+      }}
+    />
+  )
+
+  if (modalOnly)
+    return (
+      <>
+        {modal}
+        {lpInvestorModal}
+        <DealInvestorViewModal
+          row={viewInvestorRow}
+          onClose={() => setViewInvestorRow(null)}
+          investorClasses={investorClasses}
+          dealAllClassNamesLine={dealClassNamesLineForView}
+          onEdit={handleEditInvestor}
+        />
+      </>
+    )
 
   if (loading)
     return (
       <>
         {modal}
+        {lpInvestorModal}
         <p className="deals_list_not_found" role="status">
           Loading investors…
         </p>
@@ -1158,25 +1330,26 @@ export function DealInvestorsTab({
 
   if (!mergedPayload) return null
 
-  if (mergedInvestors.length === 0) {
-    return (
-      <>
-        {modal}
-        <DealInvestorsEmpty onInvite={onOpenAddInvestment} />
-      </>
-    )
-  }
-
   return (
     <>
       {modal}
+      {lpInvestorModal}
       <DealInvestorsPopulated
         initialPayload={mergedPayload}
         dealId={dealId}
         dealDetail={dealDetail}
         investorClasses={investorClasses}
         onEditInvestor={handleEditInvestor}
-        onViewInvestor={setViewInvestorRow}
+        onAddInvestor={() => {
+          setEditLpRow(null)
+          setLpResumeAddMemberDraft(false)
+          setAddLpInvestorOpen(true)
+        }}
+        onContinueDraftEdit={handleContinueDraftInvestor}
+        onSendInvitationMail={onSendInvitationMail}
+        onCopyOfferingLink={onCopyOfferingLink}
+        onDeleteMember={onDeleteMember}
+        offeringLinkAvailable={offeringLinkAvailable}
       />
       <DealInvestorViewModal
         row={viewInvestorRow}
@@ -1187,4 +1360,4 @@ export function DealInvestorsTab({
       />
     </>
   )
-}
+})

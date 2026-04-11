@@ -1,5 +1,10 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useMemo,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { DataTablePagination } from "../DataTablePagination/DataTablePagination";
 import "./data-table.css";
 
@@ -44,6 +49,16 @@ type DataTableProps<T> = {
   getRowClassName?: (row: T) => string | undefined;
   /** Default sort when the table first mounts (members-style sortable tables). */
   initialSort?: { columnId: string; direction: "asc" | "desc" };
+  /**
+   * Row click (e.g. draft “continue editing”). Ignored when the event target is inside
+   * a link, button, or menu item so actions stay usable.
+   */
+  onBodyRowClick?: (row: T, rowIndex: number) => void;
+  /**
+   * When `visualVariant` is `members`: keep the first column visible during horizontal
+   * scroll (`position: sticky; left: 0`). Defaults to `true` for members-style tables.
+   */
+  stickyFirstColumn?: boolean;
 };
 
 function sortHeaderLabel(header: ReactNode, columnId: string): string {
@@ -78,7 +93,11 @@ export function DataTable<T>({
   pagination,
   getRowClassName,
   initialSort,
+  onBodyRowClick,
+  stickyFirstColumn: stickyFirstColumnProp,
 }: DataTableProps<T>) {
+  const stickyFirstColumn =
+    stickyFirstColumnProp ?? visualVariant === "members";
   const [sortCol, setSortCol] = useState<string | null>(
     () => initialSort?.columnId ?? null,
   );
@@ -133,14 +152,23 @@ export function DataTable<T>({
       : "data_table_scroll";
   const tableClass =
     visualVariant === "members"
-      ? ["um_table", "um_table_sortable", membersTableClassName].filter(Boolean).join(" ")
-      : "data_table";
+      ? [
+          "um_table",
+          "um_table_sortable",
+          membersTableClassName,
+          stickyFirstColumn ? "data_table_sticky_first" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      : stickyFirstColumn
+        ? "data_table data_table_sticky_first"
+        : "data_table";
 
   const tableEl = (
     <table className={tableClass}>
         <thead>
           <tr>
-            {columns.map((col) => {
+            {columns.map((col, colIndex) => {
               const textAlign = membersThTdTextAlign(visualVariant, col);
               const thStyle =
                 textAlign !== undefined ? { textAlign } : undefined;
@@ -153,9 +181,11 @@ export function DataTable<T>({
                   : "none"
                 : undefined;
 
+              const stickyFirst = stickyFirstColumn && colIndex === 0;
               const thClass = [
                 col.thClassName,
                 visualVariant === "default" && active ? "data_table_th_sorted" : "",
+                stickyFirst ? "data_table_col_sticky" : "",
               ]
                 .filter(Boolean)
                 .join(" ");
@@ -271,16 +301,31 @@ export function DataTable<T>({
           ) : (
             displayRows.map((row, i) => {
               const rowClass = getRowClassName?.(row);
+              function handleRowClick(e: MouseEvent<HTMLTableRowElement>) {
+                if (!onBodyRowClick) return;
+                const t = e.target as HTMLElement | null;
+                if (!t) return;
+                if (t.closest("a[href], button, [role='menuitem'], input, label"))
+                  return;
+                onBodyRowClick(row, i);
+              }
               return (
               <tr
                 key={getRowKey(row, i)}
                 className={rowClass || undefined}
+                onClick={onBodyRowClick ? handleRowClick : undefined}
               >
-                {columns.map((col) => {
+                {columns.map((col, colIndex) => {
                   const textAlign = membersThTdTextAlign(visualVariant, col);
                   const tdStyle =
                     textAlign !== undefined ? { textAlign } : undefined;
-                  const tdClass = col.tdClassName;
+                  const stickyFirst = stickyFirstColumn && colIndex === 0;
+                  const tdClass = [
+                    col.tdClassName,
+                    stickyFirst ? "data_table_col_sticky" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
                   return (
                     <td
                       key={col.id}
@@ -299,12 +344,23 @@ export function DataTable<T>({
     </table>
   );
 
+  const scrollRegionClass = [
+    "data_table_scroll_region",
+    stickyFirstColumn ? "data_table_scroll_region_sticky_first" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   if (visualVariant === "members") {
     const tableBlock =
       membersShell === "plain" ? (
-        tableEl
+        stickyFirstColumn ? (
+          <div className={scrollRegionClass}>{tableEl}</div>
+        ) : (
+          tableEl
+        )
       ) : (
-        <div className="data_table_scroll_region">{tableEl}</div>
+        <div className={scrollRegionClass}>{tableEl}</div>
       );
     return (
       <div className={wrapClass}>
@@ -325,7 +381,11 @@ export function DataTable<T>({
 
   return (
     <div className={wrapClass}>
-      {tableEl}
+      {stickyFirstColumn ? (
+        <div className={scrollRegionClass}>{tableEl}</div>
+      ) : (
+        tableEl
+      )}
       {pagination && pagination.totalItems > 0 ? (
         <DataTablePagination
           page={pagination.page}

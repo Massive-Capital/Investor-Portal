@@ -171,7 +171,8 @@ a.sponsor_dash_add_link.um_btn_primary {
 .sponsor_dash_sort_select {
   border: none;
   background: transparent;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: var(--portal-text);

@@ -24,7 +24,7 @@ export function getSampleDealInvestorsPayload(): DealInvestorsPayload {
         userDisplayName: "rduffy",
         userEmail: "rebecca.duffy@example.com",
         investorClass: "Class A",
-        investorRole: "Sponsor",
+        investorRole: "lp_investors",
         status: "Investment started",
         committed: "$75,000",
         signedDate: "12-Dec-2022",

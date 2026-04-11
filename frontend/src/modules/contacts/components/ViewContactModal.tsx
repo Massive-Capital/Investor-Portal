@@ -65,16 +65,12 @@ export function ViewContactModal({
     <div
       className="um_modal_overlay portal_modal_z_boost contacts_view_modal_overlay"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <div
         className="um_modal um_modal_view deals_add_inv_modal_panel contacts_view_modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="contacts-view-title"
-        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="um_modal_head">
           <h3 id="contacts-view-title" className="um_modal_title">

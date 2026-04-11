@@ -67,7 +67,18 @@ export async function postCompany(req: Request, res: Response): Promise<void> {
     res.status(401).json({ message: "Authorization required" });
     return;
   }
-  if (!isPlatformAdminRole(user.userRole)) {
+  const [actor] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!actor) {
+    res.status(401).json({ message: "User not found" });
+    return;
+  }
+  const role =
+    String(actor.role ?? "").trim() || String(user.userRole ?? "").trim();
+  if (!isPlatformAdminRole(role)) {
     res.status(403).json({
       message: "Only platform administrators can create companies",
     });
@@ -102,7 +113,18 @@ export async function patchCompany(req: Request, res: Response): Promise<void> {
     res.status(401).json({ message: "Authorization required" });
     return;
   }
-  if (!isPlatformAdminRole(user.userRole)) {
+  const [actor] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, user.id))
+    .limit(1);
+  if (!actor) {
+    res.status(401).json({ message: "User not found" });
+    return;
+  }
+  const role =
+    String(actor.role ?? "").trim() || String(user.userRole ?? "").trim();
+  if (!isPlatformAdminRole(role)) {
     res.status(403).json({
       message: "Only platform administrators can update companies",
     });

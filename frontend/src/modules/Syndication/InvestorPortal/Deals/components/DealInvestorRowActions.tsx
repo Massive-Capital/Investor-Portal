@@ -12,14 +12,23 @@ import { createPortal } from "react-dom"
 interface DealInvestorRowActionsProps {
   /** Member / investor display name for accessible labeling */
   investorLabel: string
+  /**
+   * Add-member session draft row: same kebab; “Edit” → “Continue editing”;
+   * Email / Funding / Documents are disabled until the member is saved.
+   */
+  draftRow?: boolean
   onViewDetails: () => void
   onEdit?: () => void
+  /** When `draftRow`, used for View + Continue editing (opens add flow). */
+  onContinueDraftEdit?: () => void
 }
 
 export function DealInvestorRowActions({
   investorLabel,
+  draftRow = false,
   onViewDetails,
   onEdit,
+  onContinueDraftEdit,
 }: DealInvestorRowActionsProps) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -88,6 +97,11 @@ export function DealInvestorRowActions({
 
   const label = investorLabel.trim() || "investor"
 
+  function continueDraft() {
+    const fn = onContinueDraftEdit ?? onViewDetails
+    fn()
+  }
+
   return (
     <div className="um_kebab_root" ref={wrapRef}>
       <button
@@ -95,7 +109,7 @@ export function DealInvestorRowActions({
         className="um_kebab_trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Actions for ${label}`}
+        aria-label={`Actions for ${label}${draftRow ? " (draft)" : ""}`}
         onClick={() => setOpen((v) => !v)}
       >
         <MoreHorizontal size={18} strokeWidth={2} aria-hidden />
@@ -114,7 +128,8 @@ export function DealInvestorRowActions({
                   role="menuitem"
                   onClick={() => {
                     close()
-                    onViewDetails()
+                    if (draftRow) continueDraft()
+                    else onViewDetails()
                   }}
                 >
                   <Eye
@@ -129,8 +144,14 @@ export function DealInvestorRowActions({
               <li role="none">
                 <button
                   type="button"
-                  className="um_kebab_menuitem"
+                  className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
                   role="menuitem"
+                  disabled={draftRow}
+                  title={
+                    draftRow
+                      ? "Available after the member is saved"
+                      : undefined
+                  }
                   onClick={() => {
                     close()
                   }}
@@ -151,7 +172,8 @@ export function DealInvestorRowActions({
                   role="menuitem"
                   onClick={() => {
                     close()
-                    onEdit?.()
+                    if (draftRow) continueDraft()
+                    else onEdit?.()
                   }}
                 >
                   <Pencil
@@ -160,14 +182,20 @@ export function DealInvestorRowActions({
                     strokeWidth={2}
                     aria-hidden
                   />
-                  Edit
+                  {draftRow ? "Continue editing" : "Edit"}
                 </button>
               </li>
               <li role="none">
                 <button
                   type="button"
-                  className="um_kebab_menuitem"
+                  className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
                   role="menuitem"
+                  disabled={draftRow}
+                  title={
+                    draftRow
+                      ? "Available after the member is saved"
+                      : undefined
+                  }
                   onClick={() => {
                     close()
                   }}
@@ -184,8 +212,14 @@ export function DealInvestorRowActions({
               <li role="none">
                 <button
                   type="button"
-                  className="um_kebab_menuitem"
+                  className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
                   role="menuitem"
+                  disabled={draftRow}
+                  title={
+                    draftRow
+                      ? "Available after the member is saved"
+                      : undefined
+                  }
                   onClick={() => {
                     close()
                   }}

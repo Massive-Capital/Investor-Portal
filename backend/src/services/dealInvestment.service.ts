@@ -5,6 +5,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../config/uploadPaths.js";
 import { db, pool } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
+import { contact } from "../schema/contact.schema.js";
 import { addDealForm } from "../schema/deal.schema/add-deal-form.schema.js";
 import {
   dealInvestment,
@@ -15,6 +16,17 @@ import { listInvestorClassesByDealId } from "./dealInvestorClass.service.js";
 import { formatDdMmmYyyy } from "../utils/formatDdMmmYyyy.js";
 
 const UPLOAD_SUBDIR = "deal-investments";
+
+/** Canonical `investor_role` for LP investors (Investors tab add + list filter). */
+export const LP_INVESTOR_ROLE_STORED = "lp_investors";
+
+const LP_INVESTOR_ROLE_MATCH = [LP_INVESTOR_ROLE_STORED, "LP Investors"] as const;
+
+/** True when `investor_role` is the LP Investors tab role (not sponsor / deal team roles). */
+export function isLpInvestorRole(raw: string | null | undefined): boolean {
+  const s = String(raw ?? "").trim().toLowerCase();
+  return s === "lp_investors" || s === "lp investors";
+}
 
 const MEMBER_NAME: Record<string, string> = {
   rebecca_duffy: "Rebecca Duffy",
@@ -52,6 +64,28 @@ const PROFILE_LABEL: Record<string, string> = {
  * Ensures `investor_class` matches a row in `deal_investor_class` for this deal.
  * Accepts class id or name (case-insensitive name match). Stores the class **name** on the investment row.
  */
+/** Stored as `contact_id` when Add Investment autosave runs before a member is chosen. */
+export const DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER =
+  "__portal_investment_autosave__";
+
+export async function resolveFirstInvestorClassForDeal(
+  dealId: string,
+): Promise<
+  { ok: true; storedInvestorClass: string } | { ok: false; message: string }
+> {
+  const classes = await listInvestorClassesByDealId(dealId);
+  if (classes.length === 0) {
+    return {
+      ok: false,
+      message:
+        "Add at least one investor class in the Classes section before recording an investment.",
+    };
+  }
+  const first = classes[0]!;
+  const name = first.name?.trim();
+  return { ok: true, storedInvestorClass: name || first.id };
+}
+
 export async function resolveInvestorClassForDealInvestment(
   dealId: string,
   raw: string,
@@ -66,13 +100,13 @@ export async function resolveInvestorClassForDealInvestment(
       return {
         ok: false,
         message:
-          "Add at least one investor class in Offering Details before recording an investment.",
+          "Add at least one investor class in the Classes section before recording an investment.",
       };
     }
     return {
       ok: false,
       message:
-        "No investor classes are defined for this deal. Complete Offering Details before assigning a class.",
+        "No investor classes are defined for this deal. Complete the Classes section before assigning a class.",
     };
   }
 
@@ -102,7 +136,7 @@ export async function resolveInvestorClassForDealInvestment(
   return {
     ok: false,
     message:
-      "The selected investor class is not defined for this deal. Choose a class from Offering Details.",
+      "The selected investor class is not defined for this deal. Choose a class from the Classes section.",
   };
 }
 
@@ -158,8 +192,11 @@ type ResolvedPortalUser = {
   userEmail: string;
 };
 
-/** Load `users` rows for uuid `contact_id` so API never surfaces raw ids for name/email/username */
-async function resolveUsersByContactIds(
+/**
+ * Load portal `users` and CRM `contact` rows for uuid `contact_id` values so list APIs
+ * return name + email (contacts are not in `users`).
+ */
+export async function resolveUsersByContactIds(
   rows: DealInvestmentRow[],
 ): Promise<Map<string, ResolvedPortalUser>> {
   const need = new Set<string>();
@@ -190,6 +227,64 @@ async function resolveUsersByContactIds(
       userDisplayName: un,
       userEmail: email,
     });
+  }
+  const notInUsers = ids.filter((id) => !m.has(id.toLowerCase()));
+  if (notInUsers.length > 0) {
+    const contactRows = await db
+      .select({
+        id: contact.id,
+        email: contact.email,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+      })
+      .from(contact)
+      .where(inArray(contact.id, notInUsers));
+    for (const c of contactRows) {
+      const key = String(c.id).toLowerCase();
+      const displayName = [c.firstName, c.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim()
+        || "—";
+      const email = c.email?.trim() || "—";
+      m.set(key, {
+        displayName,
+        userDisplayName: "—",
+        userEmail: email,
+      });
+    }
+  }
+  return m;
+}
+
+/**
+ * Resolve portal user ids (e.g. `deal_member.added_by`) to the same display
+ * string used elsewhere for members (name / company / username).
+ */
+export async function resolveUserDisplayNamesByIds(
+  ids: (string | null | undefined)[],
+): Promise<Map<string, string>> {
+  const need = new Set<string>();
+  for (const raw of ids) {
+    const id = raw?.trim();
+    if (id && looksLikeUuid(id)) need.add(id.toLowerCase());
+  }
+  if (need.size === 0) return new Map();
+  const idList = [...need];
+  const found = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      username: users.username,
+      companyName: users.companyName,
+    })
+    .from(users)
+    .where(inArray(users.id, idList));
+  const m = new Map<string, string>();
+  for (const u of found) {
+    const key = String(u.id).toLowerCase();
+    m.set(key, formatMemberDisplayFromUser(u));
   }
   return m;
 }
@@ -298,6 +393,33 @@ export function mapRowToInvestorApi(
   resolvedByUserId?: Map<string, ResolvedPortalUser>,
 ) {
   const cid = row.contactId?.trim() ?? "";
+  if (cid === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER) {
+    const extras = (row.extraContributionAmounts as string[] | null) ?? [];
+    return {
+      id: row.id,
+      displayName: "Draft",
+      entitySubtitle: profileLabel(row.profileId),
+      userDisplayName: "—",
+      userEmail: "—",
+      investorClass: row.investorClass?.trim() || "—",
+      investorRole: row.investor_role?.trim() || "",
+      status: row.status?.trim() || "—",
+      committed: formatCommitted(
+        row.commitmentAmount,
+        row.extraContributionAmounts as string[] | null,
+      ),
+      signedDate: formatSignedDate(row.docSignedDate),
+      fundedDate: "—",
+      selfAccredited: "—",
+      verifiedAccLabel: "Not Started",
+      contactId: row.contactId ?? "",
+      profileId: row.profileId ?? "",
+      offeringId: row.offeringId ?? "",
+      commitmentAmountRaw: row.commitmentAmount ?? "",
+      extraContributionAmounts: extras,
+      docSignedDateIso: row.docSignedDate?.trim() ?? "",
+    };
+  }
   const legacy = userForContact(row.contactId);
   const res =
     cid && looksLikeUuid(cid)
@@ -357,11 +479,19 @@ export async function assertDealExists(dealId: string): Promise<boolean> {
 
 export async function listDealInvestmentsByDealId(
   dealId: string,
+  options?: { lpInvestorsOnly?: boolean },
 ): Promise<DealInvestmentRow[]> {
+  const whereExpr =
+    options?.lpInvestorsOnly === true
+      ? and(
+          eq(dealInvestment.dealId, dealId),
+          inArray(dealInvestment.investor_role, [...LP_INVESTOR_ROLE_MATCH]),
+        )
+      : eq(dealInvestment.dealId, dealId);
   return db
     .select()
     .from(dealInvestment)
-    .where(eq(dealInvestment.dealId, dealId))
+    .where(whereExpr)
     .orderBy(desc(dealInvestment.createdAt));
 }
 
@@ -443,6 +573,32 @@ export async function getDealInvestmentById(
     )
     .limit(1);
   return rows[0];
+}
+
+/**
+ * Latest `deal_investment.commitment_amount` for `(deal_id, contact_id)` (newest `created_at`).
+ * Returns `null` when no row exists or the stored amount is blank.
+ */
+export async function getLatestCommitmentAmountForDealContact(
+  dealId: string,
+  contactId: string,
+): Promise<string | null> {
+  const did = String(dealId ?? "").trim();
+  const cid = String(contactId ?? "").trim();
+  if (!did || !cid) return null;
+
+  const [row] = await db
+    .select({ commitmentAmount: dealInvestment.commitmentAmount })
+    .from(dealInvestment)
+    .where(
+      and(eq(dealInvestment.dealId, did), eq(dealInvestment.contactId, cid)),
+    )
+    .orderBy(desc(dealInvestment.createdAt))
+    .limit(1);
+
+  if (!row) return null;
+  const raw = row.commitmentAmount?.trim() ?? "";
+  return raw === "" ? null : raw;
 }
 
 export async function updateDealInvestment(params: {

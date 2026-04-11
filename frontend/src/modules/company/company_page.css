@@ -46,7 +46,8 @@ a.cp_company_name_link {
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-weight: 600;
   color: inherit;
   text-align: left;
@@ -284,7 +285,8 @@ a.cp_company_deal_name_link:focus-visible {
   gap: 0.45em;
   margin: 0;
   padding: 0.5em 1.05em;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: #fafafa;
@@ -322,6 +324,15 @@ a.cp_company_deal_name_link:focus-visible {
 /* Company → Settings tab (org settings layout) */
 .cp_settings_root {
   padding: 0.15em 0 0.5em;
+}
+
+/* Disabled until Edit (or read-only): show non-interactive cursor */
+.cp_settings_root :is(input, select, textarea):disabled {
+  cursor: not-allowed;
+}
+
+.cp_settings_root button:disabled {
+  cursor: not-allowed;
 }
 
 /* Match field row labels to card radio option text (0.875em) */
@@ -520,9 +531,9 @@ a.cp_company_deal_name_link:focus-visible {
   gap: 0.5em 0.75em;
 }
 
-/* Stack radios / customize under label; Edit actions align on the row */
+/* Stack radios / customize vertically; keep Edit actions on the same row as controls */
 .cp_settings_edit_field_block {
-  flex: 1 1 100%;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -540,7 +551,7 @@ a.cp_company_deal_name_link:focus-visible {
 
 /* Company name: readonly pill matches editable styling (value looks the same; field is disabled until Edit). */
 .cp_settings_name_edit_row .cp_settings_pill_input_field:disabled {
-  cursor: default;
+  cursor: not-allowed;
   color: #0f172a;
   opacity: 1;
   -webkit-text-fill-color: #0f172a;
@@ -564,7 +575,8 @@ a.cp_company_deal_name_link:focus-visible {
   padding: 0.55em 1em;
   border: 1px solid #e2e8f0;
   border-radius: var(--ui-button-border-radius, 25px);
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.95em;
 }
 
@@ -582,7 +594,8 @@ a.cp_company_deal_name_link:focus-visible {
   border: 1px solid #e2e8f0;
   border-radius: 999px;
   background: #fff;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.95em;
   font-weight: 500;
   color: #0f172a;
@@ -680,7 +693,8 @@ select.cp_settings_input_pill.um_field_select {
   margin: 0;
   padding: 0.5em 0.9em 0.5em 1.1em;
   box-sizing: border-box;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 500;
   color: #0f172a;
@@ -831,7 +845,12 @@ select.cp_settings_input_pill.um_field_select {
   color: #0f172a;
 }
 
+.cp_settings_hidden_file_input {
+  display: none;
+}
+
 .cp_media_card {
+  position: relative;
   max-width: 440px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -840,10 +859,69 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_media_preview {
+  position: relative;
   min-height: 140px;
   border-radius: 10px;
   margin-bottom: 0.85em;
   overflow: hidden;
+}
+
+.cp_media_preview_logo.cp_media_preview_has_image {
+  display: block;
+}
+
+.cp_media_preview_bg.cp_media_preview_has_image {
+  background: #0f172a;
+}
+
+.cp_media_preview_img_bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.cp_media_preview_img_logo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 0.75em;
+  box-sizing: border-box;
+}
+
+.cp_settings_logo_icon_row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cp_media_icon_preview_wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cp_media_icon_preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cp_media_icon_placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
 }
 
 .cp_media_preview_logo {
@@ -1027,7 +1105,8 @@ select.cp_settings_input_pill.um_field_select {
   gap: 0.4em;
   margin: 0;
   padding: 0.5em 1em;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: #0f172a;
@@ -1126,8 +1205,9 @@ select.cp_settings_input_pill.um_field_select {
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
-  font-size: inherit;
+  font-family: inherit;
+  font-style: normal;
+  font-size: 1em;
   font-weight: 600;
   color: var(--main-auth-button-color, #155abf);
   cursor: pointer;
@@ -1362,7 +1442,8 @@ select.cp_settings_input_pill.um_field_select {
   margin: 0;
   padding: 0.35em 0;
   background: transparent;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   color: #0f172a;
 }
@@ -1377,7 +1458,8 @@ select.cp_settings_input_pill.um_field_select {
   justify-content: center;
   margin: 0;
   padding: 0.5em 0.85em;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: #0f172a;
@@ -1527,7 +1609,8 @@ select.cp_settings_input_pill.um_field_select {
   gap: 0.4em;
   margin: 0;
   padding: 0.5em 1em;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
   color: #0f172a;
@@ -1580,8 +1663,8 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_offerings_radio_text {
   font-size: 1em;
-  font-weight: inherit;
-  line-height: inherit;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .cp_offerings_radio_input {
@@ -1635,7 +1718,8 @@ select.cp_settings_input_pill.um_field_select {
   padding: 0.65em 0.85em;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  font: inherit;
+  font-family: inherit;
+  font-style: normal;
   font-size: 0.875em;
   line-height: 1.5;
   color: #0f172a;
@@ -1709,8 +1793,9 @@ select.cp_settings_input_pill.um_field_select {
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
-  font-size: inherit;
+  font-family: inherit;
+  font-style: normal;
+  font-size: 1em;
   font-weight: 500;
   color: black;
   text-align: left;

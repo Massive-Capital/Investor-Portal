@@ -21,9 +21,10 @@
 
 .deal_step_legend {
   padding: 0;
-  font-size: 0.8125em;
+  font-size: var(--deals-label-size, 0.8125rem);
   font-weight: 600;
-  color: var(--portal-text);
+  color: var(--portal-text-muted, #475569);
+  letter-spacing: 0.01em;
 }
 
 .deal_stage_radios {
@@ -37,7 +38,7 @@
   display: flex;
   align-items: center;
   gap: 0.6em;
-  padding: 0.55em 0.65em;
+  padding: 0.35em 0.65em;
   margin: 0 -0.25em;
   border-radius: var(--portal-pill-radius);
   cursor: pointer;
@@ -74,7 +75,7 @@
   font-size: var(--deals-control-size, 0.9375rem);
   font-weight: 600;
   color: var(--portal-text);
-  line-height: 1.4;
+  line-height: var(--deals-control-line-height, 1.45);
 }
 
 .deal_step_yesno {
@@ -91,8 +92,9 @@
   font-size: var(--deals-control-size, 0.9375rem);
   font-weight: 500;
   color: var(--portal-text);
-  line-height: 1.4;
+  line-height: var(--deals-control-line-height, 1.45);
   cursor: pointer;
+  text-align: center;
 }
 
 .deal_step_yesno_common {
@@ -134,9 +136,10 @@
 }
 
 .deal_step_deal_type_label {
-  font-size: var(--deals-label-size, 0.875rem);
+  font-size: var(--deals-label-size, 0.8125rem);
   font-weight: 600;
   line-height: 1.4;
-  color: var(--portal-text);
+  color: var(--portal-text, #0f172a);
+  letter-spacing: 0.01em;
   cursor: pointer;
 }

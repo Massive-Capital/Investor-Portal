@@ -142,9 +142,6 @@ export function ExportContactsModal({
     <div
       className="deals_export_modal_overlay"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <div
         ref={panelRef}

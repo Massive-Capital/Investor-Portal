@@ -122,3 +122,87 @@ export async function postDealsExportNotify(
 ): Promise<void> {
   await handleExportNotify(req, res, "deals", "exportedDealLines");
 }
+
+/** Body: `{ rowCount?, exportedLines?: string[] }` — matches deal export-notify clients. */
+export async function postDealInvestorsExportNotify(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const b = req.body as Record<string, unknown>;
+  const rowCount = bodyPositiveInt(b.rowCount);
+  const exportedSampleLines = sanitizeExportedLinesForNotify(b.exportedLines);
+
+  const ctx = await loadExporterAuditContext(jwtUser.id);
+  if (!ctx) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  const result = await sendWorkspaceExportAuditNotification("deal_investors", {
+    ...ctx,
+    rowCount: rowCount > 0 ? rowCount : exportedSampleLines?.length ?? 0,
+    exportedSampleLines,
+  });
+
+  if (result.status === "skipped_no_recipient") {
+    console.warn(
+      `[export-notify:deal_investors] skipped: set EMAIL_BCC, CONTACTS_EXPORT_NOTIFY_EMAIL, or SENDER_Update_EMAIL_ID for recipients`,
+    );
+  }
+  if (result.status === "failed") {
+    console.error(`[export-notify:deal_investors] send failed`, result.error);
+  }
+
+  res.status(200).json({
+    ok: true,
+    notifyStatus: result.status,
+  });
+}
+
+/** Body: `{ rowCount?, exportedLines?: string[] }` — matches deal members export-notify clients. */
+export async function postDealMembersExportNotify(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const b = req.body as Record<string, unknown>;
+  const rowCount = bodyPositiveInt(b.rowCount);
+  const exportedSampleLines = sanitizeExportedLinesForNotify(b.exportedLines);
+
+  const ctx = await loadExporterAuditContext(jwtUser.id);
+  if (!ctx) {
+    res.status(404).json({ message: "User not found" });
+    return;
+  }
+
+  const result = await sendWorkspaceExportAuditNotification("deal_members", {
+    ...ctx,
+    rowCount: rowCount > 0 ? rowCount : exportedSampleLines?.length ?? 0,
+    exportedSampleLines,
+  });
+
+  if (result.status === "skipped_no_recipient") {
+    console.warn(
+      `[export-notify:deal_members] skipped: set EMAIL_BCC, CONTACTS_EXPORT_NOTIFY_EMAIL, or SENDER_Update_EMAIL_ID for recipients`,
+    );
+  }
+  if (result.status === "failed") {
+    console.error(`[export-notify:deal_members] send failed`, result.error);
+  }
+
+  res.status(200).json({
+    ok: true,
+    notifyStatus: result.status,
+  });
+}

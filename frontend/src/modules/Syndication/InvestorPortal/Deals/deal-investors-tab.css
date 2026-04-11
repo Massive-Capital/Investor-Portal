@@ -23,6 +23,22 @@
   min-width: 200px;
 }
 
+/* Session draft row (add member in progress) merged into Investors / Deal Members tables */
+.deal_inv_row_draft {
+  cursor: pointer;
+  /* background: color-mix(in srgb, var(--um-focus-ring, #2563eb) 14%, transparent); */
+}
+
+.deal_inv_row_draft td {
+  font-style: normal;
+}
+
+.deal_inv_draft_continue_btn {
+  font-size: 0.8125rem;
+  padding: 0.35em 0.75em;
+  white-space: nowrap;
+}
+
 .deal_inv_populated {
   display: flex;
   flex-direction: column;
@@ -32,7 +48,13 @@
 
 /* KPIs use syndicating dashboard `.sponsor_dash_metrics` + `ToolStyleCard` */
 .deal_inv_kpi_metrics {
-  margin-bottom: 1.25em;
+  margin-bottom: 0;
+}
+
+/* Same pattern as Deal Members: primary action right-aligned under KPI strip */
+.deal_inv_populated .deal_inv_investors_cta_row.um_header_row {
+  justify-content: flex-end;
+  margin-bottom: 0;
 }
 
 /* Top row: optional share (left) — actions + search (right). Filters are a separate block below. */
@@ -103,12 +125,12 @@
   }
 }
 
-/* Investors table: keep grid inside the card — no horizontal scrollbar (ellipsis + fixed layout). */
+/* Investors / Members: allow horizontal scroll when columns exceed the card width. */
 .deal_inv_table_panel .data_table_scroll_region,
 .deal_inv_table_panel .um_table_wrap.data_table_shell {
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: auto;
-  overscroll-behavior-x: none;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .deal_inv_table_panel .data_table_scroll_region {
@@ -116,9 +138,10 @@
 }
 
 .deal_inv_table_panel .um_table.deal_inv_table {
-  table-layout: fixed;
-  width: 100%;
-  max-width: 100%;
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
 }
 
 .deal_inv_table_panel .um_table.deal_inv_table th,
@@ -128,9 +151,39 @@
 }
 
 .deal_inv_table_panel .um_table.deal_inv_table thead th {
+  font-size: var(--portal-table-font-size, 0.9375rem);
+  line-height: 1.35;
+  font-weight: 600;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
+  /* Flat header row: same surface as `.um_panel` (no separate gray band). */
+  background: transparent;
+}
+
+.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first thead th.data_table_col_sticky {
+  background: transparent;
+}
+
+/* Sticky User column: match `.um_panel` (#f8f8f8) so the first column is not bright white vs panel */
+.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first tbody td.data_table_col_sticky {
+  background: #f8f8f8;
+}
+
+:root[data-theme="dark"] .deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first tbody td.data_table_col_sticky {
+  background: var(--portal-surface, #121212);
+}
+
+.deal_inv_table_panel .um_table.deal_inv_table tbody td {
+  font-size: var(--portal-table-font-size, 0.9375rem);
+}
+
+.deal_inv_table_panel thead th.deals_th_align_center {
+  text-align: center;
+}
+
+.deal_inv_table_panel thead th.deals_th_align_right {
+  text-align: right;
 }
 
 .deal_inv_table_panel .um_table_sortable .um_sort_header_ctl {
@@ -200,8 +253,9 @@
   padding: 0.5em 1.85em 0.5em 0.65em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
-  font: inherit;
-  font-size: 0.8125em;
+  font-family: inherit;
+  font-style: normal;
+  font-size: 0.9375em;
   font-weight: 500;
   color: var(--portal-text);
   background-color: var(--portal-surface);
@@ -265,8 +319,9 @@
   padding: 0 1.75em 0 0.65em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
-  font: inherit;
-  font-size: 0.875em;
+  font-family: inherit;
+  font-style: normal;
+  font-size: 0.9375em;
   font-weight: 600;
   color: var(--portal-text);
   background-color: var(--portal-surface);
@@ -311,8 +366,9 @@
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
   padding: 0.35em 0.85em;
-  font: inherit;
-  font-size: 0.8125em;
+  font-family: inherit;
+  font-style: normal;
+  font-size: 0.9375em;
   font-weight: 600;
   background: var(--portal-surface);
   color: var(--portal-text);
@@ -392,6 +448,23 @@
   overflow: hidden;
 }
 
+.deal_inv_identity_line1_row {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.deal_inv_identity_line1_row .deal_inv_identity_line1 {
+  flex: 1;
+  min-width: 0;
+}
+
+.deal_inv_identity_line1_row .deals_list_draft_icon {
+  flex-shrink: 0;
+}
+
 .deal_inv_identity_line1 {
   font-size: 0.8125em;
   font-weight: 500;
@@ -467,9 +540,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
+  font-size: 0.9375em;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .deal_inv_ellipsis_text[title] {
@@ -487,6 +560,7 @@
 
 .deal_inv_table_panel .deal_inv_td_committed {
   max-width: 9em;
+  font-variant-numeric: tabular-nums;
 }
 
 .deal_inv_table_panel .deal_inv_td_verified {
@@ -527,15 +601,21 @@
   color: var(--portal-text-muted, #64748b);
 }
 
+/* Actions column: kebab menu (Investors + Deal Members). */
 .deal_inv_table_panel .deal_inv_table.um_table_members thead .um_th_actions {
-  width: 3.25em;
-  max-width: 3.25em;
+  width: auto;
+  min-width: 4.5rem;
+  max-width: none;
+  box-sizing: border-box;
 }
 
 .deal_inv_td_actions {
-  white-space: nowrap;
-  width: 3.25em;
-  max-width: 3.25em;
+  white-space: normal;
+  width: auto;
+  min-width: 4.5rem;
+  max-width: none;
+  overflow: visible;
+  box-sizing: border-box;
 }
 
 /* Data cells use ellipsis (see .deal_inv_ellipsis_text); keep layout stable */

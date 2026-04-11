@@ -19,6 +19,11 @@ export function normalizeRole(role: string | null | undefined): string {
   return r;
 }
 
+/**
+ * Role for UI and routing. Sign-in stores the same snapshot as the login API (`userDetails`);
+ * JWT is the fallback (e.g. partial session). Backend member APIs use DB `users.role` — keep
+ * `userDetails` in sync by signing out/in after role changes.
+ */
 export function getStoredUserRole(): string | null {
   try {
     const raw = sessionStorage.getItem(SESSION_USER_DETAILS_KEY);
@@ -26,7 +31,9 @@ export function getStoredUserRole(): string | null {
       const arr = JSON.parse(raw) as unknown;
       if (Array.isArray(arr) && arr[0] && typeof arr[0] === "object") {
         const role = (arr[0] as Record<string, unknown>).role;
-        if (typeof role === "string") return normalizeRole(role);
+        if (typeof role === "string" && role.trim() !== "") {
+          return normalizeRole(role);
+        }
       }
     }
   } catch {
@@ -35,7 +42,9 @@ export function getStoredUserRole(): string | null {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (token) {
     const p = decodeJwtPayload<{ userRole?: string }>(token);
-    if (p?.userRole != null) return normalizeRole(p.userRole);
+    if (p?.userRole != null && String(p.userRole).trim() !== "") {
+      return normalizeRole(String(p.userRole));
+    }
   }
   return null;
 }

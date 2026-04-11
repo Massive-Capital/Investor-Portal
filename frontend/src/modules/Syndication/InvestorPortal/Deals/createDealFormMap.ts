@@ -1,4 +1,8 @@
-import type { DealDetailApi } from "./api/dealsApi"
+import {
+  type DealDetailApi,
+  dealDetailFieldForCreateWizard,
+  isDealDetailFormIncomplete,
+} from "./api/dealsApi"
 import {
   DEAL_STAGE_CHOICES,
   DEFAULT_ASSET_COUNTRY,
@@ -11,7 +15,16 @@ export function mapDealDetailApiToCreateDrafts(detail: DealDetailApi): {
   deal: DealStepDraft
   asset: AssetStepDraft
 } {
-  const stageRaw = String(detail.dealStage ?? "").trim()
+  const incomplete = isDealDetailFormIncomplete(detail)
+  const stageRawSource = String(detail.dealStage ?? "").trim()
+  const stageRaw =
+    stageRawSource === "raising_capital"
+      ? "capital_raising"
+      : stageRawSource === "asset_managing"
+        ? "managing_asset"
+        : stageRawSource.toLowerCase() === "draft"
+          ? "Draft"
+          : stageRawSource
   const stageOk = DEAL_STAGE_CHOICES.some((c) => c.value === stageRaw)
   const dealStage = stageOk
     ? (stageRaw as Exclude<DealStepDraft["dealStage"], "">)
@@ -25,12 +38,24 @@ export function mapDealDetailApiToCreateDrafts(detail: DealDetailApi): {
 
   return {
     deal: {
-      dealName: detail.dealName ?? "",
+      dealName: dealDetailFieldForCreateWizard(
+        "dealName",
+        detail.dealName,
+        incomplete,
+      ),
       dealType: detail.dealType ?? "",
       dealStage,
-      secType: detail.secType ?? "",
+      secType: dealDetailFieldForCreateWizard(
+        "secType",
+        detail.secType,
+        incomplete,
+      ),
       closeDate,
-      owningEntityName: detail.owningEntityName ?? "",
+      owningEntityName: dealDetailFieldForCreateWizard(
+        "owningEntityName",
+        detail.owningEntityName,
+        incomplete,
+      ),
       fundsBeforeGpCountersigns: detail.fundsRequiredBeforeGpSign
         ? "yes"
         : "no",
@@ -39,13 +64,25 @@ export function mapDealDetailApiToCreateDrafts(detail: DealDetailApi): {
         : "no",
     },
     asset: {
-      propertyName: detail.propertyName ?? "",
+      propertyName: dealDetailFieldForCreateWizard(
+        "propertyName",
+        detail.propertyName,
+        incomplete,
+      ),
       country: detail.country?.trim() || DEFAULT_ASSET_COUNTRY,
-      streetAddress1: "",
-      streetAddress2: "",
-      city: detail.city ?? "",
-      state: "",
-      zipCode: "",
+      streetAddress1: dealDetailFieldForCreateWizard(
+        "streetAddress1",
+        detail.addressLine1,
+        incomplete,
+      ),
+      streetAddress2: dealDetailFieldForCreateWizard(
+        "streetAddress2",
+        detail.addressLine2,
+        incomplete,
+      ),
+      city: dealDetailFieldForCreateWizard("city", detail.city, incomplete),
+      state: dealDetailFieldForCreateWizard("state", detail.state, incomplete),
+      zipCode: dealDetailFieldForCreateWizard("zipCode", detail.zipCode, incomplete),
     },
   }
 }

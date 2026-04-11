@@ -27,12 +27,40 @@ export const addDealForm = pgTable("add_deal_form", {
   ).notNull(),
   propertyName: text("property_name").notNull(),
   country: text("country").notNull().default(""),
+  addressLine1: text("address_line_1"),
+  addressLine2: text("address_line_2"),
   city: text("city").notNull().default(""),
+  state: text("state"),
+  zipCode: text("zip_code"),
   /** Relative paths under the uploads physical root (see getUploadsPhysicalRoot), joined with `;` */
   assetImagePath: text("asset_image_path"),
+  /** Rich HTML shown to investors (Offering details / preview); sanitized on save. */
+  investorSummaryHtml: text("investor_summary_html"),
+  /** Full image URL (https or data:image/*) chosen as deal cover; shown on dashboard & preview hero. */
+  galleryCoverImageUrl: text("gallery_cover_image_url"),
+  /** JSON array: { id, metric, newClass, isPreset }[] for Key Highlights (Offering details). */
+  keyHighlightsJson: text("key_highlights_json"),
+  /** Shown at top of deal detail for every user who can open this deal. */
+  dealAnnouncementTitle: text("deal_announcement_title"),
+  dealAnnouncementMessage: text("deal_announcement_message"),
+  /** Investor-facing offering workflow status (Offering details → Overview). */
+  offeringStatus: text("offering_status").notNull().default("draft_hidden"),
+  offeringVisibility: text("offering_visibility")
+    .notNull()
+    .default("show_on_dashboard"),
+  showOnInvestbase: boolean("show_on_investbase").notNull().default(false),
+  internalName: text("internal_name").notNull().default(""),
+  /** JSON string array of deal asset row ids (offering overview multi-select). */
+  offeringOverviewAssetIds: text("offering_overview_asset_ids")
+    .notNull()
+    .default("[]"),
+  /** JSON string array: relative paths under uploads (same segments as `asset_image_path`) for offering gallery / public preview. */
+  offeringGalleryPaths: text("offering_gallery_paths").notNull().default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
+  /** Encrypted token for `/offering_portfolio?preview=` (set on create; backfilled for legacy rows). */
+  offeringPreviewToken: text("offering_preview_token"),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

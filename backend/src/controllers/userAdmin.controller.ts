@@ -35,6 +35,16 @@ function organizationIdFromQuery(req: Request): string | undefined {
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** DB `users.role` is authoritative; JWT `userRole` fills gaps (legacy rows). */
+function actorRoleForMemberAdmin(
+  actor: { role: string | null },
+  jwtUser: { userRole?: string },
+): string {
+  return (
+    String(actor.role ?? "").trim() || String(jwtUser.userRole ?? "").trim()
+  );
+}
+
 export async function getUsers(req: Request, res: Response): Promise<void> {
   const jwtUser = getJwtUser(req);
   if (!jwtUser?.id) {
@@ -52,7 +62,7 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const role = String(actor.role ?? "").trim();
+  const role = actorRoleForMemberAdmin(actor, jwtUser);
   if (!isPlatformAdminRole(role) && !isCompanyAdminRole(role)) {
     res.status(403).json({ message: "Not allowed to list members" });
     return;
@@ -213,7 +223,7 @@ export async function getMemberAuditLogs(req: Request, res: Response): Promise<v
   const result = await listMemberAdminAuditLogsForTarget(
     targetUserId.trim(),
     jwtUser.id,
-    String(actor.role ?? "").trim(),
+    actorRoleForMemberAdmin(actor, jwtUser),
     actor.organizationId ?? null,
   );
 
@@ -246,7 +256,7 @@ export async function postMembersExportNotify(
     return;
   }
 
-  const role = String(actor.role ?? "").trim();
+  const role = actorRoleForMemberAdmin(actor, jwtUser);
   if (!isPlatformAdminRole(role) && !isCompanyAdminRole(role)) {
     res.status(403).json({ message: "Not allowed" });
     return;

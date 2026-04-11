@@ -23,6 +23,66 @@
   overscroll-behavior-x: contain;
 }
 
+/* Horizontal scroll + sticky first column (members / portal tables). */
+.data_table_scroll_region_sticky_first {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/**
+ * Sticky first column — fixed during horizontal scroll.
+ * Border separates columns; no box-shadow (avoids a “highlight strip” on the first column).
+ */
+.data_table_sticky_first th.data_table_col_sticky,
+.data_table_sticky_first td.data_table_col_sticky {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 12rem;
+  vertical-align: middle;
+  /* background: var(--portal-surface, #ffffff); */
+  box-shadow: none;
+  /* border-right: 1px solid var(--portal-border, #e2e8f0); */
+  background-clip: padding-box;
+}
+
+.data_table_sticky_first thead th.data_table_col_sticky {
+  z-index: 3;
+  background: transparent;
+}
+
+.um_table.data_table_sticky_first thead th.data_table_col_sticky {
+  background: transparent;
+}
+
+.um_table.data_table_sticky_first tbody td.data_table_col_sticky {
+  background: var(--portal-surface, #ffffff);
+}
+
+:root[data-theme="dark"] .data_table_sticky_first thead th.data_table_col_sticky {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .data_table_sticky_first tbody td.data_table_col_sticky {
+  background: var(--portal-surface, #121212);
+}
+
+:root[data-theme="dark"] .data_table_sticky_first th.data_table_col_sticky,
+:root[data-theme="dark"] .data_table_sticky_first td.data_table_col_sticky {
+  border-right-color: var(--portal-border, #334155);
+  box-shadow: none;
+}
+
+/* Header row: same surface as tbody — no separate gray band (first table row). */
+.um_table_wrap.data_table_shell .um_table thead th {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .um_table_wrap.data_table_shell .um_table thead th {
+  background: transparent;
+}
+
 /* Fit members-style tables to the viewport — wrap/clip instead of horizontal scroll */
 .um_table_wrap.data_table_shell .um_table_members.data_table {
   table-layout: fixed;
@@ -37,7 +97,9 @@
 .data_table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9em;
+  font-family: var(--portal-font-sans, "Inter", sans-serif);
+  font-size: var(--portal-table-font-size, 0.9375rem);
+  line-height: var(--portal-table-line-height, 1.4);
 }
 
 .data_table th,
@@ -54,12 +116,23 @@
   white-space: nowrap;
 }
 
+/* Default DataTable (e.g. sponsor dashboard list): header matches body surface */
+.data_table_scroll .data_table thead th {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .data_table_scroll .data_table thead th {
+  background: transparent;
+}
+
 .data_table_sort_btn {
   margin: 0;
   padding: 0;
   border: none;
   background: none;
-  font: inherit;
+  font-family: var(--portal-font-sans, "Inter", sans-serif);
+  font-style: normal;
+  font-size: var(--portal-table-font-size, 0.9375rem);
   font-weight: 600;
   color: inherit;
   cursor: pointer;
@@ -100,4 +173,10 @@
 
 .data_table_th_metric {
   text-align: right;
+}
+
+/* Numeric cells when `tdClassName` includes `um_td_numeric` (default + members tables). */
+.data_table td.um_td_numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }

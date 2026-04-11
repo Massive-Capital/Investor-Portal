@@ -105,9 +105,6 @@ export function DealPreviewModal({ dealId, onClose }: DealPreviewModalProps) {
     <div
       className="um_modal_overlay deals_deal_view_modal_overlay"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <div
         className="um_modal um_modal_view deals_deal_view_modal"

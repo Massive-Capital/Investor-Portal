@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type ReactNode,
 } from "react";
 import { fetchWorkspaceTabSettings } from "./companyWorkspaceSettingsApi";
@@ -31,6 +32,20 @@ import {
 } from "lucide-react";
 import { CardRadioGroup } from "../../common/components/CardRadioGroup/CardRadioGroup";
 import { toast } from "../../common/components/Toast";
+
+function useObjectUrl(file: File | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) {
+      setUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url;
+}
 
 function SettingsSectionHeading({
   id,
@@ -162,6 +177,24 @@ export function CompanySettingsTabPanel({
   const [editLogo, setEditLogo] = useState(false);
   const [editBg, setEditBg] = useState(false);
   const [editLogoIcon, setEditLogoIcon] = useState(false);
+
+  const [logoCommitted, setLogoCommitted] = useState<File | null>(null);
+  const [logoDraft, setLogoDraft] = useState<File | null>(null);
+  const [bgCommitted, setBgCommitted] = useState<File | null>(null);
+  const [bgDraft, setBgDraft] = useState<File | null>(null);
+  const [iconCommitted, setIconCommitted] = useState<File | null>(null);
+  const [iconDraft, setIconDraft] = useState<File | null>(null);
+
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const bgFileInputRef = useRef<HTMLInputElement>(null);
+  const iconFileInputRef = useRef<HTMLInputElement>(null);
+
+  const logoDisplayFile = editLogo ? logoDraft : logoCommitted;
+  const bgDisplayFile = editBg ? bgDraft : bgCommitted;
+  const iconDisplayFile = editLogoIcon ? iconDraft : iconCommitted;
+  const logoObjectUrl = useObjectUrl(logoDisplayFile);
+  const bgObjectUrl = useObjectUrl(bgDisplayFile);
+  const iconObjectUrl = useObjectUrl(iconDisplayFile);
 
   const [settingsHydrated, setSettingsHydrated] = useState(!workspaceCompanyId);
 
@@ -320,6 +353,37 @@ export function CompanySettingsTabPanel({
       toast.success("Copied", "Portal link copied to clipboard.");
     } catch {
       toast.error("Copy failed", "Could not copy to clipboard.");
+    }
+  }
+
+  function applySingleImageFromInput(
+    e: ChangeEvent<HTMLInputElement>,
+    setDraft: (file: File | null) => void,
+  ) {
+    const list = e.target.files;
+    e.target.value = "";
+    const f = list?.length ? list.item(0) : null;
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("Invalid file", "Please choose an image file.");
+      return;
+    }
+    setDraft(f);
+  }
+
+  /** Only one of logo / background / icon may be in edit mode; each section holds at most one file. */
+  function exitOtherMediaEdits(active: "logo" | "bg" | "icon") {
+    if (active !== "logo") {
+      setEditLogo(false);
+      setLogoDraft(logoCommitted);
+    }
+    if (active !== "bg") {
+      setEditBg(false);
+      setBgDraft(bgCommitted);
+    }
+    if (active !== "icon") {
+      setEditLogoIcon(false);
+      setIconDraft(iconCommitted);
     }
   }
 
@@ -705,15 +769,38 @@ export function CompanySettingsTabPanel({
           <div className="cp_settings_control">
             <div className="cp_settings_value_row cp_settings_media_edit_row">
               <div className="cp_media_card">
-                <div className="cp_media_preview cp_media_preview_logo" aria-hidden>
-                  <Building2 size={40} strokeWidth={1.5} />
-                  <span className="cp_media_preview_label">{companyName}</span>
+                <input
+                  ref={logoFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple={false}
+                  className="cp_settings_hidden_file_input"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(e) => applySingleImageFromInput(e, setLogoDraft)}
+                />
+                <div
+                  className={`cp_media_preview cp_media_preview_logo${logoObjectUrl ? " cp_media_preview_has_image" : ""}`}
+                >
+                  {logoObjectUrl ? (
+                    <img
+                      src={logoObjectUrl}
+                      alt="Company logo preview"
+                      className="cp_media_preview_img cp_media_preview_img_logo"
+                    />
+                  ) : (
+                    <>
+                      <Building2 size={40} strokeWidth={1.5} />
+                      <span className="cp_media_preview_label">{companyName}</span>
+                    </>
+                  )}
                 </div>
                 <div className="cp_media_actions">
                   <button
                     type="button"
                     className="um_btn_secondary"
                     disabled={readOnly || !editLogo}
+                    onClick={() => logoFileInputRef.current?.click()}
                   >
                     <Upload size={16} strokeWidth={2} aria-hidden />
                     Upload new
@@ -721,7 +808,8 @@ export function CompanySettingsTabPanel({
                   <button
                     type="button"
                     className="um_btn_secondary"
-                    disabled={readOnly || !editLogo}
+                    disabled={readOnly || !editLogo || !logoDraft}
+                    onClick={() => setLogoDraft(null)}
                   >
                     <Trash2 size={16} strokeWidth={2} aria-hidden />
                     Delete
@@ -732,9 +820,20 @@ export function CompanySettingsTabPanel({
                 readOnly={readOnly}
                 editing={editLogo}
                 editAriaLabel="Edit company logo"
-                onEdit={() => setEditLogo(true)}
-                onSave={() => setEditLogo(false)}
-                onCancel={() => setEditLogo(false)}
+                onEdit={() => {
+                  exitOtherMediaEdits("logo");
+                  setLogoDraft(logoCommitted);
+                  setEditLogo(true);
+                }}
+                onSave={() => {
+                  setLogoCommitted(logoDraft);
+                  setEditLogo(false);
+                  toast.success("Saved", "Company logo updated.");
+                }}
+                onCancel={() => {
+                  setLogoDraft(logoCommitted);
+                  setEditLogo(false);
+                }}
               />
             </div>
           </div>
@@ -755,16 +854,37 @@ export function CompanySettingsTabPanel({
           <div className="cp_settings_control">
             <div className="cp_settings_value_row cp_settings_media_edit_row">
               <div className="cp_media_card">
-                <div
-                  className="cp_media_preview cp_media_preview_bg"
-                  role="img"
-                  aria-label="Background preview placeholder"
+                <input
+                  ref={bgFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple={false}
+                  className="cp_settings_hidden_file_input"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(e) => applySingleImageFromInput(e, setBgDraft)}
                 />
+                <div
+                  className={`cp_media_preview cp_media_preview_bg${bgObjectUrl ? " cp_media_preview_has_image" : ""}`}
+                  role={bgObjectUrl ? undefined : "img"}
+                  aria-label={
+                    bgObjectUrl ? undefined : "Background preview placeholder"
+                  }
+                >
+                  {bgObjectUrl ? (
+                    <img
+                      src={bgObjectUrl}
+                      alt="Background image preview"
+                      className="cp_media_preview_img cp_media_preview_img_bg"
+                    />
+                  ) : null}
+                </div>
                 <div className="cp_media_actions">
                   <button
                     type="button"
                     className="um_btn_secondary"
                     disabled={readOnly || !editBg}
+                    onClick={() => bgFileInputRef.current?.click()}
                   >
                     <Upload size={16} strokeWidth={2} aria-hidden />
                     Upload new
@@ -772,7 +892,8 @@ export function CompanySettingsTabPanel({
                   <button
                     type="button"
                     className="um_btn_secondary"
-                    disabled={readOnly || !editBg}
+                    disabled={readOnly || !editBg || !bgDraft}
+                    onClick={() => setBgDraft(null)}
                   >
                     <Trash2 size={16} strokeWidth={2} aria-hidden />
                     Delete
@@ -783,9 +904,20 @@ export function CompanySettingsTabPanel({
                 readOnly={readOnly}
                 editing={editBg}
                 editAriaLabel="Edit background image"
-                onEdit={() => setEditBg(true)}
-                onSave={() => setEditBg(false)}
-                onCancel={() => setEditBg(false)}
+                onEdit={() => {
+                  exitOtherMediaEdits("bg");
+                  setBgDraft(bgCommitted);
+                  setEditBg(true);
+                }}
+                onSave={() => {
+                  setBgCommitted(bgDraft);
+                  setEditBg(false);
+                  toast.success("Saved", "Background image updated.");
+                }}
+                onCancel={() => {
+                  setBgDraft(bgCommitted);
+                  setEditBg(false);
+                }}
               />
             </div>
           </div>
@@ -804,22 +936,68 @@ export function CompanySettingsTabPanel({
             </p>
           </div>
           <div className="cp_settings_control">
-            <div className="cp_settings_value_row">
-              <button
-                type="button"
-                className="um_btn_secondary"
-                disabled={readOnly || !editLogoIcon}
-              >
-                <Upload size={16} strokeWidth={2} aria-hidden />
-                Upload new
-              </button>
+            <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_logo_icon_row">
+              <input
+                ref={iconFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple={false}
+                className="cp_settings_hidden_file_input"
+                aria-hidden
+                tabIndex={-1}
+                onChange={(e) => applySingleImageFromInput(e, setIconDraft)}
+              />
+              <div className="cp_media_icon_preview_wrap">
+                {iconObjectUrl ? (
+                  <img
+                    src={iconObjectUrl}
+                    alt="Logo icon preview"
+                    className="cp_media_icon_preview"
+                  />
+                ) : (
+                  <span className="cp_media_icon_placeholder">
+                    <ImageIcon size={28} strokeWidth={1.5} aria-hidden />
+                  </span>
+                )}
+              </div>
+              <div className="cp_media_actions">
+                <button
+                  type="button"
+                  className="um_btn_secondary"
+                  disabled={readOnly || !editLogoIcon}
+                  onClick={() => iconFileInputRef.current?.click()}
+                >
+                  <Upload size={16} strokeWidth={2} aria-hidden />
+                  Upload new
+                </button>
+                <button
+                  type="button"
+                  className="um_btn_secondary"
+                  disabled={readOnly || !editLogoIcon || !iconDraft}
+                  onClick={() => setIconDraft(null)}
+                >
+                  <Trash2 size={16} strokeWidth={2} aria-hidden />
+                  Delete
+                </button>
+              </div>
               <SettingsFieldEditActions
                 readOnly={readOnly}
                 editing={editLogoIcon}
                 editAriaLabel="Edit logo icon"
-                onEdit={() => setEditLogoIcon(true)}
-                onSave={() => setEditLogoIcon(false)}
-                onCancel={() => setEditLogoIcon(false)}
+                onEdit={() => {
+                  exitOtherMediaEdits("icon");
+                  setIconDraft(iconCommitted);
+                  setEditLogoIcon(true);
+                }}
+                onSave={() => {
+                  setIconCommitted(iconDraft);
+                  setEditLogoIcon(false);
+                  toast.success("Saved", "Logo icon updated.");
+                }}
+                onCancel={() => {
+                  setIconDraft(iconCommitted);
+                  setEditLogoIcon(false);
+                }}
               />
             </div>
           </div>

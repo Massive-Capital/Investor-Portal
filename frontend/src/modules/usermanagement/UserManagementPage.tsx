@@ -1494,9 +1494,6 @@ export default function UserManagementPage() {
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setViewRow(null);
-          }}
         >
           <div
             className="um_modal um_modal_view"
@@ -1586,9 +1583,6 @@ export default function UserManagementPage() {
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !editSaving) closeEditMember();
-          }}
         >
           <div
             className="um_modal um_modal_view"
@@ -1727,10 +1721,6 @@ export default function UserManagementPage() {
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !suspendSaving)
-              closeSuspendMember();
-          }}
         >
           <div
             className="um_modal um_modal_view"
@@ -1837,16 +1827,12 @@ export default function UserManagementPage() {
         <div
           className="um_modal_overlay deals_add_inv_modal_overlay"
           role="presentation"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeInviteModal();
-          }}
         >
           <div
             className="um_modal um_modal_view deals_add_inv_modal_panel"
             role="dialog"
             aria-modal="true"
             aria-labelledby="um-invite-title"
-            onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="um_modal_head">
               <h3 id="um-invite-title" className="um_modal_title">

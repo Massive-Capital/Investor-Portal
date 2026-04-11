@@ -26,7 +26,7 @@
   /* rem: stable vs nested em from modal title / steps */
   --deals-add-inv-control-font: 0.9375rem;
   --deals-add-inv-control-radius: 10px;
-  --deals-add-inv-control-min-h: 2.5em;
+  --deals-add-inv-control-min-h: 1em;
 }
 
 @media (min-width: 640px) {
@@ -101,7 +101,17 @@
 /* .deals_add_inv_field_full {
   grid-column: 1 / -1;
 } */
+.um_field_label_row{
+  display: flex;
+  gap: 0.5em;
+}
 
+.mail_text_label{
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--portal-text-muted, #64748b)
+}
 .um_view_field_head .deals_add_inv_label_info,
 .add_contact_panel .um_field_label_row .deals_add_inv_label_info {
   display: inline-flex;
@@ -219,9 +229,11 @@
 /* Text / date fields in this form without .deals_add_inv_field_control */
 .deals_add_inv_modal_form
   .um_field
-  input:not([type="file"]):not([type="hidden"]):not(.visually_hidden):not(
-    .contacts_chips_combobox_input
-  ):not(.add_contact_chip_input) {
+  input:not([type="file"]):not([type="hidden"]):not([type="checkbox"]):not(
+    [type="radio"]
+  ):not(.visually_hidden):not(.contacts_chips_combobox_input):not(
+    .add_contact_chip_input
+  ) {
   box-sizing: border-box;
   min-height: var(--deals-add-inv-control-min-h);
   padding: 0.5rem 0.75rem;
@@ -238,9 +250,11 @@
 
 .deals_add_inv_modal_form
   .um_field
-  input:not([type="file"]):not([type="hidden"]):not(.visually_hidden):not(
-    .contacts_chips_combobox_input
-  ):not(.add_contact_chip_input):focus-visible {
+  input:not([type="file"]):not([type="hidden"]):not([type="checkbox"]):not(
+    [type="radio"]
+  ):not(.visually_hidden):not(.contacts_chips_combobox_input):not(
+    .add_contact_chip_input
+  ):focus-visible {
   outline: none;
   border-color: var(--portal-text-muted);
   box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
@@ -249,9 +263,11 @@
 :root[data-theme="dark"]
   .deals_add_inv_modal_form
   .um_field
-  input:not([type="file"]):not([type="hidden"]):not(.visually_hidden):not(
-    .contacts_chips_combobox_input
-  ):not(.add_contact_chip_input):focus-visible {
+  input:not([type="file"]):not([type="hidden"]):not([type="checkbox"]):not(
+    [type="radio"]
+  ):not(.visually_hidden):not(.contacts_chips_combobox_input):not(
+    .add_contact_chip_input
+  ):focus-visible {
   box-shadow: var(--portal-field-focus-shadow-dark, 0 0 0 2px rgb(249 250 251 / 12%));
 }
 
@@ -414,6 +430,15 @@
   .deal_inv_ic_form_modal_panel
   .deals_add_inv_field_control.um_field_select:focus-visible {
   box-shadow: var(--portal-field-focus-shadow-dark, 0 0 0 2px rgb(249 250 251 / 12%));
+}
+
+/* Investor class add/edit — pill-shaped native selects (class type, equity, advanced, hurdles) */
+.deal_inv_ic_form_modal_panel.deal_inv_offering_modal
+  .deals_add_inv_modal_form
+  select.um_field_select.deals_add_inv_field_control {
+  border-radius: 9999px;
+  padding-left: 1rem;
+  padding-right: 2.35rem;
 }
 
 .deal_inv_ic_form_modal_panel .deal_inv_portal_select_trigger:focus-visible {

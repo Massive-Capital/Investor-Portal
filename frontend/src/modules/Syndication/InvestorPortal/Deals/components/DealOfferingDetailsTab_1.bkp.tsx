@@ -14,7 +14,7 @@ interface DealOfferingDetailsTabProps {
 }
 
 type SectionId =
-  | "offering_information"
+  | "classes"
   | "gallery"
   | "summary"
   | "documents"
@@ -23,7 +23,7 @@ type SectionId =
   | "funding_instructions"
 
 const SECTION_ORDER: { id: SectionId; label: string }[] = [
-  { id: "offering_information", label: "Offering Information" },
+  { id: "classes", label: "Classes" },
   { id: "gallery", label: "Gallery" },
   { id: "summary", label: "Summary" },
   { id: "documents", label: "Documents" },
@@ -110,7 +110,7 @@ export function DealOfferingDetailsTab({ detail }: DealOfferingDetailsTabProps) 
 
   function sectionBody(id: SectionId) {
     switch (id) {
-      case "offering_information":
+      case "classes":
         return <OfferingInformationSection dealId={detail.id} />
       case "gallery":
         return <GalleryBody detail={detail} />

@@ -53,6 +53,8 @@ import {
 } from "./companyCsv";
 import type { CompanyExportRow } from "./companyCsv";
 import { notifyCompaniesExportAudit } from "./companiesExportNotifyApi";
+import "../Syndication/InvestorPortal/Deals/deal-investors-tab.css";
+import "../Syndication/InvestorPortal/Deals/deals-list.css";
 import "../usermanagement/user_management.css";
 import "./company_page.css";
 
@@ -558,7 +560,8 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         id: "members",
         header: "Members",
         sortValue: (row) => Number(row.userCount ?? 0),
-        align: "center",
+        align: "right",
+        tdClassName: "um_td_numeric",
         cell: (row) => String(row.userCount ?? 0),
       },
       {
@@ -572,7 +575,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         header: "Actions",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions",
-        align: "right",
+        align: "center",
         cell: (row) => {
           const menuOpen = actionMenuCompanyId === row.id;
           return (
@@ -766,7 +769,24 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
 
   async function submitAddCompany(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !apiV1 || !platformAdmin) return;
+    if (!token) {
+      toast.error("Not signed in", "Sign in again, then try creating a company.");
+      return;
+    }
+    if (!apiV1) {
+      const msg =
+        "API base URL is not configured. Set VITE_BASE_URL for production builds.";
+      setAddErr(msg);
+      toast.error("Cannot create company", msg);
+      return;
+    }
+    if (!platformAdmin) {
+      const msg =
+        "Only platform administrators can create companies. If your role was updated, sign out and sign in again.";
+      setAddErr(msg);
+      toast.error("Cannot create company", msg);
+      return;
+    }
     setAddSubmitting(true);
     setAddErr("");
     setAddOk("");
@@ -1093,7 +1113,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
 
         {platformAdmin && customersStandalone ? (
           <div
-            className="um_panel um_members_tab_panel cp_companies_tab_panel"
+            className="um_panel um_members_tab_panel cp_companies_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel"
             id={
               customersListTab === "archived"
                 ? "cp-customers-panel-archived"
@@ -1178,7 +1198,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <div className="cp_company_tab_table_wrap">
                 <DataTable
                   visualVariant="members"
-                  membersTableClassName="um_table_members"
+                  membersTableClassName="um_table_members deal_inv_table"
                   initialSort={{ columnId: "company", direction: "asc" }}
                   columns={customerCompaniesColumns}
                   rows={filteredRows}
@@ -1315,9 +1335,6 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setViewRow(null);
-          }}
         >
           <div
             className="um_modal um_modal_view cp_company_view_modal"
@@ -1382,9 +1399,6 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !editSubmitting) closeEditModal();
-          }}
         >
           <div
             className="um_modal"
@@ -1496,10 +1510,6 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !suspendSubmitting)
-              closeSuspendModal();
-          }}
         >
           <div
             className="um_modal"
@@ -1579,9 +1589,6 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         <div
           className="um_modal_overlay"
           role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeAddModal();
-          }}
         >
           <div
             className="um_modal"

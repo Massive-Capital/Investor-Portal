@@ -1,42 +1,81 @@
 import {
-  AppWindow,
   Archive,
   ArchiveRestore,
   Eye,
   MoreHorizontal,
   Pencil,
   Trash2,
+  X,
 } from "lucide-react"
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
+import "../deal-members/components/deal-member-row-actions.css"
 
 interface DealRowActionsProps {
   dealId: string
   dealName: string
   archived?: boolean
+  /**
+   * Session create-deal draft row: “Edit Deal” becomes “Continue editing”
+   * (`/deals/create?resume=1`). Archive is disabled; Delete discards the session draft
+   * after confirmation with a required reason.
+   */
+  draftRow?: boolean
+  /** Deal lifecycle stage (e.g. `draft`) — used for delete confirmation copy. */
+  dealStage?: string
   /** Opens read-only deal preview (e.g. modal). */
   onPreviewDeal?: () => void
   onArchived?: () => void
   onRestored?: () => void
-  onDeleted?: () => void
+  /** Called after the user confirms with a non-empty reason (delete flow). */
+  onDeleted?: (reason: string) => void
 }
 
 export function DealRowActions({
   dealId,
   dealName,
   archived = false,
+  draftRow = false,
+  dealStage = "",
   onPreviewDeal,
   onArchived,
   onRestored,
   onDeleted,
 }: DealRowActionsProps) {
   const navigate = useNavigate()
+  const confirmTitleId = useId()
   const [open, setOpen] = useState(false)
+  const [confirmKind, setConfirmKind] = useState<null | "archive" | "delete">(
+    null,
+  )
+  const [reason, setReason] = useState("")
+  const [reasonError, setReasonError] = useState<string | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLUListElement>(null)
 
   const close = useCallback(() => setOpen(false), [])
+  const closeConfirm = useCallback(() => {
+    setConfirmKind(null)
+    setReason("")
+    setReasonError(null)
+  }, [])
+
+  useEffect(() => {
+    if (!confirmKind) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeConfirm()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [confirmKind, closeConfirm])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -97,31 +136,42 @@ export function DealRowActions({
     }
   }, [open, close])
 
+  function goContinueCreateDraft() {
+    close()
+    navigate("/deals/create?resume=1")
+  }
+
   function handlePreviewDeal() {
     close()
+    if (draftRow) {
+      goContinueCreateDraft()
+      return
+    }
     onPreviewDeal?.()
   }
 
   function handleViewDeal() {
     close()
+    if (draftRow) {
+      goContinueCreateDraft()
+      return
+    }
     navigate(`/deals/${encodeURIComponent(dealId)}`)
   }
 
   function handleEditDeal() {
     close()
+    if (draftRow) {
+      goContinueCreateDraft()
+      return
+    }
     navigate(`/deals/create?edit=${encodeURIComponent(dealId)}`)
   }
 
   function handleArchiveDeal() {
-    const label = dealName.trim() || "this deal"
-    if (
-      !window.confirm(
-        `Archive “${label}”? You can restore it from the Archives tab.`,
-      )
-    )
-      return
     close()
-    onArchived?.()
+    if (draftRow) return
+    setConfirmKind("archive")
   }
 
   function handleRestoreDeal() {
@@ -132,16 +182,27 @@ export function DealRowActions({
   }
 
   function handleDeleteDeal() {
-    const label = dealName.trim() || "this deal"
-    if (
-      !window.confirm(
-        `Delete “${label}”? This cannot be undone once the server supports permanent delete.`,
-      )
-    )
-      return
     close()
-    onDeleted?.()
+    setConfirmKind("delete")
   }
+
+  function handleConfirmDangerAction() {
+    if (!reason.trim()) {
+      setReasonError("Reason is required.")
+      return
+    }
+    const kind = confirmKind
+    const trimmedReason = reason.trim()
+    closeConfirm()
+    if (kind === "archive") {
+      onArchived?.()
+      return
+    }
+    onDeleted?.(trimmedReason)
+  }
+
+  const isLifecycleDraftDeal =
+    !draftRow && String(dealStage ?? "").trim().toLowerCase() === "draft"
 
   return (
     <div className="um_kebab_root" ref={wrapRef}>
@@ -150,7 +211,7 @@ export function DealRowActions({
         className="um_kebab_trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Actions for ${dealName.trim() || "deal"}`}
+        aria-label={`Actions for ${dealName.trim() || "deal"}${draftRow ? " (draft)" : ""}`}
         onClick={() => setOpen((v) => !v)}
       >
         <MoreHorizontal size={18} strokeWidth={2} aria-hidden />
@@ -162,7 +223,7 @@ export function DealRowActions({
               className="um_kebab_menu um_kebab_menu--portal"
               role="menu"
             >
-              {onPreviewDeal ? (
+              {onPreviewDeal || draftRow ? (
                 <li role="none">
                   <button
                     type="button"
@@ -182,7 +243,7 @@ export function DealRowActions({
                   role="menuitem"
                   onClick={handleViewDeal}
                 >
-                  <AppWindow className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                  <Eye className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
                   View deal
                 </button>
               </li>
@@ -194,15 +255,21 @@ export function DealRowActions({
                   onClick={handleEditDeal}
                 >
                   <Pencil className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  Edit Deal
+                  {draftRow ? "Continue editing" : "Edit Deal"}
                 </button>
               </li>
               <li role="none">
                 {archived ? (
                   <button
                     type="button"
-                    className="um_kebab_menuitem"
+                    className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
                     role="menuitem"
+                    disabled={draftRow}
+                    title={
+                      draftRow
+                        ? "Not available until the deal is saved"
+                        : undefined
+                    }
                     onClick={handleRestoreDeal}
                   >
                     <ArchiveRestore className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
@@ -211,8 +278,14 @@ export function DealRowActions({
                 ) : (
                   <button
                     type="button"
-                    className="um_kebab_menuitem"
+                    className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
                     role="menuitem"
+                    disabled={draftRow}
+                    title={
+                      draftRow
+                        ? "Not available until the deal is saved"
+                        : undefined
+                    }
                     onClick={handleArchiveDeal}
                   >
                     <Archive className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
@@ -228,10 +301,116 @@ export function DealRowActions({
                   onClick={handleDeleteDeal}
                 >
                   <Trash2 className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  Delete Deal
+                  Delete
                 </button>
               </li>
             </ul>,
+            document.body,
+          )
+        : null}
+      {confirmKind && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+              role="presentation"
+            >
+              <div
+                className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby={confirmTitleId}
+              >
+                <div className="um_modal_head add_contact_modal_head">
+                  <h3
+                    id={confirmTitleId}
+                    className="um_modal_title add_contact_modal_title"
+                  >
+                    {confirmKind === "archive"
+                      ? "Archive this deal?"
+                      : draftRow
+                        ? "Discard unsaved draft?"
+                        : isLifecycleDraftDeal
+                          ? "Delete this draft deal?"
+                          : "Delete this deal?"}
+                  </h3>
+                  <button
+                    type="button"
+                    className="um_modal_close"
+                    onClick={closeConfirm}
+                    aria-label="Close"
+                  >
+                    <X size={20} strokeWidth={2} aria-hidden />
+                  </button>
+                </div>
+                <div className="deals_add_inv_modal_scroll">
+                  <p className="deals_suspend_all_modal_message">
+                    {confirmKind === "archive"
+                      ? `Archive “${dealName.trim() || "this deal"}”? It will move to Archives and can be restored later.`
+                      : draftRow
+                        ? `Discard the in-progress “${dealName.trim() || "Untitled deal"}” wizard? Unsaved work on this device will be cleared. This cannot be undone.`
+                        : `Delete “${dealName.trim() || "this deal"}”? This action cannot be undone.`}
+                  </p>
+                  <label className="deals_create_label" style={{ marginTop: "0.8em" }}>
+                    <span className="form_label_inline_row">
+                      Reason <span className="deal_inv_required">*</span>
+                    </span>
+                    <textarea
+                      className="deals_create_input"
+                      rows={3}
+                      value={reason}
+                      onChange={(e) => {
+                        setReason(e.target.value)
+                        if (reasonError) setReasonError(null)
+                      }}
+                      placeholder={
+                        confirmKind === "archive"
+                          ? "Why are you archiving this deal?"
+                          : draftRow
+                            ? "Why are you discarding this draft?"
+                            : "Why are you deleting this deal?"
+                      }
+                    />
+                  </label>
+                  {reasonError ? (
+                    <p className="deals_create_field_error" role="alert">
+                      {reasonError}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="um_modal_actions">
+                  <button
+                    type="button"
+                    className="um_btn_secondary"
+                    onClick={closeConfirm}
+                  >
+                    <X size={16} strokeWidth={2} aria-hidden />
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="um_btn_primary"
+                    onClick={handleConfirmDangerAction}
+                  >
+                    {confirmKind === "archive" ? (
+                      <>
+                        <Archive size={16} strokeWidth={2} aria-hidden />
+                        Archive
+                      </>
+                    ) : draftRow ? (
+                      <>
+                        <Trash2 size={16} strokeWidth={2} aria-hidden />
+                        Discard draft
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={16} strokeWidth={2} aria-hidden />
+                        Delete
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>,
             document.body,
           )
         : null}

@@ -3,21 +3,45 @@ import multer from "multer";
 import {
   getDealById,
   getDeals,
+  getOfferingPreviewToken,
+  getPublicOfferingPreview,
+  patchDealAnnouncement,
+  patchDealGalleryCover,
+  patchDealOfferingGallery,
+  postDealOfferingGalleryUploads,
+  patchDealInvestorSummary,
+  patchDealKeyHighlights,
+  patchDealOfferingOverview,
   postDeal,
   putDeal,
+  deleteDeal,
 } from "../controllers/deal/add_deal.controller.js";
 import {
+  getDealCommitmentAmountByContact,
   getDealInvestors,
   postDealInvestment,
   putDealInvestment,
 } from "../controllers/deal/dealInvestment.controller.js";
+import {
+  postDealLpInvestor,
+  putDealLpInvestor,
+} from "../controllers/deal/dealLpInvestor.controller.js";
+import {
+  deleteDealMember,
+  getDealMembers,
+  postDealMemberInvitationEmail,
+} from "../controllers/deal/dealMember.controller.js";
 import {
   deleteDealInvestorClass,
   getDealInvestorClasses,
   postDealInvestorClass,
   putDealInvestorClass,
 } from "../controllers/deal/dealInvestorClass.controller.js";
-import { postDealsExportNotify } from "../controllers/exportNotify.controller.js";
+import {
+  postDealInvestorsExportNotify,
+  postDealMembersExportNotify,
+  postDealsExportNotify,
+} from "../controllers/exportNotify.controller.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -25,6 +49,8 @@ const upload = multer({
 });
 
 const router = Router();
+
+router.get("/public/offering-preview", getPublicOfferingPreview);
 
 router.get("/deals", getDeals);
 router.post("/deals/export-notify", postDealsExportNotify);
@@ -36,6 +62,26 @@ router.delete(
   deleteDealInvestorClass,
 );
 router.get("/deals/:dealId/investors", getDealInvestors);
+router.get(
+  "/deals/:dealId/commitment-amount",
+  getDealCommitmentAmountByContact,
+);
+router.post(
+  "/deals/:dealId/investors/export-notify",
+  postDealInvestorsExportNotify,
+);
+router.post("/deals/:dealId/lp-investors", postDealLpInvestor);
+router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
+router.get("/deals/:dealId/members", getDealMembers);
+router.post(
+  "/deals/:dealId/members/export-notify",
+  postDealMembersExportNotify,
+);
+router.delete("/deals/:dealId/members/:rowId", deleteDealMember);
+router.post(
+  "/deals/:dealId/members/send-invitation-email",
+  postDealMemberInvitationEmail,
+);
 router.post(
   "/deals/:dealId/investments",
   upload.single("subscriptionDocument"),
@@ -46,12 +92,28 @@ router.put(
   upload.single("subscriptionDocument"),
   putDealInvestment,
 );
+router.patch("/deals/:dealId/investor-summary", patchDealInvestorSummary);
+router.patch("/deals/:dealId/deal-announcement", patchDealAnnouncement);
+router.patch("/deals/:dealId/key-highlights", patchDealKeyHighlights);
+router.patch("/deals/:dealId/gallery-cover", patchDealGalleryCover);
+router.post(
+  "/deals/:dealId/offering-gallery-uploads",
+  upload.array("galleryFiles", 20),
+  postDealOfferingGalleryUploads,
+);
+router.patch("/deals/:dealId/offering-gallery", patchDealOfferingGallery);
+router.patch("/deals/:dealId/offering-overview", patchDealOfferingOverview);
+router.get(
+  "/deals/:dealId/offering-preview-token",
+  getOfferingPreviewToken,
+);
 router.get("/deals/:dealId", getDealById);
 router.put(
   "/deals/:dealId",
   upload.array("assetImages", 20),
   putDeal,
 );
+router.delete("/deals/:dealId", deleteDeal);
 router.post("/deals", upload.array("assetImages", 20), postDeal);
 
 export default router;

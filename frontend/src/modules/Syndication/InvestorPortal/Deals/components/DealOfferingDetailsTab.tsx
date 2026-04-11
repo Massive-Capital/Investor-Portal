@@ -1,98 +1,45 @@
-import { ChevronDown, Eye } from "lucide-react"
+import { ChevronDown, Eye, Plus } from "lucide-react"
 import { useId, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { assetImagePathToUrl } from "../../../../../common/utils/apiBaseUrl"
+import { Link, useNavigate } from "react-router-dom"
 import type { DealDetailApi } from "../api/dealsApi"
+import { InvestorSummarySection } from "./InvestorSummarySection"
+import { OfferingGallerySection } from "./OfferingGallerySection"
 import "../deal-offering-details.css"
 import { AssetsSection } from "./AssetsSection"
-import { DocumentsSection } from "./DocumentsSection"
+// import { DocumentsSection } from "./DocumentsSection"
 import { KeyHighlightsSection } from "./KeyHighlightsSection"
+import { FundingInfoSection } from "./FundingInfoSection"
+import { OfferingAnnouncementSection } from "./OfferingAnnouncementSection"
 import { OfferingInformationSection } from "./OfferingInformationSection"
+import { OfferingOverviewSection } from "./OfferingOverviewSection"
+import "../deal-members/add-investment/add_deal_modal.css"
 interface DealOfferingDetailsTabProps {
   detail: DealDetailApi
+  onDealUpdated?: (deal: DealDetailApi) => void
 }
 
 type SectionId =
+  | "make_announcement"
+  | "overview"
   | "offering_information"
   | "gallery"
   | "summary"
-  | "documents"
+  // | "documents"
   | "assets"
   | "key_highlights"
   | "funding_instructions"
 
 const SECTION_ORDER: { id: SectionId; label: string }[] = [
-  { id: "offering_information", label: "Offering Information" },
+  { id: "make_announcement", label: "Make announcement" },
+  { id: "overview", label: "Overview" },
+  { id: "offering_information", label: "Classes" },
   { id: "gallery", label: "Gallery" },
   { id: "summary", label: "Summary" },
-  { id: "documents", label: "Documents" },
+  // { id: "documents", label: "Documents" },
   { id: "assets", label: "Assets" },
   { id: "key_highlights", label: "Key Highlights" },
-  { id: "funding_instructions", label: "Funding Instructions" },
+  { id: "funding_instructions", label: "Funding Info" },
 ]
-
-function boolLabel(value: boolean): string {
-  return value ? "Yes" : "No"
-}
-
-function GalleryBody({ detail }: { detail: DealDetailApi }) {
-  const url = assetImagePathToUrl(detail.assetImagePath)
-  if (!url)
-    return (
-      <p className="deal_offering_muted">
-        No gallery images uploaded for this offering yet.
-      </p>
-    )
-  return (
-    <div className="deal_offering_gallery">
-      <img src={url} alt="" className="deal_offering_gallery_img" />
-    </div>
-  )
-}
-
-function SummaryBody({ detail }: { detail: DealDetailApi }) {
-  const lr = detail.listRow
-  const bits = [
-    lr.raiseTarget && `Raise target: ${lr.raiseTarget}`,
-    lr.totalAccepted && `Total accepted: ${lr.totalAccepted}`,
-    lr.investors && `Investors: ${lr.investors}`,
-    detail.dealType && `Type: ${detail.dealType}`,
-  ].filter(Boolean) as string[]
-  return (
-    <div className="deal_offering_summary">
-      {bits.length > 0 ? (
-        <ul className="deal_offering_bullets">
-          {bits.map((b) => (
-            <li key={b}>{b}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="deal_offering_muted">No summary text available yet.</p>
-      )}
-    </div>
-  )
-}
-
-function FundingBody({ detail }: { detail: DealDetailApi }) {
-  return (
-    <>
-      <dl className="deal_offering_dl">
-        <div className="deal_offering_dl_row">
-          <dt>Auto-send funding instructions</dt>
-          <dd>{boolLabel(detail.autoSendFundingInstructions)}</dd>
-        </div>
-        <div className="deal_offering_dl_row">
-          <dt>Funds required before GP sign</dt>
-          <dd>{boolLabel(detail.fundsRequiredBeforeGpSign)}</dd>
-        </div>
-      </dl>
-      <p className="deal_offering_funding_note">
-        Wire instructions and subscription steps can be shown here when the
-        workflow is fully configured.
-      </p>
-    </>
-  )
-}
 
 function initialSectionsOpen(): Record<SectionId, boolean> {
   const o = {} as Record<SectionId, boolean>
@@ -102,27 +49,63 @@ function initialSectionsOpen(): Record<SectionId, boolean> {
   return o
 }
 
-export function DealOfferingDetailsTab({ detail }: DealOfferingDetailsTabProps) {
+export function DealOfferingDetailsTab({
+  detail,
+  onDealUpdated,
+}: DealOfferingDetailsTabProps) {
   const navigate = useNavigate()
   const baseId = useId()
   const [openSections, setOpenSections] = useState(initialSectionsOpen)
 
   function sectionBody(id: SectionId) {
     switch (id) {
+      case "make_announcement":
+        return (
+          <OfferingAnnouncementSection
+            dealId={detail.id}
+            initialTitle={detail.dealAnnouncementTitle}
+            initialMessage={detail.dealAnnouncementMessage}
+            onSaved={(d) => onDealUpdated?.(d)}
+          />
+        )
+      case "overview":
+        return (
+          <OfferingOverviewSection
+            detail={detail}
+            onSaved={(d) => onDealUpdated?.(d)}
+          />
+        )
       case "offering_information":
         return <OfferingInformationSection dealId={detail.id} />
       case "gallery":
-        return <GalleryBody detail={detail} />
+        return (
+          <OfferingGallerySection
+            detail={detail}
+            onDealUpdated={onDealUpdated}
+          />
+        )
       case "summary":
-        return <SummaryBody detail={detail} />
-      case "documents":
-        return <DocumentsSection />
+        return (
+          <InvestorSummarySection
+            dealId={detail.id}
+            initialStoredHtml={detail.investorSummaryHtml}
+            onSaved={(d) => onDealUpdated?.(d)}
+          />
+        )
+      // case "documents":
+      //   return <DocumentsSection />
       case "assets":
         return <AssetsSection key={detail.id} detail={detail} />
       case "key_highlights":
-        return <KeyHighlightsSection />
+        return (
+          <KeyHighlightsSection
+            dealId={detail.id}
+            initialStoredJson={detail.keyHighlightsJson}
+            onSaved={(d) => onDealUpdated?.(d)}
+          />
+        )
       case "funding_instructions":
-        return <FundingBody detail={detail} />
+        return <FundingInfoSection />
       default:
         return null
     }
@@ -185,24 +168,78 @@ export function DealOfferingDetailsTab({ detail }: DealOfferingDetailsTabProps) 
               className={`deal_offering_section${expanded ? " deal_offering_section_expanded" : ""}`}
               role="listitem"
             >
-              <button
-                type="button"
-                id={`${panelId}-trigger`}
-                className="deal_offering_trigger"
-                aria-expanded={expanded}
-                aria-controls={panelId}
-                onClick={() =>
-                  setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }))
-                }
-              >
-                <span className="deal_offering_trigger_label">{label}</span>
-                <ChevronDown
-                  size={20}
-                  strokeWidth={2}
-                  aria-hidden
-                  className={`deal_offering_chevron${expanded ? " deal_offering_chevron_open" : ""}`}
-                />
-              </button>
+              {id === "offering_information" ? (
+                <div className="deal_offering_trigger_row">
+                  <button
+                    type="button"
+                    id={`${panelId}-trigger`}
+                    className="deal_offering_trigger_toggle"
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
+                    onClick={() =>
+                      setOpenSections((prev) => ({
+                        ...prev,
+                        [id]: !prev[id],
+                      }))
+                    }
+                  >
+                    <span className="deal_offering_trigger_label">
+                      {label}
+                    </span>
+                  </button>
+                  <Link
+                    to={`/deals/${encodeURIComponent(detail.id)}/investor-classes/new`}
+                    className="um_btn_primary deal_offering_add_ic_btn deal_offering_add_ic_header"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Plus size={18} strokeWidth={2} aria-hidden />
+                    Add Investor Class
+                  </Link>
+                  <button
+                    type="button"
+                    className="deal_offering_trigger_chevron_btn"
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
+                    aria-label={
+                      expanded
+                        ? `Collapse ${label}`
+                        : `Expand ${label}`
+                    }
+                    onClick={() =>
+                      setOpenSections((prev) => ({
+                        ...prev,
+                        [id]: !prev[id],
+                      }))
+                    }
+                  >
+                    <ChevronDown
+                      size={20}
+                      strokeWidth={2}
+                      aria-hidden
+                      className={`deal_offering_chevron${expanded ? " deal_offering_chevron_open" : ""}`}
+                    />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  id={`${panelId}-trigger`}
+                  className="deal_offering_trigger"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() =>
+                    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }))
+                  }
+                >
+                  <span className="deal_offering_trigger_label">{label}</span>
+                  <ChevronDown
+                    size={20}
+                    strokeWidth={2}
+                    aria-hidden
+                    className={`deal_offering_chevron${expanded ? " deal_offering_chevron_open" : ""}`}
+                  />
+                </button>
+              )}
               <div
                 id={panelId}
                 role="region"

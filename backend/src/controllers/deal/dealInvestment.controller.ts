@@ -5,16 +5,23 @@ import {
   resolveDealViewerScope,
 } from "../../services/dealAccess.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/assigningDealUser.service.js";
+import { getLpInvestorsTabPayload } from "../../services/dealLpInvestor.service.js";
 import {
   buildInvestorKpisFromRows,
+  DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
   getDealInvestmentById,
+  getLatestCommitmentAmountForDealContact,
   insertDealInvestment,
+  isLpInvestorRole,
   listDealInvestmentsByDealId,
   mapDealInvestmentsToInvestorApi,
+  resolveFirstInvestorClassForDeal,
   resolveInvestorClassForDealInvestment,
   saveSubscriptionDocument,
   updateDealInvestment,
 } from "../../services/dealInvestment.service.js";
+import { upsertDealMemberForDeal } from "../../services/dealMember.service.js";
+import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/dealMemberInvitationEmail.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -40,6 +47,11 @@ function parseExtras(raw: unknown): string[] {
   return [];
 }
 
+function isAutosaveBody(b: Record<string, unknown>): boolean {
+  const v = bodyString(b.autosave);
+  return v === "true" || v === "1" || v.toLowerCase() === "yes";
+}
+
 export async function getDealInvestors(
   req: Request,
   res: Response,
@@ -61,7 +73,20 @@ export async function getDealInvestors(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    const rows = await listDealInvestmentsByDealId(dealId);
+    const q = req.query as Record<string, unknown>;
+    const lpRaw = q.lpInvestorsOnly ?? q.lp_investors_only ?? q.lp;
+    const lpInvestorsOnly =
+      lpRaw === "1" ||
+      lpRaw === "true" ||
+      String(lpRaw).toLowerCase() === "yes";
+    if (lpInvestorsOnly) {
+      const { kpis, investors } = await getLpInvestorsTabPayload(dealId);
+      res.status(200).json({ kpis, investors });
+      return;
+    }
+    const rows = await listDealInvestmentsByDealId(dealId, {
+      lpInvestorsOnly: false,
+    });
     const investors = await mapDealInvestmentsToInvestorApi(rows);
     const kpis = buildInvestorKpisFromRows(rows);
     res.status(200).json({
@@ -71,6 +96,59 @@ export async function getDealInvestors(
   } catch (err) {
     console.error("getDealInvestors:", err);
     res.status(500).json({ message: "Could not load investors" });
+  }
+}
+
+/**
+ * GET /deals/:dealId/commitment-amount?contact_id=...
+ * Isolated lookup: latest stored `commitment_amount` for this deal + contact (viewer-scoped).
+ */
+export async function getDealCommitmentAmountByContact(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  const q = req.query as Record<string, unknown>;
+  const contactId = bodyString(q.contact_id ?? q.contactId).trim();
+
+  if (!dealId?.trim()) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  if (!contactId) {
+    res
+      .status(400)
+      .json({ message: "Missing contact_id query parameter" });
+    return;
+  }
+
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const commitmentAmount = await getLatestCommitmentAmountForDealContact(
+      dealId.trim(),
+      contactId,
+    );
+    res.status(200).json({
+      dealId: dealId.trim(),
+      contactId,
+      commitmentAmount,
+      found: commitmentAmount != null,
+    });
+  } catch (err) {
+    console.error("getDealCommitmentAmountByContact:", err);
+    res.status(500).json({ message: "Could not load commitment amount" });
   }
 }
 
@@ -98,24 +176,35 @@ export async function putDealInvestment(
   }
 
   const b = req.body as Record<string, unknown>;
+  const autosave = isAutosaveBody(b);
   const offeringId = bodyString(b.offering_id);
-  const contactId = bodyString(b.contact_id);
+  let contactId = bodyString(b.contact_id);
   const contactDisplayName = bodyString(b.contact_display_name);
   const profileId = bodyString(b.profile_id);
   const investor_role = bodyString(b.investor_role);
   const status = bodyString(b.status);
   const investorClass = bodyString(b.investor_class);
   const docSignedDate = bodyString(b.doc_signed_date) || null;
-  const commitmentAmount = bodyString(b.commitment_amount);
+  let commitmentAmount = bodyString(b.commitment_amount);
   const extraContributionAmounts = parseExtras(b.extra_contribution_amounts);
+  const sendInvitationMail = bodyString(b.send_invitation_mail);
 
-  if (!contactId.trim()) {
-    res.status(400).json({ message: "Member (contact) is required" });
-    return;
-  }
-  if (!commitmentAmount.trim()) {
-    res.status(400).json({ message: "Commitment amount is required" });
-    return;
+  if (autosave) {
+    if (!contactId.trim()) {
+      contactId = DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
+    }
+    if (!commitmentAmount.trim()) {
+      commitmentAmount = "0";
+    }
+  } else {
+    if (!contactId.trim()) {
+      res.status(400).json({ message: "Member (contact) is required" });
+      return;
+    }
+    if (!commitmentAmount.trim()) {
+      res.status(400).json({ message: "Commitment amount is required" });
+      return;
+    }
   }
 
   const file = req.file;
@@ -126,10 +215,10 @@ export async function putDealInvestment(
       return;
     }
 
-    const classResolution = await resolveInvestorClassForDealInvestment(
-      dealId,
-      investorClass,
-    );
+    const classResolution =
+      autosave && !investorClass.trim()
+        ? await resolveFirstInvestorClassForDeal(dealId)
+        : await resolveInvestorClassForDealInvestment(dealId, investorClass);
     if (!classResolution.ok) {
       res.status(400).json({ message: classResolution.message });
       return;
@@ -174,8 +263,51 @@ export async function putDealInvestment(
       res.status(404).json({ message: "Investment not found" });
       return;
     }
+    const contactIsPlaceholder =
+      contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
+    if (!contactIsPlaceholder && !isLpInvestorRole(investor_role)) {
+      await upsertDealMemberForDeal(dealId, {
+        contactMemberId: contactId,
+        dealMemberRole: investor_role,
+        sendInvitationMail,
+        addedByUserId: user.id,
+      });
+    }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
+    /** Invitation email only on explicit save — never on debounced autosave (avoids mail spam while typing). */
+    if (!contactIsPlaceholder && !autosave) {
+      await sendDealMemberInviteForInvestmentIfRequested({
+        dealId,
+        contactId,
+        contactDisplayName: contactDisplayName.trim(),
+        sendInvitationMail,
+      });
+    }
     const [investor] = await mapDealInvestmentsToInvestorApi([row]);
+    console.log("[putDealInvestment] saved to database", {
+      deal_investment: {
+        id: row.id,
+        deal_id: row.dealId,
+        offering_id: row.offeringId,
+        contact_id: row.contactId,
+        contact_display_name: row.contactDisplayName,
+        profile_id: row.profileId,
+        investor_role: row.investor_role,
+        status: row.status,
+        investor_class: row.investorClass,
+        doc_signed_date: row.docSignedDate,
+        commitment_amount: row.commitmentAmount,
+        extra_contribution_amounts: row.extraContributionAmounts,
+        document_storage_path: row.documentStoragePath ?? null,
+      },
+      deal_member_upsert: {
+        deal_id: dealId,
+        added_by: user.id,
+        contact_member_id: contactId,
+        deal_member_role: investor_role,
+        send_invitation_mail: sendInvitationMail,
+      },
+    });
     res.status(200).json({
       message: "Investment updated",
       investor,
@@ -204,25 +336,44 @@ export async function postDealInvestment(
   }
 
   const b = req.body as Record<string, unknown>;
+  const autosave = isAutosaveBody(b);
   const offeringId = bodyString(b.offering_id);
-  const contactId = bodyString(b.contact_id);
+  let contactId = bodyString(b.contact_id);
   const contactDisplayName = bodyString(b.contact_display_name);
   const profileId = bodyString(b.profile_id);
-    const investor_role = bodyString(b.investor_role);
+  const investor_role = bodyString(b.investor_role);
 
   const status = bodyString(b.status);
   const investorClass = bodyString(b.investor_class);
   const docSignedDate = bodyString(b.doc_signed_date) || null;
-  const commitmentAmount = bodyString(b.commitment_amount);
+  let commitmentAmount = bodyString(b.commitment_amount);
   const extraContributionAmounts = parseExtras(b.extra_contribution_amounts);
+  const sendInvitationMail = bodyString(b.send_invitation_mail);
 
-  if (!contactId.trim()) {
-    res.status(400).json({ message: "Member (contact) is required" });
+  if (isLpInvestorRole(investor_role)) {
+    res.status(400).json({
+      message:
+        "LP investors are stored in deal_lp_investor. Use POST /deals/:dealId/lp-investors (JSON), not POST .../investments.",
+    });
     return;
   }
-  if (!commitmentAmount.trim()) {
-    res.status(400).json({ message: "Commitment amount is required" });
-    return;
+
+  if (autosave) {
+    if (!contactId.trim()) {
+      contactId = DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
+    }
+    if (!commitmentAmount.trim()) {
+      commitmentAmount = "0";
+    }
+  } else {
+    if (!contactId.trim()) {
+      res.status(400).json({ message: "Member (contact) is required" });
+      return;
+    }
+    if (!commitmentAmount.trim()) {
+      res.status(400).json({ message: "Commitment amount is required" });
+      return;
+    }
   }
 
   const file = req.file;
@@ -235,10 +386,10 @@ export async function postDealInvestment(
       return;
     }
 
-    const classResolution = await resolveInvestorClassForDealInvestment(
-      dealId,
-      investorClass,
-    );
+    const classResolution =
+      autosave && !investorClass.trim()
+        ? await resolveFirstInvestorClassForDeal(dealId)
+        : await resolveInvestorClassForDealInvestment(dealId, investorClass);
     if (!classResolution.ok) {
       res.status(400).json({ message: classResolution.message });
       return;
@@ -272,8 +423,51 @@ export async function postDealInvestment(
       },
     });
 
+    const contactIsPlaceholder =
+      contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
+    if (!contactIsPlaceholder) {
+      await upsertDealMemberForDeal(dealId, {
+        contactMemberId: contactId,
+        dealMemberRole: investor_role,
+        sendInvitationMail,
+        addedByUserId: user.id,
+      });
+    }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
+    /** Invitation email only on explicit save — never on debounced autosave. */
+    if (!contactIsPlaceholder && !autosave) {
+      await sendDealMemberInviteForInvestmentIfRequested({
+        dealId,
+        contactId,
+        contactDisplayName: contactDisplayName.trim(),
+        sendInvitationMail,
+      });
+    }
     const [investor] = await mapDealInvestmentsToInvestorApi([row]);
+    console.log("[postDealInvestment] saved to database", {
+      deal_investment: {
+        id: row.id,
+        deal_id: row.dealId,
+        offering_id: row.offeringId,
+        contact_id: row.contactId,
+        contact_display_name: row.contactDisplayName,
+        profile_id: row.profileId,
+        investor_role: row.investor_role,
+        status: row.status,
+        investor_class: row.investorClass,
+        doc_signed_date: row.docSignedDate,
+        commitment_amount: row.commitmentAmount,
+        extra_contribution_amounts: row.extraContributionAmounts,
+        document_storage_path: row.documentStoragePath ?? null,
+      },
+      deal_member_upsert: {
+        deal_id: dealId,
+        added_by: user.id,
+        contact_member_id: contactId,
+        deal_member_role: investor_role,
+        send_invitation_mail: sendInvitationMail,
+      },
+    });
     res.status(201).json({
       message: "Investment recorded",
       investor,

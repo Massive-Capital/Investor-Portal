@@ -28,14 +28,60 @@ export function getBackendOrigin(): string {
 }
 
 /**
+ * Base URL (no trailing slash) used to build browser `src` for `/uploads/...` files.
+ * Falls back to `window.location.origin` when `VITE_BASE_URL` is unset so preview/gallery
+ * still load on same-origin deployments (reverse proxy serves `/uploads`).
+ */
+export function getUploadsPublicOrigin(): string {
+  const fromApi = getBackendOrigin();
+  if (fromApi) return fromApi.replace(/\/$/, "");
+  if (typeof window !== "undefined") return window.location.origin.replace(/\/$/, "");
+  return "";
+}
+
+/**
+ * Normalize gallery/cover `src` for `<img>`: absolute `http(s)`, `data:image/*`, or
+ * root-relative `/uploads/...` resolved against the uploads origin.
+ */
+export function normalizeDealGallerySrc(raw: string | null | undefined): string {
+  const s = typeof raw === "string" ? raw.trim() : String(raw ?? "").trim();
+  if (!s) return "";
+  if (s.startsWith("data:image/")) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("/uploads/")) {
+    const root = getUploadsPublicOrigin();
+    if (root) return `${root}${s}`;
+    return s;
+  }
+  return s;
+}
+
+/**
  * First image URL from API `assetImagePath` (semicolon-separated paths under `uploads/`).
  */
 export function assetImagePathToUrl(assetImagePath: string | null | undefined): string {
   if (assetImagePath == null || !String(assetImagePath).trim()) return ""
   const first = String(assetImagePath).split(";")[0]?.trim()
   if (!first) return ""
-  const origin = getBackendOrigin()
-  if (!origin) return ""
   const rel = first.replace(/^\/+/, "")
-  return `${origin}/uploads/${rel}`
+  const root = getUploadsPublicOrigin()
+  if (!root) return `/uploads/${rel}`
+  return `${root}/uploads/${rel}`
+}
+
+/** Absolute URLs for each path in a semicolon-separated `assetImagePath` from the API. */
+export function assetImagePathsToUrls(
+  assetImagePath: string | null | undefined,
+): string[] {
+  if (assetImagePath == null || !String(assetImagePath).trim()) return []
+  const root = getUploadsPublicOrigin()
+  return String(assetImagePath)
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((seg) => {
+      const rel = seg.replace(/^\/+/, "")
+      if (root) return `${root}/uploads/${rel}`
+      return `/uploads/${rel}`
+    })
 }

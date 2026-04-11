@@ -16,6 +16,7 @@ import {
   fetchDealInvestors,
   fetchDealsList,
 } from "./api/dealsApi"
+import { DEALS_LIST_REFETCH_EVENT } from "./createDealFormDraftStorage"
 import {
   dateSortValue,
   formatDealListDateDisplay,
@@ -95,6 +96,43 @@ export function SyndicatingDealsSection({
     return () => {
       cancelled = true
     }
+  }, [])
+
+  useEffect(() => {
+    function onDealsListRefetch() {
+      void (async () => {
+        setLoading(true)
+        const list = await fetchDealsList()
+        if (list.length === 0) {
+          setDeals([])
+          setLoading(false)
+          return
+        }
+        const bundles = await Promise.all(
+          list.map(async (row) => {
+            const [payload, classes] = await Promise.all([
+              fetchDealInvestors(row.id),
+              fetchDealInvestorClasses(row.id),
+            ])
+            return { row, payload, classes }
+          }),
+        )
+        setDeals(
+          bundles.map(({ row, payload, classes }) =>
+            mergeDealRecordWithInvestorsAndClasses(
+              row,
+              dealListRowToDealRecord(row),
+              payload,
+              classes,
+            ),
+          ),
+        )
+        setLoading(false)
+      })()
+    }
+    window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
+    return () =>
+      window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
   }, [])
 
   const filtered = useMemo(() => {

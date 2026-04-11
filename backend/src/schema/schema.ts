@@ -24,6 +24,16 @@ export {
   type DealInvestmentRow,
 } from "./deal.schema/deal-investment.schema.js";
 export {
+  dealMember,
+  type DealMemberInsert,
+  type DealMemberRow,
+} from "./deal.schema/deal-member.schema.js";
+export {
+  dealLpInvestor,
+  type DealLpInvestorInsert,
+  type DealLpInvestorRow,
+} from "./deal.schema/deal-lp-investor.schema.js";
+export {
   assigningDealUser,
   type AssigningDealUserInsert,
   type AssigningDealUserRow,

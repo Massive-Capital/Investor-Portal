@@ -1,0 +1,190 @@
+/* eSign Templates tab — stacked upload cards (e-signed folder) */
+
+.deal_esign_root {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  /* max-width: 52rem; */
+  margin: 0 auto;
+  padding: 0 0.25rem 1.5rem;
+  font-family: var(--deals-add-inv-font-family, "Inter", ui-sans-serif, system-ui, sans-serif);
+}
+
+.deal_esign_header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.deal_esign_title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  letter-spacing: -0.02em;
+}
+
+.deal_esign_intro {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_folder_pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 0.35em 0.65em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--portal-text, #334155);
+  background: color-mix(in srgb, var(--portal-border, #e2e8f0) 55%, transparent);
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 9999px;
+}
+
+.deal_esign_folder_pill_icon {
+  flex-shrink: 0;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.deal_esign_card {
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
+  overflow: hidden;
+}
+
+.deal_esign_card_head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--portal-border, #e2e8f0) 80%, transparent);
+  background: color-mix(in srgb, var(--portal-chrome-bg, #f8fafc) 65%, transparent);
+}
+
+.deal_esign_card_title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  line-height: 1.35;
+}
+
+.deal_esign_card_body {
+  padding: 0.85rem 1rem 1rem;
+}
+
+.deal_esign_dropzone {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  min-height: 3rem;
+  border: 1px dashed var(--portal-border, #cbd5e1);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--portal-text-muted, #64748b);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+  background: var(--portal-surface, #fff);
+  box-sizing: border-box;
+}
+
+.deal_esign_dropzone:hover,
+.deal_esign_dropzone_focus {
+  border-color: var(--portal-focus, #2563eb);
+  background: color-mix(in srgb, var(--portal-focus, #2563eb) 6%, transparent);
+  color: var(--portal-text, #334155);
+}
+
+.deal_esign_dropzone_lead {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.deal_esign_dropzone_text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  min-width: 0;
+}
+
+.deal_esign_dropzone_hint {
+  font-weight: 500;
+}
+
+.deal_esign_dropzone_sub {
+  font-size: 0.75rem;
+  opacity: 0.92;
+}
+
+.deal_esign_file_list {
+  margin: 0.65rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.deal_esign_file_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.8125rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--portal-border, #e2e8f0) 35%, transparent);
+}
+
+.deal_esign_file_name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--portal-text, #334155);
+}
+
+.deal_esign_file_remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.25em 0.5em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--portal-text-muted, #64748b);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.deal_esign_file_remove:hover {
+  color: #b91c1c;
+  background: color-mix(in srgb, #b91c1c 10%, transparent);
+}
+
+.deal_esign_file_remove:focus-visible {
+  outline: 2px solid var(--portal-focus, #2563eb);
+  outline-offset: 1px;
+}

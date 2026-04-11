@@ -10,6 +10,9 @@ import {
   type AddDealFormRow,
 } from "../schema/deal.schema/add-deal-form.schema.js";
 import { companies } from "../schema/schema.js";
+import { sanitizeInvestorSummaryHtml } from "../utils/sanitizeInvestorSummaryHtml.js";
+import { sanitizeKeyHighlightsJson } from "../utils/sanitizeKeyHighlightsJson.js";
+import { encryptOfferingPreviewDealId } from "../utils/offeringPreviewCrypto.js";
 
 const UPLOAD_SUBDIR = "deal-assets";
 
@@ -37,8 +40,97 @@ export type CreateDealFormInput = {
   autoSendFundingInstructions: boolean | undefined;
   propertyName: string;
   country: string;
+  addressLine1: string;
+  addressLine2: string;
   city: string;
+  state: string;
+  zipCode: string;
 };
+
+/**
+ * Deal stage aliases across old/new UI + DB constraint variants.
+ * Normalizes incoming values to a stable DB-safe value.
+ */
+function normalizeDealStage(input: string): string {
+  const raw = String(input ?? "").trim();
+  if (!raw) return "";
+  const key = raw.toLowerCase();
+  switch (key) {
+    case "draft":
+      return "draft";
+    case "capital_raising":
+    case "raising_capital":
+      return "raising_capital";
+    case "managing_asset":
+    case "asset_managing":
+      return "asset_managing";
+    case "liquidated":
+      return "liquidated";
+    default:
+      return raw;
+  }
+}
+
+/** Candidate stage values to satisfy either old or new DB CHECK variants. */
+function dealStageCandidates(input: string): string[] {
+  const raw = String(input ?? "").trim();
+  if (!raw) return [""];
+  const key = raw.toLowerCase();
+  switch (key) {
+    case "draft":
+      return ["draft", "Draft"];
+    case "capital_raising":
+    case "raising_capital":
+      return ["raising_capital", "capital_raising"];
+    case "managing_asset":
+    case "asset_managing":
+      return ["asset_managing", "managing_asset"];
+    case "liquidated":
+      return ["liquidated"];
+    default:
+      return [normalizeDealStage(raw), raw];
+  }
+}
+
+function isDealStageCheckError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+    cause?: unknown;
+  };
+  const directMatch =
+    e.code === "23514" &&
+    e.constraint === "add_deal_form_deal_stage_check";
+  if (directMatch) return true;
+
+  const msg = String(e.message ?? "");
+  if (
+    msg.includes("add_deal_form_deal_stage_check") ||
+    msg.includes('relation "add_deal_form" violates check constraint')
+  ) {
+    return true;
+  }
+
+  if (e.cause && typeof e.cause === "object") {
+    const c = e.cause as {
+      code?: string;
+      constraint?: string;
+      message?: string;
+      cause?: unknown;
+    };
+    if (
+      (c.code === "23514" &&
+        c.constraint === "add_deal_form_deal_stage_check") ||
+      String(c.message ?? "").includes("add_deal_form_deal_stage_check")
+    ) {
+      return true;
+    }
+    if (c.cause) return isDealStageCheckError(c.cause);
+  }
+  return false;
+}
 
 function validateCreateInput(
   input: CreateDealFormInput,
@@ -131,7 +223,11 @@ export async function insertAddDealForm(
   assetRelativePaths: string[],
   organizationId?: string | null,
 ): Promise<AddDealFormRow> {
-  const validationErrors = validateCreateInput(input);
+  const normalizedInput: CreateDealFormInput = {
+    ...input,
+    dealStage: normalizeDealStage(input.dealStage),
+  };
+  const validationErrors = validateCreateInput(normalizedInput);
   if (validationErrors) {
     const err = new Error("VALIDATION") as Error & {
       fieldErrors: DealFormFieldErrors;
@@ -140,27 +236,52 @@ export async function insertAddDealForm(
     throw err;
   }
 
-  const row: AddDealFormInsert = {
+  const baseRow: Omit<AddDealFormInsert, "dealStage"> = {
     organizationId: organizationId ?? null,
-    dealName: input.dealName.trim(),
-    dealType: input.dealType.trim(),
-    dealStage: input.dealStage.trim(),
-    secType: input.secType.trim(),
-    closeDate: input.closeDate?.trim() || null,
-    owningEntityName: input.owningEntityName.trim(),
-    fundsRequiredBeforeGpSign: input.fundsRequiredBeforeGpSign!,
-    autoSendFundingInstructions: input.autoSendFundingInstructions!,
-    propertyName: input.propertyName.trim(),
-    country: input.country.trim(),
-    city: input.city.trim(),
+    dealName: normalizedInput.dealName.trim(),
+    dealType: normalizedInput.dealType.trim(),
+    secType: normalizedInput.secType.trim(),
+    closeDate: normalizedInput.closeDate?.trim() || null,
+    owningEntityName: normalizedInput.owningEntityName.trim(),
+    fundsRequiredBeforeGpSign: normalizedInput.fundsRequiredBeforeGpSign!,
+    autoSendFundingInstructions: normalizedInput.autoSendFundingInstructions!,
+    propertyName: normalizedInput.propertyName.trim(),
+    country: normalizedInput.country.trim(),
+    addressLine1: normalizedInput.addressLine1.trim() || null,
+    addressLine2: normalizedInput.addressLine2.trim() || null,
+    city: normalizedInput.city.trim(),
+    state: normalizedInput.state.trim() || null,
+    zipCode: normalizedInput.zipCode.trim() || null,
     assetImagePath: assetRelativePaths.length
       ? assetRelativePaths.join(";")
       : null,
+    offeringGalleryPaths: mergeOfferingGalleryPathsIntoStored(
+      "[]",
+      assetRelativePaths,
+    ),
   };
-
-  const [created] = await db.insert(addDealForm).values(row).returning();
-  if (!created) throw new Error("Insert failed");
-  return created;
+  const candidates = dealStageCandidates(normalizedInput.dealStage);
+  let lastErr: unknown = null;
+  for (const stage of candidates) {
+    try {
+      const row: AddDealFormInsert = { ...baseRow, dealStage: stage };
+      const [created] = await db.insert(addDealForm).values(row).returning();
+      if (!created) throw new Error("Insert failed");
+      const token = encryptOfferingPreviewDealId(String(created.id));
+      const [withPreview] = await db
+        .update(addDealForm)
+        .set({ offeringPreviewToken: token })
+        .where(eq(addDealForm.id, created.id))
+        .returning();
+      return withPreview ?? created;
+    } catch (err) {
+      lastErr = err;
+      if (!isDealStageCheckError(err) || stage === candidates[candidates.length - 1]) {
+        throw err;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Insert failed");
 }
 
 export async function listAddDealForms(): Promise<AddDealFormRow[]> {
@@ -252,6 +373,420 @@ export async function getAddDealFormById(
   return rows[0];
 }
 
+/** Persists preview token when missing (legacy deals). Idempotent. */
+export async function ensureDealOfferingPreviewTokenStored(
+  dealId: string,
+): Promise<AddDealFormRow | undefined> {
+  const trimmed = String(dealId ?? "").trim();
+  if (!trimmed) return undefined;
+  const row = await getAddDealFormById(trimmed);
+  if (!row) return undefined;
+  if (row.offeringPreviewToken?.trim()) return row;
+  const token = encryptOfferingPreviewDealId(trimmed);
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ offeringPreviewToken: token })
+    .where(eq(addDealForm.id, trimmed))
+    .returning();
+  return updated;
+}
+
+/** Deletes the deal row; child tables use `onDelete: "cascade"` where applicable. */
+export async function deleteAddDealFormById(id: string): Promise<boolean> {
+  const trimmed = String(id ?? "").trim();
+  if (!trimmed) return false;
+  const removed = await db
+    .delete(addDealForm)
+    .where(eq(addDealForm.id, trimmed))
+    .returning({ id: addDealForm.id });
+  return removed.length > 0;
+}
+
+export async function updateDealInvestorSummaryById(
+  id: string,
+  rawHtml: string,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const cleaned = sanitizeInvestorSummaryHtml(rawHtml);
+  const toStore = cleaned.trim() === "" ? null : cleaned;
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ investorSummaryHtml: toStore })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
+export async function updateDealGalleryCoverById(
+  id: string,
+  galleryCoverImageUrl: string | null,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ galleryCoverImageUrl })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
+export async function updateDealAnnouncementById(
+  id: string,
+  title: string | null,
+  message: string | null,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const [updated] = await db
+    .update(addDealForm)
+    .set({
+      dealAnnouncementTitle: title,
+      dealAnnouncementMessage: message,
+    })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
+const OFFERING_STATUS_WHITELIST = new Set([
+  "draft_hidden",
+  "coming_soon",
+  "open_soft_commitment",
+  "open_hard_commitment",
+  "open_investment",
+  "waitlist",
+]);
+
+const OFFERING_VISIBILITY_WHITELIST = new Set([
+  "show_on_dashboard",
+  "show_on_deal_investors_dashboard",
+  "only_visible_with_link",
+]);
+
+/** Accept legacy DB/API values and normalize before validate. */
+function canonicalOfferingVisibility(v: string): string {
+  const t = String(v ?? "").trim();
+  switch (t) {
+    case "eligible_investors":
+      return "show_on_dashboard";
+    case "link_only":
+    case "hidden":
+      return "only_visible_with_link";
+    default:
+      return t;
+  }
+}
+
+const MAX_INTERNAL_NAME_LEN = 500;
+const MAX_DEAL_TYPE_LEN = 120;
+const MAX_OVERVIEW_ASSET_IDS = 80;
+const MAX_OVERVIEW_ASSET_IDS_JSON_LEN = 32000;
+const MAX_OFFERING_GALLERY_PATHS = 40;
+const MAX_OFFERING_GALLERY_PATH_LEN = 500;
+const MAX_OFFERING_GALLERY_JSON_LEN = 32000;
+
+/** Parse stored JSON array; invalid → []. */
+export function parseStoredOfferingOverviewAssetIds(
+  raw: string | null | undefined,
+): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const p = JSON.parse(raw) as unknown;
+    if (!Array.isArray(p)) return [];
+    const out: string[] = [];
+    for (const x of p) {
+      if (typeof x !== "string") continue;
+      const t = x.trim();
+      if (!t || t.length > 220) continue;
+      if (!/^[a-zA-Z0-9_.-]+$/.test(t)) continue;
+      out.push(t);
+      if (out.length >= MAX_OVERVIEW_ASSET_IDS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Parse stored JSON array of upload-relative paths for offering gallery; invalid → []. */
+export function parseStoredOfferingGalleryPaths(
+  raw: string | null | undefined,
+): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const p = JSON.parse(raw) as unknown;
+    if (!Array.isArray(p)) return [];
+    const out: string[] = [];
+    for (const x of p) {
+      if (typeof x !== "string") continue;
+      const t = x.trim().replace(/^\/+/, "");
+      if (!t || t.length > MAX_OFFERING_GALLERY_PATH_LEN) continue;
+      if (t.includes("..")) continue;
+      if (!/^[\w./-]+$/.test(t)) continue;
+      out.push(t);
+      if (out.length >= MAX_OFFERING_GALLERY_PATHS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/** Append new upload-relative paths to stored gallery JSON; dedupe, preserve order, cap length. */
+export function mergeOfferingGalleryPathsIntoStored(
+  existingRaw: string | null | undefined,
+  append: string[],
+): string {
+  const cur = parseStoredOfferingGalleryPaths(existingRaw);
+  const seen = new Set(cur);
+  for (const p of append) {
+    const t = p.trim().replace(/^\/+/, "");
+    if (!t || seen.has(t)) continue;
+    if (t.includes("..")) continue;
+    if (!/^[\w./-]+$/.test(t)) continue;
+    if (t.length > MAX_OFFERING_GALLERY_PATH_LEN) continue;
+    seen.add(t);
+    cur.push(t);
+    if (cur.length >= MAX_OFFERING_GALLERY_PATHS) break;
+  }
+  return JSON.stringify(cur);
+}
+
+export function normalizeOfferingGalleryPathsFromBody(
+  raw: unknown,
+): { ok: true; paths: string[] } | { ok: false; message: string } {
+  if (raw === undefined || raw === null) {
+    return { ok: true, paths: [] };
+  }
+  if (!Array.isArray(raw)) {
+    return { ok: false, message: "offering_gallery_paths must be an array." };
+  }
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") {
+      return { ok: false, message: "Each gallery path must be a string." };
+    }
+    const t = x.trim().replace(/^\/+/, "");
+    if (!t) {
+      return { ok: false, message: "Gallery path cannot be empty." };
+    }
+    if (t.length > MAX_OFFERING_GALLERY_PATH_LEN) {
+      return { ok: false, message: "A gallery path is too long." };
+    }
+    if (t.includes("..")) {
+      return { ok: false, message: "Invalid gallery path." };
+    }
+    if (!/^[\w./-]+$/.test(t)) {
+      return { ok: false, message: "Invalid gallery path characters." };
+    }
+    out.push(t);
+    if (out.length > MAX_OFFERING_GALLERY_PATHS) {
+      return { ok: false, message: "Too many gallery images." };
+    }
+  }
+  const json = JSON.stringify(out);
+  if (json.length > MAX_OFFERING_GALLERY_JSON_LEN) {
+    return { ok: false, message: "Gallery list is too large." };
+  }
+  return { ok: true, paths: out };
+}
+
+export function normalizeOverviewAssetIdsFromBody(
+  raw: unknown,
+): { ok: true; ids: string[] } | { ok: false; message: string } {
+  if (raw === undefined || raw === null) return { ok: true, ids: [] };
+  let list: unknown[];
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw.trim() || "[]");
+      list = Array.isArray(p) ? p : [];
+    } catch {
+      return { ok: false, message: "offering_overview_asset_ids must be a JSON array." };
+    }
+  } else {
+    return { ok: false, message: "offering_overview_asset_ids must be an array." };
+  }
+  const out: string[] = [];
+  for (const x of list) {
+    if (typeof x !== "string") continue;
+    const t = x.trim();
+    if (!t || t.length > 220) continue;
+    if (!/^[a-zA-Z0-9_.-]+$/.test(t)) continue;
+    out.push(t);
+    if (out.length >= MAX_OVERVIEW_ASSET_IDS) break;
+  }
+  const json = JSON.stringify(out);
+  if (json.length > MAX_OVERVIEW_ASSET_IDS_JSON_LEN) {
+    return { ok: false, message: "Too many assets selected." };
+  }
+  return { ok: true, ids: out };
+}
+
+export type OfferingOverviewPatchInput = {
+  offeringStatus?: string;
+  offeringVisibility?: string;
+  showOnInvestbase?: boolean;
+  dealName?: string;
+  internalName?: string;
+  dealType?: string;
+  /** JSON array string for `offering_overview_asset_ids` column */
+  offeringOverviewAssetIdsJson?: string;
+};
+
+export function sanitizeOfferingOverviewPatch(
+  patch: OfferingOverviewPatchInput,
+): { ok: true; set: OfferingOverviewPatchInput } | { ok: false; message: string } {
+  const out: OfferingOverviewPatchInput = {};
+  if (patch.offeringStatus !== undefined) {
+    const v = String(patch.offeringStatus ?? "").trim();
+    if (!OFFERING_STATUS_WHITELIST.has(v)) {
+      return { ok: false, message: "Invalid offering status." };
+    }
+    out.offeringStatus = v;
+  }
+  if (patch.offeringVisibility !== undefined) {
+    const v = canonicalOfferingVisibility(String(patch.offeringVisibility ?? ""));
+    if (!OFFERING_VISIBILITY_WHITELIST.has(v)) {
+      return { ok: false, message: "Invalid offering visibility." };
+    }
+    out.offeringVisibility = v;
+  }
+  if (patch.showOnInvestbase !== undefined) {
+    if (typeof patch.showOnInvestbase !== "boolean") {
+      return { ok: false, message: "show_on_investbase must be a boolean." };
+    }
+    out.showOnInvestbase = patch.showOnInvestbase;
+  }
+  if (patch.dealName !== undefined) {
+    const v = String(patch.dealName ?? "").trim();
+    if (!v) {
+      return { ok: false, message: "Offering name cannot be empty." };
+    }
+    if (v.length > 500) {
+      return { ok: false, message: "Offering name is too long." };
+    }
+    out.dealName = v;
+  }
+  if (patch.internalName !== undefined) {
+    const v = String(patch.internalName ?? "").trim().slice(0, MAX_INTERNAL_NAME_LEN);
+    out.internalName = v;
+  }
+  if (patch.dealType !== undefined) {
+    const v = String(patch.dealType ?? "").trim().slice(0, MAX_DEAL_TYPE_LEN);
+    out.dealType = v;
+  }
+  if (patch.offeringOverviewAssetIdsJson !== undefined) {
+    const j = String(patch.offeringOverviewAssetIdsJson ?? "").trim();
+    if (j.length > MAX_OVERVIEW_ASSET_IDS_JSON_LEN) {
+      return { ok: false, message: "Asset selection payload is too large." };
+    }
+    try {
+      const p = JSON.parse(j) as unknown;
+      if (!Array.isArray(p)) {
+        return { ok: false, message: "offering_overview_asset_ids must be a JSON array." };
+      }
+    } catch {
+      return { ok: false, message: "offering_overview_asset_ids must be valid JSON." };
+    }
+    out.offeringOverviewAssetIdsJson = j;
+  }
+  if (Object.keys(out).length === 0) {
+    return { ok: false, message: "No valid fields to update." };
+  }
+  return { ok: true, set: out };
+}
+
+export async function updateDealOfferingOverviewById(
+  id: string,
+  patch: OfferingOverviewPatchInput,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const [updated] = await db
+    .update(addDealForm)
+    .set({
+      ...(patch.offeringStatus !== undefined
+        ? { offeringStatus: patch.offeringStatus }
+        : {}),
+      ...(patch.offeringVisibility !== undefined
+        ? { offeringVisibility: patch.offeringVisibility }
+        : {}),
+      ...(patch.showOnInvestbase !== undefined
+        ? { showOnInvestbase: patch.showOnInvestbase }
+        : {}),
+      ...(patch.dealName !== undefined ? { dealName: patch.dealName } : {}),
+      ...(patch.internalName !== undefined
+        ? { internalName: patch.internalName }
+        : {}),
+      ...(patch.dealType !== undefined ? { dealType: patch.dealType } : {}),
+      ...(patch.offeringOverviewAssetIdsJson !== undefined
+        ? { offeringOverviewAssetIds: patch.offeringOverviewAssetIdsJson }
+        : {}),
+    })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
+export async function updateDealOfferingGalleryPathsById(
+  id: string,
+  paths: string[],
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const normalized = normalizeOfferingGalleryPathsFromBody(paths);
+  if (!normalized.ok) return undefined;
+  const json = JSON.stringify(normalized.paths);
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ offeringGalleryPaths: json })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
+/** Save new gallery files and merge paths into `asset_image_path` and `offering_gallery_paths`. */
+export async function appendDealGalleryUploadsById(
+  id: string,
+  newRelativePaths: string[],
+): Promise<AddDealFormRow | undefined> {
+  if (newRelativePaths.length === 0) return getAddDealFormById(id);
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const prevPaths = existing.assetImagePath?.split(";").filter(Boolean) ?? [];
+  const mergedPaths = [...prevPaths, ...newRelativePaths];
+  const assetImagePath = mergedPaths.join(";");
+  const offeringGalleryPaths = mergeOfferingGalleryPathsIntoStored(
+    existing.offeringGalleryPaths,
+    newRelativePaths,
+  );
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ assetImagePath, offeringGalleryPaths })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
+export async function updateDealKeyHighlightsById(
+  id: string,
+  rawJson: string,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const normalized = sanitizeKeyHighlightsJson(rawJson);
+  /** Always store a string (e.g. `[]`) so reads always round-trip; avoid NULL vs "" ambiguity. */
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ keyHighlightsJson: normalized })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
 export async function updateAddDealFormById(
   id: string,
   input: CreateDealFormInput,
@@ -261,7 +796,11 @@ export async function updateAddDealFormById(
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
 
-  const validationErrors = validateCreateInput(input);
+  const normalizedInput: CreateDealFormInput = {
+    ...input,
+    dealStage: normalizeDealStage(input.dealStage),
+  };
+  const validationErrors = validateCreateInput(normalizedInput);
   if (validationErrors) {
     const err = new Error("VALIDATION") as Error & {
       fieldErrors: DealFormFieldErrors;
@@ -274,31 +813,57 @@ export async function updateAddDealFormById(
   const mergedPaths = [...prevPaths, ...newAssetRelativePaths];
   const assetImagePath =
     mergedPaths.length > 0 ? mergedPaths.join(";") : existing.assetImagePath;
+  const offeringGalleryPaths =
+    newAssetRelativePaths.length > 0
+      ? mergeOfferingGalleryPathsIntoStored(
+          existing.offeringGalleryPaths,
+          newAssetRelativePaths,
+        )
+      : existing.offeringGalleryPaths;
 
   const backfillOrg =
     !existing.organizationId && options?.organizationId
       ? { organizationId: options.organizationId }
       : {};
 
-  const [updated] = await db
-    .update(addDealForm)
-    .set({
-      ...backfillOrg,
-      dealName: input.dealName.trim(),
-      dealType: input.dealType.trim(),
-      dealStage: input.dealStage.trim(),
-      secType: input.secType.trim(),
-      closeDate: input.closeDate?.trim() || null,
-      owningEntityName: input.owningEntityName.trim(),
-      fundsRequiredBeforeGpSign: input.fundsRequiredBeforeGpSign!,
-      autoSendFundingInstructions: input.autoSendFundingInstructions!,
-      propertyName: input.propertyName.trim(),
-      country: input.country.trim(),
-      city: input.city.trim(),
-      assetImagePath,
-    })
-    .where(eq(addDealForm.id, id))
-    .returning();
-
-  return updated;
+  const baseSet = {
+    ...backfillOrg,
+    dealName: normalizedInput.dealName.trim(),
+    dealType: normalizedInput.dealType.trim(),
+    secType: normalizedInput.secType.trim(),
+    closeDate: normalizedInput.closeDate?.trim() || null,
+    owningEntityName: normalizedInput.owningEntityName.trim(),
+    fundsRequiredBeforeGpSign: normalizedInput.fundsRequiredBeforeGpSign!,
+    autoSendFundingInstructions: normalizedInput.autoSendFundingInstructions!,
+    propertyName: normalizedInput.propertyName.trim(),
+    country: normalizedInput.country.trim(),
+    addressLine1: normalizedInput.addressLine1.trim() || null,
+    addressLine2: normalizedInput.addressLine2.trim() || null,
+    city: normalizedInput.city.trim(),
+    state: normalizedInput.state.trim() || null,
+    zipCode: normalizedInput.zipCode.trim() || null,
+    assetImagePath,
+    offeringGalleryPaths,
+  };
+  const candidates = dealStageCandidates(normalizedInput.dealStage);
+  let lastErr: unknown = null;
+  for (const stage of candidates) {
+    try {
+      const [updated] = await db
+        .update(addDealForm)
+        .set({
+          ...baseSet,
+          dealStage: stage,
+        })
+        .where(eq(addDealForm.id, id))
+        .returning();
+      return updated;
+    } catch (err) {
+      lastErr = err;
+      if (!isDealStageCheckError(err) || stage === candidates[candidates.length - 1]) {
+        throw err;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Update failed");
 }

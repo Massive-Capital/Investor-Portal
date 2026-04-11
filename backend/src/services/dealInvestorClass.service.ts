@@ -12,10 +12,13 @@ export type InvestorClassInput = {
   entityName: string;
   startDate: string;
   offeringSize: string;
+  raiseAmountDistributions: string;
+  billingRaiseQuota: string;
   minimumInvestment: string;
   pricePerUnit: string;
   status: string;
   visibility: string;
+  advancedOptionsJson: string;
 };
 
 export function mapRowToJson(row: DealInvestorClassRow) {
@@ -27,10 +30,13 @@ export function mapRowToJson(row: DealInvestorClassRow) {
     entityName: row.entityName,
     startDate: row.startDate,
     offeringSize: row.offeringSize,
+    raiseAmountDistributions: row.raiseAmountDistributions,
+    billingRaiseQuota: row.billingRaiseQuota,
     minimumInvestment: row.minimumInvestment,
     pricePerUnit: row.pricePerUnit,
     status: row.status,
     visibility: row.visibility,
+    advancedOptionsJson: row.advancedOptionsJson,
     createdAt:
       row.createdAt instanceof Date
         ? row.createdAt.toISOString()
@@ -63,10 +69,13 @@ export async function insertInvestorClass(params: {
     entityName: params.input.entityName,
     startDate: params.input.startDate,
     offeringSize: params.input.offeringSize,
+    raiseAmountDistributions: params.input.raiseAmountDistributions,
+    billingRaiseQuota: params.input.billingRaiseQuota,
     minimumInvestment: params.input.minimumInvestment,
     pricePerUnit: params.input.pricePerUnit,
     status: params.input.status,
     visibility: params.input.visibility,
+    advancedOptionsJson: params.input.advancedOptionsJson,
   };
   const [inserted] = await db.insert(dealInvestorClass).values(row).returning();
   if (!inserted) throw new Error("INSERT_INVESTOR_CLASS_FAILED");
@@ -86,10 +95,13 @@ export async function updateInvestorClass(params: {
       entityName: params.input.entityName,
       startDate: params.input.startDate,
       offeringSize: params.input.offeringSize,
+      raiseAmountDistributions: params.input.raiseAmountDistributions,
+      billingRaiseQuota: params.input.billingRaiseQuota,
       minimumInvestment: params.input.minimumInvestment,
       pricePerUnit: params.input.pricePerUnit,
       status: params.input.status,
       visibility: params.input.visibility,
+      advancedOptionsJson: params.input.advancedOptionsJson,
       updatedAt: new Date(),
     })
     .where(
