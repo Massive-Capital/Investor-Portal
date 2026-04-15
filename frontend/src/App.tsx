@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import { SESSION_BEARER_KEY } from "./common/auth/sessionKeys";
+import { LpInvestorShellGuard } from "./common/auth/LpInvestorShellGuard";
 import { RequireAuth } from "./common/auth/RequireAuth";
 import {
   canAccessCompanyPage,
@@ -8,6 +9,7 @@ import {
 } from "./common/auth/roleUtils";
 import SigninPage from "./modules/auth/pages/SigninPage";
 import SignupPage from "./modules/auth/pages/SignupPage";
+import DealInvitePage from "./modules/auth/pages/DealInvitePage";
 import ForgotPasswordPage from "./modules/auth/pages/ForgotPasswordPage";
 import ResetPasswordPage from "./modules/auth/pages/ResetPasswordPage";
 import PrivacyPolicy from "./modules/auth/components/PrivacyPolicy";
@@ -24,6 +26,8 @@ import { DealDetailPage } from "./modules/Syndication/InvestorPortal/Deals/DealD
 import { DealOfferingPortfolioPage } from "./modules/Syndication/InvestorPortal/Deals/DealOfferingPortfolioPage";
 import { DealsListPage } from "./modules/Syndication/InvestorPortal/Deals/DealsListPage";
 import Opportunities from "./modules/Investing/InvestorPortal/Opportunities/Opportunities";
+import InvestmentsPage from "./modules/Investing/InvestorPortal/Investments/InvestmentsPage";
+import InvestmentDetailPage from "./modules/Investing/InvestorPortal/Investments/InvestmentDetailPage";
 import { WorkInProgressPage } from "./common/components/WorkInProgressPage";
 import { InvestorEmailsPage } from "./modules/Syndication/InvestorPortal/InvestorEmails/InvestorEmailsPage";
 import { ReportingPage } from "./modules/Syndication/InvestorPortal/Reporting/ReportingPage";
@@ -82,6 +86,7 @@ function App() {
       <BrowserRouter basename={routerBasename()}>
         <Routes>
           <Route element={<RequireAuth />}>
+            <Route element={<LpInvestorShellGuard />}>
             <Route path="/" element={<PageLayout />}>
               <Route index element={<SponsorDashboardPage />} />
             <Route path="deals" element={<DealsLayout />}>
@@ -123,15 +128,10 @@ function App() {
             />
             <Route path="investing/opportunities" element={<Opportunities />} />
             <Route
-              path="investing/investments"
-              element={
-                <WorkInProgressPage
-                  title="Investments"
-                  backTo="/"
-                  backLabel="Dashboard"
-                />
-              }
+              path="investing/investments/:investmentId"
+              element={<InvestmentDetailPage />}
             />
+            <Route path="investing/investments" element={<InvestmentsPage />} />
             <Route
               path="investing/documents"
               element={
@@ -154,13 +154,7 @@ function App() {
             />
             <Route
               path="investing/deals"
-              element={
-                <WorkInProgressPage
-                  title="Deals"
-                  backTo="/"
-                  backLabel="Dashboard"
-                />
-              }
+              element={<DealsListPage dealsListContext="investing" />}
             />
             <Route
               path="investing/settings"
@@ -179,6 +173,16 @@ function App() {
                   title="Leave a review"
                   backTo="/"
                   backLabel="Dashboard"
+                />
+              }
+            />
+            <Route
+              path="investing/cashflows"
+              element={
+                <WorkInProgressPage
+                  title="Cashflows"
+                  backTo="/investing/deals"
+                  backLabel="Deals"
                 />
               }
             />
@@ -209,12 +213,14 @@ function App() {
             </Route>
             <Route path="contacts" element={<ContactsPage />} />
             </Route>
+            </Route>
           </Route>
           <Route
             path="/offering_portfolio"
             element={<DealOfferingPortfolioPage />}
           />
           <Route path="/signin" element={<SigninPage />} />
+          <Route path="/deal-invite" element={<DealInvitePage />} />
           <Route path="/signup/:token" element={<SignupPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgotPassword" element={<ForgotPasswordPage />} />

@@ -18,7 +18,7 @@ export const INVESTOR_PROFILE_SELECT_OPTIONS = [
 /** Stored on `deal_investment.investor_role` for LP-only Investors tab + add flow. */
 export const LP_INVESTOR_ROLE_VALUE = "lp_investors"
 
-export const LP_INVESTORS_ROLE_LABEL = "LP Investors"
+export const LP_INVESTORS_ROLE_LABEL = "LP Investor"
 
 /** Roles shown on the Deal Members tab (sponsors only — not LP investors). */
 export const DEAL_MEMBERS_TAB_ROLE_VALUES = new Set([

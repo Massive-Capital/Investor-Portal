@@ -4,6 +4,45 @@
   min-width: 0;
 }
 
+/* Tags / Lists / Contacts tables — action cells are icon-only buttons */
+.contacts_row_icon_actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+.contacts_table_icon_action_btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25em;
+  height: 2.25em;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--ui-button-border-radius, 25px);
+  background: transparent;
+  color: var(--portal-text-muted, #475569);
+  cursor: pointer;
+}
+
+.contacts_table_icon_action_btn:hover {
+  background: var(--portal-muted-surface, #f1f5f9);
+  color: var(--portal-text, #0f172a);
+}
+
+:root[data-theme="dark"] .contacts_table_icon_action_btn {
+  color: var(--portal-text-muted, #94a3b8);
+}
+
+:root[data-theme="dark"] .contacts_table_icon_action_btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--portal-text, #f1f5f9);
+}
+
 .contacts_main_tabs_outer {
   margin-bottom: 0.35em;
 }
@@ -27,22 +66,6 @@
   gap: 0.65rem 1rem;
   width: 100%;
   margin-top: 1rem;
-}
-
-/* Tags & Lists: search-only toolbar inside panel */
-.contacts_table_panel .contacts_labels_panel_toolbar.um_toolbar {
-  justify-content: flex-start;
-}
-
-/* Narrower search than default `um_search_wrap` (200px flex) — Contacts + Tags/Lists panels */
-.contacts_table_panel > .um_toolbar .um_search_wrap {
-  flex: 0 1 13.5rem;
-  max-width: min(100%, 15rem);
-  min-width: 0;
-}
-
-.contacts_table_panel > .um_toolbar .um_search_input {
-  width: 100%;
 }
 
 .contacts_filter_button_group {
@@ -189,6 +212,38 @@
   gap: 1rem;
 }
 
+/* Tag / list flows — override global `.um_field` pill inputs (user_management.css) */
+.contacts_label_modal .contacts_label_modal_field.um_field label {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+}
+
+.contacts_label_modal .contacts_label_modal_field.um_field input {
+  width: unset !important;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+}
+
+.add_contact_panel .add_contact_multiselect_field.um_field label {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+}
+
+/* Tags & lists step — strip global `.um_field input` pill sizing (incl. width: 100%) */
+.add_contact_panel .add_contact_multiselect_field.um_field input:not([type="checkbox"]) {
+  width: unset !important;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 !important;
+  border-radius: 5px !important;
+  box-sizing: border-box;
+}
+
 .contacts_um_table tbody tr.contacts_row_suspended td {
   opacity: 0.78;
 }
@@ -283,143 +338,17 @@
   box-sizing: border-box;
 }
 
-/* Table wrap: same behavior as Members (`UserManagementPage` — plain `um_table_wrap`). */
+/* Table wrap: match Members directory — single horizontal scroll, no nested deals shell. */
 .contacts_table_panel .um_table_wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  max-width: 100%;
-  min-width: 0;
 }
 
-/* Tags & Lists: fixed layout + column widths (Members uses auto layout on the Users table). */
-.contacts_table_panel .um_table.contacts_um_table_labels {
+.contacts_table_panel .um_table.contacts_um_table {
   table-layout: fixed;
   width: 100%;
   max-width: 100%;
-}
-
-/* Contacts directory: auto table layout like Members — natural columns + horizontal scroll if needed */
-.contacts_table_panel .um_table.contacts_um_table:not(.contacts_um_table_labels) {
-  table-layout: auto;
-  width: 100%;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels th,
-.contacts_table_panel .um_table.contacts_um_table_labels td {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels .um_sort_header_label {
-  white-space: normal;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels th:nth-child(1),
-.contacts_table_panel .um_table.contacts_um_table_labels td:nth-child(1) {
-  width: 20%;
-}
-
-/* Description: fixed share so it does not consume the whole row */
-.contacts_table_panel .um_table.contacts_um_table_labels th:nth-child(2),
-.contacts_table_panel .um_table.contacts_um_table_labels td:nth-child(2) {
-  width: 34%;
-  max-width: 32rem;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels th:nth-child(3),
-.contacts_table_panel .um_table.contacts_um_table_labels td:nth-child(3) {
-  width: 9.5rem;
-  min-width: 9rem;
-  text-align: center;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels th:nth-child(3) .um_sort_header_label {
-  white-space: nowrap;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels th:nth-child(3) .um_sort_header_ctl {
-  flex-wrap: nowrap;
-}
-
-/* Tags & Lists — Actions: room for header + icon control */
-.contacts_table_panel .um_table.contacts_um_table_labels th.contacts_th_actions_catalog,
-.contacts_table_panel .um_table.contacts_um_table_labels td.contacts_td_actions_catalog {
-  width: 6.75rem;
-  min-width: 6.5rem;
-  max-width: 8rem;
-  padding-left: 0.45em;
-  padding-right: 0.45em;
-  text-align: center;
-}
-
-.contacts_table_panel .um_table.contacts_um_table_labels th.contacts_th_actions_catalog {
-  white-space: nowrap;
-}
-
-.contacts_catalog_row_action_btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.375rem;
-  height: 2.375rem;
-  margin: 0 auto;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--ui-button-border-radius, 10px);
-  background: transparent;
-  color: var(--portal-text-muted, #64748b);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.contacts_catalog_row_action_btn:hover {
-  background: var(--portal-muted-surface, #f1f5f9);
-  color: var(--portal-primary, #2563eb);
-  border-color: color-mix(in srgb, var(--portal-primary, #2563eb) 22%, transparent);
-}
-
-.contacts_catalog_row_action_btn:focus-visible {
-  outline: 2px solid var(--portal-primary, #2563eb);
-  outline-offset: 2px;
-}
-
-:root[data-theme="dark"] .contacts_catalog_row_action_btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(96, 165, 250, 0.35);
-  color: var(--portal-primary, #93c5fd);
-}
-
-/* Contacts directory — kebab column: consistent width, centered trigger */
-.contacts_table_panel .um_table.contacts_um_table:not(.contacts_um_table_labels) th.contacts_th_actions_directory,
-.contacts_table_panel .um_table.contacts_um_table:not(.contacts_um_table_labels) td.contacts_td_actions_directory {
-  width: 3.5rem;
-  min-width: 3.25rem;
-  max-width: 4rem;
-  padding-left: 0.35em;
-  padding-right: 0.35em;
-  text-align: center;
-}
-
-.contacts_table_panel .um_table.contacts_um_table:not(.contacts_um_table_labels) th.contacts_th_actions_directory {
-  white-space: nowrap;
-}
-
-.contacts_table_panel
-  .um_table.contacts_um_table:not(.contacts_um_table_labels)
-  td.contacts_td_actions_directory
-  .um_kebab_root {
-  width: 100%;
-  justify-content: center;
-}
-
-.contacts_table_panel > .um_toolbar_notice {
-  margin-top: 0;
-  margin-bottom: 1rem;
 }
 
 .contacts_table_panel .um_table th,
@@ -534,7 +463,7 @@
 }
 
 .add_contact_owners_field.um_field {
-  margin-top: 1em;
+  margin-top: 0.35rem;
   margin-bottom: 0;
 }
 
@@ -778,19 +707,29 @@
 /* Add contact — searchable tags & lists (multi-select) */
 .add_contact_multiselect_field {
   position: relative;
+  margin-bottom: 1.05rem;
+}
+
+.add_contact_multiselect_field:has(.add_contact_multiselect_panel) {
+  z-index: 8;
 }
 
 .add_contact_multiselect_field .contacts_chip_row {
-  margin-bottom: 0.4em;
+  margin-bottom: 0.45em;
+}
+
+.add_contact_multiselect_dropdown_wrap {
+  position: relative;
 }
 
 .add_contact_multiselect_control {
   display: flex;
   align-items: center;
   gap: 0.5em;
-  padding: 0.35em 0.65em 0.35em 0.75em;
+  min-height: 2.65em;
+  padding: 0.4em 0.75em 0.4em 0.8em;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--portal-surface, #fff);
   box-sizing: border-box;
 }
@@ -807,7 +746,7 @@
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
-  padding: 0.35em 0 !important;
+  padding: 0 !important;
   font-family: inherit;
   font-style: normal;
   font-size: 0.9375em;
@@ -824,18 +763,21 @@
 }
 
 .add_contact_multiselect_panel {
-  position: relative;
-  z-index: 5;
-  margin-top: 0.35em;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 5px);
+  z-index: 20;
+  margin-top: 0;
   padding: 0.25em 0;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--portal-surface, #fff);
   max-height: min(220px, 40vh);
   overflow-y: auto;
   box-shadow:
-    0 4px 6px -2px rgb(15 23 42 / 0.06),
-    0 10px 15px -3px rgb(15 23 42 / 0.08);
+    0 4px 6px -2px rgb(15 23 42 / 0.08),
+    0 16px 24px -4px rgb(15 23 42 / 0.12);
 }
 
 .add_contact_multiselect_create {
@@ -858,6 +800,10 @@
   cursor: pointer;
 }
 
+.add_contact_multiselect_create:not(:only-child) {
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+}
+
 .add_contact_multiselect_create:hover {
   background: color-mix(
     in srgb,
@@ -876,51 +822,68 @@
 
 .add_contact_multiselect_row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.65em;
   margin: 0;
-  padding: 0.5em 0.75em;
+  padding: 0.55em 0.9em;
   cursor: pointer;
   font-family: inherit;
   font-style: normal;
-  font-size: 0.875em;
-  font-weight: 500;
-  color: var(--portal-text, #0f172a);
+  font-size: 0.9375rem;
+  color: var(--portal-text, #334155);
 }
 
 .add_contact_multiselect_row:hover {
   background: var(--portal-muted-surface, #f8fafc);
 }
 
-/* Reset .um_field input (width:100%, padding, pill border) so native checkboxes stay compact */
-.add_contact_multiselect_field input.add_contact_multiselect_checkbox {
-  width: 1.125rem;
-  /* height: 1.125rem; */
-  min-width: 1.125rem;
-  max-width: none;
-  margin: 0.125rem 0 0;
-  padding: 0;
-  border: none;
-  border-radius: 0.25rem;
-  background: transparent;
-  box-shadow: none;
+/* Tag / list options: black rounded square + white check (matches design ref) */
+.add_contact_multiselect_checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.05rem !important;
+  height: 1.05rem !important;
+  max-width: 1.05rem !important;
+  min-width: 1.05rem !important;
+  margin: 0;
+  flex: 0 0 auto !important;
   flex-shrink: 0;
+  align-self: center;
+  box-sizing: border-box;
+  border: 2px solid #94a3b8;
+  border-radius: 4px;
+  background: #fff;
   cursor: pointer;
-  accent-color: var(--portal-primary, #2563eb);
-  align-self: start;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
-.add_contact_multiselect_field input.add_contact_multiselect_checkbox:focus-visible {
-  outline: 2px solid var(--portal-primary, #2563eb);
-  outline-offset: 2px;
+.add_contact_multiselect_checkbox:hover {
+  border-color: #64748b;
+}
+
+.add_contact_multiselect_checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #0f172a 18%, transparent);
+}
+
+.add_contact_multiselect_checkbox:checked {
+  border-color: #0f172a;
+  background: #0f172a
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.5 6.5 11.5 12.5 4.5' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 0.65rem 0.65rem no-repeat;
 }
 
 .add_contact_multiselect_row_label {
   flex: 1;
   min-width: 0;
   line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #334155;
   word-break: break-word;
-      margin: 4px 0 6px 7px;
 }
 
 :root[data-theme="dark"] .add_contact_multiselect_control {
@@ -933,8 +896,32 @@
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+:root[data-theme="dark"] .add_contact_multiselect_create:not(:only-child) {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
 :root[data-theme="dark"] .add_contact_multiselect_row:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .add_contact_multiselect_row {
+  color: var(--portal-text, #e2e8f0);
+}
+
+:root[data-theme="dark"] .add_contact_multiselect_row_label {
+  color: var(--portal-text, #e2e8f0);
+}
+
+:root[data-theme="dark"] .add_contact_multiselect_checkbox {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .add_contact_multiselect_checkbox:checked {
+  border-color: #f8fafc;
+  background: #f8fafc
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.5 6.5 11.5 12.5 4.5' stroke='%230f172a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 0.65rem 0.65rem no-repeat;
 }
 
 :root[data-theme="dark"] .add_contact_step_dot {

@@ -73,6 +73,11 @@ export interface DealDetailApi {
   offeringGalleryPaths?: string[]
   /** Encrypted `preview` query value; persisted on `add_deal_form` for share links. */
   offeringPreviewToken?: string | null
+  /**
+   * JSON string `{ v, visibility, sections }` for offering preview (documents + investor toggles).
+   * Synced to the server for the shared preview link.
+   */
+  offeringInvestorPreviewJson?: string | null
   listRow: DealListRow
 }
 
@@ -281,11 +286,18 @@ function normalizeDealListRow(
 }
 
 /** Returns normalized rows, or [] if the API is unreachable, unauthorized, or has no deals. */
-export async function fetchDealsList(): Promise<DealListRow[]> {
+export async function fetchDealsList(options?: {
+  /** Syndication org deals plus deals where the user is on the roster (`assigning_deal_user`). */
+  includeParticipantDeals?: boolean
+}): Promise<DealListRow[]> {
   const base = getApiV1Base()
   if (!base) return []
+  const q =
+    options?.includeParticipantDeals === true
+      ? "?includeParticipantDeals=1"
+      : ""
   try {
-    const res = await fetch(`${base}/deals`, {
+    const res = await fetch(`${base}/deals${q}`, {
       headers: { ...authHeaders() },
       credentials: "include",
     })
@@ -421,6 +433,15 @@ export function normalizeDealDetailApi(
     offeringPreviewTokenRaw != null && String(offeringPreviewTokenRaw).trim() !== ""
       ? str(offeringPreviewTokenRaw)
       : null
+  const offeringInvestorPreviewJsonRaw = firstDefined(d, [
+    "offeringInvestorPreviewJson",
+    "offering_investor_preview_json",
+  ])
+  const offeringInvestorPreviewJson =
+    offeringInvestorPreviewJsonRaw != null &&
+    String(offeringInvestorPreviewJsonRaw).trim() !== ""
+      ? str(offeringInvestorPreviewJsonRaw)
+      : null
   const assetIdsRaw = firstDefined(d, [
     "offeringOverviewAssetIds",
     "offering_overview_asset_ids",
@@ -527,6 +548,7 @@ export function normalizeDealDetailApi(
     zipCode: zipCodeNorm,
     ...(offeringSize !== undefined ? { offeringSize } : {}),
     offeringPreviewToken,
+    offeringInvestorPreviewJson,
   }
 }
 
@@ -578,6 +600,56 @@ export async function fetchOfferingPreviewToken(dealId: string): Promise<string>
     throw new Error("Invalid preview token response.")
   }
   return t.trim()
+}
+
+export type OfferingPreviewShareEmailFailure = {
+  email: string
+  message: string
+}
+
+export type OfferingPreviewShareEmailResponse = {
+  sent: number
+  failures: OfferingPreviewShareEmailFailure[]
+  previewUrl?: string
+  message?: string
+}
+
+/** Email the public offering preview link to the given addresses (authenticated). */
+export async function postOfferingPreviewShareByEmail(
+  dealId: string,
+  emails: string[],
+): Promise<OfferingPreviewShareEmailResponse> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("VITE_BASE_URL is not configured.")
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/offering-preview-share-email`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ emails }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as OfferingPreviewShareEmailResponse & {
+    message?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      typeof data.message === "string"
+        ? data.message
+        : `Could not send emails (${res.status})`,
+    )
+  }
+  return {
+    sent: Number(data.sent) || 0,
+    failures: Array.isArray(data.failures) ? data.failures : [],
+    previewUrl:
+      typeof data.previewUrl === "string" ? data.previewUrl : undefined,
+    message: typeof data.message === "string" ? data.message : undefined,
+  }
 }
 
 function publicOfferingPortfolioPagePrefix(): string {
@@ -644,7 +716,7 @@ export async function buildDealOfferingPreviewShareUrl(
 
 /**
  * Unauthenticated preview for LPs. `previewQueryValue` is the encrypted token (or legacy plain UUID).
- * Backend returns KPI aggregates only (no investor rows).
+ * Backend returns the same deal / classes / KPIs / investors payload shape as the authenticated investors endpoint.
  */
 export async function fetchPublicOfferingPreview(
   previewQueryValue: string,
@@ -728,6 +800,36 @@ export async function patchDealInvestorSummary(
     ok: false,
     message: data.message || `Could not save summary (${res.status})`,
   }
+}
+
+export async function patchDealOfferingInvestorPreview(
+  dealId: string,
+  body: { visibility: Record<string, boolean>; sections: unknown[] },
+): Promise<DealDetailApi> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("VITE_BASE_URL is not configured.")
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/offering-investor-preview`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(body),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    deal?: DealDetailApi & Record<string, unknown>
+    message?: string
+  }
+  if (res.status === 200 && data.deal) {
+    return normalizeDealDetailApi(data.deal)
+  }
+  throw new Error(
+    data.message || `Could not save offering preview (${res.status})`,
+  )
 }
 
 export async function patchDealKeyHighlights(
@@ -910,8 +1012,17 @@ export async function postDealOfferingGalleryUploads(
     return { ok: false, message: "VITE_BASE_URL is not configured." }
   if (files.length === 0)
     return { ok: false, message: "No images to upload." }
+  const fileKey = (f: File) => `${f.name}\0${f.size}\0${f.lastModified}`
+  const seen = new Set<string>()
+  const unique: File[] = []
+  for (const f of files) {
+    const k = fileKey(f)
+    if (seen.has(k)) continue
+    seen.add(k)
+    unique.push(f)
+  }
   const fd = new FormData()
-  for (const f of files) fd.append("galleryFiles", f)
+  for (const f of unique) fd.append("galleryFiles", f)
   const res = await fetch(
     `${base}/deals/${encodeURIComponent(dealId)}/offering-gallery-uploads`,
     {
@@ -941,6 +1052,48 @@ export async function postDealOfferingGalleryUploads(
     ok: false,
     message:
       data.message || `Could not upload gallery images (${res.status})`,
+  }
+}
+
+/** Upload offering documents (Documents tab) so preview / investors get stable `/uploads/...` links. */
+export async function postDealOfferingDocumentUploads(
+  dealId: string,
+  files: File[],
+): Promise<
+  | { ok: true; newPaths: string[] }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base)
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  if (files.length === 0)
+    return { ok: false, message: "No documents to upload." }
+  const fd = new FormData()
+  for (const f of files) fd.append("documentFiles", f)
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/offering-document-uploads`,
+    {
+      method: "POST",
+      headers: { ...authHeaders() },
+      body: fd,
+      credentials: "include",
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    newPaths?: unknown
+    message?: string
+  }
+  if (res.status === 200) {
+    const np = data.newPaths
+    const newPaths = Array.isArray(np)
+      ? np.filter((x): x is string => typeof x === "string")
+      : []
+    return { ok: true, newPaths }
+  }
+  return {
+    ok: false,
+    message:
+      data.message || `Could not upload documents (${res.status})`,
   }
 }
 
@@ -1243,6 +1396,12 @@ export function isDealListRowIncomplete(row: DealListRow): boolean {
   return false
 }
 
+/** Optional image fields for {@link buildCreateDealFormData} / autosave (edit deal PUT). */
+export type CreateDealMultipartImageOptions = {
+  /** Upload-relative path segments still on the property (after optional removals). */
+  retainedAssetImagePath?: string[]
+}
+
 /**
  * Same fields as {@link buildCreateDealFormData}, with placeholders so the API accepts
  * incomplete wizard data during debounced autosave.
@@ -1251,6 +1410,7 @@ export function buildCreateDealFormDataForAutosave(
   deal: DealStepDraft,
   asset: AssetStepDraft,
   imageFiles: File[],
+  imageOpts?: CreateDealMultipartImageOptions,
 ): FormData {
   const dealName = deal.dealName.trim() || AUTOSAVE_DEFAULT_DEAL_NAME
   const dealStageRaw = deal.dealStage || "Draft"
@@ -1288,6 +1448,12 @@ export function buildCreateDealFormDataForAutosave(
   fd.append("city", city)
   fd.append("state", asset.state.trim())
   fd.append("zip_code", asset.zipCode.trim())
+  if (imageOpts?.retainedAssetImagePath !== undefined) {
+    fd.append(
+      "retained_asset_image_path",
+      imageOpts.retainedAssetImagePath.join(";"),
+    )
+  }
   for (const file of imageFiles) fd.append("assetImages", file)
   return fd
 }
@@ -1296,6 +1462,7 @@ export function buildCreateDealFormData(
   deal: DealStepDraft,
   asset: AssetStepDraft,
   imageFiles: File[],
+  imageOpts?: CreateDealMultipartImageOptions,
 ): FormData {
   const fd = new FormData()
   fd.append("deal_name", deal.dealName.trim())
@@ -1319,6 +1486,12 @@ export function buildCreateDealFormData(
   fd.append("city", asset.city.trim())
   fd.append("state", asset.state.trim())
   fd.append("zip_code", asset.zipCode.trim())
+  if (imageOpts?.retainedAssetImagePath !== undefined) {
+    fd.append(
+      "retained_asset_image_path",
+      imageOpts.retainedAssetImagePath.join(";"),
+    )
+  }
   for (const file of imageFiles) fd.append("assetImages", file)
   return fd
 }
@@ -1877,6 +2050,58 @@ export async function deleteDealMemberRoster(
   }
 }
 
+export type PatchMyLpDealCommitmentResult =
+  | { ok: true; investorsPayload: DealInvestorsPayload }
+  | { ok: false; message: string }
+
+/** PATCH `/deals/:dealId/lp-investors/my-commitment` — LP sets committed amount + profile. */
+export async function patchMyLpDealCommitment(
+  dealId: string,
+  committedAmount: string,
+  body: { profileId: string },
+): Promise<PatchMyLpDealCommitmentResult> {
+  const base = getApiV1Base()
+  if (!base) return { ok: false, message: "API base URL is not configured." }
+  const did = dealId.trim()
+  if (!did) return { ok: false, message: "Missing deal id." }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(did)}/lp-investors/my-commitment`,
+      {
+        method: "PATCH",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          committed_amount: committedAmount,
+          profile_id: body.profileId.trim(),
+        }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok) {
+      const msg =
+        typeof data.message === "string"
+          ? data.message
+          : `Could not save commitment (${res.status})`
+      return { ok: false, message: msg }
+    }
+    const rawPayload = data.investorsPayload ?? data.investors_payload
+    if (!rawPayload || typeof rawPayload !== "object") {
+      return { ok: false, message: "Invalid response from server." }
+    }
+    return {
+      ok: true,
+      investorsPayload: normalizeDealInvestorsResponse(rawPayload),
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Network error"
+    return { ok: false, message: msg }
+  }
+}
+
 export type PostDealLpInvestorResult =
   | { ok: true; mode: "api"; lpInvestorId?: string }
   | { ok: true; mode: "client" }
@@ -1891,6 +2116,18 @@ export async function postDealLpInvestor(
   const base = getApiV1Base()
   if (!base) return { ok: true, mode: "client" }
 
+  const body: Record<string, unknown> = {
+    contact_id: values.contactId,
+    contact_display_name: values.contactDisplayName?.trim() ?? "",
+    investor_class: values.investorClass,
+    send_invitation_mail: values.sendInvitationMail ?? "no",
+  }
+  const ce = values.contactEmail?.trim()
+  if (ce) body.contact_email = ce
+  const role = values.investorRole?.trim()
+  if (role) body.investor_role = role
+  if (options?.autosave) body.autosave = true
+
   try {
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/lp-investors`,
@@ -1901,13 +2138,7 @@ export async function postDealLpInvestor(
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({
-          contact_id: values.contactId,
-          contact_display_name: values.contactDisplayName?.trim() ?? "",
-          investor_class: values.investorClass,
-          send_invitation_mail: values.sendInvitationMail ?? "no",
-          ...(options?.autosave ? { autosave: true } : {}),
-        }),
+        body: JSON.stringify(body),
       },
     )
     const data = (await res.json().catch(() => ({}))) as {
@@ -1940,6 +2171,18 @@ export async function putDealLpInvestor(
   const base = getApiV1Base()
   if (!base) return { ok: true, mode: "client" }
 
+  const body: Record<string, unknown> = {
+    contact_id: values.contactId,
+    contact_display_name: values.contactDisplayName?.trim() ?? "",
+    investor_class: values.investorClass,
+    send_invitation_mail: values.sendInvitationMail ?? "no",
+  }
+  const ce = values.contactEmail?.trim()
+  if (ce) body.contact_email = ce
+  const role = values.investorRole?.trim()
+  if (role) body.investor_role = role
+  if (options?.autosave) body.autosave = true
+
   try {
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/lp-investors/${encodeURIComponent(lpInvestorId)}`,
@@ -1950,13 +2193,7 @@ export async function putDealLpInvestor(
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({
-          contact_id: values.contactId,
-          contact_display_name: values.contactDisplayName?.trim() ?? "",
-          investor_class: values.investorClass,
-          send_invitation_mail: values.sendInvitationMail ?? "no",
-          ...(options?.autosave ? { autosave: true } : {}),
-        }),
+        body: JSON.stringify(body),
       },
     )
     const data = (await res.json().catch(() => ({}))) as {

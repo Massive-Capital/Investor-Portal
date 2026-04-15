@@ -4,6 +4,7 @@ import {
   varchar,
   timestamp,
 } from "drizzle-orm/pg-core";
+import { companies } from "../company.schema/company.js";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -15,7 +16,10 @@ export const users = pgTable("users", {
   userSignupCompleted: varchar("user_signup_completed", { length: 10 })
     .notNull()
     .default("true"),
-  organizationId: uuid("organization_id"),
+  /** Same `companies.id` as `contact.organization_id` — user’s company membership. */
+  organizationId: uuid("organization_id").references(() => companies.id, {
+    onDelete: "set null",
+  }),
   firstName: varchar("first_name", { length: 100 }).notNull().default(""),
   lastName: varchar("last_name", { length: 100 }).notNull().default(""),
   companyName: varchar("company_name", { length: 255 }).notNull().default(""),

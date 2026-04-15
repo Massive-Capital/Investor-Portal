@@ -2,6 +2,8 @@ import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
 import { db } from "../database/db.js";
 import { users } from "../schema/schema.js";
+import { enrichUserRecordForDealParticipant } from "./dealParticipantProfile.service.js";
+import { mergeLpInvestorFlagsIntoUserPayload } from "./lpInvestorAccess.service.js";
 import { serializeUserForClient } from "./userAdmin.service.js";
 
 const BCRYPT_ROUNDS = 10;
@@ -13,6 +15,18 @@ function userDetailsShape(u: Record<string, unknown>): Record<string, unknown> {
     ...u,
     organization_name: "",
   };
+}
+
+async function userDetailsShapeWithDealParticipant(
+  u: Record<string, unknown>,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const base = userDetailsShape(u);
+  const enriched = await enrichUserRecordForDealParticipant(base, userId);
+  return mergeLpInvestorFlagsIntoUserPayload(enriched, {
+    email: u.email as string | undefined,
+    portalRole: u.role as string | undefined,
+  });
 }
 
 export async function changePasswordForUser(
@@ -120,7 +134,10 @@ export async function changePasswordForUser(
   }
   return {
     ok: true,
-    user: userDetailsShape(serializeUserForClient(updated)),
+    user: await userDetailsShapeWithDealParticipant(
+      serializeUserForClient(updated),
+      userId,
+    ),
   };
 }
 
@@ -144,7 +161,10 @@ export async function getOwnProfile(
   }
   return {
     ok: true,
-    user: userDetailsShape(serializeUserForClient(row)),
+    user: await userDetailsShapeWithDealParticipant(
+      serializeUserForClient(row),
+      userId,
+    ),
   };
 }
 
@@ -188,6 +208,9 @@ export async function updateOwnProfile(
   }
   return {
     ok: true,
-    user: userDetailsShape(serializeUserForClient(updated)),
+    user: await userDetailsShapeWithDealParticipant(
+      serializeUserForClient(updated),
+      userId,
+    ),
   };
 }

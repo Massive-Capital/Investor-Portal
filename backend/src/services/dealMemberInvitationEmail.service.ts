@@ -11,20 +11,13 @@ import { db } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
 import { contact } from "../schema/contact.schema.js";
 import { getAddDealFormById } from "./dealForm.service.js";
+import { buildDealMemberInviteLandingUrl } from "./dealMemberInviteToken.service.js";
 
 const SENDER_DISPLAY_NAME =
   process.env.SENDER_DISPLAY_NAME?.trim() || "Investor Portal";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function portalDealUrl(dealId: string): string {
-  const raw =
-    process.env.FRONTEND_URL?.trim() || process.env.BASE_URL?.trim() || "";
-  if (!raw) return "";
-  const base = raw.replace(/\/$/, "");
-  return `${base}/deals/${encodeURIComponent(dealId)}`;
-}
 
 function defaultSubject(dealName: string): string {
   const custom = process.env.DEAL_MEMBER_INVITE_SUBJECT?.trim();
@@ -82,7 +75,8 @@ export async function sendDealMemberInvitationEmail(
   const deal = await getAddDealFormById(params.dealId);
   const dealName = deal?.dealName?.trim() || "this deal";
   const memberDisplayName = params.memberDisplayName?.trim() || "";
-  const portalUrl = portalDealUrl(params.dealId);
+  const portalUrl =
+    (await buildDealMemberInviteLandingUrl(params.dealId, to)) || "";
 
   try {
     const transporter = emailConfig();

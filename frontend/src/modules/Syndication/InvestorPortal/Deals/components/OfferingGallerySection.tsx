@@ -1,12 +1,5 @@
 import { Loader2, RotateCcw, Star, X } from "lucide-react"
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
   patchDealGalleryCover,
@@ -17,7 +10,6 @@ import {
   collectDealGalleryUrls,
   galleryUrlsReferToSameAsset,
   mergePathSegmentsForOfferingGalleryPersist,
-  orderedGalleryUrlsForOffering,
 } from "../utils/offeringGalleryUrls"
 import { toast } from "../../../../../common/components/Toast"
 import "../deal-members/add-investment/add_deal_modal.css"
@@ -35,21 +27,14 @@ export function OfferingGallerySection({
   const saveLockRef = useRef(false)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [savingUrl, setSavingUrl] = useState<string | null>(null)
-  const allGalleryUrls = collectDealGalleryUrls(detail)
-  const urlsKey = allGalleryUrls.join("\u0001")
-  /** Offering details: show a single primary tile (cover first when set). */
-  const displayUrls = useMemo(() => {
-    const ordered = orderedGalleryUrlsForOffering(detail)
-    if (ordered.length === 0) return []
-    return [ordered[0]]
-  }, [detail, urlsKey])
+  const urls = collectDealGalleryUrls(detail)
   const coverUrl = detail.galleryCoverImageUrl?.trim() ?? ""
+  const urlsKey = urls.join("\u0001")
 
   useEffect(() => {
     const nextUrls = collectDealGalleryUrls(detail)
     const derived = mergePathSegmentsForOfferingGalleryPersist(detail, nextUrls)
     const stored = detail.offeringGalleryPaths ?? []
-    if (derived.length === 0) return
     if (
       derived.length === stored.length &&
       derived.every((p, i) => p === stored[i])
@@ -121,7 +106,7 @@ export function OfferingGallerySection({
     }
   }, [detail.id, onDealUpdated])
 
-  if (displayUrls.length === 0)
+  if (urls.length === 0)
     return (
       <p className="deal_offering_muted">
         No gallery images uploaded for this offering yet.
@@ -131,8 +116,9 @@ export function OfferingGallerySection({
   return (
     <>
       <p className="deal_offering_gallery_cover_hint">
-        <strong>Cover</strong> is used for the deal card and preview hero.
-        Click the image to enlarge.
+        Choose a <strong>cover image</strong> for the deal card on the
+        dashboard and the hero on the offering preview. Click a photo to view
+        it larger.
       </p>
       {coverUrl ? (
         <div className="deal_offering_gallery_cover_actions">
@@ -157,11 +143,11 @@ export function OfferingGallerySection({
         </div>
       ) : null}
       <div
-        className="deal_offering_gallery deal_offering_gallery_grid deal_offering_gallery_grid--single"
+        className="deal_offering_gallery deal_offering_gallery_grid"
         role="list"
-        aria-label="Primary offering gallery image"
+        aria-label="Offering gallery images"
       >
-        {displayUrls.map((src, i) => {
+        {urls.map((src, i) => {
           const isCover = Boolean(
             coverUrl && galleryUrlsReferToSameAsset(src, coverUrl),
           )
@@ -182,7 +168,7 @@ export function OfferingGallerySection({
                 type="button"
                 className="deal_offering_gallery_thumb_btn"
                 onClick={() => setLightboxSrc(src)}
-                aria-label="View primary gallery image at full size"
+                aria-label={`View gallery image ${i + 1} of ${urls.length} at full size`}
               >
                 <img
                   src={src}

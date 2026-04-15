@@ -1,5 +1,9 @@
 import type { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 import { getJwtUser } from "../middleware/jwtUser.js";
+import { isPlatformAdminRole } from "../constants/roles.js";
+import { db } from "../database/db.js";
+import { users } from "../schema/auth.schema/signin.js";
 import {
   ContactScopeConflictError,
   countDealInvestmentsByContactIdForViewer,
@@ -9,7 +13,42 @@ import {
   patchContactStatusForViewer,
   updateContactFieldsForViewer,
 } from "../services/contact.service.js";
+import {
+  getOrganizationIdForUser,
+  listOrganizationContactListNames,
+  listOrganizationContactTagNames,
+} from "../services/organizationContactLabels.service.js";
 import type { ContactRow } from "../schema/contact.schema.js";
+
+const ORG_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Company for CRM label tables: member’s org, or `?organizationId=` for platform admins. */
+async function resolveOrganizationIdForContactLabels(
+  req: Request,
+  userId: string,
+): Promise<string | null> {
+  const q = req.query.organizationId ?? req.query.organization_id;
+  const fromQuery =
+    typeof q === "string"
+      ? q.trim()
+      : Array.isArray(q)
+        ? String(q[0] ?? "").trim()
+        : "";
+  const [row] = await db
+    .select({ role: users.role, organizationId: users.organizationId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const role = String(row?.role ?? "").trim();
+  const selfOrg = row?.organizationId ? String(row.organizationId).trim() : "";
+  if (isPlatformAdminRole(role)) {
+    if (fromQuery && ORG_UUID_RE.test(fromQuery)) return fromQuery;
+    return null;
+  }
+  if (selfOrg) return selfOrg;
+  return getOrganizationIdForUser(userId);
+}
 
 function paramStr(v: string | string[] | undefined): string {
   if (v == null) return "";
@@ -41,6 +80,8 @@ function dedupeOwnersPreserveOrder(items: string[]): string[] {
 function mapContactToJson(row: ContactRow) {
   return {
     id: row.id,
+    organizationId: row.organizationId ?? null,
+    organization_id: row.organizationId ?? null,
     firstName: row.firstName,
     lastName: row.lastName,
     email: row.email,
@@ -78,6 +119,54 @@ async function mapContactToJsonWithNames(
   };
 }
 
+/** GET /contacts/organization-tags — names from `organization_contact_tag`. */
+export async function getOrganizationContactTags(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const orgId = await resolveOrganizationIdForContactLabels(req, user.id);
+    if (!orgId) {
+      res.status(403).json({ message: "No organization context for tags." });
+      return;
+    }
+    const tags = await listOrganizationContactTagNames(orgId);
+    res.status(200).json({ tags });
+  } catch (err) {
+    console.error("getOrganizationContactTags:", err);
+    res.status(500).json({ message: "Could not load organization tags" });
+  }
+}
+
+/** GET /contacts/organization-lists — names from `organization_contact_list`. */
+export async function getOrganizationContactLists(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const orgId = await resolveOrganizationIdForContactLabels(req, user.id);
+    if (!orgId) {
+      res.status(403).json({ message: "No organization context for lists." });
+      return;
+    }
+    const lists = await listOrganizationContactListNames(orgId);
+    res.status(200).json({ lists });
+  } catch (err) {
+    console.error("getOrganizationContactLists:", err);
+    res.status(500).json({ message: "Could not load organization lists" });
+  }
+}
+
 export async function getContacts(
   req: Request,
   res: Response,
@@ -98,6 +187,7 @@ export async function getContacts(
     const contacts = await Promise.all(
       rows.map((r) => mapContactToJsonWithNames(r, dealCounts)),
     );
+    console.log("Fetched Contacts:", contacts);
     res.status(200).json({ contacts });
   } catch (err) {
     console.error("getContacts:", err);

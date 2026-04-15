@@ -15,18 +15,24 @@ import {
   dealStageLabel,
   type DealRecord,
 } from "../deals-mock-data"
+import { usePortalMode } from "../../../../common/context/PortalModeContext"
 import { getSessionUserEmail } from "../../../../common/auth/sessionUserEmail"
 import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
 import {
   buildDealOfferingPreviewShareUrl,
   deleteDealMemberRoster,
   fetchDealById,
+  fetchDealInvestorClasses,
+  fetchDealInvestors,
   fetchDealMembers,
   isDealDetailFormIncomplete,
   postDealMemberInvitationEmail,
   type DealDetailApi,
 } from "./api/dealsApi"
-import { dealStageChipClassName } from "./utils/dealStageChip"
+import { EMPTY_INVESTORS_PAYLOAD } from "./dealOfferingPreviewShared"
+import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
+import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
+import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import { ADD_MEMBER_DRAFT_ROW_ID } from "./deal-members/add-investment/addMemberDraftInvestorRow"
 import {
   clearAddMemberDraft,
@@ -36,11 +42,19 @@ import {
   DealInvestorsTab,
   type DealInvestorsTabHandle,
 } from "./components/DealInvestorsTab"
+import { LpInvestNowModal } from "./components/LpInvestNowModal"
 import { DealMembersTab } from "./deal-members"
 import { DealEsignTemplatesTab } from "./components/DealEsignTemplatesTab"
+import { DealDocumentsTab } from "./components/DealDocumentsTab"
 import { DealOfferingDetailsTab } from "./components/DealOfferingDetailsTab"
-import type { DealInvestorRow } from "./types/deal-investors.types"
+import type {
+  DealInvestorRow,
+  DealInvestorsPayload,
+} from "./types/deal-investors.types"
+import type { DealInvestorClass } from "./types/deal-investor-class.types"
+import { DealInvestorRoleBadge } from "./components/DealInvestorRoleBadge"
 import {
+  resolveViewerDealInvestorRoleRaw,
   resolveViewerDealMemberRole,
   visibleDealDetailTabIds,
 } from "./utils/dealDetailTabVisibility"
@@ -48,7 +62,10 @@ import { toast } from "../../../../common/components/Toast"
 import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
+import { investorProfileLabel } from "./constants/investor-profile"
+import { upsertRuntimeInvestmentRow } from "../../../Investing/InvestorPortal/Investments/investmentsRuntimeStore"
 import "../../../usermanagement/user_management.css"
+import "./deal-offering-portfolio.css"
 import "./deals-list.css"
 
 /** Deal detail: `/deals/:dealId`. Tab **Deal Members** (`deal_members`) renders `DealMembersTab` (root `deal_members_tab` in deal-members/tab/deal-members.css). */
@@ -69,6 +86,7 @@ const DEAL_DETAIL_TABS: DealDetailTabDef[] = [
 ]
 
 export function DealDetailPage() {
+  const { mode } = usePortalMode()
   const { dealId } = useParams()
   const [activeTab, setActiveTab] = useState<string>("offering_details")
   const [addInvestmentOpen, setAddInvestmentOpen] = useState(false)
@@ -86,9 +104,68 @@ export function DealDetailPage() {
   const dealInvestorsTabRef = useRef<DealInvestorsTabHandle>(null)
   const [deal, setDeal] = useState<DealRecord | null | undefined>(undefined)
   const [dealDetailApi, setDealDetailApi] = useState<DealDetailApi | null>(null)
+
+  const handleDealPersisted = useCallback((d: DealDetailApi) => {
+    setDealDetailApi(d)
+    setDeal(dealDetailApiToRecord(d))
+    notifyDealsListRefetch()
+  }, [])
+  const [investingOfferingClasses, setInvestingOfferingClasses] = useState<
+    DealInvestorClass[]
+  >([])
+  const [investingOfferingInvestors, setInvestingOfferingInvestors] =
+    useState<DealInvestorsPayload>(EMPTY_INVESTORS_PAYLOAD)
   const [memberRosterForTabs, setMemberRosterForTabs] = useState<
     DealInvestorRow[]
   >([])
+  const [lpInvestNowOpen, setLpInvestNowOpen] = useState(false)
+  function formatDealCloseDateForInvestments(raw: string | undefined): string {
+    const t = String(raw ?? "").trim()
+    if (!t) return "—"
+    const d = new Date(t)
+    if (!Number.isFinite(d.getTime())) return t
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  }
+
+  /** Bumps `DealInvestorsTab` fetch after LP “Invest now” so the Investors tab shows the new commitment. */
+  const [investorsListRefreshKey, setInvestorsListRefreshKey] = useState(0)
+
+  const handleLpInvestNowSuccess = useCallback(
+    (
+      payload: DealInvestorsPayload,
+      saved: { profileId: string; committedAmount: number },
+    ) => {
+      setInvestingOfferingInvestors(payload)
+      if (dealId?.trim()) {
+        const investmentName =
+          dealDetailApi?.dealName?.trim() ||
+          dealDetailApi?.propertyName?.trim() ||
+          "Deal"
+        upsertRuntimeInvestmentRow({
+          dealId: dealId.trim(),
+          investmentName,
+          offeringName: investmentName,
+          investmentProfile: investorProfileLabel(saved.profileId),
+          investedAmount: saved.committedAmount,
+          distributedAmount: 0,
+          currentValuation: dealDetailApi?.offeringSize?.trim() || "—",
+          dealCloseDate: formatDealCloseDateForInvestments(
+            dealDetailApi?.closeDate?.trim(),
+          ),
+          status: "Active",
+          actionRequired: "None",
+        })
+      }
+      setInvestorsListRefreshKey((k) => k + 1)
+      setDealMembersRefreshKey((r) => r + 1)
+      void dealInvestorsTabRef.current?.refetchInvestors()
+    },
+    [dealId, dealDetailApi],
+  )
 
   useEffect(() => {
     if (!dealId?.trim()) return
@@ -101,13 +178,23 @@ export function DealDetailPage() {
     }
   }, [dealId, dealMembersRefreshKey])
 
+  const sessionEmail = getSessionUserEmail()
+
   const viewerDealTabIds = useMemo(() => {
     const role = resolveViewerDealMemberRole(
       memberRosterForTabs,
-      getSessionUserEmail(),
+      sessionEmail,
     )
     return visibleDealDetailTabIds(role)
-  }, [memberRosterForTabs])
+  }, [memberRosterForTabs, sessionEmail])
+
+  const viewerDealInvestorRoleRaw = useMemo(
+    () =>
+      resolveViewerDealInvestorRoleRaw(memberRosterForTabs, sessionEmail),
+    [memberRosterForTabs, sessionEmail],
+  )
+
+  const dealsListBackPath = mode === "investing" ? "/investing/deals" : "/deals"
 
   const dealDetailTabsVisible = useMemo(
     () => DEAL_DETAIL_TABS.filter((t) => viewerDealTabIds.has(t.id)),
@@ -132,6 +219,10 @@ export function DealDetailPage() {
       try {
         const d = await fetchDealById(dealId)
         if (!cancelled) {
+          applyOfferingInvestorPreviewJsonFromServer(
+            d.id,
+            d.offeringInvestorPreviewJson,
+          )
           setDealDetailApi(d)
           setDeal(dealDetailApiToRecord(d))
         }
@@ -146,6 +237,32 @@ export function DealDetailPage() {
       cancelled = true
     }
   }, [dealId])
+
+  useEffect(() => {
+    if (mode !== "investing" || !dealId?.trim()) return
+    let cancelled = false
+    setInvestingOfferingClasses([])
+    setInvestingOfferingInvestors(EMPTY_INVESTORS_PAYLOAD)
+    void (async () => {
+      const id = dealId.trim()
+      const [icResult, invResult] = await Promise.allSettled([
+        fetchDealInvestorClasses(id),
+        fetchDealInvestors(id),
+      ])
+      if (cancelled) return
+      setInvestingOfferingClasses(
+        icResult.status === "fulfilled" ? icResult.value : [],
+      )
+      setInvestingOfferingInvestors(
+        invResult.status === "fulfilled"
+          ? invResult.value
+          : EMPTY_INVESTORS_PAYLOAD,
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [mode, dealId])
 
   useEffect(() => {
     if (!dealId) return
@@ -306,7 +423,7 @@ export function DealDetailPage() {
       <div className="deals_list_page deals_detail_page">
         <p className="deals_list_not_found">
           Deal not found.{" "}
-          <Link to="/deals" className="deals_list_inline_back">
+          <Link to={dealsListBackPath} className="deals_list_inline_back">
             <ArrowLeft size={18} strokeWidth={2} aria-hidden />
             Back to deals
           </Link>
@@ -314,8 +431,11 @@ export function DealDetailPage() {
       </div>
     )
 
+  const showSyndicatingDealChrome = mode !== "investing"
+
   return (
     <div className="deals_list_page deals_detail_page">
+      {showSyndicatingDealChrome ? (
       <header className="deals_list_head">
         {showDealAnnouncement ? (
           <div
@@ -349,7 +469,7 @@ export function DealDetailPage() {
         <div className="deals_list_title_row">
           <Link
             className="deals_list_back_circle"
-            to="/deals"
+            to={dealsListBackPath}
             aria-label="Back to deals"
           >
             <ArrowLeft size={20} strokeWidth={2} aria-hidden />
@@ -368,7 +488,7 @@ export function DealDetailPage() {
             </div>
             {!hideStagePillBecauseDraftBadge && displayStage ? (
               <span
-                className={dealStageChipClassName(dealDetailApi?.dealStage)}
+                className={dealStageChipCompactClassName(dealDetailApi?.dealStage)}
               >
                 {displayStage}
               </span>
@@ -376,7 +496,75 @@ export function DealDetailPage() {
           </div>
         </div>
       </header>
+      ) : null}
 
+      {mode === "investing" && dealDetailApi ? (
+        <section
+          className="deal_detail_investing_preview_section um_panel"
+          aria-labelledby="deal-detail-investing-preview-heading"
+        >
+          <div className="deal_detail_investing_section_back">
+            <Link
+              className="deals_list_back_circle"
+              to={dealsListBackPath}
+              aria-label="Back to deals"
+            >
+              <ArrowLeft size={20} strokeWidth={2} aria-hidden />
+            </Link>
+          </div>
+          <h2
+            id="deal-detail-investing-preview-heading"
+            className="deal_detail_investing_preview_heading"
+          >
+            Offering overview
+          </h2>
+          <p className="deal_detail_investing_preview_lead">
+            Same content and layout as Preview offering and the shared investor
+            link — gallery, summary, documents, and highlights follow what is
+            marked visible to investors.
+          </p>
+          {viewerDealInvestorRoleRaw ? (
+            <div
+              className="deals_deal_view_sponsor_role_banner deal_detail_investing_sponsor_banner"
+              role="status"
+              aria-label="Your role on this deal"
+            >
+              <span className="deals_deal_view_sponsor_role_label">
+                Your role on this deal
+              </span>
+              <DealInvestorRoleBadge
+                investorRole={viewerDealInvestorRoleRaw}
+              />
+            </div>
+          ) : null}
+          <div className="deal_offer_pf_page deal_detail_investing_offer_pf">
+            <div className="deal_offer_pf">
+              <DealOfferingPreviewInner
+                detail={dealDetailApi}
+                classes={investingOfferingClasses}
+                investorsPayload={investingOfferingInvestors}
+                applyInvestorLinkVisibility
+                isPublicOfferingRoute={false}
+                showInvestNowCta
+                onInvestNow={() => setLpInvestNowOpen(true)}
+                galleryUsesPersistedSourcesOnly={false}
+              />
+            </div>
+          </div>
+          {dealId?.trim() ? (
+            <LpInvestNowModal
+              open={lpInvestNowOpen}
+              onClose={() => setLpInvestNowOpen(false)}
+              dealId={dealId.trim()}
+              dealName={displayName}
+              onSuccess={handleLpInvestNowSuccess}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
+      {showSyndicatingDealChrome ? (
+        <>
       <div className="um_members_tabs_outer deals_tabs_outer">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll">
           <div
@@ -461,6 +649,7 @@ export function DealDetailPage() {
               dealId={dealId}
               dealName={displayName}
               dealDetail={dealDetailApi}
+              investorsListRefreshKey={investorsListRefreshKey}
               addInvestmentOpen={addInvestmentOpen}
               onSharedInvestmentModalOpenChange={setSharedInvestmentModalOpen}
               modalOnly={activeTab === "deal_members"}
@@ -488,11 +677,12 @@ export function DealDetailPage() {
         ) : activeTab === "offering_details" && dealDetailApi ? (
           <DealOfferingDetailsTab
             detail={dealDetailApi}
-            onDealUpdated={(d) => {
-              setDealDetailApi(d)
-              setDeal(dealDetailApiToRecord(d))
-              notifyDealsListRefetch()
-            }}
+            onDealUpdated={handleDealPersisted}
+          />
+        ) : activeTab === "documents" && dealDetailApi ? (
+          <DealDocumentsTab
+            dealId={dealDetailApi.id}
+            onOfferingPreviewSynced={handleDealPersisted}
           />
         ) : activeTab === "esign_templates" ? (
           <DealEsignTemplatesTab dealId={dealId} />
@@ -507,6 +697,8 @@ export function DealDetailPage() {
         )}
         </div>
       </div>
+        </>
+      ) : null}
     </div>
   )
 }

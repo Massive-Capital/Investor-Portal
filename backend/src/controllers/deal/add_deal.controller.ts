@@ -7,8 +7,11 @@ import { isPlatformAdminRole } from "../../constants/roles.js";
 import type { AddDealFormRow } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
   getAddDealFormForViewer,
+  getAddDealFormForViewerOrAssignedParticipant,
+  listDealsForViewerIncludingAssignedParticipation,
   resolveDealViewerScope,
 } from "../../services/dealAccess.service.js";
+import { sendOfferingPreviewShareEmails } from "../../services/offeringPreviewShareEmail.service.js";
 import {
   getAddDealFormById,
   insertAddDealForm,
@@ -22,6 +25,7 @@ import {
   updateDealAnnouncementById,
   updateDealGalleryCoverById,
   updateDealKeyHighlightsById,
+  updateDealOfferingInvestorPreviewById,
   updateDealOfferingOverviewById,
   updateDealOfferingGalleryPathsById,
   sanitizeOfferingOverviewPatch,
@@ -40,6 +44,11 @@ import {
   KeyHighlightsJsonInvalidError,
   KeyHighlightsJsonTooLargeError,
 } from "../../utils/sanitizeKeyHighlightsJson.js";
+import {
+  OfferingInvestorPreviewJsonInvalidError,
+  OfferingInvestorPreviewJsonTooLargeError,
+  sanitizeOfferingInvestorPreviewBody,
+} from "../../utils/sanitizeOfferingInvestorPreviewJson.js";
 import { InvestorSummaryTooLargeError } from "../../utils/sanitizeInvestorSummaryHtml.js";
 import {
   GalleryCoverUrlTooLargeError,
@@ -54,8 +63,10 @@ import {
   buildInvestorKpisFromRows,
   countInvestmentsByDealIds,
   listDealInvestmentsByDealId,
+  mapDealInvestmentsToInvestorApi,
 } from "../../services/dealInvestment.service.js";
 import { countExtraLpRosterOnlyByDealIds } from "../../services/dealLpInvestor.service.js";
+import { mapLpInvestorRoleDisplayByDealIdForUserEmail } from "../../services/lpInvestorAccess.service.js";
 import {
   listInvestorClassesByDealId,
   mapRowToJson as mapInvestorClassRowToJson,
@@ -124,6 +135,7 @@ function mapRowToJson(
       row.offeringGalleryPaths,
     ),
     offeringPreviewToken: row.offeringPreviewToken ?? null,
+    offeringInvestorPreviewJson: row.offeringInvestorPreviewJson ?? null,
     createdAt: row.createdAt?.toISOString?.() ?? String(row.createdAt),
     listRow: {
       id: row.id,
@@ -139,6 +151,7 @@ function mapRowToJson(
         ? formatDdMmmYyyy(String(row.closeDate).slice(0, 10))
         : "—",
       createdDateDisplay: formatDdMmmYyyy(row.createdAt),
+      startDateDisplay: formatDdMmmYyyy(row.createdAt),
       createdAt:
         row.createdAt instanceof Date
           ? row.createdAt.toISOString()
@@ -172,6 +185,12 @@ async function mapRowToJsonWithInvestmentCount(row: AddDealFormRow) {
   });
 }
 
+/**
+ * Lists deals for the signed-in viewer.
+ * Query `includeParticipantDeals=1`: org-scoped deals **plus** any deal linked via
+ * `assigning_deal_user` — used by the investing dashboard and `/investing/deals`
+ * so participants see syndicated + assigned deals in one list.
+ */
 export async function getDeals(req: Request, res: Response): Promise<void> {
   const user = getJwtUser(req);
   if (!user?.id) {
@@ -189,6 +208,12 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
 
     const scope = await resolveDealViewerScope(user.id, user.userRole);
 
+    const incRaw = req.query.includeParticipantDeals;
+    const includeParticipantDeals =
+      incRaw === "true" ||
+      incRaw === "1" ||
+      String(incRaw ?? "").toLowerCase() === "yes";
+
     let rows: AddDealFormRow[];
 
     if (orgParam && DEALS_ORG_UUID_RE.test(orgParam)) {
@@ -198,7 +223,9 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
       }
       rows = await listAddDealFormsByOrganizationId(orgParam);
     } else {
-      rows = await listAddDealFormsForViewer(scope);
+      rows = includeParticipantDeals
+        ? await listDealsForViewerIncludingAssignedParticipation(scope)
+        : await listAddDealFormsForViewer(scope);
     }
 
     const dealIds = rows.map((r) => String(r.id ?? ""));
@@ -210,14 +237,35 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
           ])
         : [new Map<string, number>(), new Map<string, number>()];
 
+    let lpRoleByDealId = new Map<string, string>();
+    if (scope.lpInvestorEmailScopedDealIds?.length && rows.length > 0) {
+      const [uRow] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      const emailNorm = String(uRow?.email ?? "").trim().toLowerCase();
+      if (emailNorm) {
+        lpRoleByDealId = await mapLpInvestorRoleDisplayByDealIdForUserEmail(
+          emailNorm,
+          rows.map((r) => String(r.id)),
+        );
+      }
+    }
+
     res.status(200).json({
       deals: rows.map((r: AddDealFormRow) => {
         const id = String(r.id);
         const n =
           (investmentCounts.get(id) ?? 0) + (extraLpCounts.get(id) ?? 0);
-        return mapRowToJson(r, {
+        const listRow = mapRowToJson(r, {
           investmentRowCount: n,
         }).listRow;
+        if (!scope.lpInvestorEmailScopedDealIds?.length) return listRow;
+        return {
+          ...listRow,
+          yourRole: lpRoleByDealId.get(id) ?? "LP Investor",
+        };
       }),
     });
   } catch (err) {
@@ -425,6 +473,56 @@ export async function patchDealOfferingOverview(
   }
 }
 
+export async function patchDealOfferingInvestorPreview(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const rawId = req.params.dealId;
+  const dealId = typeof rawId === "string" ? rawId : rawId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  const body = req.body;
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const visible = await getAddDealFormForViewer(dealId, scope);
+    if (!visible) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const canonical = sanitizeOfferingInvestorPreviewBody(body);
+    const updated = await updateDealOfferingInvestorPreviewById(
+      dealId,
+      canonical,
+    );
+    if (!updated) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    res.status(200).json({
+      message: "Offering investor preview updated",
+      deal: await mapRowToJsonWithInvestmentCount(updated),
+    });
+  } catch (err: unknown) {
+    if (err instanceof OfferingInvestorPreviewJsonInvalidError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+    if (err instanceof OfferingInvestorPreviewJsonTooLargeError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+    console.error("patchDealOfferingInvestorPreview:", err);
+    res.status(500).json({ message: "Could not update offering investor preview" });
+  }
+}
+
 export async function patchDealKeyHighlights(
   req: Request,
   res: Response,
@@ -597,6 +695,49 @@ export async function patchDealOfferingGallery(
   }
 }
 
+/** Multipart upload of offering documents (Documents tab); paths are stored in offering investor preview JSON. */
+export async function postDealOfferingDocumentUploads(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const rawId = req.params.dealId;
+  const dealId = typeof rawId === "string" ? rawId : rawId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  const files = (req as Request & { files?: DealMemoryUploadFile[] }).files;
+  const fileList = Array.isArray(files) ? files : [];
+  if (!fileList.length) {
+    res.status(400).json({ message: "No files uploaded." });
+    return;
+  }
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const visible = await getAddDealFormForViewerOrAssignedParticipant(
+      dealId,
+      scope,
+    );
+    if (!visible) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const newPaths = await saveDealAssetFiles({ files: fileList, dealId });
+    res.status(200).json({
+      message: "Offering documents uploaded",
+      newPaths,
+    });
+  } catch (err: unknown) {
+    console.error("postDealOfferingDocumentUploads:", err);
+    res.status(500).json({ message: "Could not upload offering documents" });
+  }
+}
+
 /** Multipart upload of gallery images (e.g. from Add Asset); merges into deal paths for public preview. */
 export async function postDealOfferingGalleryUploads(
   req: Request,
@@ -626,7 +767,7 @@ export async function postDealOfferingGalleryUploads(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    const newPaths = await saveDealAssetFiles({ files: fileList });
+    const newPaths = await saveDealAssetFiles({ files: fileList, dealId });
     const updated = await appendDealGalleryUploadsById(dealId, newPaths);
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
@@ -664,7 +805,10 @@ export async function getOfferingPreviewToken(
   }
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    const visible = await getAddDealFormForViewer(dealIdParam, scope);
+    const visible = await getAddDealFormForViewerOrAssignedParticipant(
+      dealIdParam,
+      scope,
+    );
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -679,6 +823,76 @@ export async function getOfferingPreviewToken(
     }
     console.error("getOfferingPreviewToken:", err);
     res.status(500).json({ message: "Could not create preview token." });
+  }
+}
+
+/**
+ * Authenticated: email the public offering preview link to one or more addresses.
+ */
+export async function postOfferingPreviewShareEmail(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const rawId = req.params.dealId;
+  const dealId = typeof rawId === "string" ? rawId : rawId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  const b = req.body as Record<string, unknown>;
+  const emailsRaw = b.emails ?? b.recipients;
+  if (!Array.isArray(emailsRaw) || emailsRaw.length === 0) {
+    res
+      .status(400)
+      .json({ message: "Provide a non-empty emails array (recipient addresses)." });
+    return;
+  }
+  const emails = emailsRaw.map((x) => String(x).trim()).filter(Boolean);
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const visible = await getAddDealFormForViewer(dealId, scope);
+    if (!visible) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const result = await sendOfferingPreviewShareEmails({ dealId, emails });
+    res.status(200).json({
+      message:
+        result.sent > 0
+          ? `Sent ${result.sent} message(s).`
+          : "No messages were sent.",
+      sent: result.sent,
+      failures: result.failures,
+      previewUrl: result.previewUrl,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (
+      msg.includes("encryption is not configured") ||
+      msg.includes("OFFERING_PREVIEW_SECRET")
+    ) {
+      res.status(503).json({ message: msg });
+      return;
+    }
+    if (msg.includes("FRONTEND_URL") || msg.includes("BASE_URL")) {
+      res.status(503).json({ message: msg });
+      return;
+    }
+    if (msg.includes("At most")) {
+      res.status(400).json({ message: msg });
+      return;
+    }
+    if (msg === "No valid email addresses.") {
+      res.status(400).json({ message: msg });
+      return;
+    }
+    console.error("postOfferingPreviewShareEmail:", err);
+    res.status(500).json({ message: "Could not send offering preview emails." });
   }
 }
 
@@ -737,11 +951,12 @@ export async function getPublicOfferingPreview(
       lpInvestorsOnly: false,
     });
     const kpis = buildInvestorKpisFromRows(invRows);
+    const investors = await mapDealInvestmentsToInvestorApi(invRows);
     res.status(200).json({
       deal,
       investorClasses: classRows.map(mapInvestorClassRowToJson),
       kpis,
-      investors: [],
+      investors,
     });
   } catch (err) {
     console.error("getPublicOfferingPreview:", err);
@@ -763,7 +978,10 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
   }
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    const row = await getAddDealFormForViewer(dealId, scope);
+    const row = await getAddDealFormForViewerOrAssignedParticipant(
+      dealId,
+      scope,
+    );
     if (!row) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -905,9 +1123,25 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
       if (fromBody) organizationId = fromBody;
     }
 
-    const assetPaths = await saveDealAssetFiles({ files: fileList });
+    const assetPaths = await saveDealAssetFiles({ files: fileList, dealId });
+    const retainedProvided = Object.prototype.hasOwnProperty.call(
+      b,
+      "retained_asset_image_path",
+    );
+    const retainedStr = retainedProvided
+      ? bodyString(b.retained_asset_image_path)
+      : "";
+    const replaceAssetImageBase = retainedProvided
+      ? retainedStr
+          .split(";")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
     const updated = await updateAddDealFormById(dealId, input, assetPaths, {
       organizationId,
+      ...(replaceAssetImageBase !== undefined
+        ? { replaceAssetImageBase }
+        : {}),
     });
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });

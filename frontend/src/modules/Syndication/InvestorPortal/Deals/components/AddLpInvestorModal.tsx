@@ -79,6 +79,10 @@ function clearLpRosterId(dealId: string): void {
   }
 }
 
+function lpInvestorRowMissingMessage(message: string | undefined): boolean {
+  return /lp investor row not found/i.test(String(message ?? ""))
+}
+
 function contactOptionLabel(c: ContactRow): string {
   const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim()
   if (name && c.email.trim()) return `${name} — ${c.email.trim()}`
@@ -234,7 +238,8 @@ export function AddLpInvestorModal({
           setSendInvitationMail("yes")
         else setSendInvitationMail("no")
         setError(null)
-        const bid = draft?.backendInvestmentId?.trim()
+        /** Only `deal_lp_investor` ids — never `backendInvestmentId` (different table / PUT route). */
+        const bid = draft?.backendLpInvestorId?.trim()
         if (bid) {
           setBackendLpRosterId(bid)
           backendLpRosterIdRef.current = bid
@@ -406,9 +411,26 @@ export function AddLpInvestorModal({
         if (rosterId) {
           lpAutosaveInFlightRef.current = true
           try {
-            const result = await putDealLpInvestor(dealId, rosterId, values, {
+            let result = await putDealLpInvestor(dealId, rosterId, values, {
               autosave: true,
             })
+            if (
+              !result.ok &&
+              !isEditMode &&
+              lpInvestorRowMissingMessage(result.message)
+            ) {
+              clearLpRosterId(dealId)
+              backendLpRosterIdRef.current = null
+              setBackendLpRosterId(null)
+              result = await postDealLpInvestor(dealId, values, {
+                autosave: true,
+              })
+              if (result.ok && result.mode === "api" && result.lpInvestorId) {
+                backendLpRosterIdRef.current = result.lpInvestorId
+                setBackendLpRosterId(result.lpInvestorId)
+                saveLpRosterId(dealId, result.lpInvestorId)
+              }
+            }
             if (result.ok && result.mode === "api") onSaved()
           } finally {
             lpAutosaveInFlightRef.current = false
@@ -492,11 +514,23 @@ export function AddLpInvestorModal({
 
     setSubmitting(true)
     try {
-      const existingId =
+      let existingId =
         backendLpRosterIdRef.current ?? loadLpRosterId(dealId)
-      const result = existingId
+      let result = existingId
         ? await putDealLpInvestor(dealId, existingId, values)
         : await postDealLpInvestor(dealId, values)
+      if (
+        !result.ok &&
+        existingId &&
+        !isEditMode &&
+        lpInvestorRowMissingMessage(result.message)
+      ) {
+        clearLpRosterId(dealId)
+        backendLpRosterIdRef.current = null
+        setBackendLpRosterId(null)
+        result = await postDealLpInvestor(dealId, values)
+        existingId = ""
+      }
       if (!result.ok) {
         setError(result.message)
         return
@@ -521,16 +555,12 @@ export function AddLpInvestorModal({
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
     >
       <div
         className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        onMouseDown={(ev) => ev.stopPropagation()}
       >
         <div className="um_modal_head add_contact_modal_head">
           <h3 id={titleId} className="um_modal_title add_contact_modal_title">

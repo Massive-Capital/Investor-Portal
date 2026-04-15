@@ -5,12 +5,16 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "../../../../common/components/Toast"
-import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
+import {
+  assetImagePathsToUrls,
+  getApiV1Base,
+} from "../../../../common/utils/apiBaseUrl"
 import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
 import { AssetStepForm } from "./components/AssetStepForm"
 import { DealStepForm } from "./components/DealStepForm"
@@ -71,6 +75,13 @@ export function CreateDealPage() {
   const [dealDraft, setDealDraft] = useState(emptyDealStepDraft)
   const [assetDraft, setAssetDraft] = useState(emptyAssetStepDraft)
   const [assetImages, setAssetImages] = useState<File[]>([])
+  /**
+   * Edit deal (`?edit=id`): upload-relative segments for property images still on the deal.
+   * Drives thumbnails + `retained_asset_image_path` on PUT so removals persist.
+   */
+  const [retainedPropertyImagePaths, setRetainedPropertyImagePaths] = useState<
+    string[]
+  >([])
   const [dealErrors, setDealErrors] = useState<
     Partial<Record<keyof DealStepDraft, string>>
   >({})
@@ -130,6 +141,7 @@ export function CreateDealPage() {
         setBackendDealId(null)
         backendDealIdRef.current = null
       }
+      setRetainedPropertyImagePaths([])
       return
     }
     skipOverwriteEmptySessionDraftRef.current = true
@@ -139,6 +151,7 @@ export function CreateDealPage() {
     setBackendDealId(null)
     backendDealIdRef.current = null
     setAssetImages([])
+    setRetainedPropertyImagePaths([])
   }, [editDealId, resumeDraft])
 
   useEffect(() => {
@@ -148,6 +161,7 @@ export function CreateDealPage() {
     }
     let cancelled = false
     setLoadingDeal(true)
+    setRetainedPropertyImagePaths([])
     void (async () => {
       try {
         const detail = await fetchDealById(editDealId)
@@ -158,6 +172,18 @@ export function CreateDealPage() {
         setDealDraft(deal)
         setAssetDraft(asset)
         setAssetImages([])
+        const rawSegs =
+          detail.assetImagePath?.split(";").map((s) => s.trim()).filter(Boolean) ??
+          []
+        const seenSeg = new Set<string>()
+        const segs: string[] = []
+        for (const s of rawSegs) {
+          const k = s.replace(/^\/+/, "")
+          if (!k || seenSeg.has(k)) continue
+          seenSeg.add(k)
+          segs.push(s)
+        }
+        setRetainedPropertyImagePaths(segs)
         setStep(mergedStep)
       } catch {
         if (!cancelled) {
@@ -175,6 +201,14 @@ export function CreateDealPage() {
 
   backendDealIdRef.current = backendDealId
   assetImagesRef.current = assetImages
+
+  const existingPropertyImageUrls = useMemo(
+    () =>
+      retainedPropertyImagePaths.length === 0
+        ? []
+        : assetImagePathsToUrls(retainedPropertyImagePaths.join(";")),
+    [retainedPropertyImagePaths],
+  )
 
   latestCreateDealDraftRef.current = {
     deal: dealDraft,
@@ -232,6 +266,9 @@ export function CreateDealPage() {
         const persistedId = editDealId ?? backendDealIdRef.current
         const { deal, asset, step: st } = latestCreateDealDraftRef.current
         const imgs = assetImagesRef.current
+        const imageOpts = editDealId
+          ? { retainedAssetImagePath: retainedPropertyImagePaths }
+          : undefined
 
         if (!editDealId) {
           const draftCheck: CreateDealFormDraft = {
@@ -245,7 +282,12 @@ export function CreateDealPage() {
           if (!createDealDraftHasContent(draftCheck)) return
         }
 
-        const formData = buildCreateDealFormDataForAutosave(deal, asset, imgs)
+        const formData = buildCreateDealFormDataForAutosave(
+          deal,
+          asset,
+          imgs,
+          imageOpts,
+        )
 
         if (persistedId) {
           if (backendAutosaveInFlightRef.current) return
@@ -300,6 +342,7 @@ export function CreateDealPage() {
     assetDraft,
     assetImages,
     step,
+    retainedPropertyImagePaths,
   ])
 
   const goBackToDeals = useCallback(() => {
@@ -375,6 +418,9 @@ export function CreateDealPage() {
         dealDraft,
         assetDraft,
         assetImages,
+        editDealId
+          ? { retainedAssetImagePath: retainedPropertyImagePaths }
+          : undefined,
       )
       const persistedId = editDealId ?? backendDealIdRef.current
       const result = persistedId
@@ -514,6 +560,17 @@ export function CreateDealPage() {
                 imageFiles={assetImages}
                 onChange={patchAsset}
                 onImageFilesChange={setAssetImages}
+                existingImageUrls={
+                  editDealId ? existingPropertyImageUrls : undefined
+                }
+                onRemoveExistingImage={
+                  editDealId
+                    ? (i) =>
+                        setRetainedPropertyImagePaths((prev) =>
+                          prev.filter((_, j) => j !== i),
+                        )
+                    : undefined
+                }
               />
             )}
             {step === 0 && !editDealId ? <DealStepBillingNote /> : null}

@@ -1,55 +1,39 @@
-import {
-  Activity,
-  Briefcase,
-  Calendar,
-  DollarSign,
-  FileText,
-  Home,
-  Landmark,
-  Loader2,
-  MapPin,
-  Pencil,
-  Send,
-  Shield,
-  Tag,
-  Users,
-  Wallet,
-  X,
-} from "lucide-react"
+import { Loader2, Pencil, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
-import { ViewReadonlyField } from "../../../../../common/components/ViewReadonlyField"
-import { dealStageLabel } from "../../deals-mock-data"
 import "../../../../usermanagement/user_management.css"
-import { fetchDealById, type DealDetailApi } from "../api/dealsApi"
+import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail"
 import {
-  formatCommittedCurrency,
-  formatDealListDateDisplay,
-} from "../dealsListDisplay"
+  fetchDealById,
+  fetchDealInvestors,
+  type DealDetailApi,
+} from "../api/dealsApi"
+import { DealDetailsReadonlyPreviewFields } from "./DealDetailsReadonlyPreview"
+import { DealInvestorRoleBadge } from "./DealInvestorRoleBadge"
+import { resolveViewerDealInvestorRoleRaw } from "../utils/dealDetailTabVisibility"
 import "../deals-list.css"
+
+export type DealPreviewListContext = "syndicating" | "investing"
 
 interface DealPreviewModalProps {
   dealId: string | null
+  /** Investing deals list: show viewer roster role and hide syndication-only actions. */
+  listContext?: DealPreviewListContext
   onClose: () => void
 }
 
-function displayOrDash(v: string | null | undefined): string {
-  const t = String(v ?? "").trim()
-  return t.length ? t : "—"
-}
-
-function yesNo(v: boolean | undefined): string {
-  if (v === true) return "Yes"
-  if (v === false) return "No"
-  return "—"
-}
-
-export function DealPreviewModal({ dealId, onClose }: DealPreviewModalProps) {
+export function DealPreviewModal({
+  dealId,
+  listContext = "syndicating",
+  onClose,
+}: DealPreviewModalProps) {
   const navigate = useNavigate()
   const [detail, setDetail] = useState<DealDetailApi | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [viewerDealInvestorRoleRaw, setViewerDealInvestorRoleRaw] =
+    useState<string | null>(null)
 
   useEffect(() => {
     if (!dealId) return
@@ -91,15 +75,47 @@ export function DealPreviewModal({ dealId, onClose }: DealPreviewModalProps) {
     }
   }, [dealId])
 
+  useEffect(() => {
+    if (!dealId || listContext !== "investing") {
+      setViewerDealInvestorRoleRaw(null)
+      return
+    }
+    const email = getSessionUserEmail()
+    if (!email) {
+      setViewerDealInvestorRoleRaw(null)
+      return
+    }
+    let cancelled = false
+    setViewerDealInvestorRoleRaw(null)
+    void (async () => {
+      try {
+        const { investors } = await fetchDealInvestors(dealId)
+        if (cancelled) return
+        setViewerDealInvestorRoleRaw(
+          resolveViewerDealInvestorRoleRaw(investors, email),
+        )
+      } catch {
+        if (!cancelled) setViewerDealInvestorRoleRaw(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [dealId, listContext])
+
   function handleEdit() {
     if (!dealId) return
     onClose()
     navigate(`/deals/create?edit=${encodeURIComponent(dealId)}`)
   }
 
-  if (dealId == null) return null
+  function handleOpenDeal() {
+    if (!dealId) return
+    onClose()
+    navigate(`/deals/${encodeURIComponent(dealId)}`)
+  }
 
-  const lr = detail?.listRow
+  if (dealId == null) return null
 
   return createPortal(
     <div
@@ -128,6 +144,20 @@ export function DealPreviewModal({ dealId, onClose }: DealPreviewModalProps) {
         </div>
 
         <div className="deals_deal_view_modal_body">
+          {listContext === "investing" && viewerDealInvestorRoleRaw ? (
+            <div
+              className="deals_deal_view_sponsor_role_banner"
+              role="status"
+              aria-label="Your role on this deal"
+            >
+              <span className="deals_deal_view_sponsor_role_label">
+                Your role on this deal
+              </span>
+              <DealInvestorRoleBadge
+                investorRole={viewerDealInvestorRoleRaw}
+              />
+            </div>
+          ) : null}
           {loading ? (
             <div className="deals_deal_view_state" aria-live="polite">
               <Loader2
@@ -142,107 +172,8 @@ export function DealPreviewModal({ dealId, onClose }: DealPreviewModalProps) {
             <p className="deals_deal_view_error" role="alert">
               {error}
             </p>
-          ) : lr && detail ? (
-            <div className="um_view_grid">
-              <ViewReadonlyField
-                Icon={Briefcase}
-                label="Deal name"
-                value={displayOrDash(lr.dealName ?? detail.dealName)}
-              />
-              <ViewReadonlyField
-                Icon={Tag}
-                label="Deal type"
-                value={displayOrDash(detail.dealType)}
-              />
-              <ViewReadonlyField
-                Icon={Activity}
-                label="Deal stage"
-                value={displayOrDash(dealStageLabel(detail.dealStage || lr.dealStage))}
-              />
-              <ViewReadonlyField
-                Icon={Shield}
-                label="SEC type"
-                value={displayOrDash(detail.secType)}
-              />
-              <ViewReadonlyField
-                Icon={Home}
-                label="Property name"
-                value={displayOrDash(detail.propertyName)}
-              />
-              <ViewReadonlyField
-                Icon={MapPin}
-                label="Location"
-                value={
-                  [detail.city, detail.country].filter((x) => x?.trim()).join(", ") ||
-                  displayOrDash(lr.locationDisplay)
-                }
-              />
-              <ViewReadonlyField
-                Icon={Landmark}
-                label="Owning entity"
-                value={displayOrDash(detail.owningEntityName)}
-              />
-              <ViewReadonlyField
-                Icon={Calendar}
-                label="Close date"
-                value={formatDealListDateDisplay(
-                  lr.closeDateDisplay ?? detail.closeDate ?? "",
-                )}
-              />
-              <ViewReadonlyField
-                Icon={Calendar}
-                label="Start date"
-                value={formatDealListDateDisplay(
-                  lr.startDateDisplay ?? lr.createdDateDisplay,
-                )}
-              />
-              <ViewReadonlyField
-                Icon={Wallet}
-                label="Raise target"
-                value={formatCommittedCurrency(lr.raiseTarget)}
-              />
-              <ViewReadonlyField
-                Icon={DollarSign}
-                label="Committed"
-                value={formatCommittedCurrency(lr.totalAccepted)}
-              />
-              <ViewReadonlyField
-                Icon={Users}
-                label="Investors"
-                value={displayOrDash(lr.investors)}
-              />
-              <ViewReadonlyField
-                Icon={FileText}
-                label="Investor class"
-                value={
-                  lr.investorClass && lr.investorClass !== "—"
-                    ? lr.investorClass
-                    : "—"
-                }
-              />
-              <ViewReadonlyField
-                Icon={Briefcase}
-                label="Funds required before GP sign"
-                value={yesNo(detail.fundsRequiredBeforeGpSign)}
-              />
-              <ViewReadonlyField
-                Icon={Send}
-                label="Auto send funding instructions"
-                value={yesNo(detail.autoSendFundingInstructions)}
-              />
-              <ViewReadonlyField
-                Icon={Calendar}
-                label="Created"
-                fieldClassName="deals_deal_view_field_full"
-                value={
-                  detail.createdAt
-                    ? formatDealListDateDisplay(
-                        lr.createdDateDisplay || detail.createdAt,
-                      )
-                    : formatDealListDateDisplay(lr.createdDateDisplay)
-                }
-              />
-            </div>
+          ) : detail?.listRow ? (
+            <DealDetailsReadonlyPreviewFields detail={detail} />
           ) : (
             <p className="deals_deal_view_hint">No data.</p>
           )}
@@ -257,15 +188,26 @@ export function DealPreviewModal({ dealId, onClose }: DealPreviewModalProps) {
             <X size={16} strokeWidth={2} aria-hidden />
             Close
           </button>
-          <button
-            type="button"
-            className="um_btn_primary"
-            onClick={handleEdit}
-            disabled={!detail || Boolean(loading)}
-          >
-            <Pencil size={16} strokeWidth={2} aria-hidden />
-            Edit
-          </button>
+          {listContext === "investing" ? (
+            <button
+              type="button"
+              className="um_btn_primary"
+              onClick={handleOpenDeal}
+              disabled={!detail || Boolean(loading)}
+            >
+              Open deal
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="um_btn_primary"
+              onClick={handleEdit}
+              disabled={!detail || Boolean(loading)}
+            >
+              <Pencil size={16} strokeWidth={2} aria-hidden />
+              Edit
+            </button>
+          )}
         </div>
       </div>
     </div>,

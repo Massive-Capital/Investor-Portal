@@ -14,13 +14,34 @@ import { ToolStyleCard } from "../../../../common/components/tool-style-card/Too
 import { usePortalMode } from "../../../../common/context/PortalModeContext"
 import { SyndicatingDealsSection } from "../Deals/SyndicatingDealsSection"
 import {
+  loadInvestingDashboardSummary,
   loadSyndicationDashboardSummary,
   type SyndicationDashboardSummary,
 } from "./syndicationDashboardData"
 import "../../../usermanagement/user_management.css"
 import "./sponsor-dashboard.css"
 
-function InvestingHomeDashboard() {
+function InvestingDashboard() {
+  const [summary, setSummary] = useState<SyndicationDashboardSummary | null>(
+    null,
+  )
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const s = await loadInvestingDashboardSummary()
+        if (!cancelled) setSummary(s)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <section className="um_page sponsor_dash sponsor_dash_investing">
       <div className="um_members_header_block">
@@ -32,22 +53,88 @@ function InvestingHomeDashboard() {
               strokeWidth={1.75}
               aria-hidden
             />
-            Dashboard
+            Investing dashboard
           </h2>
+          <NavLink className="um_btn_secondary sponsor_dash_add_link" to="/investing/deals">
+            All deals
+          </NavLink>
         </div>
       </div>
+
       <section
         className="investing_dash_panel"
-        aria-label="Investing workspace"
+        aria-label="Investing workspace shortcuts"
       >
         <p className="investing_dash_lead">
-          You&apos;re in investing mode. The syndication dashboard and deal
-          management tools are only available when you switch to Syndicating.
+          Summary and deals use the same data as your investing deals list
+          (organization deals plus deals where you are on the roster).
         </p>
-        <NavLink className="investing_dash_link" to="/investing/opportunities">
-          Go to Opportunities
-        </NavLink>
+        <div className="investing_dash_links">
+          <NavLink className="investing_dash_link" to="/investing/deals">
+            Deals table
+          </NavLink>
+          <NavLink className="investing_dash_link" to="/investing/opportunities">
+            Opportunities
+          </NavLink>
+        </div>
       </section>
+
+      <section
+        className="sponsor_dash_metrics"
+        aria-label="Investing dashboard summary"
+        aria-busy={loading}
+      >
+        <ToolStyleCard
+          variant="metric"
+          icon={ClipboardList}
+          title="# of reviews"
+          description="—"
+          footer={<a href="#reviews">Turn on reviews</a>}
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={CreditCard}
+          title="Billing quota"
+          description="—"
+          hintTitle="Syndication billing applies when you switch to Syndicating."
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={LineChart}
+          title="Total target amount"
+          description={formatDashboardValue(loading, summary, (s) => s.totalTargetDisplay)}
+          hintTitle="Sum of raise targets across deals visible in investing mode."
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={DollarSign}
+          title="Total distributions"
+          description={formatDashboardValue(loading, summary, (s) => s.totalDistributionsDisplay)}
+          hintTitle="Sum of accepted amounts across those deals (same basis as syndicating KPIs)."
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={UserRound}
+          title="# of investments"
+          description={investmentCountDisplay(loading, summary)}
+          hintTitle="Investor rows across visible deals."
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={Users}
+          title="# of contacts"
+          description={formatDashboardValue(loading, summary, (s) =>
+            String(s.contactsCount),
+          )}
+          hintTitle="Contacts in your organization (CRM)."
+        />
+      </section>
+
+      <SyndicatingDealsSection
+        dealsHeadingId="investing-deals-heading"
+        includeParticipantDeals
+        dealsSectionTitle="Your deals"
+      />
     </section>
   )
 }
@@ -170,7 +257,7 @@ function SyndicatingDashboard() {
 function SponsorDashboardPage() {
   const { mode } = usePortalMode()
 
-  if (mode === "investing") return <InvestingHomeDashboard />
+  if (mode === "investing") return <InvestingDashboard />
 
   return <SyndicatingDashboard />
 }

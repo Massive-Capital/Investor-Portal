@@ -48,3 +48,9 @@ export {
   type ContactInsert,
   type ContactRow,
 } from "./contact.schema.js";
+export {
+  organizationContactList,
+  organizationContactTag,
+  type OrganizationContactListRow,
+  type OrganizationContactTagRow,
+} from "./company.schema/organizationContactLabels.schema.js";

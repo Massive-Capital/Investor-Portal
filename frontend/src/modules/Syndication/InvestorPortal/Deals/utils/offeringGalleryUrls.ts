@@ -4,7 +4,97 @@ import {
   normalizeDealGallerySrc,
 } from "../../../../../common/utils/apiBaseUrl"
 import type { DealDetailApi } from "../api/dealsApi"
-import { readDealAssetsFullMap } from "../types/deal-asset.types"
+import {
+  computeDealAssetRowsFromClientStorage,
+  readDealAssetsFullMap,
+} from "../types/deal-asset.types"
+
+/**
+ * Asset map keys whose `imagePreviewDataUrls` may appear in the offering gallery.
+ * Uses non-archived rows from client storage. When `offeringOverviewAssetIds`
+ * matches those row ids, only those assets contribute (deselected extras drop out).
+ * When ids are missing or none match (e.g. API vs client id mismatch), all
+ * non-archived rows are allowed so previews and uploads keep working.
+ * When there are no non-archived rows, returns an empty set — callers treat an
+ * empty set as “no allow-list” and include all map entries so previews still load.
+ */
+/** True once any asset entry was saved with an `imagePreviewDataUrls` array (even `[]`). */
+function mapHasExplicitImagePreviewLists(dealId: string): boolean {
+  try {
+    for (const e of Object.values(readDealAssetsFullMap(dealId))) {
+      if (Array.isArray(e.imagePreviewDataUrls)) return true
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+function persistedAssetIdsForLocalGalleryPreviews(
+  detail: DealDetailApi,
+): Set<string> {
+  const rows = computeDealAssetRowsFromClientStorage(detail).filter(
+    (r) => !r.archived,
+  )
+  if (rows.length === 0) return new Set()
+
+  const picked = detail.offeringOverviewAssetIds?.filter(Boolean) ?? []
+  if (picked.length === 0) {
+    return new Set(rows.map((r) => r.id))
+  }
+
+  const pickSet = new Set(picked)
+  const matched = rows.filter((r) => pickSet.has(r.id)).map((r) => r.id)
+  if (matched.length > 0) {
+    return new Set(matched)
+  }
+  return new Set(rows.map((r) => r.id))
+}
+
+/**
+ * Canonical key for `/uploads/...` gallery sources so API paths and the same
+ * URLs repeated in local asset previews dedupe (encoding / origin differences).
+ */
+function canonicalGalleryUploadKey(raw: string): string | null {
+  let s = normalizeDealGallerySrc(raw).trim()
+  if (!s) return null
+  if (s.startsWith("data:")) return s
+
+  if (/^uploads\//i.test(s) && !s.startsWith("/")) {
+    s = `/${s.replace(/^\/+/, "")}`
+  }
+
+  let pathname = ""
+  let search = ""
+  try {
+    if (/^https?:\/\//i.test(s)) {
+      const u = new URL(s)
+      if (u.protocol !== "http:" && u.protocol !== "https:") return null
+      pathname = u.pathname
+      search = u.search
+    } else if (s.startsWith("/")) {
+      const u = new URL(s, "http://placeholder.local")
+      pathname = u.pathname
+      search = u.search
+    } else {
+      return null
+    }
+  } catch {
+    return null
+  }
+
+  const lower = pathname.toLowerCase()
+  const uploadsIdx = lower.indexOf("/uploads/")
+  if (uploadsIdx < 0) return null
+  let tail = pathname.slice(uploadsIdx + "/uploads/".length).replace(/\/+$/, "")
+  try {
+    tail = decodeURIComponent(tail)
+  } catch {
+    /* keep raw tail */
+  }
+  tail = tail.replace(/\/+/g, "/")
+  return `/uploads/${tail}${search}`
+}
 
 /**
  * True when two gallery `src` values point at the same asset (strict match, or
@@ -44,7 +134,11 @@ export function galleryUrlsReferToSameAsset(a: string, b: string): boolean {
 
   const kx = key(x)
   const ky = key(y)
-  return kx != null && ky != null && kx === ky
+  if (kx != null && ky != null && kx === ky) return true
+
+  const cx = canonicalGalleryUploadKey(x)
+  const cy = canonicalGalleryUploadKey(y)
+  return cx != null && cy != null && cx === cy
 }
 
 function pushUniqueGalleryUrl(out: string[], raw: string): void {
@@ -52,6 +146,19 @@ function pushUniqueGalleryUrl(out: string[], raw: string): void {
   if (!s) return
   if (out.some((e) => galleryUrlsReferToSameAsset(e, s))) return
   out.push(s)
+}
+
+/** Stable-order unique URLs (API + local lists often repeat the same upload). */
+export function dedupeGalleryUrlsPreserveOrder(urls: readonly string[]): string[] {
+  const out: string[] = []
+  for (const raw of urls) {
+    const u = normalizeDealGallerySrc(
+      typeof raw === "string" ? raw : String(raw ?? ""),
+    ).trim()
+    if (!u) continue
+    if (!out.some((e) => galleryUrlsReferToSameAsset(e, u))) out.push(u)
+  }
+  return out
 }
 
 /** Ordered unique upload-relative segments: persisted gallery first, then `assetImagePath`. */
@@ -63,10 +170,8 @@ function mergeOfferingGalleryPathSegments(
   const seen = new Set<string>()
   const add = (raw: string) => {
     const t = raw.trim().replace(/^\/+/, "")
-    if (!t) return
-    const key = t.toLowerCase()
-    if (seen.has(key)) return
-    seen.add(key)
+    if (!t || seen.has(t)) return
+    seen.add(t)
     out.push(t)
   }
   for (const p of persisted ?? []) add(p)
@@ -130,12 +235,21 @@ export function uploadRelativePathsFromGalleryUrls(urls: string[]): string[] {
 
 /** Upload-relative paths referenced anywhere in persisted deal asset maps (localStorage). */
 export function collectUploadRelativePathsFromDealAssetsMap(
-  dealId: string,
+  detail: DealDetailApi,
 ): string[] {
   const urls: string[] = []
   try {
-    const map = readDealAssetsFullMap(dealId)
-    for (const e of Object.values(map)) {
+    const map = readDealAssetsFullMap(detail.id)
+    const allowedIds = persistedAssetIdsForLocalGalleryPreviews(detail)
+    const useAllowList = allowedIds.size > 0
+    for (const [assetId, e] of Object.entries(map)) {
+      if (
+        useAllowList &&
+        !allowedIds.has(assetId) &&
+        !allowedIds.has(e.id)
+      ) {
+        continue
+      }
       for (const u of e.imagePreviewDataUrls ?? []) {
         if (typeof u === "string" && u.trim()) urls.push(u)
       }
@@ -147,84 +261,125 @@ export function collectUploadRelativePathsFromDealAssetsMap(
 }
 
 /**
- * Ordered unique path segments to persist: parsed from gallery URLs, asset map, and raw `assetImagePath`.
+ * Ordered unique path segments to persist from the **current** gallery view (`urlsFromCollect`)
+ * plus upload paths referenced in the local asset map.
+ *
+ * We intentionally do **not** merge every segment from `detail.assetImagePath` here: that list
+ * is append-only on the server and would re-insert images the user removed from assets, so the
+ * PATCH could never shrink `offering_gallery_paths`.
  */
 export function mergePathSegmentsForOfferingGalleryPersist(
   detail: DealDetailApi,
   urlsFromCollect: string[],
 ): string[] {
   const fromUrls = uploadRelativePathsFromGalleryUrls(urlsFromCollect)
-  const fromMap = collectUploadRelativePathsFromDealAssetsMap(detail.id)
-  const fromAsset =
-    detail.assetImagePath?.split(";").map((s) => s.trim().replace(/^\/+/, "")) ??
-    []
-  const fromAssetOk = fromAsset.filter(
-    (t) =>
-      Boolean(t) &&
-      !t.includes("..") &&
-      /^[\w./-]+$/.test(t),
-  )
+  const fromMap = collectUploadRelativePathsFromDealAssetsMap(detail)
   const seen = new Set<string>()
   const out: string[] = []
-  for (const p of [...fromUrls, ...fromMap, ...fromAssetOk]) {
-    const key = p.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
+  for (const p of [...fromUrls, ...fromMap]) {
+    if (seen.has(p)) continue
+    seen.add(p)
     out.push(p)
   }
   return out
 }
 
+/** Options for {@link collectDealGalleryUrls}. */
+export type CollectDealGalleryUrlsOptions = {
+  /**
+   * When true, only use server-persisted paths (`offeringGalleryPaths`, `assetImagePath`)
+   * and cover URL — no browser `localStorage` asset maps. Matches anonymous
+   * `/public/offering-preview` / shared link consumers.
+   */
+  persistedOnly?: boolean
+}
+
 /**
  * URLs for offering gallery / preview: persisted `offeringGalleryPaths`, API `assetImagePath`,
  * saved `galleryCoverImageUrl` (https, data URL, or `/uploads/...`),
- * plus any `imagePreviewDataUrls` persisted in local asset maps for this deal.
- *
- * When the deal already has server `/uploads/...` gallery URLs, we skip `data:` previews from
- * the asset map — they are the same photos kept for the asset editor and would otherwise show
- * twice (data URL + file URL) because `galleryUrlsReferToSameAsset` cannot match blob URLs to
- * upload paths.
+ * plus any `imagePreviewDataUrls` persisted in local asset maps for this deal (unless `persistedOnly`).
  */
-export function collectDealGalleryUrls(detail: DealDetailApi): string[] {
+export function collectDealGalleryUrls(
+  detail: DealDetailApi,
+  options?: CollectDealGalleryUrlsOptions,
+): string[] {
+  const persistedOnly = Boolean(options?.persistedOnly)
   const merged = mergeOfferingGalleryPathSegments(
     detail.offeringGalleryPaths,
     detail.assetImagePath,
   )
-  const fromApi = assetImagePathsToUrls(
+  let fromApi = assetImagePathsToUrls(
     merged.length ? merged.join(";") : null,
   )
-  const fromAssets: string[] = []
-  try {
-    const map = readDealAssetsFullMap(detail.id)
-    for (const entry of Object.values(map)) {
-      const previews = entry.imagePreviewDataUrls
-      if (previews?.length) fromAssets.push(...previews)
+  if (!persistedOnly) {
+    /** Sponsor browser: once assets store image lists, uploads in the gallery must match them. */
+    let hasLocalAssetMap = false
+    try {
+      hasLocalAssetMap =
+        Object.keys(readDealAssetsFullMap(detail.id)).length > 0
+    } catch {
+      hasLocalAssetMap = false
     }
-  } catch {
-    /* ignore */
+    if (hasLocalAssetMap) {
+      const allowedRels = collectUploadRelativePathsFromDealAssetsMap(detail)
+      const allowed = new Set(allowedRels)
+      const explicitLists = mapHasExplicitImagePreviewLists(detail.id)
+      if (allowed.size > 0) {
+        fromApi = fromApi.filter((url) => {
+          const rels = uploadRelativePathsFromGalleryUrls([url])
+          return rels.some((p) => allowed.has(p))
+        })
+      } else if (explicitLists) {
+        /** All upload refs removed from assets; do not keep orphan server paths. */
+        fromApi = []
+      }
+    }
+  }
+  const fromAssets: string[] = []
+  if (!persistedOnly) {
+    try {
+      const map = readDealAssetsFullMap(detail.id)
+      const allowedIds = persistedAssetIdsForLocalGalleryPreviews(detail)
+      const useAllowList = allowedIds.size > 0
+      for (const [assetId, entry] of Object.entries(map)) {
+        if (
+          useAllowList &&
+          !allowedIds.has(assetId) &&
+          !allowedIds.has(entry.id)
+        ) {
+          continue
+        }
+        const previews = entry.imagePreviewDataUrls
+        if (previews?.length) fromAssets.push(...previews)
+      }
+    } catch {
+      /* ignore */
+    }
   }
   const out: string[] = []
   for (const u of fromApi) pushUniqueGalleryUrl(out, u)
-  const skipLocalDataPreviews = fromApi.length > 0
-  for (const u of fromAssets) {
-    if (skipLocalDataPreviews && u.trim().toLowerCase().startsWith("data:"))
-      continue
-    pushUniqueGalleryUrl(out, u)
-  }
+  for (const u of fromAssets) pushUniqueGalleryUrl(out, u)
   const cover = detail.galleryCoverImageUrl?.trim() ?? ""
   if (cover) pushUniqueGalleryUrl(out, cover)
   return out
 }
 
 /** Puts the saved cover URL first so the offering hero matches the dashboard card. */
-export function orderedGalleryUrlsForOffering(detail: DealDetailApi): string[] {
-  const all = collectDealGalleryUrls(detail)
+export function orderedGalleryUrlsForOffering(
+  detail: DealDetailApi,
+  options?: CollectDealGalleryUrlsOptions,
+): string[] {
+  const all = collectDealGalleryUrls(detail, options)
   const pickRaw = detail.galleryCoverImageUrl?.trim()
   const pick = pickRaw ? normalizeDealGallerySrc(pickRaw).trim() : ""
   if (!pick) return all
   if (all.length === 0) return [pick]
   const idx = all.findIndex((u) => galleryUrlsReferToSameAsset(u, pick))
-  if (idx < 0) return [pick, ...all]
+  if (idx < 0) {
+    /** Avoid showing the same file twice if `pick` matches an entry under a different string form. */
+    const rest = all.filter((u) => !galleryUrlsReferToSameAsset(u, pick))
+    return [pick, ...rest]
+  }
   if (idx === 0) return all
   const next = [...all]
   const [c] = next.splice(idx, 1)

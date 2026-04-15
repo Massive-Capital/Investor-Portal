@@ -2,12 +2,10 @@
 -- PostgreSQL database dump
 --
 
-\restrict tpU6DoJvlmeQFwgiL7V1GzfZPEj4cIPq5AyWSrhatWqjKaXTuREK2ce3k4E8Dyi
+\restrict 06zmVyW6WW1qLtNhd9J7TBt8L7FxK6nJBtIcu0d8QXYVHGhKTivDOCl7Owz5eov
 
--- Dumped from database version 17.6
--- Dumped by pg_dump version 17.6
-
--- Started on 2026-04-04 19:04:13
+-- Dumped from database version 17.8
+-- Dumped by pg_dump version 17.8
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -22,7 +20,6 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- TOC entry 6 (class 2615 OID 44741)
 -- Name: drizzle; Type: SCHEMA; Schema: -; Owner: postgres
 --
 
@@ -36,7 +33,6 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- TOC entry 218 (class 1259 OID 44742)
 -- Name: __drizzle_migrations; Type: TABLE; Schema: drizzle; Owner: postgres
 --
 
@@ -50,7 +46,6 @@ CREATE TABLE drizzle.__drizzle_migrations (
 ALTER TABLE drizzle.__drizzle_migrations OWNER TO postgres;
 
 --
--- TOC entry 219 (class 1259 OID 44747)
 -- Name: __drizzle_migrations_id_seq; Type: SEQUENCE; Schema: drizzle; Owner: postgres
 --
 
@@ -66,8 +61,6 @@ CREATE SEQUENCE drizzle.__drizzle_migrations_id_seq
 ALTER SEQUENCE drizzle.__drizzle_migrations_id_seq OWNER TO postgres;
 
 --
--- TOC entry 5007 (class 0 OID 0)
--- Dependencies: 219
 -- Name: __drizzle_migrations_id_seq; Type: SEQUENCE OWNED BY; Schema: drizzle; Owner: postgres
 --
 
@@ -75,7 +68,6 @@ ALTER SEQUENCE drizzle.__drizzle_migrations_id_seq OWNED BY drizzle.__drizzle_mi
 
 
 --
--- TOC entry 225 (class 1259 OID 44834)
 -- Name: add_deal_form; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -101,30 +93,39 @@ CREATE TABLE public.add_deal_form (
     updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     asset_image_path text,
     organization_id uuid,
-    CONSTRAINT add_deal_form_deal_stage_check CHECK ((deal_stage = ANY (ARRAY['raising_capital'::text, 'asset_managing'::text, 'liquidated'::text])))
+    investor_summary_html text,
+    gallery_cover_image_url text,
+    key_highlights_json text,
+    deal_announcement_title text,
+    deal_announcement_message text,
+    offering_status text DEFAULT 'draft_hidden'::text NOT NULL,
+    offering_visibility text DEFAULT 'show_on_dashboard'::text NOT NULL,
+    show_on_investbase boolean DEFAULT false NOT NULL,
+    internal_name text DEFAULT ''::text NOT NULL,
+    offering_overview_asset_ids text DEFAULT '[]'::text NOT NULL,
+    offering_gallery_paths text DEFAULT '[]'::text NOT NULL,
+    offering_preview_token text,
+    offering_investor_preview_json text,
+    CONSTRAINT add_deal_form_deal_stage_check CHECK ((deal_stage = ANY (ARRAY['draft'::text, 'Draft'::text, 'raising_capital'::text, 'capital_raising'::text, 'asset_managing'::text, 'managing_asset'::text, 'liquidated'::text])))
 );
 
 
 ALTER TABLE public.add_deal_form OWNER TO postgres;
 
 --
--- TOC entry 229 (class 1259 OID 45207)
 -- Name: assigning_deal_user; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.assigning_deal_user (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
     deal_id uuid NOT NULL,
     user_id uuid NOT NULL,
-    user_added_deal_id uuid NOT NULL,
-    created_at timestamp without time zone DEFAULT now()
+    user_added_deal uuid
 );
 
 
 ALTER TABLE public.assigning_deal_user OWNER TO postgres;
 
 --
--- TOC entry 220 (class 1259 OID 44748)
 -- Name: companies; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -140,7 +141,6 @@ CREATE TABLE public.companies (
 ALTER TABLE public.companies OWNER TO postgres;
 
 --
--- TOC entry 221 (class 1259 OID 44755)
 -- Name: company_admin_audit_logs; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -158,7 +158,6 @@ CREATE TABLE public.company_admin_audit_logs (
 ALTER TABLE public.company_admin_audit_logs OWNER TO postgres;
 
 --
--- TOC entry 230 (class 1259 OID 45258)
 -- Name: company_workspace_tab_settings; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -173,7 +172,6 @@ CREATE TABLE public.company_workspace_tab_settings (
 ALTER TABLE public.company_workspace_tab_settings OWNER TO postgres;
 
 --
--- TOC entry 227 (class 1259 OID 44870)
 -- Name: contact; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -190,14 +188,15 @@ CREATE TABLE public.contact (
     created_by uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     status character varying(32) DEFAULT 'active'::character varying NOT NULL,
-    last_edit_reason text
+    last_edit_reason text,
+    is_portal_user boolean DEFAULT false NOT NULL,
+    organization_id uuid
 );
 
 
 ALTER TABLE public.contact OWNER TO postgres;
 
 --
--- TOC entry 226 (class 1259 OID 44848)
 -- Name: deal_investment; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -222,7 +221,6 @@ CREATE TABLE public.deal_investment (
 ALTER TABLE public.deal_investment OWNER TO postgres;
 
 --
--- TOC entry 228 (class 1259 OID 44889)
 -- Name: deal_investor_class; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -239,14 +237,56 @@ CREATE TABLE public.deal_investor_class (
     status text DEFAULT 'draft'::text NOT NULL,
     visibility text DEFAULT ''::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    raise_amount_distributions text DEFAULT ''::text NOT NULL,
+    billing_raise_quota text DEFAULT ''::text NOT NULL,
+    advanced_options_json text DEFAULT '{}'::text NOT NULL
 );
 
 
 ALTER TABLE public.deal_investor_class OWNER TO postgres;
 
 --
--- TOC entry 222 (class 1259 OID 44762)
+-- Name: deal_lp_investor; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.deal_lp_investor (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    deal_id uuid NOT NULL,
+    added_by uuid,
+    contact_member_id text DEFAULT ''::text NOT NULL,
+    investor_class text DEFAULT ''::text NOT NULL,
+    send_invitation_mail text DEFAULT 'no'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    profile_id text DEFAULT ''::text NOT NULL,
+    email character varying(255),
+    role character varying(100) DEFAULT ''::character varying NOT NULL,
+    committed_amount text DEFAULT ''::text NOT NULL
+);
+
+
+ALTER TABLE public.deal_lp_investor OWNER TO postgres;
+
+--
+-- Name: deal_member; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.deal_member (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    deal_id uuid NOT NULL,
+    added_by uuid,
+    contact_member_id text DEFAULT ''::text NOT NULL,
+    deal_member_role text DEFAULT ''::text NOT NULL,
+    send_invitation_mail text DEFAULT 'no'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.deal_member OWNER TO postgres;
+
+--
 -- Name: deals; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -260,7 +300,6 @@ CREATE TABLE public.deals (
 ALTER TABLE public.deals OWNER TO postgres;
 
 --
--- TOC entry 223 (class 1259 OID 44767)
 -- Name: member_admin_audit_logs; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -278,7 +317,34 @@ CREATE TABLE public.member_admin_audit_logs (
 ALTER TABLE public.member_admin_audit_logs OWNER TO postgres;
 
 --
--- TOC entry 224 (class 1259 OID 44774)
+-- Name: organization_contact_list; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.organization_contact_list (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    name character varying(200) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.organization_contact_list OWNER TO postgres;
+
+--
+-- Name: organization_contact_tag; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.organization_contact_tag (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid NOT NULL,
+    name character varying(200) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.organization_contact_tag OWNER TO postgres;
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -304,7 +370,6 @@ CREATE TABLE public.users (
 ALTER TABLE public.users OWNER TO postgres;
 
 --
--- TOC entry 4740 (class 2604 OID 45265)
 -- Name: __drizzle_migrations id; Type: DEFAULT; Schema: drizzle; Owner: postgres
 --
 
@@ -312,8 +377,6 @@ ALTER TABLE ONLY drizzle.__drizzle_migrations ALTER COLUMN id SET DEFAULT nextva
 
 
 --
--- TOC entry 4989 (class 0 OID 44742)
--- Dependencies: 218
 -- Data for Name: __drizzle_migrations; Type: TABLE DATA; Schema: drizzle; Owner: postgres
 --
 
@@ -323,32 +386,46 @@ COPY drizzle.__drizzle_migrations (id, hash, created_at) FROM stdin;
 3	8572168a0e5090b1551e12a6c73f238451403e758ea3f9b33fdc4cf519a3541b	1774718789394
 4	fd6e56a346f0a90bcbf3e53404c15762c3795252970586f3609f640dbd30e344	1774720000000
 5	42f6bc2cdbeedb3b0eacb9d86a59169d08a09575b51d92a7d2f1903080e3e8a0	1774721000000
+6	53d39e9cd5c2e901336136c5701afc1e1d25a3d2deeb4d4bf618745cafd29222	1776000000000
+7	a4a2110ca6bf5225ac7b8ffc414fc3cc6e914c20ec9de4c36646b8ad7269b878	1776100000000
+8	e94a0bc9c4ca61f850fcfd962f8eb628bd56c944ff220d7f42e239b0a8f2eb66	1776200000000
+9	bf0c601f880098d8158bbf8b53c6f5c208aeb9f5388d4e23f2c7f47e7ae53564	1776300000000
+10	edd0406dc6c31d6e87a27dd35f10fd2c61fe4b0353b2159379a79ea5992c6bf2	1776400000000
+11	8f341fc2dc10326d65e05772b139a01c2111cc6352ffa9d3f2ce70cbc7672aa8	1776500000000
+12	0cd25b55c63a4ec1f82380103f4e4f49acbdd27738c60bd9fbe305ba7f5143d3	1776600000000
+13	645c2d08a5cc5e50492edb30b3b43f3fdc56e926ac9901a71ce65b2259b4da1d	1776700000000
+14	2b4abd9fea418c51cffa93d88dd399d2d46c25e5ac22b90ad6bdcc98853426f5	1776800000000
+15	4b5a83c79f661e29d2c8b0b53de841ba6a7edb7e1c658443c898de951568de3d	1890000000000
+16	5004f2a861c20fdcf7e5c4404ea027576b77bc377711543202db78a3860beb94	1890100000000
+17	f22ad9543848c3a4208288052be50f608ef4fd8c753fb035e6b95aa3c0d9f43a	1890200000000
+18	3ffe9fcee6154d4f0ba9ec339cebf8edd89998fc7fbc3af363396aef25733d50	1890300000000
+19	e48563c18a1c2468df3a5a839bce6f49f6d25e7db6a4689e1d00f1ed1704b925	1890400000000
+20	c1771dddf1cf1880762b5cb2fdb704c007d0623764b99cded2bb7cc5cef3606f	1890500000000
+21	a77da002b1442521da4daa806ebf3a97d3aef7839724375ba4293444c4853b62	1890600000000
+22	76656b7b82dde3faae9703d99a1f69f0e2efbc700e367bb887f5f2e5241022f4	1890700000000
+23	c2180f3f1750866aa7ba52cd3378d2b59296cfe4659526c781ea9c277d145c00	1890800000000
+24	74df743a4a27cdfeac3bd2315fa106fa45a2d0a791c18d6efc799411c99175cc	1890900000000
+25	63c30599021314b4687d8a9dedb262b1b004ce944a0f875aeed0aa46f01be357	1891000000000
 \.
 
 
 --
--- TOC entry 4996 (class 0 OID 44834)
--- Dependencies: 225
 -- Data for Name: add_deal_form; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.add_deal_form (id, deal_name, deal_type, deal_stage, sec_type, close_date, owning_entity_name, funds_required_before_gp_sign, auto_send_funding_instructions, property_name, country, address_line_1, address_line_2, city, state, zip_code, images, created_at, updated_at, asset_image_path, organization_id) FROM stdin;
+COPY public.add_deal_form (id, deal_name, deal_type, deal_stage, sec_type, close_date, owning_entity_name, funds_required_before_gp_sign, auto_send_funding_instructions, property_name, country, address_line_1, address_line_2, city, state, zip_code, images, created_at, updated_at, asset_image_path, organization_id, investor_summary_html, gallery_cover_image_url, key_highlights_json, deal_announcement_title, deal_announcement_message, offering_status, offering_visibility, show_on_investbase, internal_name, offering_overview_asset_ids, offering_gallery_paths, offering_preview_token, offering_investor_preview_json) FROM stdin;
 \.
 
 
 --
--- TOC entry 5000 (class 0 OID 45207)
--- Dependencies: 229
 -- Data for Name: assigning_deal_user; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.assigning_deal_user (id, deal_id, user_id, user_added_deal_id, created_at) FROM stdin;
+COPY public.assigning_deal_user (deal_id, user_id, user_added_deal) FROM stdin;
 \.
 
 
 --
--- TOC entry 4991 (class 0 OID 44748)
--- Dependencies: 220
 -- Data for Name: companies; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -367,8 +444,6 @@ af6822c5-3a6d-4ce4-8b1a-7b9baf481698	Beetle	2026-03-31 00:22:33.099847+05:30	202
 
 
 --
--- TOC entry 4992 (class 0 OID 44755)
--- Dependencies: 221
 -- Data for Name: company_admin_audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -377,8 +452,6 @@ COPY public.company_admin_audit_logs (id, actor_user_id, target_company_id, acti
 
 
 --
--- TOC entry 5001 (class 0 OID 45258)
--- Dependencies: 230
 -- Data for Name: company_workspace_tab_settings; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -387,18 +460,14 @@ COPY public.company_workspace_tab_settings (company_id, tab_key, payload, update
 
 
 --
--- TOC entry 4998 (class 0 OID 44870)
--- Dependencies: 227
 -- Data for Name: contact; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.contact (id, first_name, last_name, email, phone, note, tags, lists, owners, created_by, created_at, status, last_edit_reason) FROM stdin;
+COPY public.contact (id, first_name, last_name, email, phone, note, tags, lists, owners, created_by, created_at, status, last_edit_reason, is_portal_user, organization_id) FROM stdin;
 \.
 
 
 --
--- TOC entry 4997 (class 0 OID 44848)
--- Dependencies: 226
 -- Data for Name: deal_investment; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -407,18 +476,30 @@ COPY public.deal_investment (id, deal_id, offering_id, contact_id, profile_id, s
 
 
 --
--- TOC entry 4999 (class 0 OID 44889)
--- Dependencies: 228
 -- Data for Name: deal_investor_class; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.deal_investor_class (id, deal_id, name, subscription_type, entity_name, start_date, offering_size, minimum_investment, price_per_unit, status, visibility, created_at, updated_at) FROM stdin;
+COPY public.deal_investor_class (id, deal_id, name, subscription_type, entity_name, start_date, offering_size, minimum_investment, price_per_unit, status, visibility, created_at, updated_at, raise_amount_distributions, billing_raise_quota, advanced_options_json) FROM stdin;
 \.
 
 
 --
--- TOC entry 4993 (class 0 OID 44762)
--- Dependencies: 222
+-- Data for Name: deal_lp_investor; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.deal_lp_investor (id, deal_id, added_by, contact_member_id, investor_class, send_invitation_mail, created_at, updated_at, profile_id, email, role, committed_amount) FROM stdin;
+\.
+
+
+--
+-- Data for Name: deal_member; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.deal_member (id, deal_id, added_by, contact_member_id, deal_member_role, send_invitation_mail, created_at, updated_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: deals; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -427,8 +508,6 @@ COPY public.deals (id, company_id, created_at) FROM stdin;
 
 
 --
--- TOC entry 4994 (class 0 OID 44767)
--- Dependencies: 223
 -- Data for Name: member_admin_audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -437,8 +516,22 @@ COPY public.member_admin_audit_logs (id, actor_user_id, target_user_id, action, 
 
 
 --
--- TOC entry 4995 (class 0 OID 44774)
--- Dependencies: 224
+-- Data for Name: organization_contact_list; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.organization_contact_list (id, organization_id, name, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: organization_contact_tag; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.organization_contact_tag (id, organization_id, name, created_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -466,16 +559,13 @@ f006a063-9c3e-4de9-a5c3-b6afa50782a5	sanjay@massive.capital	Sanjay	$2b$10$XjsErn
 
 
 --
--- TOC entry 5008 (class 0 OID 0)
--- Dependencies: 219
 -- Name: __drizzle_migrations_id_seq; Type: SEQUENCE SET; Schema: drizzle; Owner: postgres
 --
 
-SELECT pg_catalog.setval('drizzle.__drizzle_migrations_id_seq', 5, true);
+SELECT pg_catalog.setval('drizzle.__drizzle_migrations_id_seq', 25, true);
 
 
 --
--- TOC entry 4804 (class 2606 OID 44791)
 -- Name: __drizzle_migrations __drizzle_migrations_pkey; Type: CONSTRAINT; Schema: drizzle; Owner: postgres
 --
 
@@ -484,7 +574,6 @@ ALTER TABLE ONLY drizzle.__drizzle_migrations
 
 
 --
--- TOC entry 4820 (class 2606 OID 44847)
 -- Name: add_deal_form add_deal_form_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -493,16 +582,14 @@ ALTER TABLE ONLY public.add_deal_form
 
 
 --
--- TOC entry 4828 (class 2606 OID 45213)
 -- Name: assigning_deal_user assigning_deal_user_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.assigning_deal_user
-    ADD CONSTRAINT assigning_deal_user_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT assigning_deal_user_pkey PRIMARY KEY (deal_id, user_id);
 
 
 --
--- TOC entry 4806 (class 2606 OID 44793)
 -- Name: companies companies_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -511,7 +598,6 @@ ALTER TABLE ONLY public.companies
 
 
 --
--- TOC entry 4808 (class 2606 OID 44795)
 -- Name: company_admin_audit_logs company_admin_audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -520,7 +606,6 @@ ALTER TABLE ONLY public.company_admin_audit_logs
 
 
 --
--- TOC entry 4830 (class 2606 OID 45267)
 -- Name: company_workspace_tab_settings company_workspace_tab_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -529,7 +614,6 @@ ALTER TABLE ONLY public.company_workspace_tab_settings
 
 
 --
--- TOC entry 4824 (class 2606 OID 44883)
 -- Name: contact contact_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -538,7 +622,6 @@ ALTER TABLE ONLY public.contact
 
 
 --
--- TOC entry 4822 (class 2606 OID 44863)
 -- Name: deal_investment deal_investment_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -547,7 +630,6 @@ ALTER TABLE ONLY public.deal_investment
 
 
 --
--- TOC entry 4826 (class 2606 OID 44907)
 -- Name: deal_investor_class deal_investor_class_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -556,7 +638,22 @@ ALTER TABLE ONLY public.deal_investor_class
 
 
 --
--- TOC entry 4810 (class 2606 OID 44797)
+-- Name: deal_lp_investor deal_lp_investor_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_lp_investor
+    ADD CONSTRAINT deal_lp_investor_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: deal_member deal_member_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_member
+    ADD CONSTRAINT deal_member_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: deals deals_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -565,7 +662,6 @@ ALTER TABLE ONLY public.deals
 
 
 --
--- TOC entry 4812 (class 2606 OID 44799)
 -- Name: member_admin_audit_logs member_admin_audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -574,7 +670,38 @@ ALTER TABLE ONLY public.member_admin_audit_logs
 
 
 --
--- TOC entry 4814 (class 2606 OID 44801)
+-- Name: organization_contact_list organization_contact_list_org_name_uidx; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.organization_contact_list
+    ADD CONSTRAINT organization_contact_list_org_name_uidx UNIQUE (organization_id, name);
+
+
+--
+-- Name: organization_contact_list organization_contact_list_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.organization_contact_list
+    ADD CONSTRAINT organization_contact_list_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: organization_contact_tag organization_contact_tag_org_name_uidx; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.organization_contact_tag
+    ADD CONSTRAINT organization_contact_tag_org_name_uidx UNIQUE (organization_id, name);
+
+
+--
+-- Name: organization_contact_tag organization_contact_tag_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.organization_contact_tag
+    ADD CONSTRAINT organization_contact_tag_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -583,7 +710,6 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4816 (class 2606 OID 44803)
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -592,7 +718,6 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4818 (class 2606 OID 44805)
 -- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -601,7 +726,34 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 4836 (class 2606 OID 44914)
+-- Name: contact_organization_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX contact_organization_id_idx ON public.contact USING btree (organization_id);
+
+
+--
+-- Name: deal_lp_investor_deal_id_contact_member_id_uidx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX deal_lp_investor_deal_id_contact_member_id_uidx ON public.deal_lp_investor USING btree (deal_id, contact_member_id);
+
+
+--
+-- Name: deal_lp_investor_email_lower_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX deal_lp_investor_email_lower_idx ON public.deal_lp_investor USING btree (lower(TRIM(BOTH FROM email))) WHERE (NULLIF(TRIM(BOTH FROM email), ''::text) IS NOT NULL);
+
+
+--
+-- Name: deal_member_deal_id_contact_member_id_uidx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX deal_member_deal_id_contact_member_id_uidx ON public.deal_member USING btree (deal_id, contact_member_id);
+
+
+--
 -- Name: add_deal_form add_deal_form_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -610,7 +762,6 @@ ALTER TABLE ONLY public.add_deal_form
 
 
 --
--- TOC entry 4840 (class 2606 OID 45214)
 -- Name: assigning_deal_user assigning_deal_user_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -619,16 +770,14 @@ ALTER TABLE ONLY public.assigning_deal_user
 
 
 --
--- TOC entry 4841 (class 2606 OID 45224)
--- Name: assigning_deal_user assigning_deal_user_user_added_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: assigning_deal_user assigning_deal_user_user_added_deal_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.assigning_deal_user
-    ADD CONSTRAINT assigning_deal_user_user_added_deal_id_fkey FOREIGN KEY (user_added_deal_id) REFERENCES public.users(id);
+    ADD CONSTRAINT assigning_deal_user_user_added_deal_fkey FOREIGN KEY (user_added_deal) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
--- TOC entry 4842 (class 2606 OID 45219)
 -- Name: assigning_deal_user assigning_deal_user_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -637,7 +786,6 @@ ALTER TABLE ONLY public.assigning_deal_user
 
 
 --
--- TOC entry 4831 (class 2606 OID 44806)
 -- Name: company_admin_audit_logs company_admin_audit_logs_actor_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -646,7 +794,6 @@ ALTER TABLE ONLY public.company_admin_audit_logs
 
 
 --
--- TOC entry 4832 (class 2606 OID 44811)
 -- Name: company_admin_audit_logs company_admin_audit_logs_target_company_id_companies_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -655,7 +802,6 @@ ALTER TABLE ONLY public.company_admin_audit_logs
 
 
 --
--- TOC entry 4843 (class 2606 OID 45268)
 -- Name: company_workspace_tab_settings company_workspace_tab_settings_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -664,7 +810,6 @@ ALTER TABLE ONLY public.company_workspace_tab_settings
 
 
 --
--- TOC entry 4838 (class 2606 OID 44884)
 -- Name: contact contact_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -673,7 +818,14 @@ ALTER TABLE ONLY public.contact
 
 
 --
--- TOC entry 4837 (class 2606 OID 44864)
+-- Name: contact contact_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.contact
+    ADD CONSTRAINT contact_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.companies(id) ON DELETE SET NULL;
+
+
+--
 -- Name: deal_investment deal_investment_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -682,7 +834,6 @@ ALTER TABLE ONLY public.deal_investment
 
 
 --
--- TOC entry 4839 (class 2606 OID 44908)
 -- Name: deal_investor_class deal_investor_class_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -691,7 +842,38 @@ ALTER TABLE ONLY public.deal_investor_class
 
 
 --
--- TOC entry 4833 (class 2606 OID 44816)
+-- Name: deal_lp_investor deal_lp_investor_added_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_lp_investor
+    ADD CONSTRAINT deal_lp_investor_added_by_fkey FOREIGN KEY (added_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: deal_lp_investor deal_lp_investor_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_lp_investor
+    ADD CONSTRAINT deal_lp_investor_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES public.add_deal_form(id) ON DELETE CASCADE;
+
+
+--
+-- Name: deal_member deal_member_added_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_member
+    ADD CONSTRAINT deal_member_added_by_fkey FOREIGN KEY (added_by) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: deal_member deal_member_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_member
+    ADD CONSTRAINT deal_member_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES public.add_deal_form(id) ON DELETE CASCADE;
+
+
+--
 -- Name: deals deals_company_id_companies_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -700,7 +882,6 @@ ALTER TABLE ONLY public.deals
 
 
 --
--- TOC entry 4834 (class 2606 OID 44821)
 -- Name: member_admin_audit_logs member_admin_audit_logs_actor_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -709,7 +890,6 @@ ALTER TABLE ONLY public.member_admin_audit_logs
 
 
 --
--- TOC entry 4835 (class 2606 OID 44826)
 -- Name: member_admin_audit_logs member_admin_audit_logs_target_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -717,11 +897,33 @@ ALTER TABLE ONLY public.member_admin_audit_logs
     ADD CONSTRAINT member_admin_audit_logs_target_user_id_users_id_fk FOREIGN KEY (target_user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
--- Completed on 2026-04-04 19:04:14
+--
+-- Name: organization_contact_list organization_contact_list_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.organization_contact_list
+    ADD CONSTRAINT organization_contact_list_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: organization_contact_tag organization_contact_tag_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.organization_contact_tag
+    ADD CONSTRAINT organization_contact_tag_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: users users_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.companies(id) ON DELETE SET NULL;
+
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict tpU6DoJvlmeQFwgiL7V1GzfZPEj4cIPq5AyWSrhatWqjKaXTuREK2ce3k4E8Dyi
+\unrestrict 06zmVyW6WW1qLtNhd9J7TBt8L7FxK6nJBtIcu0d8QXYVHGhKTivDOCl7Owz5eov
 

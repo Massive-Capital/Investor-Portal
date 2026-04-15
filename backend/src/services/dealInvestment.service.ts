@@ -20,12 +20,16 @@ const UPLOAD_SUBDIR = "deal-investments";
 /** Canonical `investor_role` for LP investors (Investors tab add + list filter). */
 export const LP_INVESTOR_ROLE_STORED = "lp_investors";
 
-const LP_INVESTOR_ROLE_MATCH = [LP_INVESTOR_ROLE_STORED, "LP Investors"] as const;
+const LP_INVESTOR_ROLE_MATCH = [
+  LP_INVESTOR_ROLE_STORED,
+  "LP Investors",
+  "LP Investor",
+] as const;
 
 /** True when `investor_role` is the LP Investors tab role (not sponsor / deal team roles). */
 export function isLpInvestorRole(raw: string | null | undefined): boolean {
   const s = String(raw ?? "").trim().toLowerCase();
-  return s === "lp_investors" || s === "lp investors";
+  return s === "lp_investors" || s === "lp investors" || s === "lp investor";
 }
 
 const MEMBER_NAME: Record<string, string> = {

@@ -9,6 +9,7 @@ import {
   type DealInvestmentRow,
 } from "../schema/deal.schema/deal-investment.schema.js";
 import {
+  isLpInvestorRole,
   listDealInvestmentsByDealId,
   mapRowToInvestorApi,
   resolveUserDisplayNamesByIds,
@@ -98,16 +99,24 @@ export async function listDealMembersMappedToInvestorApi(
     .orderBy(desc(dealMember.updatedAt));
 
   const investments = await listDealInvestmentsByDealId(dealId);
-  const latestInv = new Map<string, DealInvestmentRow>();
+  const byContact = new Map<string, DealInvestmentRow[]>();
   for (const inv of investments) {
     const k = normalizeContactKey(inv.contactId ?? "");
     if (!k) continue;
-    const prev = latestInv.get(k);
-    if (
-      !prev ||
-      new Date(inv.createdAt).getTime() > new Date(prev.createdAt).getTime()
-    )
-      latestInv.set(k, inv);
+    const arr = byContact.get(k) ?? [];
+    arr.push(inv);
+    byContact.set(k, arr);
+  }
+  /** Prefer newest LP-role investment for commitment/profile display; else newest any. */
+  const latestInv = new Map<string, DealInvestmentRow>();
+  for (const [k, arr] of byContact) {
+    const sorted = [...arr].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    const lpFirst = sorted.filter((r) => isLpInvestorRole(r.investor_role));
+    const picked = lpFirst.length > 0 ? lpFirst[0]! : sorted[0];
+    if (picked) latestInv.set(k, picked);
   }
 
   const rowsForMap: DealInvestmentRow[] = [];

@@ -61,6 +61,11 @@ export const addDealForm = pgTable("add_deal_form", {
     .notNull(),
   /** Encrypted token for `/offering_portfolio?preview=` (set on create; backfilled for legacy rows). */
   offeringPreviewToken: text("offering_preview_token"),
+  /**
+   * JSON: `{ "v": 1, "visibility": { … }, "sections": [ … ] }` for offering preview
+   * (documents layout + “Make it visible to Investors” toggles). Shared with public preview link.
+   */
+  offeringInvestorPreviewJson: text("offering_investor_preview_json"),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

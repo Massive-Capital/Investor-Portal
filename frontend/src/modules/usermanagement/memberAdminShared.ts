@@ -205,6 +205,31 @@ export function memberRowIsCurrentUser(
   return String(rid ?? "").trim().toLowerCase() === sessionUserId;
 }
 
+/**
+ * Short label for deal roster / LP shell badges from session `userDetails[0]`.
+ * Uses LP investor display from the auth payload when present; otherwise any
+ * stored deal-member role string.
+ */
+export function dealMemberRoleDisplayForShell(
+  u: Record<string, unknown>,
+): string {
+  const lpDisp = String(
+    u.lp_investor_role_display ?? u.lpInvestorRoleDisplay ?? "",
+  ).trim();
+  if (lpDisp) return lpDisp;
+
+  const raw =
+    u.deal_member_role_display ??
+    u.dealMemberRoleDisplay ??
+    u.deal_member_role ??
+    u.dealMemberRole ??
+    u.your_role ??
+    u.yourRole;
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  return memberRoleDisplayName(s);
+}
+
 export function syncSessionUserDetailsById(
   userId: string,
   patch: Record<string, unknown>,

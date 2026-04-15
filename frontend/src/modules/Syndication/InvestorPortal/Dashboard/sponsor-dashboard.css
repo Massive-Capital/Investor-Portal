@@ -17,6 +17,10 @@ a.sponsor_dash_add_link.um_btn_primary {
   text-decoration: none;
 }
 
+a.sponsor_dash_add_link.um_btn_secondary {
+  text-decoration: none;
+}
+
 .sponsor_dash_metrics {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -214,6 +218,13 @@ a.sponsor_dash_add_link.um_btn_primary {
   color: var(--portal-text-muted);
   font-size: 0.9375em;
   line-height: 1.55;
+}
+
+.investing_dash_links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  align-items: center;
 }
 
 .investing_dash_link {

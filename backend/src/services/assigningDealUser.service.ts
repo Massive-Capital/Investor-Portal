@@ -226,3 +226,124 @@ export async function countAssignedDealsByUserIdsForViewer(params: {
   }
   return map;
 }
+
+/**
+ * Distinct deals for this portal user: assigned/participant links **or** syndication
+ * activity (`deal_member` / `deal_lp_investor` / `assigning_deal_user` `added_by` /
+ * `user_added_deal`), **or** the same roster/investment joins as
+ * `reconcileAssigningDealUsersForDeal` (by user id or contact→email).
+ */
+export async function listDealIdsAssignedToUser(
+  userId: string,
+): Promise<string[]> {
+  const uid = normalizeUserUuidKey(userId);
+  if (!uid) return [];
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT deal_id::text AS deal_id
+     FROM (
+       SELECT adu.deal_id
+       FROM assigning_deal_user adu
+       WHERE adu.user_id = $1::uuid
+       UNION ALL
+       SELECT di.deal_id
+       FROM deal_investment di
+       INNER JOIN users u ON u.id::text = trim(both from di.contact_id)
+       WHERE u.id = $1::uuid
+       UNION ALL
+       SELECT di.deal_id
+       FROM deal_investment di
+       INNER JOIN contact c ON c.id::text = trim(both from di.contact_id)
+       INNER JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE u.id = $1::uuid
+       UNION ALL
+       SELECT dm.deal_id
+       FROM deal_member dm
+       INNER JOIN users u ON u.id::text = trim(both from dm.contact_member_id)
+       WHERE u.id = $1::uuid
+       UNION ALL
+       SELECT dm.deal_id
+       FROM deal_member dm
+       INNER JOIN contact c ON c.id::text = trim(both from dm.contact_member_id)
+       INNER JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE u.id = $1::uuid
+       UNION ALL
+       SELECT lp.deal_id
+       FROM deal_lp_investor lp
+       INNER JOIN users u ON u.id::text = trim(both from lp.contact_member_id)
+       WHERE u.id = $1::uuid
+       UNION ALL
+       SELECT lp.deal_id
+       FROM deal_lp_investor lp
+       INNER JOIN contact c ON c.id::text = trim(both from lp.contact_member_id)
+       INNER JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE u.id = $1::uuid
+       UNION ALL
+       SELECT dm.deal_id
+       FROM deal_member dm
+       WHERE dm.added_by = $1::uuid
+       UNION ALL
+       SELECT lp.deal_id
+       FROM deal_lp_investor lp
+       WHERE lp.added_by = $1::uuid
+       UNION ALL
+       SELECT adu.deal_id
+       FROM assigning_deal_user adu
+       WHERE adu.user_added_deal = $1::uuid
+     ) x`,
+    [uid],
+  );
+  return res.rows.map((r) => String(r.deal_id ?? "")).filter(Boolean);
+}
+
+export async function isUserAssignedToDeal(
+  userId: string,
+  dealId: string,
+): Promise<boolean> {
+  const uid = normalizeUserUuidKey(userId);
+  const did = String(dealId ?? "").trim().toLowerCase();
+  if (!uid || !UUID_RE.test(did)) return false;
+  const res = await pool.query<{ has_participation: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM assigning_deal_user adu
+       WHERE adu.user_id = $1::uuid AND adu.deal_id = $2::uuid
+       UNION ALL
+       SELECT 1 FROM deal_investment di
+       INNER JOIN users u ON u.id::text = trim(both from di.contact_id)
+       WHERE di.deal_id = $2::uuid AND u.id = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_investment di
+       INNER JOIN contact c ON c.id::text = trim(both from di.contact_id)
+       INNER JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE di.deal_id = $2::uuid AND u.id = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_member dm
+       INNER JOIN users u ON u.id::text = trim(both from dm.contact_member_id)
+       WHERE dm.deal_id = $2::uuid AND u.id = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_member dm
+       INNER JOIN contact c ON c.id::text = trim(both from dm.contact_member_id)
+       INNER JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE dm.deal_id = $2::uuid AND u.id = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_lp_investor lp
+       INNER JOIN users u ON u.id::text = trim(both from lp.contact_member_id)
+       WHERE lp.deal_id = $2::uuid AND u.id = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_lp_investor lp
+       INNER JOIN contact c ON c.id::text = trim(both from lp.contact_member_id)
+       INNER JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE lp.deal_id = $2::uuid AND u.id = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_member dm
+       WHERE dm.deal_id = $2::uuid AND dm.added_by = $1::uuid
+       UNION ALL
+       SELECT 1 FROM deal_lp_investor lp
+       WHERE lp.deal_id = $2::uuid AND lp.added_by = $1::uuid
+       UNION ALL
+       SELECT 1 FROM assigning_deal_user adu
+       WHERE adu.deal_id = $2::uuid AND adu.user_added_deal = $1::uuid
+     ) AS has_participation`,
+    [uid, did],
+  );
+  return Boolean(res.rows[0]?.has_participation);
+}

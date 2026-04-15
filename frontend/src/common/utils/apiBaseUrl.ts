@@ -4,14 +4,37 @@
  */
 export function getApiV1Base(): string {
   const raw = (import.meta.env.VITE_BASE_URL ?? "").toString().trim();
-  /** Dev: empty URL → same-origin `/api/v1` (Vite proxy → backend). Avoids calling the SPA server by mistake. */
+  /**
+   * Empty `VITE_BASE_URL` → same-origin `/api/v1` (Vite dev proxy or production reverse proxy
+   * forwarding `/api` to the API). Returning `""` here broke production builds: `fetchContacts`
+   * never called the API and the UI stayed empty.
+   */
   if (!raw) {
-    if (import.meta.env.DEV) return "/api/v1";
-    return "";
+    return "/api/v1";
   }
   const base = raw.replace(/\/$/, "");
   if (base.endsWith("/api/v1")) return base;
   return `${base}/api/v1`;
+}
+
+/** Strip leading slashes and optional `uploads/` so DB segments join cleanly as `/uploads/<path>`. */
+function uploadsRelativeSegment(seg: string): string {
+  let rel = seg.trim().replace(/^\/+/, "");
+  const lower = rel.toLowerCase();
+  if (lower.startsWith("uploads/")) {
+    rel = rel.slice("uploads/".length);
+  }
+  return rel.replace(/^\/+/, "");
+}
+
+/**
+ * Turn an API upload-relative path (e.g. `deal-assets/<dealId>/<file>.pdf`) into a
+ * root-relative URL for storing in offering preview JSON so it works for every viewer.
+ */
+export function dealAssetRelativePathToUploadsUrl(relativePath: string): string {
+  const rel = uploadsRelativeSegment(relativePath);
+  if (!rel) return "";
+  return `/uploads/${rel}`;
 }
 
 /** Origin for static assets (e.g. `/uploads/...`) when API base is `.../api/v1`. */
@@ -31,8 +54,26 @@ export function getBackendOrigin(): string {
  * Base URL (no trailing slash) used to build browser `src` for `/uploads/...` files.
  * Falls back to `window.location.origin` when `VITE_BASE_URL` is unset so preview/gallery
  * still load on same-origin deployments (reverse proxy serves `/uploads`).
+ *
+ * In **Vite dev**, when `VITE_BASE_URL` points at `localhost` / `127.0.0.1`, prefer the
+ * **SPA origin** so `/uploads/*` is fetched through the dev proxy (`vite.config` → API).
+ * Otherwise `<img src="http://localhost:5004/uploads/...">` bypasses the proxy and breaks
+ * if the API process does not serve static files from the same disk root as uploads.
  */
 export function getUploadsPublicOrigin(): string {
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    const v1 = getApiV1Base();
+    if (v1.startsWith("http://") || v1.startsWith("https://")) {
+      try {
+        const host = new URL(v1).hostname;
+        if (host === "localhost" || host === "127.0.0.1") {
+          return window.location.origin.replace(/\/$/, "");
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+  }
   const fromApi = getBackendOrigin();
   if (fromApi) return fromApi.replace(/\/$/, "");
   if (typeof window !== "undefined") return window.location.origin.replace(/\/$/, "");
@@ -63,7 +104,15 @@ export function assetImagePathToUrl(assetImagePath: string | null | undefined): 
   if (assetImagePath == null || !String(assetImagePath).trim()) return ""
   const first = String(assetImagePath).split(";")[0]?.trim()
   if (!first) return ""
-  const rel = first.replace(/^\/+/, "")
+  if (
+    first.startsWith("data:image/") ||
+    /^https?:\/\//i.test(first) ||
+    first.startsWith("/uploads/")
+  ) {
+    return normalizeDealGallerySrc(first)
+  }
+  const rel = uploadsRelativeSegment(first)
+  if (!rel) return ""
   const root = getUploadsPublicOrigin()
   if (!root) return `/uploads/${rel}`
   return `${root}/uploads/${rel}`
@@ -80,8 +129,17 @@ export function assetImagePathsToUrls(
     .map((s) => s.trim())
     .filter(Boolean)
     .map((seg) => {
-      const rel = seg.replace(/^\/+/, "")
+      if (
+        seg.startsWith("data:image/") ||
+        /^https?:\/\//i.test(seg) ||
+        seg.startsWith("/uploads/")
+      ) {
+        return normalizeDealGallerySrc(seg)
+      }
+      const rel = uploadsRelativeSegment(seg)
+      if (!rel) return ""
       if (root) return `${root}/uploads/${rel}`
       return `/uploads/${rel}`
     })
+    .filter(Boolean)
 }

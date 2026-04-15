@@ -1,0 +1,30 @@
+/* Stacked headers + active-sort accent on top of syndicating `deals-list.css` chrome */
+
+.investments_page.deals_list_page .inv_header_stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  text-align: left;
+  line-height: 1.25;
+}
+
+.investments_page.deals_list_page .inv_header_sub {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.investments_page.deals_list_page
+  .deals_list_table_panel
+  .um_table_sortable
+  th[aria-sort="ascending"]
+  .um_sort_header_icon,
+.investments_page.deals_list_page
+  .deals_list_table_panel
+  .um_table_sortable
+  th[aria-sort="descending"]
+  .um_sort_header_icon {
+  color: var(--portal-primary, #2563eb);
+  opacity: 1;
+}

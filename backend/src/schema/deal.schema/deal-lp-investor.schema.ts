@@ -3,8 +3,8 @@ import { users } from "../auth.schema/signin.js";
 import { addDealForm } from "./add-deal-form.schema.js";
 
 /**
- * LP investor roster (Investors tab) without a `deal_investment` row.
- * Mirrors `deal_member`: lean roster + class; unique (deal_id, contact_member_id).
+ * LP investor (Investors tab) without a `deal_investment` row.
+ * Mirrors `deal_member`: lean row + class; unique (deal_id, contact_member_id).
  */
 export const dealLpInvestor = pgTable(
   "deal_lp_investor",
@@ -15,6 +15,12 @@ export const dealLpInvestor = pgTable(
       .references(() => addDealForm.id, { onDelete: "cascade" }),
     addedBy: uuid("added_by").references(() => users.id, { onDelete: "set null" }),
     contactMemberId: text("contact_member_id").notNull().default(""),
+    /** Denormalized from contact/user for lists + queries; also resolvable via `contact_member_id`. */
+    email: text("email"),
+    /** e.g. `LP Investor` — stored on this row for display and filters. */
+    role: text("role").notNull().default(""),
+    /** Same keys as `deal_investment.profile_id` (e.g. individual, llc_corp_trust_etc). */
+    profileId: text("profile_id").notNull().default(""),
     investorClass: text("investor_class").notNull().default(""),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),
     createdAt: timestamp("created_at", { withTimezone: true })

@@ -21,14 +21,11 @@ export interface SyndicationDashboardSummary {
   contactsCount: number
 }
 
-/**
- * Loads aggregate metrics for the syndicating dashboard cards.
- * - Total target amount = sum of offering sizes (investor classes per deal), else deal raise target.
- * - Total distributions (and committed) = sum of accepted investment amounts across all deals.
- */
-export async function loadSyndicationDashboardSummary(): Promise<SyndicationDashboardSummary> {
+async function loadDashboardSummaryForDealList(
+  listOptions: { includeParticipantDeals?: boolean } | undefined,
+): Promise<SyndicationDashboardSummary> {
   const [list, contacts] = await Promise.all([
-    fetchDealsList(),
+    fetchDealsList(listOptions),
     fetchContacts(),
   ])
 
@@ -75,4 +72,21 @@ export async function loadSyndicationDashboardSummary(): Promise<SyndicationDash
     totalCommittedDisplay: money,
     contactsCount,
   }
+}
+
+/**
+ * Loads aggregate metrics for the syndicating dashboard cards.
+ * - Total target amount = sum of offering sizes (investor classes per deal), else deal raise target.
+ * - Total distributions (and committed) = sum of accepted investment amounts across all deals.
+ */
+export async function loadSyndicationDashboardSummary(): Promise<SyndicationDashboardSummary> {
+  return loadDashboardSummaryForDealList(undefined)
+}
+
+/**
+ * Investing home: same KPI math as syndicating, over `GET /deals?includeParticipantDeals=1`
+ * (company deals plus deals where the viewer is on the roster).
+ */
+export async function loadInvestingDashboardSummary(): Promise<SyndicationDashboardSummary> {
+  return loadDashboardSummaryForDealList({ includeParticipantDeals: true })
 }

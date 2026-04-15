@@ -1,14 +1,31 @@
-import { and, desc, eq, inArray, ne, or, sql, type SQL } from "drizzle-orm";
-import { isPlatformAdminRole } from "../constants/roles.js";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import {
+  isCompanyAdminRole,
+  isPlatformAdminRole,
+} from "../constants/roles.js";
 import { db } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
 import { resolveDealViewerScope } from "./dealAccess.service.js";
+import { viewerIsLeadOrAdminSponsorOnAnyDeal } from "./dealMemberScope.service.js";
+import { listAddDealFormsForViewer } from "./dealForm.service.js";
+import { resolveOrganizationIdForUserId } from "./orgResolution.service.js";
 import { companies } from "../schema/schema.js";
 import {
   contact,
   type ContactInsert,
   type ContactRow,
 } from "../schema/contact.schema.js";
+import { syncOrganizationContactLabels } from "./organizationContactLabels.service.js";
 
 /** First + last name, else email, else username — for CRM "owner" display */
 export async function getUserDisplayNameById(
@@ -94,6 +111,136 @@ function normalizeContactPhoneDigits(p: string): string {
 }
 
 /**
+ * Latest CRM `contact` row for this email (signup form prefill). If multiple orgs
+ * share the same email, the most recently created row wins.
+ */
+export async function findContactByEmailForSignupPrefill(
+  email: string,
+): Promise<{ firstName: string; lastName: string; phone: string } | null> {
+  const norm = normalizeContactEmailForScope(email);
+  if (!norm || !norm.includes("@")) return null;
+  const rows = await db
+    .select({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      phone: contact.phone,
+    })
+    .from(contact)
+    .where(sql`lower(trim(${contact.email})) = ${norm}`)
+    .orderBy(desc(contact.createdAt))
+    .limit(1);
+  const r = rows[0];
+  if (!r) return null;
+  const fn = String(r.firstName ?? "").trim();
+  const ln = String(r.lastName ?? "").trim();
+  if (!fn && !ln) return null;
+  return {
+    firstName: fn,
+    lastName: ln,
+    phone: normalizeContactPhoneDigits(r.phone ?? ""),
+  };
+}
+
+/**
+ * Prefer `users.role` from DB over JWT so listing and access stay correct after role changes.
+ * Org id matches {@link resolveOrganizationIdForUserId} (same as insert) so list and create stay aligned.
+ */
+async function getViewerContactScopeContext(
+  viewerUserId: string,
+  jwtRoleFallback: string | null | undefined,
+): Promise<{
+  roleForScope: string;
+  viewerEmailNorm: string;
+  organizationId: string | null;
+}> {
+  const [row] = await db
+    .select({
+      email: users.email,
+      role: users.role,
+      organizationId: users.organizationId,
+      companyName: users.companyName,
+    })
+    .from(users)
+    .where(eq(users.id, viewerUserId))
+    .limit(1);
+  const dbRole = String(row?.role ?? "").trim();
+  const roleForScope = dbRole || String(jwtRoleFallback ?? "").trim();
+  const organizationId = await resolveOrganizationIdForUserId(
+    viewerUserId,
+    row
+      ? {
+          organizationId: row.organizationId,
+          companyName: row.companyName,
+          role: row.role,
+        }
+      : null,
+  );
+
+  return {
+    roleForScope,
+    viewerEmailNorm: normalizeContactEmailForScope(row?.email ?? ""),
+    organizationId,
+  };
+}
+
+/**
+ * Same visibility strip as company admin / sponsor team: org CRM pool including
+ * portal-linked contacts (`is_portal_user`), excluding only the viewer’s own email.
+ */
+function fullOrgContactListVisibilityWhere(viewerEmailNorm: string): SQL {
+  if (!viewerEmailNorm || !viewerEmailNorm.includes("@")) return sql`true`;
+  return sql`lower(trim(${contact.email})) <> ${viewerEmailNorm}`;
+}
+
+/**
+ * Role-based All Contacts visibility (non–platform-admin).
+ * - **Company admin** or **Lead Sponsor / Admin sponsor** on any deal: same org pool;
+ *   include portal + external member contacts; exclude own email only.
+ * - **Everyone else** (e.g. company_user, LP, co-sponsor): external only (`is_portal_user` false); exclude own email.
+ */
+function contactsVisibilityWhereForRole(
+  roleForScope: string,
+  viewerEmailNorm: string,
+): SQL {
+  if (isCompanyAdminRole(roleForScope)) {
+    return fullOrgContactListVisibilityWhere(viewerEmailNorm);
+  }
+  const nonPortal = eq(contact.isPortalUser, false);
+  if (!viewerEmailNorm || !viewerEmailNorm.includes("@")) return nonPortal;
+  const notSelf = sql`lower(trim(${contact.email})) <> ${viewerEmailNorm}`;
+  return and(nonPortal, notSelf)!;
+}
+
+/** True if a portal `users` row exists for this email (any role). */
+export async function contactEmailMatchesPortalUser(
+  email: string,
+): Promise<boolean> {
+  const e = normalizeContactEmailForScope(email);
+  if (!e || !e.includes("@")) return false;
+  const [u] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`lower(trim(${users.email})) = ${e}`)
+    .limit(1);
+  return Boolean(u);
+}
+
+/**
+ * When someone becomes a portal user, mark matching CRM contacts (`is_portal_user`).
+ * Non–company-admin All Contacts lists still hide these rows; company admins see them.
+ */
+export async function markContactsAsPortalUserByEmailNorm(
+  emailNorm: string,
+): Promise<void> {
+  const e = normalizeContactEmailForScope(emailNorm);
+  if (!e || !e.includes("@")) return;
+  await db
+    .update(contact)
+    .set({ isPortalUser: true })
+    .where(sql`lower(trim(${contact.email})) = ${e}`);
+}
+
+/**
  * Contacts are scoped by the **creator’s** organization: all contacts whose
  * `created_by` is a user in that org share one pool for unique email / phone.
  * Creators with no `organization_id` (platform admin) use a global pool.
@@ -103,16 +250,19 @@ async function assertContactEmailPhoneUniqueForCreatorScope(params: {
   email: string;
   phone: string;
   excludeContactId?: string;
+  /**
+   * Existing row’s org on update; omit on insert (derived from creator).
+   * `null` = legacy row with no org column set — use creator’s org member list only.
+   */
+  existingContactOrganizationId?: string | null;
 }): Promise<void> {
   const emailNorm = normalizeContactEmailForScope(params.email);
   const phoneDigits = normalizeContactPhoneDigits(params.phone);
 
-  const [creator] = await db
-    .select({ organizationId: users.organizationId })
-    .from(users)
-    .where(eq(users.id, params.creatorUserId))
-    .limit(1);
-  const orgId = creator?.organizationId ?? null;
+  const orgId =
+    params.existingContactOrganizationId !== undefined
+      ? params.existingContactOrganizationId
+      : await resolveOrganizationIdForUserId(params.creatorUserId);
 
   let scopePredicate: SQL;
   if (!orgId) {
@@ -122,7 +272,10 @@ async function assertContactEmailPhoneUniqueForCreatorScope(params: {
     if (memberIds.length === 0) {
       scopePredicate = sql`false`;
     } else {
-      scopePredicate = inArray(contact.createdBy, memberIds);
+      scopePredicate = or(
+        eq(contact.organizationId, orgId),
+        and(isNull(contact.organizationId), inArray(contact.createdBy, memberIds))!,
+      )!;
     }
   }
 
@@ -163,6 +316,11 @@ export async function insertContact(params: {
     phone: params.input.phone,
   });
 
+  const organizationId = await resolveOrganizationIdForUserId(
+    params.createdByUserId,
+  );
+
+  const isPortalUser = await contactEmailMatchesPortalUser(params.input.email);
   const row: ContactInsert = {
     firstName: params.input.firstName,
     lastName: params.input.lastName,
@@ -174,16 +332,80 @@ export async function insertContact(params: {
     owners: params.input.owners,
     status: "active",
     createdBy: params.createdByUserId,
+    organizationId: organizationId ?? null,
+    isPortalUser,
   };
   const [inserted] = await db.insert(contact).values(row).returning();
   if (!inserted) throw new Error("INSERT_CONTACT_FAILED");
+  await syncOrganizationContactLabels({
+    organizationId: organizationId ?? null,
+    tags: params.input.tags,
+    lists: params.input.lists,
+  });
   return inserted;
 }
 
-export async function listContacts(): Promise<ContactRow[]> {
+/**
+ * All Contacts list:
+ * - **platform_admin**: every CRM row, no extra filters.
+ * - Users tied to a company: contacts with **`organization_id` = viewer’s org**, plus **legacy**
+ *   rows (`organization_id` null) whose `created_by` is anyone in that org.
+ * - No company / org: only contacts they created themselves.
+ *
+ * Non–platform-admin lists: **company_admin** or **Lead Sponsor / Admin sponsor** (any deal) see
+ * portal + external org contacts (except own email). Other roles see external CRM rows only.
+ */
+export async function listContactsForViewerScoped(
+  viewerUserId: string,
+  viewerRole: string | null | undefined,
+): Promise<ContactRow[]> {
+  const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  const sponsorTeamSeesFullCrm = await viewerIsLeadOrAdminSponsorOnAnyDeal(
+    viewerUserId,
+  );
+  const vis =
+    isCompanyAdminRole(ctx.roleForScope) || sponsorTeamSeesFullCrm
+      ? fullOrgContactListVisibilityWhere(ctx.viewerEmailNorm)
+      : contactsVisibilityWhereForRole(ctx.roleForScope, ctx.viewerEmailNorm);
+
+  if (isPlatformAdminRole(ctx.roleForScope)) {
+    return db.select().from(contact).orderBy(desc(contact.createdAt));
+  }
+
+  const orgId = ctx.organizationId;
+
+  if (!orgId) {
+    return db
+      .select()
+      .from(contact)
+      .where(
+        and(eq(contact.createdBy, viewerUserId), vis)!,
+      )
+      .orderBy(desc(contact.createdAt));
+  }
+
+  const memberRows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.organizationId, orgId));
+  /** Always include the viewer (e.g. company_admin with null `organization_id` still creates contacts). */
+  const ids = [
+    ...new Set([
+      ...memberRows.map((r) => r.id).filter(Boolean),
+      viewerUserId,
+    ]),
+  ];
+
+  const orgScope = or(
+    eq(contact.organizationId, orgId),
+    eq(contact.createdBy, viewerUserId),
+    and(isNull(contact.organizationId), inArray(contact.createdBy, ids))!,
+  )!;
+
   return db
     .select()
     .from(contact)
+    .where(and(orgScope, vis)!)
     .orderBy(desc(contact.createdAt));
 }
 
@@ -193,7 +415,8 @@ export async function listContacts(): Promise<ContactRow[]> {
  * viewer has no `organization_id`, only rows they created themselves.
  *
  * `COUNT(*)` from `deal_investment` where `trim(contact_id)` matches each CRM
- * contact id, scoped to deals visible to this viewer.
+ * contact id, scoped to deals visible to this viewer (same rules as
+ * {@link listAddDealFormsForViewer} — org + legacy name, LP email scope, assigned deals, etc.).
  */
 export async function countDealInvestmentsByContactIdForViewer(params: {
   viewerUserId: string;
@@ -213,34 +436,48 @@ export async function countDealInvestmentsByContactIdForViewer(params: {
   for (const k of keys) result.set(k, 0);
   if (keys.length === 0) return result;
 
-  const dealScopeSql = scope.isPlatformAdmin
-    ? sql`true`
-    : scope.organizationId
-      ? sql`(
-          af.organization_id = ${scope.organizationId}
-          OR (
-            af.organization_id IS NULL
-            AND lower(trim(af.owning_entity_name)) = (
-              SELECT lower(trim(${companies.name}))
-              FROM ${companies}
-              WHERE ${companies.id} = ${scope.organizationId}
-              LIMIT 1
-            )
-          )
-        )`
-      : sql`false`;
-
   const idParams = sql.join(keys.map((k) => sql`${k}`), sql`, `);
+
+  const unrestricted = scope.isPlatformAdmin || scope.seesAllDeals;
+  if (unrestricted) {
+    const executed = await db.execute(sql`
+      SELECT lower(trim(di.contact_id)) AS cid, COUNT(*)::int AS cnt
+      FROM deal_investment di
+      WHERE lower(trim(di.contact_id)) IN (${idParams})
+      GROUP BY lower(trim(di.contact_id))
+    `);
+    fillDealCountMapFromExecute(result, executed);
+    return result;
+  }
+
+  const visibleDeals = await listAddDealFormsForViewer(scope);
+  const dealIds = [
+    ...new Set(
+      visibleDeals.map((d) => String(d.id ?? "").trim()).filter(Boolean),
+    ),
+  ];
+  if (dealIds.length === 0) return result;
+
+  const dealIdParams = sql.join(
+    dealIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
 
   const executed = await db.execute(sql`
     SELECT lower(trim(di.contact_id)) AS cid, COUNT(*)::int AS cnt
     FROM deal_investment di
-    INNER JOIN add_deal_form af ON af.id = di.deal_id
     WHERE lower(trim(di.contact_id)) IN (${idParams})
-      AND (${dealScopeSql})
+      AND di.deal_id IN (${dealIdParams})
     GROUP BY lower(trim(di.contact_id))
   `);
+  fillDealCountMapFromExecute(result, executed);
+  return result;
+}
 
+function fillDealCountMapFromExecute(
+  result: Map<string, number>,
+  executed: unknown,
+): void {
   const raw = executed as unknown as
     | { rows?: unknown[] }
     | unknown[];
@@ -252,48 +489,17 @@ export async function countDealInvestmentsByContactIdForViewer(params: {
     const n = Number(r.cnt ?? r.CNT);
     if (cid) result.set(cid, Number.isFinite(n) ? n : 0);
   }
-  return result;
 }
 
+/**
+ * CRM contacts for All Contacts. **platform_admin** gets unfiltered rows; other roles follow
+ * {@link listContactsForViewerScoped} (visibility + org scope).
+ */
 export async function listContactsForViewer(
   viewerUserId: string,
   viewerRole?: string | null,
 ): Promise<ContactRow[]> {
-  if (isPlatformAdminRole(viewerRole)) return listContacts();
-
-  const [viewer] = await db
-    .select({ organizationId: users.organizationId })
-    .from(users)
-    .where(eq(users.id, viewerUserId))
-    .limit(1);
-  const orgId = viewer?.organizationId ?? null;
-
-  if (!orgId) {
-    return db
-      .select()
-      .from(contact)
-      .where(eq(contact.createdBy, viewerUserId))
-      .orderBy(desc(contact.createdAt));
-  }
-
-  const memberRows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.organizationId, orgId));
-  const ids = memberRows.map((r) => r.id).filter(Boolean);
-  if (ids.length === 0) {
-    return db
-      .select()
-      .from(contact)
-      .where(eq(contact.createdBy, viewerUserId))
-      .orderBy(desc(contact.createdAt));
-  }
-
-  return db
-    .select()
-    .from(contact)
-    .where(inArray(contact.createdBy, ids))
-    .orderBy(desc(contact.createdAt));
+  return listContactsForViewerScoped(viewerUserId, viewerRole);
 }
 
 export async function getContactById(
@@ -312,21 +518,37 @@ async function viewerCanAccessContactCreator(
   createdByUserId: string,
   viewerRole?: string | null,
 ): Promise<boolean> {
-  if (isPlatformAdminRole(viewerRole)) return true;
+  const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  if (isPlatformAdminRole(ctx.roleForScope)) return true;
   if (viewerUserId === createdByUserId) return true;
-  const [viewer] = await db
-    .select({ organizationId: users.organizationId })
-    .from(users)
-    .where(eq(users.id, viewerUserId))
-    .limit(1);
-  const orgId = viewer?.organizationId;
+  const orgId = ctx.organizationId;
   if (!orgId) return false;
-  const [creator] = await db
-    .select({ organizationId: users.organizationId })
-    .from(users)
-    .where(eq(users.id, createdByUserId))
-    .limit(1);
-  return creator?.organizationId === orgId;
+  const creatorOrgId = await resolveOrganizationIdForUserId(createdByUserId);
+  return creatorOrgId === orgId;
+}
+
+/** Same rules as list scope: platform admin, creator, shared `organization_id`, or legacy creator-org match. */
+async function viewerCanAccessContactRow(
+  viewerUserId: string,
+  row: ContactRow,
+  viewerRole?: string | null,
+): Promise<boolean> {
+  const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  if (isPlatformAdminRole(ctx.roleForScope)) return true;
+  if (viewerUserId === row.createdBy) return true;
+  const viewerOrg = ctx.organizationId;
+  if (
+    viewerOrg &&
+    row.organizationId &&
+    row.organizationId === viewerOrg
+  ) {
+    return true;
+  }
+  return viewerCanAccessContactCreator(
+    viewerUserId,
+    row.createdBy,
+    viewerRole,
+  );
 }
 
 export type UpdateContactFieldsInput = {
@@ -349,13 +571,7 @@ export async function updateContactFieldsForViewer(
 ): Promise<ContactRow | null> {
   const row = await getContactById(contactId);
   if (!row) return null;
-  if (
-    !(await viewerCanAccessContactCreator(
-      viewerUserId,
-      row.createdBy,
-      viewerRole,
-    ))
-  )
+  if (!(await viewerCanAccessContactRow(viewerUserId, row, viewerRole)))
     return null;
 
   await assertContactEmailPhoneUniqueForCreatorScope({
@@ -363,8 +579,10 @@ export async function updateContactFieldsForViewer(
     email: fields.email,
     phone: fields.phone,
     excludeContactId: contactId,
+    existingContactOrganizationId: row.organizationId,
   });
 
+  const isPortalUser = await contactEmailMatchesPortalUser(fields.email);
   const [updated] = await db
     .update(contact)
     .set({
@@ -377,10 +595,20 @@ export async function updateContactFieldsForViewer(
       lists: fields.lists,
       owners: fields.owners,
       lastEditReason: fields.lastEditReason || null,
+      isPortalUser,
     })
     .where(eq(contact.id, contactId))
     .returning();
-  return updated ?? null;
+  if (!updated) return null;
+  const orgForLabels =
+    updated.organizationId ??
+    (await resolveOrganizationIdForUserId(row.createdBy));
+  await syncOrganizationContactLabels({
+    organizationId: orgForLabels,
+    tags: fields.tags,
+    lists: fields.lists,
+  });
+  return updated;
 }
 
 export async function patchContactStatusForViewer(
@@ -391,13 +619,7 @@ export async function patchContactStatusForViewer(
 ): Promise<ContactRow | null> {
   const row = await getContactById(contactId);
   if (!row) return null;
-  if (
-    !(await viewerCanAccessContactCreator(
-      viewerUserId,
-      row.createdBy,
-      viewerRole,
-    ))
-  )
+  if (!(await viewerCanAccessContactRow(viewerUserId, row, viewerRole)))
     return null;
   const [updated] = await db
     .update(contact)

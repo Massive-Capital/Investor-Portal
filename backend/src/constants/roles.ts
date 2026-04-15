@@ -10,6 +10,9 @@ export const PLATFORM_USER = "platform_user";
 /** Company-scoped member (same access profile as platform_user in this app) */
 export const COMPANY_USER = "company_user";
 
+/** Invited deal member: may only access deals where they appear on the roster (`assigning_deal_user` / investments). */
+export const DEAL_PARTICIPANT = "deal_participant";
+
 /** Roles a platform admin may assign on invite (stored on the invite JWT). */
 export const INVITE_ASSIGNABLE_ROLES = [
   PLATFORM_ADMIN,

@@ -305,81 +305,82 @@ function SearchableMultiSelectField({
         onRemove={(i) => onToggle(selected[i] ?? "")}
         ariaLabel={`Selected ${label.toLowerCase()}`}
       />
-      <div className="add_contact_multiselect_control">
-        <Search
-          className="add_contact_multiselect_search_icon"
-          size={18}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <input
-          id={inputId}
-          type="search"
-          className="add_contact_multiselect_search_input deals_add_inv_input"
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={listboxId}
-          aria-autocomplete="list"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => {
-            onSearchChange(e.target.value)
-            onOpenChange(true)
-          }}
-          onFocus={() => {
-            onFocusOpen()
-            onOpenChange(true)
-          }}
-          onKeyDown={handleSearchKeyDown}
-          autoComplete="off"
-        />
-      </div>
-      {open ? (
-        <div
-          id={listboxId}
-          className="add_contact_multiselect_panel"
-          role="listbox"
-          aria-label={label}
-          aria-multiselectable="true"
-        >
-          {showCreate ? (
-            <button
-              type="button"
-              className="add_contact_multiselect_create"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                onAddUnique(qTrim)
-                onSearchChange("")
-              }}
-            >
-              Create &quot;{qTrim}&quot;
-            </button>
-          ) : null}
-          {filtered.length === 0 && !showCreate ? (
-            <p className="add_contact_multiselect_empty">{emptyHint}</p>
-          ) : null}
-          {filtered.map((opt) => {
-            const checked = itemSelected(opt)
-            return (
-              <label
-                key={opt}
-                className="add_contact_multiselect_row"
-                id="list_tag"
-                role="option"
-                aria-selected={checked}
-              >
-                <input
-                  type="checkbox"
-                  className="add_contact_multiselect_checkbox"
-                  checked={checked}
-                  onChange={() => onToggle(opt)}
-                />
-                <span className="add_contact_multiselect_row_label">{opt}</span>
-              </label>
-            )
-          })}
+      <div className="add_contact_multiselect_dropdown_wrap">
+        <div className="add_contact_multiselect_control">
+          <Search
+            className="add_contact_multiselect_search_icon"
+            size={18}
+            strokeWidth={2}
+            aria-hidden
+          />
+          <input
+            id={inputId}
+            type="search"
+            className="add_contact_multiselect_search_input deals_add_inv_input"
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listboxId}
+            aria-autocomplete="list"
+            placeholder={placeholder}
+            value={search}
+            onChange={(e) => {
+              onSearchChange(e.target.value)
+              onOpenChange(true)
+            }}
+            onFocus={() => {
+              onFocusOpen()
+              onOpenChange(true)
+            }}
+            onKeyDown={handleSearchKeyDown}
+            autoComplete="off"
+          />
         </div>
-      ) : null}
+        {open ? (
+          <div
+            id={listboxId}
+            className="add_contact_multiselect_panel"
+            role="listbox"
+            aria-label={label}
+            aria-multiselectable="true"
+          >
+            {showCreate ? (
+              <button
+                type="button"
+                className="add_contact_multiselect_create"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onAddUnique(qTrim)
+                  onSearchChange("")
+                }}
+              >
+                Create &quot;{qTrim}&quot;
+              </button>
+            ) : null}
+            {filtered.length === 0 && !showCreate ? (
+              <p className="add_contact_multiselect_empty">{emptyHint}</p>
+            ) : null}
+            {filtered.map((opt) => {
+              const checked = itemSelected(opt)
+              return (
+                <label
+                  key={opt}
+                  className="add_contact_multiselect_row"
+                  role="option"
+                  aria-selected={checked}
+                >
+                  <input
+                    type="checkbox"
+                    className="add_contact_multiselect_checkbox"
+                    checked={checked}
+                    onChange={() => onToggle(opt)}
+                  />
+                  <span className="add_contact_multiselect_row_label">{opt}</span>
+                </label>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -986,7 +987,7 @@ export function AddContactPanel({
                   Tags &amp; lists
                 </p>
             <SearchableMultiSelectField
-              label="Contact tags"
+              label="Tags"
               Icon={Tag}
               inputId="contact-tags-search"
               listboxId={tagListboxId}
@@ -999,8 +1000,8 @@ export function AddContactPanel({
               open={tagPickerOpen}
               onOpenChange={setTagPickerOpen}
               fieldRef={tagFieldRef}
-              placeholder="Search or pick a tag…"
-              emptyHint="No matches—type to add, or choose from your Tags tab."
+              placeholder="Search or add a tag…"
+              emptyHint="No matches. Type a new name and press Enter, or use Create. Names from the Tags tab appear here."
               onFocusOpen={() => setListPickerOpen(false)}
             />
 
@@ -1018,8 +1019,8 @@ export function AddContactPanel({
               open={listPickerOpen}
               onOpenChange={setListPickerOpen}
               fieldRef={listFieldRef}
-              placeholder="Search or pick a list…"
-              emptyHint="No matches—type to add, or choose from your Lists tab."
+              placeholder="Search or add a list…"
+              emptyHint="No matches. Type a new name and press Enter, or use Create. Names from the Lists tab appear here."
               onFocusOpen={() => setTagPickerOpen(false)}
             />
 

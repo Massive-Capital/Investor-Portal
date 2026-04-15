@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { postSignin } from "../controllers/auth/signin.controller.js";
-import { postSignup } from "../controllers/auth/signup.controller.js";
+import {
+  getSignupPrefill,
+  postSignup,
+} from "../controllers/auth/signup.controller.js";
+import { getDealInviteVerify } from "../controllers/auth/dealInvite.controller.js";
 import { postForgotPassword } from "../controllers/auth/forgotPassword.controller.js";
 import { postResetPassword } from "../controllers/auth/resetPassword.controller.js";
 import { postInviteUser } from "../controllers/auth/invite.controller.js";
@@ -25,6 +29,8 @@ userRoutes
 .patch("/auth/me", patchMyProfile)
 /** Same handler — some proxies or clients mishandle PATCH; SPA can use POST. */
 .post("/auth/me", patchMyProfile)
+.get("/auth/deal-invite/verify", getDealInviteVerify)
+.get("/auth/signup/prefill", getSignupPrefill)
 .post("/auth/signup/:token", postSignup)
 .post("/auth/signup", postSignup)
 .post("/auth/forgot-password", postForgotPassword)

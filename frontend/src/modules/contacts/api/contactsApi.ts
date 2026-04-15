@@ -219,3 +219,57 @@ export async function notifyContactsExportAudit(params: {
     /* non-blocking */
   }
 }
+
+/** Distinct tag names from `organization_contact_tag` (CRM catalog / autocomplete). */
+export async function fetchOrganizationContactTags(options?: {
+  organizationId?: string
+}): Promise<string[]> {
+  const base = getApiV1Base()
+  if (!base) return []
+  const params = new URLSearchParams()
+  const oid = options?.organizationId?.trim()
+  if (oid) params.set("organizationId", oid)
+  const q = params.toString()
+  const url = `${base}/contacts/organization-tags${q ? `?${q}` : ""}`
+  try {
+    const res = await fetch(url, {
+      headers: { ...authHeaders() },
+      credentials: "include",
+    })
+    const data = (await res.json().catch(() => ({}))) as { tags?: unknown }
+    if (!res.ok) return []
+    const raw = data.tags
+    return Array.isArray(raw)
+      ? raw.map((x) => String(x).trim()).filter(Boolean)
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** Distinct list names from `organization_contact_list` (CRM catalog / autocomplete). */
+export async function fetchOrganizationContactLists(options?: {
+  organizationId?: string
+}): Promise<string[]> {
+  const base = getApiV1Base()
+  if (!base) return []
+  const params = new URLSearchParams()
+  const oid = options?.organizationId?.trim()
+  if (oid) params.set("organizationId", oid)
+  const q = params.toString()
+  const url = `${base}/contacts/organization-lists${q ? `?${q}` : ""}`
+  try {
+    const res = await fetch(url, {
+      headers: { ...authHeaders() },
+      credentials: "include",
+    })
+    const data = (await res.json().catch(() => ({}))) as { lists?: unknown }
+    if (!res.ok) return []
+    const raw = data.lists
+    return Array.isArray(raw)
+      ? raw.map((x) => String(x).trim()).filter(Boolean)
+      : []
+  } catch {
+    return []
+  }
+}

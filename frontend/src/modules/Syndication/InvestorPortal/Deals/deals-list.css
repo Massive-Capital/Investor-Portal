@@ -169,6 +169,117 @@ a.deals_list_add_link.um_btn_primary {
   color: var(--portal-text-muted);
 }
 
+.deal_documents_tab_root {
+  padding: 0 0 1.5rem;
+  min-width: 0;
+}
+
+.deal_documents_tab_panel {
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  overflow: hidden;
+}
+
+.deal_documents_tab_header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem 1.25rem;
+  padding: 1rem 1.1rem 1rem;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+  background: color-mix(
+    in srgb,
+    var(--portal-text, #0f172a) 2.5%,
+    var(--portal-surface, #fff)
+  );
+}
+
+.deal_documents_tab_header_text {
+  flex: 1 1 min(100%, 22rem);
+  min-width: 0;
+}
+
+.deal_documents_tab_lead {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_documents_tab_lead strong {
+  color: var(--portal-text, #334155);
+  font-weight: 600;
+}
+
+.deal_documents_tab_investor_toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45em;
+  margin: 0;
+  padding: 0.4em 0.75em 0.4em 0.5em;
+  border-radius: 8px;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  background: var(--portal-surface, #fff);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--portal-text, #334155);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  align-self: center;
+}
+
+.deal_documents_tab_investor_toggle:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--portal-primary, #2563eb) 35%,
+    var(--portal-border)
+  );
+}
+
+.deal_documents_tab_investor_toggle input {
+  width: 1em;
+  height: 1em;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--portal-primary, #2563eb);
+  cursor: pointer;
+}
+
+.deal_documents_tab_investor_toggle_label {
+  line-height: 1.2;
+  padding-right: 0.15em;
+}
+
+:root[data-theme="dark"] .deal_documents_tab_panel {
+  border-color: var(--portal-border);
+  background: var(--portal-surface);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .deal_documents_tab_header {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom-color: var(--portal-border);
+}
+
+:root[data-theme="dark"] .deal_documents_tab_lead strong {
+  color: var(--portal-text, #e2e8f0);
+}
+
+:root[data-theme="dark"] .deal_documents_tab_investor_toggle {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--portal-text, #e2e8f0);
+}
+
+.deal_documents_tab_panel .deal_docs {
+  padding: 1rem 1.1rem 1.15rem;
+}
+
 .deal_detail_announcement_banner {
   display: flex;
   align-items: flex-start;
@@ -250,6 +361,11 @@ a.deals_list_add_link.um_btn_primary {
   margin-top: 0;
   padding-top: 0;
   min-width: 0;
+}
+
+/* Investing deals: no Deals/Archives tab strip — keep spacing under page title */
+.deals_list_page .deals_list_investing_no_tabs {
+  padding-top: 0.35rem;
 }
 
 .deals_detail_page .deals_list_head {
@@ -771,6 +887,17 @@ a.deals_list_add_link.um_btn_primary {
   max-width: 18em;
 }
 
+.deals_table_header_tooltip_stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-width: 22em;
+}
+
+.deals_table_header_tooltip_stack .deals_table_header_tooltip_p {
+  max-width: none;
+}
+
 /* Investor Class column — pills (InvestorClassPillsDisplay) */
 .deals_td_investor_class_pills_wrap {
   display: flex;
@@ -863,10 +990,62 @@ a.deals_list_add_link.um_btn_primary {
   padding: 0;
 }
 
+.deals_deal_view_sponsor_role_banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  background: color-mix(in srgb, var(--portal-accent, #2563eb) 6%, transparent);
+}
+
+.deals_deal_view_sponsor_role_label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--portal-text-muted, #64748b);
+}
+
 .deals_deal_view_modal .um_view_grid {
   margin-bottom: 0;
   gap: 0.5em 0.85em;
   min-width: 0;
+}
+
+/* Investing deal page — offering-only layout (no syndication header/tabs) */
+.deal_detail_investing_section_back {
+  margin: 0 0 0.85rem;
+}
+
+/* Investing deal page — offering preview panel */
+.deal_detail_investing_preview_section {
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.deal_detail_investing_preview_heading {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_detail_investing_preview_lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_detail_investing_sponsor_banner {
+  margin-bottom: 0.75rem;
+}
+
+.deal_detail_readonly_preview_grid {
+  margin-top: 0.25rem;
 }
 
 .deals_deal_view_modal .um_view_field_box {
@@ -967,23 +1146,29 @@ a.deals_list_add_link.um_btn_primary {
   flex-wrap: wrap;
 }
 
-/* Deal detail header: title row + stage chip stacked below the name */
+/* Deal detail header: title + compact stage chip on one row (wraps on narrow screens) */
 .deals_detail_page .deals_list_title_row {
-  align-items: flex-start;
+  align-items: center;
 }
 
 .deals_detail_title_stack {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.45em;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 0.55em;
   min-width: 0;
   flex: 1 1 auto;
 }
 
-/* Title + Draft badge stay on one row; stage chip is the next row */
+.deals_detail_title_stack .deals_stage_chip {
+  flex-shrink: 0;
+}
+
+/* Title + Draft badge stay on one row; stage chip sits beside this block */
 .deals_detail_title_name_block.deals_list_name_with_draft {
   flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -1031,6 +1216,20 @@ a.deals_list_add_link.um_btn_primary {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
+}
+
+.deals_list_name_sponsor_role {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.deals_list_name_sponsor_role_label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--portal-text-muted, #64748b);
 }
 
 .deals_list_stage_badge {

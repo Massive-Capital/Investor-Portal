@@ -24,6 +24,10 @@ interface DealRowActionsProps {
   dealName: string
   archived?: boolean
   /**
+   * Investing-mode list: only view deal (no preview modal, edit, archive, or delete).
+   */
+  readOnlyActions?: boolean
+  /**
    * Session create-deal draft row: “Edit Deal” becomes “Continue editing”
    * (`/deals/create?resume=1`). Archive is disabled; Delete discards the session draft
    * after confirmation with a required reason.
@@ -43,6 +47,7 @@ export function DealRowActions({
   dealId,
   dealName,
   archived = false,
+  readOnlyActions = false,
   draftRow = false,
   dealStage = "",
   onPreviewDeal,
@@ -247,63 +252,67 @@ export function DealRowActions({
                   View deal
                 </button>
               </li>
-              <li role="none">
-                <button
-                  type="button"
-                  className="um_kebab_menuitem"
-                  role="menuitem"
-                  onClick={handleEditDeal}
-                >
-                  <Pencil className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  {draftRow ? "Continue editing" : "Edit Deal"}
-                </button>
-              </li>
-              <li role="none">
-                {archived ? (
-                  <button
-                    type="button"
-                    className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
-                    role="menuitem"
-                    disabled={draftRow}
-                    title={
-                      draftRow
-                        ? "Not available until the deal is saved"
-                        : undefined
-                    }
-                    onClick={handleRestoreDeal}
-                  >
-                    <ArchiveRestore className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                    Restore deal
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
-                    role="menuitem"
-                    disabled={draftRow}
-                    title={
-                      draftRow
-                        ? "Not available until the deal is saved"
-                        : undefined
-                    }
-                    onClick={handleArchiveDeal}
-                  >
-                    <Archive className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                    Archive deal
-                  </button>
-                )}
-              </li>
-              <li role="none">
-                <button
-                  type="button"
-                  className="um_kebab_menuitem deals_kebab_menuitem_danger"
-                  role="menuitem"
-                  onClick={handleDeleteDeal}
-                >
-                  <Trash2 className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
-                  Delete
-                </button>
-              </li>
+              {!readOnlyActions ? (
+                <>
+                  <li role="none">
+                    <button
+                      type="button"
+                      className="um_kebab_menuitem"
+                      role="menuitem"
+                      onClick={handleEditDeal}
+                    >
+                      <Pencil className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                      {draftRow ? "Continue editing" : "Edit Deal"}
+                    </button>
+                  </li>
+                  <li role="none">
+                    {archived ? (
+                      <button
+                        type="button"
+                        className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
+                        role="menuitem"
+                        disabled={draftRow}
+                        title={
+                          draftRow
+                            ? "Not available until the deal is saved"
+                            : undefined
+                        }
+                        onClick={handleRestoreDeal}
+                      >
+                        <ArchiveRestore className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                        Restore deal
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`um_kebab_menuitem${draftRow ? " um_kebab_menuitem_disabled" : ""}`}
+                        role="menuitem"
+                        disabled={draftRow}
+                        title={
+                          draftRow
+                            ? "Not available until the deal is saved"
+                            : undefined
+                        }
+                        onClick={handleArchiveDeal}
+                      >
+                        <Archive className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                        Archive deal
+                      </button>
+                    )}
+                  </li>
+                  <li role="none">
+                    <button
+                      type="button"
+                      className="um_kebab_menuitem deals_kebab_menuitem_danger"
+                      role="menuitem"
+                      onClick={handleDeleteDeal}
+                    >
+                      <Trash2 className="um_kebab_menuitem_icon" size={16} strokeWidth={2} aria-hidden />
+                      Delete
+                    </button>
+                  </li>
+                </>
+              ) : null}
             </ul>,
             document.body,
           )

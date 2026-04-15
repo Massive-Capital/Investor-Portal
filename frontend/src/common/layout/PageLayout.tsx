@@ -16,7 +16,11 @@ import {
   Users,
 } from "lucide-react"
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
-import { isPlatformAdmin } from "../auth/roleUtils"
+import {
+  getStoredUserRole,
+  isLpInvestorSessionUser,
+} from "../auth/roleUtils"
+import { canAccessSyndicationSidebarPath } from "../config/sideNavAccess.config"
 import { TopNavBar } from "../components/TopNavBar/TopNavBar"
 import {
   PortalModeProvider,
@@ -78,9 +82,19 @@ const investingNavItems: NavItem[] = [
   { label: "Leave a review", to: "/investing/review", icon: Star },
 ]
 
+/** LP Investor deal participants — investing shell only; no company admin / syndication items */
+// const lpInvestorInvestingNavItems: NavItem[] = [
+//   { label: "Dashboard", to: "/", icon: LayoutDashboard },
+//   { label: "Deals", to: "/investing/deals", icon: Briefcase },
+//   { label: "Portfolio", to: "/investing/investments", icon: TrendingUp },
+//   { label: "Cashflows", to: "/investing/cashflows", icon: Banknote },
+//   { label: "Contacts", to: "/contacts", icon: ContactRound },
+// ]
+
 function PageLayoutInner() {
   const location = useLocation()
   const { mode, portalSwitchOverlay } = usePortalMode()
+  const lpInvestor = isLpInvestorSessionUser()
 
   useEffect(() => {
     if (!portalSwitchOverlay) return
@@ -95,10 +109,12 @@ function PageLayoutInner() {
     setAppDocumentTitle(pageTitleForAppPathname(location.pathname))
   }, [location.pathname])
 
-  /** Dashboard → Leads → Contacts → Deals (syndication) → … → Settings, Customers (platform admin only), … */
-  const sharedSidebarTail = isPlatformAdmin()
-    ? sharedSidebarItems.slice(3)
-    : sharedSidebarItems.slice(3).filter((item) => item.to !== "/customers")
+  /** After Contacts: Settings, Customers, Billing, Members — filtered by {@link canAccessSyndicationSidebarPath} */
+  const sharedSidebarTail = sharedSidebarItems
+    .slice(3)
+    .filter((item) =>
+      canAccessSyndicationSidebarPath(item.to, getStoredUserRole()),
+    )
 
   const sidebarItems: NavItem[] = [
     sharedSidebarItems[0],
@@ -108,8 +124,15 @@ function PageLayoutInner() {
     ...sharedSidebarTail,
   ]
 
-  const modeLabel =
-    mode === "syndicating" ? "Syndicating" : "Investing"
+  const showInvestingSidebar = lpInvestor || mode === "investing"
+  const modeLabel = lpInvestor
+    ? "Investing"
+    : mode === "syndicating"
+      ? "Syndicating"
+      : "Investing"
+  const investingSidebarItems = lpInvestor
+    ? investingNavItems
+    : investingNavItems
 
   return (
     <div className="app_shell">
@@ -117,14 +140,19 @@ function PageLayoutInner() {
         <PortalSwitchLoader caption={portalSwitchOverlay.caption} />
       ) : null}
       <aside className="app_sidebar">
-        {mode === "investing" ? (
+        {showInvestingSidebar ? (
           <>
             <div className="app_sidebar_brand app_sidebar_brand_static">
               <h1 className="app_sidebar_title">Investor Portal</h1>
               <p className="app_sidebar_mode">{modeLabel}</p>
+              {/* {sessionDealRoleLabel ? (
+                <p className="app_sidebar_role_badge" title="Your role on the deal">
+                  {sessionDealRoleLabel}
+                </p>
+              ) : null} */}
             </div>
             <nav className="app_sidebar_nav">
-              {investingNavItems.map((item) => {
+              {investingSidebarItems.map((item) => {
                 const Icon = item.icon
                 return (
                   <NavLink
@@ -147,6 +175,11 @@ function PageLayoutInner() {
             <div className="app_sidebar_brand app_sidebar_brand_static">
               <h1 className="app_sidebar_title">Investor Portal</h1>
               <p className="app_sidebar_mode">{modeLabel}</p>
+              {/* {sessionDealRoleLabel ? (
+                <p className="app_sidebar_role_badge" title="Your role on the deal">
+                  {sessionDealRoleLabel}
+                </p>
+              ) : null} */}
             </div>
             <nav className="app_sidebar_nav">
               {sidebarItems.map((item) => {

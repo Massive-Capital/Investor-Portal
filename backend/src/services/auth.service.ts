@@ -5,6 +5,8 @@ import { db } from "../database/db.js";
 import { companies, users } from "../schema/schema.js";
 import { getJwtExpiry, getJwtSecret } from "../config/auth.js";
 import { isPlatformAdminRole } from "../constants/roles.js";
+import { enrichUserRecordForDealParticipant } from "./dealParticipantProfile.service.js";
+import { mergeLpInvestorFlagsIntoUserPayload } from "./lpInvestorAccess.service.js";
 
 export type SigninSuccess = {
   ok: true;
@@ -150,13 +152,21 @@ export async function signInWithPassword(
         .limit(1);
       if (coName?.name?.trim()) displayCompanyName = coName.name.trim();
     }
+    const baseDetail = {
+      ...userWithoutSecret,
+      companyName: displayCompanyName,
+      organization_name: displayCompanyName,
+      organization_id: user_table.organizationId ?? null,
+    };
+    const enrichedDetail = await enrichUserRecordForDealParticipant(
+      baseDetail as Record<string, unknown>,
+      String(user_table.id),
+    );
     const userDetails = [
-      {
-        ...userWithoutSecret,
-        companyName: displayCompanyName,
-        organization_name: displayCompanyName,
-        organization_id: user_table.organizationId ?? null,
-      },
+      await mergeLpInvestorFlagsIntoUserPayload(enrichedDetail, {
+        email: user_table.email,
+        portalRole: user_table.role,
+      }),
     ];
 
     return {

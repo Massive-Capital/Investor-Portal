@@ -7,10 +7,14 @@ import { getJwtSecret } from "../config/auth.js";
 import {
   COMPANY_ADMIN,
   COMPANY_USER,
+  DEAL_PARTICIPANT,
   isInviteAssignableRole,
   PLATFORM_USER,
 } from "../constants/roles.js";
 import { ensureCompanyByName } from "./company.service.js";
+import { reconcileAssigningDealUsersForDeal } from "./assigningDealUser.service.js";
+import { markContactsAsPortalUserByEmailNorm } from "./contact.service.js";
+import { getAddDealFormById } from "./dealForm.service.js";
 
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
@@ -39,6 +43,8 @@ type InvitePayload = {
   companyName?: string;
   companyId?: string;
   invitedRole?: string;
+  typ?: string;
+  dealId?: string;
 };
 
 function str(v: unknown): string {
@@ -141,6 +147,8 @@ export async function registerUser(
   let email: string;
   let organizationIdFromInvite: string | undefined;
   let invitedRoleFromToken: string | undefined;
+  let isDealMemberInvite = false;
+  let dealInviteDealId: string | undefined;
   if (inviteToken && inviteToken.trim() !== "") {
     try {
       const payload = jwt.verify(inviteToken.trim(), getJwtSecret()) as InvitePayload;
@@ -153,16 +161,53 @@ export async function registerUser(
         };
       }
       email = fromToken;
-      const fromInviteCompany = str(payload.companyName);
-      if (fromInviteCompany) {
-        companyName = fromInviteCompany;
-      }
-      const cid = typeof payload.companyId === "string" ? payload.companyId.trim() : "";
-      if (cid) organizationIdFromInvite = cid;
-      const ir =
-        typeof payload.invitedRole === "string" ? payload.invitedRole.trim() : "";
-      if (ir && isInviteAssignableRole(ir)) {
-        invitedRoleFromToken = ir;
+
+      if (String(payload.typ ?? "") === "deal_member_invite") {
+        isDealMemberInvite = true;
+        const dealId = str(payload.dealId);
+        if (!dealId) {
+          return {
+            ok: false,
+            status: 401,
+            message: "Invalid invite: deal missing from token",
+          };
+        }
+        const deal = await getAddDealFormById(dealId);
+        if (!deal) {
+          return {
+            ok: false,
+            status: 400,
+            message: "Invalid invite: deal not found",
+          };
+        }
+        const tokenCompanyId =
+          typeof payload.companyId === "string" ? payload.companyId.trim() : "";
+        const dealOrg = deal.organizationId?.trim() ?? "";
+        if (!dealOrg || dealOrg !== tokenCompanyId) {
+          return {
+            ok: false,
+            status: 401,
+            message: "Invite link is invalid or has expired",
+          };
+        }
+        const fromInviteCompany = str(payload.companyName);
+        if (fromInviteCompany) {
+          companyName = fromInviteCompany;
+        }
+        organizationIdFromInvite = dealOrg;
+        dealInviteDealId = dealId;
+      } else {
+        const fromInviteCompany = str(payload.companyName);
+        if (fromInviteCompany) {
+          companyName = fromInviteCompany;
+        }
+        const cid = typeof payload.companyId === "string" ? payload.companyId.trim() : "";
+        if (cid) organizationIdFromInvite = cid;
+        const ir =
+          typeof payload.invitedRole === "string" ? payload.invitedRole.trim() : "";
+        if (ir && isInviteAssignableRole(ir)) {
+          invitedRoleFromToken = ir;
+        }
       }
     } catch {
       return {
@@ -241,12 +286,13 @@ export async function registerUser(
     let organizationId: string | undefined = organizationIdFromInvite;
     let roleForUser: string = PLATFORM_USER;
     const applyInviteRole =
-      Boolean(inviteToken?.trim()) && invitedRoleFromToken != null;
+      Boolean(inviteToken?.trim()) &&
+      invitedRoleFromToken != null &&
+      !isDealMemberInvite;
 
-    // Open signup / no invite org id: resolve company by name (case-insensitive).
-    // — Existing company → user is linked to that org (not company admin).
-    // — New name → insert company row; first user becomes company admin (shows on Companies tab).
-    if (!organizationId) {
+    if (isDealMemberInvite) {
+      roleForUser = DEAL_PARTICIPANT;
+    } else if (!organizationId) {
       const companyResult = await ensureCompanyByName(companyName);
       if (!companyResult.ok) {
         return {
@@ -274,6 +320,8 @@ export async function registerUser(
     });
     if (phoneDup) return phoneDup;
 
+    let createdUserId: string | undefined;
+
     if (pendingId && existingByEmail) {
       const orgToSet =
         organizationId ?? existingByEmail.organizationId ?? undefined;
@@ -294,20 +342,40 @@ export async function registerUser(
           ...(orgToSet ? { organizationId: orgToSet } : {}),
         })
         .where(eq(users.id, pendingId));
+      createdUserId = pendingId;
     } else {
-      await db.insert(users).values({
-        email: emailNorm,
-        username: userName,
-        passwordHash,
-        firstName,
-        lastName,
-        companyName,
-        phone,
-        role: roleForUser,
-        userStatus: "active",
-        userSignupCompleted: "true",
-        ...(organizationId ? { organizationId } : {}),
-      });
+      const [inserted] = await db
+        .insert(users)
+        .values({
+          email: emailNorm,
+          username: userName,
+          passwordHash,
+          firstName,
+          lastName,
+          companyName,
+          phone,
+          role: roleForUser,
+          userStatus: "active",
+          userSignupCompleted: "true",
+          ...(organizationId ? { organizationId } : {}),
+        })
+        .returning({ id: users.id });
+      createdUserId = inserted?.id;
+    }
+
+    try {
+      await markContactsAsPortalUserByEmailNorm(emailNorm);
+    } catch (e) {
+      console.error("markContactsAsPortalUserByEmailNorm after signup:", e);
+    }
+
+    const uidForReconcile = pendingId ?? createdUserId;
+    if (dealInviteDealId && uidForReconcile) {
+      try {
+        await reconcileAssigningDealUsersForDeal(dealInviteDealId, uidForReconcile);
+      } catch (e) {
+        console.error("reconcileAssigningDealUsersForDeal after deal-invite signup:", e);
+      }
     }
 
     return {

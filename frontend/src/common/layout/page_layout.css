@@ -72,6 +72,26 @@
   font-size: clamp(0.8em, 0.2vw + 0.74em, 1em);
 }
 
+.app_sidebar_role_badge {
+  margin: 0 0 0.75em;
+  padding: 0.35em 0.55em;
+  max-width: 100%;
+  display: inline-block;
+  box-sizing: border-box;
+  font-size: clamp(0.72em, 0.15vw + 0.68em, 0.875em);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--portal-text-secondary, #666);
+  background: color-mix(in srgb, var(--portal-muted-bg, #f4f4f5) 88%, transparent);
+  border: 1px solid var(--portal-border, lightgray);
+  border-radius: 6px;
+}
+
+:root[data-theme="dark"] .app_sidebar_role_badge {
+  background: color-mix(in srgb, var(--portal-surface, #1a1a1a) 92%, transparent);
+  color: var(--portal-text-muted, #a1a1aa);
+}
+
 .app_sidebar_nav {
   display: flex;
   flex-direction: column;

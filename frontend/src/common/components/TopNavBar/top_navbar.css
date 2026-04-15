@@ -41,10 +41,6 @@
   max-width: 100%;
 }
 
-.top_navbar_profile_btn:hover {
-  background-color: var(--portal-toggle-track);
-}
-
 .top_navbar_chevron {
   flex-shrink: 0;
   color: var(--portal-text-muted);
@@ -205,8 +201,18 @@
   color: #ffffff;
 }
 
-.top_navbar_user_name {
+.top_navbar_user_name_wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
   flex: 1 1 0%;
+  gap: 0.12em;
+}
+
+.top_navbar_user_name {
+  width: 100%;
   min-width: 0;
   color: var(--portal-text);
   font-weight: 600;
@@ -214,6 +220,26 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.top_navbar_user_role_badge {
+  max-width: 100%;
+  font-size: 0.7em;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--portal-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.12em 0.4em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--portal-muted-bg, #f4f4f5) 88%, transparent);
+  border: 1px solid var(--portal-border, #e5e5e5);
+}
+
+:root[data-theme="dark"] .top_navbar_user_role_badge {
+  background: color-mix(in srgb, var(--portal-surface, #1a1a1a) 90%, transparent);
+  border-color: var(--portal-border, #3f3f46);
 }
 
 /* Laptops / smaller viewports — less bulky chrome */

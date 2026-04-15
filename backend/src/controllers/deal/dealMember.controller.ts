@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
+  assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/dealAccess.service.js";
 import {
@@ -33,7 +34,7 @@ export async function getDealMembers(
   }
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }

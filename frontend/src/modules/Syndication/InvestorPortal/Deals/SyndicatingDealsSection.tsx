@@ -47,12 +47,21 @@ interface SyndicatingDealsSectionProps {
   hideDealsHeading?: boolean
   /** id for the visible “Deals” h2 when `hideDealsHeading` is false */
   dealsHeadingId?: string
+  /**
+   * When true, uses `GET /deals?includeParticipantDeals=1` — same list as the investing
+   * “Deals” page (org deals plus roster-linked participant deals).
+   */
+  includeParticipantDeals?: boolean
+  /** Visible section title for the deals block (default: “Deals dashboard”). */
+  dealsSectionTitle?: string
 }
 
 export function SyndicatingDealsSection({
   ariaLabelledBy,
   hideDealsHeading = false,
   dealsHeadingId = "sponsor-deals-heading",
+  includeParticipantDeals = false,
+  dealsSectionTitle = "Deals dashboard",
 }: SyndicatingDealsSectionProps) {
   const [query, setQuery] = useState("")
   const [view, setView] = useState<"grid" | "list">("grid")
@@ -64,7 +73,9 @@ export function SyndicatingDealsSection({
     let cancelled = false
     void (async () => {
       setLoading(true)
-      const list = await fetchDealsList()
+      const list = await fetchDealsList(
+        includeParticipantDeals ? { includeParticipantDeals: true } : undefined,
+      )
       if (cancelled) return
       if (list.length === 0) {
         setDeals([])
@@ -96,13 +107,15 @@ export function SyndicatingDealsSection({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [includeParticipantDeals])
 
   useEffect(() => {
     function onDealsListRefetch() {
       void (async () => {
         setLoading(true)
-        const list = await fetchDealsList()
+        const list = await fetchDealsList(
+          includeParticipantDeals ? { includeParticipantDeals: true } : undefined,
+        )
         if (list.length === 0) {
           setDeals([])
           setLoading(false)
@@ -133,7 +146,7 @@ export function SyndicatingDealsSection({
     window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
     return () =>
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
-  }, [])
+  }, [includeParticipantDeals])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -247,7 +260,7 @@ export function SyndicatingDealsSection({
       >
         {hideDealsHeading ? null : (
           <h2 id={dealsHeadingId} className="sponsor_dash_section_title">
-            Deals dashboard
+            {dealsSectionTitle}
           </h2>
         )}
         <div className="sponsor_dash_deals_controls_right">

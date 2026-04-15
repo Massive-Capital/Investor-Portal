@@ -15,6 +15,10 @@ import {
   PLATFORM_ADMIN,
   PLATFORM_USER,
 } from "../constants/roles.js";
+import {
+  enrichSerializedUsersWithDealParticipantRoles,
+  enrichUserRecordForDealParticipant,
+} from "./dealParticipantProfile.service.js";
 
 const ALLOWED_USER_STATUS = new Set(["active", "inactive"]);
 
@@ -89,13 +93,14 @@ export async function listUsersForAdmin(
           .from(users)
           .leftJoin(companies, eq(users.organizationId, companies.id))
           .orderBy(desc(users.createdAt));
-    return rows.map((r) => {
+    const mapped = rows.map((r) => {
       const { orgName, ...userCols } = r;
       return serializeUserForClientWithResolvedCompany(
         userCols as UserRow,
         orgName,
       );
     });
+    return enrichSerializedUsersWithDealParticipantRoles(mapped);
   }
   if (isCompanyAdminRole(actorRole) && actorOrganizationId) {
     const rows = await db
@@ -107,13 +112,14 @@ export async function listUsersForAdmin(
       .leftJoin(companies, eq(users.organizationId, companies.id))
       .where(eq(users.organizationId, actorOrganizationId))
       .orderBy(desc(users.createdAt));
-    return rows.map((r) => {
+    const mapped = rows.map((r) => {
       const { orgName, ...userCols } = r;
       return serializeUserForClientWithResolvedCompany(
         userCols as UserRow,
         orgName,
       );
     });
+    return enrichSerializedUsersWithDealParticipantRoles(mapped);
   }
   return null;
 }
@@ -266,7 +272,13 @@ export async function updateMemberUser(
       });
       return row;
     });
-    return { ok: true, user: serializeUserForClient(updated) };
+    return {
+      ok: true,
+      user: await enrichUserRecordForDealParticipant(
+        serializeUserForClient(updated),
+        targetUserId,
+      ),
+    };
   } catch (err) {
     if (err instanceof Error && err.message === "update_returned_no_row") {
       return { ok: false, status: 500, message: "Could not update member" };

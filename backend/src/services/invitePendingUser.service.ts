@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../database/db.js";
 import { users } from "../schema/schema.js";
+import { markContactsAsPortalUserByEmailNorm } from "./contact.service.js";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -76,6 +77,11 @@ export async function upsertPendingInvitedUser(
     }
 
     await db.update(users).set(patch).where(eq(users.id, existing.id));
+    try {
+      await markContactsAsPortalUserByEmailNorm(emailNorm);
+    } catch (e) {
+      console.error("markContactsAsPortalUserByEmailNorm after invite patch:", e);
+    }
     return { ok: true };
   }
 
@@ -93,6 +99,12 @@ export async function upsertPendingInvitedUser(
     companyName: (company.companyName ?? "").toString(),
     inviteExpiresAt,
   });
+
+  try {
+    await markContactsAsPortalUserByEmailNorm(emailNorm);
+  } catch (e) {
+    console.error("markContactsAsPortalUserByEmailNorm after pending invite insert:", e);
+  }
 
   return { ok: true };
 }

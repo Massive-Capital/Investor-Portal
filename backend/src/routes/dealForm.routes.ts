@@ -5,12 +5,15 @@ import {
   getDeals,
   getOfferingPreviewToken,
   getPublicOfferingPreview,
+  postOfferingPreviewShareEmail,
   patchDealAnnouncement,
   patchDealGalleryCover,
   patchDealOfferingGallery,
   postDealOfferingGalleryUploads,
+  postDealOfferingDocumentUploads,
   patchDealInvestorSummary,
   patchDealKeyHighlights,
+  patchDealOfferingInvestorPreview,
   patchDealOfferingOverview,
   postDeal,
   putDeal,
@@ -23,6 +26,7 @@ import {
   putDealInvestment,
 } from "../controllers/deal/dealInvestment.controller.js";
 import {
+  patchDealLpInvestorMyCommitment,
   postDealLpInvestor,
   putDealLpInvestor,
 } from "../controllers/deal/dealLpInvestor.controller.js";
@@ -72,6 +76,10 @@ router.post(
 );
 router.post("/deals/:dealId/lp-investors", postDealLpInvestor);
 router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
+router.patch(
+  "/deals/:dealId/lp-investors/my-commitment",
+  patchDealLpInvestorMyCommitment,
+);
 router.get("/deals/:dealId/members", getDealMembers);
 router.post(
   "/deals/:dealId/members/export-notify",
@@ -95,17 +103,30 @@ router.put(
 router.patch("/deals/:dealId/investor-summary", patchDealInvestorSummary);
 router.patch("/deals/:dealId/deal-announcement", patchDealAnnouncement);
 router.patch("/deals/:dealId/key-highlights", patchDealKeyHighlights);
+router.patch(
+  "/deals/:dealId/offering-investor-preview",
+  patchDealOfferingInvestorPreview,
+);
 router.patch("/deals/:dealId/gallery-cover", patchDealGalleryCover);
 router.post(
   "/deals/:dealId/offering-gallery-uploads",
   upload.array("galleryFiles", 20),
   postDealOfferingGalleryUploads,
 );
+router.post(
+  "/deals/:dealId/offering-document-uploads",
+  upload.array("documentFiles", 20),
+  postDealOfferingDocumentUploads,
+);
 router.patch("/deals/:dealId/offering-gallery", patchDealOfferingGallery);
 router.patch("/deals/:dealId/offering-overview", patchDealOfferingOverview);
 router.get(
   "/deals/:dealId/offering-preview-token",
   getOfferingPreviewToken,
+);
+router.post(
+  "/deals/:dealId/offering-preview-share-email",
+  postOfferingPreviewShareEmail,
 );
 router.get("/deals/:dealId", getDealById);
 router.put(

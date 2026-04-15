@@ -51,9 +51,8 @@ export function buildDealMemberInvitationEmailHtml(
   const href = escHtml(url)
   const buttonBlock = url
     ? `<div style="margin:20px 0;">
-  <a href="${href}" style="background-color:#2463eb;color:#ffffff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;">View deal</a>
-</div>
-<p style="font-size:14px;line-height:1.5;color:#64748b;word-break:break-all;">Or copy this link: <a href="${href}">${href}</a></p>`
+  <a href="${href}" style="background-color:#2463eb;color:#ffffff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;">Continue to portal</a>
+</div>`
     : `<p style="font-size:14px;line-height:1.5;color:#64748b;">Sign in to the investor portal to view this deal.</p>`
 
   return `<!DOCTYPE html>

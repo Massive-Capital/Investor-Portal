@@ -150,6 +150,11 @@ interface DealInvestorsTabProps {
   onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>
   /** Fires when Add or Edit investment modal is open — hide session draft row in Deal Members table. */
   onSharedInvestmentModalOpenChange?: (open: boolean) => void
+  /**
+   * Increment when investors change outside this tab (e.g. LP “Invest now” on the deal)
+   * so the table and KPIs refetch from the API.
+   */
+  investorsListRefreshKey?: number
 }
 
 function parseCommittedCellToNumber(s: string | undefined): number {
@@ -958,6 +963,7 @@ export const DealInvestorsTab = forwardRef<
     onDeleteMember,
     onSharedInvestmentModalOpenChange,
     offeringLinkAvailable = false,
+    investorsListRefreshKey = 0,
   },
   ref,
 ) {
@@ -1087,7 +1093,7 @@ export const DealInvestorsTab = forwardRef<
     return () => {
       cancelled = true
     }
-  }, [dealId])
+  }, [dealId, investorsListRefreshKey])
 
   useEffect(() => {
     let cancelled = false
@@ -1146,15 +1152,16 @@ export const DealInvestorsTab = forwardRef<
     subscriptionDocument: File | null,
   ) {
     const draftMeta = loadAddMemberDraft(dealId)
-    const autosavedId = draftMeta?.backendInvestmentId?.trim()
+    const autosavedLpId = draftMeta?.backendLpInvestorId?.trim()
+    const autosavedInvId = draftMeta?.backendInvestmentId?.trim()
     const result = isLpInvestorRole(values.investorRole)
-      ? autosavedId
-        ? await putDealLpInvestor(dealId, autosavedId, values)
+      ? autosavedLpId
+        ? await putDealLpInvestor(dealId, autosavedLpId, values)
         : await postDealLpInvestor(dealId, values)
-      : autosavedId
+      : autosavedInvId
         ? await putDealInvestment(
             dealId,
-            autosavedId,
+            autosavedInvId,
             values,
             subscriptionDocument,
           )

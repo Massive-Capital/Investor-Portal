@@ -109,9 +109,15 @@ export function AssetStepForm({
 
   function mergeFiles(incoming: FileList | File[]) {
     onImageFilesChange((prev) => {
+      const key = (f: File) => `${f.name}\0${f.size}\0${f.lastModified}`
+      const seen = new Set(prev.map(key))
       const list = [...prev]
       for (const f of Array.from(incoming)) {
-        if (f.type.startsWith("image/")) list.push(f)
+        if (!f.type.startsWith("image/")) continue
+        const k = key(f)
+        if (seen.has(k)) continue
+        seen.add(k)
+        list.push(f)
       }
       return list
     })

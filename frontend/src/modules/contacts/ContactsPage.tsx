@@ -11,7 +11,6 @@ import {
   Info,
   LayoutList,
   Mail,
-  Pencil,
   Plus,
   Search,
   Tag,
@@ -36,12 +35,17 @@ import "../../modules/usermanagement/user_management.css"
 import {
   createContact,
   fetchContacts,
+  fetchOrganizationContactLists,
+  fetchOrganizationContactTags,
   notifyContactsExportAudit,
   patchContactStatus,
   updateContact,
 } from "./api/contactsApi"
 import { AddContactPanel } from "./components/AddContactPanel"
-import { ContactRowActions } from "./components/ContactRowActions"
+import {
+  ContactCatalogRowActions,
+  ContactRowActions,
+} from "./components/ContactRowActions"
 import { ExportContactsModal } from "./components/ExportContactsModal"
 import { ViewContactModal } from "./components/ViewContactModal"
 import "./contacts.css"
@@ -186,12 +190,27 @@ function ContactsPage() {
   const [labelModalDesc, setLabelModalDesc] = useState("")
   const [labelModalErr, setLabelModalErr] = useState("")
   const [labelModalBusy, setLabelModalBusy] = useState(false)
+  /** Names persisted in `organization_contact_tag` / `organization_contact_list` (backend 1). */
+  const [dbCatalogTagNames, setDbCatalogTagNames] = useState<string[]>([])
+  const [dbCatalogListNames, setDbCatalogListNames] = useState<string[]>([])
 
   useEffect(() => {
     setTagCatalog((prev) => {
       const byLower = new Map<string, ContactLabelRow>()
       for (const r of prev) {
         byLower.set(r.name.toLowerCase(), r)
+      }
+      for (const t of dbCatalogTagNames) {
+        const trimmed = t.trim()
+        if (!trimmed) continue
+        const lk = trimmed.toLowerCase()
+        if (!byLower.has(lk)) {
+          byLower.set(lk, {
+            id: newLabelId(),
+            name: trimmed,
+            description: "",
+          })
+        }
       }
       for (const c of rows) {
         for (const t of c.tags) {
@@ -211,13 +230,25 @@ function ContactsPage() {
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
       )
     })
-  }, [rows])
+  }, [rows, dbCatalogTagNames])
 
   useEffect(() => {
     setListCatalog((prev) => {
       const byLower = new Map<string, ContactLabelRow>()
       for (const r of prev) {
         byLower.set(r.name.toLowerCase(), r)
+      }
+      for (const t of dbCatalogListNames) {
+        const trimmed = t.trim()
+        if (!trimmed) continue
+        const lk = trimmed.toLowerCase()
+        if (!byLower.has(lk)) {
+          byLower.set(lk, {
+            id: newLabelId(),
+            name: trimmed,
+            description: "",
+          })
+        }
       }
       for (const c of rows) {
         for (const t of c.lists) {
@@ -237,7 +268,7 @@ function ContactsPage() {
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
       )
     })
-  }, [rows])
+  }, [rows, dbCatalogListNames])
 
   const tabRows = useMemo(
     () =>
@@ -266,9 +297,18 @@ function ContactsPage() {
 
   const loadContacts = useCallback(async () => {
     setLoading(true)
-    const list = await fetchContacts()
-    setRows(list)
-    setLoading(false)
+    try {
+      const [list, dbTags, dbLists] = await Promise.all([
+        fetchContacts(),
+        fetchOrganizationContactTags(),
+        fetchOrganizationContactLists(),
+      ])
+      setRows(list)
+      setDbCatalogTagNames(dbTags)
+      setDbCatalogListNames(dbLists)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -710,18 +750,15 @@ function ContactsPage() {
       {
         id: "actions",
         header: "Actions",
-        align: "center",
-        thClassName: "um_th_actions contacts_th_actions_catalog",
-        tdClassName: "um_td_actions contacts_td_actions_catalog",
+        align: "right",
+        thClassName: "um_th_actions",
+        tdClassName: "um_td_actions",
         cell: (r) => (
-          <button
-            type="button"
-            className="contacts_catalog_row_action_btn"
-            aria-label={`Edit tag “${r.name}”`}
-            onClick={() => openLabelEdit("tag", r)}
-          >
-            <Pencil size={17} strokeWidth={2} aria-hidden />
-          </button>
+          <ContactCatalogRowActions
+            itemLabel={r.name}
+            kind="tag"
+            onEdit={() => openLabelEdit("tag", r)}
+          />
         ),
       },
     ],
@@ -752,18 +789,15 @@ function ContactsPage() {
       {
         id: "actions",
         header: "Actions",
-        align: "center",
-        thClassName: "um_th_actions contacts_th_actions_catalog",
-        tdClassName: "um_td_actions contacts_td_actions_catalog",
+        align: "right",
+        thClassName: "um_th_actions",
+        tdClassName: "um_td_actions",
         cell: (r) => (
-          <button
-            type="button"
-            className="contacts_catalog_row_action_btn"
-            aria-label={`Edit list “${r.name}”`}
-            onClick={() => openLabelEdit("list", r)}
-          >
-            <Pencil size={17} strokeWidth={2} aria-hidden />
-          </button>
+          <ContactCatalogRowActions
+            itemLabel={r.name}
+            kind="list"
+            onEdit={() => openLabelEdit("list", r)}
+          />
         ),
       },
     ],
@@ -906,9 +940,9 @@ function ContactsPage() {
       {
         id: "actions",
         header: "Actions",
-        align: "center",
-        thClassName: "um_th_actions contacts_th_actions_directory",
-        tdClassName: "um_td_actions contacts_td_actions_directory",
+        align: "right",
+        thClassName: "um_th_actions",
+        tdClassName: "um_td_actions",
         cell: (row) => (
           <ContactRowActions
             contactLabel={
@@ -1312,7 +1346,7 @@ function ContactsPage() {
             aria-labelledby="contacts-main-tab-tags"
           >
             <div className="um_panel um_members_tab_panel contacts_table_panel">
-              <div className="um_toolbar contacts_labels_panel_toolbar">
+              <div className="um_toolbar">
                 <div className="um_search_wrap">
                   <Search className="um_search_icon" size={18} aria-hidden />
                   <input
@@ -1329,7 +1363,7 @@ function ContactsPage() {
                 visualVariant="members"
                 membersShell="plain"
                 stickyFirstColumn={false}
-                membersTableClassName="um_table_members contacts_um_table contacts_um_table_labels"
+                membersTableClassName="um_table_members contacts_um_table"
                 columns={tagColumns}
                 rows={filteredTagCatalogRows}
                 getRowKey={(r) => r.id}
@@ -1415,7 +1449,7 @@ function ContactsPage() {
             aria-labelledby="contacts-main-tab-lists"
           >
             <div className="um_panel um_members_tab_panel contacts_table_panel">
-              <div className="um_toolbar contacts_labels_panel_toolbar">
+              <div className="um_toolbar">
                 <div className="um_search_wrap">
                   <Search className="um_search_icon" size={18} aria-hidden />
                   <input
@@ -1432,7 +1466,7 @@ function ContactsPage() {
                 visualVariant="members"
                 membersShell="plain"
                 stickyFirstColumn={false}
-                membersTableClassName="um_table_members contacts_um_table contacts_um_table_labels"
+                membersTableClassName="um_table_members contacts_um_table"
                 columns={listColumns}
                 rows={filteredListCatalogRows}
                 getRowKey={(r) => r.id}

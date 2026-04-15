@@ -1,10 +1,14 @@
 import {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { isLpInvestorSessionUser } from "../auth/roleUtils";
+import { SESSION_PORTAL_MODE_KEY } from "../auth/sessionKeys";
 
 export type PortalMode = "investing" | "syndicating";
 
@@ -21,10 +25,46 @@ type PortalModeContextValue = {
 
 const PortalModeContext = createContext<PortalModeContextValue | null>(null);
 
+function readStoredPortalMode(): PortalMode {
+  try {
+    const v = sessionStorage.getItem(SESSION_PORTAL_MODE_KEY);
+    if (v === "investing" || v === "syndicating") return v;
+  } catch {
+    /* sessionStorage unavailable */
+  }
+  return "syndicating";
+}
+
+function writeStoredPortalMode(next: PortalMode): void {
+  try {
+    sessionStorage.setItem(SESSION_PORTAL_MODE_KEY, next);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function PortalModeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<PortalMode>("syndicating");
+  const [mode, setModeState] = useState<PortalMode>(() => {
+    if (typeof window !== "undefined" && isLpInvestorSessionUser()) {
+      return "investing";
+    }
+    return readStoredPortalMode();
+  });
   const [portalSwitchOverlay, setPortalSwitchOverlay] =
     useState<PortalSwitchOverlay | null>(null);
+
+  const setMode = useCallback((next: PortalMode) => {
+    if (isLpInvestorSessionUser() && next === "syndicating") return;
+    setModeState(next);
+    writeStoredPortalMode(next);
+  }, []);
+
+  useEffect(() => {
+    if (!isLpInvestorSessionUser()) return;
+    setModeState("investing");
+    writeStoredPortalMode("investing");
+  }, []);
+
   const value = useMemo(
     () => ({
       mode,
@@ -34,7 +74,7 @@ export function PortalModeProvider({ children }: { children: ReactNode }) {
       portalSwitchOverlay,
       setPortalSwitchOverlay,
     }),
-    [mode, portalSwitchOverlay],
+    [mode, portalSwitchOverlay, setMode],
   );
   return (
     <PortalModeContext.Provider value={value}>

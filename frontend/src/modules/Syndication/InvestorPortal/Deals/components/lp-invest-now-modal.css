@@ -1,0 +1,41 @@
+/* LP Invest Now — compact modal: profile + amount + submit */
+
+.lp_invest_now_overlay {
+  align-items: center;
+  justify-content: center;
+}
+
+.lp_invest_now_modal {
+  max-width: 420px;
+  width: calc(100% - 2rem);
+}
+
+.lp_invest_now_modal_titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.lp_invest_now_modal_deal_name {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--um-text-muted, #64748b);
+  line-height: 1.35;
+}
+
+.lp_invest_now_modal_body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lp_invest_now_select {
+  cursor: pointer;
+  appearance: auto;
+  min-height: 2.5rem;
+}
+
+.lp_invest_now_modal_actions {
+  justify-content: flex-end;
+  gap: 0.75rem;
+}

@@ -18,21 +18,65 @@ export function resolveViewerDealMemberRole(
 ): ViewerDealMemberRole {
   const em = sessionEmail.trim().toLowerCase()
   if (!em || !em.includes("@")) return null
+  let hasLead = false
+  let hasAdmin = false
+  let hasCo = false
+  let hasLp = false
   for (const m of members) {
     const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
     if (rowEmail !== em) continue
     const role = String(m.investorRole ?? "").trim().toLowerCase()
     if (!role || role === "—") continue
-    if (role === "lead sponsor") return "lead_sponsor"
-    if (role === "admin sponsor") return "admin_sponsor"
-    if (role === "co-sponsor" || role === "co sponsor") return "co_sponsor"
+    if (role === "lead sponsor") hasLead = true
+    else if (role === "admin sponsor") hasAdmin = true
+    else if (role === "co-sponsor" || role === "co sponsor") hasCo = true
     if (
       role === LP_INVESTOR_ROLE_VALUE.toLowerCase() ||
       role === "lp investors"
     )
-      return "lp_investor"
+      hasLp = true
+  }
+  if (hasLead) return "lead_sponsor"
+  if (hasAdmin) return "admin_sponsor"
+  if (hasCo) return "co_sponsor"
+  if (hasLp) return "lp_investor"
+  return null
+}
+
+/**
+ * Roster `investor_role` for the signed-in viewer when they appear on the deal
+ * roster (lead sponsor, LP investor, etc.).
+ */
+export function resolveViewerDealInvestorRoleRaw(
+  members: DealInvestorRow[],
+  sessionEmail: string,
+): string | null {
+  const em = sessionEmail.trim().toLowerCase()
+  if (!em || !em.includes("@")) return null
+  for (const m of members) {
+    const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
+    if (rowEmail !== em) continue
+    const raw = String(m.investorRole ?? "").trim()
+    if (!raw || raw === "—") return null
+    return raw
   }
   return null
+}
+
+/** Roster `investor_role` when the viewer is Lead / Admin / Co-sponsor; otherwise null. */
+export function resolveViewerSponsorInvestorRoleRaw(
+  members: DealInvestorRow[],
+  sessionEmail: string,
+): string | null {
+  const kind = resolveViewerDealMemberRole(members, sessionEmail)
+  if (
+    kind !== "lead_sponsor" &&
+    kind !== "admin_sponsor" &&
+    kind !== "co_sponsor"
+  ) {
+    return null
+  }
+  return resolveViewerDealInvestorRoleRaw(members, sessionEmail)
 }
 
 const CO_SPONSOR_HIDDEN_TABS = new Set([

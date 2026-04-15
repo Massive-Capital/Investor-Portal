@@ -45,7 +45,9 @@ import {
   fetchDealMembers,
   fetchUsersForMemberSelect,
   postDealInvestment,
+  postDealLpInvestor,
   putDealInvestment,
+  putDealLpInvestor,
 } from "../../api/dealsApi"
 import { getApiV1Base } from "../../../../../../common/utils/apiBaseUrl"
 import { MEMBER_SELECT_OPTIONS } from "../../constants/member-options"
@@ -54,6 +56,8 @@ import {
   INVESTOR_PROFILE_SELECT_OPTIONS,
   INVESTOR_ROLE_SELECT_OPTIONS,
   LEAD_SPONSOR_ROLE_VALUE,
+  LP_INVESTOR_ROLE_VALUE,
+  LP_INVESTORS_ROLE_LABEL,
   isAdminSponsorOrCoSponsorRole,
   isLeadSponsorRole,
   leadSponsorContactIdExcludingRow,
@@ -244,6 +248,10 @@ export function AddInvestmentModal({
     null,
   )
   const backendInvestmentIdRef = useRef<string | null>(null)
+  const [backendLpInvestorId, setBackendLpInvestorId] = useState<string | null>(
+    null,
+  )
+  const backendLpInvestorIdRef = useRef<string | null>(null)
   const backendInvAutosaveTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
@@ -293,12 +301,22 @@ export function AddInvestmentModal({
     return k
   }, [mode, prefillKey])
 
-  /** Edit: exclude the row being edited. Add: exclude autosaved `deal_investment` for this modal. */
+  /** Edit: exclude the row being edited. Add: exclude autosaved roster row for duplicate checks. */
   const excludeRowIdForLeadSponsorGate = useMemo(() => {
     if (mode === "edit") return editingRowIdForLeadSponsorGate
+    if (isInvestorEntry) {
+      const lp = backendLpInvestorId?.trim()
+      return lp || null
+    }
     const bid = backendInvestmentId?.trim()
     return bid || null
-  }, [mode, editingRowIdForLeadSponsorGate, backendInvestmentId])
+  }, [
+    mode,
+    editingRowIdForLeadSponsorGate,
+    isInvestorEntry,
+    backendInvestmentId,
+    backendLpInvestorId,
+  ])
 
   const leadSponsorOptionDisabled = useMemo(
     () =>
@@ -333,15 +351,27 @@ export function AddInvestmentModal({
 
   const investorRoleDropdownOptions = useMemo(
     () =>
-      INVESTOR_ROLE_SELECT_OPTIONS.map((o) => ({
-        value: o.value,
-        label: o.label,
-        disabled:
-          (o.value === LEAD_SPONSOR_ROLE_VALUE && leadSponsorOptionDisabled) ||
-          (adminCoBlockedForSelectedContact &&
-            (o.value === "admin sponsor" || o.value === "Co-sponsor")),
-      })),
-    [leadSponsorOptionDisabled, adminCoBlockedForSelectedContact],
+      isInvestorEntry
+        ? [
+            {
+              value: LP_INVESTOR_ROLE_VALUE,
+              label: LP_INVESTORS_ROLE_LABEL,
+              disabled: false,
+            },
+          ]
+        : INVESTOR_ROLE_SELECT_OPTIONS.map((o) => ({
+            value: o.value,
+            label: o.label,
+            disabled:
+              (o.value === LEAD_SPONSOR_ROLE_VALUE && leadSponsorOptionDisabled) ||
+              (adminCoBlockedForSelectedContact &&
+                (o.value === "admin sponsor" || o.value === "Co-sponsor")),
+          })),
+    [
+      isInvestorEntry,
+      leadSponsorOptionDisabled,
+      adminCoBlockedForSelectedContact,
+    ],
   )
 
   useEffect(() => {
@@ -351,17 +381,24 @@ export function AddInvestmentModal({
 
   useLayoutEffect(() => {
     if (!open) return
+    const lpRolePatch = isInvestorEntry
+      ? { investorRole: LP_INVESTOR_ROLE_VALUE }
+      : {}
     if (mode === "edit" && initialValues) {
-      setForm({ ...emptyForm(), ...initialValues })
+      setForm({ ...emptyForm(), ...initialValues, ...lpRolePatch })
       setBackendInvestmentId(null)
       backendInvestmentIdRef.current = null
+      setBackendLpInvestorId(null)
+      backendLpInvestorIdRef.current = null
       setError(null)
       return
     }
     if (mode === "add" && !restoreAddMemberSessionDraft) {
-      setForm({ ...emptyForm(), offeringId: "primary" })
+      setForm({ ...emptyForm(), offeringId: "primary", ...lpRolePatch })
       setBackendInvestmentId(null)
       backendInvestmentIdRef.current = null
+      setBackendLpInvestorId(null)
+      backendLpInvestorIdRef.current = null
       setError(null)
       return
     }
@@ -371,22 +408,48 @@ export function AddInvestmentModal({
         ...emptyForm(),
         ...restored.form,
         offeringId: restored.form.offeringId?.trim() || "primary",
+        ...lpRolePatch,
       })
-      const bid = restored.backendInvestmentId?.trim()
-      if (bid) {
-        setBackendInvestmentId(bid)
-        backendInvestmentIdRef.current = bid
-      } else {
+      if (isInvestorEntry) {
         setBackendInvestmentId(null)
         backendInvestmentIdRef.current = null
+        const lpBid = restored.backendLpInvestorId?.trim()
+        if (lpBid) {
+          setBackendLpInvestorId(lpBid)
+          backendLpInvestorIdRef.current = lpBid
+        } else {
+          setBackendLpInvestorId(null)
+          backendLpInvestorIdRef.current = null
+        }
+      } else {
+        setBackendLpInvestorId(null)
+        backendLpInvestorIdRef.current = null
+        const bid = restored.backendInvestmentId?.trim()
+        if (bid) {
+          setBackendInvestmentId(bid)
+          backendInvestmentIdRef.current = bid
+        } else {
+          setBackendInvestmentId(null)
+          backendInvestmentIdRef.current = null
+        }
       }
     } else {
-      setForm({ ...emptyForm(), offeringId: "primary" })
+      setForm({ ...emptyForm(), offeringId: "primary", ...lpRolePatch })
       setBackendInvestmentId(null)
       backendInvestmentIdRef.current = null
+      setBackendLpInvestorId(null)
+      backendLpInvestorIdRef.current = null
     }
     setError(null)
-  }, [open, dealId, mode, initialValues, prefillKey, restoreAddMemberSessionDraft])
+  }, [
+    open,
+    dealId,
+    mode,
+    initialValues,
+    prefillKey,
+    restoreAddMemberSessionDraft,
+    isInvestorEntry,
+  ])
 
   latestAddMemberDraftRef.current = { form, step: 1 as const }
 
@@ -410,6 +473,9 @@ export function AddInvestmentModal({
         ...(backendInvestmentIdRef.current
           ? { backendInvestmentId: backendInvestmentIdRef.current }
           : {}),
+        ...(backendLpInvestorIdRef.current
+          ? { backendLpInvestorId: backendLpInvestorIdRef.current }
+          : {}),
       }
       /* Fresh “Add Member”: do not overwrite stored draft with an empty form — keeps draft row visible. */
       if (!restoreAddMemberSessionDraft && !addMemberDraftHasContent(draft)) return
@@ -421,9 +487,18 @@ export function AddInvestmentModal({
         addMemberDraftTimerRef.current = null
       }
     }
-  }, [open, mode, dealId, form, restoreAddMemberSessionDraft, backendInvestmentId])
+  }, [
+    open,
+    mode,
+    dealId,
+    form,
+    restoreAddMemberSessionDraft,
+    backendInvestmentId,
+    backendLpInvestorId,
+  ])
 
   backendInvestmentIdRef.current = backendInvestmentId
+  backendLpInvestorIdRef.current = backendLpInvestorId
 
   /** Debounced POST/PUT — same pattern as Add Deal (placeholder contact + first class on server). */
   useEffect(() => {
@@ -443,6 +518,9 @@ export function AddInvestmentModal({
           ...(backendInvestmentIdRef.current
             ? { backendInvestmentId: backendInvestmentIdRef.current }
             : {}),
+          ...(backendLpInvestorIdRef.current
+            ? { backendLpInvestorId: backendLpInvestorIdRef.current }
+            : {}),
         }
         if (!addMemberDraftEligibleForBackendAutosave(draft)) return
 
@@ -453,6 +531,59 @@ export function AddInvestmentModal({
           },
           dealBlocksInvitationEmails,
         )
+
+        if (isInvestorEntry) {
+          const lpId = backendLpInvestorIdRef.current
+          if (backendInvAutosaveInFlightRef.current) return
+          if (lpId) {
+            backendInvAutosaveInFlightRef.current = true
+            try {
+              const result = await putDealLpInvestor(
+                dealId,
+                lpId,
+                values,
+                { autosave: true },
+              )
+              if (result.ok && result.mode === "api") {
+                refreshMemberRosterForGate()
+                if (onBackendAutosave) await onBackendAutosave()
+              }
+            } catch {
+              /* silent — user may be offline */
+            } finally {
+              backendInvAutosaveInFlightRef.current = false
+            }
+            return
+          }
+          if (backendInvPostInFlightRef.current) return
+          backendInvPostInFlightRef.current = true
+          backendInvAutosaveInFlightRef.current = true
+          try {
+            const result = await postDealLpInvestor(dealId, values, {
+              autosave: true,
+            })
+            if (result.ok && result.mode === "api" && result.lpInvestorId) {
+              backendLpInvestorIdRef.current = result.lpInvestorId
+              setBackendLpInvestorId(result.lpInvestorId)
+              saveAddMemberDraft(dealId, {
+                form: f,
+                step: 1,
+                backendLpInvestorId: result.lpInvestorId,
+              })
+            }
+            if (result.ok && result.mode === "api") {
+              refreshMemberRosterForGate()
+              if (onBackendAutosave)
+                await onBackendAutosave({
+                  createdInvestment: Boolean(result.lpInvestorId),
+                })
+            }
+          } finally {
+            backendInvPostInFlightRef.current = false
+            backendInvAutosaveInFlightRef.current = false
+          }
+          return
+        }
 
         const invId = backendInvestmentIdRef.current
         if (backendInvAutosaveInFlightRef.current) return
@@ -524,6 +655,7 @@ export function AddInvestmentModal({
     onBackendAutosave,
     refreshMemberRosterForGate,
     dealBlocksInvitationEmails,
+    isInvestorEntry,
   ])
 
   useEffect(() => {
@@ -554,6 +686,9 @@ export function AddInvestmentModal({
       step: 1 as const,
       ...(backendInvestmentIdRef.current
         ? { backendInvestmentId: backendInvestmentIdRef.current }
+        : {}),
+      ...(backendLpInvestorIdRef.current
+        ? { backendLpInvestorId: backendLpInvestorIdRef.current }
         : {}),
     }
     if (!addMemberDraftHasContent(draft)) return
@@ -970,6 +1105,8 @@ export function AddInvestmentModal({
         skipFlushDraftAfterSaveRef.current = true
         backendInvestmentIdRef.current = null
         setBackendInvestmentId(null)
+        backendLpInvestorIdRef.current = null
+        setBackendLpInvestorId(null)
         clearAddMemberDraft(dealId)
       }
     } catch (err) {
@@ -1222,36 +1359,39 @@ export function AddInvestmentModal({
                       Icon={Shield}
                       tight
                     >
-                      <DropdownSelect
-                        id="add-inv-role"
-                        options={investorRoleDropdownOptions}
-                        value={form.investorRole}
-                        onChange={(v) => {
-                          if (
-                            leadSponsorContactId &&
-                            form.contactId.trim() === leadSponsorContactId &&
-                            isAdminSponsorOrCoSponsorRole(v)
-                          ) {
-                            toast.error(
-                              "This person is already Lead Sponsor on this deal. They cannot also be Admin sponsor or Co-sponsor.",
-                            )
-                            return
-                          }
-                          patch({ investorRole: v })
-                        }}
-                        placeholder="Select role"
-                        ariaLabel="Role"
-                        triggerClassName={DROPDOWN_TRIGGER_PILL}
-                      />
-                      {/* {leadSponsorOptionDisabled ? (
-                        <p
-                          className="deals_add_inv_role_lead_taken_hint"
-                          role="note"
-                        >
-                          This deal already has a Lead Sponsor. Edit that row to
-                          change them, or pick another role for this member.
-                        </p>
-                      ) : null} */}
+                      {isInvestorEntry ? (
+                        <input
+                          id="add-inv-role"
+                          type="text"
+                          readOnly
+                          className="deals_add_inv_field_pill deals_lp_inv_role_readonly"
+                          value={LP_INVESTORS_ROLE_LABEL}
+                          aria-readonly="true"
+                          aria-label="Role"
+                        />
+                      ) : (
+                        <DropdownSelect
+                          id="add-inv-role"
+                          options={investorRoleDropdownOptions}
+                          value={form.investorRole}
+                          onChange={(v) => {
+                            if (
+                              leadSponsorContactId &&
+                              form.contactId.trim() === leadSponsorContactId &&
+                              isAdminSponsorOrCoSponsorRole(v)
+                            ) {
+                              toast.error(
+                                "This person is already Lead Sponsor on this deal. They cannot also be Admin sponsor or Co-sponsor.",
+                              )
+                              return
+                            }
+                            patch({ investorRole: v })
+                          }}
+                          placeholder="Select role"
+                          ariaLabel="Role"
+                          triggerClassName={DROPDOWN_TRIGGER_PILL}
+                        />
+                      )}
                     </InvFormField>
                   </div>
 

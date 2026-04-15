@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../config/uploadPaths.js";
 import { db } from "../database/db.js";
 import {
@@ -13,8 +13,28 @@ import { companies } from "../schema/schema.js";
 import { sanitizeInvestorSummaryHtml } from "../utils/sanitizeInvestorSummaryHtml.js";
 import { sanitizeKeyHighlightsJson } from "../utils/sanitizeKeyHighlightsJson.js";
 import { encryptOfferingPreviewDealId } from "../utils/offeringPreviewCrypto.js";
+import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
 
 const UPLOAD_SUBDIR = "deal-assets";
+
+function normalizeAssetImagePathSegment(p: string): string {
+  return p.trim().replace(/^\/+/, "");
+}
+
+/** Dedupe by normalized segment; keep first occurrence’s trimmed string. */
+function dedupeAssetImagePathSegmentsPreserveOrder(
+  segments: readonly string[],
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of segments) {
+    const t = normalizeAssetImagePathSegment(raw);
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(raw.trim());
+  }
+  return out;
+}
 
 export type DealFormFieldErrors = Partial<
   Record<
@@ -23,6 +43,7 @@ export type DealFormFieldErrors = Partial<
     | "sec_type"
     | "owning_entity_name"
     | "property_name"
+    | "zip_code"
     | "funds_required_before_gp_sign"
     | "auto_send_funding_instructions",
     string
@@ -51,6 +72,11 @@ export type CreateDealFormInput = {
  * Deal stage aliases across old/new UI + DB constraint variants.
  * Normalizes incoming values to a stable DB-safe value.
  */
+/** Digits only, max 5 (US-style ZIP / PIN). */
+function normalizeDealZipCode(raw: string): string {
+  return String(raw ?? "").replace(/\D/g, "").slice(0, 5);
+}
+
 function normalizeDealStage(input: string): string {
   const raw = String(input ?? "").trim();
   if (!raw) return "";
@@ -144,6 +170,10 @@ function validateCreateInput(
     errors.owning_entity_name = "Owning entity name is required.";
   if (!input.propertyName.trim())
     errors.property_name = "Property name is required.";
+  const zip = normalizeDealZipCode(input.zipCode);
+  if (zip.length > 0 && zip.length !== 5) {
+    errors.zip_code = "ZIP / PIN must be exactly 5 digits.";
+  }
   if (typeof input.fundsRequiredBeforeGpSign !== "boolean") {
     errors.funds_required_before_gp_sign =
       "Funds required before GP sign must be yes or no.";
@@ -196,11 +226,30 @@ export interface DealMemoryUploadFile {
   originalname: string;
 }
 
+/** Safe folder segment used under `deal-assets/` for per-deal file isolation. */
+function safeDealFolderSegment(rawDealId: string): string {
+  const t = rawDealId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 96);
+  return t || "deal";
+}
+
 export async function saveDealAssetFiles(params: {
   files: DealMemoryUploadFile[];
+  /** Optional deal id to isolate stored files under `deal-assets/<dealId>/...`. */
+  dealId?: string;
 }): Promise<string[]> {
   if (!params.files.length) return [];
-  const uploadRoot = path.join(getUploadsPhysicalRoot(), UPLOAD_SUBDIR);
+  const dealFolder =
+    typeof params.dealId === "string" && params.dealId.trim()
+      ? safeDealFolderSegment(params.dealId)
+      : "";
+  const uploadRoot = dealFolder
+    ? path.join(getUploadsPhysicalRoot(), UPLOAD_SUBDIR, dealFolder)
+    : path.join(getUploadsPhysicalRoot(), UPLOAD_SUBDIR);
   await mkdir(uploadRoot, { recursive: true });
   const relativePaths: string[] = [];
   const ts = Date.now();
@@ -213,7 +262,11 @@ export async function saveDealAssetFiles(params: {
     );
     const abs = path.join(uploadRoot, name);
     await writeFile(abs, file.buffer);
-    relativePaths.push(`${UPLOAD_SUBDIR}/${name}`);
+    relativePaths.push(
+      dealFolder
+        ? `${UPLOAD_SUBDIR}/${dealFolder}/${name}`
+        : `${UPLOAD_SUBDIR}/${name}`,
+    );
   }
   return relativePaths;
 }
@@ -226,6 +279,7 @@ export async function insertAddDealForm(
   const normalizedInput: CreateDealFormInput = {
     ...input,
     dealStage: normalizeDealStage(input.dealStage),
+    zipCode: normalizeDealZipCode(input.zipCode),
   };
   const validationErrors = validateCreateInput(normalizedInput);
   if (validationErrors) {
@@ -251,7 +305,7 @@ export async function insertAddDealForm(
     addressLine2: normalizedInput.addressLine2.trim() || null,
     city: normalizedInput.city.trim(),
     state: normalizedInput.state.trim() || null,
-    zipCode: normalizedInput.zipCode.trim() || null,
+    zipCode: normalizedInput.zipCode || null,
     assetImagePath: assetRelativePaths.length
       ? assetRelativePaths.join(";")
       : null,
@@ -293,15 +347,40 @@ export async function listAddDealForms(): Promise<AddDealFormRow[]> {
  * company (`organization_id` + legacy owning-entity name — `listAddDealFormsByOrganizationId`).
  */
 export type DealViewerScope = {
+  /** JWT subject — used for participant (assigned investor) access. */
+  userId: string;
   organizationId: string | null;
   isPlatformAdmin: boolean;
   /** Syndication list/detail: all deals (platform admin, or platform_user with no org). */
   seesAllDeals: boolean;
+  /** Invited deal members (`deal_participant`): only roster-linked deals. */
+  assignedParticipationOnly: boolean;
+  /**
+   * When set, user may only see these deals (`deal_lp_investor` email + LP Investor role).
+   * Platform/company admins are not scoped here.
+   */
+  lpInvestorEmailScopedDealIds: string[] | null;
+  /**
+   * Syndication dashboard + GET /deals: when set, only these deals (viewer is Co-sponsor
+   * on roster and has no other `deal_member` roles). Company/platform admins excluded upstream.
+   */
+  coSponsorDashboardDealIds: string[] | null;
 };
 
 export async function listAddDealFormsForViewer(
   scope: DealViewerScope,
 ): Promise<AddDealFormRow[]> {
+  if (scope.lpInvestorEmailScopedDealIds?.length) {
+    return listAddDealFormsByIds(scope.lpInvestorEmailScopedDealIds);
+  }
+  if (scope.coSponsorDashboardDealIds?.length) {
+    return listAddDealFormsByIds(scope.coSponsorDashboardDealIds);
+  }
+  if (scope.assignedParticipationOnly) {
+    const ids = await listDealIdsAssignedToUser(scope.userId);
+    if (ids.length === 0) return [];
+    return listAddDealFormsByIds(ids);
+  }
   if (scope.seesAllDeals) {
     return db.select().from(addDealForm).orderBy(desc(addDealForm.createdAt));
   }
@@ -309,6 +388,20 @@ export async function listAddDealFormsForViewer(
     return [];
   }
   return listAddDealFormsByOrganizationId(scope.organizationId);
+}
+
+/** Load deal rows by primary key (e.g. deals linked via `assigning_deal_user`). */
+export async function listAddDealFormsByIds(
+  ids: string[],
+): Promise<AddDealFormRow[]> {
+  const unique = [...new Set(ids.map((id) => String(id ?? "").trim()))].filter(
+    Boolean,
+  );
+  if (unique.length === 0) return [];
+  return db
+    .select()
+    .from(addDealForm)
+    .where(inArray(addDealForm.id, unique));
 }
 
 export async function listAddDealFormsByOrganizationId(
@@ -563,6 +656,7 @@ export function normalizeOfferingGalleryPathsFromBody(
   if (!Array.isArray(raw)) {
     return { ok: false, message: "offering_gallery_paths must be an array." };
   }
+  const seen = new Set<string>();
   const out: string[] = [];
   for (const x of raw) {
     if (typeof x !== "string") {
@@ -572,6 +666,7 @@ export function normalizeOfferingGalleryPathsFromBody(
     if (!t) {
       return { ok: false, message: "Gallery path cannot be empty." };
     }
+    if (seen.has(t)) continue;
     if (t.length > MAX_OFFERING_GALLERY_PATH_LEN) {
       return { ok: false, message: "A gallery path is too long." };
     }
@@ -581,6 +676,7 @@ export function normalizeOfferingGalleryPathsFromBody(
     if (!/^[\w./-]+$/.test(t)) {
       return { ok: false, message: "Invalid gallery path characters." };
     }
+    seen.add(t);
     out.push(t);
     if (out.length > MAX_OFFERING_GALLERY_PATHS) {
       return { ok: false, message: "Too many gallery images." };
@@ -756,12 +852,27 @@ export async function appendDealGalleryUploadsById(
   if (newRelativePaths.length === 0) return getAddDealFormById(id);
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
+  const normSeg = (p: string) => p.trim().replace(/^\/+/, "");
+  const already = new Set(
+    (existing.assetImagePath?.split(";").filter(Boolean) ?? []).map((p) =>
+      normSeg(p),
+    ),
+  );
+  const uniqueNew: string[] = [];
+  const seenNew = new Set<string>();
+  for (const p of newRelativePaths) {
+    const t = normSeg(p);
+    if (!t || already.has(t) || seenNew.has(t)) continue;
+    seenNew.add(t);
+    uniqueNew.push(p.trim());
+  }
+  if (uniqueNew.length === 0) return existing;
   const prevPaths = existing.assetImagePath?.split(";").filter(Boolean) ?? [];
-  const mergedPaths = [...prevPaths, ...newRelativePaths];
+  const mergedPaths = [...prevPaths, ...uniqueNew];
   const assetImagePath = mergedPaths.join(";");
   const offeringGalleryPaths = mergeOfferingGalleryPathsIntoStored(
     existing.offeringGalleryPaths,
-    newRelativePaths,
+    uniqueNew,
   );
   const [updated] = await db
     .update(addDealForm)
@@ -787,11 +898,32 @@ export async function updateDealKeyHighlightsById(
   return updated;
 }
 
+export async function updateDealOfferingInvestorPreviewById(
+  id: string,
+  canonicalJson: string,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ offeringInvestorPreviewJson: canonicalJson })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
 export async function updateAddDealFormById(
   id: string,
   input: CreateDealFormInput,
   newAssetRelativePaths: string[],
-  options?: { organizationId?: string | null },
+  options?: {
+    organizationId?: string | null;
+    /**
+     * When present (edit-deal wizard PUT), these segments replace the previous
+     * `asset_image_path` base before new multipart uploads are appended.
+     */
+    replaceAssetImageBase?: string[];
+  },
 ): Promise<AddDealFormRow | undefined> {
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
@@ -799,6 +931,7 @@ export async function updateAddDealFormById(
   const normalizedInput: CreateDealFormInput = {
     ...input,
     dealStage: normalizeDealStage(input.dealStage),
+    zipCode: normalizeDealZipCode(input.zipCode),
   };
   const validationErrors = validateCreateInput(normalizedInput);
   if (validationErrors) {
@@ -809,17 +942,52 @@ export async function updateAddDealFormById(
     throw err;
   }
 
+  const useReplaceBase = options?.replaceAssetImageBase !== undefined;
   const prevPaths = existing.assetImagePath?.split(";").filter(Boolean) ?? [];
-  const mergedPaths = [...prevPaths, ...newAssetRelativePaths];
+  const baseSegments = useReplaceBase
+    ? dedupeAssetImagePathSegmentsPreserveOrder(
+        options!.replaceAssetImageBase ?? [],
+      )
+    : dedupeAssetImagePathSegmentsPreserveOrder(prevPaths);
+  const mergedList = dedupeAssetImagePathSegmentsPreserveOrder([
+    ...baseSegments,
+    ...newAssetRelativePaths,
+  ]);
+
   const assetImagePath =
-    mergedPaths.length > 0 ? mergedPaths.join(";") : existing.assetImagePath;
-  const offeringGalleryPaths =
-    newAssetRelativePaths.length > 0
-      ? mergeOfferingGalleryPathsIntoStored(
-          existing.offeringGalleryPaths,
-          newAssetRelativePaths,
-        )
-      : existing.offeringGalleryPaths;
+    mergedList.length > 0
+      ? mergedList.join(";")
+      : useReplaceBase
+        ? null
+        : existing.assetImagePath;
+
+  let offeringGalleryPaths: string;
+  if (useReplaceBase) {
+    const mergedSet = new Set(
+      mergedList.map((p) => normalizeAssetImagePathSegment(p)),
+    );
+    const existingGallery = parseStoredOfferingGalleryPaths(
+      existing.offeringGalleryPaths,
+    );
+    const filtered = existingGallery.filter((p) =>
+      mergedSet.has(normalizeAssetImagePathSegment(p)),
+    );
+    offeringGalleryPaths =
+      newAssetRelativePaths.length > 0
+        ? mergeOfferingGalleryPathsIntoStored(
+            JSON.stringify(filtered),
+            newAssetRelativePaths,
+          )
+        : JSON.stringify(filtered);
+  } else {
+    offeringGalleryPaths =
+      newAssetRelativePaths.length > 0
+        ? mergeOfferingGalleryPathsIntoStored(
+            existing.offeringGalleryPaths,
+            newAssetRelativePaths,
+          )
+        : existing.offeringGalleryPaths;
+  }
 
   const backfillOrg =
     !existing.organizationId && options?.organizationId
@@ -841,7 +1009,7 @@ export async function updateAddDealFormById(
     addressLine2: normalizedInput.addressLine2.trim() || null,
     city: normalizedInput.city.trim(),
     state: normalizedInput.state.trim() || null,
-    zipCode: normalizedInput.zipCode.trim() || null,
+    zipCode: normalizedInput.zipCode || null,
     assetImagePath,
     offeringGalleryPaths,
   };

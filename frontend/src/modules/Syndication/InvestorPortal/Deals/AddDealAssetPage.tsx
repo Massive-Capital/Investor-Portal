@@ -26,6 +26,7 @@ import {
   type DealAssetPersisted,
   type DealAssetRow,
 } from "./types/deal-asset.types"
+import { dedupeGalleryUrlsPreserveOrder } from "./utils/offeringGalleryUrls"
 import { emptyAssetStepDraft, type AssetStepDraft } from "./types/deals.types"
 import "../../../contacts/contacts.css"
 import "../../../usermanagement/user_management.css"
@@ -82,37 +83,53 @@ export function AddDealAssetPage() {
     setHydrated(false)
     setLoadError(null)
 
+    const primaryId = primaryDealAssetRowId(dealId)
     const persisted = getDealAssetPersisted(dealId, assetId)
+
     if (persisted) {
       setAssetDraft(persisted.draft)
       setAttrRows(persisted.attrRows)
-      const primaryId = primaryDealAssetRowId(dealId)
-      const saved = persisted.imagePreviewDataUrls
-      if (saved !== undefined) {
-        setExistingImageUrls(saved)
-        setHydrated(true)
-      } else if (assetId === primaryId) {
-        ;(async () => {
-          try {
-            const detail = await fetchDealById(dealId)
-            if (cancelled) return
-            setExistingImageUrls(assetImagePathsToUrls(detail.assetImagePath))
-          } catch {
-            if (!cancelled) setExistingImageUrls([])
-          } finally {
-            if (!cancelled) setHydrated(true)
-          }
-        })()
+
+      if (assetId === primaryId) {
+        const saved = persisted.imagePreviewDataUrls
+        const fromSaved = Array.isArray(saved) ? saved : []
+        /** After Save asset, `imagePreviewDataUrls` is the source of truth — server `assetImagePath` is append-only and would show removed files again. */
+        if (Array.isArray(persisted.imagePreviewDataUrls)) {
+          setExistingImageUrls(dedupeGalleryUrlsPreserveOrder([...fromSaved]))
+          setHydrated(true)
+        } else {
+          void (async () => {
+            try {
+              const detail = await fetchDealById(dealId)
+              if (cancelled) return
+              const fromApi = assetImagePathsToUrls(detail.assetImagePath)
+              setExistingImageUrls(
+                dedupeGalleryUrlsPreserveOrder([...fromSaved, ...fromApi]),
+              )
+            } catch {
+              if (!cancelled) {
+                setExistingImageUrls(Array.isArray(saved) ? saved : [])
+              }
+            } finally {
+              if (!cancelled) setHydrated(true)
+            }
+          })()
+        }
       } else {
-        setExistingImageUrls([])
+        const saved = persisted.imagePreviewDataUrls
+        setExistingImageUrls(
+          dedupeGalleryUrlsPreserveOrder(Array.isArray(saved) ? saved : []),
+        )
         setHydrated(true)
       }
-      return
+
+      return () => {
+        cancelled = true
+      }
     }
 
-    const primaryId = primaryDealAssetRowId(dealId)
     if (assetId === primaryId) {
-      ;(async () => {
+      void (async () => {
         try {
           const detail = await fetchDealById(dealId)
           if (cancelled) return
@@ -127,12 +144,15 @@ export function AddDealAssetPage() {
           if (!cancelled) setHydrated(true)
         }
       })()
-      return
+      return () => {
+        cancelled = true
+      }
     }
 
-    setLoadError("This asset is no longer available to edit. Return to the deal and refresh.")
+    setLoadError(
+      "This asset is no longer available to edit. Return to the deal and refresh.",
+    )
     setHydrated(true)
-
     return () => {
       cancelled = true
     }
@@ -197,7 +217,9 @@ export function AddDealAssetPage() {
     const resolvedId = isEdit ? assetId : `asset-${Date.now()}`
     const prev = isEdit ? getDealAssetPersisted(dealId, resolvedId) : undefined
 
-    let imagePreviewDataUrls = [...existingImageUrls]
+    let imagePreviewDataUrls = dedupeGalleryUrlsPreserveOrder([
+      ...existingImageUrls,
+    ])
     if (assetImageFiles.length > 0) {
       const up = await postDealOfferingGalleryUploads(dealId, assetImageFiles)
       if (!up.ok) {
@@ -205,7 +227,10 @@ export function AddDealAssetPage() {
         return
       }
       const fromPaths = assetImagePathsToUrls(up.newPaths.join(";"))
-      imagePreviewDataUrls = [...imagePreviewDataUrls, ...fromPaths]
+      imagePreviewDataUrls = dedupeGalleryUrlsPreserveOrder([
+        ...imagePreviewDataUrls,
+        ...fromPaths,
+      ])
     }
 
     const imageCount = imagePreviewDataUrls.length

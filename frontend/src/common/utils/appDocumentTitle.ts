@@ -6,8 +6,25 @@ export function formatAppDocumentTitle(pageLabel: string): string {
   return `${APP_DOCUMENT_TITLE_PREFIX} | ${t}`
 }
 
-export function setAppDocumentTitle(pageLabel: string): void {
-  document.title = formatAppDocumentTitle(pageLabel)
+export type SetAppDocumentTitleOptions = {
+  /**
+   * When true, sets `document.title` to `pageLabel` only (no
+   * `Investor Portal LLC |` prefix). Use for public offering preview / share
+   * surfaces where the title should read as a single phrase.
+   */
+  plain?: boolean
+}
+
+export function setAppDocumentTitle(
+  pageLabel: string,
+  options?: SetAppDocumentTitleOptions,
+): void {
+  const t = pageLabel.trim()
+  if (options?.plain) {
+    document.title = t || APP_DOCUMENT_TITLE_PREFIX
+    return
+  }
+  document.title = formatAppDocumentTitle(t)
 }
 
 function normalizePathname(pathname: string): string {
@@ -38,6 +55,7 @@ export function pageTitleForAppPathname(pathname: string): string {
     "/investing/documents": "Documents",
     "/investing/profiles": "Profiles",
     "/investing/deals": "Deals",
+    "/investing/cashflows": "Cashflows",
     "/investing/settings": "Settings",
     "/investing/review": "Leave a review",
     "/account": "My account",
@@ -52,6 +70,8 @@ export function pageTitleForAppPathname(pathname: string): string {
   if (/^\/customers\/[^/]+\/deals$/.test(p)) return "Company deals"
 
   if (/^\/deals\/[^/]+$/.test(p)) return "Deal"
+
+  if (/^\/investing\/investments\/[^/]+$/.test(p)) return "Investment"
 
   return "Investor Portal"
 }

@@ -60,7 +60,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Allow larger request bodies (default is ~100kb; Buyer COTS and other forms can exceed this)
+// Allow larger request bodies (default is ~100kb; Investor Portal and other forms can exceed this)
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
@@ -72,10 +72,13 @@ app.use("/api/v1", (req, res, next) => {
   next();
 });
 
-app.use("/uploads", express.static(getUploadsPhysicalRoot(), {
+
+const uploadsRoot = getUploadsPhysicalRoot();
+app.use("/uploads", express.static(uploadsRoot, {
   fallthrough: true,
   maxAge: "1d",
 }));
+console.log("Static /uploads →", uploadsRoot);
 
 app.use("/api/v1", [
   userRoutes,

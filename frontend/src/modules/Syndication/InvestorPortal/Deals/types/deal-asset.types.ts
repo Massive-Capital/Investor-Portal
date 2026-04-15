@@ -1,3 +1,4 @@
+import { normalizeDealGallerySrc } from "../../../../../common/utils/apiBaseUrl"
 import { getUsStateDisplayName } from "../constants/usLocations"
 import {
   COUNTRY_OPTIONS,
@@ -92,17 +93,32 @@ export function primaryDealAssetRowId(dealId: string): string {
   return `primary-${dealId}`
 }
 
-export function buildPrimaryDealAssetRowFromDetail(detail: {
-  id: string
-  propertyName: string
-  city: string
-  country: string
-  assetImagePath: string | null
-}): DealAssetRow {
+/**
+ * @param useDealWideImageCount When true, derive `imageCount` from `detail.assetImagePath`
+ *   (all semicolon paths on the deal). Only valid when this deal has **no extra assets**
+ *   in client storage — that path list is shared across every asset’s uploads, so using
+ *   it for the primary row would count other assets’ images on asset one.
+ */
+export function buildPrimaryDealAssetRowFromDetail(
+  detail: {
+    id: string
+    propertyName: string
+    city: string
+    country: string
+    assetImagePath: string | null
+  },
+  useDealWideImageCount = true,
+): DealAssetRow {
   const name = detail.propertyName?.trim() || "—"
   const address =
     [detail.city, detail.country].filter((x) => x?.trim()).join(", ") || "—"
-  const imageCount = detail.assetImagePath?.trim() ? 1 : 0
+  const imageCount =
+    useDealWideImageCount && detail.assetImagePath?.trim()
+      ? String(detail.assetImagePath)
+          .split(";")
+          .map((s) => s.trim())
+          .filter(Boolean).length
+      : 0
   return {
     id: primaryDealAssetRowId(detail.id),
     name,
@@ -183,6 +199,44 @@ export function consumeLegacyPendingAsset(dealId: string): void {
   }
 }
 
+function countDistinctPreviewUrls(urls: string[] | undefined): number {
+  if (!urls?.length) return 0
+  const seen = new Set<string>()
+  for (const raw of urls) {
+    if (typeof raw !== "string" || !raw.trim()) continue
+    const k = normalizeDealGallerySrc(raw).trim().toLowerCase()
+    if (k) seen.add(k)
+  }
+  return seen.size
+}
+
+function reconcileAssetRowImageCount(
+  row: DealAssetRow,
+  persisted: DealAssetPersisted | undefined,
+  detail: { id: string; assetImagePath: string | null },
+  /** When false, do not use deal-wide `assetImagePath` length for the primary row (multi-asset deals). */
+  useDealWideApiCountForPrimary: boolean,
+): DealAssetRow {
+  const fromPreviews = countDistinctPreviewUrls(persisted?.imagePreviewDataUrls)
+  const isPrimary = row.id === primaryDealAssetRowId(detail.id)
+  /** Once this asset was saved via Add/Edit asset, `imagePreviewDataUrls` is authoritative — do not re-inflate from API paths the user removed (server list is append-only). */
+  const hasExplicitSavedImageList =
+    persisted != null && Array.isArray(persisted.imagePreviewDataUrls)
+  const fromApiSegments =
+    isPrimary &&
+    useDealWideApiCountForPrimary &&
+    !hasExplicitSavedImageList &&
+    detail.assetImagePath?.trim()
+      ? String(detail.assetImagePath)
+          .split(";")
+          .map((s) => s.trim())
+          .filter(Boolean).length
+      : 0
+  const merged = Math.max(row.imageCount ?? 0, fromPreviews, fromApiSegments)
+  if (merged === row.imageCount) return row
+  return { ...row, imageCount: merged }
+}
+
 export function computeDealAssetRowsFromClientStorage(detail: {
   id: string
   propertyName: string
@@ -193,12 +247,24 @@ export function computeDealAssetRowsFromClientStorage(detail: {
   consumeLegacyPendingAsset(detail.id)
   const primaryId = primaryDealAssetRowId(detail.id)
   const map = readDealAssetsFullMap(detail.id)
-  const primaryRow =
-    map[primaryId]?.row ?? buildPrimaryDealAssetRowFromDetail(detail)
+  /** `assetImagePath` on the deal is one shared list for every asset’s uploads. */
+  const dealWidePathsCountAsPrimaryOnly = !Object.keys(map).some(
+    (id) => id !== primaryId,
+  )
+  const primaryPersisted = map[primaryId]
+  const primaryRow = reconcileAssetRowImageCount(
+    primaryPersisted?.row ??
+      buildPrimaryDealAssetRowFromDetail(detail, dealWidePathsCountAsPrimaryOnly),
+    primaryPersisted,
+    detail,
+    dealWidePathsCountAsPrimaryOnly,
+  )
   const extraRows = Object.keys(map)
     .filter((k) => k !== primaryId)
     .sort()
-    .map((k) => map[k]!.row)
+    .map((k) =>
+      reconcileAssetRowImageCount(map[k]!.row, map[k], detail, false),
+    )
   return [primaryRow, ...extraRows]
 }
 

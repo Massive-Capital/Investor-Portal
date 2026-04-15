@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
+import { isLpInvestorSessionUser } from "../../auth/roleUtils"
 import { clearPortalSessionStorage } from "../../auth/sessionKeys"
 import { getSessionUserDisplayName } from "../../auth/sessionUserDisplayName"
 import { usePortalMode } from "../../context/PortalModeContext"
@@ -85,6 +86,7 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
 
   const initials = initialsFromFullName(userName)
   const { mode, switchToInvesting, switchToSyndicating } = usePortalMode()
+  const hideModeSwitch = isLpInvestorSessionUser()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -127,11 +129,13 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
   function handleSwitchToInvesting() {
     switchToInvesting()
     closeMenu()
+    navigate("/")
   }
 
   function handleSwitchToSyndicating() {
     switchToSyndicating()
     closeMenu()
+    navigate("/")
   }
 
   return (
@@ -147,7 +151,14 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
         >
-          <span className="top_navbar_user_name">{userName}</span>
+          <span className="top_navbar_user_name_wrap">
+            <span className="top_navbar_user_name">{userName}</span>
+            {/* {dealRoleBadge ? (
+              <span className="top_navbar_user_role_badge" title="Deal role">
+                {dealRoleBadge}
+              </span>
+            ) : null} */}
+          </span>
           <ChevronDown
             size={18}
             className={`top_navbar_chevron${menuOpen ? " top_navbar_chevron_open" : ""}`}
@@ -166,19 +177,21 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
                 label="My account"
                 onClick={handleMyAccount}
               /> */}
-              {mode === "syndicating" ? (
-                <ProfileMenuRow
-                  icon={ArrowLeftRight}
-                  label="Switch to investing"
-                  onClick={handleSwitchToInvesting}
-                />
-              ) : (
-                <ProfileMenuRow
-                  icon={ArrowLeftRight}
-                  label="Switch to Syndicating"
-                  onClick={handleSwitchToSyndicating}
-                />
-              )}
+              {!hideModeSwitch ? (
+                mode === "syndicating" ? (
+                  <ProfileMenuRow
+                    icon={ArrowLeftRight}
+                    label="Switch to investing"
+                    onClick={handleSwitchToInvesting}
+                  />
+                ) : (
+                  <ProfileMenuRow
+                    icon={ArrowLeftRight}
+                    label="Switch to Syndicating"
+                    onClick={handleSwitchToSyndicating}
+                  />
+                )
+              ) : null}
               <ProfileMenuRow
                 icon={UserPlus}
                 label="Refer a friend"

@@ -1,4 +1,7 @@
-import { DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER } from "../../constants/investor-profile"
+import {
+  DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
+  isLpInvestorRole,
+} from "../../constants/investor-profile"
 import type { AddInvestmentFormValues } from "./add_deal_member_types"
 
 /** Fired after `saveAddMemberDraft` / `clearAddMemberDraft` so UIs can refresh draft rows. */
@@ -7,8 +10,10 @@ export const ADD_MEMBER_DRAFT_UPDATED_EVENT = "investor-portal:add-member-draft-
 export interface AddMemberFormDraft {
   form: AddInvestmentFormValues
   step: 1 | 2
-  /** Set after first successful backend autosave; subsequent saves use PUT. */
+  /** Set after first successful backend autosave; subsequent saves use PUT (`deal_investment`). */
   backendInvestmentId?: string | null
+  /** Set after first successful LP autosave from Investors tab; subsequent saves use PUT (`deal_lp_investor`). */
+  backendLpInvestorId?: string | null
 }
 
 function storageKey(dealId: string): string {
@@ -23,19 +28,27 @@ export function loadAddMemberDraft(dealId: string): AddMemberFormDraft | null {
     const p = JSON.parse(raw) as Partial<AddMemberFormDraft> & {
       form?: Partial<AddInvestmentFormValues>
       backend_investment_id?: string
+      backend_lp_investor_id?: string
     }
     if (p == null || typeof p !== "object" || !p.form || typeof p.form !== "object")
       return null
     const step = p.step === 2 ? 2 : 1
     const rawBid = p.backendInvestmentId ?? p.backend_investment_id
-    const backendInvestmentId =
+    let backendInvestmentId =
       typeof rawBid === "string" && rawBid.trim()
         ? rawBid.trim()
         : null
+    const rawLp = p.backendLpInvestorId ?? p.backend_lp_investor_id
+    const backendLpInvestorId =
+      typeof rawLp === "string" && rawLp.trim() ? rawLp.trim() : null
+    const form = p.form as AddInvestmentFormValues
+    /** Older drafts stored `deal_investment.id` while add-investor uses LP roster PUT. */
+    if (isLpInvestorRole(form.investorRole)) backendInvestmentId = null
     return {
       step,
-      form: p.form as AddInvestmentFormValues,
+      form,
       ...(backendInvestmentId ? { backendInvestmentId } : {}),
+      ...(backendLpInvestorId ? { backendLpInvestorId } : {}),
     }
   } catch {
     return null
@@ -118,8 +131,10 @@ export function isAddMemberSessionDraftRedundantWithApiRows(
   const draft = loadAddMemberDraft(dealId)
   if (!draft || !addMemberDraftHasContent(draft)) return false
 
-  const bid = draft.backendInvestmentId?.trim()
-  if (bid && apiRows.some((r) => String(r.id) === bid)) return true
+  const invBid = draft.backendInvestmentId?.trim()
+  if (invBid && apiRows.some((r) => String(r.id) === invBid)) return true
+  const lpBid = draft.backendLpInvestorId?.trim()
+  if (lpBid && apiRows.some((r) => String(r.id) === lpBid)) return true
 
   const draftCid = normalizeContactKey(draft.form.contactId)
   if (

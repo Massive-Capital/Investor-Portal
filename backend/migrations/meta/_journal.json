@@ -92,6 +92,62 @@
       "when": 1890200000000,
       "tag": "0011_seed_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1890300000000,
+      "tag": "0012_deal_lp_investor_profile_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1890400000000,
+      "tag": "0013_contact_is_portal_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1890500000000,
+      "tag": "0015_contact_organization_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1890600000000,
+      "tag": "0016_users_organization_id_fkey",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1890700000000,
+      "tag": "0018_organization_contact_tags_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1890800000000,
+      "tag": "0019_offering_investor_preview_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1890900000000,
+      "tag": "0020_deal_lp_investor_missing_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1891000000000,
+      "tag": "0021_contact_is_portal_user",
+      "breakpoints": true
     }
   ]
 }

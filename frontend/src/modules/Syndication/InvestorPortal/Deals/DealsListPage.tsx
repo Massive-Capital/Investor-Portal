@@ -9,8 +9,9 @@ import {
   Search,
   X,
 } from "lucide-react"
-import { useEffect, useId, useMemo, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
+import { usePortalMode } from "../../../../common/context/PortalModeContext"
 import {
   DataTable,
   type DataTableColumn,
@@ -34,10 +35,9 @@ import {
   CREATE_DEAL_DRAFT_ROW_ID,
   buildCreateDealDraftListRow,
 } from "./createDealDraftListRow"
-import {
-  DEAL_STAGE_CHOICES,
-  type DealListRow,
-} from "./types/deals.types"
+import { dealStageLabel } from "../deals-mock-data"
+import type { DealListRow } from "./types/deals.types"
+import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import { DealPreviewModal } from "./components/DealPreviewModal"
 import { DealRowActions } from "./components/DealRowActions"
 import { ExportDealsModal } from "./components/ExportDealsModal"
@@ -45,13 +45,16 @@ import {
   FormTooltip,
   type FormTooltipPanelAlign,
 } from "../../../../common/components/form-tooltip/FormTooltip"
+import { getSessionUserEmail } from "../../../../common/auth/sessionUserEmail"
 import {
   committedSortValue,
   dateSortValue,
+  dealTypeDisplayLabel,
   formatCommittedCurrency,
   formatDealListDateDisplay,
 } from "./dealsListDisplay"
-import { dealStageChipCompactClassName } from "./utils/dealStageChip"
+import { DealInvestorRoleBadge } from "./components/DealInvestorRoleBadge"
+import { resolveViewerDealInvestorRoleRaw } from "./utils/dealDetailTabVisibility"
 import "../../../usermanagement/user_management.css"
 import "./deal-members/add-investment/add_deal_modal.css"
 import "./deal-investors-tab.css"
@@ -110,23 +113,7 @@ function DealTableColumnHeader({
   )
 }
 
-function dealStageDisplayLabel(raw: string): string {
-  const source = String(raw ?? "").trim()
-  const key =
-    source === "raising_capital"
-      ? "capital_raising"
-      : source === "asset_managing"
-        ? "managing_asset"
-        : source.toLowerCase() === "draft"
-          ? "Draft"
-          : source
-  if (!key) return "—"
-  const found = DEAL_STAGE_CHOICES.find((c) => c.value === key)
-  return found?.label ?? key
-}
-
 function DealListNameCell({ row }: { row: DealListRow }) {
-  const stageLabel = dealStageDisplayLabel(String(row.dealStage ?? ""))
   const isSessionDraft = row.id === CREATE_DEAL_DRAFT_ROW_ID
   const isIncomplete = isDealListRowIncomplete(row)
   const showDraftMarker = isSessionDraft || isIncomplete
@@ -144,26 +131,17 @@ function DealListNameCell({ row }: { row: DealListRow }) {
   return (
     <div className="deals_list_name_cell">
       <div className="deals_list_name_primary">{nameLink}</div>
-      <div className="deals_list_name_subrow">
-        <span
-          className={dealStageChipCompactClassName(row.dealStage)}
-          title={`Stage: ${stageLabel}`}
-        >
-          <span className="deals_list_stage_badge_icon" aria-hidden>
-            <CircleDot size={12} strokeWidth={2} />
-          </span>
-          <span>{stageLabel}</span>
-        </span>
-        {showDraftMarker ? (
+      {showDraftMarker ? (
+        <div className="deals_list_name_subrow">
           <span
             className="deals_list_draft_icon deals_list_draft_icon--draft"
-            title={`Incomplete · ${stageLabel}`}
+            title="Incomplete draft"
           >
             <FilePenLine size={14} strokeWidth={2} aria-hidden />
             <span className="deals_list_sr_only">Draft</span>
           </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -243,9 +221,24 @@ function DealsSuspendAllConfirmModal({
   )
 }
 
-export function DealsListPage() {
+export type DealsListPageContext = "syndicating" | "investing"
+
+export type DealsListPageProps = {
+  /**
+   * `investing`: same table as syndicating, loads org + participant deals; hides
+   * add-deal / suspend-all / draft row / destructive row actions.
+   */
+  dealsListContext?: DealsListPageContext
+}
+
+export function DealsListPage({
+  dealsListContext = "syndicating",
+}: DealsListPageProps = {}) {
+  const { mode } = usePortalMode()
   const location = useLocation()
-  const hideCreateDraftRow = location.pathname === "/deals/create"
+  const hideCreateDraftRow =
+    location.pathname === "/deals/create" ||
+    dealsListContext === "investing"
   const [query, setQuery] = useState("")
   const [activeTab, setActiveTab] = useState<DealsListTab>("deals")
   const [dealsPage, setDealsPage] = useState(1)
@@ -270,15 +263,24 @@ export function DealsListPage() {
         remainingRaw: string
         investorCount: number
         investorClassesLine: string
+        /** Investing list: roster `investor_role` for the signed-in user on this deal. */
+        viewerDealInvestorRoleRaw?: string | null
       }
     >
   >({})
 
+  const loadDealsList = useCallback(() => {
+    return dealsListContext === "investing"
+      ? fetchDealsList({ includeParticipantDeals: true })
+      : fetchDealsList()
+  }, [dealsListContext])
+
   useEffect(() => {
+    if (dealsListContext === "investing" && mode !== "investing") return
     let cancelled = false
     void (async () => {
       setLoading(true)
-      const list = await fetchDealsList()
+      const list = await loadDealsList()
       if (!cancelled) {
         setRows(list)
         setLoading(false)
@@ -287,9 +289,10 @@ export function DealsListPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [dealsListContext, mode, loadDealsList])
 
   useEffect(() => {
+    if (dealsListContext === "investing") return
     function onDraftUpdated() {
       setCreateDealDraftTick((t) => t + 1)
     }
@@ -299,19 +302,19 @@ export function DealsListPage() {
         CREATE_DEAL_DRAFT_UPDATED_EVENT,
         onDraftUpdated,
       )
-  }, [])
+  }, [dealsListContext])
 
   useEffect(() => {
     function onDealsRefetch() {
       void (async () => {
-        const list = await fetchDealsList()
+        const list = await loadDealsList()
         setRows(list)
       })()
     }
     window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsRefetch)
     return () =>
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsRefetch)
-  }, [])
+  }, [loadDealsList])
 
   const sessionCreateDealDraftRow = useMemo((): DealListRow | null => {
     void createDealDraftTick
@@ -329,10 +332,13 @@ export function DealsListPage() {
   }, [rows])
 
   const rowsForTab = useMemo(() => {
+    if (dealsListContext === "investing") {
+      return rows.filter((r) => !r.archived)
+    }
     return rows.filter((r) =>
       activeTab === "archives" ? Boolean(r.archived) : !r.archived,
     )
-  }, [rows, activeTab])
+  }, [rows, activeTab, dealsListContext])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -354,17 +360,31 @@ export function DealsListPage() {
     }
     let cancelled = false
     void (async () => {
+      const sessionEmail =
+        dealsListContext === "investing" ? getSessionUserEmail() : ""
+      const em = sessionEmail.trim().toLowerCase()
       const entries = await Promise.all(
         ids.map(async (id) => {
           try {
             const [{ kpis, investors }, classes] = await Promise.all([
               fetchDealInvestors(id),
-              fetchDealInvestorClasses(id),
+              dealsListContext === "investing"
+                ? Promise.resolve([] as Awaited<
+                    ReturnType<typeof fetchDealInvestorClasses>
+                  >)
+                : fetchDealInvestorClasses(id),
             ])
             const investorClassesLine = classes
               .map((c) => String(c.name ?? "").trim())
               .filter(Boolean)
               .join(", ")
+            let viewerDealInvestorRoleRaw: string | null | undefined
+            if (dealsListContext === "investing" && em) {
+              viewerDealInvestorRoleRaw = resolveViewerDealInvestorRoleRaw(
+                investors,
+                sessionEmail,
+              )
+            }
             return [
               id,
               {
@@ -373,6 +393,9 @@ export function DealsListPage() {
                 remainingRaw: kpis.remaining,
                 investorCount: investors.length,
                 investorClassesLine,
+                ...(dealsListContext === "investing"
+                  ? { viewerDealInvestorRoleRaw: viewerDealInvestorRoleRaw ?? null }
+                  : {}),
               },
             ] as const
           } catch {
@@ -384,6 +407,9 @@ export function DealsListPage() {
                 remainingRaw: "—",
                 investorCount: 0,
                 investorClassesLine: "",
+                ...(dealsListContext === "investing"
+                  ? { viewerDealInvestorRoleRaw: null as string | null }
+                  : {}),
               },
             ] as const
           }
@@ -395,7 +421,7 @@ export function DealsListPage() {
     return () => {
       cancelled = true
     }
-  }, [filtered])
+  }, [filtered, dealsListContext])
 
   useEffect(() => {
     const id =
@@ -474,69 +500,159 @@ export function DealsListPage() {
   }
 
   const columns: DataTableColumn<DealListRow>[] = useMemo(() => {
-    const dataCols: DataTableColumn<DealListRow>[] = [
+    const nameColumn: DataTableColumn<DealListRow> = {
+      id: "name",
+      header: (
+        <DealTableColumnHeader
+          label="Deal Name"
+          hint="Legal or marketing name of the offering."
+        />
+      ),
+      tdClassName: "um_td_user",
+      sortValue: (row) => (row.dealName ?? "").toLowerCase(),
+      cell: (row) => <DealListNameCell row={row} />,
+    }
+
+    const dealStageColumn: DataTableColumn<DealListRow> = {
+      id: "dealStage",
+      header: (
+        <DealTableColumnHeader
+          label="Deal stage"
+          hint="Current lifecycle stage for this offering."
+        />
+      ),
+      sortValue: (row) => dealStageLabel(row.dealStage ?? "").toLowerCase(),
+      cell: (row) => {
+        const label = dealStageLabel(row.dealStage ?? "").trim() || "—"
+        return (
+          <span
+            className={dealStageChipCompactClassName(row.dealStage)}
+            title={`Stage: ${label}`}
+          >
+            <span className="deals_list_stage_badge_icon" aria-hidden>
+              <CircleDot size={12} strokeWidth={2} />
+            </span>
+            <span>{label}</span>
+          </span>
+        )
+      },
+    }
+
+    const investingYourRoleColumn: DataTableColumn<DealListRow> = {
+      id: "yourRole",
+      header: (
+        <DealTableColumnHeader
+          label="Your role"
+          hint="Your role on this deal’s roster (for example lead sponsor or LP investor)."
+        />
+      ),
+      align: "center",
+      thClassName: "deals_th_align_center",
+      sortValue: (row) =>
+        (
+          investorMetricsByDealId[row.id]?.viewerDealInvestorRoleRaw ?? ""
+        ).toLowerCase(),
+      cell: (row) => {
+        const raw =
+          investorMetricsByDealId[row.id]?.viewerDealInvestorRoleRaw ?? null
+        if (!raw?.trim()) {
+          return <span className="um_status_muted">—</span>
+        }
+        return <DealInvestorRoleBadge investorRole={raw} />
+      },
+    }
+
+    const startColumn: DataTableColumn<DealListRow> = {
+      id: "start",
+      header: (
+        <DealTableColumnHeader
+          label="Start Date"
+          hint="Date the deal opened or went live."
+          headerAlign="center"
+        />
+      ),
+      align: "center",
+      thClassName: "deals_th_align_center",
+      sortValue: (row) =>
+        dateSortValue(row.startDateDisplay ?? row.createdDateDisplay),
+      cell: (row) =>
+        formatDealListDateDisplay(
+          row.startDateDisplay ?? row.createdDateDisplay,
+        ),
+    }
+
+    const closeColumn: DataTableColumn<DealListRow> = {
+      id: "close",
+      header: (
+        <DealTableColumnHeader
+          label="Close Date"
+          hint="Target or actual close date for the deal."
+          headerAlign="center"
+        />
+      ),
+      align: "center",
+      thClassName: "deals_th_align_center",
+      sortValue: (row) => dateSortValue(row.closeDateDisplay),
+      cell: (row) => formatDealListDateDisplay(row.closeDateDisplay),
+    }
+
+    const investingPreviewColumns: DataTableColumn<DealListRow>[] = [
       {
-        id: "name",
+        id: "dealType",
         header: (
           <DealTableColumnHeader
-            label="Deal Name"
-            hint="Legal or marketing name of the offering."
+            label="Deal type"
+            hint="Same field as Deal details preview (wizard / deal type)."
           />
         ),
-        tdClassName: "um_td_user",
-        sortValue: (row) => (row.dealName ?? "").toLowerCase(),
-        cell: (row) => <DealListNameCell row={row} />,
+        sortValue: (row) => (row.dealType ?? "").toLowerCase(),
+        cell: (row) => dealTypeDisplayLabel(row.dealType ?? ""),
       },
       {
-        id: "start",
+        id: "secType",
         header: (
           <DealTableColumnHeader
-            label="Start Date"
-            hint="Date the deal opened or went live."
-            headerAlign="center"
+            label="SEC type"
+            hint="Regulatory classification shown in Deal details preview."
           />
         ),
-        align: "center",
-        thClassName: "deals_th_align_center",
-        sortValue: (row) =>
-          dateSortValue(row.startDateDisplay ?? row.createdDateDisplay),
-        cell: (row) =>
-          formatDealListDateDisplay(
-            row.startDateDisplay ?? row.createdDateDisplay,
-          ),
+        sortValue: (row) => (row.secType ?? "").toLowerCase(),
+        cell: (row) => {
+          const t = String(row.secType ?? "").trim()
+          return t || "—"
+        },
       },
       {
-        id: "close",
+        id: "propertyName",
         header: (
           <DealTableColumnHeader
-            label="Close Date"
-            hint="Target or actual close date for the deal."
-            headerAlign="center"
+            label="Property name"
+            hint="Property or asset name from Deal details preview."
           />
         ),
-        align: "center",
-        thClassName: "deals_th_align_center",
-        sortValue: (row) => dateSortValue(row.closeDateDisplay),
-        cell: (row) => formatDealListDateDisplay(row.closeDateDisplay),
+        sortValue: (row) => (row.propertyName ?? "").toLowerCase(),
+        cell: (row) => {
+          const t = String(row.propertyName ?? "").trim()
+          return t || "—"
+        },
       },
-      // {
-      //   id: "dealStage",
-      //   header: (
-      //     <DealTableColumnHeader
-      //       label="Deal Stage"
-      //       hint="Current lifecycle stage for this deal."
-      //       headerAlign="center"
-      //     />
-      //   ),
-      //   align: "center",
-      //   thClassName: "deals_th_align_center",
-      //   sortValue: (row) => dealStageDisplayLabel(row.dealStage).toLowerCase(),
-      //   cell: (row) => (
-      //     <span className={dealStageChipClassName(row.dealStage)}>
-      //       {dealStageDisplayLabel(row.dealStage)}
-      //     </span>
-      //   ),
-      // },
+      {
+        id: "owningEntity",
+        header: (
+          <DealTableColumnHeader
+            label="Owning entity"
+            hint="Owning entity from Deal details preview."
+          />
+        ),
+        sortValue: (row) => (row.owningEntityName ?? "").toLowerCase(),
+        cell: (row) => {
+          const t = String(row.owningEntityName ?? "").trim()
+          return t || "—"
+        },
+      },
+    ]
+
+    const syndicatingFinancialColumns: DataTableColumn<DealListRow>[] = [
       {
         id: "targetRaised",
         header: (
@@ -631,72 +747,17 @@ export function DealsListPage() {
           return formatCommittedCurrency(raw)
         },
       },
-      // {
-      //   id: "investment",
-      //   header: (
-      //     <DealTableColumnHeader
-      //       label="Investment"
-      //       hint="Number of rows in the deal Investors table (same list as when you open the deal)."
-      //       headerAlign="center"
-      //     />
-      //   ),
-      //   align: "center",
-      //   thClassName: "deals_th_align_center",
-      //   sortValue: (row) => {
-      //     const m = investorMetricsByDealId[row.id]
-      //     if (m != null) return m.investorCount
-      //     return parseInvestorCountFromCell(row.investors)
-      //   },
-      //   cell: (row) => {
-      //     const m = investorMetricsByDealId[row.id]
-      //     if (m != null) return String(m.investorCount)
-      //     return "—"
-      //   },
-      // },
-      // {
-      //   id: "investorClass",
-      //   header: (
-      //     <DealTableColumnHeader
-      //       label="Investor Class"
-      //       hint="Classes configured for this deal (same as the Classes section / investor classes inside the deal)."
-      //       headerAlign="center"
-      //       tooltipPlacement="top"
-      //       tooltipPanelAlign="end"
-      //       hintOpenOnHover={false}
-      //     />
-      //   ),
-      //   align: "center",
-      //   thClassName: "deals_th_align_center",
-      //   sortValue: (row) => {
-      //     const m = investorMetricsByDealId[row.id]
-      //     const fromDeal = m?.investorClassesLine?.trim() ?? ""
-      //     if (fromDeal) return fromDeal.toLowerCase()
-      //     return (row.investorClass ?? "").toLowerCase()
-      //   },
-      //   tdClassName: "deals_td_investor_class_cell",
-      //   cell: (row) => {
-      //     const m = investorMetricsByDealId[row.id]
-      //     const fromDeal = m?.investorClassesLine?.trim() ?? ""
-      //     const raw = row.investorClass ?? "—"
-      //     const fromList =
-      //       raw === "—"
-      //         ? ""
-      //         : raw
-      //             .split(/[;,]/)
-      //             .map((s) => s.trim())
-      //             .filter(Boolean)
-      //             .join(", ")
-      //     const display = fromDeal || fromList || "—"
-      //     return (
-      //       <div className="deals_td_investor_class_pills_wrap">
-      //         <InvestorClassPillsDisplay
-      //           pillSource={display}
-      //           titleForTooltip={`Investor classes: ${display}`}
-      //         />
-      //       </div>
-      //     )
-      //   },
-      // },
+    ]
+
+    const dataCols: DataTableColumn<DealListRow>[] = [
+      nameColumn,
+      dealStageColumn,
+      ...(dealsListContext === "investing"
+        ? [investingYourRoleColumn, ...investingPreviewColumns]
+        : []),
+      startColumn,
+      closeColumn,
+      ...(dealsListContext === "syndicating" ? syndicatingFinancialColumns : []),
       {
         id: "actions",
         header: "Actions",
@@ -707,12 +768,14 @@ export function DealsListPage() {
           <div className="deal_members_actions_cell">
             <DealRowActions
               draftRow={row.id === CREATE_DEAL_DRAFT_ROW_ID}
+              readOnlyActions={dealsListContext === "investing"}
               dealId={row.id}
               dealName={row.dealName}
               dealStage={row.dealStage}
               archived={Boolean(row.archived)}
               onPreviewDeal={
-                row.id === CREATE_DEAL_DRAFT_ROW_ID
+                row.id === CREATE_DEAL_DRAFT_ROW_ID ||
+                dealsListContext === "investing"
                   ? undefined
                   : () => setPreviewDealId(row.id)
               }
@@ -751,14 +814,18 @@ export function DealsListPage() {
     ]
 
     return dataCols
-  }, [investorMetricsByDealId])
+  }, [investorMetricsByDealId, dealsListContext])
 
   function handleOpenExportModal() {
     setExportModalOpen(true)
   }
 
   const emptyMessage =
-    activeTab === "archives" ? "No archived deals." : "No deal to display."
+    dealsListContext === "investing"
+      ? "No deal to display."
+      : activeTab === "archives"
+        ? "No archived deals."
+        : "No deal to display."
 
   return (
     <section className="um_page deals_list_page">
@@ -773,66 +840,84 @@ export function DealsListPage() {
             />
             My deals
           </h2>
-          <Link className="um_btn_primary deals_list_add_link" to="/deals/create">
-            <Plus size={18} aria-hidden />
-            Add deal
-          </Link>
+          {dealsListContext === "syndicating" ? (
+            <Link className="um_btn_primary deals_list_add_link" to="/deals/create">
+              <Plus size={18} aria-hidden />
+              Add deal
+            </Link>
+          ) : null}
         </div>
       </div>
 
-      <div className="um_members_tabs_outer deals_tabs_outer">
-        <TabsScrollStrip scrollClassName="deals_tabs_scroll">
-          <div
-            className="um_members_tabs_row deals_tabs_row"
-            role="tablist"
-            aria-label="Deals views"
-          >
-            <button
-              type="button"
-              id="deals-tab-deals"
-              role="tab"
-              aria-selected={activeTab === "deals"}
-              aria-controls="deals-list-tabpanel"
-              className={`um_members_tab deals_tabs_tab${activeTab === "deals" ? " um_members_tab_active" : ""}`}
-              onClick={() => setActiveTab("deals")}
+      {/* Deals / Archives tabs — syndicating only (hidden for investing `/investing/deals`). */}
+      {dealsListContext === "syndicating" ? (
+        <div className="um_members_tabs_outer deals_tabs_outer">
+          <TabsScrollStrip scrollClassName="deals_tabs_scroll">
+            <div
+              className="um_members_tabs_row deals_tabs_row"
+              role="tablist"
+              aria-label="Deals views"
             >
-              <Briefcase
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
-                aria-hidden
-              />
-              <span className="deals_tabs_label">Deals</span>
-              <span className="deals_tabs_count">({activeDealsCount})</span>
-            </button>
-            <button
-              type="button"
-              id="deals-tab-archives"
-              role="tab"
-              aria-selected={activeTab === "archives"}
-              aria-controls="deals-list-tabpanel"
-              className={`um_members_tab deals_tabs_tab${activeTab === "archives" ? " um_members_tab_active" : ""}`}
-              onClick={() => setActiveTab("archives")}
-            >
-              <Archive
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
-                aria-hidden
-              />
-              <span className="deals_tabs_label">Archives</span>
-              <span className="deals_tabs_count">({archivedDealsCount})</span>
-            </button>
-          </div>
-        </TabsScrollStrip>
-      </div>
+              <button
+                type="button"
+                id="deals-tab-deals"
+                role="tab"
+                aria-selected={activeTab === "deals"}
+                aria-controls="deals-list-tabpanel"
+                className={`um_members_tab deals_tabs_tab${activeTab === "deals" ? " um_members_tab_active" : ""}`}
+                onClick={() => setActiveTab("deals")}
+              >
+                <Briefcase
+                  className="deals_tabs_icon"
+                  size={18}
+                  strokeWidth={1.75}
+                  aria-hidden
+                />
+                <span className="deals_tabs_label">Deals</span>
+                <span className="deals_tabs_count">({activeDealsCount})</span>
+              </button>
+              <button
+                type="button"
+                id="deals-tab-archives"
+                role="tab"
+                aria-selected={activeTab === "archives"}
+                aria-controls="deals-list-tabpanel"
+                className={`um_members_tab deals_tabs_tab${activeTab === "archives" ? " um_members_tab_active" : ""}`}
+                onClick={() => setActiveTab("archives")}
+              >
+                <Archive
+                  className="deals_tabs_icon"
+                  size={18}
+                  strokeWidth={1.75}
+                  aria-hidden
+                />
+                <span className="deals_tabs_label">Archives</span>
+                <span className="deals_tabs_count">({archivedDealsCount})</span>
+              </button>
+            </div>
+          </TabsScrollStrip>
+        </div>
+      ) : null}
 
-      <div className="um_members_tab_content">
+      <div
+        className={
+          dealsListContext === "investing"
+            ? "um_members_tab_content deals_list_investing_no_tabs"
+            : "um_members_tab_content"
+        }
+      >
         <div
           id="deals-list-tabpanel"
-          role="tabpanel"
+          role={dealsListContext === "investing" ? "region" : "tabpanel"}
+          aria-label={
+            dealsListContext === "investing" ? "My deals list" : undefined
+          }
           aria-labelledby={
-            activeTab === "deals" ? "deals-tab-deals" : "deals-tab-archives"
+            dealsListContext === "investing"
+              ? undefined
+              : activeTab === "deals"
+                ? "deals-tab-deals"
+                : "deals-tab-archives"
           }
           className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading ? " deals_list_table_panel_loading" : ""}`}
           aria-busy={loading}
@@ -850,7 +935,7 @@ export function DealsListPage() {
               />
             </div>
             <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-              {activeTab === "deals" ? (
+              {dealsListContext === "syndicating" && activeTab === "deals" ? (
                 <button
                   type="button"
                   className="deals_suspend_all_btn"
@@ -904,6 +989,7 @@ export function DealsListPage() {
 
       <DealPreviewModal
         dealId={previewDealId}
+        listContext={dealsListContext}
         onClose={() => setPreviewDealId(null)}
       />
 

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
+  assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/dealAccess.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/assigningDealUser.service.js";
@@ -69,7 +70,7 @@ export async function getDealInvestors(
   }
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -80,7 +81,10 @@ export async function getDealInvestors(
       lpRaw === "true" ||
       String(lpRaw).toLowerCase() === "yes";
     if (lpInvestorsOnly) {
-      const { kpis, investors } = await getLpInvestorsTabPayload(dealId);
+      const { kpis, investors } = await getLpInvestorsTabPayload(
+        dealId,
+        user.id,
+      );
       res.status(200).json({ kpis, investors });
       return;
     }
@@ -132,7 +136,7 @@ export async function getDealCommitmentAmountByContact(
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -274,8 +278,8 @@ export async function putDealInvestment(
       });
     }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
-    /** Invitation email only on explicit save — never on debounced autosave (avoids mail spam while typing). */
-    if (!contactIsPlaceholder && !autosave) {
+    /* Invitation email only on explicit Save — not on debounced autosave (would spam). */
+    if (!autosave && !contactIsPlaceholder) {
       await sendDealMemberInviteForInvestmentIfRequested({
         dealId,
         contactId,
@@ -434,8 +438,7 @@ export async function postDealInvestment(
       });
     }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
-    /** Invitation email only on explicit save — never on debounced autosave. */
-    if (!contactIsPlaceholder && !autosave) {
+    if (!autosave && !contactIsPlaceholder) {
       await sendDealMemberInviteForInvestmentIfRequested({
         dealId,
         contactId,
