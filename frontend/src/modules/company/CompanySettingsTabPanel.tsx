@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -6,7 +7,12 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
-import { fetchWorkspaceTabSettings } from "./companyWorkspaceSettingsApi";
+import { normalizeDealGallerySrc } from "../../common/utils/apiBaseUrl";
+import {
+  fetchWorkspaceTabSettings,
+  postCompanySettingsBranding,
+  putWorkspaceTabSettings,
+} from "./companyWorkspaceSettingsApi";
 import { useDebouncedWorkspaceTabPersist } from "./useWorkspaceTabPersistence";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -23,6 +29,7 @@ import {
   MailCheck,
   MailX,
   Pencil,
+  Loader2,
   Settings,
   Trash2,
   Upload,
@@ -33,17 +40,21 @@ import {
 import { CardRadioGroup } from "../../common/components/CardRadioGroup/CardRadioGroup";
 import { toast } from "../../common/components/Toast";
 
+/**
+ * Stable object URL for a `File` on the first paint (useEffect was one frame too late, so
+ * `cp_media_preview_*` looked empty right after the user picked an image).
+ */
 function useObjectUrl(file: File | null): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  const url = useMemo(
+    () => (file != null ? URL.createObjectURL(file) : null),
+    [file],
+  );
   useEffect(() => {
-    if (!file) {
-      setUrl(null);
-      return;
-    }
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
+    if (url == null) return;
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [url]);
   return url;
 }
 
@@ -87,14 +98,18 @@ function SettingsFieldEditActions({
   saveLabel?: string;
   editAriaLabel?: string;
   onEdit: () => void;
-  onSave: () => void;
+  onSave: () => void | Promise<void>;
   onCancel: () => void;
 }) {
   if (readOnly) return null;
   if (editing) {
     return (
       <>
-        <button type="button" className="um_btn_primary" onClick={onSave}>
+        <button
+          type="button"
+          className="um_btn_primary"
+          onClick={() => void onSave()}
+        >
           <Check size={16} strokeWidth={2} aria-hidden />
           {saveLabel}
         </button>
@@ -178,30 +193,137 @@ export function CompanySettingsTabPanel({
   const [editBg, setEditBg] = useState(false);
   const [editLogoIcon, setEditLogoIcon] = useState(false);
 
-  const [logoCommitted, setLogoCommitted] = useState<File | null>(null);
+  /** Root-relative `/uploads/...` from API after upload or from workspace settings. */
+  const [logoImageUrl, setLogoImageUrl] = useState<string | null>(null);
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
+  const [logoIconUrl, setLogoIconUrl] = useState<string | null>(null);
   const [logoDraft, setLogoDraft] = useState<File | null>(null);
-  const [bgCommitted, setBgCommitted] = useState<File | null>(null);
   const [bgDraft, setBgDraft] = useState<File | null>(null);
-  const [iconCommitted, setIconCommitted] = useState<File | null>(null);
   const [iconDraft, setIconDraft] = useState<File | null>(null);
+  const [logoPendingRemoval, setLogoPendingRemoval] = useState(false);
+  const [bgPendingRemoval, setBgPendingRemoval] = useState(false);
+  const [iconPendingRemoval, setIconPendingRemoval] = useState(false);
+  const [logoPreviewLoadFailed, setLogoPreviewLoadFailed] = useState(false);
+  const [bgPreviewLoadFailed, setBgPreviewLoadFailed] = useState(false);
+  const [iconPreviewLoadFailed, setIconPreviewLoadFailed] = useState(false);
 
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const bgFileInputRef = useRef<HTMLInputElement>(null);
   const iconFileInputRef = useRef<HTMLInputElement>(null);
 
-  const logoDisplayFile = editLogo ? logoDraft : logoCommitted;
-  const bgDisplayFile = editBg ? bgDraft : bgCommitted;
-  const iconDisplayFile = editLogoIcon ? iconDraft : iconCommitted;
-  const logoObjectUrl = useObjectUrl(logoDisplayFile);
-  const bgObjectUrl = useObjectUrl(bgDisplayFile);
-  const iconObjectUrl = useObjectUrl(iconDisplayFile);
+  const logoDraftObjectUrl = useObjectUrl(logoDraft);
+  const bgDraftObjectUrl = useObjectUrl(bgDraft);
+  const iconDraftObjectUrl = useObjectUrl(iconDraft);
+
+  const logoPreviewSrc = useMemo(() => {
+    if (editLogo) {
+      if (logoPendingRemoval) return null;
+      if (logoDraft) return logoDraftObjectUrl;
+      if (logoImageUrl) return normalizeDealGallerySrc(logoImageUrl);
+      return null;
+    }
+    if (logoImageUrl) return normalizeDealGallerySrc(logoImageUrl);
+    return null;
+  }, [
+    editLogo,
+    logoPendingRemoval,
+    logoDraft,
+    logoDraftObjectUrl,
+    logoImageUrl,
+  ]);
+
+  const bgPreviewSrc = useMemo(() => {
+    if (editBg) {
+      if (bgPendingRemoval) return null;
+      if (bgDraft) return bgDraftObjectUrl;
+      if (backgroundImageUrl) return normalizeDealGallerySrc(backgroundImageUrl);
+      return null;
+    }
+    if (backgroundImageUrl) return normalizeDealGallerySrc(backgroundImageUrl);
+    return null;
+  }, [
+    editBg,
+    bgPendingRemoval,
+    bgDraft,
+    bgDraftObjectUrl,
+    backgroundImageUrl,
+  ]);
+
+  const iconPreviewSrc = useMemo(() => {
+    if (editLogoIcon) {
+      if (iconPendingRemoval) return null;
+      if (iconDraft) return iconDraftObjectUrl;
+      if (logoIconUrl) return normalizeDealGallerySrc(logoIconUrl);
+      return null;
+    }
+    if (logoIconUrl) return normalizeDealGallerySrc(logoIconUrl);
+    return null;
+  }, [
+    editLogoIcon,
+    iconPendingRemoval,
+    iconDraft,
+    iconDraftObjectUrl,
+    logoIconUrl,
+  ]);
+
+  useEffect(() => {
+    setLogoPreviewLoadFailed(false);
+  }, [logoPreviewSrc]);
+  useEffect(() => {
+    setBgPreviewLoadFailed(false);
+  }, [bgPreviewSrc]);
+  useEffect(() => {
+    setIconPreviewLoadFailed(false);
+  }, [iconPreviewSrc]);
 
   const [settingsHydrated, setSettingsHydrated] = useState(!workspaceCompanyId);
+  const lastLoadedWorkspaceIdRef = useRef<string | null>(null);
+
+  /**
+   * `company_workspace_tab_settings` (tab: `settings`) `payload` keys & UI blocks:
+   * - `logoImageUrl`  → "Logo" section, upload route `.../branding/logo`
+   * - `backgroundImageUrl` → "Background image" section, `.../branding/background`
+   * - `logoIconUrl`   → "Logo icon" section, `.../branding/logoIcon`
+   */
+  const applySettingsMediaFromPayload = useCallback((p: Record<string, unknown>) => {
+    if (typeof p.logoImageUrl === "string" && p.logoImageUrl.trim()) {
+      setLogoImageUrl(p.logoImageUrl.trim());
+    } else {
+      setLogoImageUrl(null);
+    }
+    if (typeof p.backgroundImageUrl === "string" && p.backgroundImageUrl.trim()) {
+      setBackgroundImageUrl(p.backgroundImageUrl.trim());
+    } else {
+      setBackgroundImageUrl(null);
+    }
+    const iconP = p as Record<string, unknown>;
+    const fromIconUrl =
+      typeof p.logoIconUrl === "string" && p.logoIconUrl.trim()
+        ? p.logoIconUrl.trim()
+        : "";
+    const fromLogoIcon =
+      typeof iconP.logoIcon === "string" && String(iconP.logoIcon).trim()
+        ? String(iconP.logoIcon).trim()
+        : "";
+    if (fromIconUrl || fromLogoIcon) {
+      setLogoIconUrl(fromIconUrl || fromLogoIcon);
+    } else {
+      setLogoIconUrl(null);
+    }
+  }, []);
 
   useEffect(() => {
     if (!workspaceCompanyId) {
       setSettingsHydrated(true);
+      lastLoadedWorkspaceIdRef.current = null;
       return;
+    }
+    const prevWorkspace = lastLoadedWorkspaceIdRef.current;
+    if (prevWorkspace !== workspaceCompanyId) {
+      setLogoImageUrl(null);
+      setBackgroundImageUrl(null);
+      setLogoIconUrl(null);
+      lastLoadedWorkspaceIdRef.current = workspaceCompanyId;
     }
     let cancelled = false;
     setSettingsHydrated(false);
@@ -235,13 +357,14 @@ export function CompanySettingsTabPanel({
             setDistributionTypes(next);
           }
         }
+        applySettingsMediaFromPayload(p);
       }
       setSettingsHydrated(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [workspaceCompanyId]);
+  }, [workspaceCompanyId, applySettingsMediaFromPayload]);
 
   const settingsPayload = useMemo(
     () => ({
@@ -250,6 +373,9 @@ export function CompanySettingsTabPanel({
       emailVerifyBeforeInvest,
       primaryMemberInFunnel,
       distributionTypes,
+      logoImageUrl,
+      backgroundImageUrl,
+      logoIconUrl,
     }),
     [
       qualificationEnabled,
@@ -257,15 +383,31 @@ export function CompanySettingsTabPanel({
       emailVerifyBeforeInvest,
       primaryMemberInFunnel,
       distributionTypes,
+      logoImageUrl,
+      backgroundImageUrl,
+      logoIconUrl,
     ],
   );
+
+  /**
+   * Debounced auto-save must never include logo/background/icon URL fields. They are only
+   * written from each section’s Save (or clear) flow. Otherwise `null` in React state — e.g. after
+   * a failed GET or before hydration — was merged on the server and overwrote real paths in the DB.
+   */
+  const autoPersistSettingsPayload = useMemo((): Record<string, unknown> => {
+    const p: Record<string, unknown> = { ...settingsPayload };
+    delete p.logoImageUrl;
+    delete p.backgroundImageUrl;
+    delete p.logoIconUrl;
+    return p;
+  }, [settingsPayload]);
 
   useDebouncedWorkspaceTabPersist(
     workspaceCompanyId,
     "settings",
     readOnly,
     settingsHydrated,
-    settingsPayload,
+    autoPersistSettingsPayload,
   );
 
   /* Sync from parent only when `initialCompanyName` actually changes — not when `editingName`
@@ -298,6 +440,8 @@ export function CompanySettingsTabPanel({
     () => portalHostFromCompanyName(companyName),
     [companyName],
   );
+
+  const mediaBrandingLoading = Boolean(workspaceCompanyId) && !settingsHydrated;
 
   const distributionTypesForUi = editDistribution
     ? distributionDraft
@@ -356,6 +500,13 @@ export function CompanySettingsTabPanel({
     }
   }
 
+  function isLikelyImageFile(f: File): boolean {
+    if (f.type && f.type.startsWith("image/")) return true;
+    return /\.(png|jpe?g|gif|webp|svg|ico|avif|bmp|heic|heif)$/i.test(
+      f.name || "",
+    );
+  }
+
   function applySingleImageFromInput(
     e: ChangeEvent<HTMLInputElement>,
     setDraft: (file: File | null) => void,
@@ -364,8 +515,8 @@ export function CompanySettingsTabPanel({
     e.target.value = "";
     const f = list?.length ? list.item(0) : null;
     if (!f) return;
-    if (!f.type.startsWith("image/")) {
-      toast.error("Invalid file", "Please choose an image file.");
+    if (!isLikelyImageFile(f)) {
+      toast.error("Invalid file", "Please choose an image file (PNG, JPEG, SVG, ICO, etc.).");
       return;
     }
     setDraft(f);
@@ -375,20 +526,28 @@ export function CompanySettingsTabPanel({
   function exitOtherMediaEdits(active: "logo" | "bg" | "icon") {
     if (active !== "logo") {
       setEditLogo(false);
-      setLogoDraft(logoCommitted);
+      setLogoDraft(null);
+      setLogoPendingRemoval(false);
     }
     if (active !== "bg") {
       setEditBg(false);
-      setBgDraft(bgCommitted);
+      setBgDraft(null);
+      setBgPendingRemoval(false);
     }
     if (active !== "icon") {
       setEditLogoIcon(false);
-      setIconDraft(iconCommitted);
+      setIconDraft(null);
+      setIconPendingRemoval(false);
     }
   }
 
   return (
     <div className="cp_settings_root">
+      <p className="cp_settings_page_lead">
+        Configure your organization name, how investors register, deal defaults, and branding
+        for the company portal. Changes apply to your workspace and saved to your company
+        record.
+      </p>
       <section className="cp_settings_section" aria-labelledby="cp-gen-settings">
         <SettingsSectionHeading id="cp-gen-settings" Icon={Settings}>
           General settings
@@ -755,6 +914,7 @@ export function CompanySettingsTabPanel({
         </div>
       </section>
 
+      {/* `logoImageUrl` — see `applySettingsMediaFromPayload` */}
       <section className="cp_settings_section" aria-labelledby="cp-logo">
         <SettingsSectionHeading id="cp-logo" Icon={ImageIcon}>
           Logo
@@ -767,7 +927,7 @@ export function CompanySettingsTabPanel({
             </p>
           </div>
           <div className="cp_settings_control">
-            <div className="cp_settings_value_row cp_settings_media_edit_row">
+            <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_media_block">
               <div className="cp_media_card">
                 <input
                   ref={logoFileInputRef}
@@ -777,16 +937,38 @@ export function CompanySettingsTabPanel({
                   className="cp_settings_hidden_file_input"
                   aria-hidden
                   tabIndex={-1}
-                  onChange={(e) => applySingleImageFromInput(e, setLogoDraft)}
+                  onChange={(e) => {
+                    applySingleImageFromInput(e, (file) => {
+                      setLogoDraft(file);
+                      if (file) setLogoPendingRemoval(false);
+                    });
+                  }}
                 />
                 <div
-                  className={`cp_media_preview cp_media_preview_logo${logoObjectUrl ? " cp_media_preview_has_image" : ""}`}
+                  className={`cp_media_preview cp_media_preview_logo${logoPreviewSrc && !logoPreviewLoadFailed && !mediaBrandingLoading ? " cp_media_preview_has_image" : ""}`}
                 >
-                  {logoObjectUrl ? (
+                  {mediaBrandingLoading ? (
+                    <div
+                      className="cp_settings_branding_preview_loading"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2
+                        className="cp_settings_branding_preview_spinner"
+                        size={28}
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                      <span>Loading preview…</span>
+                    </div>
+                  ) : logoPreviewSrc && !logoPreviewLoadFailed ? (
                     <img
-                      src={logoObjectUrl}
+                      key={logoPreviewSrc}
+                      src={logoPreviewSrc}
                       alt="Company logo preview"
                       className="cp_media_preview_img cp_media_preview_img_logo"
+                      loading="eager"
+                      onError={() => setLogoPreviewLoadFailed(true)}
                     />
                   ) : (
                     <>
@@ -795,51 +977,117 @@ export function CompanySettingsTabPanel({
                     </>
                   )}
                 </div>
-                <div className="cp_media_actions">
-                  <button
-                    type="button"
-                    className="um_btn_secondary"
-                    disabled={readOnly || !editLogo}
-                    onClick={() => logoFileInputRef.current?.click()}
-                  >
-                    <Upload size={16} strokeWidth={2} aria-hidden />
-                    Upload new
-                  </button>
-                  <button
-                    type="button"
-                    className="um_btn_secondary"
-                    disabled={readOnly || !editLogo || !logoDraft}
-                    onClick={() => setLogoDraft(null)}
-                  >
-                    <Trash2 size={16} strokeWidth={2} aria-hidden />
-                    Delete
-                  </button>
-                </div>
+                {editLogo && logoDraft && !readOnly ? (
+                  <p className="cp_settings_media_selected_file" title={logoDraft.name}>
+                    {logoDraft.name}
+                  </p>
+                ) : null}
               </div>
-              <SettingsFieldEditActions
+              <div className="cp_settings_media_toolbar" aria-label="Logo actions">
+                <SettingsFieldEditActions
                 readOnly={readOnly}
                 editing={editLogo}
                 editAriaLabel="Edit company logo"
                 onEdit={() => {
                   exitOtherMediaEdits("logo");
-                  setLogoDraft(logoCommitted);
+                  setLogoPendingRemoval(false);
+                  setLogoDraft(null);
                   setEditLogo(true);
                 }}
-                onSave={() => {
-                  setLogoCommitted(logoDraft);
+                onSave={async () => {
+                  if (readOnly || !workspaceCompanyId) {
+                    toast.error("Error", "Company workspace is not available.");
+                    return;
+                  }
+                  let nextLogo: string | null = logoImageUrl;
+                  if (logoPendingRemoval) {
+                    nextLogo = null;
+                  } else if (logoDraft) {
+                    const up = await postCompanySettingsBranding(
+                      workspaceCompanyId,
+                      "logo",
+                      logoDraft,
+                    );
+                    if (!up.ok) {
+                      toast.error("Upload failed", up.message);
+                      return;
+                    }
+                    nextLogo = up.url;
+                  }
+                  setLogoImageUrl(nextLogo);
+                  setLogoDraft(null);
+                  setLogoPendingRemoval(false);
                   setEditLogo(false);
-                  toast.success("Saved", "Company logo updated.");
+                  // Only `logoImageUrl` here — never pass sibling media URLs from React state or a
+                  // `null` here would merge over DB values when state is stale (e.g. 502 on load).
+                  const put = await putWorkspaceTabSettings(workspaceCompanyId, "settings", {
+                    qualificationEnabled,
+                    offeringsMode,
+                    emailVerifyBeforeInvest,
+                    primaryMemberInFunnel,
+                    distributionTypes,
+                    logoImageUrl: nextLogo,
+                  });
+                  if (put.ok) {
+                    const fresh = await fetchWorkspaceTabSettings(
+                      workspaceCompanyId,
+                      "settings",
+                    );
+                    if (fresh.ok) applySettingsMediaFromPayload(fresh.payload);
+                    toast.success("Saved", "Company logo updated.");
+                    window.dispatchEvent(new Event("company-branding-updated"));
+                  } else {
+                    toast.error("Save failed", put.message);
+                  }
                 }}
                 onCancel={() => {
-                  setLogoDraft(logoCommitted);
+                  setLogoDraft(null);
+                  setLogoPendingRemoval(false);
                   setEditLogo(false);
                 }}
               />
+                {editLogo && !readOnly ? (
+                  <div className="cp_media_actions">
+                    <button
+                      type="button"
+                      className="um_btn_secondary"
+                      onClick={() => logoFileInputRef.current?.click()}
+                    >
+                      <Upload size={16} strokeWidth={2} aria-hidden />
+                      Upload new
+                    </button>
+                    <button
+                      type="button"
+                      className="um_btn_secondary"
+                      disabled={
+                        !logoDraft && !logoImageUrl && !logoPendingRemoval
+                      }
+                      onClick={() => {
+                        if (logoDraft) {
+                          setLogoDraft(null);
+                          return;
+                        }
+                        if (logoPendingRemoval) {
+                          setLogoPendingRemoval(false);
+                          return;
+                        }
+                        if (logoImageUrl) setLogoPendingRemoval(true);
+                      }}
+                    >
+                      <Trash2 size={16} strokeWidth={2} aria-hidden />
+                      {logoPendingRemoval && !logoDraft
+                        ? "Undo remove"
+                        : "Delete"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* `backgroundImageUrl` — see `applySettingsMediaFromPayload` */}
       <section className="cp_settings_section" aria-labelledby="cp-bg">
         <SettingsSectionHeading id="cp-bg" Icon={Images}>
           Background image
@@ -852,7 +1100,7 @@ export function CompanySettingsTabPanel({
             </p>
           </div>
           <div className="cp_settings_control">
-            <div className="cp_settings_value_row cp_settings_media_edit_row">
+            <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_media_block">
               <div className="cp_media_card">
                 <input
                   ref={bgFileInputRef}
@@ -862,68 +1110,164 @@ export function CompanySettingsTabPanel({
                   className="cp_settings_hidden_file_input"
                   aria-hidden
                   tabIndex={-1}
-                  onChange={(e) => applySingleImageFromInput(e, setBgDraft)}
+                  onChange={(e) => {
+                    applySingleImageFromInput(e, (file) => {
+                      setBgDraft(file);
+                      if (file) setBgPendingRemoval(false);
+                    });
+                  }}
                 />
                 <div
-                  className={`cp_media_preview cp_media_preview_bg${bgObjectUrl ? " cp_media_preview_has_image" : ""}`}
-                  role={bgObjectUrl ? undefined : "img"}
+                  className={`cp_media_preview cp_media_preview_bg${
+                    bgPreviewSrc && !bgPreviewLoadFailed && !mediaBrandingLoading
+                      ? " cp_media_preview_has_image"
+                      : ""
+                  }`}
+                  role={
+                    bgPreviewSrc && !bgPreviewLoadFailed && !mediaBrandingLoading
+                      ? undefined
+                      : "img"
+                  }
                   aria-label={
-                    bgObjectUrl ? undefined : "Background preview placeholder"
+                    bgPreviewSrc && !bgPreviewLoadFailed && !mediaBrandingLoading
+                      ? undefined
+                      : "Background preview placeholder"
                   }
                 >
-                  {bgObjectUrl ? (
+                  {mediaBrandingLoading ? (
+                    <div
+                      className="cp_settings_branding_preview_loading"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2
+                        className="cp_settings_branding_preview_spinner"
+                        size={28}
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                      <span>Loading preview…</span>
+                    </div>
+                  ) : bgPreviewSrc && !bgPreviewLoadFailed ? (
                     <img
-                      src={bgObjectUrl}
+                      key={bgPreviewSrc}
+                      src={bgPreviewSrc}
                       alt="Background image preview"
                       className="cp_media_preview_img cp_media_preview_img_bg"
+                      loading="eager"
+                      onError={() => setBgPreviewLoadFailed(true)}
                     />
                   ) : null}
                 </div>
-                <div className="cp_media_actions">
-                  <button
-                    type="button"
-                    className="um_btn_secondary"
-                    disabled={readOnly || !editBg}
-                    onClick={() => bgFileInputRef.current?.click()}
-                  >
-                    <Upload size={16} strokeWidth={2} aria-hidden />
-                    Upload new
-                  </button>
-                  <button
-                    type="button"
-                    className="um_btn_secondary"
-                    disabled={readOnly || !editBg || !bgDraft}
-                    onClick={() => setBgDraft(null)}
-                  >
-                    <Trash2 size={16} strokeWidth={2} aria-hidden />
-                    Delete
-                  </button>
-                </div>
+                {editBg && bgDraft && !readOnly ? (
+                  <p className="cp_settings_media_selected_file" title={bgDraft.name}>
+                    {bgDraft.name}
+                  </p>
+                ) : null}
               </div>
-              <SettingsFieldEditActions
+              <div className="cp_settings_media_toolbar" aria-label="Background image actions">
+                <SettingsFieldEditActions
                 readOnly={readOnly}
                 editing={editBg}
                 editAriaLabel="Edit background image"
                 onEdit={() => {
                   exitOtherMediaEdits("bg");
-                  setBgDraft(bgCommitted);
+                  setBgPendingRemoval(false);
+                  setBgDraft(null);
                   setEditBg(true);
                 }}
-                onSave={() => {
-                  setBgCommitted(bgDraft);
+                onSave={async () => {
+                  if (readOnly || !workspaceCompanyId) {
+                    toast.error("Error", "Company workspace is not available.");
+                    return;
+                  }
+                  let nextBg: string | null = backgroundImageUrl;
+                  if (bgPendingRemoval) {
+                    nextBg = null;
+                  } else if (bgDraft) {
+                    const up = await postCompanySettingsBranding(
+                      workspaceCompanyId,
+                      "background",
+                      bgDraft,
+                    );
+                    if (!up.ok) {
+                      toast.error("Upload failed", up.message);
+                      return;
+                    }
+                    nextBg = up.url;
+                  }
+                  setBackgroundImageUrl(nextBg);
+                  setBgDraft(null);
+                  setBgPendingRemoval(false);
                   setEditBg(false);
-                  toast.success("Saved", "Background image updated.");
+                  const put = await putWorkspaceTabSettings(workspaceCompanyId, "settings", {
+                    qualificationEnabled,
+                    offeringsMode,
+                    emailVerifyBeforeInvest,
+                    primaryMemberInFunnel,
+                    distributionTypes,
+                    backgroundImageUrl: nextBg,
+                  });
+                  if (put.ok) {
+                    const fresh = await fetchWorkspaceTabSettings(
+                      workspaceCompanyId,
+                      "settings",
+                    );
+                    if (fresh.ok) applySettingsMediaFromPayload(fresh.payload);
+                    toast.success("Saved", "Background image updated.");
+                    window.dispatchEvent(new Event("company-branding-updated"));
+                  } else {
+                    toast.error("Save failed", put.message);
+                  }
                 }}
                 onCancel={() => {
-                  setBgDraft(bgCommitted);
+                  setBgDraft(null);
+                  setBgPendingRemoval(false);
                   setEditBg(false);
                 }}
               />
+                {editBg && !readOnly ? (
+                  <div className="cp_media_actions">
+                    <button
+                      type="button"
+                      className="um_btn_secondary"
+                      onClick={() => bgFileInputRef.current?.click()}
+                    >
+                      <Upload size={16} strokeWidth={2} aria-hidden />
+                      Upload new
+                    </button>
+                    <button
+                      type="button"
+                      className="um_btn_secondary"
+                      disabled={
+                        !bgDraft && !backgroundImageUrl && !bgPendingRemoval
+                      }
+                      onClick={() => {
+                        if (bgDraft) {
+                          setBgDraft(null);
+                          return;
+                        }
+                        if (bgPendingRemoval) {
+                          setBgPendingRemoval(false);
+                          return;
+                        }
+                        if (backgroundImageUrl) setBgPendingRemoval(true);
+                      }}
+                    >
+                      <Trash2 size={16} strokeWidth={2} aria-hidden />
+                      {bgPendingRemoval && !bgDraft
+                        ? "Undo remove"
+                        : "Delete"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* `logoIconUrl` — see `applySettingsMediaFromPayload` */}
       <section className="cp_settings_section" aria-labelledby="cp-logo-icon">
         <SettingsSectionHeading id="cp-logo-icon" Icon={ImageIcon}>
           Logo icon
@@ -937,68 +1281,155 @@ export function CompanySettingsTabPanel({
           </div>
           <div className="cp_settings_control">
             <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_logo_icon_row">
-              <input
+                <input
                 ref={iconFileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.ico,image/x-icon,image/vnd.microsoft.icon"
                 multiple={false}
                 className="cp_settings_hidden_file_input"
                 aria-hidden
                 tabIndex={-1}
-                onChange={(e) => applySingleImageFromInput(e, setIconDraft)}
+                onChange={(e) => {
+                  applySingleImageFromInput(e, (file) => {
+                    setIconDraft(file);
+                    if (file) setIconPendingRemoval(false);
+                  });
+                }}
               />
-              <div className="cp_media_icon_preview_wrap">
-                {iconObjectUrl ? (
-                  <img
-                    src={iconObjectUrl}
-                    alt="Logo icon preview"
-                    className="cp_media_icon_preview"
-                  />
-                ) : (
-                  <span className="cp_media_icon_placeholder">
-                    <ImageIcon size={28} strokeWidth={1.5} aria-hidden />
-                  </span>
-                )}
-              </div>
-              <div className="cp_media_actions">
-                <button
-                  type="button"
-                  className="um_btn_secondary"
-                  disabled={readOnly || !editLogoIcon}
-                  onClick={() => iconFileInputRef.current?.click()}
+              <div className="cp_settings_icon_block">
+                <div
+                  className="cp_media_icon_preview_wrap"
+                  role={mediaBrandingLoading ? "status" : undefined}
+                  aria-live={mediaBrandingLoading ? "polite" : undefined}
                 >
-                  <Upload size={16} strokeWidth={2} aria-hidden />
-                  Upload new
-                </button>
-                <button
-                  type="button"
-                  className="um_btn_secondary"
-                  disabled={readOnly || !editLogoIcon || !iconDraft}
-                  onClick={() => setIconDraft(null)}
-                >
-                  <Trash2 size={16} strokeWidth={2} aria-hidden />
-                  Delete
-                </button>
+                  {mediaBrandingLoading ? (
+                    <Loader2
+                      className="cp_settings_branding_preview_spinner"
+                      size={24}
+                      strokeWidth={1.75}
+                      aria-label="Loading preview"
+                    />
+                  ) : iconPreviewSrc && !iconPreviewLoadFailed ? (
+                    <img
+                      key={iconPreviewSrc}
+                      src={iconPreviewSrc}
+                      alt="Logo icon preview"
+                      className="cp_media_icon_preview"
+                      loading="eager"
+                      onError={() => setIconPreviewLoadFailed(true)}
+                    />
+                  ) : (
+                    <span className="cp_media_icon_placeholder">
+                      <ImageIcon size={28} strokeWidth={1.5} aria-hidden />
+                    </span>
+                  )}
+                </div>
+                {editLogoIcon && iconDraft && !readOnly ? (
+                  <p className="cp_settings_media_selected_file" title={iconDraft.name}>
+                    {iconDraft.name}
+                  </p>
+                ) : null}
               </div>
-              <SettingsFieldEditActions
+              <div
+                className="cp_settings_media_toolbar cp_settings_media_toolbar--icon"
+                aria-label="Logo icon actions"
+              >
+                <SettingsFieldEditActions
                 readOnly={readOnly}
                 editing={editLogoIcon}
                 editAriaLabel="Edit logo icon"
                 onEdit={() => {
                   exitOtherMediaEdits("icon");
-                  setIconDraft(iconCommitted);
+                  setIconPendingRemoval(false);
+                  setIconDraft(null);
                   setEditLogoIcon(true);
                 }}
-                onSave={() => {
-                  setIconCommitted(iconDraft);
+                onSave={async () => {
+                  if (readOnly || !workspaceCompanyId) {
+                    toast.error("Error", "Company workspace is not available.");
+                    return;
+                  }
+                  let nextIcon: string | null = logoIconUrl;
+                  if (iconPendingRemoval) {
+                    nextIcon = null;
+                  } else if (iconDraft) {
+                    const up = await postCompanySettingsBranding(
+                      workspaceCompanyId,
+                      "logoIcon",
+                      iconDraft,
+                    );
+                    if (!up.ok) {
+                      toast.error("Upload failed", up.message);
+                      return;
+                    }
+                    nextIcon = up.url;
+                  }
+                  setLogoIconUrl(nextIcon);
+                  setIconDraft(null);
+                  setIconPendingRemoval(false);
                   setEditLogoIcon(false);
-                  toast.success("Saved", "Logo icon updated.");
+                  const put = await putWorkspaceTabSettings(workspaceCompanyId, "settings", {
+                    qualificationEnabled,
+                    offeringsMode,
+                    emailVerifyBeforeInvest,
+                    primaryMemberInFunnel,
+                    distributionTypes,
+                    logoIconUrl: nextIcon,
+                  });
+                  if (put.ok) {
+                    const fresh = await fetchWorkspaceTabSettings(
+                      workspaceCompanyId,
+                      "settings",
+                    );
+                    if (fresh.ok) applySettingsMediaFromPayload(fresh.payload);
+                    toast.success("Saved", "Logo icon updated.");
+                    window.dispatchEvent(new Event("company-branding-updated"));
+                  } else {
+                    toast.error("Save failed", put.message);
+                  }
                 }}
                 onCancel={() => {
-                  setIconDraft(iconCommitted);
+                  setIconDraft(null);
+                  setIconPendingRemoval(false);
                   setEditLogoIcon(false);
                 }}
               />
+                {editLogoIcon && !readOnly ? (
+                  <div className="cp_media_actions">
+                    <button
+                      type="button"
+                      className="um_btn_secondary"
+                      onClick={() => iconFileInputRef.current?.click()}
+                    >
+                      <Upload size={16} strokeWidth={2} aria-hidden />
+                      Upload new
+                    </button>
+                    <button
+                      type="button"
+                      className="um_btn_secondary"
+                      disabled={
+                        !iconDraft && !logoIconUrl && !iconPendingRemoval
+                      }
+                      onClick={() => {
+                        if (iconDraft) {
+                          setIconDraft(null);
+                          return;
+                        }
+                        if (iconPendingRemoval) {
+                          setIconPendingRemoval(false);
+                          return;
+                        }
+                        if (logoIconUrl) setIconPendingRemoval(true);
+                      }}
+                    >
+                      <Trash2 size={16} strokeWidth={2} aria-hidden />
+                      {iconPendingRemoval && !iconDraft
+                        ? "Undo remove"
+                        : "Delete"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

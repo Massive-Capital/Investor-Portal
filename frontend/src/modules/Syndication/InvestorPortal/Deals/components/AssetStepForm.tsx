@@ -15,6 +15,7 @@ import {
   COUNTRY_OPTIONS,
   type AssetStepDraft,
 } from "../types/deals.types"
+import { normalizeZipCodeDigits } from "../utils/dealZipCode"
 import { DealsCreateDropdownSelect } from "./DealsCreateDropdownSelect"
 import "./asset-step-form.css"
 
@@ -338,8 +339,15 @@ export function AssetStepForm({
           <input
             className="deals_create_input asset_step_input_underline"
             value={draft.zipCode}
-            onChange={(e) => onChange({ zipCode: e.target.value })}
+            onChange={(e) =>
+              onChange({ zipCode: normalizeZipCodeDigits(e.target.value) })
+            }
+            inputMode="numeric"
+            autoComplete="postal-code"
+            maxLength={5}
+            aria-invalid={Boolean(errors.zipCode)}
           />
+          <FieldError message={errors.zipCode} />
         </label>
 
         <div className="asset_step_label_full asset_step_upload_block">

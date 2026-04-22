@@ -40,7 +40,7 @@ import {
 } from "../deal-members/add-investment/addMemberFormDraftStorage"
 import { notifyDealInvestorsExportAudit } from "../api/dealInvestorsExportNotifyApi"
 import { DealMemberUserCell } from "./DealMemberUserCell"
-import { DealInvestorRoleBadge } from "./DealInvestorRoleBadge"
+import { DealInvestorRoleCell } from "./DealInvestorRoleBadge"
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal"
 import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay"
 import { DealMemberRowActions } from "../deal-members/components/DealMemberRowActions"
@@ -58,6 +58,10 @@ import {
 } from "../../../../../common/components/data-table/DataTable"
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import { ToolStyleCard } from "../../../../../common/components/tool-style-card/ToolStyleCard"
+import {
+  upsertRuntimeForViewerFromInvestorsPayload,
+  upsertRuntimeFromViewerAddInvestmentForm,
+} from "@/modules/Investing/pages/investments/upsertRuntimeFromDealSession"
 import {
   fetchDealInvestorClasses,
   fetchDealInvestors,
@@ -138,7 +142,7 @@ interface DealInvestorsTabProps {
   restoreAddMemberSessionDraft?: boolean
   /** Called after investors are added or updated — refreshes the Deal Members table only. */
   onInvestorsChanged?: () => void
-  /** Send member invitation email from the Investors table row menu. */
+  /** Send investor invitation email from the Investors table row menu. */
   onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>
   /** Copy offering link (same as Deal Members). */
   onCopyOfferingLink?: (row: DealInvestorRow) => void
@@ -251,13 +255,18 @@ function DealInvEllipsisText({
   text,
   alignEnd = false,
   className = "",
+  title: titleProp,
 }: {
   text: string
   alignEnd?: boolean
   className?: string
+  /** Optional richer tooltip (e.g. name + `addedByUserId`). */
+  title?: string
 }) {
   const display = String(text ?? "").trim() || "—"
-  const hint = display !== "—" ? display : undefined
+  const hint =
+    titleProp?.trim() ||
+    (display !== "—" ? display : undefined)
   return (
     <span
       className={`deal_inv_ellipsis_text${alignEnd ? " deal_inv_ellipsis_text_end" : ""}${className ? ` ${className}` : ""}`.trim()}
@@ -380,7 +389,7 @@ function DealInvestorsPopulated({
     return rows.filter((r) => {
       if (q) {
         const haystack =
-          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail}`.toLowerCase()
+          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       if (filterClass) {
@@ -499,10 +508,10 @@ function DealInvestorsPopulated({
       },
       {
         id: "role",
-        header: "Role",
+        header: "Deal role",
         sortValue: (row) => (row.investorRole ?? "").trim().toLowerCase(),
         tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
-        cell: (row) => <DealInvestorRoleBadge investorRole={row.investorRole} />,
+        cell: (row) => <DealInvestorRoleCell row={row} />,
       },
       {
         id: "investorClass",
@@ -562,6 +571,29 @@ function DealInvestorsPopulated({
         cell: (row) => (
           <DealInvEllipsisText text={dealInvestorStatusDisplayLabel(row)} />
         ),
+      },
+      {
+        id: "added_by",
+        header: "Added by",
+        sortValue: (row) =>
+          String(row.addedByDisplayName ?? "").toLowerCase(),
+        tdClassName: "deal_inv_td_ellipsis",
+        cell: (row) => {
+          const s = String(row.addedByDisplayName ?? "").trim()
+          const adderId = String(row.addedByUserId ?? "").trim()
+          const title =
+            adderId && s && s !== "—"
+              ? `${s} (${adderId})`
+              : adderId
+                ? adderId
+                : undefined
+          return (
+            <DealInvEllipsisText
+              text={s && s !== "—" ? s : "—"}
+              title={title}
+            />
+          )
+        },
       },
       {
         id: "committed",
@@ -1167,6 +1199,11 @@ export const DealInvestorsTab = forwardRef<
           )
         : await postDealInvestment(dealId, values, subscriptionDocument)
     if (!result.ok) throw new Error(result.message)
+    upsertRuntimeFromViewerAddInvestmentForm({
+      dealId,
+      values,
+      dealDetail: dealDetail ?? null,
+    })
     const valuesForDisplay: AddInvestmentFormValues = {
       ...values,
       investorClass: resolveInvestorClassLabelForRow(
@@ -1183,6 +1220,12 @@ export const DealInvestorsTab = forwardRef<
       setLocalAddedInvestors([])
       const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
       setPayload(data)
+      const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+      upsertRuntimeForViewerFromInvestorsPayload(
+        dealId,
+        full,
+        dealDetail ?? null,
+      )
     }
     onAddInvestmentClose()
     onInvestorsChanged?.()
@@ -1211,6 +1254,11 @@ export const DealInvestorsTab = forwardRef<
       if (!result.ok) throw new Error(result.message)
       /** Stale add-member session draft would still append a draft row — same person appears twice. */
       clearAddMemberDraft(dealId)
+      upsertRuntimeFromViewerAddInvestmentForm({
+        dealId,
+        values,
+        dealDetail: dealDetail ?? null,
+      })
       if (result.mode === "client") {
         setPayload((prev) => {
           if (!prev) return prev
@@ -1241,6 +1289,12 @@ export const DealInvestorsTab = forwardRef<
       onAddInvestmentClose()
       const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
       setPayload(data)
+      const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+      upsertRuntimeForViewerFromInvestorsPayload(
+        dealId,
+        full,
+        dealDetail ?? null,
+      )
       onInvestorsChanged?.()
       return
     }
@@ -1270,6 +1324,12 @@ export const DealInvestorsTab = forwardRef<
           lpInvestorsOnly: true,
         })
         setPayload(data)
+        const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+        upsertRuntimeForViewerFromInvestorsPayload(
+          dealId,
+          full,
+          dealDetail ?? null,
+        )
         if (detail?.createdInvestment) onInvestorsChanged?.()
       }}
       dealBlocksInvitationEmails={
@@ -1304,6 +1364,12 @@ export const DealInvestorsTab = forwardRef<
         setEditLpRow(null)
         const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
         setPayload(data)
+        const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+        upsertRuntimeForViewerFromInvestorsPayload(
+          dealId,
+          full,
+          dealDetail ?? null,
+        )
         onInvestorsChanged?.()
       }}
     />

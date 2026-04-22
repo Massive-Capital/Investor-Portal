@@ -11,7 +11,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { isLpInvestorSessionUser } from "../../auth/roleUtils"
 import { clearPortalSessionStorage } from "../../auth/sessionKeys"
 import { getSessionUserDisplayName } from "../../auth/sessionUserDisplayName"
-import { usePortalMode } from "../../context/PortalModeContext"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import "./top_navbar.css"
 
 interface TopNavBarProps {

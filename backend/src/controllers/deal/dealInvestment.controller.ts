@@ -6,10 +6,15 @@ import {
   resolveDealViewerScope,
 } from "../../services/dealAccess.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/assigningDealUser.service.js";
-import { getLpInvestorsTabPayload } from "../../services/dealLpInvestor.service.js";
+import {
+  filterMergedLpInvestorsForCoSponsorViewer,
+  getLpInvestorsTabPayload,
+  isViewerCoSponsorOnDeal,
+} from "../../services/dealLpInvestor.service.js";
 import {
   buildInvestorKpisFromRows,
   DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
+  enrichInvestorApiRowsWithAddedBy,
   getDealInvestmentById,
   getLatestCommitmentAmountForDealContact,
   insertDealInvestment,
@@ -88,10 +93,18 @@ export async function getDealInvestors(
       res.status(200).json({ kpis, investors });
       return;
     }
-    const rows = await listDealInvestmentsByDealId(dealId, {
+    let rows = await listDealInvestmentsByDealId(dealId, {
       lpInvestorsOnly: false,
     });
-    const investors = await mapDealInvestmentsToInvestorApi(rows);
+    if (await isViewerCoSponsorOnDeal(dealId, user.id)) {
+      rows = await filterMergedLpInvestorsForCoSponsorViewer(
+        dealId,
+        user.id,
+        rows,
+      );
+    }
+    const mapped = await mapDealInvestmentsToInvestorApi(rows);
+    const investors = await enrichInvestorApiRowsWithAddedBy(dealId, mapped);
     const kpis = buildInvestorKpisFromRows(rows);
     res.status(200).json({
       kpis,

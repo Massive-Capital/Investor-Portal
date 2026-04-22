@@ -1,0 +1,187 @@
+/* Add profile — sections, stepper, beneficiary row (shell: Add investment / um_modal) */
+
+/* Section / eyebrow titles use `add_contact_section` + `add_contact_section_eyebrow` from contacts.css */
+
+.add_profile_readonly_type {
+  box-sizing: border-box;
+  min-height: var(--deals-add-inv-control-min-h, 1em);
+  padding: 0.5rem 0.75rem;
+  line-height: 1.45;
+  font-size: var(--deals-add-inv-control-font, 0.9375rem);
+  color: var(--portal-text-muted, #64748b);
+  background: var(--portal-surface, #f8fafc);
+  border: 1px solid var(--portal-border, #e5e5e5);
+  border-radius: var(--deals-add-inv-control-radius, 10px);
+}
+
+.add_profile_mailing_search {
+  margin-top: 0.5em;
+}
+
+/* `um_field` / `mail_text_label` from user_management + add-investment modal */
+
+/* Info (i) control beside labels — uses native `title` tooltip. */
+.add_profile_hint {
+  display: inline-flex;
+  color: var(--portal-text-secondary, #64748b);
+  background: none;
+  border: none;
+  padding: 0.15em;
+  cursor: default;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.add_profile_hint:hover {
+  color: var(--portal-primary, #00477a);
+  background: var(--portal-primary-soft, #e6f0ff);
+}
+
+.add_profile_sub {
+  display: block;
+  margin: 0.2em 0 0.35em;
+  font-size: 0.75rem;
+  color: var(--portal-text-secondary, #64748b);
+  line-height: 1.35;
+}
+
+.add_profile_input_wrap {
+  position: relative;
+}
+
+/* Password / SSN: space for the visibility toggle. */
+.add_profile_input_wrap .deals_add_inv_input {
+  padding-right: 2.5em;
+}
+
+.add_profile_input_wrap .deals_add_inv_input::placeholder,
+.add_profile_search::placeholder {
+  color: #94a3b8;
+}
+
+.add_profile_ssn_toggle {
+  position: absolute;
+  right: 0.4em;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  padding: 0.35em;
+  border: none;
+  background: none;
+  color: var(--portal-text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.add_profile_ssn_toggle:hover {
+  color: var(--portal-text, #0f172a);
+  background: #f1f5f9;
+}
+
+.add_profile_search_wrap {
+  position: relative;
+}
+
+/* Search + icon: extra left padding (border/radius from deals_add_inv). */
+.add_profile_search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem 0.5rem 2.25em;
+  border-radius: var(--deals-add-inv-control-radius, 10px);
+  font-size: var(--deals-add-inv-control-font, 0.9375rem);
+}
+
+.add_profile_search_icon {
+  position: absolute;
+  left: 0.6em;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+/* Visually hidden — current step for screen readers (add contact style stepper) */
+.add_profile_sronly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+.add_profile_ben_lead {
+  margin: 0 0 0.9em;
+  line-height: 1.45;
+  max-width: 36em;
+}
+
+/* Beneficiary summary (opens Add beneficiary) */
+.add_profile_ben_row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em 0.9em;
+}
+
+.add_profile_ben_text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--portal-text, #0f172a);
+  line-height: 1.4;
+}
+
+.add_profile_ben_sub {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--portal-text-secondary, #64748b);
+}
+
+.add_profile_ben_add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  height: 36px;
+  padding: 0 0.9em;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--portal-primary, #00477a);
+  background: #fff;
+  border: 1px solid var(--portal-primary, #00477a);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.add_profile_ben_add:hover {
+  background: var(--portal-primary-soft, #e6f0ff);
+}
+
+.add_profile_ben_link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  background: none;
+  border: none;
+  padding: 0.2em 0.35em;
+  font-size: 0.8rem;
+  color: var(--portal-primary, #00477a);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.add_profile_inline_link {
+  font: inherit;
+  color: var(--portal-primary, #00477a);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.add_profile_inline_link:hover {
+  color: #003a66;
+}

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
 import { FormTooltip } from "../../../../common/components/form-tooltip/FormTooltip"
-import { usePortalMode } from "../../../../common/context/PortalModeContext"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
 import {
   buildLegacyPublicOfferingPreviewPageUrl,
@@ -22,6 +22,10 @@ import {
   isDealUuidForOfferingPreview,
 } from "./dealOfferingPreviewShared"
 import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
+import {
+  OfferingPreviewShareEmailRecipientsAddon,
+  type OfferingShareEmailTag,
+} from "./components/OfferingPreviewShareEmailRecipients.addon"
 import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
 import {
   OFFERING_DETAILS_SECTION_ORDER,
@@ -31,20 +35,9 @@ import {
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import "./deal-members/add-investment/add_deal_modal.css"
+import "../../../usermanagement/user_management.css"
 import "./deal-offering-portfolio.css"
 import "./deals-list.css"
-
-function parseEmailsFromShareInput(raw: string): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const part of raw.split(/[\n\r,;]+/)) {
-    const e = part.trim().toLowerCase()
-    if (!e || seen.has(e)) continue
-    seen.add(e)
-    out.push(e)
-  }
-  return out
-}
 
 export function DealOfferingPortfolioPage() {
   const { mode } = usePortalMode()
@@ -205,7 +198,9 @@ export function DealOfferingPortfolioPage() {
 
   const shareModalTitleId = useId()
   const [shareModalOpen, setShareModalOpen] = useState(false)
-  const [shareEmailsText, setShareEmailsText] = useState("")
+  const [shareEmailTags, setShareEmailTags] = useState<OfferingShareEmailTag[]>(
+    [],
+  )
   const [shareSubmitting, setShareSubmitting] = useState(false)
   const [shareResultMessage, setShareResultMessage] = useState<string | null>(
     null,
@@ -231,9 +226,11 @@ export function DealOfferingPortfolioPage() {
   const submitShareByEmail = useCallback(() => {
     const dealId = dealIdFromRoute?.trim()
     if (!dealId) return
-    const emails = parseEmailsFromShareInput(shareEmailsText)
+    const emails = shareEmailTags.map((t) => t.email)
     if (emails.length === 0) {
-      setShareResultMessage("Add at least one email address (comma or line separated).")
+      setShareResultMessage(
+        "Choose contacts or members, or add at least one email address.",
+      )
       return
     }
     setShareSubmitting(true)
@@ -248,7 +245,7 @@ export function DealOfferingPortfolioPage() {
             (r.sent > 0 ? `Sent ${r.sent} email(s).` : "No emails were sent."),
         )
         if (r.sent > 0 && r.failures.length === 0) {
-          setShareEmailsText("")
+          setShareEmailTags([])
           window.setTimeout(() => {
             setShareModalOpen(false)
             setShareResultMessage(null)
@@ -262,7 +259,7 @@ export function DealOfferingPortfolioPage() {
         setShareSubmitting(false)
       }
     })()
-  }, [dealIdFromRoute, shareEmailsText])
+  }, [dealIdFromRoute, shareEmailTags])
 
   useEffect(() => {
     if (!effectiveDealId) {
@@ -415,24 +412,24 @@ export function DealOfferingPortfolioPage() {
             ) : null}
           </div>
           {!isPublicOfferingRoute ? (
-            <div className="deal_offer_pf_share">
-              <div className="deal_offer_pf_share_title_row">
+            <div className="um_panel deal_offer_pf_share">
+              <h2 className="um_title um_title_with_icon deal_offer_pf_share_heading">
                 <Share2
-                  size={17}
-                  strokeWidth={2}
-                  className="deal_offer_pf_share_icon"
+                  className="um_title_icon"
+                  size={22}
+                  strokeWidth={1.75}
                   aria-hidden
                 />
-                <span className="deal_offer_pf_share_title">Share preview</span>
-              </div>
+                Share preview
+              </h2>
               {sharePreviewUsesLegacyLink ? (
-                <p className="deal_offer_pf_share_hint" role="status">
+                <p className="um_hint deal_offer_pf_share_hint" role="status">
                   This link uses the offering id in the URL. Ask your administrator
                   to configure encrypted preview links if you need to hide it.
                 </p>
               ) : null}
               {shareLinkLoading ? (
-                <p className="deal_offer_pf_share_loading" role="status">
+                <p className="um_toolbar_notice deal_offer_pf_share_loading" role="status">
                   <Loader2
                     size={16}
                     strokeWidth={2}
@@ -449,35 +446,35 @@ export function DealOfferingPortfolioPage() {
               ) : (
                 <>
                   {sharePreviewUsesLegacyLink ? (
-                    <p className="deal_offer_pf_share_warning" role="status">
+                    <p className="um_hint deal_offer_pf_share_warning" role="status">
                       Encrypted link was not available (for example, preview
                       encryption may not be configured on the server). You can
                       still copy the preview link below.
                     </p>
                   ) : null}
                   <div
-                    className="deal_offer_pf_share_row deal_offer_pf_share_row_btns_only"
+                    className="um_toolbar deal_offer_pf_share_toolbar"
                     aria-label={
                       previewShareUrl &&
                       !shareLinkLoading &&
                       !hasAnyInvestorVisibleSection
                         ? `${previewShareUrlDisplayText}. Sharing is off until at least one section is visible to investors.`
-                        : `${previewShareUrlDisplayText}. Use Copy link or Share by email.`
+                        : `${previewShareUrlDisplayText}. Use Copy offering link or Share preview.`
                     }
                   >
                     {/*
                     <div
                       className="deal_offer_pf_share_url_field"
-                      aria-label={`Shared preview: ${previewShareUrlDisplayText}. Use Copy link or Share to send the URL.`}
+                      aria-label={`Shared preview: ${previewShareUrlDisplayText}. Use Copy offering link or Share preview.`}
                     >
                       {previewShareUrl ? previewShareUrlDisplayText : ""}
                     </div>
                     */}
-                    <div className="deal_offer_pf_share_actions">
-                      <div className="deal_offer_pf_share_copy_group">
+                    <div className="um_toolbar_actions deal_offer_pf_share_actions">
+                      <div className="deal_offer_pf_share_action_with_hint">
                         <button
                           type="button"
-                          className="deal_offer_pf_share_action_btn deal_offer_pf_share_action_btn_secondary"
+                          className="um_btn_secondary"
                           disabled={sharePreviewActionsDisabled}
                           onClick={copyPreviewLink}
                         >
@@ -489,7 +486,7 @@ export function DealOfferingPortfolioPage() {
                           ) : (
                             <>
                               <Copy size={16} strokeWidth={2} aria-hidden />
-                              Copy link
+                              Copy offering link
                             </>
                           )}
                         </button>
@@ -497,8 +494,8 @@ export function DealOfferingPortfolioPage() {
                           <FormTooltip
                             label={
                               hasAnyInvestorVisibleSection
-                                ? "More information: Copy link"
-                                : "Why Copy link and Share are unavailable"
+                                ? "More information: Copy offering link"
+                                : "Why Copy offering link and Share preview are unavailable"
                             }
                             content={
                               <p className="deals_table_header_tooltip_p">
@@ -512,30 +509,54 @@ export function DealOfferingPortfolioPage() {
                           />
                         ) : null}
                       </div>
-                      <button
-                        type="button"
-                        className="deal_offer_pf_share_action_btn deal_offer_pf_share_action_btn_primary"
-                        disabled={sharePreviewActionsDisabled}
-                        onClick={openShareModal}
-                      >
-                        <Send size={16} strokeWidth={2} aria-hidden />
-                        Share
-                      </button>
+                      <div className="deal_offer_pf_share_action_with_hint">
+                        <button
+                          type="button"
+                          className="um_btn_primary"
+                          disabled={sharePreviewActionsDisabled}
+                          onClick={openShareModal}
+                        >
+                          <Share2 size={16} strokeWidth={2} aria-hidden />
+                          Share preview
+                        </button>
+                        {previewShareUrl && !shareLinkLoading ? (
+                          <FormTooltip
+                            label={
+                              hasAnyInvestorVisibleSection
+                                ? "More information: Share preview"
+                                : "Why Copy offering link and Share preview are unavailable"
+                            }
+                            content={
+                              <p className="deals_table_header_tooltip_p">
+                                {hasAnyInvestorVisibleSection
+                                  ? "Opens a dialog to email the same offering preview link to your organization’s contacts, company members, or addresses you add. No login is required for recipients."
+                                  : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
+                              </p>
+                            }
+                            placement="top"
+                            panelAlign="start"
+                          />
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   {previewShareUrl &&
                   !shareLinkLoading &&
                   !hasAnyInvestorVisibleSection ? (
-                    <p className="deal_offer_pf_share_disabled_hint" role="status">
+                    <p
+                      className="um_toolbar_notice deal_offer_pf_share_disabled_hint"
+                      role="status"
+                    >
                       Turn on at least one{" "}
                       <strong>Make it visible to Investors</strong> option in
-                      Offering details or the Documents tab to enable Copy link and
-                      Share.
+                      Offering details or the Documents tab to enable Copy offering
+                      link and Share preview.
                     </p>
                   ) : null}
                   {copyLinkState === "error" ? (
                     <p className="deal_offer_pf_share_error" role="status">
-                      Could not copy automatically — try Copy link again, or
+                      Could not copy automatically — try Copy offering link again,
+                      or
                       open this preview in your browser and copy the URL from
                       the address bar.
                     </p>
@@ -578,7 +599,7 @@ export function DealOfferingPortfolioPage() {
                       id={shareModalTitleId}
                       className="um_modal_title add_contact_modal_title"
                     >
-                      Share preview by email
+                      Share preview
                     </h2>
                     <button
                       type="button"
@@ -591,27 +612,19 @@ export function DealOfferingPortfolioPage() {
                     </button>
                   </div>
                   <div className="deals_add_inv_modal_scroll deal_offer_pf_share_modal_scroll">
-                    <p className="deal_offering_muted deal_offer_pf_share_modal_lead">
-                      Enter recipient email addresses. Each person receives the
-                      same offering preview link (no login required). Separate
-                      addresses with commas or put one per line.
+                    <p className="deal_offer_pf_share_modal_lead">
+                      Pick people from your organization’s contacts and company
+                      members, or type an email and choose Add. Each recipient
+                      gets the same offering preview link (no login required).
                     </p>
-                    <label
-                      className="deal_offer_pf_share_modal_label"
-                      htmlFor="deal-offer-pf-share-emails"
-                    >
-                      Email addresses
-                    </label>
-                    <textarea
-                      id="deal-offer-pf-share-emails"
-                      className="deal_offer_pf_share_modal_textarea"
-                      rows={6}
-                      value={shareEmailsText}
-                      onChange={(e) => setShareEmailsText(e.target.value)}
-                      placeholder="name@company.com, another@company.com"
-                      disabled={shareSubmitting}
-                      autoComplete="off"
-                    />
+                    {dealIdFromRoute?.trim() ? (
+                      <OfferingPreviewShareEmailRecipientsAddon
+                        dealId={dealIdFromRoute.trim()}
+                        disabled={shareSubmitting}
+                        tags={shareEmailTags}
+                        onChangeTags={setShareEmailTags}
+                      />
+                    ) : null}
                     {shareResultMessage ? (
                       <p
                         className={
@@ -647,12 +660,15 @@ export function DealOfferingPortfolioPage() {
                       disabled={shareSubmitting}
                       onClick={closeShareModal}
                     >
+                      <X size={16} strokeWidth={2} aria-hidden />
                       Cancel
                     </button>
                     <button
                       type="button"
                       className="um_btn_primary"
-                      disabled={shareSubmitting}
+                      disabled={
+                        shareSubmitting || shareEmailTags.length === 0
+                      }
                       onClick={submitShareByEmail}
                     >
                       {shareSubmitting ? (
@@ -668,7 +684,7 @@ export function DealOfferingPortfolioPage() {
                       ) : (
                         <>
                           <Send size={16} strokeWidth={2} aria-hidden />
-                          Share
+                          Send emails
                         </>
                       )}
                     </button>

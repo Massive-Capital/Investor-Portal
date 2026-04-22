@@ -1,4 +1,4 @@
-import { ArrowUpDown, LayoutGrid, LayoutList, Search } from "lucide-react"
+import { ArrowUpDown, CircleDot, LayoutGrid, LayoutList, Search } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import {
@@ -8,12 +8,16 @@ import {
 import { DealCard } from "../../../../common/components/deal-card/DealCard"
 import {
   dealListRowToDealRecord,
+  dealRecordToCardMetrics,
+  dealRecordToInvestingCardMetrics,
+  dealStageLabel,
   mergeDealRecordWithInvestorsAndClasses,
   type DealRecord,
-} from "../deals-mock-data"
+} from "../dealsDashboardUtils"
 import {
   fetchDealInvestorClasses,
   fetchDealInvestors,
+  fetchDealReviewSummary,
   fetchDealsList,
 } from "./api/dealsApi"
 import { DEALS_LIST_REFETCH_EVENT } from "./createDealFormDraftStorage"
@@ -22,23 +26,11 @@ import {
   formatDealListDateDisplay,
 } from "./dealsListDisplay"
 import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
+import { dealStageChipCompactClassName } from "./utils/dealStageChip"
+import "./deals-list.css"
 import "../Dashboard/sponsor-dashboard.css"
 
 export type DealsSortKey = "createdAt" | "title" | "target"
-
-export function dealToCardMetrics(deal: DealRecord) {
-  return [
-    { label: "Target amount", value: deal.targetAmount },
-    { label: "Total accepted", value: deal.totalAccepted },
-    { label: "Total funded", value: deal.totalFunded },
-    { label: "Total distributions", value: deal.totalDistributions },
-    { label: "# of investors", value: deal.investorCount },
-    {
-      label: "Close date",
-      value: formatDealListDateDisplay(deal.closeDate),
-    },
-  ]
-}
 
 interface SyndicatingDealsSectionProps {
   /** `aria-labelledby` on the section when `hideDealsHeading` is true */
@@ -68,6 +60,10 @@ export function SyndicatingDealsSection({
   const [sortKey, setSortKey] = useState<DealsSortKey>("createdAt")
   const [deals, setDeals] = useState<DealRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [reviewByDealId, setReviewByDealId] = useState<
+    Record<string, { reviewRating: number, reviewCount: number }>
+  >({})
+  const [reviewsLoading, setReviewsLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -147,6 +143,41 @@ export function SyndicatingDealsSection({
     return () =>
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
   }, [includeParticipantDeals])
+
+  useEffect(() => {
+    if (deals.length === 0) {
+      setReviewByDealId({})
+      setReviewsLoading(false)
+      return
+    }
+    let cancelled = false
+    setReviewsLoading(true)
+    void (async () => {
+      const out: Record<string, { reviewRating: number, reviewCount: number }> =
+        {}
+      const results = await Promise.all(
+        deals.map((d) =>
+          fetchDealReviewSummary(d.id).then(
+            (s) => [d.id, s] as const,
+          ),
+        ),
+      )
+      if (cancelled) return
+      for (const [id, s] of results) {
+        if (s) {
+          out[id] = {
+            reviewRating: s.reviewRating,
+            reviewCount: s.reviewCount,
+          }
+        }
+      }
+      setReviewByDealId(out)
+      setReviewsLoading(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [deals])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -242,8 +273,22 @@ export function SyndicatingDealsSection({
       {
         id: "status",
         header: "Status",
-        sortValue: (row) => row.statusLabel,
-        cell: (row) => row.statusLabel,
+        sortValue: (row) =>
+          dealStageLabel(row.dealStage ?? "").toLowerCase(),
+        cell: (row) => {
+          const label = (row.statusLabel ?? "").trim() || "—"
+          return (
+            <span
+              className={dealStageChipCompactClassName(row.dealStage)}
+              title={`Stage: ${label}`}
+            >
+              <span className="deals_list_stage_badge_icon" aria-hidden>
+                <CircleDot size={12} strokeWidth={2} />
+              </span>
+              <span>{label}</span>
+            </span>
+          )
+        },
       },
     ],
     [],
@@ -256,125 +301,163 @@ export function SyndicatingDealsSection({
       }
     >
       <div
-        className={`sponsor_dash_deals_controls${hideDealsHeading ? " sponsor_dash_deals_controls_no_title" : ""}`}
+        className="sponsor_dash_deals_controls"
       >
         {hideDealsHeading ? null : (
           <h2 id={dealsHeadingId} className="sponsor_dash_section_title">
             {dealsSectionTitle}
           </h2>
         )}
-        <div className="sponsor_dash_deals_controls_right">
-          <span className="sponsor_dash_view_type_label">View type:</span>
-          <div
-            className="sponsor_dash_view_toggle"
-            role="group"
-            aria-label="View layout"
-          >
-            <button
-              type="button"
-              className={`sponsor_dash_view_btn${view === "list" ? " sponsor_dash_view_btn_active" : ""}`}
-              onClick={() => setView("list")}
-              aria-pressed={view === "list"}
-              aria-label="List view"
-            >
-              <LayoutList size={18} strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              className={`sponsor_dash_view_btn${view === "grid" ? " sponsor_dash_view_btn_active" : ""}`}
-              onClick={() => setView("grid")}
-              aria-pressed={view === "grid"}
-              aria-label="Grid view"
-            >
-              <LayoutGrid size={18} strokeWidth={2} />
-            </button>
-          </div>
-          {view === "grid" ? (
-            <div className="sponsor_dash_sort_wrap">
-              <ArrowUpDown
-                size={16}
+        <div className="sponsor_dash_deals_toolbar">
+         
+          <div className="sponsor_dash_search_row">
+            <div className="sponsor_dash_search_wrap sponsor_dash_search_wrap_full">
+              <Search
+                className="sponsor_dash_search_icon"
+                size={18}
                 strokeWidth={2}
-                className="sponsor_dash_sort_icon"
                 aria-hidden
               />
-              <select
-                className="sponsor_dash_sort_select"
-                value={sortKey}
-                onChange={(e) =>
-                  setSortKey(e.target.value as DealsSortKey)
-                }
-                aria-label="Sort deals by"
-              >
-                <option value="createdAt">Created at</option>
-                <option value="title">Title</option>
-                <option value="target">Target amount</option>
-              </select>
+              <input
+                type="search"
+                className="sponsor_dash_search_input"
+                placeholder="Search deals"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search deals"
+              />
             </div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="sponsor_dash_search_row">
-        <div className="sponsor_dash_search_wrap sponsor_dash_search_wrap_full">
-          <input
-            type="search"
-            className="sponsor_dash_search_input"
-            placeholder="Search deals"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search deals"
-          />
-          <button
-            type="button"
-            className="sponsor_dash_search_btn"
-            aria-label="Search"
-          >
-            <Search size={18} strokeWidth={2} />
-          </button>
+          </div>
+           <div className="sponsor_dash_deals_controls_right">
+            <span className="sponsor_dash_view_type_label">View type:</span>
+            <div
+              className="sponsor_dash_view_toggle"
+              role="group"
+              aria-label="View layout"
+            >
+              <button
+                type="button"
+                className={`sponsor_dash_view_btn${view === "list" ? " sponsor_dash_view_btn_active" : ""}`}
+                onClick={() => setView("list")}
+                aria-pressed={view === "list"}
+                aria-label="List view"
+              >
+                <LayoutList size={18} strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                className={`sponsor_dash_view_btn${view === "grid" ? " sponsor_dash_view_btn_active" : ""}`}
+                onClick={() => setView("grid")}
+                aria-pressed={view === "grid"}
+                aria-label="Grid view"
+              >
+                <LayoutGrid size={18} strokeWidth={2} />
+              </button>
+            </div>
+            {view === "grid" ? (
+              <div className="sponsor_dash_sort_wrap">
+                <ArrowUpDown
+                  size={16}
+                  strokeWidth={2}
+                  className="sponsor_dash_sort_icon"
+                  aria-hidden
+                />
+                <select
+                  className="sponsor_dash_sort_select"
+                  value={sortKey}
+                  onChange={(e) =>
+                    setSortKey(e.target.value as DealsSortKey)
+                  }
+                  aria-label="Sort deals by"
+                >
+                  <option value="createdAt">Created at</option>
+                  <option value="title">Title</option>
+                  <option value="target">Target amount</option>
+                </select>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
       {view === "grid" ? (
         loading && deals.length === 0 ? (
-          <p className="sponsor_dash_empty" role="status">
-            Loading deals…
-          </p>
+          <div
+            className="sponsor_dash_deals_state"
+            role="status"
+            aria-label="Loading deals"
+          >
+            <div className="sponsor_dash_deals_state_inner">
+              <div className="sponsor_dash_loader_spinner" aria-hidden />
+              <p className="sponsor_dash_deals_state_text">Loading deals…</p>
+            </div>
+          </div>
         ) : gridSorted.length === 0 ? (
-          <p className="sponsor_dash_empty">
-            {query.trim()
-              ? "No deals match your search."
-              : "No deal to display."}
-          </p>
+          <div className="sponsor_dash_deals_state" role="status">
+            <div className="sponsor_dash_deals_state_inner">
+              <p className="sponsor_dash_deals_state_text">
+                {query.trim()
+                  ? "No deals match your search."
+                  : "No deal to display."}
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="sponsor_dash_deals_grid">
-            {gridSorted.map((deal) => (
-              <Link
-                key={deal.id}
-                className="deal_card_link"
-                to={`/deals/${encodeURIComponent(deal.id)}`}
-              >
-                <DealCard
-                  title={deal.title}
-                  location={deal.location}
-                  statusLabel={deal.statusLabel}
-                  metrics={dealToCardMetrics(deal)}
-                  coverImageUrl={deal.coverImageUrl}
-                />
-              </Link>
-            ))}
+            {gridSorted.map((deal) => {
+              const mergedReviewRating =
+                reviewByDealId[deal.id]?.reviewRating ?? deal.reviewRating
+              const mergedReviewCount =
+                reviewByDealId[deal.id]?.reviewCount ?? deal.reviewCount
+              const hasSeededReview =
+                (typeof mergedReviewRating === "number" &&
+                  Number.isFinite(mergedReviewRating)) ||
+                (typeof mergedReviewCount === "number" && mergedReviewCount > 0)
+              return (
+                <Link
+                  key={deal.id}
+                  className="deal_card_link"
+                  to={`/deals/${encodeURIComponent(deal.id)}`}
+                >
+                  <DealCard
+                    title={deal.title}
+                    reviewPlaceholderSeed={deal.id}
+                    location={deal.location}
+                    statusLabel={deal.statusLabel}
+                    dealStage={deal.dealStage}
+                    metrics={
+                      includeParticipantDeals
+                        ? dealRecordToInvestingCardMetrics(deal)
+                        : dealRecordToCardMetrics(deal)
+                    }
+                    coverImageUrl={deal.coverImageUrl}
+                    reviewRating={mergedReviewRating}
+                    reviewCount={mergedReviewCount}
+                    reviewLoading={reviewsLoading && !hasSeededReview}
+                  />
+                </Link>
+              )
+            })}
           </div>
         )
+      ) : loading && deals.length === 0 ? (
+        <div
+          className="sponsor_dash_deals_state"
+          role="status"
+          aria-label="Loading deals"
+        >
+          <div className="sponsor_dash_deals_state_inner">
+            <div className="sponsor_dash_loader_spinner" aria-hidden />
+            <p className="sponsor_dash_deals_state_text">Loading deals…</p>
+          </div>
+        </div>
       ) : (
         <DataTable
           columns={columns}
           rows={filtered}
           getRowKey={(row, rowIndex) => row.id || `sponsor-deal-${rowIndex}`}
           emptyLabel={
-            loading && deals.length === 0
-              ? "Loading deals…"
-              : query.trim()
-                ? "No deals match your search."
-                : "No deal to display."
+            query.trim() ? "No deals match your search." : "No deal to display."
           }
         />
       )}

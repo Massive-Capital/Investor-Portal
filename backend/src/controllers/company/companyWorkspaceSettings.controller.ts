@@ -14,6 +14,21 @@ function paramStr(v: string | string[] | undefined): string {
   return typeof s === "string" ? s.trim() : "";
 }
 
+function pgErrorCode(err: unknown): string {
+  let e: unknown = err;
+  for (let i = 0; i < 4 && e != null; i += 1) {
+    if (typeof e === "object" && e !== null && "code" in e) {
+      const c = (e as { code?: unknown }).code;
+      if (typeof c === "string" && c.length > 0) return c;
+    }
+    e =
+      typeof e === "object" && e !== null && "cause" in e
+        ? (e as { cause: unknown }).cause
+        : null;
+  }
+  return "";
+}
+
 export async function getWorkspaceTabSettings(
   req: Request,
   res: Response,
@@ -38,8 +53,13 @@ export async function getWorkspaceTabSettings(
     res.status(403).json({ message: "Forbidden" });
     return;
   }
-  const payload = await getWorkspaceTabPayload(companyId, tabKeyRaw);
-  res.status(200).json({ payload });
+  try {
+    const payload = await getWorkspaceTabPayload(companyId, tabKeyRaw);
+    res.status(200).json({ payload });
+  } catch (err) {
+    console.error("getWorkspaceTabSettings:", err);
+    res.status(500).json({ message: "Could not load workspace settings" });
+  }
 }
 
 export async function putWorkspaceTabSettings(
@@ -84,6 +104,18 @@ export async function putWorkspaceTabSettings(
   try {
     await upsertWorkspaceTabPayload(companyId, tabKeyRaw, payload);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : "Could not save";
+    if (msg.startsWith("Invalid workspace company id")) {
+      res.status(400).json({ message: msg });
+      return;
+    }
+    if (pgErrorCode(err) === "23503") {
+      res.status(400).json({
+        message:
+          "Workspace could not be saved: company is missing in the database (check workspace company id).",
+      });
+      return;
+    }
     console.error("putWorkspaceTabSettings:", err);
     res.status(500).json({ message: "Could not save workspace settings" });
     return;

@@ -13,6 +13,29 @@ export function getApiV1Base(): string {
     return "/api/v1";
   }
   const base = raw.replace(/\/$/, "");
+  const withApiV1 = base.endsWith("/api/v1") ? base : `${base}/api/v1`;
+
+  /**
+   * Vite dev: `VITE_BASE_URL=http://localhost:5004` forces the browser to call port 5004
+   * directly from the SPA origin (e.g. :5174), which triggers CORS preflight and often fails
+   * with “CORS request did not succeed” (status null) when the connection drops — so deal
+   * members / commitment never load. Prefer same-origin `/api/v1` so `vite.config` proxies
+   * `/api` → `127.0.0.1:5004`. Set `VITE_FORCE_ABSOLUTE_API_URL=true` to keep the full URL.
+   */
+  if (
+    import.meta.env.DEV &&
+    import.meta.env.VITE_FORCE_ABSOLUTE_API_URL !== "true"
+  ) {
+    try {
+      const u = new URL(withApiV1);
+      if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+        return "/api/v1";
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (base.endsWith("/api/v1")) return base;
   return `${base}/api/v1`;
 }
@@ -88,11 +111,49 @@ export function normalizeDealGallerySrc(raw: string | null | undefined): string 
   const s = typeof raw === "string" ? raw.trim() : String(raw ?? "").trim();
   if (!s) return "";
   if (s.startsWith("data:image/")) return s;
-  if (/^https?:\/\//i.test(s)) return s;
+  if (/^https?:\/\//i.test(s)) {
+    /**
+     * Workspace settings sometimes store a full `http://localhost:5004/uploads/...` URL. In
+     * dev, the SPA should load `/uploads/...` via the Vite host so the `/uploads`→API proxy
+     * applies. Without this, the browser fetches the API port directly; statics may 404 (or
+     * you may hit a down host) while `/api` still works on the same process.
+     */
+    if (import.meta.env.DEV && typeof window !== "undefined") {
+      try {
+        const u = new URL(s);
+        if (
+          (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
+          u.pathname.startsWith("/uploads")
+        ) {
+          const pathAndQuery = `${u.pathname.replace(/^\/+/, "/")}${
+            u.search || ""
+          }`;
+          return `${window.location.origin.replace(/\/$/, "")}${
+            pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`
+          }`;
+        }
+      } catch {
+        /* keep original */
+      }
+    }
+    return s;
+  }
   if (s.startsWith("/uploads/")) {
     const root = getUploadsPublicOrigin();
     if (root) return `${root}${s}`;
     return s;
+  }
+  /**
+   * DB / JSON may store a path without a leading slash (e.g. `company-workspace/...`
+   * or `uploads/...`). Turn into `/uploads/...` so the dev proxy and prod nginx resolve it.
+   */
+  if (!s.startsWith("/") && s.includes("/")) {
+    const rel = dealAssetRelativePathToUploadsUrl(s);
+    if (rel) {
+      const root = getUploadsPublicOrigin();
+      if (root) return `${root}${rel}`;
+      return rel;
+    }
   }
   return s;
 }

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
+  assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/dealAccess.service.js";
 import { db } from "../../database/db.js";
@@ -125,6 +126,7 @@ export async function postDealLpInvestor(
       (x) => String(x.id).toLowerCase() === String(row.id).toLowerCase(),
     );
 
+    console.log("INV", inv);
     res.status(201).json({
       message: "LP investor saved",
       investor: inv ?? null,
@@ -246,8 +248,9 @@ export async function putDealLpInvestor(
 }
 
 /**
- * PATCH /deals/:dealId/lp-investors/my-commitment — LP sets `deal_investment.commitment_amount`
- * and optional `profile_id`; creates `deal_investment` when missing (profile required for insert).
+ * PATCH /deals/:dealId/lp-investors/my-commitment — LP adds the body amount to their cumulative
+ * `deal_investment.commitment_amount` (locked update); optional `profile_id`; creates
+ * `deal_investment` when missing (profile required for insert; body amount is the initial total).
  */
 export async function patchDealLpInvestorMyCommitment(
   req: Request,
@@ -268,20 +271,28 @@ export async function patchDealLpInvestorMyCommitment(
   }
 
   const b = req.body as Record<string, unknown>;
+
+  console.log("b =>",b);
+
   const raw =
     bodyString(b.committed_amount ?? b.committedAmount).trim() ||
     bodyString(b.amount).trim();
+    
+  console.log("raw amount data=>" ,raw);
+
   const n = Number(String(raw).replace(/[$,\s]/g, ""));
   if (!Number.isFinite(n) || n <= 0) {
     res.status(400).json({
-      message: "Committed amount must be a number greater than 0",
+      message: "Additional commitment amount must be a number greater than 0",
     });
     return;
   }
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId.trim(), scope))) {
+    if (
+      !(await assertDealIdReadableOrAssignedParticipant(dealId.trim(), scope))
+    ) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -319,6 +330,9 @@ export async function patchDealLpInvestorMyCommitment(
       message: "Committed amount saved",
       investorsPayload: payload,
     });
+
+
+    // console.log("payload  =>", payload);
   } catch (err) {
     console.error("patchDealLpInvestorMyCommitment:", err);
     res.status(500).json({ message: "Could not save committed amount" });

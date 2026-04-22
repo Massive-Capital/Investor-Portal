@@ -185,7 +185,7 @@
   width: 2.5em;
   height: 2.5em;
   border-radius: 9999px;
-  background: #000000;
+  background: var(--ui-button-background-add);
   color: #ffffff;
   font-size: 0.75em;
   font-weight: 600;

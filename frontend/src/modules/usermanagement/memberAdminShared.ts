@@ -154,6 +154,7 @@ export function memberRoleDisplayName(role: unknown): string {
     user: "Platform user",
     company_admin: "Company Admin",
     company_user: "Company Member",
+    deal_participant: "Deal Participant",
   };
   if (byCode[r]) return byCode[r];
   const raw = String(role ?? "").trim();
@@ -163,6 +164,193 @@ export function memberRoleDisplayName(role: unknown): string {
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
       .join(" ") || "—"
   );
+}
+
+function isDealParticipantPortalRole(role: unknown): boolean {
+  const r = String(role ?? "").trim().toLowerCase();
+  return r === "deal_participant" || r === "deal participant";
+}
+
+/** Format a `deal_member` / roster role string for the members table (aligned with backend). */
+function formatDealRosterRoleForDisplay(raw: string): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  const lower = t.toLowerCase();
+  if (
+    lower === "lp_investors" ||
+    lower === "lp_investor" ||
+    lower === "lp investors" ||
+    lower === "lp investor"
+  ) {
+    return "LP Investor";
+  }
+  if (lower === "deal_participant" || lower === "deal participant") return "";
+  return t
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/** One company–role pair for a portal user (API: `memberships`). */
+export interface UserMembership {
+  company: string;
+  role: string;
+}
+
+function membershipPairKey(m: UserMembership): string {
+  return `${m.company.trim().toLowerCase()}|${m.role.trim().toLowerCase()}`;
+}
+
+export function dedupeMemberships(list: UserMembership[]): UserMembership[] {
+  const seen = new Set<string>();
+  const out: UserMembership[] = [];
+  for (const m of list) {
+    const k = membershipPairKey(m);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(m);
+  }
+  return out;
+}
+
+/**
+ * Normalizes `row.memberships` from the API, or falls back to legacy single
+ * `companyName` + `role` when absent.
+ */
+export function parseMembershipsFromRow(
+  row: Record<string, unknown>,
+): UserMembership[] {
+  const raw = row.memberships;
+  if (Array.isArray(raw) && raw.length > 0) {
+    const out: UserMembership[] = [];
+    for (const item of raw) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        continue;
+      }
+      const rec = item as Record<string, unknown>;
+      const company =
+        String(rec.company ?? rec.organization_name ?? "").trim() || "—";
+      const role = String(rec.role ?? "").trim() || "—";
+      if (role === "—" && company === "—") continue;
+      out.push({ company, role });
+    }
+    if (out.length > 0) return dedupeMemberships(out);
+  }
+  const company = companyCellValue(row);
+  const role = memberRoleDisplayName(row.role);
+  if (role === "—") return [];
+  return [{ company, role }];
+}
+
+export function membershipsSortValue(row: Record<string, unknown>): string {
+  return parseMembershipsFromRow(row)
+    .map((m) => `${m.company} ${m.role}`)
+    .join(" ");
+}
+
+/**
+ * One role for the Roles column: uses deal roster / LP roles from the API when portal
+ * `role` is `deal_participant` (never shows the generic “Deal Participant” label).
+ */
+export function primaryRoleLabelFromRow(row: Record<string, unknown>): string {
+  const rd = String(row.roleDisplay ?? row.role_display ?? "").trim();
+  if (rd) return rd;
+
+  const raw = row.role;
+  const rawStr = raw != null ? String(raw).trim() : "";
+
+  if (rawStr && isDealParticipantPortalRole(rawStr)) {
+    const lp = String(
+      row.lp_investor_role_display ?? row.lpInvestorRoleDisplay ?? "",
+    ).trim();
+    if (lp) return lp;
+
+    const lblRaw = row.dealMemberRoleLabels ?? row.deal_member_role_labels;
+    if (Array.isArray(lblRaw) && lblRaw.length > 0) {
+      const parts = [
+        ...new Set(
+          lblRaw
+            .map((x) => formatDealRosterRoleForDisplay(String(x ?? "")))
+            .filter(Boolean),
+        ),
+      ];
+      if (parts.length > 0) return parts.join(", ");
+    }
+
+    const pairs = parseMembershipsFromRow(row);
+    const filtered = pairs.filter((p) => {
+      const disp = String(p.role ?? "").trim();
+      if (!disp || disp === "—") return false;
+      return disp.toLowerCase() !== "deal participant";
+    });
+    if (filtered.length > 0) {
+      return [
+        ...new Set(filtered.map((p) => String(p.role).trim())),
+      ].join(", ");
+    }
+    return "—";
+  }
+
+  if (rawStr !== "") return memberRoleDisplayName(raw);
+
+  const pairs = parseMembershipsFromRow(row);
+  if (pairs.length === 0) return "—";
+  return pairs[0]!.role;
+}
+
+export function roleSortValue(row: Record<string, unknown>): string {
+  return primaryRoleLabelFromRow(row);
+}
+
+/** Distinct organization names in membership order (Organizations column). */
+export function parseOrganizationLabelsFromRow(
+  row: Record<string, unknown>,
+): string[] {
+  const pairs = parseMembershipsFromRow(row);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of pairs) {
+    const c = p.company.trim();
+    if (!c || c === "—") continue;
+    const k = c.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(p.company);
+  }
+  return out;
+}
+
+export function organizationsLabelsPlain(row: Record<string, unknown>): string {
+  const list = parseOrganizationLabelsFromRow(row);
+  if (list.length === 0) return "—";
+  return list.join(", ");
+}
+
+export function organizationsSortValue(row: Record<string, unknown>): string {
+  return parseOrganizationLabelsFromRow(row).join(" ");
+}
+
+export function formatRoleCsvCell(row: Record<string, unknown>): string {
+  return primaryRoleLabelFromRow(row);
+}
+
+export function formatOrganizationsCsvCell(row: Record<string, unknown>): string {
+  return organizationsLabelsPlain(row);
+}
+
+/** Multi-line plain text for view/export previews. */
+export function formatMembershipsPlainText(row: Record<string, unknown>): string {
+  const pairs = parseMembershipsFromRow(row);
+  if (pairs.length === 0) return "—";
+  return pairs.map((m) => `${m.company} — ${m.role}`).join("\n");
+}
+
+/** Single CSV cell: pairs separated by `; `. */
+export function formatMembershipsCsvCell(row: Record<string, unknown>): string {
+  return parseMembershipsFromRow(row)
+    .map((m) => `${m.company} — ${m.role}`)
+    .join("; ");
 }
 
 export const MEMBER_STATUS_EDIT_OPTIONS: { value: string; label: string }[] = [

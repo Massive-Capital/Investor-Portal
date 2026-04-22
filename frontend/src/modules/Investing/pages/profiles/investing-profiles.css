@@ -1,0 +1,90 @@
+/* /investing/profiles — aligns with `um_page` + deals list + investments */
+
+.investing_profiles_page .um_members_tab_content .um_members_tab_panel {
+  padding: 1.25em 1.5em 1.5em;
+  box-sizing: border-box;
+}
+
+.investing_profiles_title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  letter-spacing: -0.02em;
+}
+
+.investing_profiles_sr_only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.investing_profiles_lead {
+  margin: 0 0 1.25em;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--portal-text-secondary, #4f4f4f);
+  max-width: 40rem;
+}
+
+.investing_profiles_empty {
+  border: 1px dashed var(--portal-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 1.5em 1.25em;
+  text-align: center;
+  color: var(--portal-text-secondary, #64748b);
+  font-size: 0.9rem;
+  background: var(--portal-surface, #fff);
+}
+
+.investing_profiles_ben_list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+}
+
+.investing_profiles_ben_item {
+  margin: 0;
+  padding: 0.9em 1em;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.investing_profiles_ben_name {
+  margin: 0 0 0.25em;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+}
+
+.investing_profiles_ben_meta {
+  margin: 0;
+  font-size: 0.825rem;
+  color: var(--portal-text-secondary, #64748b);
+  line-height: 1.4;
+}
+
+.investing_profiles_addr_extras {
+  margin-top: 0.4em;
+}
+
+/* DataTable: long address line */
+.investing_profiles_addr_multiline {
+  display: block;
+  max-width: 28rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Filter + Add row uses `contacts_toolbar_filters_row` + `contacts_filter_*` (see Contacts page). */

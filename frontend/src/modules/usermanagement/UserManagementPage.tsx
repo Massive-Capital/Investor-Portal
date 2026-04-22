@@ -33,7 +33,6 @@ import {
   ShieldCheck,
   Upload,
   User,
-  UserCircle,
   UserCog,
   UserPlus,
   Users,
@@ -59,18 +58,23 @@ import {
   accountStatusForUi,
   accountStatusLabel,
   assignedDealCountFromRow,
-  companyCellValue,
   formatMemberUsername,
+  formatOrganizationsCsvCell,
+  formatRoleCsvCell,
   formatValue,
   memberInvitePending,
-  memberRoleDisplayName,
   memberRowIsCurrentUser,
   memberRowIsInactive,
+  membershipsSortValue,
   normalizeMemberStatusForEdit,
+  organizationsSortValue,
+  primaryRoleLabelFromRow,
   rowDisplayName,
+  roleSortValue,
   syncSessionUserDetailsById,
   userStatusForUi,
 } from "./memberAdminShared";
+import { UserOrganizationsCell } from "./UserOrganizationsCell";
 import { ExportMembersModal } from "./ExportMembersModal";
 import { escapeCsvCell, exportAuditLinesForMembers } from "./memberCsv";
 import { notifyMembersExportAudit } from "./membersExportNotifyApi";
@@ -117,31 +121,9 @@ function StatusWithDot({
   );
 }
 
-/** Label used in badge, sort, export, and search. */
+/** Label used in badge, sort, export, and search (hides portal “Deal Participant”). */
 function roleBadgeLabel(row: Record<string, unknown>): string {
-  return memberRoleDisplayName(row.role);
-}
-
-function UserRoleBadge({ row }: { row: Record<string, unknown> }) {
-  const r = String(row.role ?? "").trim().toLowerCase();
-  const label = memberRoleDisplayName(row.role);
-  if (!r || label === "—") {
-    return <span className="um_status_muted">—</span>;
-  }
-  const useAdminStyleIcon =
-    r === "platform_admin" || r === "company_admin";
-  const Icon = useAdminStyleIcon ? ClipboardList : UserCircle;
-  return (
-    <span className="um_role_badge">
-      <Icon
-        className="um_role_badge_icon"
-        size={16}
-        strokeWidth={2}
-        aria-hidden
-      />
-      <span className="um_role_badge_label">{label}</span>
-    </span>
-  );
+  return primaryRoleLabelFromRow(row);
 }
 
 function rowOrganizationId(row: Record<string, unknown>): string | undefined {
@@ -171,6 +153,11 @@ function rowMatchesSearch(
     formatValue(row.phone),
     formatValue(row.role),
     roleBadgeLabel(row),
+    primaryRoleLabelFromRow(row),
+    membershipsSortValue(row),
+    organizationsSortValue(row),
+    formatRoleCsvCell(row),
+    formatOrganizationsCsvCell(row),
     formatValue(row.userStatus),
     accountStatusLabel(row),
   ]
@@ -181,8 +168,8 @@ function rowMatchesSearch(
 
 type MemberSortKey =
   | "user"
-  | "company"
   | "role"
+  | "organizations"
   | "status"
   | "accountStatus";
 
@@ -193,10 +180,10 @@ function memberSortValue(
   switch (key) {
     case "user":
       return `${rowDisplayName(row)} ${formatMemberUsername(row.username)}`.toLowerCase();
-    case "company":
-      return companyCellValue(row);
     case "role":
-      return roleBadgeLabel(row);
+      return roleSortValue(row);
+    case "organizations":
+      return organizationsSortValue(row);
     case "status":
       return userStatusForUi(row).label;
     case "accountStatus":
@@ -206,25 +193,20 @@ function memberSortValue(
   }
 }
 
-function buildSortColumns(showCompany: boolean): {
+function buildSortColumns(): {
   key: MemberSortKey;
   label: string;
 }[] {
-  const base: { key: MemberSortKey; label: string }[] = [
+  return [
     { key: "user", label: "User" },
-  ];
-  if (showCompany) {
-    base.push({ key: "company", label: "Company" });
-  }
-  base.push(
-    { key: "role", label: "User role" },
+    { key: "role", label: "Roles" },
+    { key: "organizations", label: "Organizations" },
     { key: "status", label: "User Status" },
     { key: "accountStatus", label: "Account status" },
     /* Deals: hidden on /members only; still shown on /customers/:companyId/members (CompanyMembersPage).
     { key: "deals", label: "Deals" },
     */
-  );
-  return base;
+  ];
 }
 
 function readSessionMemberRows(): Record<string, unknown>[] {
@@ -469,10 +451,7 @@ export default function UserManagementPage() {
   }, [token, apiV1, refreshMembersAfterInvite]);
 
   const showCompanyColumn = isPlatformAdmin();
-  const sortColumns = useMemo(
-    () => buildSortColumns(showCompanyColumn),
-    [showCompanyColumn],
-  );
+  const sortColumns = useMemo(() => buildSortColumns(), []);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -694,8 +673,8 @@ export default function UserManagementPage() {
       "Name",
       "Username",
       "Email",
-      ...(showCompanyColumn ? ["Company"] : []),
-      "User role",
+      "Roles",
+      "Organizations",
       "User Status",
       "Account status",
       "Assigned deals",
@@ -704,8 +683,8 @@ export default function UserManagementPage() {
       rowDisplayName(row),
       formatMemberUsername(row.username),
       formatValue(row.email),
-      ...(showCompanyColumn ? [companyCellValue(row)] : []),
-      roleBadgeLabel(row),
+      formatRoleCsvCell(row),
+      formatOrganizationsCsvCell(row),
       userStatusForUi(row).label,
       accountStatusForUi(row).label,
       String(assignedDealCountFromRow(row)),
@@ -1282,11 +1261,13 @@ export default function UserManagementPage() {
                           </div>
                         </div>
                       </td>
-                      {showCompanyColumn ? (
-                        <td>{companyCellValue(row)}</td>
-                      ) : null}
-                      <td>
-                        <UserRoleBadge row={row} />
+                      <td className="um_td_memberships">
+                        <span className="um_membership_role_tag">
+                          {primaryRoleLabelFromRow(row)}
+                        </span>
+                      </td>
+                      <td className="um_td_memberships">
+                        <UserOrganizationsCell row={row} />
                       </td>
                       <td>
                         <StatusWithDot {...rowUserStatus} />
@@ -1536,18 +1517,15 @@ export default function UserManagementPage() {
                 value={formatValue(viewRow.lastName)}
               />
               <ViewReadonlyField
-                Icon={Building2}
-                label="Organization"
-                value={
-                  showCompanyColumn
-                    ? companyCellValue(viewRow)
-                    : formatValue(viewRow.companyName)
-                }
+                Icon={Shield}
+                label="Roles"
+                value={primaryRoleLabelFromRow(viewRow)}
               />
               <ViewReadonlyField
-                Icon={UserCog}
-                label="Role"
-                value={roleBadgeLabel(viewRow)}
+                Icon={Building2}
+                label="Organizations"
+                value={<UserOrganizationsCell row={viewRow} />}
+                fieldClassName="um_view_field_span_full"
               />
               <ViewReadonlyField
                 Icon={Phone}
@@ -1959,7 +1937,6 @@ export default function UserManagementPage() {
         open={membersExportOpen}
         onClose={() => setMembersExportOpen(false)}
         members={sortedRows}
-        showCompanyColumn={showCompanyColumn}
       />
     </section>
   );

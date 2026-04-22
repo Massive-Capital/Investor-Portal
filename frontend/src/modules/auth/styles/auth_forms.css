@@ -29,7 +29,19 @@
   font-size: 0.9em;
 }
 
+.loginForm .input_wrapper label.input_wrapper__label_row {
+  flex-wrap: nowrap;
+  gap: 0.35em;
+  /* Required asterisk sits immediately after label text (icon + text in leading span). */
+}
+
 .loginForm .input_wrapper label span {
+  margin: 0;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.loginForm .input_wrapper label .input_wrapper__label_leading > span.input_wrapper__label_icon {
   margin: 0;
   display: flex;
   flex-shrink: 0;
@@ -40,6 +52,12 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+}
+
+.loginForm .input_wrapper label .input_wrapper__required_icon {
+  color: #dc2626;
+  width: 14px;
+  height: 14px;
 }
 
 .loginForm .input_field {

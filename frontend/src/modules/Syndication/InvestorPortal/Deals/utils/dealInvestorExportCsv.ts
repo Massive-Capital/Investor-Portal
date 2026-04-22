@@ -2,8 +2,8 @@ import { formatMemberUsername } from "../../../../usermanagement/memberAdminShar
 import { investorRoleLabel } from "../constants/investor-profile"
 import type { DealInvestorRow } from "../types/deal-investors.types"
 import {
+  displayAddedInvestorsCommittedAmount,
   displayInvestorCommittedAmount,
-  formatMoneyFieldDisplay,
 } from "../utils/offeringMoneyFormat"
 import { dealInvestorStatusForTable } from "./dealInvestorTableDisplay"
 
@@ -44,6 +44,7 @@ export function buildDealInvestorsExportCsv(
     "Role",
     "Investor class",
     "Status",
+    "Added by",
     "Committed",
     "Signed",
     "Funded",
@@ -65,7 +66,8 @@ export function buildDealInvestorsExportCsv(
       roleForCsv,
       invClass,
       dealInvestorStatusForTable(row),
-      formatMoneyFieldDisplay(displayInvestorCommittedAmount(row)),
+      String(row.addedByDisplayName ?? "").trim() || "—",
+      displayInvestorCommittedAmount(row),
       row.signedDate,
       row.fundedDate,
       row.selfAccredited,
@@ -83,6 +85,8 @@ export function buildDealMembersTableExportCsv(rows: DealInvestorRow[]): string 
     "User",
     "Role",
     "Class",
+    "Commitment (USD)",
+    "Investors added (USD)",
     "Status",
     "Added by",
     "Username",
@@ -94,6 +98,8 @@ export function buildDealMembersTableExportCsv(rows: DealInvestorRow[]): string 
       row.displayName,
       investorRoleLabel(row.investorRole ?? ""),
       row.investorClass,
+      displayInvestorCommittedAmount(row),
+      displayAddedInvestorsCommittedAmount(row),
       dealInvestorStatusForTable(row),
       row.addedByDisplayName,
       formatMemberUsername(row.userDisplayName),

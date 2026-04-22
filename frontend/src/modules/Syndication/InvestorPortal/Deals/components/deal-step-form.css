@@ -27,55 +27,8 @@
   letter-spacing: 0.01em;
 }
 
-.deal_stage_radios {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35em;
+.deal_step_fieldset .radio-group {
   margin-top: 0.5em;
-}
-
-.deal_stage_row {
-  display: flex;
-  align-items: center;
-  gap: 0.6em;
-  padding: 0.35em 0.65em;
-  margin: 0 -0.25em;
-  border-radius: var(--portal-pill-radius);
-  cursor: pointer;
-  font-weight: 400;
-  border: 1px solid transparent;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.deal_stage_row:hover {
-  background: var(--portal-primary-soft);
-  border-color: var(--portal-border);
-}
-
-.deal_stage_row:has(input:focus-visible) {
-  outline: none;
-  border-color: var(--portal-text-muted);
-  box-shadow: 0 0 0 2px rgb(17 24 39 / 8%);
-}
-
-:root[data-theme="dark"] .deal_stage_row:has(input:focus-visible) {
-  box-shadow: 0 0 0 2px rgb(249 250 251 / 12%);
-}
-
-.deal_stage_row input {
-  flex-shrink: 0;
-  width: 1em;
-  height: 1em;
-  accent-color: var(--portal-text);
-}
-
-.deal_stage_row_label {
-  font-size: var(--deals-control-size, 0.9375rem);
-  font-weight: 600;
-  color: var(--portal-text);
-  line-height: var(--deals-control-line-height, 1.45);
 }
 
 .deal_step_yesno {

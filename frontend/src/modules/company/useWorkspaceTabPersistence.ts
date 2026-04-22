@@ -42,7 +42,14 @@ export function useDebouncedWorkspaceTabPersist(
     timerRef.current = setTimeout(() => {
       timerRef.current = null
       const body = JSON.parse(serialized) as Record<string, unknown>
-      void putWorkspaceTabSettings(workspaceCompanyId, tabKey, body)
+      void putWorkspaceTabSettings(workspaceCompanyId, tabKey, body).then(
+        (r) => {
+          if (!r.ok && import.meta.env.DEV) {
+            // eslint-disable-next-line no-console
+            console.warn("debounced workspace put failed", tabKey, r.message)
+          }
+        },
+      )
     }, 650)
     return () => {
       if (timerRef.current) {

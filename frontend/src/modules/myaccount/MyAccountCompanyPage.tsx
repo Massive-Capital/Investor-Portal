@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { Building2, Shield } from "lucide-react"
-import { readSessionUser } from "./sessionUser"
+import { primaryRoleLabelFromRow } from "../usermanagement/memberAdminShared"
+import { fetchMyProfile } from "./accountApi"
+import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
 
 function str(u: Record<string, unknown>, key: string): string {
   return String(u[key] ?? "").trim()
@@ -16,11 +18,16 @@ export function MyAccountCompanyPage() {
     const u = readSessionUser()
     if (!u) return
     setCompanyName(str(u, "companyName"))
-    setRole(str(u, "role"))
+    /** Same resolution as Company Members “Roles” column — not raw `users.role` (`deal_participant`). */
+    setRole(primaryRoleLabelFromRow(u))
   }, [])
 
   useEffect(() => {
     loadFromSession()
+    void fetchMyProfile().then((user) => {
+      if (user) mergeSessionUserDetails(user)
+      loadFromSession()
+    })
   }, [location.pathname, loadFromSession])
 
   return (

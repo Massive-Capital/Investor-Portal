@@ -25,6 +25,7 @@
   line-height: 1.45;
   text-align: left;
   color: var(--portal-text, #282828);
+  /* color: gray; */
   background: var(--portal-surface, #fff);
   border: 1px solid var(--portal-border, #e5e5e5);
   border-radius: var(--portal-pill-radius, 9999px);
@@ -70,7 +71,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin: 0 0 0 1em;
+  font-size: 1em;
+  font-weight: 500;
+  /* margin: 0 0 0 1em; */
 }
 
 .portal_dropdown_select_trigger_label_placeholder {

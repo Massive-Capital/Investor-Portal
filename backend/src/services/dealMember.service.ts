@@ -9,12 +9,19 @@ import {
   type DealInvestmentRow,
 } from "../schema/deal.schema/deal-investment.schema.js";
 import {
-  isLpInvestorRole,
+  applyTotalCommittedToDealInvestmentRowForCanonical,
+  enrichInvestorRolesForDealRows,
+  formatCommittedUsdWhole,
+  groupDealInvestmentsByCanonicalKey,
   listDealInvestmentsByDealId,
+  mapContactIdsToCanonicalCommitmentKeys,
   mapRowToInvestorApi,
   resolveUserDisplayNamesByIds,
   resolveUsersByContactIds,
+  sumCommittedFromInvestorsAddedByMemberContacts,
+  totalCommittedByCanonicalKeyFromRows,
 } from "./dealInvestment.service.js";
+import { isViewerCoSponsorOnDeal } from "./dealLpInvestor.service.js";
 
 export type UpsertDealMemberInput = {
   contactMemberId: string;
@@ -26,6 +33,17 @@ export type UpsertDealMemberInput = {
 
 function normalizeContactKey(raw: string): string {
   return String(raw ?? "").trim().toLowerCase();
+}
+
+/** Canonical row for labels / ids when a contact has multiple investments (newest wins). */
+function pickLatestInvestmentForDealMember(
+  arr: DealInvestmentRow[],
+): DealInvestmentRow | undefined {
+  if (arr.length === 0) return undefined;
+  return [...arr].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
 }
 
 function syntheticInvestmentFromDealMember(m: DealMemberRow): DealInvestmentRow {
@@ -87,57 +105,109 @@ export async function upsertDealMemberForDeal(
 
 /**
  * Lists deal members for the Deal Members tab: one row per `deal_member`, with
- * financial fields from the latest matching `deal_investment` when present.
+ * commitment = **sum** of all `deal_investment` rows for that contact on this deal,
+ * and other fields from the **newest** matching investment when present.
+ *
+ * When `viewerUserId` is a Co-sponsor on this deal, only roster rows they added
+ * (`deal_member.added_by`) are returned.
  */
 export async function listDealMembersMappedToInvestorApi(
   dealId: string,
+  viewerUserId?: string | null,
 ): Promise<ReturnType<typeof mapRowToInvestorApi>[]> {
-  const members = await db
+  let members = await db
     .select()
     .from(dealMember)
     .where(eq(dealMember.dealId, dealId))
     .orderBy(desc(dealMember.updatedAt));
 
-  const investments = await listDealInvestmentsByDealId(dealId);
-  const byContact = new Map<string, DealInvestmentRow[]>();
-  for (const inv of investments) {
-    const k = normalizeContactKey(inv.contactId ?? "");
-    if (!k) continue;
-    const arr = byContact.get(k) ?? [];
-    arr.push(inv);
-    byContact.set(k, arr);
-  }
-  /** Prefer newest LP-role investment for commitment/profile display; else newest any. */
-  const latestInv = new Map<string, DealInvestmentRow>();
-  for (const [k, arr] of byContact) {
-    const sorted = [...arr].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  const uid = viewerUserId?.trim();
+  if (uid && (await isViewerCoSponsorOnDeal(dealId, uid))) {
+    const v = uid.toLowerCase();
+    members = members.filter(
+      (m) => m.addedBy && String(m.addedBy).toLowerCase() === v,
     );
-    const lpFirst = sorted.filter((r) => isLpInvestorRole(r.investor_role));
-    const picked = lpFirst.length > 0 ? lpFirst[0]! : sorted[0];
-    if (picked) latestInv.set(k, picked);
   }
+
+  const investments = await listDealInvestmentsByDealId(dealId);
+  const allContactIdsForCanonical = [
+    ...members.map((m) => m.contactMemberId),
+    ...investments.map((inv) => inv.contactId),
+  ];
+  const rawToCanonical =
+    await mapContactIdsToCanonicalCommitmentKeys(allContactIdsForCanonical);
+  const totalByCanonical = totalCommittedByCanonicalKeyFromRows(
+    investments,
+    rawToCanonical,
+  );
+  const byCanonical = groupDealInvestmentsByCanonicalKey(
+    investments,
+    rawToCanonical,
+  );
 
   const rowsForMap: DealInvestmentRow[] = [];
   for (const m of members) {
     const k = normalizeContactKey(m.contactMemberId);
-    const inv = k ? latestInv.get(k) : undefined;
-    rowsForMap.push(inv ?? syntheticInvestmentFromDealMember(m));
+    const canonicalKey = k
+      ? rawToCanonical.get(k) ?? `id:${k}`
+      : "id:__empty__";
+    const arr = byCanonical.get(canonicalKey) ?? [];
+    const rosterRole = m.dealMemberRole?.trim() ?? "";
+    const picked = pickLatestInvestmentForDealMember(arr);
+    if (picked) {
+      /** Roster role wins over `deal_investment.investor_role` (e.g. portal `deal_participant`). */
+      const merged = applyTotalCommittedToDealInvestmentRowForCanonical(
+        {
+          ...picked,
+          investor_role: rosterRole || picked.investor_role,
+        },
+        totalByCanonical,
+        canonicalKey,
+      );
+      rowsForMap.push(merged);
+    } else {
+      rowsForMap.push(
+        applyTotalCommittedToDealInvestmentRowForCanonical(
+          syntheticInvestmentFromDealMember(m),
+          totalByCanonical,
+          canonicalKey,
+        ),
+      );
+    }
   }
 
-  const resolved = await resolveUsersByContactIds(rowsForMap);
+  const patched = await enrichInvestorRolesForDealRows(dealId, rowsForMap);
+  const resolved = await resolveUsersByContactIds(patched);
   const addedByNames = await resolveUserDisplayNamesByIds(
     members.map((m) => m.addedBy),
   );
 
-  return rowsForMap.map((r, i) => {
+  const memberContactKeys = new Set<string>();
+  for (const m of members) {
+    const k = normalizeContactKey(m.contactMemberId);
+    if (k) memberContactKeys.add(k);
+  }
+  const committedFromAddedInvestors =
+    await sumCommittedFromInvestorsAddedByMemberContacts(
+      dealId,
+      memberContactKeys,
+    );
+
+  return patched.map((r, i) => {
     const base = mapRowToInvestorApi(r, resolved);
     const addedByRaw = members[i]?.addedBy;
     const key = addedByRaw ? String(addedByRaw).toLowerCase() : "";
     const addedByDisplayName =
       key && addedByNames.has(key) ? addedByNames.get(key)! : "—";
-    return { ...base, addedByDisplayName };
+    const memberCk = normalizeContactKey(members[i]?.contactMemberId ?? "");
+    const fromAdded = memberCk
+      ? (committedFromAddedInvestors.get(memberCk) ?? 0)
+      : 0;
+    return {
+      ...base,
+      addedByDisplayName,
+      addedInvestorsCommitted: formatCommittedUsdWhole(fromAdded),
+    };
   });
 }
 

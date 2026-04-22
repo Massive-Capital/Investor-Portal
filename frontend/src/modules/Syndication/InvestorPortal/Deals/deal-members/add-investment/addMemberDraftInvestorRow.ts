@@ -52,9 +52,14 @@ function formatCommittedFromForm(v: AddInvestmentFormValues): string {
   const nums = raw
     .map((s) => parseFloat(String(s).replace(/[^0-9.-]/g, "")))
     .filter((n) => Number.isFinite(n))
-  if (nums.length === 0) return v.commitmentAmount.trim() || "—"
+  if (nums.length === 0) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(0)
+  }
   const sum = nums.reduce((a, b) => a + b, 0)
-  if (sum === 0) return "—"
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",

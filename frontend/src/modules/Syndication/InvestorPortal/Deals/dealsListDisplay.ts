@@ -1,5 +1,6 @@
 /** Display helpers for the Deals list table only */
 
+import { SEC_TYPE_OPTIONS } from "./constants/sec-type-options"
 import {
   DEAL_FORM_TYPE_OPTIONS,
   DEAL_TYPE_LABELS,
@@ -18,6 +19,14 @@ export function dealTypeDisplayLabel(code: string): string {
   if (fromForm) return fromForm.label
   const k = code as DealTypeOption
   return DEAL_TYPE_LABELS[k] ?? code
+}
+
+/** SEC type dropdown value → label (deals list / dashboard cards). */
+export function secTypeDisplayLabel(code: string): string {
+  const t = String(code ?? "").trim()
+  if (!t || t === "—") return "—"
+  const hit = SEC_TYPE_OPTIONS.find((o) => o.value === t)
+  return hit?.label ?? t
 }
 
 const moneyFmt = new Intl.NumberFormat("en-US", {

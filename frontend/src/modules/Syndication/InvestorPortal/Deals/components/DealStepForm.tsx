@@ -11,6 +11,7 @@ import {
   type DealStepDraft,
   type YesNo,
 } from "../types/deals.types"
+import { RadioPillGroup } from "../../../../../common/components/radio-pill-group/RadioPillGroup"
 import { FieldInfoHeading } from "./FieldInfoHeading"
 import { DealsCreateDropdownSelect } from "./DealsCreateDropdownSelect"
 import "./deal-step-form.css"
@@ -172,23 +173,13 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
               </ul>
             }
           />
-          <div
-            className="deal_stage_radios"
-            role="radiogroup"
-            aria-labelledby="deal-stage-heading"
-          >
-            {DEAL_STAGE_CHOICES.map((opt) => (
-              <label key={opt.value} className="deal_stage_row">
-                <input
-                  type="radio"
-                  name="dealStage"
-                  checked={draft.dealStage === opt.value}
-                  onChange={() => onChange({ dealStage: opt.value })}
-                />
-                <span className="deal_stage_row_label">{opt.label}</span>
-              </label>
-            ))}
-          </div>
+          <RadioPillGroup
+            name="dealStage"
+            value={draft.dealStage}
+            options={DEAL_STAGE_CHOICES}
+            ariaLabelledBy="deal-stage-heading"
+            onChange={(dealStage) => onChange({ dealStage })}
+          />
           <FieldError message={errors.dealStage} />
         </fieldset>
 

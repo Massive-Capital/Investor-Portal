@@ -1,41 +1,54 @@
-/* LP Invest Now — compact modal: profile + amount + submit */
+/* LP Invest Now — shell + deal strip; form fields use add_deal_modal + add_contact_panel (Add Investors parity) */
 
 .lp_invest_now_overlay {
   align-items: center;
   justify-content: center;
+  padding: 1.25rem;
+  backdrop-filter: blur(4px);
 }
 
-.lp_invest_now_modal {
-  max-width: 420px;
-  width: calc(100% - 2rem);
+.lp_invest_now_modal.deals_add_inv_modal_panel.um_modal.um_modal_view.add_contact_panel {
+  max-width: min(44em, 100%);
 }
 
-.lp_invest_now_modal_titles {
-  flex: 1;
+.lp_invest_now_deal_context {
+  padding: 0.65rem 1.25rem;
+  margin: 0;
+  border-bottom: 1px solid var(--portal-border, #e5e7eb);
+  background: var(--portal-chrome-bg, #f8fafc);
+}
+
+.lp_invest_now_deal_context_inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
   min-width: 0;
 }
 
-.lp_invest_now_modal_deal_name {
-  margin: 0.35rem 0 0;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--um-text-muted, #64748b);
+.lp_invest_now_deal_context_inner svg {
+  flex-shrink: 0;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.lp_invest_now_deal_context_value {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text, #334155);
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.lp_invest_now_modal_body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.lp_invest_now_optional {
+  margin-left: 0.2rem;
+  font-weight: 500;
+  font-size: 0.75rem;
+  color: var(--portal-text-muted, #94a3b8);
 }
 
-.lp_invest_now_select {
-  cursor: pointer;
-  appearance: auto;
-  min-height: 2.5rem;
-}
-
-.lp_invest_now_modal_actions {
-  justify-content: flex-end;
-  gap: 0.75rem;
+:root[data-theme="dark"] .lp_invest_now_deal_context {
+  background: color-mix(in srgb, var(--portal-surface, #1a1a1a) 92%, #fff);
+  border-bottom-color: var(--portal-border, #334155);
 }

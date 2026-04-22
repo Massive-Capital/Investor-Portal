@@ -1,6 +1,6 @@
 import { Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { dealStageLabel } from "../../deals-mock-data"
+import { dealStageLabel } from "../../dealsDashboardUtils"
 import { toast } from "../../../../../common/components/Toast"
 import { notifyDealsExportAudit } from "../api/dealsExportNotifyApi"
 import type { DealListRow } from "../types/deals.types"

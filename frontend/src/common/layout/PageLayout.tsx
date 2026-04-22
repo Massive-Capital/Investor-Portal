@@ -25,8 +25,8 @@ import { TopNavBar } from "../components/TopNavBar/TopNavBar"
 import {
   PortalModeProvider,
   usePortalMode,
-} from "../context/PortalModeContext"
-import { PortalSwitchLoader } from "./PortalSwitchLoader"
+} from "@/modules/Investing/context/PortalModeContext"
+import { PortalSwitchLoader } from "@/modules/Investing/components/portal-switch-loader/PortalSwitchLoader"
 import {
   pageTitleForAppPathname,
   setAppDocumentTitle,
@@ -73,7 +73,7 @@ const syndicationPortalNavItems: NavItem[] = [
 /** Investing mode — flat nav (reference UI) */
 const investingNavItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
-  { label: "Company overview", to: "/company", icon: Building2 },
+  { label: "Company overview", to: "/investing/company", icon: Building2 },
   { label: "Investments", to: "/investing/investments", icon: TrendingUp },
   { label: "Documents", to: "/investing/documents", icon: FileText },
   { label: "Profiles", to: "/investing/profiles", icon: UserCircle },
@@ -106,8 +106,10 @@ function PageLayoutInner() {
   }, [portalSwitchOverlay])
 
   useEffect(() => {
-    setAppDocumentTitle(pageTitleForAppPathname(location.pathname))
-  }, [location.pathname])
+    setAppDocumentTitle(
+      pageTitleForAppPathname(location.pathname, location.search),
+    )
+  }, [location.pathname, location.search])
 
   /** After Contacts: Settings, Customers, Billing, Members — filtered by {@link canAccessSyndicationSidebarPath} */
   const sharedSidebarTail = sharedSidebarItems
@@ -140,86 +142,74 @@ function PageLayoutInner() {
         <PortalSwitchLoader caption={portalSwitchOverlay.caption} />
       ) : null}
       <aside className="app_sidebar">
-        {showInvestingSidebar ? (
-          <>
-            <div className="app_sidebar_brand app_sidebar_brand_static">
-              <h1 className="app_sidebar_title">Investor Portal</h1>
-              <p className="app_sidebar_mode">{modeLabel}</p>
-              {/* {sessionDealRoleLabel ? (
-                <p className="app_sidebar_role_badge" title="Your role on the deal">
-                  {sessionDealRoleLabel}
-                </p>
-              ) : null} */}
-            </div>
-            <nav className="app_sidebar_nav">
-              {investingSidebarItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <NavLink
-                    key={item.label}
-                    to={item.to}
-                    end
-                    className={({ isActive }) =>
-                      `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
-                    }
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                )
-              })}
-            </nav>
-          </>
-        ) : (
-          <>
-            <div className="app_sidebar_brand app_sidebar_brand_static">
-              <h1 className="app_sidebar_title">Investor Portal</h1>
-              <p className="app_sidebar_mode">{modeLabel}</p>
-              {/* {sessionDealRoleLabel ? (
-                <p className="app_sidebar_role_badge" title="Your role on the deal">
-                  {sessionDealRoleLabel}
-                </p>
-              ) : null} */}
-            </div>
-            <nav className="app_sidebar_nav">
-              {sidebarItems.map((item) => {
-                const { label, to, icon: Icon } = item
-
-                if (to === "/deals") {
-                  const dealsActive = isSyndicatingDealsNavActive(
-                    location.pathname,
-                  )
+        <div className="app_sidebar_brand app_sidebar_brand_static">
+          <h1 className="app_sidebar_title">Investor Portal</h1>
+        </div>
+        <div className="app_sidebar_nav_region">
+          <nav className="app_sidebar_nav" aria-label="Main navigation">
+            {showInvestingSidebar
+              ? investingSidebarItems.map((item) => {
+                  const Icon = item.icon
                   return (
-                    <Link
+                    <NavLink
+                      key={item.label}
+                      to={item.to}
+                      end
+                      className={({ isActive }) =>
+                        `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
+                      }
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </NavLink>
+                  )
+                })
+              : sidebarItems.map((item) => {
+                  const { label, to, icon: Icon } = item
+
+                  if (to === "/deals") {
+                    const dealsActive = isSyndicatingDealsNavActive(
+                      location.pathname,
+                    )
+                    return (
+                      <Link
+                        key={label}
+                        to={to}
+                        className={`app_sidebar_link${dealsActive ? " app_sidebar_link_active" : ""}`}
+                        aria-current={dealsActive ? "page" : undefined}
+                      >
+                        <Icon size={18} />
+                        <span>{label}</span>
+                      </Link>
+                    )
+                  }
+
+                  const linkEnd = to === "/"
+                  return (
+                    <NavLink
                       key={label}
                       to={to}
-                      className={`app_sidebar_link${dealsActive ? " app_sidebar_link_active" : ""}`}
-                      aria-current={dealsActive ? "page" : undefined}
+                      end={linkEnd}
+                      className={({ isActive }) =>
+                        `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
+                      }
                     >
                       <Icon size={18} />
                       <span>{label}</span>
-                    </Link>
+                    </NavLink>
                   )
-                }
-
-                const linkEnd = to === "/"
-                return (
-                  <NavLink
-                    key={label}
-                    to={to}
-                    end={linkEnd}
-                    className={({ isActive }) =>
-                      `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
-                    }
-                  >
-                    <Icon size={18} />
-                    <span>{label}</span>
-                  </NavLink>
-                )
-              })}
-            </nav>
-          </>
-        )}
+                })}
+          </nav>
+        </div>
+        <footer
+          className="app_sidebar_mode_footer"
+          role="status"
+          aria-live="polite"
+          aria-label="Workspace mode"
+        >
+          {/* <span className="app_sidebar_mode_eyebrow">Workspace</span> */}
+          <p className="app_sidebar_mode">{modeLabel}</p>
+        </footer>
       </aside>
 
       <section className="app_main_section">

@@ -25,7 +25,13 @@ import {
   type FormEvent,
 } from "react"
 import type { ReactNode } from "react"
-import { fetchContacts } from "../../../../contacts/api/contactsApi"
+import { toast } from "../../../../../common/components/Toast"
+import {
+  DropdownSelect,
+  type DropdownSelectSection,
+} from "../../../../../common/components/dropdown-select"
+import { AddContactPanel } from "../../../../contacts/components/AddContactPanel"
+import { createContact, fetchContacts } from "../../../../contacts/api/contactsApi"
 import type { ContactRow } from "../../../../contacts/types/contact.types"
 import {
   fetchDealInvestorClasses,
@@ -50,6 +56,9 @@ const INVESTOR_CLASS_UNAVAILABLE_HINT =
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
+
+const DROPDOWN_TRIGGER_PILL =
+  "um_field_select deals_add_inv_field_control deals_add_inv_field_pill"
 
 function contactOptionLabel(c: ContactRow): string {
   const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim()
@@ -168,6 +177,7 @@ export function AddInvestmentModal({
     { value: string; label: string }[]
   >([{ value: "", label: "Loading investor classes…" }])
   const [membersLoading, setMembersLoading] = useState(false)
+  const [addContactModalOpen, setAddContactModalOpen] = useState(false)
   const [step, setStep] = useState<1 | 2>(1)
 
   useEffect(() => {
@@ -260,6 +270,10 @@ export function AddInvestmentModal({
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onClose])
 
+  useEffect(() => {
+    if (!open) setAddContactModalOpen(false)
+  }, [open])
+
   const offeringOptions = [
     {
       value: "primary",
@@ -349,6 +363,62 @@ export function AddInvestmentModal({
       return `${PREFIX_USER}${id}`
     return id
   }, [form.contactId, contactRows, memberRows])
+
+  const memberDropdownSections = useMemo((): DropdownSelectSection[] => {
+    const sections: DropdownSelectSection[] = []
+    if (contactRows.length > 0) {
+      sections.push({
+        heading: "Contacts",
+        options: contactRows.map((c) => ({
+          value: `${PREFIX_CONTACT}${c.id}`,
+          label: contactOptionLabel(c),
+        })),
+      })
+    }
+    if (memberRows.length > 0) {
+      sections.push({
+        heading: "Directory members",
+        options: memberRows
+          .map((u) => memberOptionFromUser(u))
+          .filter((o): o is { value: string; label: string } => Boolean(o))
+          .map((o) => ({
+            value: `${PREFIX_USER}${o.value}`,
+            label: o.label,
+          })),
+      })
+    }
+    return sections
+  }, [contactRows, memberRows])
+
+  const handleContactCreated = useCallback(
+    (contact: ContactRow) => {
+      setContactRows((prev) => {
+        if (prev.some((c) => c.id === contact.id)) return prev
+        return [...prev, contact]
+      })
+      const display = contactOptionLabel(contact)
+      const namePart = display.split(" — ")[0]?.trim() || display
+      patch({
+        contactId: contact.id,
+        contactDisplayName: namePart,
+        contactEmail: contact.email.trim(),
+        contactUsername: undefined,
+      })
+      toast.success(
+        "Contact added",
+        `${namePart} is selected for this investment.`,
+      )
+    },
+    [patch],
+  )
+
+  const handleAddContactSave = useCallback(
+    async (contact: Omit<ContactRow, "id" | "createdByDisplayName">) => {
+      const created = await createContact(contact)
+      handleContactCreated(created)
+    },
+    [handleContactCreated],
+  )
 
   function handleFileChange(file: File | null) {
     setSubscriptionDocument(file)
@@ -440,55 +510,8 @@ export function AddInvestmentModal({
 
   if (!open) return null
 
-  const memberSelect = (
-    <select
-      id="add-inv-member"
-      className="um_field_select deals_add_inv_field_control"
-      value={memberSelectValue}
-      disabled={membersLoading}
-      onChange={(e) => patchMemberById(e.target.value)}
-      aria-label="Member or contact"
-    >
-      <option value="">
-        {membersLoading
-          ? "Loading contacts and members…"
-          : "Select member or contact"}
-      </option>
-      {contactRows.length > 0 ? (
-        <optgroup label="Contacts">
-          {contactRows.map((c) => (
-            <option key={`c-${c.id}`} value={`${PREFIX_CONTACT}${c.id}`}>
-              {contactOptionLabel(c)}
-            </option>
-          ))}
-        </optgroup>
-      ) : null}
-      {memberRows.length > 0 ? (
-        <optgroup label="Directory members">
-          {memberRows
-            .map((u) => memberOptionFromUser(u))
-            .filter(
-              (o): o is { value: string; label: string } => Boolean(o),
-            )
-            .map((o) => (
-              <option key={`u-${o.value}`} value={`${PREFIX_USER}${o.value}`}>
-                {o.label}
-              </option>
-            ))}
-        </optgroup>
-      ) : (
-        <optgroup label="Directory members">
-          {MEMBER_SELECT_OPTIONS.filter((o) => o.value !== "").map((o) => (
-            <option key={o.value} value={`${PREFIX_USER}${o.value}`}>
-              {o.label}
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </select>
-  )
-
   return (
+    <>
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
       role="presentation"
@@ -600,7 +623,24 @@ export function AddInvestmentModal({
                       Icon={UserRound}
                       tight
                     >
-                      {memberSelect}
+                      <DropdownSelect
+                        id="add-inv-member"
+                        sections={memberDropdownSections}
+                        value={memberSelectValue}
+                        disabled={membersLoading}
+                        onChange={(v) => patchMemberById(v)}
+                        placeholder={
+                          membersLoading
+                            ? "Loading contacts and members…"
+                            : "Select member or contact"
+                        }
+                        ariaLabel="Member or contact"
+                        header={{
+                          label: "+ Add Contact",
+                          onClick: () => setAddContactModalOpen(true),
+                        }}
+                        triggerClassName={DROPDOWN_TRIGGER_PILL}
+                      />
                     </InvFormField>
                   </div>
                 </div>
@@ -926,5 +966,13 @@ export function AddInvestmentModal({
         </form>
       </div>
     </div>
+    <AddContactPanel
+      open={addContactModalOpen}
+      onClose={() => setAddContactModalOpen(false)}
+      onSave={handleAddContactSave}
+      contactToEdit={null}
+      existingContacts={contactRows}
+    />
+    </>
   )
 }

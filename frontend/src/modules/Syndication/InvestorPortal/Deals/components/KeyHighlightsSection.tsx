@@ -212,7 +212,7 @@ export function KeyHighlightsSection({
         </button>
       </div>
 
-      <div className="deal_kh_table" role="table" aria-label="Key metrics">
+      <div className="deal_kh_table" role="table" aria-label="Key highlights">
         <div className="deal_kh_thead" role="rowgroup">
           <div className="deal_kh_tr deal_kh_tr_head" role="row">
             <div className="deal_kh_th deal_kh_col_drag" aria-hidden />

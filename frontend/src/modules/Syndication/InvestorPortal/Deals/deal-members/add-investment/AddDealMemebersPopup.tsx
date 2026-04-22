@@ -293,7 +293,7 @@ export function AddInvestmentModal({
     })
   }, [dealId])
 
-  /** Any stable row id from `editRow.id` — not only UUIDs (mock/API may use other shapes). */
+  /** Any stable row id from `editRow.id` — not only UUIDs (API may use other shapes). */
   const editingRowIdForLeadSponsorGate = useMemo(() => {
     if (mode !== "edit") return null
     const k = prefillKey?.trim() ?? ""
@@ -938,43 +938,29 @@ export function AddInvestmentModal({
         }),
       })
     }
-    const directoryOptions =
-      memberRows.length > 0
-        ? memberRows
-            .map((u) => memberOptionFromUser(u))
-            .filter((o): o is { value: string; label: string } => Boolean(o))
-            .map((o) => {
-              const value = `${PREFIX_USER}${o.value}`
-              const dirRow = memberRows.find((x) => String(x.id) === o.value)
-              const email = dirRow ? String(dirRow.email ?? "").trim() : ""
-              const onDeal = isAlreadyOnDealRoster(o.value, email)
-              const disabled =
-                optionDisabledForLeadSponsorConflict(value) || onDeal
-              return {
-                value,
-                label: o.label,
-                disabled,
-                ...(onDeal ? { labelContent: alreadyAddedOptionLabel(o.label) } : {}),
-              }
-            })
-        : MEMBER_SELECT_OPTIONS.filter((o) => o.value !== "").map((o) => {
-            const value = `${PREFIX_USER}${o.value}`
-            const parts = o.label.split(" — ")
-            const emailGuess = parts[1]?.trim() ?? ""
-            const onDeal = isAlreadyOnDealRoster(o.value, emailGuess)
-            const disabled =
-              optionDisabledForLeadSponsorConflict(value) || onDeal
-            return {
-              value,
-              label: o.label,
-              disabled,
-              ...(onDeal ? { labelContent: alreadyAddedOptionLabel(o.label) } : {}),
-            }
-          })
-    sections.push({
-      heading: isInvestorEntry ? "Directory users" : "Directory members",
-      options: directoryOptions,
-    })
+    if (memberRows.length > 0) {
+      const directoryOptions = memberRows
+        .map((u) => memberOptionFromUser(u))
+        .filter((o): o is { value: string; label: string } => Boolean(o))
+        .map((o) => {
+          const value = `${PREFIX_USER}${o.value}`
+          const dirRow = memberRows.find((x) => String(x.id) === o.value)
+          const email = dirRow ? String(dirRow.email ?? "").trim() : ""
+          const onDeal = isAlreadyOnDealRoster(o.value, email)
+          const disabled =
+            optionDisabledForLeadSponsorConflict(value) || onDeal
+          return {
+            value,
+            label: o.label,
+            disabled,
+            ...(onDeal ? { labelContent: alreadyAddedOptionLabel(o.label) } : {}),
+          }
+        })
+      sections.push({
+        heading: isInvestorEntry ? "Directory users" : "Directory members",
+        options: directoryOptions,
+      })
+    }
     return sections
   }, [
     contactRows,
@@ -1054,7 +1040,7 @@ export function AddInvestmentModal({
       setError("Select a valid investor class from this deal.")
       return false
     }
-    if (!form.commitmentAmount.trim()) {
+    if (isInvestorEntry && !form.commitmentAmount.trim()) {
       setError("Enter a commitment amount.")
       return false
     }
@@ -1081,6 +1067,7 @@ export function AddInvestmentModal({
       return false
     }
     if (
+      isInvestorEntry &&
       form.sendInvitationMail === "yes" &&
       !String(form.profileId ?? "").trim()
     ) {
@@ -1327,32 +1314,54 @@ export function AddInvestmentModal({
 
                 <hr className="add_contact_section_rule" />
 
-                <div className="add_contact_section">
-                  <div className="add_contact_name_grid">
-                    <InvFormField
-                      id="add-inv-profile"
-                      label="Profile"
-                      Icon={IdCard}
-                      tight
-                    >
-                      <DropdownSelect
-                        id="add-inv-profile"
-                        options={INVESTOR_PROFILE_SELECT_OPTIONS.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        }))}
-                        value={form.profileId}
-                        onChange={(v) => patch({ profileId: v })}
-                        placeholder="Select profile"
-                        ariaLabel="Profile"
-                        triggerClassName={DROPDOWN_TRIGGER_PILL}
-                        // footer={{
-                        //   label: "Clear profile",
-                        //   onClick: () => patch({ profileId: "" }),
-                        // }}
-                      />
-                    </InvFormField>
+                {isInvestorEntry ? (
+                  <>
+                    <div className="add_contact_section">
+                      <p className="add_contact_section_eyebrow">Profile</p>
+                      <div className="add_contact_name_grid deals_add_inv_profile_section_grid">
+                        <InvFormField
+                          id="add-inv-profile"
+                          label="Profile"
+                          Icon={IdCard}
+                          tight
+                        >
+                          <DropdownSelect
+                            id="add-inv-profile"
+                            options={INVESTOR_PROFILE_SELECT_OPTIONS.map((o) => ({
+                              value: o.value,
+                              label: o.label,
+                            }))}
+                            value={form.profileId}
+                            onChange={(v) => patch({ profileId: v })}
+                            placeholder="Select profile"
+                            ariaLabel="Profile"
+                            ariaDescribedBy="add-inv-profile-hint"
+                            triggerClassName={DROPDOWN_TRIGGER_PILL}
+                          />
+                        </InvFormField>
+                      </div>
+                      <p
+                        id="add-inv-profile-hint"
+                        className="deals_add_inv_section_hint"
+                        role="note"
+                      >
+                        Used for investor identity and invitation email context when
+                        you notify them about being added to the deal.
+                      </p>
+                    </div>
+                    <hr className="add_contact_section_rule" />
+                  </>
+                ) : null}
 
+                <div className="add_contact_section">
+                  {isInvestorEntry ? (
+                    <p
+                      className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced"
+                    >
+                      Investment details
+                    </p>
+                  ) : null}
+                  <div className="add_contact_name_grid">
                     <InvFormField
                       id="add-inv-role"
                       label="Role"
@@ -1393,9 +1402,7 @@ export function AddInvestmentModal({
                         />
                       )}
                     </InvFormField>
-                  </div>
-
-                  <InvFormField id="add-inv-status" label="Status" Icon={Activity}>
+                     <InvFormField id="add-inv-status" label="Status" Icon={Activity}>
                     <DropdownSelect
                       id="add-inv-status"
                       options={INVESTMENT_STATUS_SELECT_OPTIONS.map((o) => ({
@@ -1409,6 +1416,9 @@ export function AddInvestmentModal({
                       triggerClassName={DROPDOWN_TRIGGER_PILL}
                     />
                   </InvFormField>
+                  </div>
+
+                 
 
                   <InvFormField
                     id="add-inv-class"
@@ -1450,52 +1460,62 @@ export function AddInvestmentModal({
                     ) : null}
                   </InvFormField>
 
-                  <div className="add_contact_name_grid">
-                    <InvFormField
-                      id="add-inv-doc-date"
-                      label="Doc signed date"
-                      Icon={Calendar}
-                      tight
-                    >
-                      <input
+                  {isInvestorEntry ? (
+                    <div className="add_contact_name_grid">
+                      <InvFormField
                         id="add-inv-doc-date"
-                        type="date"
-                        className="deals_add_inv_field_pill"
-                        value={form.docSignedDate}
-                        onChange={(e) =>
-                          patch({ docSignedDate: e.target.value })
-                        }
-                        aria-label="Document signed date"
-                      />
-                    </InvFormField>
+                        label="Doc signed date"
+                        Icon={Calendar}
+                        tight
+                      >
+                        <input
+                          id="add-inv-doc-date"
+                          type="date"
+                          className="deals_add_inv_field_pill"
+                          value={form.docSignedDate}
+                          onChange={(e) =>
+                            patch({ docSignedDate: e.target.value })
+                          }
+                          aria-label="Document signed date"
+                        />
+                      </InvFormField>
 
-                    <InvFormField
-                      id="add-inv-commitment"
-                      label="Commitment amount"
-                      Icon={DollarSign}
-                      tight
-                    >
-                      <input
+                      <InvFormField
                         id="add-inv-commitment"
-                        type="text"
-                        className="deals_add_inv_field_pill"
-                        placeholder="Enter amount"
-                        value={form.commitmentAmount}
-                        onChange={(e) =>
-                          patch({ commitmentAmount: e.target.value })
-                        }
-                        onBlur={(e) =>
-                          patch({
-                            commitmentAmount: blurFormatMoneyInput(
-                              e.target.value,
-                            ),
-                          })
-                        }
-                        aria-label="Commitment amount"
-                        inputMode="decimal"
-                      />
-                    </InvFormField>
-                  </div>
+                        label="Commitment amount"
+                        Icon={DollarSign}
+                        tight
+                      >
+                        <input
+                          id="add-inv-commitment"
+                          type="text"
+                          className="deals_add_inv_field_pill"
+                          placeholder="Enter amount"
+                          value={form.commitmentAmount}
+                          onChange={(e) =>
+                            patch({ commitmentAmount: e.target.value })
+                          }
+                          onBlur={(e) =>
+                            patch({
+                              commitmentAmount: blurFormatMoneyInput(
+                                e.target.value,
+                              ),
+                            })
+                          }
+                          aria-label="Commitment amount"
+                          inputMode="decimal"
+                        />
+                      </InvFormField>
+                    </div>
+                  ) : null}
+                  {/*
+                    Add Member: Doc signed date + Commitment amount commented out — form state
+                    still submits empty strings; API unchanged.
+                    <div className="add_contact_name_grid">
+                      <InvFormField id="add-inv-doc-date" label="Doc signed date" ... />
+                      <InvFormField id="add-inv-commitment" label="Commitment amount" ... />
+                    </div>
+                  */}
 
                   <div className="um_field">
                     <div

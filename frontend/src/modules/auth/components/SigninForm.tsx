@@ -108,6 +108,7 @@ const SigninForm = () => {
             }}
             aria-invalid={!!isError}
             required
+            requiredIndicator={false}
             disabled={isLoading}
           />
         </div>
@@ -127,6 +128,7 @@ const SigninForm = () => {
             placeholder="......."
             aria-invalid={!!isError}
             required
+            requiredIndicator={false}
             disabled={isLoading}
             suffix={
               <span

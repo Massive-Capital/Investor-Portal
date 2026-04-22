@@ -26,6 +26,7 @@ import {
   type DealAssetPersisted,
   type DealAssetRow,
 } from "./types/deal-asset.types"
+import { zipCodeFieldError } from "./utils/dealZipCode"
 import { dedupeGalleryUrlsPreserveOrder } from "./utils/offeringGalleryUrls"
 import { emptyAssetStepDraft, type AssetStepDraft } from "./types/deals.types"
 import "../../../contacts/contacts.css"
@@ -197,6 +198,8 @@ export function AddDealAssetPage() {
     if (!assetDraft.propertyName.trim()) {
       nextErr.propertyName = "Property name is required."
     }
+    const zipErr = zipCodeFieldError(assetDraft.zipCode)
+    if (zipErr) nextErr.zipCode = zipErr
     setAssetErrors(nextErr)
     return Object.keys(nextErr).length === 0
   }

@@ -4,7 +4,8 @@
   --deals-form-field-gap: 1.375em;
   --deals-form-label-gap: 0.5em;
   /* Labels vs field text: rem avoids em “shrink” inside nested controls */
-  --deals-label-size: 0.9375rem;
+  /* --deals-label-size: var(--portal-form-label-font-size, 0.8125rem); */
+  --deals-label-size: var(--portal-form-label-font-size, 0.8125rem);
   --deals-control-size: 1rem;
   /* Uniform control box (inputs + selects); textarea keeps its own min-height */
   --deals-control-height: 2.75rem;
@@ -126,18 +127,18 @@
   flex-direction: column;
   gap: var(--deals-form-label-gap, 0.35em);
   font-size: var(--deals-label-size);
-  font-weight: 600;
-  color: var(--portal-text, #0f172a);
+  font-weight: var(--portal-form-label-font-weight, 600);
+  color: var(--portal-form-label-color, var(--portal-text-muted, #64748b));
   line-height: 1.4;
-  letter-spacing: 0.01em;
+  letter-spacing: var(--portal-form-label-letter-spacing, -0.01em);
 }
 
 .deals_create_label_text {
   font-size: var(--deals-label-size);
-  font-weight: 600;
+  font-weight: var(--portal-form-label-font-weight, 600);
   line-height: 1.4;
-  color: var(--portal-text, #0f172a);
-  letter-spacing: 0.01em;
+  color: var(--portal-form-label-color, var(--portal-text-muted, #64748b));
+  letter-spacing: var(--portal-form-label-letter-spacing, -0.01em);
 }
 
 .deals_create_req {
@@ -151,7 +152,7 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  min-height: var(--deals-control-height, 2.75rem);
+  /* min-height: var(--deals-control-height, 2.75rem); */
   padding: var(--deals-control-padding-y, 0.5rem)
     var(--deals-control-padding-x, 0.75rem);
   border: 1px solid var(--portal-border);
@@ -569,7 +570,7 @@
 .deals_add_deal_asset_page {
   --deals-form-field-gap: 1.35rem;
   --deals-form-label-gap: 0.35em;
-  --deals-label-size: 0.8125rem;
+  --deals-label-size: var(--portal-form-label-font-size, 0.8125rem);
   --deals-control-size: 0.9375rem;
   --deals-control-height: 2.75rem;
   --deals-control-line-height: 1.45;
@@ -590,7 +591,9 @@
   --deals-create-form-col-max: 50em;
   --deals-form-field-gap: 1.5rem;
   /* Let `.app_main_content` be the only scroll layer — no 100vh stretch or empty tail */
-  min-height: auto;
+  /* `unset` beats `min(100vh, …)` / flex min-size quirks in Chrome & Edge */
+  min-height: unset;
+  min-block-size: auto;
   height: auto;
   display: block;
 }
@@ -804,7 +807,7 @@
 .deals_add_deal_asset_page.deals_create_flow
   .deals_add_deal_asset_footer_actions.um_modal_actions
   .um_btn_primary {
-  background: #000000;
+  background: var(--ui-button-background-add);
   color: #fff;
   border: 1px solid transparent;
 }
@@ -812,7 +815,7 @@
 .deals_add_deal_asset_page.deals_create_flow
   .deals_add_deal_asset_footer_actions.um_modal_actions
   .um_btn_primary:hover:not(:disabled) {
-  background: #1a1a1a;
+  background: var(--ui-button-hover);
 }
 
 :root[data-theme="dark"]
@@ -965,7 +968,8 @@
 /* Create deal: single column grows with content; page scrolls (no fixed inner viewport strip). */
 .deals_add_deal_asset_page.deals_create_flow .deals_add_deal_asset_form_scroll {
   flex: 0 0 auto;
-  min-height: 0;
+  min-height: unset;
+  min-block-size: auto;
   max-height: none;
   overflow: visible;
   gap: 1rem;

@@ -9,13 +9,13 @@ import {
   Users,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   dealDetailApiToRecord,
   dealStageLabel,
   type DealRecord,
-} from "../deals-mock-data"
-import { usePortalMode } from "../../../../common/context/PortalModeContext"
+} from "../dealsDashboardUtils"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { getSessionUserEmail } from "../../../../common/auth/sessionUserEmail"
 import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
 import {
@@ -30,7 +30,7 @@ import {
   type DealDetailApi,
 } from "./api/dealsApi"
 import { EMPTY_INVESTORS_PAYLOAD } from "./dealOfferingPreviewShared"
-import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
+import { LpDealDetailsPage } from "@/modules/Investing/deal-details"
 import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import { ADD_MEMBER_DRAFT_ROW_ID } from "./deal-members/add-investment/addMemberDraftInvestorRow"
@@ -52,7 +52,6 @@ import type {
   DealInvestorsPayload,
 } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
-import { DealInvestorRoleBadge } from "./components/DealInvestorRoleBadge"
 import {
   resolveViewerDealInvestorRoleRaw,
   resolveViewerDealMemberRole,
@@ -63,7 +62,8 @@ import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
 import { investorProfileLabel } from "./constants/investor-profile"
-import { upsertRuntimeInvestmentRow } from "../../../Investing/InvestorPortal/Investments/investmentsRuntimeStore"
+import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
+import { upsertRuntimeInvestmentRow } from "@/modules/Investing/pages/investments/investmentsRuntimeStore"
 import "../../../usermanagement/user_management.css"
 import "./deal-offering-portfolio.css"
 import "./deals-list.css"
@@ -88,6 +88,7 @@ const DEAL_DETAIL_TABS: DealDetailTabDef[] = [
 export function DealDetailPage() {
   const { mode } = usePortalMode()
   const { dealId } = useParams()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<string>("offering_details")
   const [addInvestmentOpen, setAddInvestmentOpen] = useState(false)
   /** True while shared Add/Edit investment modal is open (add or edit) — hides session draft row in Deal Members table. */
@@ -145,12 +146,24 @@ export function DealDetailPage() {
           dealDetailApi?.dealName?.trim() ||
           dealDetailApi?.propertyName?.trim() ||
           "Deal"
+        const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
+        let investedAmount = saved.committedAmount
+        if (em && payload.investors?.length) {
+          const mine = payload.investors.find(
+            (r) =>
+              String(r.userEmail ?? "").trim().toLowerCase() === em,
+          )
+          if (mine) {
+            const n = parseMoneyDigits(String(mine.committed ?? "").trim())
+            if (Number.isFinite(n)) investedAmount = n
+          }
+        }
         upsertRuntimeInvestmentRow({
           dealId: dealId.trim(),
           investmentName,
           offeringName: investmentName,
           investmentProfile: investorProfileLabel(saved.profileId),
-          investedAmount: saved.committedAmount,
+          investedAmount,
           distributedAmount: 0,
           currentValuation: dealDetailApi?.offeringSize?.trim() || "—",
           dealCloseDate: formatDealCloseDateForInvestments(
@@ -163,8 +176,9 @@ export function DealDetailPage() {
       setInvestorsListRefreshKey((k) => k + 1)
       setDealMembersRefreshKey((r) => r + 1)
       void dealInvestorsTabRef.current?.refetchInvestors()
+      navigate("/", { replace: true })
     },
-    [dealId, dealDetailApi],
+    [dealId, dealDetailApi, navigate],
   )
 
   useEffect(() => {
@@ -355,7 +369,7 @@ export function DealDetailPage() {
       if (result.ok) {
         toast.success(
           "Invitation sent",
-          "The member invitation email was sent using your server mail settings.",
+          "The investor invitation email was sent using your server mail settings.",
         )
         void dealInvestorsTabRef.current?.refetchInvestors()
       } else {
@@ -499,58 +513,15 @@ export function DealDetailPage() {
       ) : null}
 
       {mode === "investing" && dealDetailApi ? (
-        <section
-          className="deal_detail_investing_preview_section um_panel"
-          aria-labelledby="deal-detail-investing-preview-heading"
-        >
-          <div className="deal_detail_investing_section_back">
-            <Link
-              className="deals_list_back_circle"
-              to={dealsListBackPath}
-              aria-label="Back to deals"
-            >
-              <ArrowLeft size={20} strokeWidth={2} aria-hidden />
-            </Link>
-          </div>
-          <h2
-            id="deal-detail-investing-preview-heading"
-            className="deal_detail_investing_preview_heading"
-          >
-            Offering overview
-          </h2>
-          <p className="deal_detail_investing_preview_lead">
-            Same content and layout as Preview offering and the shared investor
-            link — gallery, summary, documents, and highlights follow what is
-            marked visible to investors.
-          </p>
-          {viewerDealInvestorRoleRaw ? (
-            <div
-              className="deals_deal_view_sponsor_role_banner deal_detail_investing_sponsor_banner"
-              role="status"
-              aria-label="Your role on this deal"
-            >
-              <span className="deals_deal_view_sponsor_role_label">
-                Your role on this deal
-              </span>
-              <DealInvestorRoleBadge
-                investorRole={viewerDealInvestorRoleRaw}
-              />
-            </div>
-          ) : null}
-          <div className="deal_offer_pf_page deal_detail_investing_offer_pf">
-            <div className="deal_offer_pf">
-              <DealOfferingPreviewInner
-                detail={dealDetailApi}
-                classes={investingOfferingClasses}
-                investorsPayload={investingOfferingInvestors}
-                applyInvestorLinkVisibility
-                isPublicOfferingRoute={false}
-                showInvestNowCta
-                onInvestNow={() => setLpInvestNowOpen(true)}
-                galleryUsesPersistedSourcesOnly={false}
-              />
-            </div>
-          </div>
+        <>
+          <LpDealDetailsPage
+            deal={dealDetailApi}
+            classes={investingOfferingClasses}
+            investorsPayload={investingOfferingInvestors}
+            onInvestNow={() => setLpInvestNowOpen(true)}
+            backTo={dealsListBackPath}
+            viewerRoleLabel={viewerDealInvestorRoleRaw}
+          />
           {dealId?.trim() ? (
             <LpInvestNowModal
               open={lpInvestNowOpen}
@@ -560,7 +531,7 @@ export function DealDetailPage() {
               onSuccess={handleLpInvestNowSuccess}
             />
           ) : null}
-        </section>
+        </>
       ) : null}
 
       {showSyndicatingDealChrome ? (

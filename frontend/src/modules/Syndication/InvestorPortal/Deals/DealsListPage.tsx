@@ -11,7 +11,8 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
-import { usePortalMode } from "../../../../common/context/PortalModeContext"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
+import { filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope"
 import {
   DataTable,
   type DataTableColumn,
@@ -35,7 +36,7 @@ import {
   CREATE_DEAL_DRAFT_ROW_ID,
   buildCreateDealDraftListRow,
 } from "./createDealDraftListRow"
-import { dealStageLabel } from "../deals-mock-data"
+import { dealStageLabel } from "../dealsDashboardUtils"
 import type { DealListRow } from "./types/deals.types"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import { DealPreviewModal } from "./components/DealPreviewModal"
@@ -280,7 +281,10 @@ export function DealsListPage({
     let cancelled = false
     void (async () => {
       setLoading(true)
-      const list = await loadDealsList()
+      let list = await loadDealsList()
+      if (dealsListContext === "investing" && list.length > 0) {
+        list = await filterDealListToViewerInvested(list)
+      }
       if (!cancelled) {
         setRows(list)
         setLoading(false)
@@ -307,14 +311,17 @@ export function DealsListPage({
   useEffect(() => {
     function onDealsRefetch() {
       void (async () => {
-        const list = await loadDealsList()
+        let list = await loadDealsList()
+        if (dealsListContext === "investing" && list.length > 0) {
+          list = await filterDealListToViewerInvested(list)
+        }
         setRows(list)
       })()
     }
     window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsRefetch)
     return () =>
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsRefetch)
-  }, [loadDealsList])
+  }, [loadDealsList, dealsListContext])
 
   const sessionCreateDealDraftRow = useMemo((): DealListRow | null => {
     void createDealDraftTick
@@ -363,11 +370,15 @@ export function DealsListPage({
       const sessionEmail =
         dealsListContext === "investing" ? getSessionUserEmail() : ""
       const em = sessionEmail.trim().toLowerCase()
+      const investFetchOpts =
+        dealsListContext === "investing"
+          ? ({ lpInvestorsOnly: false } as const)
+          : undefined
       const entries = await Promise.all(
         ids.map(async (id) => {
           try {
             const [{ kpis, investors }, classes] = await Promise.all([
-              fetchDealInvestors(id),
+              fetchDealInvestors(id, investFetchOpts),
               dealsListContext === "investing"
                 ? Promise.resolve([] as Awaited<
                     ReturnType<typeof fetchDealInvestorClasses>

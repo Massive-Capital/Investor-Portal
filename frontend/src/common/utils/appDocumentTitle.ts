@@ -34,10 +34,23 @@ function normalizePathname(pathname: string): string {
 }
 
 /** Page label for routes rendered inside `PageLayout` (no prefix). */
-export function pageTitleForAppPathname(pathname: string): string {
+export function pageTitleForAppPathname(
+  pathname: string,
+  search = "",
+): string {
   const p = normalizePathname(pathname)
 
   if (p === "/" || p === "") return "Dashboard"
+
+  if (p === "/deals/create") {
+    const qs = search.startsWith("?")
+      ? search
+      : search
+        ? `?${search}`
+        : ""
+    const editId = new URLSearchParams(qs).get("edit")?.trim()
+    return editId ? "Edit deal" : "Create deal"
+  }
 
   const exact: Record<string, string> = {
     "/company": "Company",
@@ -47,7 +60,6 @@ export function pageTitleForAppPathname(pathname: string): string {
     "/contacts": "All contacts",
     "/leads": "Leads",
     "/deals": "My deals",
-    "/deals/create": "Create deal",
     "/deals/investor-emails": "Investor emails",
     "/deals/reporting": "Reporting",
     "/investing/opportunities": "Opportunities",
@@ -55,6 +67,7 @@ export function pageTitleForAppPathname(pathname: string): string {
     "/investing/documents": "Documents",
     "/investing/profiles": "Profiles",
     "/investing/deals": "Deals",
+    "/investing/company": "Company overview",
     "/investing/cashflows": "Cashflows",
     "/investing/settings": "Settings",
     "/investing/review": "Leave a review",

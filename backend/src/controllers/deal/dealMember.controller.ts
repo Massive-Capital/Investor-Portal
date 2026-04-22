@@ -12,8 +12,9 @@ import {
 import { sendDealMemberInvitationEmail } from "../../services/dealMemberInvitationEmail.service.js";
 
 /**
- * GET /deals/:dealId/members — roster from `deal_member`, merged with latest
- * `deal_investment` per contact for amounts/dates.
+ * GET /deals/:dealId/members — roster from `deal_member`, merged with investment
+ * data (commitment = sum of all `deal_investment` rows per contact on this deal;
+ * other fields from the newest matching investment row).
  */
 export async function getDealMembers(
   req: Request,
@@ -38,7 +39,17 @@ export async function getDealMembers(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    const members = await listDealMembersMappedToInvestorApi(dealId);
+    const members = await listDealMembersMappedToInvestorApi(dealId, user.id);
+    if (process.env.DEAL_MEMBERS_COMMIT_DEBUG === "1") {
+      console.log(
+        `[deal members commit debug] dealId=${dealId} rows=${members.length}`,
+      );
+      for (const m of members) {
+        console.log(
+          `  id=${m.id} name=${JSON.stringify(m.displayName)} committed=${JSON.stringify(m.committed)} commitmentAmountRaw=${JSON.stringify(m.commitmentAmountRaw)}`,
+        );
+      }
+    }
     res.status(200).json({ members });
   } catch (err) {
     console.error("getDealMembers:", err);
@@ -59,7 +70,7 @@ function bodyString(v: unknown): string {
 /**
  * POST /deals/:dealId/members/send-invitation-email
  * Body: { to_email: string, member_display_name?: string }
- * Sends the deal-member invitation template using SMTP / env from `.env.local`.
+ * Sends the investor invitation email template using SMTP / env from `.env.local`.
  */
 export async function postDealMemberInvitationEmail(
   req: Request,

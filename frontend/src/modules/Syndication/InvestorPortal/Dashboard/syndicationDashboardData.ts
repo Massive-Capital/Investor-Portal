@@ -11,6 +11,15 @@ import {
 } from "../Deals/dealsDashboardMoney"
 import type { DealListRow } from "../Deals/types/deals.types"
 
+function lpInvestorCountForDashboard(row: DealListRow, payloadLen: number): number {
+  const raw = String(row.investors ?? "").trim()
+  if (raw && raw !== "—") {
+    const n = parseInt(raw.replace(/[^\d]/g, ""), 10)
+    if (Number.isFinite(n)) return n
+  }
+  return payloadLen
+}
+
 export interface SyndicationDashboardSummary {
   dealCount: number
   /** Sum of investor rows across all deals (investment line items). */
@@ -57,7 +66,7 @@ async function loadDashboardSummaryForDealList(
   let sumAccepted = 0
 
   for (const { row, payload, classes } of perDeal) {
-    totalInvestorRows += payload.investors.length
+    totalInvestorRows += lpInvestorCountForDashboard(row, payload.investors.length)
     sumTarget += targetAmountNumberForDeal(row, classes)
     sumAccepted += acceptedAmountForPayload(payload)
   }

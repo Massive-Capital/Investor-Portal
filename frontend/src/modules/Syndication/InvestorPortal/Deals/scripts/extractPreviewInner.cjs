@@ -37,7 +37,7 @@ import { readOfferingPreviewInvestorVisibility } from "./utils/offeringPreviewIn
 import { buildOfferingPreviewAssetBlocks } from "./utils/offeringPreviewAssets"
 import { orderedGalleryUrlsForOffering } from "./utils/offeringGalleryUrls"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
-import { dealStageLabel } from "../deals-mock-data"
+import { dealStageLabel } from "../dealsDashboardUtils"
 import {
   buildSummaryBits,
   keyHighlightRowsFromJson,

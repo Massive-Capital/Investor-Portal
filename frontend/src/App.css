@@ -28,51 +28,91 @@ body {
 }
 
 :root {
+  /* ===== PRIMARY (LOCKED) ===== */
   --main-auth-button-color: #155abf;
-  /* --main-auth-button-color: black; */
-  --ui-border-radius: 5px;
-  --ui-button-border-radius: 25px;
-  --background-color-onboarding: #eff6ff;
-  --edit-button-background: #bde0fe;
-  --edit-button-color: black;
-  --delete-button-background: #ffccd5;
-  --active-status-background: #d8f3dc;
-  --inactive-status-background: #ffccd5;
-  --card-onboarding-bg-color: #f5f7fa;
-  /* Logged-in shell: sidebar + top bar slightly lighter than main page */
-  --page-background: #f5f5f5;
-  --bg-colour-main: #f0f0f0;
-  --light-gray-color: #64748b;
-  --sidebar-bg-color: var(--page-background);
-  --sidebar-aside-bg: #f0f0f0;
-  --sidebar-text-color: #282828;
-  --sidebar-active: #dfdfdf;
-  --font-size: 14px;
 
-  /* Portal layout (page_layout.css, TopNavBar, deals UI) */
-  --portal-page-bg: #f0f0f0;
-  --portal-chrome-bg: #f5f5f5;
+  --portal-primary: #00477a;
+  --portal-primary-hover: #00365e;
+  --portal-primary-soft: #e6f0ff;
+
+  /* ===== ACCENT (optional but recommended) ===== */
+  --color-accent: #f4b740;
+  --color-accent-hover: #d99c2f;
+
+  /* ===== BACKGROUNDS ===== */
+  --background-color-onboarding: #f5f9ff;
+  --card-onboarding-bg-color: #ffffff;
+
+  --page-background: #f5f7fa;
+  --bg-colour-main: #eef2f6;
+
+  --portal-page-bg: #eef2f6;
+  --portal-chrome-bg: #f5f7fa;
   --portal-surface: #ffffff;
-  /* --portal-surface: #f8f8f8; */
-  --portal-border: #e5e5e5;
-  --portal-text: #282828;
+
+  /* ===== SIDEBAR ===== */
+  /* --sidebar-bg-color: #ffffff; */
+  --sidebar-bg-color: #D29E2CB8;
+  /* --sidebar-aside-bg: #f5f7fa; */
+  --sidebar-aside-bg: #D29E2CB8;
+  --sidebar-text-color: #1a1a1a;
+  --sidebar-active: #e6f0ff;
+
+  /* ===== TEXT ===== */
+  --portal-text: #00477a;
+  --portal-text-secondary: #4f4f4f;
   --portal-text-muted: #64748b;
-  --portal-text-secondary: #525252;
-  --portal-toggle-track: #ebebeb;
-  --portal-primary: black;
-  --portal-primary-hover: black;
-  --portal-primary-soft: #e8eef8;
-  --portal-card-radius: 8px;
-  --portal-pill-radius: 9999px;
-  --portal-icon-box-radius: 10px;
+
+  --light-gray-color: #64748b;
+
+  /* ===== BORDERS ===== */
+  --portal-border: #e5e7eb;
+
+  /* ===== BUTTONS ===== */
+  --ui-button-border-radius: 25px;
+  --ui-button-background-add: #00477a;
+  --ui-button-hover: #00365e;
+
+  --edit-button-background: #e6f0ff;
+  /* --edit-button-color: #155abf; */
+  --edit-button-color: #D29E2CB8;
+
+  --delete-button-background: #fee2e2;
+
+  /* ===== STATUS ===== */
+  --active-status-background: #dcfce7;
+  --inactive-status-background: #fee2e2;
+
   --portal-status-raising-text: #166534;
   --portal-status-raising-bg: #dcfce7;
   --portal-danger: #b91c1c;
-  /* Match deal create fields (deals-create.css) for focus ring */
-  --portal-field-focus-shadow: 0 0 0 2px rgb(17 24 39 / 8%);
-  --portal-field-focus-shadow-dark: 0 0 0 2px rgb(249 250 251 / 12%);
-}
 
+  /* ===== UI ===== */
+  --ui-border-radius: 6px;
+  --portal-card-radius: 10px;
+  --portal-pill-radius: 9999px;
+  --portal-icon-box-radius: 10px;
+
+  /* ===== INPUTS / FOCUS ===== */
+  --portal-toggle-track: #e5e7eb;
+
+  --portal-field-focus-shadow: 0 0 0 2px rgba(21, 90, 191, 0.2);
+  --portal-field-focus-shadow-dark: 0 0 0 2px rgba(255, 255, 255, 0.12);
+
+  /* ===== TYPOGRAPHY ===== */
+  --font-size: 14px;
+
+  /** Form field labels — logged-in shell only (see `.app_shell label`); auth uses `auth_forms.css` */
+  --portal-form-label-font-size: 0.8125rem;
+  --portal-form-label-font-weight: 600;
+  --portal-form-label-letter-spacing: -0.01em;
+  --portal-form-label-color: var(--portal-text-muted, #64748b);
+
+  /* ===== TITLE ===== */
+  --font-color-title: #003c66;
+  --icon-color: #003c66;
+
+}
 button {
   font-family: "Inter", sans-serif;
   border-radius: var(--ui-button-border-radius);
@@ -96,8 +136,8 @@ button {
 .app_shell textarea,
 .app_shell select {
   font-family: inherit;
-  font-size: 1em;
-  font-weight: 400;
+  /* font-size: 0.9em; */
+  font-weight: 500;
   line-height: 1.45;
   color: var(--portal-text);
   background: var(--portal-surface);
@@ -135,7 +175,7 @@ button {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  min-height: 2.6666667em;
+  /* min-height: 2.6666667em; */
   padding: 0.5333333em 2.4em 0.5333333em 0.8em;
   cursor: pointer;
   appearance: none;
@@ -412,4 +452,15 @@ input[type="reset"],
   color: var(--main-auth-button-color);
   margin: 0 0.5em 0 0;
   text-decoration: none;
+}
+
+/*
+ * Portal form labels: tokens on :root above. Scoped to `.app_shell` only so auth routes
+ * (AuthLayout / `.loginForm`, no `.app_shell`) keep auth_forms.css label styles.
+ */
+.app_shell label {
+  font-size: var(--portal-form-label-font-size);
+  font-weight: var(--portal-form-label-font-weight);
+  letter-spacing: var(--portal-form-label-letter-spacing);
+  color: var(--portal-form-label-color);
 }

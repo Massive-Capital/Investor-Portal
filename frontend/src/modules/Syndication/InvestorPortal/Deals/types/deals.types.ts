@@ -32,6 +32,14 @@ export interface DealListRow {
   owningEntityName?: string
   propertyName?: string
   city?: string
+  /** From enriched list API (investor class advanced JSON) */
+  investmentType?: string
+  /** First asset tag from investor class advanced JSON */
+  propertyType?: string
+  /** Average review score 0–5 (list API or client) */
+  reviewRating?: number
+  /** Number of reviews (list API) */
+  reviewCount?: number
 }
 
 export type DealTypeOption = "equity" | "debt" | "real_estate" | "other"

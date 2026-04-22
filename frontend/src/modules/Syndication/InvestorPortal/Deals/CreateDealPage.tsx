@@ -15,7 +15,6 @@ import {
   assetImagePathsToUrls,
   getApiV1Base,
 } from "../../../../common/utils/apiBaseUrl"
-import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
 import { AssetStepForm } from "./components/AssetStepForm"
 import { DealStepForm } from "./components/DealStepForm"
 import "../../../contacts/contacts.css"
@@ -29,6 +28,7 @@ import {
   updateDealMultipart,
 } from "./api/dealsApi"
 import { mapDealDetailApiToCreateDrafts } from "./createDealFormMap"
+import { zipCodeFieldError } from "./utils/dealZipCode"
 import {
   clearCreateDealDraft,
   createDealDraftHasContent,
@@ -349,10 +349,6 @@ export function CreateDealPage() {
     navigate("/deals")
   }, [navigate])
 
-  useEffect(() => {
-    setAppDocumentTitle(editDealId ? "Edit deal" : "Create deal")
-  }, [editDealId])
-
   function patchDeal(patch: Partial<DealStepDraft>) {
     setDealDraft((d) => ({ ...d, ...patch }))
     setDealErrors((e) => {
@@ -395,6 +391,8 @@ export function CreateDealPage() {
     const next: Partial<Record<keyof AssetStepDraft, string>> = {}
     if (!assetDraft.propertyName.trim())
       next.propertyName = "Name of property is required."
+    const zipErr = zipCodeFieldError(assetDraft.zipCode)
+    if (zipErr) next.zipCode = zipErr
     setAssetErrors(next)
     return Object.keys(next).length === 0
   }

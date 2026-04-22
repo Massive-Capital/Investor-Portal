@@ -1,0 +1,95 @@
+/* Investing Profiles add modals — width + extras on top of Add investment / Add contact shell */
+
+.investing_add_profile_form_panel.um_modal.um_modal_view {
+  max-width: min(40rem, 100%);
+}
+
+.investing_add_address_form_panel.um_modal.um_modal_view {
+  max-width: min(28rem, 100%);
+}
+
+.investing_add_beneficiary_form_panel.um_modal.um_modal_view {
+  /* Match add contact / add profile so two-up fields have room at ≥480px */
+  max-width: min(40rem, 100%);
+}
+
+/* Add beneficiary: pair fields like add contact `add_contact_name_grid` */
+.add_beneficiary_field_grid.add_contact_name_grid {
+  margin-bottom: 0.35em;
+}
+
+.add_beneficiary_field_grid__full {
+  grid-column: 1 / -1;
+}
+
+/* Stacked sub-label (check memo, distribution) beside icon */
+.investing_form_label_stack {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1em;
+}
+
+.investing_form_subline {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--portal-text-secondary, #64748b);
+  font-weight: 400;
+}
+
+/* Required marker — shared across these modals */
+.investing_form_req {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* Beneficiary opened above Add profile (z 1200) */
+.um_modal_overlay.investing_ben_modal_overlay {
+  z-index: 1300;
+}
+
+/* Add profile uses same `um_modal_actions` / add_contact footer pattern as Add contact. */
+
+/* Info (i) beside field labels */
+.investing_field_hint {
+  display: inline-flex;
+  color: var(--portal-text-secondary, #64748b);
+  background: none;
+  border: none;
+  padding: 0.15em;
+  cursor: default;
+  border-radius: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.investing_field_hint:hover {
+  color: var(--portal-primary, #00477a);
+  background: var(--portal-primary-soft, #e6f0ff);
+}
+
+/* Add address: same searchable dropdowns as Add deal — match native selects in this modal */
+.deals_add_inv_modal_form .deals_create_dropdown_select {
+  width: 100%;
+}
+
+.deals_add_inv_modal_form
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger.deals_add_inv_field_control {
+  width: 100%;
+  min-height: var(--deals-add-inv-control-min-h, 2.5rem);
+  border-radius: var(--deals-add-inv-control-radius);
+  font-family: var(--deals-add-inv-font-family, system-ui, sans-serif);
+  font-size: var(--deals-add-inv-control-font, 0.9rem);
+  line-height: 1.45;
+  color: var(--portal-text, #282828);
+  background: var(--portal-surface, #fff);
+  border: 1px solid var(--portal-border, #e5e5e5);
+  text-align: left;
+  cursor: pointer;
+  color-scheme: light dark;
+}

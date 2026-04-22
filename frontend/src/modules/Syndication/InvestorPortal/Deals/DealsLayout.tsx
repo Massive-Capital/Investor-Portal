@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom"
-import { usePortalMode } from "../../../../common/context/PortalModeContext"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 
 /** `/deals/:dealId` or `/deals/:dealId/offering-portfolio` — investing users may open a deal they participate in, not syndication tools. */
 const INVESTING_DEAL_DETAIL_PATH =

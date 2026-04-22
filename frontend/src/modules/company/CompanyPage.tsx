@@ -38,6 +38,7 @@ import {
   SESSION_USER_DETAILS_KEY,
   SESSION_WORKSPACE_COMPANY_ID_KEY,
 } from "../../common/auth/sessionKeys";
+import { getSessionOrganizationCompanyId } from "../../common/auth/sessionOrganization";
 import {
   canEditCompanyWorkspace,
   isPlatformAdmin,
@@ -359,7 +360,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
 
   const sessionOrganizationId = useMemo(
     () => (token ? readSessionOrganizationId() : ""),
-    [token],
+    [token, userDetailsRev],
   );
 
   const [platformAdminWorkspaceCompanyId, setPlatformAdminWorkspaceCompanyId] =
@@ -394,19 +395,26 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   /**
    * Session org when present; otherwise platform admin uses stored/first company from directory
    * (no picker — still persists workspace JSON for that `companies.id`).
+   *
+   * For org-scoped users (not platform admin), use the same company id as other workspace
+   * APIs: `getSessionOrganizationCompanyId()` (workspace key + `userDetails` org) so image
+   * upload and settings GET/PUT have a real `companies.id` when the user can access this page.
    */
   const workspaceCompanyId = useMemo(() => {
-    const fromSession = sessionOrganizationId.trim().toLowerCase();
-    if (COMPANY_ID_UUID_RE.test(fromSession)) return fromSession;
-    if (
-      platformAdmin &&
-      platformAdminWorkspaceCompanyId &&
-      COMPANY_ID_UUID_RE.test(platformAdminWorkspaceCompanyId)
-    ) {
-      return platformAdminWorkspaceCompanyId.trim().toLowerCase();
+    if (platformAdmin) {
+      const fromSession = readSessionOrganizationId().trim().toLowerCase();
+      if (COMPANY_ID_UUID_RE.test(fromSession)) return fromSession;
+      if (
+        platformAdminWorkspaceCompanyId &&
+        COMPANY_ID_UUID_RE.test(platformAdminWorkspaceCompanyId)
+      ) {
+        return platformAdminWorkspaceCompanyId.trim().toLowerCase();
+      }
+      return "";
     }
-    return "";
-  }, [sessionOrganizationId, platformAdmin, platformAdminWorkspaceCompanyId]);
+    const g = getSessionOrganizationCompanyId();
+    return g && COMPANY_ID_UUID_RE.test(g) ? g : "";
+  }, [platformAdmin, platformAdminWorkspaceCompanyId, userDetailsRev]);
 
   const handleCompanyDisplayNamePersisted = useCallback(
     (name: string) => {

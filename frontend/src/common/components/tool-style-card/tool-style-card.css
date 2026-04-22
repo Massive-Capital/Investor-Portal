@@ -1,6 +1,6 @@
 .tool_style_card {
   margin: 0;
-  padding: 1.5em;
+  padding: 0.9em 0.3em 0.9em 0.3em;
   text-align: left;
   background: var(--portal-surface);
   border: 1px solid var(--portal-border);
@@ -97,9 +97,10 @@
 
 .tool_style_card_metric_top {
   display: flex;
-  align-items: flex-start;
+  /* align-items: flex-start; */
   gap: 0.65em;
   min-width: 0;
+  align-items: center;
 }
 
 .tool_style_card_metric_body {
@@ -128,7 +129,7 @@
 
 .tool_style_card_value_lead {
   margin: 0;
-  font-size: 1.25em;
+  font-size: 1.1em;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.02em;

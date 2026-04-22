@@ -32,38 +32,44 @@
 
 /**
  * Sticky first column — fixed during horizontal scroll.
- * Border separates columns; no box-shadow (avoids a “highlight strip” on the first column).
+ * Z-index: corner header > body sticky col > scrolling cells (avoids header/body painting over sticky).
  */
 .data_table_sticky_first th.data_table_col_sticky,
 .data_table_sticky_first td.data_table_col_sticky {
   position: sticky;
   left: 0;
-  z-index: 2;
   min-width: 12rem;
   vertical-align: middle;
-  /* background: var(--portal-surface, #ffffff); */
   box-shadow: none;
-  /* border-right: 1px solid var(--portal-border, #e2e8f0); */
   background-clip: padding-box;
 }
 
+/* Scrolling columns stay below sticky column (horizontal scroll) */
+.data_table_sticky_first thead th:not(.data_table_col_sticky),
+.data_table_sticky_first tbody td:not(.data_table_col_sticky) {
+  position: relative;
+  z-index: 0;
+}
+
+.data_table_sticky_first tbody td.data_table_col_sticky {
+  z-index: 2;
+  background: var(--portal-surface, #ffffff);
+}
+
 .data_table_sticky_first thead th.data_table_col_sticky {
-  z-index: 3;
-  background: transparent;
+  z-index: 4;
+  background: var(--portal-surface, #ffffff);
 }
 
 .um_table.data_table_sticky_first thead th.data_table_col_sticky {
-  background: transparent;
+  background: var(--portal-surface, #ffffff);
 }
 
 .um_table.data_table_sticky_first tbody td.data_table_col_sticky {
   background: var(--portal-surface, #ffffff);
 }
 
-:root[data-theme="dark"] .data_table_sticky_first thead th.data_table_col_sticky {
-  background: transparent;
-}
-
+:root[data-theme="dark"] .data_table_sticky_first thead th.data_table_col_sticky,
 :root[data-theme="dark"] .data_table_sticky_first tbody td.data_table_col_sticky {
   background: var(--portal-surface, #121212);
 }

@@ -30,6 +30,7 @@ import {
   postDealLpInvestor,
   putDealLpInvestor,
 } from "../controllers/deal/dealLpInvestor.controller.js";
+import { patchDealLpInvestorMyInvestNowAddon } from "../controllers/deal/dealLpInvestorMyInvestNow.addon.controller.js";
 import {
   deleteDealMember,
   getDealMembers,
@@ -46,6 +47,7 @@ import {
   postDealMembersExportNotify,
   postDealsExportNotify,
 } from "../controllers/exportNotify.controller.js";
+import { getDealOfferingShareRecipients } from "../controllers/deal/dealOfferingShareRecipients.addon.controller.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -79,6 +81,10 @@ router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
 router.patch(
   "/deals/:dealId/lp-investors/my-commitment",
   patchDealLpInvestorMyCommitment,
+);
+router.patch(
+  "/deals/:dealId/lp-investors/my-invest-now-commitment",
+  patchDealLpInvestorMyInvestNowAddon,
 );
 router.get("/deals/:dealId/members", getDealMembers);
 router.post(
@@ -127,6 +133,10 @@ router.get(
 router.post(
   "/deals/:dealId/offering-preview-share-email",
   postOfferingPreviewShareEmail,
+);
+router.get(
+  "/deals/:dealId/offering-share-recipients",
+  getDealOfferingShareRecipients,
 );
 router.get("/deals/:dealId", getDealById);
 router.put(

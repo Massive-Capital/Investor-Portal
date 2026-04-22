@@ -17,7 +17,7 @@ import {
 import { notifyDealsExportAudit } from "../Syndication/InvestorPortal/Deals/api/dealsExportNotifyApi"
 import { fetchDealsListForOrganization } from "../Syndication/InvestorPortal/Deals/api/dealsApi"
 import { ExportDealsModal } from "../Syndication/InvestorPortal/Deals/components/ExportDealsModal"
-import { dealStageLabel } from "../Syndication/InvestorPortal/deals-mock-data"
+import { dealStageLabel } from "../Syndication/InvestorPortal/dealsDashboardUtils"
 import {
   dateSortValue,
   dealTypeDisplayLabel,

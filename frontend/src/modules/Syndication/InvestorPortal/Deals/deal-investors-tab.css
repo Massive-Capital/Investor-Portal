@@ -161,15 +161,23 @@
   background: transparent;
 }
 
-.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first thead th.data_table_col_sticky {
-  background: transparent;
+/* Sticky column + scroll: keep corner header above scrolling cells; opaque bg matches `.um_panel`. */
+.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first thead th:not(.data_table_col_sticky) {
+  z-index: 0;
 }
 
-/* Sticky User column: match `.um_panel` (#f8f8f8) so the first column is not bright white vs panel */
-.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first tbody td.data_table_col_sticky {
+.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first thead th.data_table_col_sticky {
+  z-index: 5;
   background: #f8f8f8;
 }
 
+/* Sticky User column: match `.um_panel` (#f8f8f8) */
+.deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first tbody td.data_table_col_sticky {
+  z-index: 2;
+  background: #f8f8f8;
+}
+
+:root[data-theme="dark"] .deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first thead th.data_table_col_sticky,
 :root[data-theme="dark"] .deal_inv_table_panel .um_table.deal_inv_table.data_table_sticky_first tbody td.data_table_col_sticky {
   background: var(--portal-surface, #121212);
 }
@@ -408,6 +416,13 @@
   flex-wrap: nowrap;
 }
 
+/* Commitment column header: label + info icon aligned with numeric column */
+.deal_inv_th_commitment_head {
+  justify-content: flex-end;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Pill styles: components/investor-class-pills.css (InvestorClassPillsDisplay) */
 
 /* Avatar + name / profile (reference UI); ellipsis prevents horizontal scroll in cell */
@@ -568,7 +583,26 @@
 }
 
 .deal_inv_table_panel .deal_inv_td_role {
-  max-width: 10em;
+  max-width: 14em;
+  vertical-align: top;
+}
+
+/* Stacked deal roles (multiple badges) — Deal Members / Investors "Deal role" column */
+.deal_inv_roles_stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.deal_inv_role_badge_compact {
+  padding: 0.28em 0.55em;
+  font-size: 0.8125em;
+}
+
+.deal_inv_role_badge_compact .um_role_badge_label {
+  font-size: 1em;
 }
 
 /* Action kebab — portal colors */

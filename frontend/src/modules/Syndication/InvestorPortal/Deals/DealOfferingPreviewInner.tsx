@@ -38,7 +38,7 @@ import {
   investorClassVisibilityLabel,
 } from "./utils/offeringDisplayLabels"
 import { formatMoneyFieldDisplay } from "./utils/offeringMoneyFormat"
-import { dealStageLabel } from "../deals-mock-data"
+import { dealStageLabel } from "../dealsDashboardUtils"
 import {
   buildSummaryBits,
   keyHighlightRowsFromJson,

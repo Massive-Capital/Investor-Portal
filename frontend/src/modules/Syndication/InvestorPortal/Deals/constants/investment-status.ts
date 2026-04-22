@@ -55,3 +55,21 @@ export function investmentStatusLabel(value: string): string {
   const row = INVESTMENT_STATUS_SELECT_OPTIONS.find((o) => o.value === value)
   return row?.label ?? value
 }
+
+/**
+ * Map API / table stored status to a select `value` for {@link INVESTMENT_STATUS_SELECT_OPTIONS}.
+ */
+export function resolveInvestmentStatusSelectValue(stored: string): string {
+  const t = String(stored ?? "").trim()
+  if (!t || t === "—") return ""
+  const exact = INVESTMENT_STATUS_SELECT_OPTIONS.find((o) => o.value === t)
+  if (exact) return exact.value
+  const byLabel = INVESTMENT_STATUS_SELECT_OPTIONS.find(
+    (o) => o.label.toLowerCase() === t.toLowerCase(),
+  )
+  if (byLabel) return byLabel.value
+  const byValueLoose = INVESTMENT_STATUS_SELECT_OPTIONS.find(
+    (o) => o.value.toLowerCase() === t.toLowerCase(),
+  )
+  return byValueLoose?.value ?? ""
+}

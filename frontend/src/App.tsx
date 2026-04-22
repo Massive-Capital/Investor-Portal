@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import { SESSION_BEARER_KEY } from "./common/auth/sessionKeys";
-import { LpInvestorShellGuard } from "./common/auth/LpInvestorShellGuard";
+import { LpInvestorShellGuard } from "@/modules/Investing";
 import { RequireAuth } from "./common/auth/RequireAuth";
 import {
   canAccessCompanyPage,
@@ -25,9 +25,11 @@ import { EditDealInvestorClassPage } from "./modules/Syndication/InvestorPortal/
 import { DealDetailPage } from "./modules/Syndication/InvestorPortal/Deals/DealDetailPage";
 import { DealOfferingPortfolioPage } from "./modules/Syndication/InvestorPortal/Deals/DealOfferingPortfolioPage";
 import { DealsListPage } from "./modules/Syndication/InvestorPortal/Deals/DealsListPage";
-import Opportunities from "./modules/Investing/InvestorPortal/Opportunities/Opportunities";
-import InvestmentsPage from "./modules/Investing/InvestorPortal/Investments/InvestmentsPage";
-import InvestmentDetailPage from "./modules/Investing/InvestorPortal/Investments/InvestmentDetailPage";
+import { InvestingDealsListPage } from "@/modules/Investing/deals_investing";
+import Opportunities from "@/modules/Investing/pages/opportunities/Opportunities";
+import InvestmentsPage from "@/modules/Investing/pages/investments/InvestmentsPage";
+import InvestmentDetailPage from "@/modules/Investing/pages/investments/InvestmentDetailPage";
+import InvestingProfilesPage from "@/modules/Investing/pages/profiles/InvestingProfilesPage";
 import { WorkInProgressPage } from "./common/components/WorkInProgressPage";
 import { InvestorEmailsPage } from "./modules/Syndication/InvestorPortal/InvestorEmails/InvestorEmailsPage";
 import { ReportingPage } from "./modules/Syndication/InvestorPortal/Reporting/ReportingPage";
@@ -59,6 +61,15 @@ function CompanyRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
   if (!canAccessCompanyPage()) return <Navigate to="/" replace />;
+  return <CompanyPage />;
+}
+
+/** /company (investing nav) — LPs and others without workspace company access get WIP, not the dashboard. */
+function CompanyOverviewRoute() {
+  const token = sessionStorage.getItem(SESSION_BEARER_KEY);
+  if (!token) return <Navigate to="/signin" replace />;
+  if (!canAccessCompanyPage())
+    return <Navigate to="/investing/company" replace />;
   return <CompanyPage />;
 }
 
@@ -142,20 +153,8 @@ function App() {
                 />
               }
             />
-            <Route
-              path="investing/profiles"
-              element={
-                <WorkInProgressPage
-                  title="Profiles"
-                  backTo="/"
-                  backLabel="Dashboard"
-                />
-              }
-            />
-            <Route
-              path="investing/deals"
-              element={<DealsListPage dealsListContext="investing" />}
-            />
+            <Route path="investing/profiles" element={<InvestingProfilesPage />} />
+            <Route path="investing/deals" element={<InvestingDealsListPage />} />
             <Route
               path="investing/settings"
               element={
@@ -198,6 +197,9 @@ function App() {
             />
             <Route path="support" element={<PlaceholderPage title="Support" />} />
             <Route path="settings" element={<CompanyRoute />} />
+            <Route path="company" element={<CompanyRoute />} />
+                        <Route path="company" element={<CompanyOverviewRoute />} />
+
             <Route path="customers/:companyId" element={<CustomerCompanyLayout />}>
               <Route
                 index

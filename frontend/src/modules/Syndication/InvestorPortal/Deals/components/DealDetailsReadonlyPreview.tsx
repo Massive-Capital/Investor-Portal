@@ -14,7 +14,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { ViewReadonlyField } from "../../../../../common/components/ViewReadonlyField"
-import { dealStageLabel } from "../../deals-mock-data"
+import { dealStageLabel } from "../../dealsDashboardUtils"
 import type { DealDetailApi } from "../api/dealsApi"
 import {
   formatCommittedCurrency,

@@ -21,7 +21,7 @@
   margin: 0;
   font-size: 1.35em;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--font-color-title);
 }
 
 .um_title_with_icon {
@@ -32,7 +32,7 @@
 
 .um_title_with_icon .um_title_icon {
   flex-shrink: 0;
-  color: #475569;
+  color: var(--icon-color);
 }
 
 .um_toolbar {
@@ -162,12 +162,12 @@
   font-weight: 600;
   font-size: 1em;
   cursor: pointer;
-  background: #000000;
+  background: var(--ui-button-background-add);
   color: #fff;
 }
 
 .um_btn_primary:hover:not(:disabled) {
-  background: #1a1a1a;
+  background: var(--ui-button-hover);
 }
 
 .um_btn_primary:disabled {
@@ -219,7 +219,7 @@
   margin: 0 0 0.35em;
   font-size: 1.1em;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--portal-text);
 }
 
 .um_modal_head {
@@ -526,8 +526,8 @@
 }
 
 .um_members_tab_active {
-  color: #0f172a;
-  border-bottom-color: #000000;
+  color: var(--ui-button-background-add);
+  border-bottom-color: var(--ui-button-background-add);
   border-radius: 0 !important;
 }
 
@@ -742,10 +742,12 @@
 
 .um_user_avatar_ring {
   flex-shrink: 0;
-  width: 2.5em;
-  height: 2.5em;
+  width: 2em;
+  /* width: 2.5em; */
+  /* height: 2.5em; */
+  height: 2em;
   border-radius: 50%;
-  background: #000;
+  background: var(--ui-button-background-add);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -753,7 +755,7 @@
 }
 
 .um_user_initials {
-  font-size: 0.75em;
+  font-size: 0.9em;
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1;
@@ -838,6 +840,46 @@
   color: #94a3b8;
 }
 
+/* Stacked company — role pairs (members table) */
+.um_memberships_cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  max-width: 22rem;
+}
+
+.um_membership_row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.2rem;
+  line-height: 1.4;
+}
+
+.um_membership_company {
+  color: #0f172a;
+  font-weight: 500;
+}
+
+.um_membership_sep {
+  color: #94a3b8;
+  font-weight: 400;
+  user-select: none;
+}
+
+.um_membership_role_tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15em 0.55em;
+  border-radius: var(--ui-button-border-radius, 25px);
+  background: #f1f5f9;
+  color: #1e3a5f;
+  font-size: 0.8125em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 /* User role pill */
 .um_role_badge {
   display: inline-flex;
@@ -856,6 +898,10 @@
 .um_role_badge_icon {
   flex-shrink: 0;
   color: #1e3a5f;
+}
+
+.um_td_memberships {
+  vertical-align: top;
 }
 
 .um_td_actions {
@@ -974,6 +1020,10 @@
 
 .um_view_field {
   min-width: 0;
+}
+
+.um_view_field_span_full {
+  grid-column: 1 / -1;
 }
 
 .um_view_field_head {

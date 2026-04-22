@@ -139,9 +139,33 @@ body:has(.signup_page) .companyContent {
   box-sizing: border-box;
 }
 
-.signup_page .terms_policy label {
+.signup_page .terms_policy label.signup_terms_label_row {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.signup_terms_label_text {
+  flex: 1;
+  min-width: 0;
   word-break: break-word;
   overflow-wrap: anywhere;
+}
+
+/* Inline with agreement copy — matches field labels (asterisk immediately after label text). */
+.signup_terms_label_text .signup_terms_required_mark {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.2em;
+  vertical-align: 0.08em;
+  line-height: 0;
+  color: #dc2626;
+}
+
+.signup_terms_required_icon {
+  display: block;
+  color: #dc2626;
 }
 
 .terms_policy input[type="checkbox"] {

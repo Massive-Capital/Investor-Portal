@@ -11,8 +11,9 @@
 
 .app_sidebar {
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior: contain;
   background: var(--sidebar-bg-color);
   color: var(--sidebar-text-color);
@@ -21,8 +22,44 @@
   border-right: 1px solid lightgray;
 }
 
+/** Scrollable nav only; brand + mode footer stay fixed in the column */
+.app_sidebar_nav_region {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15em;
+}
+
+.app_sidebar_mode_footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 1rem;
+  padding-bottom: 0.2rem;
+  border-top: 1px solid
+    color-mix(in srgb, var(--sidebar-text-color) 14%, var(--sidebar-bg-color));
+  /* background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--sidebar-text-color) 5%, var(--sidebar-bg-color)) 0%,
+    var(--sidebar-bg-color) 100%
+  ); */
+}
+
+.app_sidebar_mode_eyebrow {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sidebar-text-color) 42%, var(--sidebar-bg-color));
+  margin: 0 0 0.35em;
+  line-height: 1.2;
+}
+
 /* Product lockup: stable surface (no hover “pill”) — hierarchy comes from type, not interaction */
 .app_sidebar_brand {
+  flex-shrink: 0;
   display: block;
   width: 100%;
   margin: 0 0 0.85em;
@@ -52,12 +89,26 @@
   color: var(--sidebar-text-color);
 }
 
-.app_sidebar_brand .app_sidebar_mode {
-  margin: 0;
-}
-
 .app_sidebar_brand_static {
   cursor: default;
+}
+
+.app_sidebar_brand_mark {
+  display: flex;
+  align-items: center;
+  margin: 0 0 0.75em;
+  min-height: 2.25rem;
+  max-width: 100%;
+}
+
+.app_sidebar_brand_logo {
+  max-width: 100%;
+  max-height: 2.75rem;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: left center;
+  display: block;
 }
 
 .app_sidebar_title {
@@ -66,10 +117,18 @@
 }
 
 .app_sidebar_mode {
-  color: #8f8f8f;
+  color: var(--sidebar-text-color);
+  text-align: center;
+  text-transform: uppercase;
   font-weight: 600;
-  margin-bottom: 0.75em;
-  font-size: clamp(0.8em, 0.2vw + 0.74em, 1em);
+  margin: 0;
+  font-size: 0.7em;
+  letter-spacing: 0.2em;
+  line-height: 1.25;
+}
+
+.app_sidebar_mode_footer .app_sidebar_mode {
+  color: color-mix(in srgb, var(--sidebar-text-color) 92%, var(--sidebar-bg-color));
 }
 
 .app_sidebar_role_badge {
@@ -249,66 +308,16 @@
   background: var(--portal-page-bg);
 }
 
+/* Create / edit deal wizard: avoid an extra blank band after the footer when scrolling */
+.app_main_content:has(.deals_add_deal_asset_page.deals_create_flow) {
+  padding-bottom: 1em;
+}
+
 .section_placeholder {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 1.25em;
-}
-
-.portal_switch_overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 23, 42, 0.35);
-  backdrop-filter: blur(4px);
-  animation: portal_switch_fade_in 0.2s ease-out;
-}
-
-@keyframes portal_switch_fade_in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.portal_switch_card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1em;
-  padding: 1.75em 2.25em;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow:
-    0 20px 40px -12px rgb(15 23 42 / 25%),
-    0 0 0 1px rgb(226 232 240 / 80%);
-}
-
-.portal_switch_spinner {
-  color: var(--portal-primary);
-  animation: portal_switch_spin 0.85s linear infinite;
-}
-
-@keyframes portal_switch_spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.portal_switch_caption {
-  margin: 0;
-  font-size: 0.9375em;
-  font-weight: 600;
-  color: var(--portal-text);
-  max-width: 16em;
-  text-align: center;
-  line-height: 1.35;
 }
 
 /* Sidebar + nav: scale down on typical laptop widths (keeps main content font-size unchanged) */

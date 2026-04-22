@@ -16,7 +16,10 @@ import {
 import { db } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
 import { resolveDealViewerScope } from "./dealAccess.service.js";
-import { viewerIsLeadOrAdminSponsorOnAnyDeal } from "./dealMemberScope.service.js";
+import {
+  listDealIdsWhereViewerIsCoSponsor,
+  viewerIsLeadOrAdminSponsorOnAnyDeal,
+} from "./dealMemberScope.service.js";
 import { listAddDealFormsForViewer } from "./dealForm.service.js";
 import { resolveOrganizationIdForUserId } from "./orgResolution.service.js";
 import { companies } from "../schema/schema.js";
@@ -133,11 +136,12 @@ export async function findContactByEmailForSignupPrefill(
   if (!r) return null;
   const fn = String(r.firstName ?? "").trim();
   const ln = String(r.lastName ?? "").trim();
-  if (!fn && !ln) return null;
+  const phoneDigits = normalizeContactPhoneDigits(r.phone ?? "");
+  if (!fn && !ln && !phoneDigits) return null;
   return {
     firstName: fn,
     lastName: ln,
-    phone: normalizeContactPhoneDigits(r.phone ?? ""),
+    phone: phoneDigits,
   };
 }
 
@@ -354,6 +358,10 @@ export async function insertContact(params: {
  *
  * Non–platform-admin lists: **company_admin** or **Lead Sponsor / Admin sponsor** (any deal) see
  * portal + external org contacts (except own email). Other roles see external CRM rows only.
+ *
+ * **Co-sponsor** (on at least one deal, and not Lead/Admin sponsor on any deal, and not company
+ * admin): All Contacts shows only CRM rows **they created** (`created_by`), so they see investors
+ * they added rather than the whole org pool.
  */
 export async function listContactsForViewerScoped(
   viewerUserId: string,
@@ -363,6 +371,12 @@ export async function listContactsForViewerScoped(
   const sponsorTeamSeesFullCrm = await viewerIsLeadOrAdminSponsorOnAnyDeal(
     viewerUserId,
   );
+  const coSponsorDealIds = await listDealIdsWhereViewerIsCoSponsor(viewerUserId);
+  const coSponsorNarrowToCreatorOnly =
+    coSponsorDealIds.length > 0 &&
+    !sponsorTeamSeesFullCrm &&
+    !isCompanyAdminRole(ctx.roleForScope);
+
   const vis =
     isCompanyAdminRole(ctx.roleForScope) || sponsorTeamSeesFullCrm
       ? fullOrgContactListVisibilityWhere(ctx.viewerEmailNorm)
@@ -402,10 +416,15 @@ export async function listContactsForViewerScoped(
     and(isNull(contact.organizationId), inArray(contact.createdBy, ids))!,
   )!;
 
+  const parts: SQL[] = [orgScope, vis];
+  if (coSponsorNarrowToCreatorOnly) {
+    parts.push(eq(contact.createdBy, viewerUserId));
+  }
+
   return db
     .select()
     .from(contact)
-    .where(and(orgScope, vis)!)
+    .where(and(...parts)!)
     .orderBy(desc(contact.createdAt));
 }
 

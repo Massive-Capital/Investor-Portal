@@ -32,7 +32,13 @@ import {
   exportAuditLinesForDealInvestorRows,
 } from "../../utils/dealInvestorExportCsv"
 import { dealInvestorStatusDisplayLabel } from "../../utils/dealInvestorTableDisplay"
-import { DealInvestorRoleBadge } from "../../components/DealInvestorRoleBadge"
+import {
+  displayAddedInvestorsCommittedAmount,
+  displayInvestorCommittedAmount,
+  formatCommittedZeroUsd,
+  parseMoneyDigits,
+} from "../../utils/offeringMoneyFormat"
+import { DealInvestorRoleCell } from "../../components/DealInvestorRoleBadge"
 import { InvestorClassPillsDisplay } from "../../components/InvestorClassPillsDisplay"
 import { DealMemberRowActions } from "../components/DealMemberRowActions"
 import "../../deal-investors-tab.css"
@@ -215,6 +221,8 @@ export function DealMembersTab({
         r.status,
         r.addedByDisplayName,
         investorRoleLabel(r.investorRole ?? ""),
+        displayInvestorCommittedAmount(r),
+        displayAddedInvestorsCommittedAmount(r),
       ]
         .map((x) => String(x ?? "").toLowerCase())
         .join(" ")
@@ -245,11 +253,11 @@ export function DealMembersTab({
       },
       {
         id: "role",
-        header: "Role",
+        header: "Deal role",
         sortValue: (r) =>
           String(investorRoleLabel(r.investorRole ?? "")).toLowerCase(),
         tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
-        cell: (r) => <DealInvestorRoleBadge investorRole={r.investorRole} />,
+        cell: (r) => <DealInvestorRoleCell row={r} />,
       },
       {
         id: "class",
@@ -297,6 +305,88 @@ export function DealMembersTab({
               pillSource={pillSource}
               titleForTooltip={titleForTooltip}
             />
+          )
+        },
+      },
+      {
+        id: "commitment",
+        align: "right",
+        header: (
+          <span className="deal_inv_th_investor_class_head deal_inv_th_commitment_head">
+            <span>Commitment</span>
+            <FormTooltip
+              label="What this amount means"
+              content={
+                <p className="deal_inv_class_tooltip_p">
+                  Total amount this member has committed on this deal: the
+                  subscription commitment plus any additional contribution lines
+                  from their investment record. Displayed in USD. If none is
+                  recorded, this shows $0.
+                </p>
+              }
+              placement="bottom"
+              panelAlign="end"
+              openOnHover
+              nativeButtonTrigger={false}
+            />
+          </span>
+        ),
+        thClassName: "deals_th_align_right",
+        sortValue: (r) =>
+          parseMoneyDigits(displayInvestorCommittedAmount(r)),
+        tdClassName:
+          "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
+        cell: (r) => {
+          const text = displayInvestorCommittedAmount(r)
+          const display = String(text ?? "").trim() || formatCommittedZeroUsd()
+          return (
+            <span
+              className="deal_inv_ellipsis_text deal_inv_ellipsis_text_end"
+              title={display}
+            >
+              {display}
+            </span>
+          )
+        },
+      },
+      {
+        id: "added_investors_commitment",
+        align: "right",
+        header: (
+          <span className="deal_inv_th_investor_class_head deal_inv_th_commitment_head">
+            <span>Investors added</span>
+            <FormTooltip
+              label="Commitment from investors they added"
+              content={
+                <p className="deal_inv_class_tooltip_p">
+                  Total subscription commitment (plus additional contribution lines)
+                  recorded on this deal for other roster contacts this member added
+                  to the deal. Your own commitment is not included. Shown in USD.
+                </p>
+              }
+              placement="bottom"
+              panelAlign="end"
+              openOnHover
+              nativeButtonTrigger={false}
+            />
+          </span>
+        ),
+        thClassName: "deals_th_align_right",
+        sortValue: (r) =>
+          parseMoneyDigits(displayAddedInvestorsCommittedAmount(r)),
+        tdClassName:
+          "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
+        cell: (r) => {
+          if (r.id === ADD_MEMBER_DRAFT_ROW_ID) return "—"
+          const text = displayAddedInvestorsCommittedAmount(r)
+          const display = String(text ?? "").trim() || "—"
+          return (
+            <span
+              className="deal_inv_ellipsis_text deal_inv_ellipsis_text_end"
+              title={display}
+            >
+              {display}
+            </span>
           )
         },
       },

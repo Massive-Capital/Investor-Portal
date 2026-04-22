@@ -19,6 +19,7 @@ import {
   enrichSerializedUsersWithDealParticipantRoles,
   enrichUserRecordForDealParticipant,
 } from "./dealParticipantProfile.service.js";
+import { enrichUserRowsWithMemberships } from "./userMemberships.service.js";
 
 const ALLOWED_USER_STATUS = new Set(["active", "inactive"]);
 
@@ -100,7 +101,8 @@ export async function listUsersForAdmin(
         orgName,
       );
     });
-    return enrichSerializedUsersWithDealParticipantRoles(mapped);
+    const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
+    return enrichUserRowsWithMemberships(withDeal);
   }
   if (isCompanyAdminRole(actorRole) && actorOrganizationId) {
     const rows = await db
@@ -119,7 +121,8 @@ export async function listUsersForAdmin(
         orgName,
       );
     });
-    return enrichSerializedUsersWithDealParticipantRoles(mapped);
+    const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
+    return enrichUserRowsWithMemberships(withDeal);
   }
   return null;
 }

@@ -10,10 +10,13 @@ import cors from "cors";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "./database/db.js";
 import { getUploadsPhysicalRoot } from "./config/uploadPaths.js";
+import { postCompanySettingsBranding } from "./controllers/company/companySettingsBranding.controller.js";
+import { uploadCompanySettingsBranding } from "./middleware/companySettingsBrandingUpload.middleware.js";
 import userRoutes from "./routes/userRoutes.routes.js";
 import companyRoutes from "./routes/companyRoutes.routes.js";
 import dealFormRoutes from "./routes/dealForm.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
+import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js";
 
 
 const PORT = process.env.BACKEND_PORT ?? 5004;
@@ -39,7 +42,12 @@ app.use(
       return cb(null, true);
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "X-Requested-With",
+    ],
     credentials: true,
     optionsSuccessStatus: 204,
   }),
@@ -59,6 +67,13 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   next();
 });
+
+/* Multipart branding upload must run before any body parser (multer/busboy reads the stream). */
+app.post(
+  "/api/v1/companies/:companyId/settings/branding/:assetType",
+  uploadCompanySettingsBranding,
+  postCompanySettingsBranding,
+);
 
 // Allow larger request bodies (default is ~100kb; Investor Portal and other forms can exceed this)
 app.use(express.json({ limit: "10mb" }));
@@ -85,6 +100,7 @@ app.use("/api/v1", [
   companyRoutes,
   dealFormRoutes,
   contactRoutes,
+  investingProfileBookRoutes,
 ]);
 
 console.log("Starting server...");
@@ -101,19 +117,38 @@ async function runMigrations(): Promise<void> {
 async function verifyPoolConnection(): Promise<void> {
   const client = await pool.connect();
   client.release();
-  console.log("Database pool ready");
+  console.log("Database pool ready.");
 }
 
-try {
-  await verifyPoolConnection();
-  if (process.env.SKIP_DB_MIGRATIONS === "1") {
-    console.warn("SKIP_DB_MIGRATIONS=1 — migrations were not applied.");
-  } else {
-    await runMigrations();
+/**
+ * If DB init fails *before* listen, nothing binds to the port and the Vite (or nginx) proxy
+ * returns 502 with no useful error. We listen first, then connect/migrate, so the process is
+ * always reachable; DB issues become 500/503 on routes and clear logs here.
+ */
+async function initDatabaseAfterListen(): Promise<void> {
+  try {
+    await verifyPoolConnection();
+    if (process.env.SKIP_DB_MIGRATIONS === "1") {
+      console.warn("SKIP_DB_MIGRATIONS=1 — migrations were not applied.");
+    } else {
+      await runMigrations();
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "Database initialization failed. Fix DATABASE_* in backend/.env.local, ensure PostgreSQL is running, then restart.\n",
+      message,
+    );
+    if (process.env.REQUIRE_DB_BEFORE_START === "1") {
+      process.exit(1);
+    }
   }
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-} catch (err: any) {
-  console.error("Server failed:", err.message);
 }
+
+const listenPort = Number(String(PORT).trim()) || 5004;
+app.listen(listenPort, "0.0.0.0", () => {
+  console.log(
+    `Server listening on http://127.0.0.1:${listenPort} (0.0.0.0:${listenPort})`,
+  );
+  void initDatabaseAfterListen();
+});

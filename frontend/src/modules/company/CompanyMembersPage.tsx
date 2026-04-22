@@ -10,9 +10,9 @@ import {
   Pencil,
   Phone,
   RefreshCw,
+  Shield,
   Upload,
   User,
-  UserCircle,
   UserCog,
   X,
 } from "lucide-react"
@@ -44,16 +44,21 @@ import {
   accountStatusForUi,
   assignedDealCountFromRow,
   formatMemberUsername,
+  formatOrganizationsCsvCell,
+  formatRoleCsvCell,
   formatValue,
   memberInvitePending,
-  memberRoleDisplayName,
   memberRowIsCurrentUser,
   memberRowIsInactive,
+  organizationsSortValue,
+  primaryRoleLabelFromRow,
   normalizeMemberStatusForEdit,
+  roleSortValue,
   rowDisplayName,
   syncSessionUserDetailsById,
   userStatusForUi,
 } from "../usermanagement/memberAdminShared"
+import { UserOrganizationsCell } from "../usermanagement/UserOrganizationsCell"
 import { escapeCsvCell, exportAuditLinesForMembers } from "../usermanagement/memberCsv"
 import { notifyMembersExportAudit } from "../usermanagement/membersExportNotifyApi"
 import type { CustomerCompanyOutletContext } from "./CustomerCompanyLayout"
@@ -81,32 +86,6 @@ function rowStableId(row: Record<string, unknown>, index: number): string {
   const id = row.id ?? row.user_id
   if (id != null && String(id).trim()) return String(id).trim()
   return `member-${index}`
-}
-
-function roleBadgeLabel(row: Record<string, unknown>): string {
-  return memberRoleDisplayName(row.role)
-}
-
-function MemberRoleBadge({ row }: { row: Record<string, unknown> }) {
-  const r = String(row.role ?? "").trim().toLowerCase()
-  const label = memberRoleDisplayName(row.role)
-  if (!r || label === "—") {
-    return <span className="um_status_muted">—</span>
-  }
-  const useAdminStyleIcon =
-    r === "platform_admin" || r === "company_admin"
-  const Icon = useAdminStyleIcon ? ClipboardList : UserCircle
-  return (
-    <span className="um_role_badge">
-      <Icon
-        className="um_role_badge_icon"
-        size={16}
-        strokeWidth={2}
-        aria-hidden
-      />
-      <span className="um_role_badge_label">{label}</span>
-    </span>
-  )
 }
 
 function StatusWithDot({
@@ -351,8 +330,8 @@ export default function CompanyMembersPage() {
       "Name",
       "Username",
       "Email",
-      "Company",
-      "User role",
+      "Roles",
+      "Organizations",
       "User Status",
       "Account status",
       "Assigned deals",
@@ -361,8 +340,8 @@ export default function CompanyMembersPage() {
       rowDisplayName(row),
       formatMemberUsername(row.username),
       formatValue(row.email),
-      titleCompany,
-      roleBadgeLabel(row),
+      formatRoleCsvCell(row),
+      formatOrganizationsCsvCell(row),
       userStatusForUi(row).label,
       accountStatusForUi(row).label,
       String(assignedDealCountFromRow(row)),
@@ -671,10 +650,19 @@ export default function CompanyMembersPage() {
       },
       {
         id: "role",
-        header: "User role",
-        sortValue: (row) =>
-          memberRoleDisplayName(row.role).toLowerCase(),
-        cell: (row) => <MemberRoleBadge row={row} />,
+        header: "Roles",
+        sortValue: (row) => roleSortValue(row).toLowerCase(),
+        tdClassName: "um_td_memberships",
+        cell: (row) => (
+          <span className="um_membership_role_tag">{primaryRoleLabelFromRow(row)}</span>
+        ),
+      },
+      {
+        id: "organizations",
+        header: "Organizations",
+        sortValue: (row) => organizationsSortValue(row).toLowerCase(),
+        tdClassName: "um_td_memberships",
+        cell: (row) => <UserOrganizationsCell row={row} />,
       },
       {
         id: "status",
@@ -1010,14 +998,15 @@ export default function CompanyMembersPage() {
                 value={formatValue(viewRow.lastName)}
               />
               <ViewReadonlyField
-                Icon={Building2}
-                label="Organization"
-                value={titleCompany}
+                Icon={Shield}
+                label="Roles"
+                value={primaryRoleLabelFromRow(viewRow)}
               />
               <ViewReadonlyField
-                Icon={UserCog}
-                label="Role"
-                value={roleBadgeLabel(viewRow)}
+                Icon={Building2}
+                label="Organizations"
+                value={<UserOrganizationsCell row={viewRow} />}
+                fieldClassName="um_view_field_span_full"
               />
               <ViewReadonlyField
                 Icon={Phone}

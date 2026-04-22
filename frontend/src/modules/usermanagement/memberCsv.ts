@@ -1,10 +1,10 @@
 import {
   accountStatusForUi,
   assignedDealCountFromRow,
-  companyCellValue,
   formatMemberUsername,
+  formatOrganizationsCsvCell,
+  formatRoleCsvCell,
   formatValue,
-  memberRoleDisplayName,
   rowDisplayName,
   userStatusForUi,
 } from "./memberAdminShared"
@@ -16,16 +16,13 @@ export function escapeCsvCell(value: string): string {
   return value
 }
 
-export function buildMembersCsv(
-  rows: Record<string, unknown>[],
-  showCompanyColumn: boolean,
-): string {
+export function buildMembersCsv(rows: Record<string, unknown>[]): string {
   const headers = [
     "Name",
     "Username",
     "Email",
-    ...(showCompanyColumn ? ["Company"] : []),
-    "User role",
+    "Roles",
+    "Organizations",
     "User Status",
     "Account status",
     "Assigned deals",
@@ -37,8 +34,8 @@ export function buildMembersCsv(
         rowDisplayName(row),
         formatMemberUsername(row.username),
         formatValue(row.email),
-        ...(showCompanyColumn ? [companyCellValue(row)] : []),
-        memberRoleDisplayName(row.role),
+        formatRoleCsvCell(row),
+        formatOrganizationsCsvCell(row),
         userStatusForUi(row).label,
         accountStatusForUi(row).label,
         String(assignedDealCountFromRow(row)),

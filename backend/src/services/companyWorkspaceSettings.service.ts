@@ -116,20 +116,57 @@ export async function getWorkspaceTabPayload(
   return { ...(p as Record<string, unknown>) };
 }
 
+/** Payload plus DB `updated_at` for the tab row (e.g. cache busting for public branding). */
+export async function getWorkspaceTabPayloadWithUpdatedAt(
+  companyId: string,
+  tabKey: WorkspaceTabKey,
+): Promise<{
+  payload: Record<string, unknown>;
+  updatedAt: Date | null;
+}> {
+  const cid = normalizeWorkspaceCompanyId(companyId);
+  if (!cid) return { payload: {}, updatedAt: null };
+  const [row] = await db
+    .select({
+      payload: companyWorkspaceTabSettings.payload,
+      updatedAt: companyWorkspaceTabSettings.updatedAt,
+    })
+    .from(companyWorkspaceTabSettings)
+    .where(
+      and(
+        eq(companyWorkspaceTabSettings.companyId, cid),
+        eq(companyWorkspaceTabSettings.tabKey, tabKey),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    return { payload: {}, updatedAt: null };
+  }
+  const p = row.payload;
+  if (!p || typeof p !== "object" || Array.isArray(p)) {
+    return { payload: {}, updatedAt: row.updatedAt ?? null };
+  }
+  return { payload: { ...(p as Record<string, unknown>) }, updatedAt: row.updatedAt };
+}
+
 export async function upsertWorkspaceTabPayload(
   companyId: string,
   tabKey: WorkspaceTabKey,
   payload: Record<string, unknown>,
 ): Promise<void> {
   const cid = normalizeWorkspaceCompanyId(companyId);
-  if (!cid) return;
+  if (!cid) {
+    throw new Error("Invalid workspace company id (expected UUID).");
+  }
   const now = new Date();
+  const existing = await getWorkspaceTabPayload(companyId, tabKey);
+  const merged: Record<string, unknown> = { ...existing, ...payload };
   await db
     .insert(companyWorkspaceTabSettings)
     .values({
       companyId: cid,
       tabKey,
-      payload,
+      payload: merged,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -137,6 +174,6 @@ export async function upsertWorkspaceTabPayload(
         companyWorkspaceTabSettings.companyId,
         companyWorkspaceTabSettings.tabKey,
       ],
-      set: { payload, updatedAt: now },
+      set: { payload: merged, updatedAt: now },
     });
 }

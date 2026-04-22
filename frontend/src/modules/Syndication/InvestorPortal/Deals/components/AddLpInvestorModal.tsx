@@ -1,4 +1,4 @@
-import { Briefcase, Loader2, Mail, Save, UserRound, X } from "lucide-react"
+import { Briefcase, IdCard, Loader2, Mail, Save, UserRound, X } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -12,7 +12,9 @@ import {
   DropdownSelect,
   type DropdownSelectSection,
 } from "../../../../../common/components/dropdown-select"
-import { fetchContacts } from "../../../../contacts/api/contactsApi"
+import { toast } from "../../../../../common/components/Toast"
+import { AddContactPanel } from "../../../../contacts/components/AddContactPanel"
+import { createContact, fetchContacts } from "../../../../contacts/api/contactsApi"
 import type { ContactRow } from "../../../../contacts/types/contact.types"
 import {
   fetchDealInvestorClasses,
@@ -25,6 +27,8 @@ import type { AddInvestmentFormValues } from "../deal-members/add-investment/add
 import { loadAddMemberDraft } from "../deal-members/add-investment/addMemberFormDraftStorage"
 import { MEMBER_SELECT_OPTIONS } from "../constants/member-options"
 import {
+  INVESTOR_PROFILE_SELECT_OPTIONS,
+  investorProfileIdFromLabel,
   isLpInvestorRole,
   LP_INVESTOR_ROLE_VALUE,
   LP_INVESTORS_ROLE_LABEL,
@@ -162,6 +166,7 @@ export function AddLpInvestorModal({
   const [contactId, setContactId] = useState("")
   const [contactDisplayName, setContactDisplayName] = useState("")
   const [contactEmail, setContactEmail] = useState("")
+  const [profileId, setProfileId] = useState("")
   const [sendInvitationMail, setSendInvitationMail] = useState<"yes" | "no">(
     "yes",
   )
@@ -170,6 +175,7 @@ export function AddLpInvestorModal({
   const [memberRows, setMemberRows] = useState<Record<string, unknown>[]>([])
   const [contactRows, setContactRows] = useState<ContactRow[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
+  const [addContactModalOpen, setAddContactModalOpen] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [backendLpRosterId, setBackendLpRosterId] = useState<string | null>(null)
   const backendLpRosterIdRef = useRef<string | null>(null)
@@ -199,10 +205,15 @@ export function AddLpInvestorModal({
   }, [open, dealId])
 
   useEffect(() => {
+    if (!open) setAddContactModalOpen(false)
+  }, [open])
+
+  useEffect(() => {
     if (!open) {
       setContactId("")
       setContactDisplayName("")
       setContactEmail("")
+      setProfileId("")
       setSendInvitationMail("yes")
       setError(null)
       setBackendLpRosterId(null)
@@ -216,6 +227,11 @@ export function AddLpInvestorModal({
         editRow.userEmail && editRow.userEmail !== "—"
           ? editRow.userEmail.trim()
           : "",
+      )
+      setProfileId(
+        editRow.profileId?.trim() ||
+          investorProfileIdFromLabel(editRow.entitySubtitle ?? "") ||
+          "",
       )
       setSendInvitationMail("no")
       setError(null)
@@ -237,6 +253,7 @@ export function AddLpInvestorModal({
         if (!dealBlocksInvitationEmails && f.sendInvitationMail === "yes")
           setSendInvitationMail("yes")
         else setSendInvitationMail("no")
+        setProfileId(String(f.profileId ?? "").trim())
         setError(null)
         /** Only `deal_lp_investor` ids — never `backendInvestmentId` (different table / PUT route). */
         const bid = draft?.backendLpInvestorId?.trim()
@@ -255,6 +272,7 @@ export function AddLpInvestorModal({
     setContactId("")
     setContactDisplayName("")
     setContactEmail("")
+    setProfileId("")
     setSendInvitationMail(dealBlocksInvitationEmails ? "no" : "yes")
     setError(null)
     const stored = loadLpRosterId(dealId)
@@ -344,25 +362,44 @@ export function AddLpInvestorModal({
         })),
       })
     }
-    const directoryOptions =
-      memberRows.length > 0
-        ? memberRows
-            .map((u) => memberOptionFromUser(u))
-            .filter((o): o is { value: string; label: string } => Boolean(o))
-            .map((o) => ({
-              value: `${PREFIX_USER}${o.value}`,
-              label: o.label,
-            }))
-        : MEMBER_SELECT_OPTIONS.filter((o) => o.value !== "").map((o) => ({
+    if (memberRows.length > 0) {
+      sections.push({
+        heading: "Directory members",
+        options: memberRows
+          .map((u) => memberOptionFromUser(u))
+          .filter((o): o is { value: string; label: string } => Boolean(o))
+          .map((o) => ({
             value: `${PREFIX_USER}${o.value}`,
             label: o.label,
-          }))
-    sections.push({
-      heading: "Directory members",
-      options: directoryOptions,
-    })
+          })),
+      })
+    }
     return sections
   }, [contactRows, memberRows])
+
+  const handleContactCreated = useCallback((contact: ContactRow) => {
+    setContactRows((prev) => {
+      if (prev.some((c) => c.id === contact.id)) return prev
+      return [...prev, contact]
+    })
+    const display = contactOptionLabel(contact)
+    const namePart = display.split(" — ")[0]?.trim() || display
+    setContactId(contact.id)
+    setContactDisplayName(namePart)
+    setContactEmail(contact.email.trim())
+    toast.success(
+      "Contact added",
+      `${namePart} is selected as the investor for this deal.`,
+    )
+  }, [])
+
+  const handleAddContactSave = useCallback(
+    async (contact: Omit<ContactRow, "id" | "createdByDisplayName">) => {
+      const created = await createContact(contact)
+      handleContactCreated(created)
+    },
+    [handleContactCreated],
+  )
 
   const investorClassIdForPayload = useMemo(
     () =>
@@ -394,7 +431,7 @@ export function AddLpInvestorModal({
           contactId: contactId.trim(),
           contactDisplayName: contactDisplayName.trim(),
           contactEmail: contactEmail.trim() || undefined,
-          profileId: "",
+          profileId: profileId.trim(),
           investorRole: LP_INVESTOR_ROLE_VALUE,
           status: "",
           investorClass: classId,
@@ -475,6 +512,7 @@ export function AddLpInvestorModal({
     investorClassIdForPayload,
     isEditMode,
     dealBlocksInvitationEmails,
+    profileId,
   ])
 
   async function handleSubmit(e: FormEvent) {
@@ -495,13 +533,23 @@ export function AddLpInvestorModal({
       setError("Could not resolve an investor class for this deal.")
       return
     }
+    if (
+      !dealBlocksInvitationEmails &&
+      sendInvitationMail === "yes" &&
+      !profileId.trim()
+    ) {
+      setError(
+        "Select an investor profile before choosing to send the invitation email.",
+      )
+      return
+    }
 
     const values: AddInvestmentFormValues = {
       offeringId: "primary",
       contactId: contactId.trim(),
       contactDisplayName: contactDisplayName.trim(),
       contactEmail: contactEmail.trim() || undefined,
-      profileId: "",
+      profileId: profileId.trim(),
       investorRole: LP_INVESTOR_ROLE_VALUE,
       status: "",
       investorClass: classId,
@@ -552,6 +600,7 @@ export function AddLpInvestorModal({
   if (!open) return null
 
   return (
+    <>
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
       role="presentation"
@@ -607,6 +656,10 @@ export function AddLpInvestorModal({
                       : "Select contact or member"
                   }
                   ariaLabel="Investor or contact"
+                  header={{
+                    label: "+ Add Contact",
+                    onClick: () => setAddContactModalOpen(true),
+                  }}
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
               </div>
@@ -624,6 +677,34 @@ export function AddLpInvestorModal({
                   value={LP_INVESTORS_ROLE_LABEL}
                   aria-readonly="true"
                 />
+              </div>
+
+              <div className="um_field">
+                <label htmlFor="lp-inv-profile" className="um_field_label_row">
+                  <IdCard className="um_field_label_icon" size={17} aria-hidden />
+                  <span>Profile</span>
+                </label>
+                <DropdownSelect
+                  id="lp-inv-profile"
+                  options={INVESTOR_PROFILE_SELECT_OPTIONS.map((o) => ({
+                    value: o.value,
+                    label: o.label,
+                  }))}
+                  value={profileId}
+                  onChange={(v) => setProfileId(v)}
+                  placeholder="Select profile"
+                  ariaLabel="Profile"
+                  ariaDescribedBy="lp-inv-profile-hint"
+                  triggerClassName={DROPDOWN_TRIGGER_PILL}
+                />
+                <p
+                  id="lp-inv-profile-hint"
+                  className="deals_add_inv_section_hint"
+                  role="note"
+                >
+                  Used for investor identity and invitation email context when you notify
+                  them about being added to the deal.
+                </p>
               </div>
 
               <div className="um_field">
@@ -728,5 +809,13 @@ export function AddLpInvestorModal({
         </form>
       </div>
     </div>
+    <AddContactPanel
+      open={addContactModalOpen}
+      onClose={() => setAddContactModalOpen(false)}
+      onSave={handleAddContactSave}
+      contactToEdit={null}
+      existingContacts={contactRows}
+    />
+    </>
   )
 }

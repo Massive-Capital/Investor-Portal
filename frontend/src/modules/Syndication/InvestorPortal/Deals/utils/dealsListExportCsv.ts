@@ -1,4 +1,4 @@
-import { dealStageLabel } from "../../deals-mock-data"
+import { dealStageLabel } from "../../dealsDashboardUtils"
 import {
   DEAL_FORM_TYPE_OPTIONS,
   DEAL_TYPE_LABELS,

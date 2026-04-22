@@ -22,7 +22,7 @@ const UUID_RE =
 function defaultSubject(dealName: string): string {
   const custom = process.env.DEAL_MEMBER_INVITE_SUBJECT?.trim();
   if (custom) return custom.replace(/\{dealName\}/g, dealName);
-  return `You've been added to ${dealName}`;
+  return `You're invited to ${dealName}`;
 }
 
 /**
@@ -129,7 +129,7 @@ export async function sendDealMemberInvitationEmail(
   }
 }
 
-/** After saving an investment: notify member by email when the form asked for it. */
+/** After saving an investment: notify the investor by email when the form asked for it. */
 export async function sendDealMemberInviteForInvestmentIfRequested(input: {
   dealId: string
   contactId: string

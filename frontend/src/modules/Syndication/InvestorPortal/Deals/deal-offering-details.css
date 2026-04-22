@@ -323,6 +323,92 @@ a.deal_offering_add_ic_header.um_btn_primary {
   line-height: 1.45;
 }
 
+/* Offering overview — location map (deal profile address) */
+.deal_offering_location_map_section {
+  margin: 0 0 1.35rem;
+  padding: 1rem 1rem 1.1rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--portal-chrome-bg, #f8fafc) 88%, var(--portal-surface, #fff));
+}
+
+.deal_offering_location_map_head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.35rem;
+}
+
+.deal_offering_location_map_icon_wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--portal-primary, #2563eb);
+  flex-shrink: 0;
+}
+
+.deal_offering_location_map_title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_offering_location_map_source {
+  margin: 0 0 0.75rem;
+}
+
+.deal_offering_location_map_address {
+  margin: 0 0 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text, #334155);
+  line-height: 1.45;
+}
+
+.deal_offering_location_map_frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(22rem, 50vh);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  background: var(--portal-border, #e2e8f0);
+}
+
+.deal_offering_location_map_iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.deal_offering_location_map_external {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-primary, #2563eb);
+  text-decoration: none;
+}
+
+.deal_offering_location_map_external:hover {
+  text-decoration: underline;
+}
+
+:root[data-theme="dark"] .deal_offering_location_map_section {
+  border-color: var(--portal-border, #334155);
+  background: color-mix(in srgb, var(--portal-surface, #1a1a1a) 96%, #fff);
+}
+
+:root[data-theme="dark"] .deal_offering_location_map_frame {
+  border-color: var(--portal-border, #334155);
+}
+
 /* Overview — Assets multi-select (chips + searchable dropdown) */
 .deal_ov_assets_ms {
   position: relative;

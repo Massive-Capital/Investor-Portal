@@ -268,10 +268,11 @@ export async function enrichSerializedUsersWithDealParticipantRoles(
 
     const extra = roleMap.get(id);
     if (!extra) {
+      const rd = lpDisp ?? buildDealParticipantRoleDisplay([]);
       return {
         ...u,
         dealMemberRoleLabels: [],
-        roleDisplay: buildDealParticipantRoleDisplay([]),
+        roleDisplay: rd,
         is_deal_participant: true,
         is_lp_investor: Boolean(lpDisp),
         ...(lpDisp

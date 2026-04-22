@@ -83,6 +83,8 @@ export function investorRoleLabel(value: string): string {
   const t = String(value ?? "").trim()
   if (!t) return "—"
   const lower = t.toLowerCase()
+  /** Portal role stored on legacy rows — never show as a deal role label. */
+  if (lower === "deal_participant" || lower === "deal participant") return "—"
   if (lower === LP_INVESTOR_ROLE_VALUE || lower === "lp investors")
     return LP_INVESTORS_ROLE_LABEL
   const row = INVESTOR_ROLE_SELECT_OPTIONS.find((o) => o.value === t)

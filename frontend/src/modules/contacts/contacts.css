@@ -79,7 +79,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
-  padding: 0.45em 0.9em;
+  padding: 0.65em 0.9em;
   border-radius: 999px;
   border: 1px solid var(--portal-border, #e2e8f0);
   background: var(--portal-surface, #fff);
@@ -1027,6 +1027,16 @@
 
 .contacts_chips_combobox_input::placeholder {
   color: #94a3b8;
+  font-weight: 400;
+}
+
+/* Contact modals: placeholders stay normal weight (field labels stay bold separately). */
+.add_contact_panel input::placeholder,
+.add_contact_panel textarea::placeholder,
+.contacts_label_modal input::placeholder,
+.contacts_label_modal textarea::placeholder,
+.contacts_suspend_modal textarea::placeholder {
+  font-weight: 400;
 }
 
 :root[data-theme="dark"] .contacts_chips_combobox {

@@ -23,6 +23,7 @@ export const dealLpInvestor = pgTable(
     profileId: text("profile_id").notNull().default(""),
     investorClass: text("investor_class").notNull().default(""),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),
+    committed_amount: text("committed_amount").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

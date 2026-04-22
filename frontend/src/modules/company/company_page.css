@@ -321,9 +321,21 @@ a.cp_company_deal_name_link:focus-visible {
   color: currentColor;
 }
 
-/* Company → Settings tab (org settings layout) */
+/* Company → Settings tab — aligned with Email / Contact / Offerings and `um_panel` shell */
 .cp_settings_root {
-  padding: 0.15em 0 0.5em;
+  max-width: 1100px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 0 0.35em;
+}
+
+.cp_settings_page_lead {
+  margin: 0 0 1.5em;
+  max-width: 48em;
+  font-size: 0.875em;
+  color: #64748b;
+  line-height: 1.55;
 }
 
 /* Disabled until Edit (or read-only): show non-interactive cursor */
@@ -335,16 +347,19 @@ a.cp_company_deal_name_link:focus-visible {
   cursor: not-allowed;
 }
 
-/* Match field row labels to card radio option text (0.875em) */
+/* Row labels: match `cp_email_row_label` + Members field density */
 .cp_settings_root .cp_settings_field_label .um_view_field_label {
   font-size: 0.875em;
+  font-weight: 600;
   line-height: 1.4;
+  color: #334155;
 }
 
+/* Section blocks — same rhythm as `cp_email_section` */
 .cp_settings_section {
-  margin-bottom: 0.5em;
-  padding-bottom: 1.75em;
-  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 1.75em;
+  padding-bottom: 1.5em;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .cp_settings_section:last-child {
@@ -353,12 +368,13 @@ a.cp_company_deal_name_link:focus-visible {
   padding-bottom: 0;
 }
 
+/* Titles: match `cp_email_section_title` */
 .cp_settings_h3 {
-  margin: 0 0 1em;
+  margin: 0 0 0.5em;
   font-size: 1em;
   font-weight: 700;
   color: #0f172a;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .cp_settings_h3_with_icon {
@@ -369,7 +385,7 @@ a.cp_company_deal_name_link:focus-visible {
 
 .cp_settings_h3_icon {
   flex-shrink: 0;
-  color: #475569;
+  color: #64748b;
 }
 
 .cp_settings_field_label.um_view_field_head.cp_settings_field_head {
@@ -377,7 +393,11 @@ a.cp_company_deal_name_link:focus-visible {
 }
 
 .cp_settings_help_after_heading {
-  margin: 0 0 0.15em;
+  margin: 0 0 0.85em;
+  max-width: 48em;
+  font-size: 0.875em;
+  color: #64748b;
+  line-height: 1.55;
 }
 
 .cp_settings_row {
@@ -467,7 +487,7 @@ a.cp_company_deal_name_link:focus-visible {
 }
 
 .cp_settings_row_general .cp_settings_value_row {
-  flex: 1;
+  /* flex: 1; */
   min-width: 0;
 }
 
@@ -526,7 +546,7 @@ a.cp_company_deal_name_link:focus-visible {
 
 .cp_settings_value_row {
   display: flex;
-  flex-wrap: wrap;
+  /* flex-wrap: wrap; */
   align-items: center;
   gap: 0.5em 0.75em;
 }
@@ -545,6 +565,27 @@ a.cp_company_deal_name_link:focus-visible {
   align-items: flex-start;
 }
 
+/* Logo / background: preview card, then toolbar — Edit (or Save/Cancel), then Upload, then Delete */
+.cp_settings_media_block {
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  gap: 0.75em;
+}
+
+.cp_settings_media_block .cp_media_card {
+  width: 100%;
+  max-width: 440px;
+}
+
+.cp_settings_media_toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 0.75em;
+  width: 100%;
+}
+
 .cp_settings_edit_btn {
   margin-top: 0;
 }
@@ -558,10 +599,11 @@ a.cp_company_deal_name_link:focus-visible {
 }
 
 .cp_settings_help_in_row {
-  margin: 0;
+  margin: 0 0 0.35em;
+  max-width: 48em;
   font-size: 0.875em;
   color: #64748b;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .cp_settings_help_under_label {
@@ -852,25 +894,72 @@ select.cp_settings_input_pill.um_field_select {
 .cp_media_card {
   position: relative;
   max-width: 440px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 1em;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.1em 1.15em;
   background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+@keyframes cp_settings_branding_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cp_settings_branding_preview_spinner {
+  color: #64748b;
+  flex-shrink: 0;
+  animation: cp_settings_branding_spin 0.85s linear infinite;
+}
+
+.cp_settings_branding_preview_loading {
+  display: flex;
+  min-height: 140px;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55em;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.cp_settings_media_selected_file {
+  margin: 0;
+  max-width: 100%;
+  font-size: 0.8rem;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp_settings_icon_block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35em;
+  flex-shrink: 0;
 }
 
 .cp_media_preview {
   position: relative;
   min-height: 140px;
-  border-radius: 10px;
+  border-radius: 8px;
   margin-bottom: 0.85em;
   overflow: hidden;
 }
 
 .cp_media_preview_logo.cp_media_preview_has_image {
   display: block;
+  position: relative;
+  min-height: 140px;
 }
 
 .cp_media_preview_bg.cp_media_preview_has_image {
+  position: relative;
+  min-height: 180px;
   background: #0f172a;
 }
 
@@ -880,7 +969,7 @@ select.cp_settings_input_pill.um_field_select {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .cp_media_preview_img_logo {
@@ -894,21 +983,28 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_settings_logo_icon_row {
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
+  gap: 0.75em 1em;
+}
+
+.cp_settings_logo_icon_row .cp_settings_media_toolbar--icon {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 .cp_media_icon_preview_wrap {
   width: 64px;
   height: 64px;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
   overflow: hidden;
   flex-shrink: 0;
-  background: #f8fafc;
+  background: #f9fafb;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
 }
 
 .cp_media_icon_preview {

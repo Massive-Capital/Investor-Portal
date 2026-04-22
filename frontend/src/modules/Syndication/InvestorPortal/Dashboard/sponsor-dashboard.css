@@ -23,7 +23,8 @@ a.sponsor_dash_add_link.um_btn_secondary {
 
 .sponsor_dash_metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); */
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1em;
   margin-bottom: 2em;
 }
@@ -37,15 +38,36 @@ a.sponsor_dash_add_link.um_btn_secondary {
 
 .sponsor_dash_deals_controls {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75em;
+  margin-bottom: 1.25em;
+}
+
+.sponsor_dash_deals_toolbar {
+  display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1em;
-  margin-bottom: 0.75em;
+  width: 100%;
 }
 
-.sponsor_dash_deals_controls_no_title {
-  justify-content: flex-end;
+.sponsor_dash_deals_toolbar .sponsor_dash_deals_controls_right {
+  flex-shrink: 0;
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_search_row {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin-bottom: 0;
+  width: auto;
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_search_wrap_full {
+  max-width: none;
+  width: 100%;
 }
 
 .sponsor_dash_deals_controls_right {
@@ -78,11 +100,21 @@ a.sponsor_dash_add_link.um_btn_secondary {
   width: 100%;
 }
 
+.sponsor_dash_search_icon {
+  position: absolute;
+  left: 0.85em;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--portal-text-muted, #94a3b8);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
 .sponsor_dash_search_input {
   width: 100%;
   height: 40px;
-  /* Former 2.5rem / 0.75rem at 0.9375×16px font */
-  padding: 0 2.6666667em 0 0.8em;
+  /* left padding for icon; right padding for text */
+  padding: 0 0.9em 0 2.75em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
   font-size: 0.9375em;
@@ -101,27 +133,6 @@ a.sponsor_dash_add_link.um_btn_secondary {
 
 :root[data-theme="dark"] .sponsor_dash_search_input:focus-visible {
   box-shadow: var(--portal-field-focus-shadow-dark, 0 0 0 2px rgb(249 250 251 / 12%));
-}
-
-.sponsor_dash_search_btn {
-  position: absolute;
-  right: 0.25em;
-  top: 50%;
-  transform: translateY(-50%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2em;
-  height: 2em;
-  border: none;
-  border-radius: var(--portal-pill-radius);
-  background: transparent;
-  color: var(--portal-text);
-  cursor: pointer;
-}
-
-.sponsor_dash_search_btn:hover {
-  background: var(--portal-toggle-track);
 }
 
 .sponsor_dash_view_toggle {
@@ -159,7 +170,7 @@ a.sponsor_dash_add_link.um_btn_secondary {
   display: inline-flex;
   align-items: center;
   gap: 0.35em;
-  padding: 0 0.5em 0 0.65em;
+  padding: 0 0em 0 0.65em;
   height: 40px;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
@@ -195,13 +206,67 @@ a.sponsor_dash_add_link.um_btn_secondary {
 
 .sponsor_dash_deals_grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1em;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  align-content: start;
+  align-items: start;
 }
 
-@media (min-width: 1200px) {
+/* Two deal cards per row: matched row height + even gaps */
+@media (min-width: 700px) {
   .sponsor_dash_deals_grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1.25rem;
+    row-gap: 1.5rem;
+    align-items: stretch;
+  }
+
+  .sponsor_dash_deals_grid > a.deal_card_link {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .sponsor_dash_deals_grid > a.deal_card_link .deal_card {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Align card rows: reserve height on the name+location block, not the title alone (tighter gap) */
+  .sponsor_dash_deals_grid .deal_card_top_right .deal_card_top_text {
+    min-height: 3.4em;
+  }
+
+  .sponsor_dash_deals_grid .deal_card_title_text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.25;
+  }
+
+  /* Top row: image + title/location; details section below */
+  .sponsor_dash_deals_grid .deal_card {
+    min-height: 100%;
+  }
+
+  .sponsor_dash_deals_grid .deal_card_details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    box-sizing: border-box;
+  }
+
+  .sponsor_dash_deals_grid .deal_card_metrics {
+    margin-top: auto;
   }
 }
 
@@ -278,6 +343,57 @@ a.deal_card_link:focus-visible {
   border-radius: var(--portal-card-radius);
 }
 
+/* Centered full-width state (initial load, empty search) for deals grid + list */
+.sponsor_dash_deals_state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(50vh, 24rem);
+  margin: 0;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: var(--portal-text-muted);
+  font-size: 0.9375em;
+  background: #f6f6f6;
+  border: 1px dashed var(--portal-border);
+  border-radius: var(--portal-card-radius);
+  box-sizing: border-box;
+}
+
+.sponsor_dash_deals_state_inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  max-width: 20rem;
+}
+
+.sponsor_dash_deals_state_text {
+  margin: 0;
+  line-height: 1.4;
+  font-size: 0.9375em;
+  font-weight: 600;
+  color: var(--portal-text-muted);
+}
+
+.sponsor_dash_loader_spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid
+    color-mix(in srgb, var(--portal-text-muted) 35%, transparent);
+  border-top-color: var(--portal-primary, #2b6cb0);
+  border-radius: 50%;
+  animation: sponsor_dash_loader_spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes sponsor_dash_loader_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Syndicating dashboard: unified #f6f6f6 for metric cards, deal cards, and DataTable */
 .sponsor_dash_syndicating .tool_style_card {
   background: #f6f6f6;
@@ -288,6 +404,11 @@ a.deal_card_link:focus-visible {
 }
 
 .sponsor_dash_syndicating .deal_card {
+  background: #f6f6f6;
+}
+
+/* Investing dashboard: same deal card surface as syndicating */
+.sponsor_dash_investing .deal_card {
   background: #f6f6f6;
 }
 
@@ -307,13 +428,35 @@ a.deal_card_link:focus-visible {
   background: #f6f6f6;
 }
 
+.sponsor_dash_investing .um_table_wrap.data_table_shell {
+  background: #f6f6f6;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-card-radius);
+  overflow: hidden;
+}
+
+.sponsor_dash_investing .um_table th,
+.sponsor_dash_investing .um_table td {
+  background: #f6f6f6;
+}
+
+.sponsor_dash_investing .um_table_pagination {
+  background: #f6f6f6;
+}
+
 :root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card,
 :root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card_icon_box,
 :root[data-theme="dark"] .sponsor_dash_syndicating .deal_card,
+:root[data-theme="dark"] .sponsor_dash_investing .deal_card,
 :root[data-theme="dark"] .sponsor_dash_syndicating .um_table_wrap.data_table_shell,
+:root[data-theme="dark"] .sponsor_dash_investing .um_table_wrap.data_table_shell,
 :root[data-theme="dark"] .sponsor_dash_syndicating .um_table th,
 :root[data-theme="dark"] .sponsor_dash_syndicating .um_table td,
+:root[data-theme="dark"] .sponsor_dash_investing .um_table th,
+:root[data-theme="dark"] .sponsor_dash_investing .um_table td,
 :root[data-theme="dark"] .sponsor_dash_syndicating .um_table_pagination,
-:root[data-theme="dark"] .sponsor_dash_empty {
+:root[data-theme="dark"] .sponsor_dash_investing .um_table_pagination,
+:root[data-theme="dark"] .sponsor_dash_empty,
+:root[data-theme="dark"] .sponsor_dash_deals_state {
   background: var(--portal-surface);
 }

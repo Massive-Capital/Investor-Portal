@@ -10,8 +10,12 @@ import {
   type DealInvestmentRow,
 } from "../schema/deal.schema/deal-investment.schema.js";
 import {
+  applyTotalCommittedToDealInvestmentRow,
   buildInvestorKpisFromRows,
+  committedNumericFromDealInvestmentRow,
   DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
+  enrichInvestorApiRowsWithAddedBy,
+  enrichInvestorRolesForDealRows,
   insertDealInvestment,
   isLpInvestorRole,
   LP_INVESTOR_ROLE_STORED,
@@ -19,12 +23,15 @@ import {
   mapRowToInvestorApi,
   resolveFirstInvestorClassForDeal,
   resolveInvestorClassForDealInvestment,
-  resolveUserDisplayNamesByIds,
   resolveUsersByContactIds,
+  totalCommittedByContactKeyFromRows,
 } from "./dealInvestment.service.js";
+import type { DealViewerScope } from "./dealForm.service.js";
 
 function normalizeContactKey(raw: string): string {
-  return String(raw ?? "").trim().toLowerCase();
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 /** True when the viewer’s roster row on this deal is Co-sponsor (contact or user id match). */
@@ -53,23 +60,35 @@ export async function isViewerCoSponsorOnDeal(
 }
 
 /**
- * Co-sponsors only see LP investors they added (`deal_lp_investor.added_by` or
- * `deal_member.added_by` for that contact).
+ * Co-sponsors only see investors they added (`deal_lp_investor.added_by` and/or
+ * `deal_member.added_by` for that contact). Applies to merged LP rows and raw
+ * `deal_investment` rows (same contact + id rules).
  */
-async function filterMergedLpInvestorsForCoSponsorViewer(
+export async function filterMergedLpInvestorsForCoSponsorViewer(
   dealId: string,
   viewerUserId: string,
   merged: DealInvestmentRow[],
 ): Promise<DealInvestmentRow[]> {
   const viewer = String(viewerUserId).trim().toLowerCase();
   const lpRows = await db
-    .select({ id: dealLpInvestor.id, addedBy: dealLpInvestor.addedBy })
+    .select({
+      id: dealLpInvestor.id,
+      addedBy: dealLpInvestor.addedBy,
+      contactMemberId: dealLpInvestor.contactMemberId,
+    })
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId));
+
+  console.log("LP ROWS DATA =>", lpRows);
+
   const lpAddedBy = new Map<string, string>();
+  /** `deal_lp_investor.added_by` keyed by normalized contact (LP-only rows without `deal_member`). */
+  const lpContactAddedBy = new Map<string, string>();
   for (const r of lpRows) {
     const adder = r.addedBy ? String(r.addedBy).toLowerCase() : "";
     lpAddedBy.set(String(r.id).toLowerCase(), adder);
+    const ck = normalizeContactKey(r.contactMemberId);
+    if (ck && adder) lpContactAddedBy.set(ck, adder);
   }
 
   const memberRows = await db
@@ -79,6 +98,9 @@ async function filterMergedLpInvestorsForCoSponsorViewer(
     })
     .from(dealMember)
     .where(eq(dealMember.dealId, dealId));
+
+  console.log("MEMBERS ROWS DATA =>", lpRows);
+
   const contactAddedBy = new Map<string, string>();
   for (const r of memberRows) {
     const k = normalizeContactKey(r.contactMemberId);
@@ -91,13 +113,18 @@ async function filterMergedLpInvestorsForCoSponsorViewer(
     DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
   );
 
+  function contactAddedByViewer(ck: string): boolean {
+    const dm = contactAddedBy.get(ck);
+    const lp = lpContactAddedBy.get(ck);
+    return dm === viewer || lp === viewer;
+  }
+
   return merged.filter((row) => {
     const idKey = String(row.id ?? "").toLowerCase();
     if (lpAddedBy.has(idKey)) return lpAddedBy.get(idKey) === viewer;
     const ck = normalizeContactKey(row.contactId ?? "");
     if (!ck || ck === placeholderKey) return false;
-    const adder = contactAddedBy.get(ck);
-    return adder === viewer;
+    return contactAddedByViewer(ck);
   });
 }
 
@@ -118,14 +145,18 @@ async function resolveEmailForContactMemberId(rawCid: string): Promise<string> {
     .from(users)
     .where(eq(users.id, cid))
     .limit(1);
-  const fromUser = String(uRow?.email ?? "").trim().toLowerCase();
+  const fromUser = String(uRow?.email ?? "")
+    .trim()
+    .toLowerCase();
   if (fromUser) return fromUser;
   const [cRow] = await db
     .select({ email: contact.email })
     .from(contact)
     .where(sql`${contact.id}::text = ${cid}`)
     .limit(1);
-  return String(cRow?.email ?? "").trim().toLowerCase();
+  return String(cRow?.email ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 export function syntheticInvestmentFromDealLpInvestor(
@@ -142,7 +173,7 @@ export function syntheticInvestmentFromDealLpInvestor(
     status: "",
     investorClass: m.investorClass,
     docSignedDate: null,
-    commitmentAmount: "",
+    commitmentAmount: m.committed_amount,
     extraContributionAmounts: [],
     documentStoragePath: null,
     createdAt: m.createdAt,
@@ -182,9 +213,9 @@ function syntheticLpRosterWithInvestmentFinancials(
 /**
  * LP tab list: latest `deal_investment` per contact (LP role) plus `deal_lp_investor`
  * rows whose contact has no LP investment row (prefer investment for financials).
- * For LP-investor-only contacts, `commitment_amount` / extras come from the latest
- * `deal_investment` for that deal + contact **any role** so the Committed column
- * matches stored deal investments.
+ * For LP-investor-only contacts, financials use the latest `deal_investment` row for
+ * non-amount fields; **committed** is the sum of all `deal_investment` rows for that
+ * contact on this deal (cumulative / multiple rows).
  */
 export async function listMergedLpInvestorsForDeal(
   dealId: string,
@@ -192,6 +223,7 @@ export async function listMergedLpInvestorsForDeal(
   const allInvestments = await listDealInvestmentsByDealId(dealId, {
     lpInvestorsOnly: false,
   });
+  const totalByContact = totalCommittedByContactKeyFromRows(allInvestments);
   const latestInvAnyRole = new Map<string, DealInvestmentRow>();
   const latestInv = new Map<string, DealInvestmentRow>();
   for (const inv of allInvestments) {
@@ -233,11 +265,13 @@ export async function listMergedLpInvestorsForDeal(
     );
   }
 
-  rows.sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  const withTotals = rows.map((r) =>
+    applyTotalCommittedToDealInvestmentRow(r, totalByContact),
   );
-  return rows;
+  withTotals.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return withTotals;
 }
 
 export type LpInvestorApiRow = ReturnType<typeof mapRowToInvestorApi> & {
@@ -246,12 +280,15 @@ export type LpInvestorApiRow = ReturnType<typeof mapRowToInvestorApi> & {
 };
 
 export async function mapMergedLpRowsToInvestorApi(
+  dealId: string,
   rows: DealInvestmentRow[],
   lpRowIds: Set<string>,
 ): Promise<LpInvestorApiRow[]> {
-  const resolved = await resolveUsersByContactIds(rows);
+  const enriched =
+    rows.length > 0 ? await enrichInvestorRolesForDealRows(dealId, rows) : rows;
+  const resolved = await resolveUsersByContactIds(enriched);
   const out: LpInvestorApiRow[] = [];
-  for (const r of rows) {
+  for (const r of enriched) {
     const base = mapRowToInvestorApi(r, resolved);
     const idKey = String(r.id ?? "").toLowerCase();
     const kind: "investment" | "lp_investor" = lpRowIds.has(idKey)
@@ -271,9 +308,7 @@ export async function resolveLpRosterIdSet(
     .select({ id: dealLpInvestor.id })
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId));
-  const allowed = new Set(
-    lpDb.map((r) => String(r.id).toLowerCase()),
-  );
+  const allowed = new Set(lpDb.map((r) => String(r.id).toLowerCase()));
   const out = new Set<string>();
   for (const row of mergedRows) {
     const id = String(row.id ?? "").toLowerCase();
@@ -285,43 +320,41 @@ export async function resolveLpRosterIdSet(
 export async function buildLpInvestorsFromMerged(
   dealId: string,
   merged: DealInvestmentRow[],
-): Promise<{ investors: LpInvestorApiRow[]; kpis: ReturnType<typeof buildInvestorKpisFromRows> }> {
+): Promise<{
+  investors: LpInvestorApiRow[];
+  kpis: ReturnType<typeof buildInvestorKpisFromRows>;
+}> {
+  console.log("merged", merged);
   const kpis = buildInvestorKpisFromRows(merged);
   const lpRosterIds = await resolveLpRosterIdSet(dealId, merged);
-  const base = await mapMergedLpRowsToInvestorApi(merged, lpRosterIds);
+  const base = await mapMergedLpRowsToInvestorApi(dealId, merged, lpRosterIds);
 
   const roster = await db
     .select()
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId));
-  const addedByNames = await resolveUserDisplayNamesByIds(
-    roster.map((m) => m.addedBy),
-  );
 
-  const addedByByLpId = new Map<string, string>();
   const rosterEmailByLpId = new Map<string, string>();
   for (const m of roster) {
-    const key = m.addedBy ? String(m.addedBy).toLowerCase() : "";
-    const name =
-      key && addedByNames.has(key) ? addedByNames.get(key)! : "—";
-    addedByByLpId.set(String(m.id).toLowerCase(), name);
     const em = String(m.email ?? "").trim();
     if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em);
   }
 
-  const investors = base.map((inv) => {
+  const investorsMerged = base.map((inv) => {
     const id = String(inv.id ?? "").toLowerCase();
-    const extra =
-      lpRosterIds.has(id) && addedByByLpId.has(id)
-        ? { addedByDisplayName: addedByByLpId.get(id)! }
-        : {};
     const storedEmail = lpRosterIds.has(id)
       ? rosterEmailByLpId.get(id)
       : undefined;
-    const emailPatch =
-      storedEmail?.trim() ? { userEmail: storedEmail.trim() } : {};
-    return { ...inv, ...extra, ...emailPatch };
+    const emailPatch = storedEmail?.trim()
+      ? { userEmail: storedEmail.trim() }
+      : {};
+    return { ...inv, ...emailPatch };
   });
+
+  const investors = await enrichInvestorApiRowsWithAddedBy(
+    dealId,
+    investorsMerged,
+  );
 
   return { investors, kpis };
 }
@@ -367,6 +400,9 @@ export async function upsertDealLpInvestor(
   input: UpsertDealLpInvestorInput,
 ): Promise<DealLpInvestorRow> {
   const cid = input.contactMemberId.trim();
+
+  console.log("contactmember id", cid);
+
   if (!cid) throw new Error("contact_member_id required");
 
   const send =
@@ -377,7 +413,8 @@ export async function upsertDealLpInvestor(
   const now = new Date();
   const fromClientEmail = String(input.emailFromClient ?? "").trim();
   const fromClientRole = String(input.roleFromClient ?? "").trim();
-  const resolvedEmail = fromClientEmail || (await resolveEmailForContactMemberId(cid));
+  const resolvedEmail =
+    fromClientEmail || (await resolveEmailForContactMemberId(cid));
   const roleToStore = fromClientRole || LP_INVESTOR_TABLE_ROLE;
 
   const [row] = await db
@@ -416,6 +453,7 @@ export async function updateDealLpInvestorById(
   input: UpsertDealLpInvestorInput,
 ): Promise<DealLpInvestorRow | null> {
   const cid = input.contactMemberId.trim();
+  console.log("contact member id 2", cid)
   if (!cid) return null;
   const send =
     String(input.sendInvitationMail ?? "").toLowerCase() === "yes"
@@ -425,7 +463,8 @@ export async function updateDealLpInvestorById(
   const now = new Date();
   const fromClientEmail = String(input.emailFromClient ?? "").trim();
   const fromClientRole = String(input.roleFromClient ?? "").trim();
-  const resolvedEmail = fromClientEmail || (await resolveEmailForContactMemberId(cid));
+  const resolvedEmail =
+    fromClientEmail || (await resolveEmailForContactMemberId(cid));
   const roleToStore = fromClientRole || LP_INVESTOR_TABLE_ROLE;
 
   const [row] = await db
@@ -440,7 +479,10 @@ export async function updateDealLpInvestorById(
       updatedAt: now,
     })
     .where(
-      and(eq(dealLpInvestor.dealId, dealId), eq(dealLpInvestor.id, lpInvestorId)),
+      and(
+        eq(dealLpInvestor.dealId, dealId),
+        eq(dealLpInvestor.id, lpInvestorId),
+      ),
     )
     .returning();
   return row ?? null;
@@ -507,8 +549,76 @@ export async function countExtraLpRosterOnlyByDealIds(
   return map;
 }
 
+const DEAL_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Distinct LP roster rows in `deal_lp_investor` per deal (one row per contact), scoped by viewer:
+ * - Platform admin, unauthenticated-style callers (`scope` null), and LP-email–scoped investors:
+ *   total rows per deal.
+ * - Company users (sponsors, company admin, etc.): rows where `added_by` references a user whose
+ *   `organization_id` matches the viewer’s organization.
+ */
+export async function countDealLpInvestorsByDealIdsForViewer(
+  dealIds: string[],
+  scope: DealViewerScope | null,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  for (const id of dealIds) map.set(String(id), 0);
+
+  const uuidIds = [
+    ...new Set(
+      dealIds
+        .map((id) => String(id ?? "").trim())
+        .filter((id) => DEAL_ID_UUID_RE.test(id.toLowerCase())),
+    ),
+  ];
+  if (uuidIds.length === 0) return map;
+
+  const useTotalRosterCount =
+    scope == null ||
+    scope.isPlatformAdmin === true ||
+    scope.seesAllDeals === true ||
+    Boolean(scope.lpInvestorEmailScopedDealIds?.length);
+
+  if (useTotalRosterCount) {
+    const res = await pool.query<{ deal_id: string; cnt: string }>(
+      `SELECT deal_id::text, COUNT(*)::int AS cnt
+       FROM deal_lp_investor
+       WHERE deal_id = ANY($1::uuid[])
+       GROUP BY deal_id`,
+      [uuidIds],
+    );
+    for (const row of res.rows) {
+      map.set(row.deal_id, Number(row.cnt));
+    }
+    return map;
+  }
+
+  const orgId = scope.organizationId?.trim() ?? "";
+  if (!orgId || !DEAL_ID_UUID_RE.test(orgId.toLowerCase())) {
+    return map;
+  }
+
+  const res = await pool.query<{ deal_id: string; cnt: string }>(
+    `SELECT lp.deal_id::text, COUNT(*)::int AS cnt
+     FROM deal_lp_investor lp
+     INNER JOIN users adder ON adder.id = lp.added_by
+     WHERE lp.deal_id = ANY($1::uuid[])
+       AND adder.organization_id = $2::uuid
+     GROUP BY lp.deal_id`,
+    [uuidIds, orgId],
+  );
+  for (const row of res.rows) {
+    map.set(row.deal_id, Number(row.cnt));
+  }
+  return map;
+}
+
 function normalizeCommittedAmountStored(raw: string): string {
-  const t = String(raw ?? "").trim().replace(/[$,\s]/g, "");
+  const t = String(raw ?? "")
+    .trim()
+    .replace(/[$,\s]/g, "");
   if (!t) return "";
   const n = Number(t);
   if (!Number.isFinite(n) || n <= 0) return "";
@@ -523,16 +633,25 @@ const LP_COMMITMENT_PROFILE_IDS = new Set([
   "llc_corp_trust_etc",
 ]);
 
-function normalizeLpCommitmentProfileId(raw: string | undefined): string | null {
+function normalizeLpCommitmentProfileId(
+  raw: string | undefined,
+): string | null {
   const t = String(raw ?? "").trim();
   if (!t) return null;
   return LP_COMMITMENT_PROFILE_IDS.has(t) ? t : null;
 }
 
+/** Persist cumulative commitment as a plain numeric string (avoids float noise). */
+function formatCumulativeCommitmentStored(total: number): string {
+  if (!Number.isFinite(total) || total < 0) return "0";
+  const rounded = Math.round(total * 100) / 100;
+  return String(rounded);
+}
+
 /**
- * LP self-service: writes `commitment_amount` (+ optional `profile_id`) on the latest
- * `deal_investment` for this deal + contact, or creates that row when missing (requires
- * a valid `profile_id`). Keeps `deal_lp_investor.profile_id` in sync when profile is sent.
+ * LP self-service: **adds** the submitted amount to the existing committed total on the latest
+ * LP `deal_investment` for this deal + contact (locked row, single transaction). Creates a row
+ * when missing (requires `profile_id` on first commit). Syncs `deal_lp_investor.profile_id` when sent.
  */
 export async function updateMyCommittedAmountForLpDeal(params: {
   dealId: string;
@@ -543,15 +662,25 @@ export async function updateMyCommittedAmountForLpDeal(params: {
   /** When set and valid, updates `deal_investment` + `deal_lp_investor`; required when no investment row exists yet. */
   profileId?: string;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
-  const e = String(params.viewerEmailNorm ?? "").trim().toLowerCase();
-  if (!e.includes("@"))
-    return { ok: false, message: "Invalid viewer email" };
+  const e = String(params.viewerEmailNorm ?? "")
+    .trim()
+    .toLowerCase();
+  if (!e.includes("@")) return { ok: false, message: "Invalid viewer email" };
 
-  const stored = normalizeCommittedAmountStored(params.committedAmount);
-  if (!stored) {
+  console.log("committed amount", params.committedAmount);
+
+  const incrementStr = normalizeCommittedAmountStored(params.committedAmount);
+  if (!incrementStr) {
     return {
       ok: false,
-      message: "Committed amount must be a number greater than 0",
+      message: "Additional commitment amount must be a number greater than 0",
+    };
+  }
+  const increment = Number(incrementStr);
+  if (!Number.isFinite(increment) || increment <= 0) {
+    return {
+      ok: false,
+      message: "Additional commitment amount must be a number greater than 0",
     };
   }
 
@@ -569,7 +698,11 @@ export async function updateMyCommittedAmountForLpDeal(params: {
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, params.dealId));
 
+  console.table(matchRows);
+  console.log("view userid", viewerUserId);
+
   let target: DealLpInvestorRow | undefined;
+  console.log("TARGET", target);
   for (const row of matchRows) {
     const em = await resolveEmailForContactMemberId(row.contactMemberId);
     if (em === e) {
@@ -657,6 +790,9 @@ export async function updateMyCommittedAmountForLpDeal(params: {
       };
     }
     const icRaw = target?.investorClass?.trim() ?? "";
+
+    console.log("icRaw =>", icRaw);
+
     const classRes = icRaw
       ? await resolveInvestorClassForDealInvestment(params.dealId, icRaw)
       : await resolveFirstInvestorClassForDeal(params.dealId);
@@ -673,7 +809,7 @@ export async function updateMyCommittedAmountForLpDeal(params: {
         status: "",
         investorClass: classRes.storedInvestorClass,
         docSignedDate: null,
-        commitmentAmount: stored,
+        commitmentAmount: incrementStr,
         extraContributionAmounts: [],
         documentStoragePath: null,
       },
@@ -683,7 +819,8 @@ export async function updateMyCommittedAmountForLpDeal(params: {
       if (!viewerUserId) {
         return {
           ok: false,
-          message: "Could not determine your account id for LP roster linking.",
+          message:
+            "Could not determine your account id for LP Investor linking.",
         };
       }
       target = await upsertDealLpInvestor(params.dealId, {
@@ -696,25 +833,63 @@ export async function updateMyCommittedAmountForLpDeal(params: {
         emailFromClient: e,
         roleFromClient: LP_INVESTOR_TABLE_ROLE,
       });
+      console.log("inside target", incrementStr);
     }
-
     await db
       .update(dealLpInvestor)
-      .set({ profileId: profileOpt, updatedAt: now })
+      .set({
+        profileId: profileOpt,
+        committed_amount: incrementStr,
+        updatedAt: now,
+      })
       .where(eq(dealLpInvestor.id, target.id));
 
     return { ok: true };
   }
 
-  const invPatch: { commitmentAmount: string; profileId?: string } = {
-    commitmentAmount: stored,
-  };
-  if (profileOpt) invPatch.profileId = profileOpt;
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT 1 FROM deal_investment WHERE id = ${inv.id}::uuid FOR UPDATE`,
+      );
+      const [fresh] = await tx
+        .select()
+        .from(dealInvestment)
+        .where(eq(dealInvestment.id, inv.id))
+        .limit(1);
+      if (!fresh) {
+        throw new Error("LP_COMMITMENT_ROW_MISSING");
+      }
+      const previous = committedNumericFromDealInvestmentRow(fresh);
+      const newTotal = previous + increment;
+      await tx
+        .update(dealInvestment)
+        .set({
+          commitmentAmount: formatCumulativeCommitmentStored(newTotal),
+          extraContributionAmounts: [],
+          ...(profileOpt ? { profileId: profileOpt } : {}),
+        })
+        .where(eq(dealInvestment.id, inv.id));
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "LP_COMMITMENT_ROW_MISSING") {
+      return {
+        ok: false,
+        message: "Could not update commitment (investment row missing).",
+      };
+    }
+    throw e;
+  }
 
-  await db
-    .update(dealInvestment)
-    .set(invPatch)
-    .where(eq(dealInvestment.id, inv.id));
+  const [invAfterCommit] = await db
+    .select({ commitmentAmount: dealInvestment.commitmentAmount })
+    .from(dealInvestment)
+    .where(eq(dealInvestment.id, inv.id))
+    .limit(1);
+  const syncedCommittedFromInvestment = String(
+    invAfterCommit?.commitmentAmount ?? "",
+  ).trim();
 
   if (!target) {
     if (!viewerUserId) {
@@ -740,12 +915,14 @@ export async function updateMyCommittedAmountForLpDeal(params: {
     });
   }
 
-  if (profileOpt) {
-    await db
-      .update(dealLpInvestor)
-      .set({ profileId: profileOpt, updatedAt: now })
-      .where(eq(dealLpInvestor.id, target.id));
-  }
+  await db
+    .update(dealLpInvestor)
+    .set({
+      committed_amount: syncedCommittedFromInvestment,
+      updatedAt: now,
+      ...(profileOpt ? { profileId: profileOpt } : {}),
+    })
+    .where(eq(dealLpInvestor.id, target.id));
 
   return { ok: true };
 }

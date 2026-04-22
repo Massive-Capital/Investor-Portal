@@ -10,6 +10,7 @@ import {
   getAddDealFormForViewerOrAssignedParticipant,
   listDealsForViewerIncludingAssignedParticipation,
   resolveDealViewerScope,
+  type DealViewerScope,
 } from "../../services/dealAccess.service.js";
 import { sendOfferingPreviewShareEmails } from "../../services/offeringPreviewShareEmail.service.js";
 import {
@@ -61,16 +62,16 @@ import {
 } from "../../utils/offeringPreviewCrypto.js";
 import {
   buildInvestorKpisFromRows,
-  countInvestmentsByDealIds,
   listDealInvestmentsByDealId,
   mapDealInvestmentsToInvestorApi,
 } from "../../services/dealInvestment.service.js";
-import { countExtraLpRosterOnlyByDealIds } from "../../services/dealLpInvestor.service.js";
+import { countDealLpInvestorsByDealIdsForViewer } from "../../services/dealLpInvestor.service.js";
 import { mapLpInvestorRoleDisplayByDealIdForUserEmail } from "../../services/lpInvestorAccess.service.js";
 import {
   listInvestorClassesByDealId,
   mapRowToJson as mapInvestorClassRowToJson,
 } from "../../services/dealInvestorClass.service.js";
+import { enrichDealListRowForApi } from "../../services/dealListRowEnrichment.service.js";
 
 function parseBoolField(
   v: unknown,
@@ -172,14 +173,17 @@ function mapRowToJson(
 const DEALS_ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function mapRowToJsonWithInvestmentCount(row: AddDealFormRow) {
+/**
+ * `listRow.investors` = distinct LP roster rows in `deal_lp_investor` for this deal,
+ * scoped by viewer (platform admin: full roster; company users: rows added by their org).
+ */
+async function mapRowToJsonWithInvestmentCount(
+  row: AddDealFormRow,
+  scope?: DealViewerScope | null,
+) {
   const id = String(row.id);
-  const [counts, extraLp] = await Promise.all([
-    countInvestmentsByDealIds([id]),
-    countExtraLpRosterOnlyByDealIds([id]),
-  ]);
-  const n =
-    (counts.get(id) ?? 0) + (extraLp.get(id) ?? 0);
+  const counts = await countDealLpInvestorsByDealIdsForViewer([id], scope ?? null);
+  const n = counts.get(id) ?? 0;
   return mapRowToJson(row, {
     investmentRowCount: n,
   });
@@ -229,13 +233,10 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
     }
 
     const dealIds = rows.map((r) => String(r.id ?? ""));
-    const [investmentCounts, extraLpCounts] =
+    const lpInvestorCounts =
       dealIds.length > 0
-        ? await Promise.all([
-            countInvestmentsByDealIds(dealIds),
-            countExtraLpRosterOnlyByDealIds(dealIds),
-          ])
-        : [new Map<string, number>(), new Map<string, number>()];
+        ? await countDealLpInvestorsByDealIdsForViewer(dealIds, scope)
+        : new Map<string, number>();
 
     let lpRoleByDealId = new Map<string, string>();
     if (scope.lpInvestorEmailScopedDealIds?.length && rows.length > 0) {
@@ -253,20 +254,27 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
       }
     }
 
-    res.status(200).json({
-      deals: rows.map((r: AddDealFormRow) => {
+    const dealsPayload = await Promise.all(
+      rows.map(async (r: AddDealFormRow) => {
         const id = String(r.id);
-        const n =
-          (investmentCounts.get(id) ?? 0) + (extraLpCounts.get(id) ?? 0);
-        const listRow = mapRowToJson(r, {
-          investmentRowCount: n,
-        }).listRow;
+        const n = lpInvestorCounts.get(id) ?? 0;
+        const enriched = await enrichDealListRowForApi(r);
+        const listRow = {
+          ...mapRowToJson(r, {
+            investmentRowCount: n,
+          }).listRow,
+          ...enriched,
+        };
         if (!scope.lpInvestorEmailScopedDealIds?.length) return listRow;
         return {
           ...listRow,
           yourRole: lpRoleByDealId.get(id) ?? "LP Investor",
         };
       }),
+    );
+
+    res.status(200).json({
+      deals: dealsPayload,
     });
   } catch (err) {
     console.error("getDeals:", err);
@@ -311,7 +319,7 @@ export async function patchDealInvestorSummary(
     }
     res.status(200).json({
       message: "Summary updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     if (err instanceof InvestorSummaryTooLargeError) {
@@ -378,7 +386,7 @@ export async function patchDealAnnouncement(
     }
     res.status(200).json({
       message: "Announcement updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     console.error("patchDealAnnouncement:", err);
@@ -465,7 +473,7 @@ export async function patchDealOfferingOverview(
     }
     res.status(200).json({
       message: "Offering overview updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     console.error("patchDealOfferingOverview:", err);
@@ -507,7 +515,7 @@ export async function patchDealOfferingInvestorPreview(
     }
     res.status(200).json({
       message: "Offering investor preview updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     if (err instanceof OfferingInvestorPreviewJsonInvalidError) {
@@ -564,7 +572,7 @@ export async function patchDealKeyHighlights(
     }
     res.status(200).json({
       message: "Key highlights updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     if (err instanceof KeyHighlightsJsonInvalidError) {
@@ -636,7 +644,7 @@ export async function patchDealGalleryCover(
     }
     res.status(200).json({
       message: "Cover image updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     if (err instanceof GalleryCoverUrlTooLargeError) {
@@ -687,7 +695,7 @@ export async function patchDealOfferingGallery(
     }
     res.status(200).json({
       message: "Offering gallery updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     console.error("patchDealOfferingGallery:", err);
@@ -776,7 +784,7 @@ export async function postDealOfferingGalleryUploads(
     res.status(200).json({
       message: "Gallery images uploaded",
       newPaths,
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     console.error("postDealOfferingGalleryUploads:", err);
@@ -945,7 +953,7 @@ export async function getPublicOfferingPreview(
       res.status(404).json({ message: "Offering not found." });
       return;
     }
-    const deal = await mapRowToJsonWithInvestmentCount(row);
+    const deal = await mapRowToJsonWithInvestmentCount(row, null);
     const classRows = await listInvestorClassesByDealId(dealId);
     const invRows = await listDealInvestmentsByDealId(dealId, {
       lpInvestorsOnly: false,
@@ -989,7 +997,7 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
     const withPreview = await ensureDealOfferingPreviewTokenStored(dealId);
     const rowForJson = withPreview ?? row;
     res.status(200).json({
-      deal: await mapRowToJsonWithInvestmentCount(rowForJson),
+      deal: await mapRowToJsonWithInvestmentCount(rowForJson, scope),
     });
   } catch (err) {
     console.error("getDealById:", err);
@@ -1149,7 +1157,7 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
     }
     res.status(200).json({
       message: "Deal updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated),
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
     if (

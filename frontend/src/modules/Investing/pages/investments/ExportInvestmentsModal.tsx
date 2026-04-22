@@ -1,0 +1,267 @@
+import { Search, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "@/common/components/Toast"
+import type { InvestmentListRow } from "./investments.types"
+import "@/modules/Syndication/InvestorPortal/Deals/components/export-deals-modal.css"
+
+function downloadCsv(content: string, filename: string): void {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
+  const headers = [
+    "Investment name",
+    "Offering name",
+    "Investment profile",
+    "Invested amount",
+    "Distributed amount",
+    "Current valuation",
+    "Deal close date",
+    "Status",
+    "Action required",
+  ]
+  const esc = (v: string) => {
+    const s = String(v ?? "").replace(/"/g, '""')
+    return `"${s}"`
+  }
+  const lines = [headers.join(",")]
+  for (const r of rows) {
+    lines.push(
+      [
+        esc(r.investmentName),
+        esc(r.offeringName),
+        esc(r.investmentProfile),
+        esc(String(r.investedAmount)),
+        esc(String(r.distributedAmount)),
+        esc(r.currentValuation),
+        esc(r.dealCloseDate),
+        esc(r.status),
+        esc(r.actionRequired),
+      ].join(","),
+    )
+  }
+  return lines.join("\n")
+}
+
+interface ExportInvestmentsModalProps {
+  open: boolean
+  onClose: () => void
+  investments: InvestmentListRow[]
+}
+
+export function ExportInvestmentsModal({
+  open,
+  onClose,
+  investments,
+}: ExportInvestmentsModalProps) {
+  const [modalQuery, setModalQuery] = useState("")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const selectAllRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setModalQuery("")
+    setSelectedIds(new Set())
+  }, [open])
+
+  const visibleRows = useMemo(() => {
+    const q = modalQuery.trim().toLowerCase()
+    let list = [...investments]
+    if (q)
+      list = list.filter(
+        (r) =>
+          (r.investmentName ?? "").toLowerCase().includes(q) ||
+          (r.offeringName ?? "").toLowerCase().includes(q),
+      )
+    list.sort((a, b) =>
+      (a.investmentName ?? "").localeCompare(b.investmentName ?? ""),
+    )
+    return list
+  }, [investments, modalQuery])
+
+  const visibleIds = useMemo(
+    () => visibleRows.map((r) => r.id),
+    [visibleRows],
+  )
+
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id))
+
+  useEffect(() => {
+    const el = selectAllRef.current
+    if (!el) return
+    el.indeterminate = someVisibleSelected && !allVisibleSelected
+  }, [someVisibleSelected, allVisibleSelected])
+
+  useEffect(() => {
+    if (!open) return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [open, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    const t = window.setTimeout(() => {
+      panelRef.current
+        ?.querySelector<HTMLInputElement>("input[type='search']")
+        ?.focus()
+    }, 0)
+    return () => window.clearTimeout(t)
+  }, [open])
+
+  const toggleId = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) for (const id of visibleIds) next.delete(id)
+      else for (const id of visibleIds) next.add(id)
+      return next
+    })
+  }, [allVisibleSelected, visibleIds])
+
+  function handleExportExcel() {
+    const chosen = investments.filter((r) => selectedIds.has(r.id))
+    if (chosen.length === 0) return
+    const csv = buildInvestmentsExportCsv(chosen)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const filename = `investments-export-${stamp}.csv`
+    downloadCsv(csv, filename)
+    toast.success("Investments exported", `Saved as ${filename}`)
+    onClose()
+  }
+
+  if (!open) return null
+
+  return (
+    <div className="deals_export_modal_overlay" role="presentation">
+      <div
+        ref={panelRef}
+        className="deals_export_modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="investments-export-modal-title"
+      >
+        <header className="deals_export_modal_head">
+          <h2
+            id="investments-export-modal-title"
+            className="deals_export_modal_title"
+          >
+            Export investments
+          </h2>
+          <button
+            type="button"
+            className="deals_export_modal_close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <X size={20} strokeWidth={2} aria-hidden />
+          </button>
+        </header>
+
+        <p className="deals_export_modal_hint">
+          Search and select investments, then export to Excel (CSV format).
+        </p>
+
+        <div className="deals_export_modal_search">
+          <input
+            type="search"
+            className="deals_export_modal_search_input"
+            placeholder="Search investments…"
+            value={modalQuery}
+            onChange={(e) => setModalQuery(e.target.value)}
+            aria-label="Search investments in export list"
+          />
+          <Search
+            className="deals_export_modal_search_icon"
+            size={18}
+            strokeWidth={2}
+            aria-hidden
+          />
+        </div>
+
+        <label className="deals_export_modal_select_all">
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            checked={allVisibleSelected}
+            onChange={toggleSelectAllVisible}
+            aria-label={`Select all ${visibleRows.length} investment${visibleRows.length === 1 ? "" : "s"} shown`}
+          />
+          <span>
+            Select all
+            {visibleRows.length !== investments.length ? (
+              <span className="deals_export_modal_select_all_meta">
+                {" "}
+                ({visibleRows.length} shown)
+              </span>
+            ) : null}
+          </span>
+        </label>
+
+        <ul className="deals_export_modal_list" aria-label="Investments to export">
+          {visibleRows.length === 0 ? (
+            <li className="deals_export_modal_empty">
+              No investments match your search.
+            </li>
+          ) : (
+            visibleRows.map((row) => (
+              <li key={row.id} className="deals_export_modal_row">
+                <label className="deals_export_modal_row_label">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(row.id)}
+                    onChange={() => toggleId(row.id)}
+                    aria-label={`Select ${row.investmentName}`}
+                  />
+                  <span className="deals_export_modal_row_name">
+                    {row.investmentName || "—"}
+                  </span>
+                  <span className="deals_export_modal_row_meta">
+                    {row.offeringName || "—"}
+                  </span>
+                </label>
+              </li>
+            ))
+          )}
+        </ul>
+
+        <footer className="deals_export_modal_footer">
+          <button
+            type="button"
+            className="deals_export_modal_btn_secondary"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="deals_export_modal_btn_primary"
+            onClick={handleExportExcel}
+            disabled={selectedIds.size === 0}
+          >
+            Export to Excel
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}

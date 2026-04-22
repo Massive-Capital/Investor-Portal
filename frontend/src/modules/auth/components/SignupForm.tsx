@@ -40,6 +40,7 @@ export default function SignupForm() {
   const [linkExpired, setLinkExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [crmPrefillNote, setCrmPrefillNote] = useState(false);
 
   const decode = token
     ? decodeJwtPayload<{ email?: string; companyName?: string; exp?: number }>(
@@ -80,6 +81,49 @@ export default function SignupForm() {
     }
     setLinkExpired(false);
   }, [token]);
+
+  /**
+   * Invite link: JWT carries email (and often company). If that email exists as a CRM
+   * contact, GET /auth/signup/prefill fills first name, last name, and phone.
+   */
+  useEffect(() => {
+    if (!apiV1 || !token || !decodeEmail.trim()) return;
+    const d = decodeJwtPayload<{ exp?: number }>(token);
+    if (!d || (d.exp != null && d.exp < Date.now() / 1000)) return;
+
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const u = new URL(`${apiV1}/auth/signup/prefill`);
+        u.searchParams.set("email", decodeEmail.trim().toLowerCase());
+        const res = await fetch(u.toString(), { signal: ac.signal });
+        const data = (await res.json().catch(() => ({}))) as {
+          found?: boolean;
+          firstName?: string;
+          lastName?: string;
+          phone?: string;
+        };
+        if (!res.ok || !data.found) return;
+        const fn = (data.firstName ?? "").trim();
+        const ln = (data.lastName ?? "").trim();
+        const ph = digitsOnlyPhone(String(data.phone ?? ""));
+        if (!fn && !ln && !ph) return;
+        setSignUpFormData((prev) => ({
+          ...prev,
+          firstName: fn || prev.firstName,
+          lastName: ln || prev.lastName,
+          phone:
+            ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS
+              ? ph
+              : prev.phone,
+        }));
+        setCrmPrefillNote(true);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    })();
+    return () => ac.abort();
+  }, [apiV1, token, decodeEmail]);
 
   const REDIRECT_DELAY_MS = 5000;
   useEffect(() => {
@@ -252,6 +296,21 @@ export default function SignupForm() {
             autoComplete="off"
             onSubmit={handleSubmit}
           >
+            {crmPrefillNote ? (
+              <p
+                className="signup_prefill_hint"
+                role="status"
+                style={{
+                  margin: "0 0 0.85em",
+                  fontSize: "0.875rem",
+                  color: "var(--portal-text-muted, #64748b)",
+                  lineHeight: 1.45,
+                }}
+              >
+                We filled in available details from your contact record for this
+                email.
+              </p>
+            ) : null}
         <div className="signupForm_row">
           <div className="emailData">
             <Input
@@ -436,16 +495,31 @@ export default function SignupForm() {
             checked={termsAccepted}
             onChange={(e) => setTermsAccepted(e.target.checked)}
             disabled={isLoading}
+            aria-required
           />
-          <label htmlFor="termsandpolicy">
-            I agree to the{" "}
-            <Link to="/termsandservices" className="terms">
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link className="policy" to="/privacypolicy">
-              Privacy Policy
-            </Link>
+          <label htmlFor="termsandpolicy" className="signup_terms_label_row">
+            <span className="signup_terms_label_text">
+              I agree to the{" "}
+              <Link to="/termsandservices" className="terms">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link className="policy" to="/privacypolicy">
+                Privacy Policy
+              </Link>
+              <span
+                className="signup_terms_required_mark"
+                title="Required"
+                aria-hidden
+              >
+                {/* <Asterisk
+                  size={14}
+                  strokeWidth={2.5}
+                  className="signup_terms_required_icon"
+                  aria-hidden
+                /> */}
+              </span>
+            </span>
           </label>
         </div>
 
@@ -477,7 +551,7 @@ export default function SignupForm() {
         </div>
           <div>
                   <p className="forgotPassword">
-                    Already have an account!
+                    Already have an account!{" "}
                     <Link to="/signin">
                       <span>Signin</span>
                     </Link>

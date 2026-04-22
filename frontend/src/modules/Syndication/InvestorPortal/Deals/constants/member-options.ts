@@ -1,6 +1,6 @@
 /**
- * Fallback when GET /users returns no rows (offline / no API base).
- * Prefer live directory from `fetchUsersForMemberSelect` in the add-deal-member form.
+ * Legacy label resolution for saved drafts that still reference these ids (not shown in the UI
+ * when the directory API returns no users). Live options come from `fetchUsersForMemberSelect`.
  */
 export const MEMBER_SELECT_OPTIONS = [
   { value: "", label: "Select member" },

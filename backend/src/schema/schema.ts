@@ -54,3 +54,11 @@ export {
   type OrganizationContactListRow,
   type OrganizationContactTagRow,
 } from "./company.schema/organizationContactLabels.schema.js";
+export {
+  userInvestorProfiles,
+  userBeneficiaries,
+  userSavedAddresses,
+  type UserInvestorProfileRow,
+  type UserBeneficiaryRow,
+  type UserSavedAddressRow,
+} from "./investing.schema/userProfileBook.schema.js";

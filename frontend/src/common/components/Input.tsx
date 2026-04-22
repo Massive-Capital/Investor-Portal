@@ -1,3 +1,4 @@
+import { Asterisk } from "lucide-react";
 import "./input.css";
 
 type InputProps = {
@@ -20,7 +21,9 @@ type InputProps = {
   disabled?: boolean;
   /** Merged with `input_field` on the native input */
   inputClassName?: string;
-  required ?: boolean;
+  required?: boolean;
+  /** When false, no mandatory icon is shown next to the label (native `required` unchanged). */
+  requiredIndicator?: boolean;
   "aria-invalid"?: boolean | "true" | "false";
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   autoComplete?: string;
@@ -44,11 +47,13 @@ const Input = ({
   disabled,
   inputClassName,
   required,
+  requiredIndicator = true,
   "aria-invalid": ariaInvalid,
   inputMode,
   autoComplete,
   ...props
 }: InputProps) => {
+  const showRequiredMark = Boolean(required) && requiredIndicator;
   const inputClass = ["input_field", inputClassName].filter(Boolean).join(" ");
   const inputNode =
     type === "textarea" ? (
@@ -91,9 +96,32 @@ const Input = ({
 
   return (
     <div className="input_wrapper">
-      <label htmlFor={id}>
-        {icon && <span>{icon}</span>}
-        {labelName}
+      <label
+        htmlFor={id}
+        className={
+          showRequiredMark
+            ? "input_wrapper__label_row"
+            : undefined
+        }
+      >
+        <span className="input_wrapper__label_leading">
+          {icon && <span className="input_wrapper__label_icon">{icon}</span>}
+          <span className="input_wrapper__label_text">{labelName}</span>
+        </span>
+        {showRequiredMark ? (
+          <span
+            className="input_wrapper__required_mark"
+            title="Required"
+            aria-hidden
+          >
+            <Asterisk
+              className="input_wrapper__required_icon"
+              size={14}
+              strokeWidth={2.5}
+              aria-hidden
+            />
+          </span>
+        ) : null}
       </label>
 
       {type === "textarea" ? (

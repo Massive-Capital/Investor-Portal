@@ -1,7 +1,6 @@
 import { SESSION_BEARER_KEY } from "../../../../../common/auth/sessionKeys"
 import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
-import { getSampleDealInvestorsPayload } from "../dealInvestorsMock"
 import type { AddInvestmentFormValues } from "../deal-members/add-investment/add_deal_member_types"
 import type {
   DealInvestorRow,
@@ -18,10 +17,10 @@ import {
   type DealListRow,
   type DealStepDraft,
 } from "../types/deals.types"
-import { isLpInvestorRole } from "../constants/investor-profile"
 import {
   formatCommittedFromRawParts,
-  formatMoneyFieldDisplay,
+  formatCommittedZeroUsd,
+  formatCurrencyTableDisplay,
 } from "../utils/offeringMoneyFormat"
 import {
   DEFAULT_OFFERING_VISIBILITY,
@@ -279,6 +278,15 @@ function normalizeDealListRow(
       firstDefined(r, ["propertyName", "property_name"]) ?? raw.propertyName,
     ),
     city: str(firstDefined(r, ["city"]) ?? raw.city),
+    investmentType: str(
+      firstDefined(r, ["investmentType", "investment_type"]) ??
+        raw.investmentType,
+      "—",
+    ),
+    propertyType: str(
+      firstDefined(r, ["propertyType", "property_type"]) ?? raw.propertyType,
+      "—",
+    ),
     ...(galleryCoverImageUrl !== undefined
       ? { galleryCoverImageUrl }
       : {}),
@@ -1055,6 +1063,23 @@ export async function postDealOfferingGalleryUploads(
   }
 }
 
+/** Offering document uploads (Documents tab) accept PDF files only. */
+export function isDealOfferingDocumentPdfFile(file: File): boolean {
+  const name = file.name.trim().toLowerCase()
+  if (!name.endsWith(".pdf")) return false
+  const mime = file.type.trim().toLowerCase()
+  if (
+    mime === "" ||
+    mime === "application/pdf" ||
+    mime === "application/x-pdf"
+  ) {
+    return true
+  }
+  /* Some browsers/OS combinations send a generic type for valid PDFs. */
+  if (mime === "application/octet-stream") return true
+  return false
+}
+
 /** Upload offering documents (Documents tab) so preview / investors get stable `/uploads/...` links. */
 export async function postDealOfferingDocumentUploads(
   dealId: string,
@@ -1068,6 +1093,16 @@ export async function postDealOfferingDocumentUploads(
     return { ok: false, message: "VITE_BASE_URL is not configured." }
   if (files.length === 0)
     return { ok: false, message: "No documents to upload." }
+  const nonPdf = files.filter((f) => !isDealOfferingDocumentPdfFile(f))
+  if (nonPdf.length > 0) {
+    return {
+      ok: false,
+      message:
+        nonPdf.length === 1
+          ? `"${nonPdf[0]!.name}" is not a PDF. Only PDF files can be uploaded.`
+          : `Only PDF files can be uploaded. Remove: ${nonPdf.map((f) => f.name).join(", ")}.`,
+    }
+  }
   const fd = new FormData()
   for (const f of files) fd.append("documentFiles", f)
   const res = await fetch(
@@ -1648,8 +1683,8 @@ function normalizeInvestorRowApi(
     fromRawParts !== "—"
       ? fromRawParts
       : hasCommittedString
-        ? formatMoneyFieldDisplay(committedTrimmed)
-        : "—"
+        ? formatCurrencyTableDisplay(committedTrimmed)
+        : formatCommittedZeroUsd()
 
   return {
     id: str(firstDefined(raw, ["id", "investor_id"]) ?? raw.id, `inv-${index}`),
@@ -1687,6 +1722,18 @@ function normalizeInvestorRowApi(
     investorRole: str(
       firstDefined(raw, ["investorRole", "investor_role", "role"]),
     ),
+    memberRoleLabels: (() => {
+      const v =
+        raw.memberRoleLabels ??
+        raw.member_role_labels ??
+        raw.dealMemberRoleLabels ??
+        raw.deal_member_role_labels
+      if (!Array.isArray(v)) return undefined
+      const out = v
+        .map((x) => String(x ?? "").trim())
+        .filter(Boolean)
+      return out.length > 0 ? out : undefined
+    })(),
     status: str(
       firstDefined(raw, [
         "status",
@@ -1757,6 +1804,18 @@ function normalizeInvestorRowApi(
       firstDefined(raw, [
         "addedByDisplayName",
         "added_by_display_name",
+      ]),
+      "—",
+    ),
+    ...(() => {
+      const adder = firstDefined(raw, ["addedByUserId", "added_by_user_id"]);
+      if (adder == null || !String(adder).trim()) return {}
+      return { addedByUserId: String(adder).trim() }
+    })(),
+    addedInvestorsCommitted: str(
+      firstDefined(raw, [
+        "addedInvestorsCommitted",
+        "added_investors_committed",
       ]),
       "—",
     ),
@@ -1848,7 +1907,6 @@ function normalizeDealMembersResponse(data: unknown): DealInvestorRow[] {
 
 /**
  * Loads KPIs + investor rows for the deal detail Investors tab.
- * Set `VITE_USE_MOCK_DEAL_INVESTORS=true` to preview the populated UI without an API.
  * Expected API: `GET /deals/:dealId/investors` → `{ kpis?: {...}, investors: [...] }`.
  * Pass `lpInvestorsOnly` to limit rows to LP investor role (`lpInvestorsOnly=1`).
  */
@@ -1856,17 +1914,6 @@ export async function fetchDealInvestors(
   dealId: string,
   options?: { lpInvestorsOnly?: boolean },
 ): Promise<DealInvestorsPayload> {
-  if (import.meta.env.VITE_USE_MOCK_DEAL_INVESTORS === "true") {
-    const all = getSampleDealInvestorsPayload()
-    if (!options?.lpInvestorsOnly) return all
-    return {
-      ...all,
-      investors: all.investors.filter((r) =>
-        isLpInvestorRole(r.investorRole ?? ""),
-      ),
-    }
-  }
-
   const base = getApiV1Base()
   if (!base) return { kpis: emptyInvestorsKpis(), investors: [] }
   try {
@@ -1947,13 +1994,10 @@ export async function fetchDealCommitmentAmount(
 }
 
 /**
- * GET /deals/:dealId/members — roster from `deal_member` merged with latest investment per contact.
+ * GET /deals/:dealId/members — roster from `deal_member` merged with investments
+ * (commitment = sum of all `deal_investment` rows per contact on this deal).
  */
 export async function fetchDealMembers(dealId: string): Promise<DealInvestorRow[]> {
-  if (import.meta.env.VITE_USE_MOCK_DEAL_INVESTORS === "true") {
-    return getSampleDealInvestorsPayload().investors
-  }
-
   const base = getApiV1Base()
   if (!base) return []
   try {
@@ -1970,6 +2014,24 @@ export async function fetchDealMembers(dealId: string): Promise<DealInvestorRow[
   } catch {
     return []
   }
+}
+
+export interface DealReviewSummary {
+  reviewRating: number
+  reviewCount: number
+}
+
+/**
+ * Optional enrichment when the list API omits review fields. If you add
+ * `GET /deals/:dealId/review-summary` → `{ reviewRating, reviewCount }` (or
+ * snake_case), implement a `fetch` here (same pattern as `fetchDealMembers`).
+ * The current backend has no such route, so this returns `null` and the
+ * dashboard uses `DealListRow.reviewRating` / `reviewCount` from the list.
+ */
+export async function fetchDealReviewSummary(
+  _dealId: string,
+): Promise<DealReviewSummary | null> {
+  return null
 }
 
 export type PostDealMemberInvitationEmailResult =
@@ -2054,7 +2116,10 @@ export type PatchMyLpDealCommitmentResult =
   | { ok: true; investorsPayload: DealInvestorsPayload }
   | { ok: false; message: string }
 
-/** PATCH `/deals/:dealId/lp-investors/my-commitment` — LP sets committed amount + profile. */
+/**
+ * PATCH `/deals/:dealId/lp-investors/my-commitment` — LP adds an amount to their cumulative
+ * commitment for this deal (same investor profile row); first commit uses this as the initial total.
+ */
 export async function patchMyLpDealCommitment(
   dealId: string,
   committedAmount: string,
@@ -2080,7 +2145,10 @@ export async function patchMyLpDealCommitment(
         }),
       },
     )
+
+    console.log("response =>", res);
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    console.log("data =>", data);
     if (!res.ok) {
       const msg =
         typeof data.message === "string"
@@ -2121,6 +2189,7 @@ export async function postDealLpInvestor(
     contact_display_name: values.contactDisplayName?.trim() ?? "",
     investor_class: values.investorClass,
     send_invitation_mail: values.sendInvitationMail ?? "no",
+    profile_id: String(values.profileId ?? "").trim(),
   }
   const ce = values.contactEmail?.trim()
   if (ce) body.contact_email = ce
@@ -2176,6 +2245,7 @@ export async function putDealLpInvestor(
     contact_display_name: values.contactDisplayName?.trim() ?? "",
     investor_class: values.investorClass,
     send_invitation_mail: values.sendInvitationMail ?? "no",
+    profile_id: String(values.profileId ?? "").trim(),
   }
   const ce = values.contactEmail?.trim()
   if (ce) body.contact_email = ce
@@ -2229,7 +2299,11 @@ function appendDealInvestmentMultipartFields(
   fd.append("status", values.status)
   fd.append("investor_class", values.investorClass)
   fd.append("doc_signed_date", values.docSignedDate)
-  fd.append("commitment_amount", values.commitmentAmount)
+  /* Backend rejects blank; autosave uses "0". Add Member / hidden fields send no amount — same default. */
+  fd.append(
+    "commitment_amount",
+    values.commitmentAmount.trim() !== "" ? values.commitmentAmount.trim() : "0",
+  )
   fd.append(
     "extra_contribution_amounts",
     JSON.stringify(values.extraContributionAmounts),

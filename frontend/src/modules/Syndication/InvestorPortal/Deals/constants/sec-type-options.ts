@@ -10,7 +10,7 @@ export const SEC_TYPE_OPTIONS: readonly SecTypeSelectOption[] = [
   { value: "506_c", label: "506(c)" },
   // { value: "Send Funding Instructions after GP", label: "Send Funding Instructions after GP" },
   // { value: "countersigns YES = Most common", label: "countersigns YES = Most common" },
-  { value: "jv", label: "JV" },
+  { value: "joint_venture", label: "Joint venture" },
   // { value: "intrastate", label: "Intrastate" },
   // { value: "joint_venture", label: "Joint venture" },
   // { value: "lending", label: "Lending" },

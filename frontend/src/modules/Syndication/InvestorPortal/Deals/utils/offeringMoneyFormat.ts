@@ -8,6 +8,27 @@ export function parseMoneyDigits(s: string): number {
 }
 
 /**
+ * USD for deal investor / member tables: always two fraction digits (e.g. $1,234.00).
+ */
+export function formatCurrencyTableDisplay(raw: string | undefined | null): string {
+  const t = String(raw ?? "").trim()
+  if (!t || t === "—") return "—"
+  const n = parseMoneyDigits(t)
+  if (!Number.isFinite(n)) return t
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+/** USD $0.00 for committed amount when none or zero (matches table column). */
+export function formatCommittedZeroUsd(): string {
+  return formatCurrencyTableDisplay("0")
+}
+
+/**
  * Sum commitment + extra amounts (same idea as backend `formatCommitted`) for display
  * when the API omits a pre-formatted `committed` string but sends raw amounts.
  */
@@ -21,12 +42,7 @@ export function formatCommittedFromRawParts(
     .filter((n) => Number.isFinite(n))
   if (nums.length === 0) return "—"
   const sum = nums.reduce((a, b) => a + b, 0)
-  if (sum === 0) return "—"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(sum)
+  return formatCurrencyTableDisplay(String(sum))
 }
 
 /**
@@ -35,12 +51,20 @@ export function formatCommittedFromRawParts(
  */
 export function displayInvestorCommittedAmount(row: DealInvestorRow): string {
   const c = String(row.committed ?? "").trim()
-  if (c && c !== "—") return c
+  if (c && c !== "—") return formatCurrencyTableDisplay(c)
   const fromParts = formatCommittedFromRawParts(
     String(row.commitmentAmountRaw ?? "").trim(),
     row.extraContributionAmounts ?? [],
   )
-  return fromParts !== "—" ? fromParts : "—"
+  if (fromParts !== "—") return fromParts
+  return formatCommittedZeroUsd()
+}
+
+/** Deal Members: committed total from other investors this member added (see API field). */
+export function displayAddedInvestorsCommittedAmount(row: DealInvestorRow): string {
+  const c = String(row.addedInvestorsCommitted ?? "").trim()
+  if (c && c !== "—") return formatCurrencyTableDisplay(c)
+  return "—"
 }
 
 /** Format for KPI / read-only display: $1,234 or $1,234.56 */

@@ -23,6 +23,7 @@ import {
 } from "../utils/offeringOverviewForm"
 import { investorClassRowToFormValues } from "./OfferingInformationSection"
 import { OfferingOverviewAssetsMultiSelect } from "./OfferingOverviewAssetsMultiSelect"
+import { OfferingOverviewLocationMap } from "./OfferingOverviewLocationMap"
 
 type OfferingOverviewSectionProps = {
   detail: DealDetailApi
@@ -318,6 +319,8 @@ export function OfferingOverviewSection({
         under <strong>Classes</strong>. Property location and entity details
         remain on the main deal profile.
       </p>
+
+      <OfferingOverviewLocationMap detail={detail} />
 
       <div className="deal_kh">
         <div className="deal_kh_table" role="table" aria-label="Offering overview">

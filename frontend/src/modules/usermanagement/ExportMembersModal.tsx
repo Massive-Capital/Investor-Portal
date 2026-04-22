@@ -4,8 +4,14 @@ import "../Syndication/InvestorPortal/Deals/components/export-deals-modal.css"
 import {
   accountStatusLabel,
   formatMemberUsername,
+  formatMembershipsCsvCell,
+  formatOrganizationsCsvCell,
+  formatRoleCsvCell,
   formatValue,
   memberRoleDisplayName,
+  membershipsSortValue,
+  organizationsSortValue,
+  primaryRoleLabelFromRow,
   rowDisplayName,
 } from "./memberAdminShared"
 import {
@@ -20,7 +26,6 @@ interface ExportMembersModalProps {
   open: boolean
   onClose: () => void
   members: Record<string, unknown>[]
-  showCompanyColumn: boolean
 }
 
 function memberDisplayLabel(row: Record<string, unknown>): string {
@@ -36,7 +41,6 @@ export function ExportMembersModal({
   open,
   onClose,
   members,
-  showCompanyColumn,
 }: ExportMembersModalProps) {
   const [modalQuery, setModalQuery] = useState("")
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
@@ -63,6 +67,12 @@ export function ExportMembersModal({
           formatValue(r.phone),
           formatValue(r.role),
           memberRoleDisplayName(r.role),
+          primaryRoleLabelFromRow(r),
+          membershipsSortValue(r),
+          organizationsSortValue(r),
+          formatRoleCsvCell(r),
+          formatOrganizationsCsvCell(r),
+          formatMembershipsCsvCell(r),
           formatValue(r.userStatus),
           accountStatusLabel(r),
         ]
@@ -138,7 +148,7 @@ export function ExportMembersModal({
     const keySet = selectedKeys
     const chosen = members.filter((r) => keySet.has(keyForRow(r)))
     if (chosen.length === 0) return
-    const csv = buildMembersCsv(chosen, showCompanyColumn)
+    const csv = buildMembersCsv(chosen)
     const stamp = new Date().toISOString().slice(0, 10)
     downloadMembersCsv(csv, `members-export-${stamp}.csv`)
     void notifyMembersExportAudit({

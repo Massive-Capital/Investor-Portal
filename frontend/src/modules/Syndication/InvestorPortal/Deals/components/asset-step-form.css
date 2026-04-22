@@ -20,7 +20,7 @@
   padding-right: 0;
   background: transparent;
   /* Match boxed fields: same type scale and min height as .deals_create_input */
-  min-height: var(--deals-control-height, 2.75rem);
+  /* min-height: var(--deals-control-height, 2.75rem); */
   font-size: var(--deals-control-size, 0.9375rem);
   line-height: var(--deals-control-line-height, 1.45);
   padding-top: var(--deals-control-padding-y, 0.5rem);
