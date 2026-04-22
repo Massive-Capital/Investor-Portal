@@ -93,3 +93,8 @@ export function blurFormatMoneyInput(raw: string): string {
     maximumFractionDigits: 2,
   }).format(n)
 }
+
+/** Committed-amount field: live typing + prefill (same rules as blur). */
+export function formatCurrencyUsdTypeInput(raw: string): string {
+  return blurFormatMoneyInput(raw)
+}

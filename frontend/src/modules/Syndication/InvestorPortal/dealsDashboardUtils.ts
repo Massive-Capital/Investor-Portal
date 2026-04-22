@@ -51,6 +51,9 @@ export interface DealRecord {
   createdAt?: string
   /** Resolved `/uploads/...` URL for dashboard card cover */
   coverImageUrl?: string
+  /** List API (optional) — merged with per-deal client seeding on cards. */
+  reviewRating?: number
+  reviewCount?: number
 }
 
 export function dealStageLabel(code: string): string {
@@ -267,6 +270,10 @@ export function dealListRowToDealRecord(row: DealListRow): DealRecord {
     closeDateDisplay: row.closeDateDisplay,
     createdAt: row.createdAt,
     ...(cover ? { coverImageUrl: cover } : {}),
+    ...(row.reviewRating != null && Number.isFinite(row.reviewRating)
+      ? { reviewRating: row.reviewRating }
+      : {}),
+    ...(typeof row.reviewCount === "number" ? { reviewCount: row.reviewCount } : {}),
   }
 }
 

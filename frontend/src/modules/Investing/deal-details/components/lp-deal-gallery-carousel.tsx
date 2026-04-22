@@ -45,7 +45,7 @@ export function LpDealGalleryCarousel({
       <div className="lpdd_hero_carousel_frame">
         <img
           src={current}
-          alt=""
+          alt={title.trim() ? title : "Property image"}
           className="lpdd_hero_carousel_img"
           loading={index === 0 ? "eager" : "lazy"}
         />
