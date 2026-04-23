@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
-import { filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope"
+import { filterDealListToInvestingDealsPage } from "@/modules/Investing/utils/investingViewerDealScope"
 import {
   DataTable,
   type DataTableColumn,
@@ -23,6 +23,7 @@ import {
   deleteDeal,
   fetchDealInvestorClasses,
   fetchDealInvestors,
+  fetchDealMembers,
   fetchDealsList,
   isDealListRowIncomplete,
 } from "./api/dealsApi"
@@ -55,7 +56,7 @@ import {
   formatDealListDateDisplay,
 } from "./dealsListDisplay"
 import { DealInvestorRoleBadge } from "./components/DealInvestorRoleBadge"
-import { resolveViewerDealInvestorRoleRaw } from "./utils/dealDetailTabVisibility"
+import { resolveViewerDealMemberMatch } from "./utils/dealDetailTabVisibility"
 import "../../../usermanagement/user_management.css"
 import "./deal-members/add-investment/add_deal_modal.css"
 import "./deal-investors-tab.css"
@@ -264,8 +265,11 @@ export function DealsListPage({
         remainingRaw: string
         investorCount: number
         investorClassesLine: string
-        /** Investing list: roster `investor_role` for the signed-in user on this deal. */
-        viewerDealInvestorRoleRaw?: string | null
+        /** Signed-in user’s deal roster row: from deal members (Investing) or investors payload (Syndicating). */
+        viewerRoleMatch: {
+          investorRole?: string
+          memberRoleLabels?: string[]
+        } | null
       }
     >
   >({})
@@ -283,7 +287,7 @@ export function DealsListPage({
       setLoading(true)
       let list = await loadDealsList()
       if (dealsListContext === "investing" && list.length > 0) {
-        list = await filterDealListToViewerInvested(list)
+        list = await filterDealListToInvestingDealsPage(list)
       }
       if (!cancelled) {
         setRows(list)
@@ -313,7 +317,7 @@ export function DealsListPage({
       void (async () => {
         let list = await loadDealsList()
         if (dealsListContext === "investing" && list.length > 0) {
-          list = await filterDealListToViewerInvested(list)
+          list = await filterDealListToInvestingDealsPage(list)
         }
         setRows(list)
       })()
@@ -367,8 +371,7 @@ export function DealsListPage({
     }
     let cancelled = false
     void (async () => {
-      const sessionEmail =
-        dealsListContext === "investing" ? getSessionUserEmail() : ""
+      const sessionEmail = getSessionUserEmail() ?? ""
       const em = sessionEmail.trim().toLowerCase()
       const investFetchOpts =
         dealsListContext === "investing"
@@ -377,25 +380,30 @@ export function DealsListPage({
       const entries = await Promise.all(
         ids.map(async (id) => {
           try {
-            const [{ kpis, investors }, classes] = await Promise.all([
-              fetchDealInvestors(id, investFetchOpts),
-              dealsListContext === "investing"
-                ? Promise.resolve([] as Awaited<
-                    ReturnType<typeof fetchDealInvestorClasses>
-                  >)
-                : fetchDealInvestorClasses(id),
-            ])
+            const [{ kpis, investors }, classes, membersRoster] =
+              await Promise.all([
+                fetchDealInvestors(id, investFetchOpts),
+                dealsListContext === "investing"
+                  ? Promise.resolve([] as Awaited<
+                      ReturnType<typeof fetchDealInvestorClasses>
+                    >)
+                  : fetchDealInvestorClasses(id),
+                dealsListContext === "investing"
+                  ? fetchDealMembers(id)
+                  : Promise.resolve([] as Awaited<ReturnType<typeof fetchDealMembers>>),
+              ])
             const investorClassesLine = classes
               .map((c) => String(c.name ?? "").trim())
               .filter(Boolean)
               .join(", ")
-            let viewerDealInvestorRoleRaw: string | null | undefined
-            if (dealsListContext === "investing" && em) {
-              viewerDealInvestorRoleRaw = resolveViewerDealInvestorRoleRaw(
-                investors,
-                sessionEmail,
-              )
-            }
+            const roleRows =
+              dealsListContext === "investing" && membersRoster.length > 0
+                ? membersRoster
+                : investors
+            const viewerRoleMatch =
+              em && em.includes("@")
+                ? resolveViewerDealMemberMatch(roleRows, sessionEmail)
+                : null
             return [
               id,
               {
@@ -404,9 +412,7 @@ export function DealsListPage({
                 remainingRaw: kpis.remaining,
                 investorCount: investors.length,
                 investorClassesLine,
-                ...(dealsListContext === "investing"
-                  ? { viewerDealInvestorRoleRaw: viewerDealInvestorRoleRaw ?? null }
-                  : {}),
+                viewerRoleMatch: viewerRoleMatch ?? null,
               },
             ] as const
           } catch {
@@ -418,9 +424,7 @@ export function DealsListPage({
                 remainingRaw: "—",
                 investorCount: 0,
                 investorClassesLine: "",
-                ...(dealsListContext === "investing"
-                  ? { viewerDealInvestorRoleRaw: null as string | null }
-                  : {}),
+                viewerRoleMatch: null,
               },
             ] as const
           }
@@ -549,27 +553,36 @@ export function DealsListPage({
       },
     }
 
-    const investingYourRoleColumn: DataTableColumn<DealListRow> = {
+    const yourRoleColumn: DataTableColumn<DealListRow> = {
       id: "yourRole",
       header: (
         <DealTableColumnHeader
           label="Your role"
-          hint="Your role on this deal’s roster (for example lead sponsor or LP investor)."
+          hint="Your role on this deal’s roster (for example lead sponsor, co-sponsor, or LP investor)."
         />
       ),
       align: "center",
       thClassName: "deals_th_align_center",
-      sortValue: (row) =>
-        (
-          investorMetricsByDealId[row.id]?.viewerDealInvestorRoleRaw ?? ""
-        ).toLowerCase(),
+      sortValue: (row) => {
+        const m = investorMetricsByDealId[row.id]?.viewerRoleMatch
+        if (!m) return ""
+        const s =
+          m.memberRoleLabels?.find((t) => String(t ?? "").trim())?.trim() ??
+          String(m.investorRole ?? "").trim()
+        if (!s || s === "—") return ""
+        return s.toLowerCase()
+      },
       cell: (row) => {
-        const raw =
-          investorMetricsByDealId[row.id]?.viewerDealInvestorRoleRaw ?? null
-        if (!raw?.trim()) {
+        const m = investorMetricsByDealId[row.id]?.viewerRoleMatch
+        if (!m) {
           return <span className="um_status_muted">—</span>
         }
-        return <DealInvestorRoleBadge investorRole={raw} />
+        return (
+          <DealInvestorRoleBadge
+            investorRole={m.investorRole}
+            memberRoleLabels={m.memberRoleLabels}
+          />
+        )
       },
     }
 
@@ -763,9 +776,8 @@ export function DealsListPage({
     const dataCols: DataTableColumn<DealListRow>[] = [
       nameColumn,
       dealStageColumn,
-      ...(dealsListContext === "investing"
-        ? [investingYourRoleColumn, ...investingPreviewColumns]
-        : []),
+      yourRoleColumn,
+      ...(dealsListContext === "investing" ? investingPreviewColumns : []),
       startColumn,
       closeColumn,
       ...(dealsListContext === "syndicating" ? syndicatingFinancialColumns : []),

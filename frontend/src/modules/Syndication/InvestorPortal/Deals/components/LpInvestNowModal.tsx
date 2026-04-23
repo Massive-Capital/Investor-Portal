@@ -8,10 +8,16 @@ import {
   X,
 } from "lucide-react"
 import { useCallback, useEffect, useId, useState } from "react"
+import { toast } from "../../../../../common/components/Toast"
 import { DropdownSelect } from "../../../../../common/components/dropdown-select"
 import { patchMyLpDealInvestNowCommitment } from "../api/lpInvestNowCommitmentApi"
 import { INVESTOR_PROFILE_SELECT_OPTIONS } from "../constants/investor-profile"
 import type { DealInvestorsPayload } from "../types/deal-investors.types"
+import {
+  blurFormatMoneyInput,
+  formatCurrencyUsdTypeInput,
+  parseMoneyDigits,
+} from "../utils/offeringMoneyFormat"
 import { fetchLpInvestNowPrefill } from "../utils/prefillLpInvestNowFields"
 import "../../../../contacts/contacts.css"
 import "../deal-members/add-investment/add_deal_modal.css"
@@ -79,8 +85,7 @@ export function LpInvestNowModal({
       setError("Select an investor profile")
       return
     }
-    const raw = String(amount).replace(/[$,\s]/g, "").trim()
-    const n = Number(raw)
+    const n = parseMoneyDigits(String(amount).trim())
     if (!Number.isFinite(n) || n <= 0) {
       setError("Enter a committed amount greater than 0")
       return
@@ -97,6 +102,10 @@ export function LpInvestNowModal({
       setError(res.message)
       return
     }
+    toast.success(
+      "Committed successfully",
+      "Your investment commitment was saved successfully.",
+    )
     onSuccess(res.investorsPayload, {
       profileId: profile.trim(),
       committedAmount: n,
@@ -211,11 +220,18 @@ export function LpInvestNowModal({
                   className="deals_add_inv_input deals_add_inv_field_control"
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="e.g. 25000"
+                  placeholder="e.g. $25,000"
                   value={amount}
                   onChange={(e) => {
-                    setAmount(e.target.value)
+                    setAmount(formatCurrencyUsdTypeInput(e.target.value))
                     if (error) setError("")
+                  }}
+                  onBlur={() => {
+                    if (!amount.trim()) {
+                      setAmount("")
+                      return
+                    }
+                    setAmount(blurFormatMoneyInput(amount))
                   }}
                   disabled={submitting}
                   aria-invalid={Boolean(error)}

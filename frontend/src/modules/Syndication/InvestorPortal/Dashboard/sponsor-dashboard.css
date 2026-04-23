@@ -28,6 +28,13 @@ a.sponsor_dash_add_link.um_btn_secondary {
   gap: 1em;
   margin-bottom: 2em;
 }
+.sponsor_dash_metrics_investing_mode {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  /* grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); */
+  gap: 1em;
+  margin-bottom: 2em;
+}
 
 .sponsor_dash_section_title {
   margin: 0;
@@ -398,6 +405,13 @@ a.deal_card_link:focus-visible {
 .sponsor_dash_syndicating .tool_style_card {
   background: #f6f6f6;
 }
+.sponsor_dash_metrics_investing_mode .tool_style_card {
+  background: #f6f6f6;
+}
+
+.sponsor_dash_investing .tool_style_card_icon_box {
+  background: #f6f6f6;
+}
 
 .sponsor_dash_syndicating .tool_style_card_icon_box {
   background: #f6f6f6;
@@ -446,6 +460,8 @@ a.deal_card_link:focus-visible {
 
 :root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card,
 :root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card_icon_box,
+:root[data-theme="dark"] .sponsor_dash_investing .tool_style_card,
+:root[data-theme="dark"] .sponsor_dash_investing .tool_style_card_icon_box,
 :root[data-theme="dark"] .sponsor_dash_syndicating .deal_card,
 :root[data-theme="dark"] .sponsor_dash_investing .deal_card,
 :root[data-theme="dark"] .sponsor_dash_syndicating .um_table_wrap.data_table_shell,

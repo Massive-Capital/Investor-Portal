@@ -4,6 +4,7 @@ import emailConfig, {
   smtpEnvelopeForSendMail,
 } from "../functions/emailconfig.js";
 import {
+  type DealInvitationSource,
   buildDealMemberInvitationEmailHtml,
   buildDealMemberInvitationEmailText,
 } from "../functions/dealMemberInvitationEmail.template.js";
@@ -19,10 +20,21 @@ const SENDER_DISPLAY_NAME =
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function defaultSubject(dealName: string): string {
+function defaultSubject(
+  dealName: string,
+  source: DealInvitationSource,
+  dealMemberRoleLabel: string,
+): string {
   const custom = process.env.DEAL_MEMBER_INVITE_SUBJECT?.trim();
   if (custom) return custom.replace(/\{dealName\}/g, dealName);
-  return `You're invited to ${dealName}`;
+  if (source === "investor") {
+    return `You're invited to ${dealName} as an investor`;
+  }
+  const r = dealMemberRoleLabel.trim();
+  if (r && r !== "—") {
+    return `You're invited to ${dealName} — ${r}`;
+  }
+  return `You're invited to ${dealName} (deal team)`;
 }
 
 /**
@@ -62,6 +74,12 @@ export interface SendDealMemberInvitationParams {
   dealId: string
   toEmail: string
   memberDisplayName?: string
+  /**
+   * `investor` — from Investors tab; `deal_member` — from Deal members (email names the tab Role).
+   */
+  invitationSource: DealInvitationSource
+  /** Shown in subject/body when `invitationSource` is `deal_member`. */
+  dealMemberRoleLabel: string
 }
 
 export async function sendDealMemberInvitationEmail(
@@ -75,6 +93,8 @@ export async function sendDealMemberInvitationEmail(
   const deal = await getAddDealFormById(params.dealId);
   const dealName = deal?.dealName?.trim() || "this deal";
   const memberDisplayName = params.memberDisplayName?.trim() || "";
+  const invitationSource = params.invitationSource;
+  const dealMemberRoleLabel = (params.dealMemberRoleLabel ?? "").trim();
   const portalUrl =
     (await buildDealMemberInviteLandingUrl(params.dealId, to)) || "";
 
@@ -97,6 +117,8 @@ export async function sendDealMemberInvitationEmail(
       memberEmail: to,
       portalDealUrl: portalUrl,
       senderBrand: SENDER_DISPLAY_NAME,
+      invitationSource,
+      dealMemberRoleLabel,
     });
     const text = buildDealMemberInvitationEmailText({
       dealName,
@@ -104,6 +126,8 @@ export async function sendDealMemberInvitationEmail(
       memberEmail: to,
       portalDealUrl: portalUrl,
       senderBrand: SENDER_DISPLAY_NAME,
+      invitationSource,
+      dealMemberRoleLabel,
     });
 
     await transporter.sendMail({
@@ -119,7 +143,7 @@ export async function sendDealMemberInvitationEmail(
         cc: ccBcc.cc,
         bcc: ccBcc.bcc,
       }),
-      subject: defaultSubject(dealName),
+      subject: defaultSubject(dealName, invitationSource, dealMemberRoleLabel),
       text,
       html,
     });
@@ -149,6 +173,8 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
     dealId: input.dealId,
     toEmail: to,
     memberDisplayName: input.contactDisplayName,
+    invitationSource: "investor",
+    dealMemberRoleLabel: "",
   });
   if (!result.ok) {
     console.warn(

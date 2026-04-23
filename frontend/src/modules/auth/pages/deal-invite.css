@@ -101,15 +101,16 @@
   font-size: 0.9375rem;
   text-decoration: none;
   box-sizing: border-box;
-  background-color: #f8f8f8;
-  color: #111827;
+  background: var(--ui-button-background-add);
+  /* background-color: #f8f8f8; */
+  color: white;
   border: 1px solid #e5e5e5;
   cursor: pointer;
 }
 
 .deal_invite_btn_primary:hover {
-  background-color: #efefef;
-  border-color: #d4d4d4;
+  background: var(--ui-button-hover);
+    /* border-color: #d4d4d4; */
 }
 
 /*
@@ -126,16 +127,17 @@
   font-size: 0.9375rem;
   text-decoration: none;
   box-sizing: border-box;
-  color: #f8f8f8;
-  background: #1e293b;
-  border: 1px solid #f8f8f8;
+  color: var(--ui-button-background-add);
+  background-color: #f8f8f8;
+  /* background: var(--ui-button-background-add); */
+  border: 1px solid var(--ui-button-background-add);
 }
 
-.deal_invite_btn_secondary:hover {
+/* .deal_invite_btn_secondary:hover {
   background: #334155;
   border-color: #f8f8f8;
   color: #f8f8f8;
-}
+} */
 
 .deal_invite_icon_warn {
   color: var(--portal-warning, #d97706);

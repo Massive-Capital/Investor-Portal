@@ -76,7 +76,7 @@ export function DealInvestorRoleBadge({
   }
 
   return (
-    <div className="deal_inv_roles_stack" role="list" aria-label="Deal roles">
+    <div className="deal_inv_roles_stack" role="list" aria-label="Roles">
       {labels.map((label) => {
         const Icon = pickIconForRoleLabel(label)
         return (

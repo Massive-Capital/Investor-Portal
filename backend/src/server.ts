@@ -42,12 +42,11 @@ app.use(
       return cb(null, true);
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Accept",
-      "X-Requested-With",
-    ],
+    /**
+     * Omitted: let `cors` echo `Access-Control-Request-Headers` from the browser. A fixed
+     * list (esp. in Edge) can preflight-fail for multipart+Authorization when the browser
+     * sends a slightly different set of request-header names.
+     */
     credentials: true,
     optionsSuccessStatus: 204,
   }),

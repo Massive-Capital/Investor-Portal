@@ -4,6 +4,7 @@ import {
   Mail,
   MoreHorizontal,
   Pencil,
+  Send,
   Trash2,
   X,
 } from "lucide-react"
@@ -33,7 +34,7 @@ export interface DealMemberRowActionsProps {
   confirmBeforeDelete?: boolean
   /** Session draft row: first menu item is "Continue editing" (opens add-member flow). */
   draftRow?: boolean
-  /** Invitation email already sent — disables Send mail and shows “Invitation sent”. */
+  /** When true, the mail action label becomes “Re-send invitation mail”. */
   invitationMailSent?: boolean
   /**
    * When false, “Copy offering link” is disabled (e.g. visibility is not “Only visible with link”).
@@ -321,35 +322,42 @@ export function DealMemberRowActions({
                   <button
                     type="button"
                     className={`um_kebab_menuitem${
-                      draftRow || invitationMailSent
-                        ? " um_kebab_menuitem_disabled"
-                        : ""
+                      draftRow ? " um_kebab_menuitem_disabled" : ""
                     }`}
                     role="menuitem"
-                    disabled={draftRow || invitationMailSent}
+                    disabled={draftRow}
                     title={
                       draftRow
                         ? "Available after the member is saved"
                         : invitationMailSent
-                          ? "Invitation email was already sent"
+                          ? "Send another invitation email"
                           : undefined
                     }
                     onClick={() => {
-                      if (draftRow || invitationMailSent) return
+                      if (draftRow) return
                       runMenuAction(() => onSendInvite(row))
                     }}
                   >
-                    <Mail
-                      className="um_kebab_menuitem_icon"
-                      size={16}
-                      strokeWidth={2}
-                      aria-hidden
-                    />
+                    {draftRow || !invitationMailSent ? (
+                      <Mail
+                        className="um_kebab_menuitem_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    ) : (
+                      <Send
+                        className="um_kebab_menuitem_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                    )}
                     {draftRow
-                      ? "Send invitation email"
+                      ? "Send invitation mail"
                       : invitationMailSent
-                        ? "Invitation sent"
-                        : "Send invitation email"}
+                        ? "Re-send invitation mail"
+                        : "Send invitation mail"}
                   </button>
                 </li>
                 <li role="none">

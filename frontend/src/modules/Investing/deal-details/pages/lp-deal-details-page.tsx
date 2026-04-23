@@ -149,9 +149,9 @@ export function LpDealDetailsPage({
                     {deal.listRow.locationDisplay}
                   </p>
                 ) : null}
-                {viewerRoleLabel ? (
+                {/* {viewerRoleLabel ? (
                   <p className="lpdd_role_note">Your role: {viewerRoleLabel}</p>
-                ) : null}
+                ) : null} */}
               </div>
 
               <div className="lpdd_hero_cta_row">

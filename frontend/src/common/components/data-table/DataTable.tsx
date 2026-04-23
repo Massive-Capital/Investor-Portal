@@ -26,6 +26,11 @@ type DataTableProps<T> = {
   emptyLabel: string;
   /** `role` on the empty-state message when `visualVariant` is `members` (e.g. `status` while loading). */
   emptyStateRole?: "status" | "presentation";
+  /**
+   * Members variant: show a single body row with a centered spinner (table headers still visible).
+   * Use instead of a separate loading block above the table.
+   */
+  isLoading?: boolean;
   /** Use Members page table chrome (`.um_table`, sort headers, wrap). */
   visualVariant?: "default" | "members";
   /** Extra classes on `<table>` when `visualVariant` is `members` (e.g. `um_table_members`). */
@@ -95,6 +100,7 @@ export function DataTable<T>({
   initialSort,
   onBodyRowClick,
   stickyFirstColumn: stickyFirstColumnProp,
+  isLoading = false,
 }: DataTableProps<T>) {
   const stickyFirstColumn =
     stickyFirstColumnProp ?? visualVariant === "members";
@@ -284,7 +290,21 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && visualVariant === "members" ? (
+          {isLoading && visualVariant === "members" ? (
+            <tr>
+              <td
+                colSpan={columns.length}
+                className="data_table_empty_members_cell data_table_members_loading_cell"
+                role="status"
+                aria-label="Loading"
+              >
+                <div
+                  className="data_table_loader_spinner"
+                  aria-hidden
+                />
+              </td>
+            </tr>
+          ) : rows.length === 0 && visualVariant === "members" ? (
             <tr>
               <td
                 colSpan={columns.length}

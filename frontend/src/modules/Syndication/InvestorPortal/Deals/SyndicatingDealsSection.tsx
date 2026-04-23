@@ -25,6 +25,7 @@ import {
   dateSortValue,
   formatDealListDateDisplay,
 } from "./dealsListDisplay"
+import { filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope"
 import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import "./deals-list.css"
@@ -44,6 +45,11 @@ interface SyndicatingDealsSectionProps {
    * “Deals” page (org deals plus roster-linked participant deals).
    */
   includeParticipantDeals?: boolean
+  /**
+   * When true (e.g. investor home), the list is limited to deals where the signed-in
+   * user has a positive committed amount, matching `/investing/deals` scope.
+   */
+  onlyDealsWithViewerCommitment?: boolean
   /** Visible section title for the deals block (default: “Deals dashboard”). */
   dealsSectionTitle?: string
 }
@@ -53,6 +59,7 @@ export function SyndicatingDealsSection({
   hideDealsHeading = false,
   dealsHeadingId = "sponsor-deals-heading",
   includeParticipantDeals = false,
+  onlyDealsWithViewerCommitment = false,
   dealsSectionTitle = "Deals dashboard",
 }: SyndicatingDealsSectionProps) {
   const [query, setQuery] = useState("")
@@ -69,9 +76,11 @@ export function SyndicatingDealsSection({
     let cancelled = false
     void (async () => {
       setLoading(true)
-      const list = await fetchDealsList(
+      let list = await fetchDealsList(
         includeParticipantDeals ? { includeParticipantDeals: true } : undefined,
       )
+      if (onlyDealsWithViewerCommitment && list.length > 0)
+        list = await filterDealListToViewerInvested(list)
       if (cancelled) return
       if (list.length === 0) {
         setDeals([])
@@ -103,15 +112,17 @@ export function SyndicatingDealsSection({
     return () => {
       cancelled = true
     }
-  }, [includeParticipantDeals])
+  }, [includeParticipantDeals, onlyDealsWithViewerCommitment])
 
   useEffect(() => {
     function onDealsListRefetch() {
       void (async () => {
         setLoading(true)
-        const list = await fetchDealsList(
+        let list = await fetchDealsList(
           includeParticipantDeals ? { includeParticipantDeals: true } : undefined,
         )
+        if (onlyDealsWithViewerCommitment && list.length > 0)
+          list = await filterDealListToViewerInvested(list)
         if (list.length === 0) {
           setDeals([])
           setLoading(false)
@@ -142,7 +153,7 @@ export function SyndicatingDealsSection({
     window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
     return () =>
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
-  }, [includeParticipantDeals])
+  }, [includeParticipantDeals, onlyDealsWithViewerCommitment])
 
   useEffect(() => {
     if (deals.length === 0) {

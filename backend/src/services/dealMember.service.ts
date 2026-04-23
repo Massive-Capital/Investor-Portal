@@ -194,12 +194,15 @@ export async function listDealMembersMappedToInvestorApi(
     );
 
   return patched.map((r, i) => {
-    const base = mapRowToInvestorApi(r, resolved);
-    const addedByRaw = members[i]?.addedBy;
+    const m = members[i];
+    const invitationMailSent =
+      String(m?.sendInvitationMail ?? "").toLowerCase().trim() === "yes";
+    const base = mapRowToInvestorApi(r, resolved, { invitationMailSent });
+    const addedByRaw = m?.addedBy;
     const key = addedByRaw ? String(addedByRaw).toLowerCase() : "";
     const addedByDisplayName =
       key && addedByNames.has(key) ? addedByNames.get(key)! : "—";
-    const memberCk = normalizeContactKey(members[i]?.contactMemberId ?? "");
+    const memberCk = normalizeContactKey(m?.contactMemberId ?? "");
     const fromAdded = memberCk
       ? (committedFromAddedInvestors.get(memberCk) ?? 0)
       : 0;

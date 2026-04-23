@@ -976,6 +976,29 @@
   scrollbar-gutter: unset;
 }
 
+/* Add profile (investing) — same surface as create deal `.deals_create_card` */
+.deals_add_investor_class_page.deals_add_deal_asset_page.deals_create_flow
+  .deals_add_deal_asset_form
+  .deals_add_deal_asset_form_scroll.deals_add_profile_wizard_scroll {
+  width: 100%;
+  max-width: var(--deals-create-form-col-max);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  padding: 1.5em 1.75em 1.65em;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 8px);
+  background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+}
+
+:root[data-theme="dark"]
+  .deals_add_investor_class_page.deals_add_deal_asset_page.deals_create_flow
+  .deals_add_deal_asset_form
+  .deals_add_deal_asset_form_scroll.deals_add_profile_wizard_scroll {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+}
+
 .deals_add_deal_asset_footer_actions.deal_inv_ic_add_panel_actions {
   justify-content: space-between;
   align-items: center;

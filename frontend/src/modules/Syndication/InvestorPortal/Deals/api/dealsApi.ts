@@ -1824,6 +1824,24 @@ function normalizeInvestorRowApi(
       if (ik === "lp_roster" || ik === "investment") return ik
       return undefined
     })(),
+    ...(() => {
+      const v = firstDefined(raw, [
+        "invitationMailSent",
+        "invitation_mail_sent",
+        "sendInvitationMail",
+        "send_invitation_mail",
+      ])
+      if (v === true) return { invitationMailSent: true as const }
+      if (v === false) return { invitationMailSent: false as const }
+      const s = String(v ?? "")
+        .trim()
+        .toLowerCase()
+      if (s === "yes" || s === "1" || s === "true" || s === "y")
+        return { invitationMailSent: true as const }
+      if (s === "no" || s === "0" || s === "false" || s === "n" || s === "")
+        return { invitationMailSent: false as const }
+      return {}
+    })(),
   }
 }
 
@@ -2041,10 +2059,17 @@ export type PostDealMemberInvitationEmailResult =
 /**
  * POST `/deals/:dealId/members/send-invitation-email` — sends HTML/text from
  * backend template using SMTP settings in server `.env.local`.
+ * Use `invitation_source: "investor"` from the **Investors** tab; `"deal_member"` from **Deal
+ * members** and pass the row `Role` in `deal_member_role`.
  */
 export async function postDealMemberInvitationEmail(
   dealId: string,
-  input: { to_email: string; member_display_name?: string },
+  input: {
+    to_email: string
+    member_display_name?: string
+    invitation_source?: "investor" | "deal_member"
+    deal_member_role?: string
+  },
 ): Promise<PostDealMemberInvitationEmailResult> {
   const base = getApiV1Base()
   if (!base) {
@@ -2063,6 +2088,8 @@ export async function postDealMemberInvitationEmail(
         body: JSON.stringify({
           to_email: input.to_email.trim(),
           member_display_name: input.member_display_name?.trim() ?? "",
+          invitation_source: input.invitation_source ?? "investor",
+          deal_member_role: input.deal_member_role?.trim() ?? "",
         }),
       },
     )

@@ -38,6 +38,7 @@ import {
   formatCommittedZeroUsd,
   parseMoneyDigits,
 } from "../../utils/offeringMoneyFormat"
+import { InviteMailStatusBadge } from "../../components/InviteMailStatusBadge"
 import { DealInvestorRoleCell } from "../../components/DealInvestorRoleBadge"
 import { InvestorClassPillsDisplay } from "../../components/InvestorClassPillsDisplay"
 import { DealMemberRowActions } from "../components/DealMemberRowActions"
@@ -74,6 +75,11 @@ interface DealMembersTabProps {
   onViewMember: (row: DealInvestorRow) => void
   /** Increment to refetch rows after add/edit from the shared investor modal. */
   investorsRefreshKey?: number
+  /**
+   * After send-invitation succeeds, rows marked here show Mail sent / Re-send
+   * until the members API includes invitation mail status.
+   */
+  invitationMailStatusByRowId?: Record<string, true>
 }
 
 export function DealMembersTab({
@@ -88,6 +94,7 @@ export function DealMembersTab({
   onDeleteMember,
   onViewMember,
   investorsRefreshKey = 0,
+  invitationMailStatusByRowId,
 }: DealMembersTabProps) {
   const [rows, setRows] = useState<DealInvestorRow[]>([])
   const rowsRef = useRef<DealInvestorRow[]>([])
@@ -208,10 +215,24 @@ export function DealMembersTab({
     [investorClasses],
   )
 
+  const displayRowsWithMail = useMemo(() => {
+    const o = invitationMailStatusByRowId
+    if (!o || Object.keys(o).length === 0) return displayRows
+    return displayRows.map((r) => {
+      if (!o[r.id]) return r
+      if (r.invitationMailSent === true) return r
+      return { ...r, invitationMailSent: true }
+    })
+  }, [displayRows, invitationMailStatusByRowId])
+
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return displayRows
-    return displayRows.filter((r) => {
+    if (!q) return displayRowsWithMail
+    return displayRowsWithMail.filter((r) => {
+      const mailLabel =
+        r.invitationMailSent === true
+          ? "mail sent"
+          : "not sent"
       const hay = [
         r.displayName,
         r.userDisplayName,
@@ -223,12 +244,13 @@ export function DealMembersTab({
         investorRoleLabel(r.investorRole ?? ""),
         displayInvestorCommittedAmount(r),
         displayAddedInvestorsCommittedAmount(r),
+        mailLabel,
       ]
         .map((x) => String(x ?? "").toLowerCase())
         .join(" ")
       return hay.includes(q)
     })
-  }, [displayRows, query])
+  }, [displayRowsWithMail, query])
 
   useEffect(() => {
     setPage(1)
@@ -409,6 +431,18 @@ export function DealMembersTab({
           const s = String(r.addedByDisplayName ?? "").trim()
           return s && s !== "—" ? s : "—"
         },
+      },
+      {
+        id: "mailStatus",
+        header: "Mail status",
+        sortValue: (r) =>
+          r.id === ADD_MEMBER_DRAFT_ROW_ID
+            ? -1
+            : r.invitationMailSent === true
+              ? 1
+              : 0,
+        tdClassName: "deal_inv_td_mail_status",
+        cell: (r) => <InviteMailStatusBadge row={r} />,
       },
       {
         id: "actions",

@@ -120,6 +120,9 @@ export default function AuthLayout({
                   src={logoSrc}
                   alt="Company logo"
                   className="companyLogo__img"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                 />
               </p>
               {caption && <p className="loginCaption">{caption}</p>}

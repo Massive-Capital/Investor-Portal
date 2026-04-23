@@ -43,12 +43,22 @@ export default function SignupForm() {
   const [crmPrefillNote, setCrmPrefillNote] = useState(false);
 
   const decode = token
-    ? decodeJwtPayload<{ email?: string; companyName?: string; exp?: number }>(
-        token,
-      )
+    ? decodeJwtPayload<{
+        email?: string;
+        companyName?: string;
+        exp?: number;
+        typ?: string;
+        dealId?: string;
+      }>(token)
     : null;
   const decodeEmail = decode?.email ?? "";
   const decodeCompanyName = (decode?.companyName ?? "").trim();
+  const dealInviteDealId = decode?.dealId?.trim() ?? "";
+  /** Deal email invite — scope prefill to this deal’s roster when `typ` is `deal_member_invite`. */
+  const dealIdForPrefillQuery =
+    decode?.typ === "deal_member_invite" && dealInviteDealId
+      ? dealInviteDealId
+      : "";
 
   useEffect(() => {
     if (decodeEmail) {
@@ -83,8 +93,9 @@ export default function SignupForm() {
   }, [token]);
 
   /**
-   * Invite link: JWT carries email (and often company). If that email exists as a CRM
-   * contact, GET /auth/signup/prefill fills first name, last name, and phone.
+   * Invite link: JWT carries email (and often company). GET /auth/signup/prefill
+   * fills first name, last name, phone, and optional username. With `dealId` (deal
+   * email invite), the server prefers roster rows for that deal.
    */
   useEffect(() => {
     if (!apiV1 || !token || !decodeEmail.trim()) return;
@@ -96,22 +107,28 @@ export default function SignupForm() {
       try {
         const u = new URL(`${apiV1}/auth/signup/prefill`);
         u.searchParams.set("email", decodeEmail.trim().toLowerCase());
+        if (dealIdForPrefillQuery) {
+          u.searchParams.set("dealId", dealIdForPrefillQuery);
+        }
         const res = await fetch(u.toString(), { signal: ac.signal });
         const data = (await res.json().catch(() => ({}))) as {
           found?: boolean;
           firstName?: string;
           lastName?: string;
           phone?: string;
+          userName?: string;
         };
         if (!res.ok || !data.found) return;
         const fn = (data.firstName ?? "").trim();
         const ln = (data.lastName ?? "").trim();
         const ph = digitsOnlyPhone(String(data.phone ?? ""));
-        if (!fn && !ln && !ph) return;
+        const un = (data.userName ?? "").trim();
+        if (!fn && !ln && !ph && !un) return;
         setSignUpFormData((prev) => ({
           ...prev,
           firstName: fn || prev.firstName,
           lastName: ln || prev.lastName,
+          userName: un || prev.userName,
           phone:
             ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS
               ? ph
@@ -123,7 +140,7 @@ export default function SignupForm() {
       }
     })();
     return () => ac.abort();
-  }, [apiV1, token, decodeEmail]);
+  }, [apiV1, token, decodeEmail, dealIdForPrefillQuery]);
 
   const REDIRECT_DELAY_MS = 5000;
   useEffect(() => {
@@ -307,8 +324,8 @@ export default function SignupForm() {
                   lineHeight: 1.45,
                 }}
               >
-                We filled in available details from your contact record for this
-                email.
+                We filled in available details from this deal and/or your contact
+                record for this email.
               </p>
             ) : null}
         <div className="signupForm_row">

@@ -44,22 +44,44 @@ export function resolveViewerDealMemberRole(
 }
 
 /**
- * Roster `investor_role` for the signed-in viewer when they appear on the deal
- * roster (lead sponsor, LP investor, etc.).
+ * The signed-in viewer’s roster row (matched by `userEmail`), for role display.
+ * Use with {@link resolveViewerDealInvestorRoleRaw} for a single string, or with
+ * {@link DealInvestorRoleBadge} (pass `investorRole` and `memberRoleLabels`).
  */
-export function resolveViewerDealInvestorRoleRaw(
+export function resolveViewerDealMemberMatch(
   members: DealInvestorRow[],
   sessionEmail: string,
-): string | null {
+): { investorRole?: string; memberRoleLabels?: string[] } | null {
   const em = sessionEmail.trim().toLowerCase()
   if (!em || !em.includes("@")) return null
   for (const m of members) {
     const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
     if (rowEmail !== em) continue
-    const raw = String(m.investorRole ?? "").trim()
-    if (!raw || raw === "—") return null
-    return raw
+    return {
+      investorRole: m.investorRole,
+      memberRoleLabels: m.memberRoleLabels,
+    }
   }
+  return null
+}
+
+/**
+ * Roster `investor_role` for the signed-in viewer when they appear on the deal
+ * roster (lead sponsor, LP investor, etc.). Prefer
+ * `memberRoleLabels[0]` when the API only sends deal-member labels.
+ */
+export function resolveViewerDealInvestorRoleRaw(
+  members: DealInvestorRow[],
+  sessionEmail: string,
+): string | null {
+  const match = resolveViewerDealMemberMatch(members, sessionEmail)
+  if (!match) return null
+  const raw = String(match.investorRole ?? "").trim()
+  if (raw && raw !== "—") return raw
+  const fromLabels = match.memberRoleLabels
+    ?.map((s) => String(s ?? "").trim())
+    .filter((s) => s && s !== "—")
+  if (fromLabels?.length) return fromLabels[0]!
   return null
 }
 

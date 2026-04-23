@@ -20,6 +20,7 @@ import {
   isLpInvestorRole,
   LP_INVESTOR_ROLE_STORED,
   listDealInvestmentsByDealId,
+  loadInvitationMailSentFlags,
   mapRowToInvestorApi,
   resolveFirstInvestorClassForDeal,
   resolveInvestorClassForDealInvestment,
@@ -287,15 +288,21 @@ export async function mapMergedLpRowsToInvestorApi(
   const enriched =
     rows.length > 0 ? await enrichInvestorRolesForDealRows(dealId, rows) : rows;
   const resolved = await resolveUsersByContactIds(enriched);
+  const flags =
+    enriched.length > 0
+      ? await loadInvitationMailSentFlags(dealId, enriched, lpRowIds)
+      : [];
   const out: LpInvestorApiRow[] = [];
-  for (const r of enriched) {
-    const base = mapRowToInvestorApi(r, resolved);
+  enriched.forEach((r, i) => {
+    const base = mapRowToInvestorApi(r, resolved, {
+      invitationMailSent: flags[i] === true,
+    });
     const idKey = String(r.id ?? "").toLowerCase();
     const kind: "investment" | "lp_investor" = lpRowIds.has(idKey)
       ? "lp_investor"
       : "investment";
     out.push({ ...base, investorKind: kind });
-  }
+  });
   return out;
 }
 
@@ -324,7 +331,6 @@ export async function buildLpInvestorsFromMerged(
   investors: LpInvestorApiRow[];
   kpis: ReturnType<typeof buildInvestorKpisFromRows>;
 }> {
-  console.log("merged", merged);
   const kpis = buildInvestorKpisFromRows(merged);
   const lpRosterIds = await resolveLpRosterIdSet(dealId, merged);
   const base = await mapMergedLpRowsToInvestorApi(dealId, merged, lpRosterIds);

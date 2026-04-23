@@ -69,8 +69,13 @@ function bodyString(v: unknown): string {
 
 /**
  * POST /deals/:dealId/members/send-invitation-email
- * Body: { to_email: string, member_display_name?: string }
- * Sends the investor invitation email template using SMTP / env from `.env.local`.
+ * Body: {
+ *   to_email: string
+ *   member_display_name?: string
+ *   invitation_source?: "investor" | "deal_member" (default: investor) — from Investors tab vs Deal members
+ *   deal_member_role?: string — Role label from Deal members tab when source is deal_member
+ * }
+ * Sends the invitation email template using SMTP / env from `.env.local`.
  */
 export async function postDealMemberInvitationEmail(
   req: Request,
@@ -93,6 +98,12 @@ export async function postDealMemberInvitationEmail(
   const b = req.body as Record<string, unknown>;
   const toEmail = bodyString(b.to_email ?? b.toEmail);
   const memberDisplayName = bodyString(b.member_display_name ?? b.memberDisplayName);
+  const sourceRaw = bodyString(
+    b.invitation_source ?? b.invitationSource,
+  ).toLowerCase();
+  const invitationSource: "investor" | "deal_member" =
+    sourceRaw === "deal_member" || sourceRaw === "member" ? "deal_member" : "investor";
+  const dealMemberRole = bodyString(b.deal_member_role ?? b.dealMemberRole);
 
   if (!toEmail.trim() || !toEmail.includes("@")) {
     res.status(400).json({ message: "Valid to_email is required" });
@@ -110,6 +121,9 @@ export async function postDealMemberInvitationEmail(
       dealId,
       toEmail: toEmail.trim(),
       memberDisplayName: memberDisplayName.trim() || undefined,
+      invitationSource,
+      dealMemberRoleLabel:
+        invitationSource === "deal_member" ? dealMemberRole.trim() : "",
     });
 
     if (!result.ok) {

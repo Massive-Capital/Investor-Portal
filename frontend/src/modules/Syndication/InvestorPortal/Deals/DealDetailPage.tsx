@@ -68,6 +68,20 @@ import "../../../usermanagement/user_management.css"
 import "./deal-offering-portfolio.css"
 import "./deals-list.css"
 
+/**
+ * Role column value(s) for invitation email when sent from the **Deal members** tab.
+ */
+function dealRowRoleLabelForInvitationEmail(
+  row: DealInvestorRow,
+): string {
+  const fromLabels = row.memberRoleLabels
+    ?.map((s) => String(s).trim())
+    .filter((s) => s && s !== "—")
+  if (fromLabels && fromLabels.length) return fromLabels.join(", ")
+  const r = String(row.investorRole ?? "").trim()
+  return r && r !== "—" ? r : ""
+}
+
 /** Deal detail: `/deals/:dealId`. Tab **Deal Members** (`deal_members`) renders `DealMembersTab` (root `deal_members_tab` in deal-members/tab/deal-members.css). */
 interface DealDetailTabDef {
   id: string
@@ -102,6 +116,10 @@ export function DealDetailPage() {
   const [restoreAddMemberSessionDraft, setRestoreAddMemberSessionDraft] =
     useState(true)
   const [dealMembersRefreshKey, setDealMembersRefreshKey] = useState(0)
+  /** After send-invitation succeeds, until API list reflects `send_invitation_mail: yes`. */
+  const [invitationMailSentByRowId, setInvitationMailSentByRowId] = useState<
+    Record<string, true>
+  >({})
   const dealInvestorsTabRef = useRef<DealInvestorsTabHandle>(null)
   const [deal, setDeal] = useState<DealRecord | null | undefined>(undefined)
   const [dealDetailApi, setDealDetailApi] = useState<DealDetailApi | null>(null)
@@ -180,6 +198,10 @@ export function DealDetailPage() {
     },
     [dealId, dealDetailApi, navigate],
   )
+
+  useEffect(() => {
+    setInvitationMailSentByRowId({})
+  }, [dealId])
 
   useEffect(() => {
     if (!dealId?.trim()) return
@@ -353,6 +375,40 @@ export function DealDetailPage() {
     [dealId, dealDetailApi],
   )
 
+  /** **Investors** tab: email framed as an investor invite. */
+  const handleSendInvestorInvitationMail = useCallback(
+    async (row: DealInvestorRow) => {
+      const email = row.userEmail?.trim()
+      if (!email || email === "—") {
+        toast.error("No email address", "This row has no email to send to.")
+        return
+      }
+      if (!dealId) return
+      const name = row.displayName?.trim()
+      const result = await postDealMemberInvitationEmail(dealId, {
+        to_email: email,
+        member_display_name: name && name !== "—" ? name : undefined,
+        invitation_source: "investor",
+      })
+      if (result.ok) {
+        const rowId = row.id?.trim()
+        if (rowId) {
+          setInvitationMailSentByRowId((prev) => ({ ...prev, [rowId]: true }))
+        }
+        toast.success(
+          "Invitation sent",
+          "The investor invitation email was sent using your server mail settings.",
+        )
+        setDealMembersRefreshKey((k) => k + 1)
+        void dealInvestorsTabRef.current?.refetchInvestors()
+      } else {
+        toast.error("Could not send email", result.message)
+      }
+    },
+    [dealId],
+  )
+
+  /** **Deal members** tab: email includes the row Role in subject/body. */
   const handleSendMemberInvitationMail = useCallback(
     async (row: DealInvestorRow) => {
       const email = row.userEmail?.trim()
@@ -365,12 +421,19 @@ export function DealDetailPage() {
       const result = await postDealMemberInvitationEmail(dealId, {
         to_email: email,
         member_display_name: name && name !== "—" ? name : undefined,
+        invitation_source: "deal_member",
+        deal_member_role: dealRowRoleLabelForInvitationEmail(row),
       })
       if (result.ok) {
+        const rowId = row.id?.trim()
+        if (rowId) {
+          setInvitationMailSentByRowId((prev) => ({ ...prev, [rowId]: true }))
+        }
         toast.success(
           "Invitation sent",
-          "The investor invitation email was sent using your server mail settings.",
+          "The deal invitation email was sent (with this row’s role) using your server mail settings.",
         )
+        setDealMembersRefreshKey((k) => k + 1)
         void dealInvestorsTabRef.current?.refetchInvestors()
       } else {
         toast.error("Could not send email", result.message)
@@ -593,6 +656,7 @@ export function DealDetailPage() {
                 addInvestmentOpen={addInvestmentOpen}
                 sharedInvestmentModalOpen={sharedInvestmentModalOpen}
                 investorsRefreshKey={dealMembersRefreshKey}
+                invitationMailStatusByRowId={invitationMailSentByRowId}
                 onAddMember={() => {
                   setInvestmentModalEntry("member")
                   setRestoreAddMemberSessionDraft(false)
@@ -639,10 +703,11 @@ export function DealDetailPage() {
               onInvestorsChanged={() =>
                 setDealMembersRefreshKey((k) => k + 1)
               }
-              onSendInvitationMail={handleSendMemberInvitationMail}
+              onSendInvitationMail={handleSendInvestorInvitationMail}
               onCopyOfferingLink={handleCopyMemberOfferingLink}
               onDeleteMember={handleDeleteMember}
               offeringLinkAvailable={offeringLinkAvailable}
+              invitationMailStatusByRowId={invitationMailSentByRowId}
             />
           </>
         ) : activeTab === "offering_details" && dealDetailApi ? (

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Archive, Download, MapPin, Plus, Search, UserCircle, Users } from "lucide-react"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "@/common/components/Toast"
@@ -6,7 +7,6 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
-import { AddInvestorProfileModal } from "./AddInvestorProfileModal"
 import {
   AddBeneficiaryModal,
   type BeneficiaryDraft,
@@ -21,7 +21,6 @@ import {
   patchInvestorProfileArchived,
   patchSavedAddressArchived,
   postBeneficiary,
-  postInvestorProfile,
   postSavedAddress,
   putBeneficiary,
   putInvestorProfile,
@@ -78,8 +77,8 @@ function formatProfileListDate(iso: string): string {
  * LP investing shell: `/investing/profiles` — profiles, beneficiaries, and saved addresses.
  */
 export default function InvestingProfilesPage() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<ProfilesTab>("my-profiles")
-  const [addOpen, setAddOpen] = useState(false)
   const [addBenOpen, setAddBenOpen] = useState(false)
   const [addAddressOpen, setAddAddressOpen] = useState(false)
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
@@ -238,12 +237,6 @@ export default function InvestingProfilesPage() {
         )
       }
     })()
-  }, [])
-
-  const onProfileCreated = useCallback(async (p: NewInvestorProfilePayload) => {
-    const row = await postInvestorProfile(p)
-    setProfiles((prev) => [row, ...prev])
-    toast.success("Profile added", "Your new profile was saved.")
   }, [])
 
   const onProfileEditSave = useCallback(
@@ -702,11 +695,6 @@ export default function InvestingProfilesPage() {
         </div>
       </div>
 
-      {bookLoading ? (
-        <p className="um_panel" style={{ marginBottom: "1rem" }}>
-          Loading your saved profiles, beneficiaries, and addresses…
-        </p>
-      ) : null}
       {loadError ? (
         <div
           className="um_panel"
@@ -833,10 +821,7 @@ export default function InvestingProfilesPage() {
                 <button
                   type="button"
                   className="um_btn_primary contacts_toolbar_add_btn"
-                  onClick={() => {
-                    setEditProfile(null)
-                    setAddOpen(true)
-                  }}
+                  onClick={() => void navigate("/investing/profiles/add")}
                 >
                   <Plus size={18} strokeWidth={2} aria-hidden />
                   Add profile
@@ -871,6 +856,7 @@ export default function InvestingProfilesPage() {
               membersTableClassName="um_table_members deal_inv_table"
               columns={profileColumns}
               rows={filteredProfiles}
+              isLoading={bookLoading}
               getRowKey={(r, i) => r.id || `profile-row-${i}`}
               emptyLabel={
                 query.trim()
@@ -962,6 +948,7 @@ export default function InvestingProfilesPage() {
               membersTableClassName="um_table_members deal_inv_table"
               columns={beneficiaryColumns}
               rows={filteredBeneficiaries}
+              isLoading={bookLoading}
               getRowKey={(r) => r.id}
               emptyLabel={
                 beneQuery.trim()
@@ -1051,6 +1038,7 @@ export default function InvestingProfilesPage() {
               membersTableClassName="um_table_members deal_inv_table"
               columns={addressColumns}
               rows={filteredAddresses}
+              isLoading={bookLoading}
               getRowKey={(r) => r.id}
               emptyLabel={
                 addrQuery.trim()
@@ -1068,12 +1056,6 @@ export default function InvestingProfilesPage() {
         )}
       </div>
 
-      <AddInvestorProfileModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        savedAddresses={savedAddresses}
-        onProfileCreated={onProfileCreated}
-      />
       {viewModalConfig ? (
         <InvestingEntityViewModal
           open

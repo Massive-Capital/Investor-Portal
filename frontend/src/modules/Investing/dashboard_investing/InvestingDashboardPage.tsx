@@ -83,7 +83,7 @@ export function InvestingDashboardPage() {
       </section> */}
 
       <section
-        className="sponsor_dash_metrics investing_dash_top_metrics"
+        className="sponsor_dash_metrics_investing_mode investing_dash_top_metrics"
         aria-label="Investing summary"
         aria-busy={loading}
       >
@@ -92,21 +92,21 @@ export function InvestingDashboardPage() {
           icon={PiggyBank}
           title="Total invested"
           description={metricDescription(loading, metrics, (m) => m.totalInvestedDisplay)}
-          hintTitle="Your committed amounts on each active deal. LP investor accounts only include your own investments, not other participants on the same deals."
+          hintTitle="Sum of your committed amounts on each active deal you are invested in."
         />
         <ToolStyleCard
           variant="metric"
           icon={DollarSign}
           title="Total distributed"
           description={metricDescription(loading, metrics, (m) => m.totalDistributedDisplay)}
-          hintTitle="Sum of funded amounts from investor KPIs on each active deal."
+          hintTitle="Your funded rows: amount shown is the committed on each of your rows that has a funded date."
         />
         <ToolStyleCard
           variant="metric"
           icon={Briefcase}
           title="# of deals"
           description={metricDescription(loading, metrics, (m) => String(m.dealCount))}
-          hintTitle="Count of active (non-archived) deals visible in investing mode."
+          hintTitle="Active deals where you have a positive committed amount."
         />
         <ToolStyleCard
           variant="metric"
@@ -120,6 +120,7 @@ export function InvestingDashboardPage() {
       <SyndicatingDealsSection
         dealsHeadingId="investing-deals-heading"
         includeParticipantDeals
+        onlyDealsWithViewerCommitment
         dealsSectionTitle="Your deals"
       />
     </section>

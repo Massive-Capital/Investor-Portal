@@ -39,6 +39,7 @@ import {
   loadAddMemberDraft,
 } from "../deal-members/add-investment/addMemberFormDraftStorage"
 import { notifyDealInvestorsExportAudit } from "../api/dealInvestorsExportNotifyApi"
+import { InviteMailStatusBadge } from "./InviteMailStatusBadge"
 import { DealMemberUserCell } from "./DealMemberUserCell"
 import { DealInvestorRoleCell } from "./DealInvestorRoleBadge"
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal"
@@ -159,6 +160,11 @@ interface DealInvestorsTabProps {
    * so the table and KPIs refetch from the API.
    */
   investorsListRefreshKey?: number
+  /**
+   * After send-invitation API succeeds, rows marked here show Mail sent / Re-send
+   * until the list response includes `send_invitation_mail` / `invitationMailSent`.
+   */
+  invitationMailStatusByRowId?: Record<string, true>
 }
 
 function parseCommittedCellToNumber(s: string | undefined): number {
@@ -388,8 +394,12 @@ function DealInvestorsPopulated({
     const q = query.trim().toLowerCase()
     return rows.filter((r) => {
       if (q) {
+        const mailLabel =
+          r.invitationMailSent === true
+            ? "mail sent"
+            : "not sent"
         const haystack =
-          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""}`.toLowerCase()
+          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       if (filterClass) {
@@ -494,8 +504,8 @@ function DealInvestorsPopulated({
   const columns: DataTableColumn<DealInvestorRow>[] = useMemo(
     () => [
       {
-        id: "user",
-        header: "User",
+        id: "investor",
+        header: "Investor",
         sortValue: (row) =>
           `${row.displayName} ${row.entitySubtitle} ${formatMemberUsername(row.userDisplayName)} ${row.userEmail}`.toLowerCase(),
         tdClassName: "um_td_user deal_inv_td_user_cell",
@@ -508,7 +518,7 @@ function DealInvestorsPopulated({
       },
       {
         id: "role",
-        header: "Deal role",
+        header: "Role",
         sortValue: (row) => (row.investorRole ?? "").trim().toLowerCase(),
         tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
         cell: (row) => <DealInvestorRoleCell row={row} />,
@@ -638,6 +648,18 @@ function DealInvestorsPopulated({
         cell: (row) => (
           <VerifiedAccBadge label={row.verifiedAccLabel ?? "—"} />
         ),
+      },
+      {
+        id: "mailStatus",
+        header: "Mail status",
+        sortValue: (row) =>
+          row.id === ADD_MEMBER_DRAFT_ROW_ID
+            ? -1
+            : row.invitationMailSent === true
+              ? 1
+              : 0,
+        tdClassName: "deal_inv_td_mail_status",
+        cell: (row) => <InviteMailStatusBadge row={row} />,
       },
       {
         id: "actions",
@@ -996,6 +1018,7 @@ export const DealInvestorsTab = forwardRef<
     onSharedInvestmentModalOpenChange,
     offeringLinkAvailable = false,
     investorsListRefreshKey = 0,
+    invitationMailStatusByRowId,
   },
   ref,
 ) {
@@ -1176,8 +1199,19 @@ export const DealInvestorsTab = forwardRef<
 
   const mergedPayload = useMemo((): DealInvestorsPayload | null => {
     if (!payload) return null
-    return { ...payload, investors: mergedInvestors }
-  }, [payload, mergedInvestors])
+    const o = invitationMailStatusByRowId
+    if (!o || Object.keys(o).length === 0) {
+      return { ...payload, investors: mergedInvestors }
+    }
+    return {
+      ...payload,
+      investors: mergedInvestors.map((r) => {
+        if (!o[r.id]) return r
+        if (r.invitationMailSent === true) return r
+        return { ...r, invitationMailSent: true }
+      }),
+    }
+  }, [payload, mergedInvestors, invitationMailStatusByRowId])
 
   async function handleSaveAddInvestment(
     values: AddInvestmentFormValues,

@@ -434,10 +434,72 @@ export function buildInvestorKpisFromRows(rows: DealInvestmentRow[]): {
   };
 }
 
+function sendInvitationYes(raw: string | null | undefined): boolean {
+  return String(raw ?? "").toLowerCase().trim() === "yes";
+}
+
+/**
+ * `send_invitation_mail` on `deal_member` and `deal_lp_investor` (yes/no) per merged row
+ * (Investors + Deal members tables).
+ */
+export async function loadInvitationMailSentFlags(
+  dealId: string,
+  rows: DealInvestmentRow[],
+  lpRosterIdSet: Set<string>,
+): Promise<boolean[]> {
+  if (rows.length === 0) return [];
+  const [memberRows, lpRows] = await Promise.all([
+    db
+      .select({
+        contactMemberId: dealMember.contactMemberId,
+        sendInvitationMail: dealMember.sendInvitationMail,
+      })
+      .from(dealMember)
+      .where(eq(dealMember.dealId, dealId)),
+    db
+      .select({
+        id: dealLpInvestor.id,
+        contactMemberId: dealLpInvestor.contactMemberId,
+        sendInvitationMail: dealLpInvestor.sendInvitationMail,
+      })
+      .from(dealLpInvestor)
+      .where(eq(dealLpInvestor.dealId, dealId)),
+  ]);
+  const memberByContact = new Map<string, string>();
+  for (const m of memberRows) {
+    const k = rosterContactKey(m.contactMemberId);
+    if (k) memberByContact.set(k, m.sendInvitationMail);
+  }
+  const lpById = new Map<string, string>();
+  const lpByContact = new Map<string, string>();
+  for (const r of lpRows) {
+    const idk = String(r.id).toLowerCase();
+    if (idk) lpById.set(idk, r.sendInvitationMail);
+    const ck = rosterContactKey(r.contactMemberId);
+    if (ck) lpByContact.set(ck, r.sendInvitationMail);
+  }
+  return rows.map((row) => {
+    const idK = String(row.id ?? "").toLowerCase();
+    if (idK && lpRosterIdSet.has(idK)) {
+      return sendInvitationYes(lpById.get(idK));
+    }
+    const ck = rosterContactKey(row.contactId);
+    if (memberByContact.has(ck)) {
+      return sendInvitationYes(memberByContact.get(ck));
+    }
+    if (lpByContact.has(ck)) {
+      return sendInvitationYes(lpByContact.get(ck));
+    }
+    return false;
+  });
+}
+
 export function mapRowToInvestorApi(
   row: DealInvestmentRow,
   resolvedByUserId?: Map<string, ResolvedPortalUser>,
+  opts?: { invitationMailSent?: boolean },
 ) {
+  const invitationMailSent = Boolean(opts?.invitationMailSent);
   const cid = row.contactId?.trim() ?? "";
   if (cid === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER) {
     const extras = (row.extraContributionAmounts as string[] | null) ?? [];
@@ -464,6 +526,7 @@ export function mapRowToInvestorApi(
       commitmentAmountRaw: row.commitmentAmount ?? "",
       extraContributionAmounts: extras,
       docSignedDateIso: row.docSignedDate?.trim() ?? "",
+      invitationMailSent,
     };
   }
   const legacy = userForContact(row.contactId);
@@ -504,6 +567,7 @@ export function mapRowToInvestorApi(
     commitmentAmountRaw: row.commitmentAmount ?? "",
     extraContributionAmounts: extras,
     docSignedDateIso: row.docSignedDate?.trim() ?? "",
+    invitationMailSent,
   };
 }
 
@@ -734,7 +798,14 @@ export async function mapDealInvestmentsToInvestorApi(
       ? await enrichInvestorRolesForDealRows(dealId, rows)
       : rows;
   const resolved = await resolveUsersByContactIds(enriched);
-  return enriched.map((r) => mapRowToInvestorApi(r, resolved));
+  if (!dealId || enriched.length === 0) {
+    return enriched.map((r) => mapRowToInvestorApi(r, resolved, {}));
+  }
+  const emptyLpSet = new Set<string>();
+  const flags = await loadInvitationMailSentFlags(dealId, enriched, emptyLpSet);
+  return enriched.map((r, i) =>
+    mapRowToInvestorApi(r, resolved, { invitationMailSent: flags[i] === true }),
+  );
 }
 
 /**

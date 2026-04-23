@@ -177,6 +177,31 @@
   margin: 0;
 }
 
+.data_table_members_loading_cell {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  vertical-align: middle;
+}
+
+.data_table_loader_spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0 auto;
+  display: block;
+  border: 2px solid
+    color-mix(in srgb, var(--portal-text-muted) 35%, transparent);
+  border-top-color: var(--portal-primary, #2b6cb0);
+  border-radius: 50%;
+  animation: data_table_loader_spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes data_table_loader_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .data_table_th_metric {
   text-align: right;
 }

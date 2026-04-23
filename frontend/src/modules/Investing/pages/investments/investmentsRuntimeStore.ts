@@ -20,17 +20,15 @@ function shouldFilterInvestmentsToCurrentOwner(): boolean {
 }
 
 function isStoredRowVisibleToCurrentSession(s: StoredRow): boolean {
-  if (!shouldFilterInvestmentsToCurrentOwner()) return true
-  const me = getSessionUserEmail().trim()
+  const me = getSessionUserEmail().trim().toLowerCase()
   if (!me) return false
   const owner = (s.ownerEmail ?? "").trim().toLowerCase()
-  if (owner && owner === me) return true
-  if (!owner) {
-    const lpDeals = new Set(
-      getLpInvestorDealIdsFromSession().map((id) => id.trim()),
-    )
-    if (lpDeals.size > 0 && lpDeals.has(s.dealId.trim())) return true
-  }
+  if (owner) return owner === me
+  if (!shouldFilterInvestmentsToCurrentOwner()) return true
+  const lpDeals = new Set(
+    getLpInvestorDealIdsFromSession().map((id) => id.trim()),
+  )
+  if (lpDeals.size > 0 && lpDeals.has(s.dealId.trim())) return true
   return false
 }
 

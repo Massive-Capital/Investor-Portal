@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { normalizeDealGallerySrc } from "../../common/utils/apiBaseUrl";
+import { SettingsBrandedImage } from "./SettingsBrandedImage";
 import {
   fetchWorkspaceTabSettings,
   postCompanySettingsBranding,
@@ -193,10 +194,16 @@ export function CompanySettingsTabPanel({
   const [editBg, setEditBg] = useState(false);
   const [editLogoIcon, setEditLogoIcon] = useState(false);
 
-  /** Root-relative `/uploads/...` from API after upload or from workspace settings. */
+  /** Delivery URL (Cloudinary `https` or root-relative `/uploads/...`) from the API. */
   const [logoImageUrl, setLogoImageUrl] = useState<string | null>(null);
   const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(null);
   const [logoIconUrl, setLogoIconUrl] = useState<string | null>(null);
+  /** Cloudinary public_id when the asset is stored in Cloud (see `SettingsBrandedImage`). */
+  const [logoImagePublicId, setLogoImagePublicId] = useState<string | null>(null);
+  const [backgroundImagePublicId, setBackgroundImagePublicId] = useState<string | null>(
+    null,
+  );
+  const [logoIconPublicId, setLogoIconPublicId] = useState<string | null>(null);
   const [logoDraft, setLogoDraft] = useState<File | null>(null);
   const [bgDraft, setBgDraft] = useState<File | null>(null);
   const [iconDraft, setIconDraft] = useState<File | null>(null);
@@ -278,12 +285,17 @@ export function CompanySettingsTabPanel({
 
   const [settingsHydrated, setSettingsHydrated] = useState(!workspaceCompanyId);
   const lastLoadedWorkspaceIdRef = useRef<string | null>(null);
+  /**
+   * Incremented after a successful media POST so an in‑flight `fetchWorkspaceTabSettings` from
+   * initial page load does not `apply` older payload and wipe freshly uploaded URLs/public ids.
+   */
+  const brandingUploadEpochRef = useRef(0);
 
   /**
    * `company_workspace_tab_settings` (tab: `settings`) `payload` keys & UI blocks:
-   * - `logoImageUrl`  → "Logo" section, upload route `.../branding/logo`
-   * - `backgroundImageUrl` → "Background image" section, `.../branding/background`
-   * - `logoIconUrl`   → "Logo icon" section, `.../branding/logoIcon`
+   * - `logoImageUrl` / `logoImagePublicId`  → "Logo" (`SettingsBrandedImage` + `url-gen` when needed)
+   * - `backgroundImageUrl` / `backgroundImagePublicId` → "Background image"
+   * - `logoIconUrl` / `logoIconPublicId`   → "Logo icon"
    */
   const applySettingsMediaFromPayload = useCallback((p: Record<string, unknown>) => {
     if (typeof p.logoImageUrl === "string" && p.logoImageUrl.trim()) {
@@ -291,10 +303,20 @@ export function CompanySettingsTabPanel({
     } else {
       setLogoImageUrl(null);
     }
+    if (typeof p.logoImagePublicId === "string" && p.logoImagePublicId.trim()) {
+      setLogoImagePublicId(p.logoImagePublicId.trim());
+    } else {
+      setLogoImagePublicId(null);
+    }
     if (typeof p.backgroundImageUrl === "string" && p.backgroundImageUrl.trim()) {
       setBackgroundImageUrl(p.backgroundImageUrl.trim());
     } else {
       setBackgroundImageUrl(null);
+    }
+    if (typeof p.backgroundImagePublicId === "string" && p.backgroundImagePublicId.trim()) {
+      setBackgroundImagePublicId(p.backgroundImagePublicId.trim());
+    } else {
+      setBackgroundImagePublicId(null);
     }
     const iconP = p as Record<string, unknown>;
     const fromIconUrl =
@@ -310,6 +332,11 @@ export function CompanySettingsTabPanel({
     } else {
       setLogoIconUrl(null);
     }
+    if (typeof p.logoIconPublicId === "string" && p.logoIconPublicId.trim()) {
+      setLogoIconPublicId(p.logoIconPublicId.trim());
+    } else {
+      setLogoIconPublicId(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -323,16 +350,23 @@ export function CompanySettingsTabPanel({
       setLogoImageUrl(null);
       setBackgroundImageUrl(null);
       setLogoIconUrl(null);
+      setLogoImagePublicId(null);
+      setBackgroundImagePublicId(null);
+      setLogoIconPublicId(null);
       lastLoadedWorkspaceIdRef.current = workspaceCompanyId;
     }
     let cancelled = false;
     setSettingsHydrated(false);
     void (async () => {
+      const epochAtStart = brandingUploadEpochRef.current;
       const { ok, payload: p } = await fetchWorkspaceTabSettings(
         workspaceCompanyId,
         "settings",
       );
-      if (cancelled) return;
+      if (cancelled) {
+        setSettingsHydrated(true);
+        return;
+      }
       if (ok) {
         if (typeof p.qualificationEnabled === "boolean") {
           setQualificationEnabled(p.qualificationEnabled);
@@ -357,7 +391,14 @@ export function CompanySettingsTabPanel({
             setDistributionTypes(next);
           }
         }
-        applySettingsMediaFromPayload(p);
+        /**
+         * If a media POST just ran, this GET may be older; applying its logo/icon URLs would
+         * wipe the React state that `onSave` already set from the upload.
+         * Non-media fields from `p` are still safe to apply.
+         */
+        if (epochAtStart === brandingUploadEpochRef.current) {
+          applySettingsMediaFromPayload(p);
+        }
       }
       setSettingsHydrated(true);
     })();
@@ -945,7 +986,7 @@ export function CompanySettingsTabPanel({
                   }}
                 />
                 <div
-                  className={`cp_media_preview cp_media_preview_logo${logoPreviewSrc && !logoPreviewLoadFailed && !mediaBrandingLoading ? " cp_media_preview_has_image" : ""}`}
+                  className={`cp_media_preview cp_media_preview_logo${(logoImagePublicId || logoPreviewSrc) && !logoPreviewLoadFailed && !mediaBrandingLoading ? " cp_media_preview_has_image" : ""}`}
                 >
                   {mediaBrandingLoading ? (
                     <div
@@ -961,14 +1002,22 @@ export function CompanySettingsTabPanel({
                       />
                       <span>Loading preview…</span>
                     </div>
-                  ) : logoPreviewSrc && !logoPreviewLoadFailed ? (
-                    <img
-                      key={logoPreviewSrc}
-                      src={logoPreviewSrc}
+                  ) : (logoImagePublicId || logoPreviewSrc) && !logoPreviewLoadFailed ? (
+                    <SettingsBrandedImage
+                      publicId={
+                        editLogo && !logoPendingRemoval && logoDraft
+                          ? null
+                          : logoImagePublicId
+                      }
+                      url={
+                        editLogo && !logoPendingRemoval && logoDraft && logoDraftObjectUrl
+                          ? logoDraftObjectUrl
+                          : (logoImageUrl ?? "")
+                      }
                       alt="Company logo preview"
                       className="cp_media_preview_img cp_media_preview_img_logo"
-                      loading="eager"
                       onError={() => setLogoPreviewLoadFailed(true)}
+                      reactKey={logoImagePublicId ?? logoPreviewSrc ?? "logo"}
                     />
                   ) : (
                     <>
@@ -1012,7 +1061,10 @@ export function CompanySettingsTabPanel({
                       toast.error("Upload failed", up.message);
                       return;
                     }
+                    brandingUploadEpochRef.current += 1;
                     nextLogo = up.url;
+                    if (up.publicId) setLogoImagePublicId(up.publicId);
+                    else setLogoImagePublicId(null);
                   }
                   setLogoImageUrl(nextLogo);
                   setLogoDraft(null);
@@ -1027,6 +1079,7 @@ export function CompanySettingsTabPanel({
                     primaryMemberInFunnel,
                     distributionTypes,
                     logoImageUrl: nextLogo,
+                    logoImagePublicId: nextLogo ? undefined : null,
                   });
                   if (put.ok) {
                     const fresh = await fetchWorkspaceTabSettings(
@@ -1119,17 +1172,17 @@ export function CompanySettingsTabPanel({
                 />
                 <div
                   className={`cp_media_preview cp_media_preview_bg${
-                    bgPreviewSrc && !bgPreviewLoadFailed && !mediaBrandingLoading
+                    (backgroundImagePublicId || bgPreviewSrc) && !bgPreviewLoadFailed && !mediaBrandingLoading
                       ? " cp_media_preview_has_image"
                       : ""
                   }`}
                   role={
-                    bgPreviewSrc && !bgPreviewLoadFailed && !mediaBrandingLoading
+                    (backgroundImagePublicId || bgPreviewSrc) && !bgPreviewLoadFailed && !mediaBrandingLoading
                       ? undefined
                       : "img"
                   }
                   aria-label={
-                    bgPreviewSrc && !bgPreviewLoadFailed && !mediaBrandingLoading
+                    (backgroundImagePublicId || bgPreviewSrc) && !bgPreviewLoadFailed && !mediaBrandingLoading
                       ? undefined
                       : "Background preview placeholder"
                   }
@@ -1148,14 +1201,22 @@ export function CompanySettingsTabPanel({
                       />
                       <span>Loading preview…</span>
                     </div>
-                  ) : bgPreviewSrc && !bgPreviewLoadFailed ? (
-                    <img
-                      key={bgPreviewSrc}
-                      src={bgPreviewSrc}
+                  ) : (backgroundImagePublicId || bgPreviewSrc) && !bgPreviewLoadFailed ? (
+                    <SettingsBrandedImage
+                      publicId={
+                        editBg && !bgPendingRemoval && bgDraft
+                          ? null
+                          : backgroundImagePublicId
+                      }
+                      url={
+                        editBg && !bgPendingRemoval && bgDraft && bgDraftObjectUrl
+                          ? bgDraftObjectUrl
+                          : (backgroundImageUrl ?? "")
+                      }
                       alt="Background image preview"
                       className="cp_media_preview_img cp_media_preview_img_bg"
-                      loading="eager"
                       onError={() => setBgPreviewLoadFailed(true)}
+                      reactKey={backgroundImagePublicId ?? bgPreviewSrc ?? "background"}
                     />
                   ) : null}
                 </div>
@@ -1194,7 +1255,10 @@ export function CompanySettingsTabPanel({
                       toast.error("Upload failed", up.message);
                       return;
                     }
+                    brandingUploadEpochRef.current += 1;
                     nextBg = up.url;
+                    if (up.publicId) setBackgroundImagePublicId(up.publicId);
+                    else setBackgroundImagePublicId(null);
                   }
                   setBackgroundImageUrl(nextBg);
                   setBgDraft(null);
@@ -1207,6 +1271,7 @@ export function CompanySettingsTabPanel({
                     primaryMemberInFunnel,
                     distributionTypes,
                     backgroundImageUrl: nextBg,
+                    backgroundImagePublicId: nextBg ? undefined : null,
                   });
                   if (put.ok) {
                     const fresh = await fetchWorkspaceTabSettings(
@@ -1309,14 +1374,22 @@ export function CompanySettingsTabPanel({
                       strokeWidth={1.75}
                       aria-label="Loading preview"
                     />
-                  ) : iconPreviewSrc && !iconPreviewLoadFailed ? (
-                    <img
-                      key={iconPreviewSrc}
-                      src={iconPreviewSrc}
+                  ) : (logoIconPublicId || iconPreviewSrc) && !iconPreviewLoadFailed ? (
+                    <SettingsBrandedImage
+                      publicId={
+                        editLogoIcon && !iconPendingRemoval && iconDraft
+                          ? null
+                          : logoIconPublicId
+                      }
+                      url={
+                        editLogoIcon && !iconPendingRemoval && iconDraft && iconDraftObjectUrl
+                          ? iconDraftObjectUrl
+                          : (logoIconUrl ?? "")
+                      }
                       alt="Logo icon preview"
                       className="cp_media_icon_preview"
-                      loading="eager"
                       onError={() => setIconPreviewLoadFailed(true)}
+                      reactKey={logoIconPublicId ?? iconPreviewSrc ?? "logoIcon"}
                     />
                   ) : (
                     <span className="cp_media_icon_placeholder">
@@ -1362,7 +1435,10 @@ export function CompanySettingsTabPanel({
                       toast.error("Upload failed", up.message);
                       return;
                     }
+                    brandingUploadEpochRef.current += 1;
                     nextIcon = up.url;
+                    if (up.publicId) setLogoIconPublicId(up.publicId);
+                    else setLogoIconPublicId(null);
                   }
                   setLogoIconUrl(nextIcon);
                   setIconDraft(null);
@@ -1375,6 +1451,7 @@ export function CompanySettingsTabPanel({
                     primaryMemberInFunnel,
                     distributionTypes,
                     logoIconUrl: nextIcon,
+                    logoIconPublicId: nextIcon ? undefined : null,
                   });
                   if (put.ok) {
                     const fresh = await fetchWorkspaceTabSettings(

@@ -30,6 +30,7 @@ import Opportunities from "@/modules/Investing/pages/opportunities/Opportunities
 import InvestmentsPage from "@/modules/Investing/pages/investments/InvestmentsPage";
 import InvestmentDetailPage from "@/modules/Investing/pages/investments/InvestmentDetailPage";
 import InvestingProfilesPage from "@/modules/Investing/pages/profiles/InvestingProfilesPage";
+import { AddInvestorProfilePage } from "@/modules/Investing/pages/profiles/AddInvestorProfilePage";
 import { WorkInProgressPage } from "./common/components/WorkInProgressPage";
 import { InvestorEmailsPage } from "./modules/Syndication/InvestorPortal/InvestorEmails/InvestorEmailsPage";
 import { ReportingPage } from "./modules/Syndication/InvestorPortal/Reporting/ReportingPage";
@@ -44,6 +45,7 @@ import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
 import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
 import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
 import { MyAccountPasswordPage } from "./modules/myaccount/MyAccountPasswordPage";
+import { CompanyOverview } from "./modules/Investing/pages/company_overview/CompanyOverview";
 
 type PlaceholderPageProps = {
   title: string;
@@ -65,13 +67,13 @@ function CompanyRoute() {
 }
 
 /** /company (investing nav) — LPs and others without workspace company access get WIP, not the dashboard. */
-function CompanyOverviewRoute() {
-  const token = sessionStorage.getItem(SESSION_BEARER_KEY);
-  if (!token) return <Navigate to="/signin" replace />;
-  if (!canAccessCompanyPage())
-    return <Navigate to="/investing/company" replace />;
-  return <CompanyPage />;
-}
+// function CompanyOverviewRoute() {
+//   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
+//   if (!token) return <Navigate to="/signin" replace />;
+//   if (!canAccessCompanyPage())
+//     return <Navigate to="/investing/company" replace />;
+//   return <CompanyPage />;
+// }
 
 function CustomersRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
@@ -104,6 +106,7 @@ function App() {
               <Route index element={<DealsListPage />} />
               <Route path="investor-emails" element={<InvestorEmailsPage />} />
               <Route path="reporting" element={<ReportingPage />} />
+              {/* <Route path="company_overview" element = {<Com} */}
               <Route path="create" element={<CreateDealPage />} />
               <Route
                 path=":dealId/offering-portfolio"
@@ -153,6 +156,15 @@ function App() {
                 />
               }
             />
+            <Route path="investing/company" element={<CompanyOverview />} />
+            <Route
+              path="investing/company_overview"
+              element={<Navigate to="/investing/company" replace />}
+            />
+            <Route
+              path="investing/profiles/add"
+              element={<AddInvestorProfilePage />}
+            />
             <Route path="investing/profiles" element={<InvestingProfilesPage />} />
             <Route path="investing/deals" element={<InvestingDealsListPage />} />
             <Route
@@ -198,7 +210,8 @@ function App() {
             <Route path="support" element={<PlaceholderPage title="Support" />} />
             <Route path="settings" element={<CompanyRoute />} />
             <Route path="company" element={<CompanyRoute />} />
-                        <Route path="company" element={<CompanyOverviewRoute />} />
+    
+                        {/* <Route path="company" element={<CompanyOverviewRoute />} /> */}
 
             <Route path="customers/:companyId" element={<CustomerCompanyLayout />}>
               <Route

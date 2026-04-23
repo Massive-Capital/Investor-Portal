@@ -1,4 +1,8 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
+import {
+  getLpInvestorDealIdsFromSession,
+  isLpInvestorSessionUser,
+} from "@/common/auth/roleUtils"
 import { fetchDealInvestors } from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
 import type { DealInvestorsPayload } from "@/modules/Syndication/InvestorPortal/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/InvestorPortal/Deals/types/deals.types"
@@ -26,12 +30,22 @@ export function committedAmountForViewerEmail(
 }
 
 /**
- * Investing home / deals: include when the viewer has committed capital, or is
- * lead, admin, or co-sponsor on the deal (syndicating role). Full roster is
- * required to resolve sponsor role — use {@link filterDealListToViewerInvested}
- * which fetches with `lpInvestorsOnly: false`.
+ * Investor-only surfaces (e.g. dashboard “Your deals”, investment rows): you
+ * have a positive committed amount. Does not include sponsor-only deals.
  */
 export function dealIsInViewerInvestingScope(
+  payload: DealInvestorsPayload,
+): boolean {
+  const em = getSessionUserEmail().trim().toLowerCase()
+  if (!em) return false
+  return committedAmountForViewerEmail(payload, em) > 0
+}
+
+/**
+ * `/investing/deals` table: any deal you sponsor (lead, admin, co) or you have
+ * your own capital committed on.
+ */
+export function dealIsInViewerInvestingDealsPageScope(
   payload: DealInvestorsPayload,
 ): boolean {
   const sessionEmail = getSessionUserEmail()
@@ -50,11 +64,46 @@ function investingViewerEmailNorm(): string {
   return getSessionUserEmail().trim().toLowerCase()
 }
 
+/** When the session is LP-scoped and the API provided deal ids, skip other org deals. */
+export function applyLpSessionDealIdScope(
+  rows: DealListRow[],
+): DealListRow[] {
+  if (!isLpInvestorSessionUser()) return rows
+  const lpIds = getLpInvestorDealIdsFromSession()
+  if (lpIds.length === 0) return rows
+  const allow = new Set(lpIds)
+  return rows.filter((r) => allow.has(r.id))
+}
+
 /**
- * Full investor roster (not `lpInvestorsOnly`) is required so lead/admin/co
- * rows exist for syndicators switching to investing.
+ * Full investor roster (not `lpInvestorsOnly`) is required to match
+ * `userEmail` + `committed` for the session.
  */
 export async function filterDealListToViewerInvested(
+  rows: DealListRow[],
+): Promise<DealListRow[]> {
+  const viewerEmailNorm = investingViewerEmailNorm()
+  if (!viewerEmailNorm) return []
+  const toScan = applyLpSessionDealIdScope(rows)
+  const withPayload = await Promise.all(
+    toScan.map(async (row) => {
+      const payload = await fetchDealInvestors(row.id, {
+        lpInvestorsOnly: false,
+      })
+      return { row, payload }
+    }),
+  )
+  return withPayload
+    .filter(({ payload }) => dealIsInViewerInvestingScope(payload))
+    .map(({ row }) => row)
+}
+
+/**
+ * Investing deals route: sponsor or committed. Does not use
+ * {@link applyLpSessionDealIdScope} so a sponsor is not pre-excluded (LP deal id
+ * lists are investor-scoped, not syndication-scoped).
+ */
+export async function filterDealListToInvestingDealsPage(
   rows: DealListRow[],
 ): Promise<DealListRow[]> {
   const viewerEmailNorm = investingViewerEmailNorm()
@@ -68,6 +117,6 @@ export async function filterDealListToViewerInvested(
     }),
   )
   return withPayload
-    .filter(({ payload }) => dealIsInViewerInvestingScope(payload))
+    .filter(({ payload }) => dealIsInViewerInvestingDealsPageScope(payload))
     .map(({ row }) => row)
 }

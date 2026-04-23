@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react"
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react"
 import { createPortal } from "react-dom"
 import {
   ArrowLeft,
@@ -30,6 +37,8 @@ import { InvestingFormField } from "./InvestingFormField"
 import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
 import type { NewInvestorProfilePayload } from "./investor-profiles.types"
 import "@/modules/Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_modal.css"
+import "@/modules/Syndication/InvestorPortal/Deals/deals-create.css"
+import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
 import "@/modules/contacts/contacts.css"
 import "@/modules/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
@@ -38,9 +47,20 @@ import "./investing-profiles-form-modals.css"
 const PROFILE_TYPE_INDIVIDUAL = "Individual"
 const PROFILE_TYPE_JOINT_TENANCY = "Joint tenancy"
 const PROFILE_TYPE_ENTITY = "Entity"
-const TOTAL_STEPS_INDIVIDUAL = 5
-const TOTAL_STEPS_JOINT = 2
-const TOTAL_STEPS_ENTITY = 2
+
+/**
+ * Stepper: always 1–5 with these exact titles when Add profile opens. Only the **form fields**
+ * in each step change with Individual / Joint / Entity (especially step 2, then 3–5 as defined).
+ */
+const ADD_PROFILE_WIZARD_STEP_LABELS: readonly string[] = [
+  "Profile type",
+  "Profile details",
+  "Distributions",
+  "Address",
+  "Beneficiary",
+] as const
+
+const WIZARD_TOTAL_STEPS = ADD_PROFILE_WIZARD_STEP_LABELS.length
 
 const ENTITY_SUBTYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "llc", label: "LLC" },
@@ -62,14 +82,6 @@ const FEDERAL_TAX_CLASSIFICATION_OPTIONS: { value: string; label: string }[] = [
   { value: "trust_estate", label: "Trust/estate" },
   { value: "llc_excluding_smlc", label: "LLC (excluding single-member LLC)" },
 ]
-
-const STEP_HEADINGS = [
-  "Profile type",
-  "Profile details",
-  "Distributions",
-  "Address",
-  "Beneficiary",
-] as const
 
 type DistributionMethod = "ach" | "check" | "other"
 
@@ -208,6 +220,11 @@ interface AddInvestorProfileModalProps {
   savedAddresses?: SavedAddress[]
   /** Fired with display fields after validation; parent may persist the profile. May return a Promise. */
   onProfileCreated?: (p: NewInvestorProfilePayload) => void | Promise<void>
+  /**
+   * `inline`: in-tab panel. `page`: full-page like Create deal (parent supplies shell).
+   * @default "modal"
+   */
+  variant?: "modal" | "inline" | "page"
 }
 
 function FieldHelp({
@@ -323,7 +340,11 @@ export function AddInvestorProfileModal({
   onClose,
   savedAddresses = [],
   onProfileCreated,
+  variant = "modal",
 }: AddInvestorProfileModalProps) {
+  const isListInline = variant === "inline"
+  const isPage = variant === "page"
+  const isNonModalLayout = isListInline || isPage
   const [form, setForm] = useState<FormState>(initialState)
   const [fieldError, setFieldError] = useState<AddProfileFieldErrors>({})
   const [ssnVisible, setSsnVisible] = useState(false)
@@ -331,35 +352,48 @@ export function AddInvestorProfileModal({
   const [benModalOpen, setBenModalOpen] = useState(false)
   const [step, setStep] = useState(1)
 
+  const addProfilePageTitleId = useId()
   const isIndividual = form.profileType === PROFILE_TYPE_INDIVIDUAL
   const isJointTenancy = form.profileType === PROFILE_TYPE_JOINT_TENANCY
   const isEntity = form.profileType === PROFILE_TYPE_ENTITY
-  const totalSteps = isIndividual
-    ? TOTAL_STEPS_INDIVIDUAL
-    : isJointTenancy
-      ? TOTAL_STEPS_JOINT
-      : isEntity
-        ? TOTAL_STEPS_ENTITY
-        : 1
+  const stepperLabels = useMemo(
+    () => [...ADD_PROFILE_WIZARD_STEP_LABELS],
+    [],
+  )
+  const totalSteps = WIZARD_TOTAL_STEPS
   const effectiveMaxStep = totalSteps
 
   const stepHeading = useMemo(() => {
-    if (step === 1) return "Profile type"
-    if (isEntity && step === 2) return "Entity or plan details"
-    if (isJointTenancy) return "Profile details"
-    return (
-      STEP_HEADINGS[Math.min(Math.max(step, 1), TOTAL_STEPS_INDIVIDUAL) - 1] ??
-      "Add profile"
-    )
-  }, [step, isJointTenancy, isEntity])
+    if (step >= 1 && step <= totalSteps) {
+      return stepperLabels[step - 1] ?? "Add profile"
+    }
+    return "Add profile"
+  }, [step, totalSteps, stepperLabels])
 
-  const stepperLabels = useMemo((): string[] => {
-    if (totalSteps === 1) return [STEP_HEADINGS[0]]
-    if (isIndividual) return [...STEP_HEADINGS]
-    if (isJointTenancy) return [STEP_HEADINGS[0], STEP_HEADINGS[1]]
-    if (isEntity) return [STEP_HEADINGS[0], "Entity or plan details"]
-    return [STEP_HEADINGS[0]]
-  }, [totalSteps, isIndividual, isJointTenancy, isEntity])
+  const addProfilePageSubtitle = useMemo(() => {
+    if (step === 1)
+      return "Select how this profile will be registered."
+    if (isJointTenancy) {
+      if (step === 2) return "Names, emails, and tax ID for both joint owners."
+      if (step === 3) return "How you want to receive distributions."
+      if (step === 4) return "Tax and mailing address for this profile."
+      if (step === 5) return "Optional designated beneficiary for this account."
+    }
+    if (isEntity) {
+      if (step === 2) return "Entity or plan name, EIN, and account information."
+      if (step === 3) return "How you want to receive distributions."
+      if (step === 4) return "Mailing and legal address for this profile."
+      if (step === 5) return "Optional designated beneficiary for this account."
+    }
+    if (isIndividual) {
+      if (step === 2)
+        return "Legal name, SSN or TIN, and contact information."
+      if (step === 3) return "How you want to receive distributions."
+      if (step === 4) return "Mailing and legal address for this profile."
+      if (step === 5) return "Optional designated beneficiary for this account."
+    }
+    return "Set up a profile for investments and distributions."
+  }, [step, isJointTenancy, isEntity, isIndividual])
 
   useEffect(() => {
     if (!open) return
@@ -385,13 +419,13 @@ export function AddInvestorProfileModal({
   }, [open, onClose, benModalOpen])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || isNonModalLayout) return
     const prev = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
       document.body.style.overflow = prev
     }
-  }, [open])
+  }, [open, isNonModalLayout])
 
   const patch = useCallback(
     (
@@ -445,10 +479,6 @@ export function AddInvestorProfileModal({
           err.entityLegalName = "Enter the legal name of the entity or the plan name."
         }
       }
-      addDistributionValidationErrors(form, err)
-      if (!form.taxAddressId.trim()) {
-        err.taxAddressId = "Select a tax address, or add one in the Address tab first."
-      }
       setFieldError(err)
       return Object.keys(err).length === 0
     }
@@ -461,14 +491,6 @@ export function AddInvestorProfileModal({
       if (!form.lastName2.trim()) err.lastName2 = REQUIRED_MSG
       if (!form.email2.trim()) err.email2 = REQUIRED_MSG
       if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
-      addDistributionValidationErrors(form, err)
-      if (!form.taxAddressId.trim()) {
-        err.taxAddressId = "Select a tax address, or add one in the Address tab first."
-      }
-      if (form.mailingAddressMode === "add_new" && !form.mailingAddressId.trim()) {
-        err.mailingAddressId =
-          "Select a saved mailing address (it may be the same as tax), or choose “Same as tax address” above."
-      }
       setFieldError(err)
       return Object.keys(err).length === 0
     }
@@ -480,19 +502,38 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 3) {
+    if (
+      step === 3 &&
+      (isIndividual || isJointTenancy || isEntity)
+    ) {
       const err: AddProfileFieldErrors = {}
       addDistributionValidationErrors(form, err)
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 4) {
+    if (step === 4 && (isIndividual || isEntity)) {
       const err: AddProfileFieldErrors = {}
       if (!form.taxAddressId.trim()) {
         err.taxAddressId = "Select a tax address, or add one in the Address tab first."
       }
       setFieldError(err)
       return Object.keys(err).length === 0
+    }
+    if (step === 4 && isJointTenancy) {
+      const err: AddProfileFieldErrors = {}
+      if (!form.taxAddressId.trim()) {
+        err.taxAddressId = "Select a tax address, or add one in the Address tab first."
+      }
+      if (form.mailingAddressMode === "add_new" && !form.mailingAddressId.trim()) {
+        err.mailingAddressId =
+          "Select a saved mailing address (it may be the same as tax), or choose “Same as tax address” above."
+      }
+      setFieldError(err)
+      return Object.keys(err).length === 0
+    }
+    if (step === 5) {
+      setFieldError(noErr)
+      return true
     }
     setFieldError(noErr)
     return true
@@ -537,9 +578,44 @@ export function AddInvestorProfileModal({
 
   function handleSubmit() {
     if (isJointTenancy) {
-      if (step !== 2 || !validateStep()) return
+      if (step !== totalSteps) return
+      const err: AddProfileFieldErrors = {}
+      if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
+      if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
+      if (!form.email1.trim()) err.email1 = REQUIRED_MSG
+      if (!form.firstName2.trim()) err.firstName2 = REQUIRED_MSG
+      if (!form.lastName2.trim()) err.lastName2 = REQUIRED_MSG
+      if (!form.email2.trim()) err.email2 = REQUIRED_MSG
+      if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
+      addDistributionValidationErrors(form, err)
+      if (!form.taxAddressId.trim()) {
+        err.taxAddressId = "Select a tax address, or add one in the Address tab first."
+      }
+      if (form.mailingAddressMode === "add_new" && !form.mailingAddressId.trim()) {
+        err.mailingAddressId =
+          "Select a saved mailing address (it may be the same as tax), or choose “Same as tax address” above."
+      }
+      setFieldError(err)
+      if (Object.keys(err).length > 0) {
+        if (
+          err.firstName ||
+          err.lastName ||
+          err.email1 ||
+          err.firstName2 ||
+          err.lastName2 ||
+          err.email2 ||
+          err.ssn
+        ) {
+          setStep(2)
+        } else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) {
+          setStep(3)
+        } else if (err.taxAddressId || err.mailingAddressId) {
+          setStep(4)
+        }
+        return
+      }
     } else if (isIndividual) {
-      if (step !== TOTAL_STEPS_INDIVIDUAL) return
+      if (step !== totalSteps) return
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
@@ -556,7 +632,44 @@ export function AddInvestorProfileModal({
         return
       }
     } else if (isEntity) {
-      if (step !== 2 || !validateStep()) return
+      if (step !== totalSteps) return
+      const err: AddProfileFieldErrors = {}
+      if (!form.custodianIra) {
+        err.custodianIra = REQUIRED_MSG
+      } else if (form.custodianIra === "yes") {
+        if (!form.legalIraName.trim()) err.legalIraName = REQUIRED_MSG
+        if (!form.iraCompany.trim()) err.iraCompany = REQUIRED_MSG
+        if (!form.iraCustodianEin.trim()) {
+          err.iraCustodianEin = REQUIRED_MSG
+        }
+      } else {
+        if (!form.entitySubType.trim()) err.entitySubType = REQUIRED_MSG
+        if (!form.entityLegalName.trim()) {
+          err.entityLegalName = "Enter the legal name of the entity or the plan name."
+        }
+      }
+      addDistributionValidationErrors(form, err)
+      if (!form.taxAddressId.trim()) {
+        err.taxAddressId = "Select a tax address, or add one in the Address tab first."
+      }
+      setFieldError(err)
+      if (Object.keys(err).length > 0) {
+        if (
+          err.custodianIra ||
+          err.legalIraName ||
+          err.iraCompany ||
+          err.iraCustodianEin ||
+          err.entitySubType ||
+          err.entityLegalName
+        ) {
+          setStep(2)
+        } else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) {
+          setStep(3)
+        } else if (err.taxAddressId) {
+          setStep(4)
+        }
+        return
+      }
     } else {
       setFieldError({
         profileType: "Choose a profile type to continue.",
@@ -591,94 +704,72 @@ export function AddInvestorProfileModal({
 
   if (!open) return null
 
-  return (
-  <>
-  {createPortal(
-    <div
-      className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div
-        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel investing_add_profile_form_panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-profile-modal-title"
-        aria-describedby="add-profile-step-label"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="um_modal_head add_contact_modal_head">
-          <div className="add_contact_modal_head_main">
-            <h3
-              id="add-profile-modal-title"
-              className="um_modal_title add_contact_modal_title"
-            >
-              Add profile
-            </h3>
-            <div
-              className="add_contact_stepper"
-              role="group"
-              aria-label="Progress"
-            >
-              <p id="add-profile-step-label" className="add_profile_sronly">
-                Step {step} of {totalSteps}: {stepHeading}
-              </p>
-              {stepperLabels.map((label, i) => {
-                const n = i + 1
-                const isActive = step === n
-                const isDone = step > n
-                return (
-                  <Fragment key={n}>
-                    {i > 0 ? (
-                      <span
-                        className={
-                          step > i
-                            ? "add_contact_step_line add_contact_step_line_active"
-                            : "add_contact_step_line"
-                        }
-                        aria-hidden
-                      />
-                    ) : null}
-                    <div
-                      className={
-                        isActive
-                          ? "add_contact_step_node add_contact_step_node_active"
-                          : isDone
-                            ? "add_contact_step_node add_contact_step_node_done"
-                            : "add_contact_step_node"
-                      }
-                    >
-                      <span
-                        className="add_contact_step_dot"
-                        aria-current={isActive ? "step" : undefined}
-                      >
-                        {n}
-                      </span>
-                      <span className="add_contact_step_label">{label}</span>
-                    </div>
-                  </Fragment>
-                )
-              })}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="um_modal_close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X size={20} strokeWidth={2} aria-hidden />
-          </button>
-        </div>
+  function stepperGroup() {
+    return (
+      <>
+        <p id="add-profile-step-label" className="add_profile_sronly">
+          Step {step} of {totalSteps}: {stepHeading}
+        </p>
+        {stepperLabels.map((label, i) => {
+          const n = i + 1
+          const isActive = step === n
+          const isDone = step > n
+          return (
+            <Fragment key={n}>
+              {i > 0 ? (
+                <span
+                  className={
+                    step > i
+                      ? "add_contact_step_line add_contact_step_line_active"
+                      : "add_contact_step_line"
+                  }
+                  aria-hidden
+                />
+              ) : null}
+              <div
+                className={
+                  isActive
+                    ? "add_contact_step_node add_contact_step_node_active"
+                    : isDone
+                      ? "add_contact_step_node add_contact_step_node_done"
+                      : "add_contact_step_node"
+                }
+              >
+                <span
+                  className="add_contact_step_dot"
+                  aria-current={isActive ? "step" : undefined}
+                >
+                  {n}
+                </span>
+                <span className="add_contact_step_label">{label}</span>
+              </div>
+            </Fragment>
+          )
+        })}
+      </>
+    )
+  }
 
+  function renderFormPanel() {
+    const formNode = (
         <form
-          className="deals_add_inv_modal_form"
+          className={
+            isPage ? "deals_add_deal_asset_form" : "deals_add_inv_modal_form"
+          }
           onSubmit={(e) => e.preventDefault()}
           noValidate
+          aria-labelledby={
+            isPage ? addProfilePageTitleId : "add-profile-modal-title"
+          }
+          aria-describedby="add-profile-step-label"
         >
-          <div className="deals_add_inv_modal_scroll">
+          <div
+            className={
+              isPage
+                ? "deals_add_deal_asset_form_scroll deals_add_profile_wizard_scroll"
+                : "deals_add_inv_modal_scroll"
+            }
+          >
             {step === 1 && (
             <div className="add_contact_section" aria-labelledby="ap-s1">
               <p id="ap-s1" className="add_contact_section_eyebrow">
@@ -720,7 +811,7 @@ export function AddInvestorProfileModal({
           {step === 2 && isEntity && (
             <div className="add_contact_section" aria-labelledby="ap-entity-s2">
               <p id="ap-entity-s2" className="add_contact_section_eyebrow">
-                Entity or plan details
+                Profile details
               </p>
               <InvestingFormField
                 id="ap-entity-custodian"
@@ -1081,173 +1172,6 @@ export function AddInvestorProfileModal({
                 </>
               ) : null}
 
-              <p
-                className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced"
-                style={{ marginTop: "1.25em" }}
-              >
-                Distributions
-              </p>
-              <InvestingFormField
-                id="ap-ent-dm"
-                label={<>Distribution method <span className="contacts_required" aria-hidden>*</span></>}
-                Icon={CircleDollarSign}
-              >
-                <select
-                  id="ap-ent-dm"
-                  className="um_field_select deals_add_inv_field_control"
-                  value={form.distributionMethod}
-                  onChange={(e) => {
-                    const v = e.target.value as DistributionMethod
-                    patch(
-                      {
-                        distributionMethod: v,
-                        ...(v === "check"
-                          ? { bankAccountQuery: "" }
-                          : { checkPayeeName: "", checkMailingAddressId: "" }),
-                      },
-                      v === "check"
-                        ? "bankAccountQuery"
-                        : (["checkPayeeName", "checkMailingAddressId"] as const),
-                    )
-                  }}
-                >
-                  <option value="ach">ACH (recommended)</option>
-                  <option value="check">Check</option>
-                  <option value="other">Other</option>
-                </select>
-              </InvestingFormField>
-              {form.distributionMethod === "check" ? (
-                <>
-                  <p className="add_profile_sub" style={{ marginBottom: "0.5em" }}>
-                    {distributionDetailsHint("check")}
-                  </p>
-                  <InvestingFormField
-                    id="ap-ent-check-payee"
-                    label={<>Payee name <span className="contacts_required" aria-hidden>*</span></>}
-                    Icon={UserRound}
-                    error={fieldError.checkPayeeName}
-                  >
-                    <input
-                      id="ap-ent-check-payee"
-                      className={invClass(
-                        "deals_add_inv_input deals_add_inv_field_control",
-                        Boolean(fieldError.checkPayeeName),
-                      )}
-                      value={form.checkPayeeName}
-                      onChange={(e) =>
-                        patch({ checkPayeeName: e.target.value }, "checkPayeeName")
-                      }
-                      autoComplete="name"
-                      placeholder="Name on the check"
-                      aria-invalid={Boolean(fieldError.checkPayeeName)}
-                      aria-describedby={
-                        fieldError.checkPayeeName ? "ap-ent-check-payee-err" : undefined
-                      }
-                    />
-                  </InvestingFormField>
-                  <InvestingFormField
-                    id="ap-ent-check-mail"
-                    label={
-                      <>Check mailing address <span className="contacts_required" aria-hidden>*</span></>
-                    }
-                    Icon={MapPin}
-                    error={fieldError.checkMailingAddressId}
-                  >
-                    <SavedAddressSelect
-                      id="ap-ent-check-mail"
-                      value={form.checkMailingAddressId}
-                      onChange={(v) =>
-                        patch({ checkMailingAddressId: v }, "checkMailingAddressId")
-                      }
-                      savedAddresses={savedAddresses}
-                      emptyLabel="Search"
-                      ariaLabel="Check mailing address — select a saved address"
-                      invalid={Boolean(fieldError.checkMailingAddressId)}
-                    />
-                  </InvestingFormField>
-                </>
-              ) : (
-                <InvestingFormField
-                  id="ap-ent-bank"
-                  label={
-                    <>
-                      {distributionDetailsLabel(form.distributionMethod)}{" "}
-                      <span className="contacts_required" aria-hidden>*</span>
-                    </>
-                  }
-                  Icon={Search}
-                  error={fieldError.bankAccountQuery}
-                >
-                  <span className="add_profile_sub">
-                    {distributionDetailsHint(form.distributionMethod)}
-                  </span>
-                  <div className="add_profile_search_wrap">
-                    <Search
-                      className="add_profile_search_icon"
-                      size={16}
-                      strokeWidth={2}
-                      aria-hidden
-                    />
-                    <input
-                      id="ap-ent-bank"
-                      className={invClass(
-                        "deals_add_inv_input deals_add_inv_field_control add_profile_search",
-                        Boolean(fieldError.bankAccountQuery),
-                      )}
-                      value={form.bankAccountQuery}
-                      onChange={(e) =>
-                        patch({ bankAccountQuery: e.target.value }, "bankAccountQuery")
-                      }
-                      placeholder={distributionDetailsPlaceholder(
-                        form.distributionMethod,
-                      )}
-                      autoComplete="off"
-                      aria-label={distributionDetailsInputAria(form.distributionMethod)}
-                      aria-invalid={Boolean(fieldError.bankAccountQuery)}
-                      aria-describedby={
-                        fieldError.bankAccountQuery ? "ap-ent-bank-err" : undefined
-                      }
-                    />
-                  </div>
-                </InvestingFormField>
-              )}
-
-              <p
-                className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced"
-                style={{ marginTop: "1.25em" }}
-              >
-                Address
-              </p>
-              <InvestingFormField
-                id="ap-ent-tax-addr"
-                label={<>Tax address <span className="contacts_required" aria-hidden>*</span></>}
-                Icon={MapPin}
-                error={fieldError.taxAddressId}
-              >
-                <SavedAddressSelect
-                  id="ap-ent-tax-addr"
-                  value={form.taxAddressId}
-                  onChange={(v) => patch({ taxAddressId: v }, "taxAddressId")}
-                  savedAddresses={savedAddresses}
-                  emptyLabel="Search"
-                  ariaLabel="Tax address — select a saved address"
-                  invalid={Boolean(fieldError.taxAddressId)}
-                />
-              </InvestingFormField>
-              <InvestingFormField
-                id="ap-ent-mail-addr"
-                label="Mailing address"
-                Icon={MapPin}
-              >
-                <SavedAddressSelect
-                  id="ap-ent-mail-addr"
-                  value={form.mailingAddressId}
-                  onChange={(v) => patch({ mailingAddressId: v })}
-                  savedAddresses={savedAddresses}
-                  emptyLabel="Search"
-                  ariaLabel="Mailing address — select a saved address (optional)"
-                />
-              </InvestingFormField>
             </div>
           )}
 
@@ -1531,136 +1455,12 @@ export function AddInvestorProfileModal({
                   </button>
                 </div>
               </InvestingFormField>
+            </div>
+          )}
 
-              <p className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced">
-                Distributions
-              </p>
-              <InvestingFormField
-                id="ap-jt-dm"
-                label={<>Distribution method <span className="contacts_required" aria-hidden>*</span></>}
-                Icon={CircleDollarSign}
-              >
-                <select
-                  id="ap-jt-dm"
-                  className="um_field_select deals_add_inv_field_control"
-                  value={form.distributionMethod}
-                  onChange={(e) => {
-                    const v = e.target.value as DistributionMethod
-                    patch(
-                      {
-                        distributionMethod: v,
-                        ...(v === "check"
-                          ? { bankAccountQuery: "" }
-                          : { checkPayeeName: "", checkMailingAddressId: "" }),
-                      },
-                      v === "check"
-                        ? "bankAccountQuery"
-                        : (["checkPayeeName", "checkMailingAddressId"] as const),
-                    )
-                  }}
-                >
-                  <option value="ach">ACH (recommended)</option>
-                  <option value="check">Check</option>
-                  <option value="other">Other</option>
-                </select>
-              </InvestingFormField>
-              {form.distributionMethod === "check" ? (
-                <>
-                  <p className="add_profile_sub" style={{ marginBottom: "0.5em" }}>
-                    {distributionDetailsHint("check")}
-                  </p>
-                  <InvestingFormField
-                    id="ap-jt-check-payee"
-                    label={<>Payee name <span className="contacts_required" aria-hidden>*</span></>}
-                    Icon={UserRound}
-                    error={fieldError.checkPayeeName}
-                  >
-                    <input
-                      id="ap-jt-check-payee"
-                      className={invClass(
-                        "deals_add_inv_input deals_add_inv_field_control",
-                        Boolean(fieldError.checkPayeeName),
-                      )}
-                      value={form.checkPayeeName}
-                      onChange={(e) =>
-                        patch({ checkPayeeName: e.target.value }, "checkPayeeName")
-                      }
-                      autoComplete="name"
-                      placeholder="Name on the check"
-                      aria-invalid={Boolean(fieldError.checkPayeeName)}
-                      aria-describedby={
-                        fieldError.checkPayeeName ? "ap-jt-check-payee-err" : undefined
-                      }
-                    />
-                  </InvestingFormField>
-                  <InvestingFormField
-                    id="ap-jt-check-mail"
-                    label={
-                      <>Check mailing address <span className="contacts_required" aria-hidden>*</span></>
-                    }
-                    Icon={MapPin}
-                    error={fieldError.checkMailingAddressId}
-                  >
-                    <SavedAddressSelect
-                      id="ap-jt-check-mail"
-                      value={form.checkMailingAddressId}
-                      onChange={(v) =>
-                        patch({ checkMailingAddressId: v }, "checkMailingAddressId")
-                      }
-                      savedAddresses={savedAddresses}
-                      emptyLabel="Select a saved address for check mailing"
-                      ariaLabel="Check mailing address — select a saved address"
-                      invalid={Boolean(fieldError.checkMailingAddressId)}
-                    />
-                  </InvestingFormField>
-                </>
-              ) : (
-                <InvestingFormField
-                  id="ap-jt-bank"
-                  label={
-                    <>
-                      {distributionDetailsLabel(form.distributionMethod)}{" "}
-                      <span className="contacts_required" aria-hidden>*</span>
-                    </>
-                  }
-                  Icon={Search}
-                  error={fieldError.bankAccountQuery}
-                >
-                  <span className="add_profile_sub">
-                    {distributionDetailsHint(form.distributionMethod)}
-                  </span>
-                  <div className="add_profile_search_wrap">
-                    <Search
-                      className="add_profile_search_icon"
-                      size={16}
-                      strokeWidth={2}
-                      aria-hidden
-                    />
-                    <input
-                      id="ap-jt-bank"
-                      className={invClass(
-                        "deals_add_inv_input deals_add_inv_field_control add_profile_search",
-                        Boolean(fieldError.bankAccountQuery),
-                      )}
-                      value={form.bankAccountQuery}
-                      onChange={(e) =>
-                        patch({ bankAccountQuery: e.target.value }, "bankAccountQuery")
-                      }
-                      placeholder={distributionDetailsPlaceholder(
-                        form.distributionMethod,
-                      )}
-                      autoComplete="off"
-                      aria-label={distributionDetailsInputAria(form.distributionMethod)}
-                      aria-invalid={Boolean(fieldError.bankAccountQuery)}
-                      aria-describedby={
-                        fieldError.bankAccountQuery ? "ap-jt-bank-err" : undefined
-                      }
-                    />
-                  </div>
-                </InvestingFormField>
-              )}
-
-              <p className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced">
+          {step === 4 && isJointTenancy && (
+            <div className="add_contact_section" aria-labelledby="ap-jt-s4">
+              <p id="ap-jt-s4" className="add_contact_section_eyebrow">
                 Address
               </p>
               <InvestingFormField
@@ -1830,7 +1630,8 @@ export function AddInvestorProfileModal({
             </div>
           )}
 
-          {step === 3 && isIndividual && (
+          {step === 3 &&
+            (isIndividual || isJointTenancy || isEntity) && (
             <div className="add_contact_section" aria-labelledby="ap-s3">
               <p id="ap-s3" className="add_contact_section_eyebrow">
                 Distributions
@@ -1962,7 +1763,7 @@ export function AddInvestorProfileModal({
             </div>
           )}
 
-          {step === 4 && isIndividual && (
+          {step === 4 && (isIndividual || isEntity) && (
             <div className="add_contact_section" aria-labelledby="ap-s4">
               <p id="ap-s4" className="add_contact_section_eyebrow">
                 Address
@@ -1996,7 +1797,8 @@ export function AddInvestorProfileModal({
             </div>
           )}
 
-          {step === 5 && isIndividual && (
+          {step === 5 &&
+            (isIndividual || isJointTenancy || isEntity) && (
             <div className="add_contact_section" aria-labelledby="ap-s5">
               <p id="ap-s5" className="add_contact_section_eyebrow">
                 Beneficiary info
@@ -2068,7 +1870,13 @@ export function AddInvestorProfileModal({
           )}
           </div>
 
-        <div className="um_modal_actions add_contact_modal_actions">
+        <div
+          className={
+            isPage
+              ? "um_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions"
+              : "um_modal_actions add_contact_modal_actions"
+          }
+        >
           <button
             type="button"
             className="um_btn_secondary"
@@ -2079,9 +1887,7 @@ export function AddInvestorProfileModal({
             Cancel
           </button>
           <div className="add_contact_modal_actions_trailing">
-            {((isIndividual && step > 1) ||
-              (isJointTenancy && step > 1) ||
-              (isEntity && step > 1)) && (
+            {((isIndividual || isJointTenancy || isEntity) && step > 1) && (
               <button
                 type="button"
                 className="um_btn_secondary"
@@ -2091,9 +1897,11 @@ export function AddInvestorProfileModal({
                 Back
               </button>
             )}
-            {((isIndividual && step < TOTAL_STEPS_INDIVIDUAL) ||
-              (isJointTenancy && step === 1) ||
-              (isEntity && step === 1)) && (
+            {step < totalSteps &&
+              (step === 1 ||
+                isIndividual ||
+                isJointTenancy ||
+                isEntity) && (
               <button
                 type="button"
                 className="um_btn_primary"
@@ -2103,9 +1911,8 @@ export function AddInvestorProfileModal({
                 <ChevronRight size={18} strokeWidth={2} aria-hidden />
               </button>
             )}
-            {((isIndividual && step === TOTAL_STEPS_INDIVIDUAL) ||
-              (isJointTenancy && step === 2) ||
-              (isEntity && step === 2)) && (
+            {((isIndividual || isJointTenancy || isEntity) &&
+              step === totalSteps) && (
               <button
                 type="button"
                 className="um_btn_primary"
@@ -2118,7 +1925,120 @@ export function AddInvestorProfileModal({
           </div>
         </div>
         </form>
+    )
+
+    if (isPage) return formNode
+
+    return (
+      <div
+        className={`um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel investing_add_profile_form_panel${
+          isListInline ? " investing_add_profile_form_panel--inline" : ""
+        }`}
+        role={isListInline ? "region" : "dialog"}
+        aria-modal={isListInline ? undefined : true}
+        aria-labelledby="add-profile-modal-title"
+        aria-describedby="add-profile-step-label"
+        onClick={isListInline ? undefined : (e) => e.stopPropagation()}
+      >
+        <div className="um_modal_head add_contact_modal_head">
+          <div className="add_contact_modal_head_main">
+            <h3
+              id="add-profile-modal-title"
+              className="um_modal_title add_contact_modal_title"
+            >
+              Add profile
+            </h3>
+            <div
+              className="add_contact_stepper"
+              role="group"
+              aria-label="Progress"
+            >
+              {stepperGroup()}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="um_modal_close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <X size={20} strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+        {formNode}
       </div>
+    )
+  }
+
+  if (isPage) {
+    return (
+      <>
+        <div className="deals_list_page deals_detail_page deals_add_investor_class_page deals_add_deal_asset_page deals_create_flow">
+          <header className="deals_list_head deals_add_investor_class_page_head deals_create_page_head">
+            <div className="deals_add_deal_asset_head_main deals_create_head_main">
+              <div className="deals_list_title_row deals_add_deal_asset_title_row">
+                <button
+                  type="button"
+                  className="deals_list_back_circle"
+                  onClick={onClose}
+                  aria-label="Back to profiles"
+                >
+                  <ArrowLeft size={20} strokeWidth={2} aria-hidden />
+                </button>
+                <div className="deals_add_deal_asset_title_stack">
+                  <h1 id={addProfilePageTitleId} className="deals_list_title">
+                    Add profile
+                  </h1>
+                  <p className="deals_create_subtitle">{addProfilePageSubtitle}</p>
+                </div>
+              </div>
+              <div
+                className="add_contact_stepper deals_add_deal_asset_stepper deals_create_stepper"
+                role="group"
+                aria-label="Add profile steps"
+              >
+                {stepperGroup()}
+              </div>
+            </div>
+          </header>
+
+          <section
+            className="deals_create_deal_section"
+            aria-labelledby={addProfilePageTitleId}
+          >
+            {renderFormPanel()}
+          </section>
+        </div>
+        <AddBeneficiaryModal
+          open={benModalOpen}
+          onClose={() => setBenModalOpen(false)}
+          initial={form.beneficiary}
+          onSave={(b) => {
+            patch({ beneficiary: b })
+          }}
+        />
+      </>
+    )
+  }
+
+  return (
+  <>
+  {isListInline ? (
+    <section
+      className="investing_add_profile_inline_root"
+      aria-label="Add profile"
+    >
+      {renderFormPanel()}
+    </section>
+  ) : createPortal(
+    <div
+      className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      {renderFormPanel()}
     </div>,
     document.body,
   )}

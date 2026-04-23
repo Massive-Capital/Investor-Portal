@@ -47,7 +47,11 @@ export default defineConfig(({ mode }) => {
       )
       if (res && "writeHead" in res && !res.headersSent) {
         res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" })
-        res.end("Bad Gateway: could not reach the API. Check the Vite terminal message above.")
+        res.end(
+          "Bad Gateway: Vite could not connect to the API. Start the backend (e.g. npm run dev in the backend folder) so the proxy to " +
+            backendDevUrl +
+            " works. If the API uses another port/host, set VITE_DEV_API_PROXY in the frontend .env. See the Vite terminal for details.",
+        )
       }
     })
   }

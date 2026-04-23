@@ -55,8 +55,8 @@ export interface DealInvestorRow {
    */
   addedInvestorsCommitted?: string
   /**
-   * Member invitation email was sent (from API e.g. `invitation_mail_sent`).
-   * When true, actions show “Invitation sent” (disabled); when false, “Send invitation email”.
+   * `send_invitation_mail` on `deal_member` or `deal_lp_investor` (yes = Mail Sent, no = Not sent).
+   * When true, the kebab action is “Re-send invitation mail”.
    */
   invitationMailSent?: boolean
   /** `lp_roster` = row from `deal_lp_investor` only (no `deal_investment`). */

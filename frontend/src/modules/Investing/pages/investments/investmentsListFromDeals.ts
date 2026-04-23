@@ -3,7 +3,10 @@
  * signed-in user has a positive committed amount on a deal.
  */
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
-import { committedAmountForViewerEmail } from "@/modules/Investing/utils/investingViewerDealScope"
+import {
+  applyLpSessionDealIdScope,
+  committedAmountForViewerEmail,
+} from "@/modules/Investing/utils/investingViewerDealScope"
 import {
   fetchDealById,
   fetchDealInvestors,
@@ -66,7 +69,9 @@ export async function loadInvestmentListRowsFromDeals(): Promise<InvestmentListR
   const em = getSessionUserEmail()
   if (!em?.trim()) return []
   const emn = normEmail(em)
-  const list = await fetchDealsList({ includeParticipantDeals: true })
+  const list = applyLpSessionDealIdScope(
+    await fetchDealsList({ includeParticipantDeals: true }),
+  )
   const active = list.filter((r) => !r.archived)
   if (active.length === 0) return []
 

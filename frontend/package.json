@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@cloudinary/url-gen": "^1.22.0",
     "dompurify": "^3.3.3",
     "lucide-react": "^0.577.0",
     "quill": "^2.0.3",

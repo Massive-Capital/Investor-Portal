@@ -373,7 +373,6 @@ export function DropdownSelect({
               header.onClick()
               close()
             }}
-            disabled
           >
             {header.label}
           </button>

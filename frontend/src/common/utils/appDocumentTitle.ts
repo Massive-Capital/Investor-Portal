@@ -66,6 +66,7 @@ export function pageTitleForAppPathname(
     "/investing/investments": "Investments",
     "/investing/documents": "Documents",
     "/investing/profiles": "Profiles",
+    "/investing/profiles/add": "Add profile",
     "/investing/deals": "Deals",
     "/investing/company": "Company overview",
     "/investing/cashflows": "Cashflows",

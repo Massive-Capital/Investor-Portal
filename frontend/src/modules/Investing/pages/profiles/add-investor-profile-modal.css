@@ -1,5 +1,49 @@
 /* Add profile — sections, stepper, beneficiary row (shell: Add investment / um_modal) */
 
+/* Full page — `/investing/profiles/add` (Create deal–style body) */
+.investing_add_profile_page_root {
+  width: 100%;
+  max-width: min(42em, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding-bottom: 0.5em;
+}
+
+.investing_add_profile_page_stepper {
+  margin-bottom: 1.1em;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* In-page variant (`variant="inline"`) on `/investing/profiles` */
+.investing_add_profile_inline_root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.investing_add_profile_form_panel--inline.deals_add_inv_modal_panel.um_modal.um_modal_view {
+  max-width: 100%;
+  width: 100%;
+  box-shadow: none;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--portal-surface, #fff);
+  box-sizing: border-box;
+}
+
+.investing_add_profile_form_panel--inline .deals_add_inv_modal_scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
 /* Section / eyebrow titles use `add_contact_section` + `add_contact_section_eyebrow` from contacts.css */
 
 .add_profile_readonly_type {

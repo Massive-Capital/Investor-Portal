@@ -33,32 +33,36 @@ export async function getWorkspaceTabSettings(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
-  if (!user?.id) {
-    res.status(401).json({ message: "Authorization required" });
-    return;
-  }
-  const companyId = paramStr(req.params.companyId);
-  const tabKeyRaw = paramStr(req.params.tabKey);
-  if (!companyId || !tabKeyRaw || !isWorkspaceTabKey(tabKeyRaw)) {
-    res.status(400).json({ message: "Invalid company or workspace tab" });
-    return;
-  }
-  const can = await userCanAccessCompanyWorkspace(
-    user.id,
-    user.userRole,
-    companyId,
-  );
-  if (!can) {
-    res.status(403).json({ message: "Forbidden" });
-    return;
-  }
   try {
+    const user = getJwtUser(req);
+    if (!user?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
+    const companyId = paramStr(req.params.companyId);
+    const tabKeyRaw = paramStr(req.params.tabKey);
+    if (!companyId || !tabKeyRaw || !isWorkspaceTabKey(tabKeyRaw)) {
+      res.status(400).json({ message: "Invalid company or workspace tab" });
+      return;
+    }
+    const can = await userCanAccessCompanyWorkspace(
+      user.id,
+      user.userRole,
+      companyId,
+    );
+    if (!can) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
     const payload = await getWorkspaceTabPayload(companyId, tabKeyRaw);
     res.status(200).json({ payload });
   } catch (err) {
     console.error("getWorkspaceTabSettings:", err);
-    res.status(500).json({ message: "Could not load workspace settings" });
+    if (!res.headersSent) {
+      res
+        .status(500)
+        .json({ message: "Could not load workspace settings" });
+    }
   }
 }
 
@@ -66,59 +70,68 @@ export async function putWorkspaceTabSettings(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
-  if (!user?.id) {
-    res.status(401).json({ message: "Authorization required" });
-    return;
-  }
-  const companyId = paramStr(req.params.companyId);
-  const tabKeyRaw = paramStr(req.params.tabKey);
-  if (!companyId || !tabKeyRaw || !isWorkspaceTabKey(tabKeyRaw)) {
-    res.status(400).json({ message: "Invalid company or workspace tab" });
-    return;
-  }
-  const can = await userCanEditCompanyWorkspace(
-    user.id,
-    user.userRole,
-    companyId,
-  );
-  if (!can) {
-    res.status(403).json({ message: "Forbidden" });
-    return;
-  }
-  const b = req.body as unknown;
-  let payload: Record<string, unknown> = {};
-  if (b != null && typeof b === "object" && !Array.isArray(b)) {
-    const o = b as Record<string, unknown>;
-    const inner = o.payload;
-    if (
-      inner != null &&
-      typeof inner === "object" &&
-      !Array.isArray(inner)
-    ) {
-      payload = { ...(inner as Record<string, unknown>) };
-    } else {
-      payload = { ...o };
-    }
-  }
   try {
-    await upsertWorkspaceTabPayload(companyId, tabKeyRaw, payload);
+    const user = getJwtUser(req);
+    if (!user?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
+    const companyId = paramStr(req.params.companyId);
+    const tabKeyRaw = paramStr(req.params.tabKey);
+    if (!companyId || !tabKeyRaw || !isWorkspaceTabKey(tabKeyRaw)) {
+      res.status(400).json({ message: "Invalid company or workspace tab" });
+      return;
+    }
+    const can = await userCanEditCompanyWorkspace(
+      user.id,
+      user.userRole,
+      companyId,
+    );
+    if (!can) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+    const b = req.body as unknown;
+    let payload: Record<string, unknown> = {};
+    if (b != null && typeof b === "object" && !Array.isArray(b)) {
+      const o = b as Record<string, unknown>;
+      const inner = o.payload;
+      if (
+        inner != null &&
+        typeof inner === "object" &&
+        !Array.isArray(inner)
+      ) {
+        payload = { ...(inner as Record<string, unknown>) };
+      } else {
+        payload = { ...o };
+      }
+    }
+    try {
+      await upsertWorkspaceTabPayload(companyId, tabKeyRaw, payload);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not save";
+      if (msg.startsWith("Invalid workspace company id")) {
+        res.status(400).json({ message: msg });
+        return;
+      }
+      if (pgErrorCode(err) === "23503") {
+        res.status(400).json({
+          message:
+            "Workspace could not be saved: company is missing in the database (check workspace company id).",
+        });
+        return;
+      }
+      console.error("putWorkspaceTabSettings:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Could not save workspace settings" });
+      }
+      return;
+    }
+    res.status(200).json({ ok: true });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Could not save";
-    if (msg.startsWith("Invalid workspace company id")) {
-      res.status(400).json({ message: msg });
-      return;
-    }
-    if (pgErrorCode(err) === "23503") {
-      res.status(400).json({
-        message:
-          "Workspace could not be saved: company is missing in the database (check workspace company id).",
-      });
-      return;
-    }
     console.error("putWorkspaceTabSettings:", err);
-    res.status(500).json({ message: "Could not save workspace settings" });
-    return;
+    if (!res.headersSent) {
+      res.status(500).json({ message: "Could not save workspace settings" });
+    }
   }
-  res.status(200).json({ ok: true });
 }

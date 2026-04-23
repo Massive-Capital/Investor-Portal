@@ -14,8 +14,10 @@ export function withBrandingVersionOnUrl(
   version: string | null | undefined,
 ): string {
   if (!href || !version) return href
+  /** Cloudinary delivery URLs already encode version in the path; `?v=` can interfere with their query parsing. */
+  if (/[./]res\.cloudinary\.com\//i.test(href)) return href
   const sep = href.includes("?") ? "&" : "?"
-  return `${href}${sep}v=${encodeURIComponent(version)}`
+  return `${href}${sep}cb=${encodeURIComponent(version)}`
 }
 
 export function brandingFromSettingsPayload(

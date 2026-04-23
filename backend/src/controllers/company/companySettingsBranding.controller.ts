@@ -4,16 +4,35 @@ import * as path from "node:path";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
+  getWorkspaceTabPayload,
   upsertWorkspaceTabPayload,
   userCanEditCompanyWorkspace,
 } from "../../services/companyWorkspaceSettings.service.js";
+import {
+  destroyCloudinaryByPublicId,
+  isCloudinaryConfigured,
+  uploadCompanyBrandingToCloudinary,
+} from "../../services/cloudinaryCompanyBranding.service.js";
 
 const ASSET_TYPES = new Set(["logo", "background", "logoIcon"]);
 
-const ASSET_TYPE_TO_SETTINGS_KEY: Record<string, "logoImageUrl" | "backgroundImageUrl" | "logoIconUrl"> = {
+const ASSET_TYPE_TO_SETTINGS_KEY: Record<
+  string,
+  "logoImageUrl" | "backgroundImageUrl" | "logoIconUrl"
+> = {
   logo: "logoImageUrl",
   background: "backgroundImageUrl",
   logoIcon: "logoIconUrl",
+};
+
+/** Cloudinary `public_id` (path) for replacing/deleting the previous asset. */
+const ASSET_TYPE_TO_PUBLIC_ID_KEY: Record<
+  string,
+  "logoImagePublicId" | "backgroundImagePublicId" | "logoIconPublicId"
+> = {
+  logo: "logoImagePublicId",
+  background: "backgroundImagePublicId",
+  logoIcon: "logoIconPublicId",
 };
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -80,6 +99,56 @@ function isAcceptableBrandingMimetype(
   return false;
 }
 
+/**
+ * When multipart has no original filename and/or empty type (Edge, clipboard), infer format from
+ * the first few bytes. Only allows the same set as `ALLOWED_IMAGE_EXT`.
+ */
+function sniffImageBufferExt(buf: Buffer): string {
+  if (buf.length < 4) return "";
+  if (buf[0] === 0xff && buf[1] === 0xd8) return "jpg";
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
+    return "png";
+  }
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return "gif";
+  if (buf.length >= 12) {
+    if (buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) {
+      return "webp";
+    }
+  }
+  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) {
+    return "ico";
+  }
+  const head = buf.subarray(0, Math.min(512, buf.length)).toString("utf8").toLowerCase();
+  if (head.includes("<svg") || head.trimStart().startsWith("<?xml")) {
+    if (head.includes("svg") || head.includes("xmlns")) return "svg";
+  }
+  return "";
+}
+
+function defaultMimetypeForExt(ext: string): string {
+  switch (ext) {
+    case "png":
+      return "image/png";
+    case "jpg":
+      return "image/jpeg";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "svg":
+      return "image/svg+xml";
+    case "ico":
+      return "image/x-icon";
+    default:
+      return "application/octet-stream";
+  }
+}
+
 function paramStr(v: string | string[] | undefined): string {
   if (v == null) return "";
   const s = Array.isArray(v) ? v[0] : v;
@@ -91,8 +160,13 @@ const COMPANY_BRANDING_UPLOAD_SUBDIR = "company-branding";
 
 /**
  * POST multipart `file` — image for company settings (logo, full-page background, favicon-style icon).
- * Files are stored under `uploads/company-branding/<companyId>/` and the response is
- * `{ url: "/uploads/company-branding/…" }` for the workspace `settings` tab JSON.
+ *
+ * **Cloudinary** (when `CLOUDINARY_URL` or cloud name + key + secret is set):
+ * files go to folder `investor_portal/companies/<companyId>/` with a unique public id; the
+ * `settings` tab JSON stores the HTTPS `secure_url` and the `public_id` in `*ImagePublicId` keys.
+ *
+ * **Fallback** (no Cloudinary): files are written under `uploads/company-branding/<companyId>/`
+ * and the response is `{ url: "/uploads/company-branding/…" }`; public id fields are cleared.
  */
 export async function postCompanySettingsBranding(
   req: Request,
@@ -140,13 +214,21 @@ export async function postCompanySettingsBranding(
     res.status(400).json({ message: "File too large (max 8 MB)" });
     return;
   }
-  const originalname = String(
+  let originalname = String(
     (file as { originalname?: string }).originalname ?? "",
   );
-  const ext = resolveBrandingFileExtension(
+  if (!String(originalname).trim()) {
+    const fromM = extFromMimetype(String(file.mimetype || ""));
+    originalname = fromM ? `image.${fromM}` : "image";
+  }
+  let ext = resolveBrandingFileExtension(
     file.mimetype ?? "",
     originalname,
   );
+  if (!ext && file.buffer && file.buffer.length) {
+    const sniffed = sniffImageBufferExt(file.buffer);
+    if (sniffed && ALLOWED_IMAGE_EXT.has(sniffed)) ext = sniffed;
+  }
   if (!ext) {
     res.status(400).json({
       message:
@@ -158,7 +240,69 @@ export async function postCompanySettingsBranding(
     res.status(400).json({ message: "File must be an image" });
     return;
   }
+
+  const settingsKey = ASSET_TYPE_TO_SETTINGS_KEY[assetType]!;
+  const publicIdKey = ASSET_TYPE_TO_PUBLIC_ID_KEY[assetType]!;
+  const useCloud = isCloudinaryConfigured();
   const cid = companyId.toLowerCase();
+  const existing = await getWorkspaceTabPayload(companyId, "settings");
+  const oldCloudPublicIdRaw = existing[publicIdKey];
+  const oldCloudPublicId =
+    typeof oldCloudPublicIdRaw === "string" && oldCloudPublicIdRaw.trim()
+      ? oldCloudPublicIdRaw.trim()
+      : "";
+
+  if (useCloud) {
+    let newPublicId = "";
+    try {
+      const rawType = String(file.mimetype || "").trim();
+      const mimetype = rawType
+        ? rawType
+        : defaultMimetypeForExt(ext);
+      const { secureUrl, publicId } = await uploadCompanyBrandingToCloudinary({
+        companyId: cid,
+        assetType: assetType as "logo" | "background" | "logoIcon",
+        buffer: file.buffer,
+        mimetype,
+      });
+      newPublicId = publicId;
+      try {
+        await upsertWorkspaceTabPayload(companyId, "settings", {
+          [settingsKey]: secureUrl,
+          [publicIdKey]: publicId,
+        });
+      } catch (e) {
+        await destroyCloudinaryByPublicId(newPublicId);
+        throw e;
+      }
+      if (oldCloudPublicId && oldCloudPublicId !== newPublicId) {
+        void destroyCloudinaryByPublicId(oldCloudPublicId);
+      }
+      res.status(200).json({ url: secureUrl, publicId: newPublicId });
+    } catch (e) {
+      console.error("postCompanySettingsBranding Cloudinary:", e);
+      const raw =
+        e instanceof Error
+          ? e.message
+          : "Could not upload file to cloud storage";
+      if (
+        raw.toLowerCase().includes("not configured") ||
+        raw.toLowerCase().includes("cloudinary://")
+      ) {
+        res.status(500).json({ message: raw });
+        return;
+      }
+      const short =
+        raw.length > 220
+          ? `${raw.slice(0, 200)}…`
+          : raw;
+      res.status(500).json({
+        message: `Cloudinary upload failed: ${short}`.replace(/\s+/g, " "),
+      });
+    }
+    return;
+  }
+
   const fileName = `${assetType}-${Date.now()}.${ext}`;
   const root = getUploadsPhysicalRoot();
   const full = path.join(root, COMPANY_BRANDING_UPLOAD_SUBDIR, cid, fileName);
@@ -176,11 +320,15 @@ export async function postCompanySettingsBranding(
     return;
   }
   const url = `/uploads/${base}`;
-  const settingsKey = ASSET_TYPE_TO_SETTINGS_KEY[assetType];
+
   try {
     await upsertWorkspaceTabPayload(companyId, "settings", {
       [settingsKey]: url,
+      [publicIdKey]: null,
     });
+    if (oldCloudPublicId) {
+      void destroyCloudinaryByPublicId(oldCloudPublicId);
+    }
   } catch (e) {
     console.error("postCompanySettingsBranding workspace settings update:", e);
     try {
@@ -193,5 +341,5 @@ export async function postCompanySettingsBranding(
     });
     return;
   }
-  res.status(200).json({ url });
+  res.status(200).json({ url, publicId: null });
 }

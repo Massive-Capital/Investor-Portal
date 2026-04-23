@@ -150,11 +150,27 @@ function PageLayoutInner() {
             {showInvestingSidebar
               ? investingSidebarItems.map((item) => {
                   const Icon = item.icon
+                  if (item.to === "/investing/profiles") {
+                    const profilesActive = location.pathname.startsWith(
+                      "/investing/profiles",
+                    )
+                    return (
+                      <Link
+                        key={item.label}
+                        to={item.to}
+                        className={`app_sidebar_link${profilesActive ? " app_sidebar_link_active" : ""}`}
+                        aria-current={profilesActive ? "page" : undefined}
+                      >
+                        <Icon size={18} />
+                        <span>{item.label}</span>
+                      </Link>
+                    )
+                  }
                   return (
                     <NavLink
                       key={item.label}
                       to={item.to}
-                      end
+                      end={item.to === "/"}
                       className={({ isActive }) =>
                         `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
                       }
