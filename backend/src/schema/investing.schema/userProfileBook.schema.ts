@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -9,17 +10,28 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "../auth.schema/signin.js";
 
-/** LP investing → Profiles: one row per saved investor profile for a portal user. */
+/**
+ * LP “My profiles” book: one row per saved investor profile (display label, type, audit, optional form JSON).
+ * DB comment on the table: see migration `0026_user_investor_profile_form_snapshot_jsonb.sql`.
+ */
 export const userInvestorProfiles = pgTable("user_investor_profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  // Identity in lists / investments
   profileName: varchar("profile_name", { length: 255 }).notNull(),
   profileType: varchar("profile_type", { length: 100 }).notNull().default(""),
+  // Metadata
   addedBy: varchar("added_by", { length: 255 }).notNull().default(""),
   investmentsCount: integer("investments_count").notNull().default(0),
   archived: boolean("archived").notNull().default(false),
+  lastEditReason: text("last_edit_reason"),
+  /**
+   * Multi-step add/edit form as JSON; matches the portal “Add profile” wizard (names, SSN, distribution, etc.).
+   * `jsonb` in Postgres; API still exposes it as `profileWizardState` for the client.
+   */
+  formSnapshot: jsonb("form_snapshot").$type<Record<string, unknown> | null>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

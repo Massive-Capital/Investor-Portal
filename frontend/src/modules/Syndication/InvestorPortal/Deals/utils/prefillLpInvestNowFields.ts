@@ -1,13 +1,58 @@
 import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail"
 import { fetchDealInvestors } from "../api/dealsApi"
 import { resolveInvestmentStatusSelectValue } from "../constants/investment-status"
+import type { DealInvestorsPayload } from "../types/deal-investors.types"
 import { parseMoneyDigits } from "./offeringMoneyFormat"
 
 export interface LpInvestNowPrefill {
   profileId: string
+  userInvestorProfileId: string
   amount: string
   status: string
   docSignedDate: string
+  /** Roster / investment row id; Invest now PATCHes this row (exempt from duplicate-profile blocks). */
+  viewerRowId?: string
+}
+
+/**
+ * Build prefill from an existing investors response (avoids a second request when
+ * the caller already has the payload for duplicate-profile checks).
+ */
+export function getLpInvestNowPrefillFromPayload(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): LpInvestNowPrefill | null {
+  const em = (viewerEmailNorm || "").trim().toLowerCase()
+  if (!em) return null
+  const row = payload.investors.find(
+    (r) => String(r.userEmail ?? "").trim().toLowerCase() === em,
+  )
+  if (!row) return null
+  const profileId = String(row.profileId ?? "").trim()
+  const userInvestorProfileId = String(
+    row.userInvestorProfileId ?? "",
+  ).trim()
+  let amount = ""
+  const n = parseMoneyDigits(String(row.committed ?? "").trim())
+  if (Number.isFinite(n) && n > 0) amount = String(n)
+  const status = resolveInvestmentStatusSelectValue(
+    String(row.status ?? "").trim(),
+  )
+  let docSignedDate = ""
+  const iso = String(row.docSignedDateIso ?? "").trim()
+  if (iso) {
+    const d = iso.slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) docSignedDate = d
+  }
+  const vid = String(row.id ?? "").trim()
+  return {
+    profileId,
+    userInvestorProfileId,
+    amount,
+    status,
+    docSignedDate,
+    ...(vid ? { viewerRowId: vid } : {}),
+  }
 }
 
 /**
@@ -23,24 +68,7 @@ export async function fetchLpInvestNowPrefill(
   if (!email) return null
   try {
     const payload = await fetchDealInvestors(did, { lpInvestorsOnly: true })
-    const row = payload.investors.find(
-      (r) => String(r.userEmail ?? "").trim().toLowerCase() === email,
-    )
-    if (!row) return null
-    const profileId = String(row.profileId ?? "").trim()
-    let amount = ""
-    const n = parseMoneyDigits(String(row.committed ?? "").trim())
-    if (Number.isFinite(n) && n > 0) amount = String(n)
-    const status = resolveInvestmentStatusSelectValue(
-      String(row.status ?? "").trim(),
-    )
-    let docSignedDate = ""
-    const iso = String(row.docSignedDateIso ?? "").trim()
-    if (iso) {
-      const d = iso.slice(0, 10)
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) docSignedDate = d
-    }
-    return { profileId, amount, status, docSignedDate }
+    return getLpInvestNowPrefillFromPayload(payload, email)
   } catch {
     return null
   }

@@ -2,7 +2,11 @@ import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "@/common/components/Toast"
-import { fetchMyProfileBook, postInvestorProfile } from "./investingProfileBookApi"
+import {
+  type ProfileBookSnapshot,
+  fetchMyProfileBook,
+  postInvestorProfile,
+} from "./investingProfileBookApi"
 import { AddInvestorProfileModal } from "./AddInvestorProfileModal"
 import type { NewInvestorProfilePayload } from "./investor-profiles.types"
 import type { SavedAddress } from "./address.types"
@@ -18,6 +22,9 @@ import "./add-investor-profile-modal.css"
 export function AddInvestorProfilePage() {
   const navigate = useNavigate()
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+  const [savedBeneficiaries, setSavedBeneficiaries] = useState<
+    ProfileBookSnapshot["beneficiaries"]
+  >([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -26,10 +33,14 @@ export function AddInvestorProfilePage() {
     void (async () => {
       try {
         const book = await fetchMyProfileBook()
-        if (!cancelled) setSavedAddresses(book.addresses)
+        if (!cancelled) {
+          setSavedAddresses(book.addresses)
+          setSavedBeneficiaries(book.beneficiaries)
+        }
       } catch {
         if (!cancelled) {
           setSavedAddresses([])
+          setSavedBeneficiaries([])
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -80,6 +91,7 @@ export function AddInvestorProfilePage() {
       variant="page"
       onClose={goBack}
       savedAddresses={savedAddresses}
+      savedBeneficiaries={savedBeneficiaries}
       onProfileCreated={onProfileCreated}
     />
   )

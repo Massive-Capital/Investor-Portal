@@ -5,6 +5,7 @@ import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
 import type {
   InvestorProfileListRow,
   NewInvestorProfilePayload,
+  UpdateInvestorProfilePayload,
 } from "./investor-profiles.types"
 
 function authJsonHeaders(): HeadersInit {
@@ -43,6 +44,47 @@ function errMsg(data: Record<string, unknown>, res: Response): string {
   return `Request failed (${res.status})`
 }
 
+/** Coerce a profile row from JSON (snake or camel) into `InvestorProfileListRow` shape. */
+export function normalizeInvestorProfileListRow(
+  raw: unknown,
+): InvestorProfileListRow {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      id: "",
+      profileName: "—",
+      profileType: "—",
+      addedBy: "—",
+      investmentsCount: 0,
+      dateCreated: "—",
+    }
+  }
+  const r = raw as Record<string, unknown>
+  const rawN =
+    typeof r.investmentsCount === "number" && Number.isFinite(r.investmentsCount)
+      ? r.investmentsCount
+      : typeof r.investments_count === "number" &&
+          Number.isFinite(r.investments_count)
+        ? r.investments_count
+        : 0
+  const n = Math.max(0, Math.trunc(Number(rawN) || 0))
+  return {
+    id: String(r.id ?? "").trim() || "—",
+    profileName: String(r.profileName ?? r.profile_name ?? "").trim() || "—",
+    profileType: String(r.profileType ?? r.profile_type ?? "").trim() || "—",
+    addedBy: String(r.addedBy ?? r.added_by ?? "").trim() || "—",
+    investmentsCount: n,
+    dateCreated: String(
+      r.dateCreated ?? r.date_created ?? r.created_at ?? "",
+    ).trim() || "—",
+    archived: Boolean(r.archived),
+    lastEditReason:
+      (r.lastEditReason ?? r.last_edit_reason) != null
+        ? String(r.lastEditReason ?? r.last_edit_reason)
+        : null,
+    profileWizardState: r.profileWizardState ?? r.profile_wizard_state ?? r.form_snapshot,
+  }
+}
+
 export type ProfileBookSnapshot = {
   profiles: InvestorProfileListRow[]
   beneficiaries: (BeneficiaryDraft & { id: string; archived?: boolean })[]
@@ -66,7 +108,7 @@ export async function fetchMyProfileBook(): Promise<ProfileBookSnapshot> {
     throw new Error("Invalid response from server.")
   }
   return {
-    profiles: profiles as InvestorProfileListRow[],
+    profiles: profiles.map((p) => normalizeInvestorProfileListRow(p)),
     beneficiaries: beneficiaries as ProfileBookSnapshot["beneficiaries"],
     addresses: addresses as SavedAddress[],
   }
@@ -83,6 +125,7 @@ export async function postInvestorProfile(
     body: JSON.stringify({
       profileName: body.profileName,
       profileType: body.profileType,
+      profileWizardState: body.profileWizardState,
     }),
     credentials: "include",
   })
@@ -92,12 +135,12 @@ export async function postInvestorProfile(
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
     throw new Error("Invalid response from server.")
   }
-  return profile as InvestorProfileListRow
+  return normalizeInvestorProfileListRow(profile)
 }
 
 export async function putInvestorProfile(
   id: string,
-  body: NewInvestorProfilePayload,
+  body: UpdateInvestorProfilePayload,
 ): Promise<InvestorProfileListRow> {
   const base = getApiV1Base()
   if (!base) throw new Error("API base URL is not configured (VITE_BASE_URL).")
@@ -109,6 +152,8 @@ export async function putInvestorProfile(
       body: JSON.stringify({
         profileName: body.profileName,
         profileType: body.profileType,
+        lastEditReason: body.lastEditReason,
+        profileWizardState: body.profileWizardState,
       }),
       credentials: "include",
     },
@@ -119,7 +164,7 @@ export async function putInvestorProfile(
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
     throw new Error("Invalid response from server.")
   }
-  return profile as InvestorProfileListRow
+  return normalizeInvestorProfileListRow(profile)
 }
 
 export async function patchInvestorProfileArchived(
@@ -143,7 +188,7 @@ export async function patchInvestorProfileArchived(
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
     throw new Error("Invalid response from server.")
   }
-  return profile as InvestorProfileListRow
+  return normalizeInvestorProfileListRow(profile)
 }
 
 export async function postBeneficiary(

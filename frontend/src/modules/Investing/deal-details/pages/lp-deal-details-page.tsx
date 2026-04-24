@@ -46,7 +46,6 @@ export function LpDealDetailsPage({
   investorsPayload,
   onInvestNow,
   backTo,
-  viewerRoleLabel,
 }: LpDealDetailsPageProps) {
   const { cardMetrics, merged } = useLpDealRecord(
     deal,

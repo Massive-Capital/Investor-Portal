@@ -60,16 +60,29 @@ export async function putWorkspaceTabSettings(
       },
     )
     if (res.ok) return { ok: true }
+    const status = res.status
     const data = (await res.json().catch(() => ({}))) as { message?: string }
-    const msg =
+    const fromServer =
       typeof data.message === "string" && data.message.trim()
         ? data.message.trim()
-        : `Save failed (HTTP ${res.status}).`
+        : ""
+    let msg =
+      fromServer ||
+      (status ? `Save failed (HTTP ${status}).` : "Save failed (unknown status).")
+    if (status === 502 || status === 503 || status === 504) {
+      const hint =
+        "The dev server could not connect to the API. Start the backend (e.g. `npm run dev` in the `backend` folder) and ensure the port matches `BACKEND_PORT` / the Vite proxy, or set `VITE_DEV_API_PROXY` in the frontend `.env` to your API base URL. Check the terminal where Vite is running for proxy errors."
+      if (import.meta.env.DEV) {
+        msg = fromServer ? `${fromServer} ${hint}` : hint
+      } else {
+        msg = fromServer || msg
+      }
+    }
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console -- dev-only save diagnostics
-      console.warn("putWorkspaceTabSettings", res.status, msg)
+      console.warn("putWorkspaceTabSettings", status, msg)
     }
-    return { ok: false, message: msg, status: res.status }
+    return { ok: false, message: msg, status: status }
   } catch (e) {
     const message =
       e instanceof Error && e.message ? e.message : "Network error while saving."
@@ -188,10 +201,23 @@ export async function postCompanySettingsBranding(
       message?: string
     }
     if (!res.ok) {
-      const msg =
+      const status = res.status
+      const fromServer =
         typeof data.message === "string" && data.message.trim()
           ? data.message.trim()
-          : `Upload failed (HTTP ${res.status}).`
+          : ""
+      let msg =
+        fromServer ||
+        (status ? `Upload failed (HTTP ${status}).` : "Upload failed (unknown status).")
+      if (status === 502 || status === 503 || status === 504) {
+        const hint =
+          "The dev server could not connect to the API. Start the backend (e.g. `npm run dev` in the `backend` folder) and ensure the port matches `BACKEND_PORT` / the Vite proxy, or set `VITE_DEV_API_PROXY` in the frontend `.env` to your API base URL. Check the terminal where Vite is running for proxy errors."
+        if (import.meta.env.DEV) {
+          msg = fromServer ? `${fromServer} ${hint}` : hint
+        } else {
+          msg = fromServer || msg
+        }
+      }
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console -- dev-only upload diagnostics
         console.warn("postCompanySettingsBranding", res.status, msg)

@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, uuid, unique } from "drizzle-orm/pg-core";
 import { users } from "../auth.schema/signin.js";
+import { userInvestorProfiles } from "../investing.schema/userProfileBook.schema.js";
 import { addDealForm } from "./add-deal-form.schema.js";
 
 /**
@@ -21,6 +22,10 @@ export const dealLpInvestor = pgTable(
     role: text("role").notNull().default(""),
     /** Same keys as `deal_investment.profile_id` (e.g. individual, llc_corp_trust_etc). */
     profileId: text("profile_id").notNull().default(""),
+    userInvestorProfileId: uuid("user_investor_profile_id").references(
+      () => userInvestorProfiles.id,
+      { onDelete: "set null" },
+    ),
     investorClass: text("investor_class").notNull().default(""),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),
     committed_amount: text("committed_amount").notNull().default(""),

@@ -9,6 +9,7 @@ import {
 import { createPortal } from "react-dom"
 import {
   ArrowLeft,
+  Calendar,
   ChevronRight,
   Building2,
   CircleDollarSign,
@@ -22,20 +23,24 @@ import {
   LandPlot,
   Mail,
   MapPin,
-  Pencil,
   Phone,
   Search,
-  Trash2,
   UserPlus,
   UserRound,
   X,
+  Save,
 } from "lucide-react"
 import { toast } from "@/common/components/Toast"
-import { AddBeneficiaryModal, type BeneficiaryDraft } from "./AddBeneficiaryModal"
+import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
+import type { ProfileBookSnapshot } from "./investingProfileBookApi"
 import { BENEFICIARY_LEGAL_DISCLAIMER } from "./beneficiary-legal"
 import { InvestingFormField } from "./InvestingFormField"
 import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
-import type { NewInvestorProfilePayload } from "./investor-profiles.types"
+import type {
+  InvestorProfileListRow,
+  NewInvestorProfilePayload,
+  UpdateInvestorProfilePayload,
+} from "./investor-profiles.types"
 import "@/modules/Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_modal.css"
 import "@/modules/Syndication/InvestorPortal/Deals/deals-create.css"
 import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
@@ -49,18 +54,25 @@ const PROFILE_TYPE_JOINT_TENANCY = "Joint tenancy"
 const PROFILE_TYPE_ENTITY = "Entity"
 
 /**
- * Stepper: always 1–5 with these exact titles when Add profile opens. Only the **form fields**
- * in each step change with Individual / Joint / Entity (especially step 2, then 3–5 as defined).
+ * Add flow: steps 1–4 are Profile type, Details, Distributions, Address.
+ * **Individual** adds step 5 (optional Beneficiary). Joint and Entity have no beneficiary step.
+ * Edit appends a last step for the audit “reason for change.”
  */
-const ADD_PROFILE_WIZARD_STEP_LABELS: readonly string[] = [
+const ADD_PROFILE_WIZARD_STEPS_NO_BENEFICIARY: readonly string[] = [
   "Profile type",
   "Profile details",
   "Distributions",
   "Address",
-  "Beneficiary",
 ] as const
-
-const WIZARD_TOTAL_STEPS = ADD_PROFILE_WIZARD_STEP_LABELS.length
+const BENEFICIARY_WIZARD_STEP_LABEL = "Beneficiary" as const
+const ADD_PROFILE_WIZARD_STEP_LABELS: readonly string[] = [
+  ...ADD_PROFILE_WIZARD_STEPS_NO_BENEFICIARY,
+  BENEFICIARY_WIZARD_STEP_LABEL,
+] as const
+/** Last add-flow step when profile is Individual (includes optional beneficiary). */
+const ADD_LAST_STEP_WITH_BENEFICIARY = ADD_PROFILE_WIZARD_STEP_LABELS.length
+/** Last add-flow step for Joint or Entity (no beneficiary step). */
+const ADD_LAST_STEP_NO_BENEFICIARY = ADD_PROFILE_WIZARD_STEPS_NO_BENEFICIARY.length
 
 const ENTITY_SUBTYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "llc", label: "LLC" },
@@ -110,6 +122,21 @@ const initialState = {
   /** Entity / retirement: subtype (e.g. llc, ira) and display name. */
   entitySubType: "",
   entityLegalName: "",
+  /**
+   * Shown when entity + **not** custodian-based IRA: full legal / tax profile
+   * (jurisdiction, formation, ownership, SMLLC rules, EIN, etc.). Persisted in `form_snapshot`.
+   */
+  entityJurisdictionOfRegistration: "",
+  /** YYYY-MM-DD, optional. */
+  entityDateFormed: "",
+  /** Distinct from custodian-based IRA question; for non-custodian entity path. */
+  entityOwnedByIra401k: "" as "" | "yes" | "no",
+  entityMemberCount: "",
+  /** Single-member / disregarded status for the entity. */
+  entityDisregarded: "" as "" | "yes" | "no",
+  /** Legal entity or plan EIN (non-custodian path). */
+  entityEin: "",
+  entityEinVisible: false,
   /** 3rd profile type (entity): custodian path for IRA/401(k). */
   custodianIra: "" as "" | "yes" | "no",
   legalIraName: "",
@@ -120,9 +147,41 @@ const initialState = {
   iraPartnerEinVisible: false,
   iraCustodianEinVisible: false,
   beneficiary: null as BeneficiaryDraft | null,
+  /** When set, `beneficiary` was chosen from `savedBeneficiaries` by id. */
+  beneficiaryPickId: "",
 }
 
 type FormState = typeof initialState
+
+const FORM_STATE_KEYS = Object.keys(initialState) as (keyof FormState)[]
+
+function formToJsonSnapshot(f: FormState): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(f)) as Record<string, unknown>
+}
+
+/**
+ * Merge saved `profile_wizard_state` (same shape as `FormState`) into a partial; unknown keys are ignored.
+ */
+function partialFormFromSavedWizard(raw: unknown): Partial<FormState> {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return {}
+  }
+  const src = raw as Record<string, unknown>
+  const out: Partial<FormState> = {}
+  for (const k of FORM_STATE_KEYS) {
+    if (!(k in src)) continue
+    const v = src[k as string]
+    if (k === "beneficiary") {
+      if (v == null) out.beneficiary = null
+      else if (typeof v === "object" && !Array.isArray(v)) {
+        out.beneficiary = v as BeneficiaryDraft
+      }
+      continue
+    }
+    (out as Record<string, unknown>)[k] = v
+  }
+  return out
+}
 
 const REQUIRED_MSG = "This field is required."
 
@@ -130,6 +189,9 @@ type AddProfileFieldErrorKey =
   | "profileType"
   | "entitySubType"
   | "entityLegalName"
+  | "entityJurisdictionOfRegistration"
+  | "entityDisregarded"
+  | "entityEin"
   | "custodianIra"
   | "legalIraName"
   | "iraCompany"
@@ -213,13 +275,27 @@ function distributionDetailsInputAria(m: DistributionMethod): string {
   return "Distribution details"
 }
 
+const EDIT_WIZARD_REASON_LABEL = "Reason for change" as const
+
 interface AddInvestorProfileModalProps {
   open: boolean
   onClose: () => void
   /** Saved addresses from the Address tab, shown in tax / mailing dropdowns. */
   savedAddresses?: SavedAddress[]
+  /** Saved beneficiaries; only the Individual path shows the beneficiary step (a dropdown, no inline add). */
+  savedBeneficiaries?: ProfileBookSnapshot["beneficiaries"]
+  /**
+   * `add` (default): 4 or 5 content steps (5 only for Individual, includes optional Beneficiary), then save. `edit`: same, then a final step for the audit reason, then `onProfileUpdated`.
+   */
+  mode?: "add" | "edit"
+  /**
+   * When `mode=edit`, the profile list row (includes `profileWizardState` when saved) and `id` for the PUT.
+   * Legacy rows without `profileWizardState` are seeded from `profileName` / `profileType` only.
+   */
+  editTarget?: InvestorProfileListRow | null
   /** Fired with display fields after validation; parent may persist the profile. May return a Promise. */
   onProfileCreated?: (p: NewInvestorProfilePayload) => void | Promise<void>
+  onProfileUpdated?: (id: string, p: UpdateInvestorProfilePayload) => void | Promise<void>
   /**
    * `inline`: in-tab panel. `page`: full-page like Create deal (parent supplies shell).
    * @default "modal"
@@ -306,6 +382,70 @@ function SavedAddressSelect({
   )
 }
 
+function beneficiaryToDraft(
+  row: BeneficiaryDraft & { id: string },
+): BeneficiaryDraft {
+  return {
+    fullName: row.fullName,
+    relationship: row.relationship,
+    taxId: row.taxId,
+    phone: row.phone,
+    email: row.email,
+    addressQuery: row.addressQuery,
+  }
+}
+
+function formatSavedBeneficiaryLabel(
+  row: BeneficiaryDraft & { id: string },
+): string {
+  const name = row.fullName?.trim() || "—"
+  const rel = row.relationship?.trim()
+  return rel ? `${name} (${rel})` : name
+}
+
+function SavedBeneficiarySelect({
+  id,
+  value,
+  onChange,
+  rows,
+  emptyLabel,
+  ariaLabel,
+}: {
+  id: string
+  value: string
+  onChange: (nextId: string) => void
+  rows: (BeneficiaryDraft & { id: string })[]
+  emptyLabel: string
+  ariaLabel: string
+}) {
+  const noRows = rows.length === 0
+  return (
+    <>
+      {noRows ? (
+        <p className="add_profile_sub" style={{ marginBottom: "0.35em" }}>
+          Add at least one beneficiary in the <strong>Beneficiaries</strong> tab, then return
+          here to select one. You can also continue without a beneficiary.
+        </p>
+      ) : null}
+      <select
+        id={id}
+        className="um_field_select deals_add_inv_field_control"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        disabled={noRows}
+      >
+        <option value="">{emptyLabel}</option>
+        {rows.map((r) => (
+          <option key={r.id} value={r.id}>
+            {formatSavedBeneficiaryLabel(r)}
+          </option>
+        ))}
+      </select>
+    </>
+  )
+}
+
 function buildDisplayProfileName(f: FormState): string {
   if (f.profileType === PROFILE_TYPE_ENTITY) {
     if (f.custodianIra === "yes" && f.legalIraName.trim()) {
@@ -335,55 +475,134 @@ function buildDisplayProfileName(f: FormState): string {
     .join(" ")
 }
 
+/**
+ * Best-effort seed of wizard fields from API list row (only `profileName` and `profileType` are stored).
+ * Keeps the same UI as "Add profile" while filling in obvious splits of the display name.
+ */
+function seedFormFromListRow(row: { profileName: string; profileType: string }): Partial<FormState> {
+  const t = (row.profileType || "").trim()
+  const out: Partial<FormState> = { profileType: t }
+  const name = (row.profileName || "").trim()
+  if (!name || name === "—") return out
+  if (t === PROFILE_TYPE_ENTITY) {
+    const paren = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/)
+    if (paren) {
+      const inner = paren[2]!.trim()
+      const sub = ENTITY_SUBTYPE_OPTIONS.find(
+        (o) => o.label === inner || inner.includes(o.label) || o.label.includes(inner),
+      )
+      return {
+        ...out,
+        entityLegalName: paren[1]!.trim(),
+        ...(sub ? { entitySubType: sub.value } : {}),
+      }
+    }
+    return { ...out, entityLegalName: name }
+  }
+  if (t === PROFILE_TYPE_JOINT_TENANCY) {
+    const m = name.match(/^(.*)\s+&\s+(.*)$/)
+    if (m) {
+      const left = m[1]!.trim().split(/\s+/)
+      const right = m[2]!.trim().split(/\s+/)
+      return {
+        ...out,
+        firstName: left[0] || "",
+        lastName: left.length > 1 ? left[left.length - 1]! : "",
+        middleName: left.length > 2 ? left.slice(1, -1).join(" ") : "",
+        firstName2: right[0] || "",
+        lastName2: right.length > 1 ? right[right.length - 1]! : "",
+        middleName2: right.length > 2 ? right.slice(1, -1).join(" ") : "",
+      }
+    }
+    return out
+  }
+  if (t === PROFILE_TYPE_INDIVIDUAL) {
+    const p = name.split(/\s+/).filter(Boolean)
+    if (p.length === 0) return out
+    if (p.length === 1) return { ...out, firstName: p[0]! }
+    return {
+      ...out,
+      firstName: p[0]!,
+      lastName: p[p.length - 1]!,
+      middleName: p.length > 2 ? p.slice(1, -1).join(" ") : "",
+    }
+  }
+  return out
+}
+
 export function AddInvestorProfileModal({
   open,
   onClose,
   savedAddresses = [],
+  savedBeneficiaries = [] as ProfileBookSnapshot["beneficiaries"],
+  mode = "add",
+  editTarget = null,
   onProfileCreated,
+  onProfileUpdated,
   variant = "modal",
 }: AddInvestorProfileModalProps) {
   const isListInline = variant === "inline"
   const isPage = variant === "page"
   const isNonModalLayout = isListInline || isPage
+  const isEdit = mode === "edit"
   const [form, setForm] = useState<FormState>(initialState)
   const [fieldError, setFieldError] = useState<AddProfileFieldErrors>({})
   const [ssnVisible, setSsnVisible] = useState(false)
   const [spouseSsnVisible, setSpouseSsnVisible] = useState(false)
-  const [benModalOpen, setBenModalOpen] = useState(false)
   const [step, setStep] = useState(1)
+  const [lastEditReason, setLastEditReason] = useState("")
+  const [lastEditReasonError, setLastEditReasonError] = useState<string | null>(null)
+
+  const activeSavedBeneficiaries = useMemo(
+    () => savedBeneficiaries.filter((b) => !b.archived),
+    [savedBeneficiaries],
+  )
 
   const addProfilePageTitleId = useId()
   const isIndividual = form.profileType === PROFILE_TYPE_INDIVIDUAL
   const isJointTenancy = form.profileType === PROFILE_TYPE_JOINT_TENANCY
   const isEntity = form.profileType === PROFILE_TYPE_ENTITY
+  const hasBeneficiaryStep = !isJointTenancy && !isEntity
+  const addFlowLastContentStep = hasBeneficiaryStep
+    ? ADD_LAST_STEP_WITH_BENEFICIARY
+    : ADD_LAST_STEP_NO_BENEFICIARY
   const stepperLabels = useMemo(
-    () => [...ADD_PROFILE_WIZARD_STEP_LABELS],
-    [],
+    () => {
+      const addLabels = (hasBeneficiaryStep
+        ? ADD_PROFILE_WIZARD_STEP_LABELS
+        : ADD_PROFILE_WIZARD_STEPS_NO_BENEFICIARY) as string[]
+      return (isEdit ? [...addLabels, EDIT_WIZARD_REASON_LABEL] : addLabels) as string[]
+    },
+    [isEdit, hasBeneficiaryStep],
   )
-  const totalSteps = WIZARD_TOTAL_STEPS
+  const totalSteps = stepperLabels.length
   const effectiveMaxStep = totalSteps
 
   const stepHeading = useMemo(() => {
     if (step >= 1 && step <= totalSteps) {
-      return stepperLabels[step - 1] ?? "Add profile"
+      return stepperLabels[step - 1] ?? (isEdit ? "Edit profile" : "Add profile")
     }
-    return "Add profile"
-  }, [step, totalSteps, stepperLabels])
+    return isEdit ? "Edit profile" : "Add profile"
+  }, [step, totalSteps, stepperLabels, isEdit])
 
   const addProfilePageSubtitle = useMemo(() => {
-    if (step === 1)
-      return "Select how this profile will be registered."
+    if (isEdit && step === totalSteps) {
+      return "Describe why you are updating this profile. This is stored in the audit trail."
+    }
+    if (step === 1) {
+      return isEdit
+        ? "Update details using the same steps as when the profile was added. Then confirm your change reason."
+        : "Select how this profile will be registered."
+    }
     if (isJointTenancy) {
       if (step === 2) return "Names, emails, and tax ID for both joint owners."
       if (step === 3) return "How you want to receive distributions."
       if (step === 4) return "Tax and mailing address for this profile."
-      if (step === 5) return "Optional designated beneficiary for this account."
     }
     if (isEntity) {
       if (step === 2) return "Entity or plan name, EIN, and account information."
       if (step === 3) return "How you want to receive distributions."
       if (step === 4) return "Mailing and legal address for this profile."
-      if (step === 5) return "Optional designated beneficiary for this account."
     }
     if (isIndividual) {
       if (step === 2)
@@ -393,30 +612,58 @@ export function AddInvestorProfileModal({
       if (step === 5) return "Optional designated beneficiary for this account."
     }
     return "Set up a profile for investments and distributions."
-  }, [step, isJointTenancy, isEntity, isIndividual])
+  }, [step, isEdit, isJointTenancy, isEntity, isIndividual, totalSteps])
 
   useEffect(() => {
     if (!open) return
-    setForm(initialState)
     setFieldError({})
     setSsnVisible(false)
     setSpouseSsnVisible(false)
-    setBenModalOpen(false)
+    setLastEditReason("")
+    setLastEditReasonError(null)
     setStep(1)
-  }, [open])
+    if (isEdit && editTarget) {
+      const t = (editTarget.profileType || "").trim()
+      const isJoint = t === PROFILE_TYPE_JOINT_TENANCY
+      const isEnt = t === PROFILE_TYPE_ENTITY
+      const fromWizard = partialFormFromSavedWizard(
+        editTarget.profileWizardState ?? null,
+      )
+      const clearBen = isJoint || isEnt
+      if (Object.keys(fromWizard).length > 0) {
+        setForm({
+          ...initialState,
+          ...fromWizard,
+          ...(clearBen ? { beneficiary: null, beneficiaryPickId: "" } : {}),
+        })
+      } else {
+        setForm({
+          ...initialState,
+          ...seedFormFromListRow(editTarget),
+          ...(clearBen ? { beneficiary: null, beneficiaryPickId: "" } : {}),
+        })
+      }
+    } else {
+      setForm(initialState)
+    }
+  }, [open, isEdit, editTarget])
 
   useEffect(() => {
     if (!isIndividual && !isJointTenancy && !isEntity && step > 1) setStep(1)
   }, [isIndividual, isJointTenancy, isEntity, step])
 
   useEffect(() => {
-    if (!open || benModalOpen) return
+    setStep((s) => (s > totalSteps ? totalSteps : s))
+  }, [totalSteps])
+
+  useEffect(() => {
+    if (!open) return
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, onClose, benModalOpen])
+  }, [open, onClose])
 
   useEffect(() => {
     if (!open || isNonModalLayout) return
@@ -474,10 +721,20 @@ export function AddInvestorProfileModal({
           err.iraCustodianEin = REQUIRED_MSG
         }
       } else {
-        if (!form.entitySubType.trim()) err.entitySubType = REQUIRED_MSG
         if (!form.entityLegalName.trim()) {
-          err.entityLegalName = "Enter the legal name of the entity or the plan name."
+          err.entityLegalName = "Enter the legal name of the entity."
         }
+        if (!form.entityJurisdictionOfRegistration.trim()) {
+          err.entityJurisdictionOfRegistration = REQUIRED_MSG
+        }
+        if (!form.entitySubType.trim()) err.entitySubType = REQUIRED_MSG
+        if (!form.federalTaxClassification.trim()) {
+          err.federalTaxClassification = REQUIRED_MSG
+        }
+        if (!form.entityDisregarded) {
+          err.entityDisregarded = REQUIRED_MSG
+        }
+        if (!form.entityEin.trim()) err.entityEin = REQUIRED_MSG
       }
       setFieldError(err)
       return Object.keys(err).length === 0
@@ -531,13 +788,13 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 5) {
+    if (step === 5 && hasBeneficiaryStep) {
       setFieldError(noErr)
       return true
     }
     setFieldError(noErr)
     return true
-  }, [step, form, isIndividual, isJointTenancy, isEntity])
+  }, [step, form, isIndividual, isJointTenancy, isEntity, hasBeneficiaryStep])
 
   const goNext = useCallback(() => {
     if (!validateStep()) return
@@ -553,16 +810,28 @@ export function AddInvestorProfileModal({
     setForm((prev) => ({
       ...prev,
       profileType: value,
+      ...(value === PROFILE_TYPE_JOINT_TENANCY || value === PROFILE_TYPE_ENTITY
+        ? { beneficiary: null, beneficiaryPickId: "" as const }
+        : {}),
       ...(value !== PROFILE_TYPE_ENTITY
         ? {
             entitySubType: "",
             entityLegalName: "",
+            entityJurisdictionOfRegistration: "",
+            entityDateFormed: "",
+            entityOwnedByIra401k: "" as const,
+            entityMemberCount: "",
+            entityDisregarded: "" as const,
+            entityEin: "",
+            entityEinVisible: false,
             custodianIra: "" as const,
             legalIraName: "",
             iraCompany: "",
             federalTaxClassification: "",
             iraPartnerEin: "",
             iraCustodianEin: "",
+            iraPartnerEinVisible: false,
+            iraCustodianEinVisible: false,
           }
         : {}),
     }))
@@ -576,9 +845,8 @@ export function AddInvestorProfileModal({
     }
   }
 
-  function handleSubmit() {
+  function runFullFormValidationForSave(): boolean {
     if (isJointTenancy) {
-      if (step !== totalSteps) return
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
@@ -612,10 +880,11 @@ export function AddInvestorProfileModal({
         } else if (err.taxAddressId || err.mailingAddressId) {
           setStep(4)
         }
-        return
+        return false
       }
-    } else if (isIndividual) {
-      if (step !== totalSteps) return
+      return true
+    }
+    if (isIndividual) {
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
@@ -629,10 +898,11 @@ export function AddInvestorProfileModal({
         if (err.firstName || err.lastName || err.ssn) setStep(2)
         else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) setStep(3)
         else if (err.taxAddressId) setStep(4)
-        return
+        return false
       }
-    } else if (isEntity) {
-      if (step !== totalSteps) return
+      return true
+    }
+    if (isEntity) {
       const err: AddProfileFieldErrors = {}
       if (!form.custodianIra) {
         err.custodianIra = REQUIRED_MSG
@@ -643,10 +913,20 @@ export function AddInvestorProfileModal({
           err.iraCustodianEin = REQUIRED_MSG
         }
       } else {
-        if (!form.entitySubType.trim()) err.entitySubType = REQUIRED_MSG
         if (!form.entityLegalName.trim()) {
-          err.entityLegalName = "Enter the legal name of the entity or the plan name."
+          err.entityLegalName = "Enter the legal name of the entity."
         }
+        if (!form.entityJurisdictionOfRegistration.trim()) {
+          err.entityJurisdictionOfRegistration = REQUIRED_MSG
+        }
+        if (!form.entitySubType.trim()) err.entitySubType = REQUIRED_MSG
+        if (!form.federalTaxClassification.trim()) {
+          err.federalTaxClassification = REQUIRED_MSG
+        }
+        if (!form.entityDisregarded) {
+          err.entityDisregarded = REQUIRED_MSG
+        }
+        if (!form.entityEin.trim()) err.entityEin = REQUIRED_MSG
       }
       addDistributionValidationErrors(form, err)
       if (!form.taxAddressId.trim()) {
@@ -660,7 +940,11 @@ export function AddInvestorProfileModal({
           err.iraCompany ||
           err.iraCustodianEin ||
           err.entitySubType ||
-          err.entityLegalName
+          err.entityLegalName ||
+          err.entityJurisdictionOfRegistration ||
+          err.federalTaxClassification ||
+          err.entityDisregarded ||
+          err.entityEin
         ) {
           setStep(2)
         } else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) {
@@ -668,18 +952,24 @@ export function AddInvestorProfileModal({
         } else if (err.taxAddressId) {
           setStep(4)
         }
-        return
+        return false
       }
-    } else {
-      setFieldError({
-        profileType: "Choose a profile type to continue.",
-      })
-      return
+      return true
     }
+    setFieldError({
+      profileType: "Choose a profile type to continue.",
+    })
+    return false
+  }
 
+  function handleSubmit() {
+    if (isEdit) return
+    if (step !== addFlowLastContentStep) return
+    if (!runFullFormValidationForSave()) return
     const payload: NewInvestorProfilePayload = {
       profileName: buildDisplayProfileName(form),
       profileType: form.profileType,
+      profileWizardState: formToJsonSnapshot(form),
     }
     if (onProfileCreated) {
       void (async () => {
@@ -698,6 +988,41 @@ export function AddInvestorProfileModal({
         "Profile added",
         "Your new profile was saved. (No handler — data not persisted.)",
       )
+      onClose()
+    }
+  }
+
+  function handleEditSave() {
+    if (!isEdit || !editTarget) return
+    if (step !== totalSteps) return
+    if (!lastEditReason.trim()) {
+      setLastEditReasonError("This field is required for the audit log.")
+      toast.error("Reason required", "Describe why you are making this change.")
+      return
+    }
+    setLastEditReasonError(null)
+    if (!runFullFormValidationForSave()) {
+      return
+    }
+    const payload: UpdateInvestorProfilePayload = {
+      profileName: buildDisplayProfileName(form),
+      profileType: form.profileType,
+      lastEditReason: lastEditReason.trim(),
+      profileWizardState: formToJsonSnapshot(form),
+    }
+    if (onProfileUpdated) {
+      void (async () => {
+        try {
+          await onProfileUpdated(editTarget.id, payload)
+          onClose()
+        } catch (e) {
+          toast.error(
+            "Could not save profile",
+            e instanceof Error ? e.message : "Please try again.",
+          )
+        }
+      })()
+    } else {
       onClose()
     }
   }
@@ -839,6 +1164,13 @@ export function AddInvestorProfileModal({
                           custodianIra: v,
                           entitySubType: "",
                           entityLegalName: "",
+                          entityJurisdictionOfRegistration: "",
+                          entityDateFormed: "",
+                          entityOwnedByIra401k: "" as const,
+                          entityMemberCount: "",
+                          entityDisregarded: "" as const,
+                          entityEin: "",
+                          entityEinVisible: false,
                         },
                         "custodianIra",
                       )
@@ -851,6 +1183,8 @@ export function AddInvestorProfileModal({
                           federalTaxClassification: "",
                           iraPartnerEin: "",
                           iraCustodianEin: "",
+                          iraPartnerEinVisible: false,
+                          iraCustodianEinVisible: false,
                         },
                         [
                           "custodianIra",
@@ -869,8 +1203,17 @@ export function AddInvestorProfileModal({
                           federalTaxClassification: "",
                           iraPartnerEin: "",
                           iraCustodianEin: "",
+                          iraPartnerEinVisible: false,
+                          iraCustodianEinVisible: false,
                           entitySubType: "",
                           entityLegalName: "",
+                          entityJurisdictionOfRegistration: "",
+                          entityDateFormed: "",
+                          entityOwnedByIra401k: "" as const,
+                          entityMemberCount: "",
+                          entityDisregarded: "" as const,
+                          entityEin: "",
+                          entityEinVisible: false,
                         },
                         "custodianIra",
                       )
@@ -1102,6 +1445,125 @@ export function AddInvestorProfileModal({
               {form.custodianIra === "no" ? (
                 <>
                   <InvestingFormField
+                    id="ap-entity-legal"
+                    label={
+                      <>
+                        Entity name <span className="contacts_required" aria-hidden>*</span>
+                      </>
+                    }
+                    Icon={Building2}
+                    error={fieldError.entityLegalName}
+                  >
+                    <input
+                      id="ap-entity-legal"
+                      className={invClass(
+                        "deals_add_inv_input deals_add_inv_field_control",
+                        Boolean(fieldError.entityLegalName),
+                      )}
+                      value={form.entityLegalName}
+                      onChange={(e) =>
+                        patch({ entityLegalName: e.target.value }, "entityLegalName")
+                      }
+                      placeholder="Registered legal name of the entity or plan"
+                      autoComplete="organization"
+                      aria-invalid={Boolean(fieldError.entityLegalName)}
+                      aria-describedby={
+                        fieldError.entityLegalName ? "ap-entity-legal-err" : undefined
+                      }
+                    />
+                  </InvestingFormField>
+                  <InvestingFormField
+                    id="ap-entity-jurisdiction"
+                    label={
+                      <>
+                        Jurisdiction of registration <span className="contacts_required" aria-hidden>*</span>
+                      </>
+                    }
+                    Icon={LandPlot}
+                    error={fieldError.entityJurisdictionOfRegistration}
+                  >
+                    <input
+                      id="ap-entity-jurisdiction"
+                      className={invClass(
+                        "deals_add_inv_input deals_add_inv_field_control",
+                        Boolean(fieldError.entityJurisdictionOfRegistration),
+                      )}
+                      value={form.entityJurisdictionOfRegistration}
+                      onChange={(e) =>
+                        patch(
+                          { entityJurisdictionOfRegistration: e.target.value },
+                          "entityJurisdictionOfRegistration",
+                        )
+                      }
+                      placeholder="State is sufficient, e.g. 'WA'"
+                      autoComplete="off"
+                      aria-invalid={Boolean(fieldError.entityJurisdictionOfRegistration)}
+                      aria-describedby={
+                        fieldError.entityJurisdictionOfRegistration
+                          ? "ap-entity-jurisdiction-err"
+                          : undefined
+                      }
+                    />
+                  </InvestingFormField>
+                  <InvestingFormField
+                    id="ap-entity-date-formed"
+                    label="Date formed"
+                    Icon={Calendar}
+                  >
+                    <input
+                      id="ap-entity-date-formed"
+                      type="date"
+                      className="deals_add_inv_input deals_add_inv_field_control"
+                      value={form.entityDateFormed}
+                      onChange={(e) =>
+                        patch({ entityDateFormed: e.target.value })
+                      }
+                      aria-label="Date formed"
+                    />
+                  </InvestingFormField>
+                  <InvestingFormField
+                    id="ap-entity-owned-ira"
+                    label="Is this entity owned by an IRA or 401(k)?"
+                    Icon={HelpCircle}
+                    labelSuffix={
+                      <FieldHelp
+                        label="Is this entity owned by an IRA or 401(k)?"
+                        tooltip="Indicate if an IRA, solo 401(k), or other retirement account owns this entity (separate from custodian signing for investments)."
+                      />
+                    }
+                  >
+                    <select
+                      id="ap-entity-owned-ira"
+                      className="um_field_select deals_add_inv_field_control"
+                      value={form.entityOwnedByIra401k}
+                      onChange={(e) =>
+                        patch(
+                          { entityOwnedByIra401k: e.target.value as "" | "yes" | "no" },
+                        )
+                      }
+                      aria-label="Is this entity owned by an IRA or 401(k)?"
+                    >
+                      <option value="">Select</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </InvestingFormField>
+                  <InvestingFormField
+                    id="ap-entity-member-count"
+                    label="Number of members"
+                    Icon={UserPlus}
+                  >
+                    <input
+                      id="ap-entity-member-count"
+                      className="deals_add_inv_input deals_add_inv_field_control"
+                      inputMode="numeric"
+                      value={form.entityMemberCount}
+                      onChange={(e) => patch({ entityMemberCount: e.target.value })}
+                      placeholder="Enter number of members in the entity"
+                      autoComplete="off"
+                    />
+                  </InvestingFormField>
+                  <InvestingFormField
                     id="ap-entity-type"
                     label={
                       <>
@@ -1142,32 +1604,123 @@ export function AddInvestorProfileModal({
                     </select>
                   </InvestingFormField>
                   <InvestingFormField
-                    id="ap-entity-legal"
+                    id="ap-ent-federal-no"
                     label={
                       <>
-                        Legal name <span className="contacts_required" aria-hidden>*</span>
+                        Federal tax classification <span className="contacts_required" aria-hidden>*</span>
                       </>
                     }
-                    Icon={Building2}
-                    error={fieldError.entityLegalName}
+                    Icon={FileText}
+                    error={fieldError.federalTaxClassification}
                   >
-                    <input
-                      id="ap-entity-legal"
+                    <select
+                      id="ap-ent-federal-no"
                       className={invClass(
-                        "deals_add_inv_input deals_add_inv_field_control",
-                        Boolean(fieldError.entityLegalName),
+                        "um_field_select deals_add_inv_field_control",
+                        Boolean(fieldError.federalTaxClassification),
                       )}
-                      value={form.entityLegalName}
+                      value={form.federalTaxClassification}
                       onChange={(e) =>
-                        patch({ entityLegalName: e.target.value }, "entityLegalName")
+                        patch(
+                          { federalTaxClassification: e.target.value },
+                          "federalTaxClassification",
+                        )
                       }
-                      placeholder="Legal entity name, trust name, or plan name"
-                      autoComplete="organization"
-                      aria-invalid={Boolean(fieldError.entityLegalName)}
-                      aria-describedby={
-                        fieldError.entityLegalName ? "ap-entity-legal-err" : undefined
+                      aria-label="Federal tax classification"
+                      aria-invalid={Boolean(fieldError.federalTaxClassification)}
+                    >
+                      <option value="">Select</option>
+                      {FEDERAL_TAX_CLASSIFICATION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </InvestingFormField>
+                  <InvestingFormField
+                    id="ap-entity-disregarded"
+                    label={
+                      <>
+                        Is this a disregarded entity? <span className="contacts_required" aria-hidden>*</span>
+                      </>
+                    }
+                    Icon={HelpCircle}
+                    labelSuffix={
+                      <FieldHelp
+                        label="Is this a disregarded entity?"
+                        tooltip="For example, a single-member LLC default classification for federal tax. Choose “Yes” or “No” to match your entity’s federal filing status."
+                      />
+                    }
+                    error={fieldError.entityDisregarded}
+                  >
+                    <select
+                      id="ap-entity-disregarded"
+                      className={invClass(
+                        "um_field_select deals_add_inv_field_control",
+                        Boolean(fieldError.entityDisregarded),
+                      )}
+                      value={form.entityDisregarded}
+                      onChange={(e) =>
+                        patch(
+                          { entityDisregarded: e.target.value as "" | "yes" | "no" },
+                          "entityDisregarded",
+                        )
                       }
-                    />
+                      aria-label="Is this a disregarded entity"
+                      aria-invalid={Boolean(fieldError.entityDisregarded)}
+                    >
+                      <option value="">Select</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </InvestingFormField>
+                  <InvestingFormField
+                    id="ap-entity-ein"
+                    label={
+                      <>
+                        EIN/Tax ID of entity <span className="contacts_required" aria-hidden>*</span>
+                      </>
+                    }
+                    Icon={Fingerprint}
+                    labelSuffix={
+                      <FieldHelp
+                        label="EIN/Tax ID of entity"
+                        tooltip="Employer Identification Number (EIN) of this entity, not a personal SSN, unless the entity is a single-member sole prop reported under your SSN and your team instructs you to use it here."
+                      />
+                    }
+                    error={fieldError.entityEin}
+                  >
+                    <div className="add_profile_input_wrap">
+                      <input
+                        id="ap-entity-ein"
+                        className={invClass(
+                          "deals_add_inv_input deals_add_inv_field_control",
+                          Boolean(fieldError.entityEin),
+                        )}
+                        type={form.entityEinVisible ? "text" : "password"}
+                        value={form.entityEin}
+                        onChange={(e) => patch({ entityEin: e.target.value }, "entityEin")}
+                        autoComplete="off"
+                        placeholder="EIN or tax ID"
+                        aria-invalid={Boolean(fieldError.entityEin)}
+                        aria-label="EIN or tax ID of entity"
+                      />
+                      <button
+                        type="button"
+                        className="add_profile_ssn_toggle"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            entityEinVisible: !prev.entityEinVisible,
+                          }))
+                        }
+                        aria-label={
+                          form.entityEinVisible ? "Hide EIN" : "Show EIN"
+                        }
+                      >
+                        {form.entityEinVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+                      </button>
+                    </div>
                   </InvestingFormField>
                 </>
               ) : null}
@@ -1797,15 +2350,14 @@ export function AddInvestorProfileModal({
             </div>
           )}
 
-          {step === 5 &&
-            (isIndividual || isJointTenancy || isEntity) && (
+          {step === 5 && hasBeneficiaryStep && (
             <div className="add_contact_section" aria-labelledby="ap-s5">
               <p id="ap-s5" className="add_contact_section_eyebrow">
                 Beneficiary info
               </p>
               <p className="add_profile_sub add_profile_ben_lead">
-                Add a beneficiary now, or continue without one. You can add one later from your
-                account.
+                Choose a saved beneficiary, or continue without one. If the list is empty, add
+                one under the <strong>Beneficiaries</strong> tab, then return to this step.
               </p>
               <div className="um_field">
                 <div className="um_field_label_row" style={{ alignItems: "center" }}>
@@ -1823,48 +2375,82 @@ export function AddInvestorProfileModal({
                     tooltip={BENEFICIARY_LEGAL_DISCLAIMER}
                   />
                 </div>
+                <SavedBeneficiarySelect
+                  id="ap-ben-saved"
+                  value={form.beneficiaryPickId}
+                  onChange={(nextId) => {
+                    if (!nextId) {
+                      patch({ beneficiary: null, beneficiaryPickId: "" })
+                      return
+                    }
+                    const row = activeSavedBeneficiaries.find((b) => b.id === nextId)
+                    if (row) {
+                      patch({
+                        beneficiary: beneficiaryToDraft(row),
+                        beneficiaryPickId: nextId,
+                      })
+                    }
+                  }}
+                  rows={activeSavedBeneficiaries}
+                  emptyLabel="No beneficiary (optional)"
+                  ariaLabel="Designated beneficiary — choose a saved beneficiary"
+                />
                 {form.beneficiary ? (
-                  <div
-                    className="add_profile_ben_row"
-                    aria-labelledby="ap-ben-label"
+                  <p
+                    className="add_profile_ben_sub"
+                    style={{ marginTop: "0.45em" }}
+                    aria-live="polite"
                   >
-                    <p className="add_profile_ben_text">
-                      <strong>{form.beneficiary.fullName}</strong>
-                      <span className="add_profile_ben_sub">
-                        {[form.beneficiary.relationship, form.beneficiary.email]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    </p>
-                    <div>
-                      <button
-                        type="button"
-                        className="add_profile_ben_link"
-                        onClick={() => setBenModalOpen(true)}
-                      >
-                        <Pencil size={14} strokeWidth={2} aria-hidden />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="add_profile_ben_link"
-                        onClick={() => patch({ beneficiary: null })}
-                      >
-                        <Trash2 size={14} strokeWidth={2} aria-hidden />
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="add_profile_ben_add"
-                    onClick={() => setBenModalOpen(true)}
-                  >
-                    <UserPlus size={16} strokeWidth={2} aria-hidden />
-                    Add beneficiary
-                  </button>
-                )}
+                    {[form.beneficiary.email, form.beneficiary.phone]
+                      .map((s) => String(s ?? "").trim())
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {isEdit && step === totalSteps && (
+            <div className="add_contact_section" aria-labelledby="ap-s6-reason">
+              <p id="ap-s6-reason" className="add_contact_section_eyebrow">
+                {EDIT_WIZARD_REASON_LABEL}
+              </p>
+              <p className="add_profile_sub" style={{ marginBottom: "0.65em" }}>
+                Required. This note is stored on the profile for the audit log.
+              </p>
+              <div className="um_field">
+                <label className="um_field_label_row" htmlFor="ap-reason-ta">
+                  <FileText
+                    className="um_field_label_icon"
+                    size={17}
+                    strokeWidth={1.75}
+                    aria-hidden
+                  />
+                  <span>Change notes</span>
+                </label>
+                <textarea
+                  id="ap-reason-ta"
+                  className={invClass(
+                    "deals_add_inv_input deals_add_inv_field_control",
+                    Boolean(lastEditReasonError),
+                  )}
+                  rows={5}
+                  value={lastEditReason}
+                  onChange={(e) => {
+                    setLastEditReason(e.target.value)
+                    setLastEditReasonError(null)
+                  }}
+                  placeholder="Describe why you are saving these changes (e.g. new bank details, name correction, …)"
+                  autoComplete="off"
+                  aria-invalid={Boolean(lastEditReasonError)}
+                  aria-describedby={lastEditReasonError ? "ap-reason-err" : undefined}
+                />
+                {lastEditReasonError ? (
+                  <p id="ap-reason-err" className="um_field_hint um_field_hint_error" role="alert">
+                    {lastEditReasonError}
+                  </p>
+                ) : null}
               </div>
             </div>
           )}
@@ -1891,7 +2477,10 @@ export function AddInvestorProfileModal({
               <button
                 type="button"
                 className="um_btn_secondary"
-                onClick={goBack}
+                onClick={() => {
+                  if (isEdit && step === totalSteps) setLastEditReasonError(null)
+                  goBack()
+                }}
               >
                 <ArrowLeft size={16} strokeWidth={2} aria-hidden />
                 Back
@@ -1912,7 +2501,8 @@ export function AddInvestorProfileModal({
               </button>
             )}
             {((isIndividual || isJointTenancy || isEntity) &&
-              step === totalSteps) && (
+              step === addFlowLastContentStep &&
+              !isEdit) && (
               <button
                 type="button"
                 className="um_btn_primary"
@@ -1920,6 +2510,12 @@ export function AddInvestorProfileModal({
               >
                 <UserPlus size={18} strokeWidth={2} aria-hidden />
                 Add profile
+              </button>
+            )}
+            {isEdit && step === totalSteps && (isIndividual || isJointTenancy || isEntity) && (
+              <button type="button" className="um_btn_primary" onClick={() => void handleEditSave()}>
+                <Save size={18} strokeWidth={2} aria-hidden />
+                Save changes
               </button>
             )}
           </div>
@@ -1946,7 +2542,7 @@ export function AddInvestorProfileModal({
               id="add-profile-modal-title"
               className="um_modal_title add_contact_modal_title"
             >
-              Add profile
+              {isEdit ? "Edit profile" : "Add profile"}
             </h3>
             <div
               className="add_contact_stepper"
@@ -1987,7 +2583,7 @@ export function AddInvestorProfileModal({
                 </button>
                 <div className="deals_add_deal_asset_title_stack">
                   <h1 id={addProfilePageTitleId} className="deals_list_title">
-                    Add profile
+                    {isEdit ? "Edit profile" : "Add profile"}
                   </h1>
                   <p className="deals_create_subtitle">{addProfilePageSubtitle}</p>
                 </div>
@@ -1995,7 +2591,7 @@ export function AddInvestorProfileModal({
               <div
                 className="add_contact_stepper deals_add_deal_asset_stepper deals_create_stepper"
                 role="group"
-                aria-label="Add profile steps"
+                aria-label={isEdit ? "Edit profile steps" : "Add profile steps"}
               >
                 {stepperGroup()}
               </div>
@@ -2009,14 +2605,6 @@ export function AddInvestorProfileModal({
             {renderFormPanel()}
           </section>
         </div>
-        <AddBeneficiaryModal
-          open={benModalOpen}
-          onClose={() => setBenModalOpen(false)}
-          initial={form.beneficiary}
-          onSave={(b) => {
-            patch({ beneficiary: b })
-          }}
-        />
       </>
     )
   }
@@ -2026,7 +2614,7 @@ export function AddInvestorProfileModal({
   {isListInline ? (
     <section
       className="investing_add_profile_inline_root"
-      aria-label="Add profile"
+      aria-label={isEdit ? "Edit profile" : "Add profile"}
     >
       {renderFormPanel()}
     </section>
@@ -2042,14 +2630,6 @@ export function AddInvestorProfileModal({
     </div>,
     document.body,
   )}
-  <AddBeneficiaryModal
-    open={benModalOpen}
-    onClose={() => setBenModalOpen(false)}
-    initial={form.beneficiary}
-    onSave={(b) => {
-      patch({ beneficiary: b })
-    }}
-  />
   </>
   )
 }

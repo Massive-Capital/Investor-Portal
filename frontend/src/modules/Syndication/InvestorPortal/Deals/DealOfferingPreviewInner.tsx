@@ -388,6 +388,9 @@ export function DealOfferingPreviewInner({
                               src={galleryUrls[0]}
                               alt=""
                               className="deal_offer_pf_hero_img"
+                              loading="eager"
+                              fetchPriority="high"
+                              decoding="async"
                             />
                           </button>
                         </div>
@@ -416,12 +419,13 @@ export function DealOfferingPreviewInner({
                                       : `Open image ${index + 1} of ${galleryUrls.length} in gallery viewer`
                                   }
                                 >
-                                  <img
-                                    src={src}
-                                    alt=""
-                                    className="deal_offer_pf_media_thumb_img"
-                                    loading="lazy"
-                                  />
+                            <img
+                              src={src}
+                              alt=""
+                              className="deal_offer_pf_media_thumb_img"
+                              loading="eager"
+                              decoding="async"
+                            />
                                   {hasMoreOverlay ? (
                                     <span
                                       className="deal_offer_pf_gallery_preview_more_overlay"
@@ -970,7 +974,8 @@ export function DealOfferingPreviewInner({
                             src={src}
                             alt=""
                             className="deal_offer_pf_gallery_modal_thumb_img"
-                            loading="lazy"
+                            loading="eager"
+                            decoding="async"
                           />
                         </button>
                       ))}

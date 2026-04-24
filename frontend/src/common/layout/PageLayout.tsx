@@ -31,6 +31,7 @@ import {
   pageTitleForAppPathname,
   setAppDocumentTitle,
 } from "../utils/appDocumentTitle"
+import { useAppShellBranding } from "../hooks/useAppShellBranding"
 import "./page_layout.css"
 
 type SidebarIcon = ComponentType<{ size?: number; className?: string }>
@@ -95,6 +96,7 @@ function PageLayoutInner() {
   const location = useLocation()
   const { mode, portalSwitchOverlay } = usePortalMode()
   const lpInvestor = isLpInvestorSessionUser()
+  const { sidebarLogoSrc: workspaceSidebarLogoSrc } = useAppShellBranding()
 
   useEffect(() => {
     if (!portalSwitchOverlay) return
@@ -143,6 +145,21 @@ function PageLayoutInner() {
       ) : null}
       <aside className="app_sidebar">
         <div className="app_sidebar_brand app_sidebar_brand_static">
+          {workspaceSidebarLogoSrc ? (
+            <div className="app_sidebar_brand_mark">
+              <img
+                className="app_sidebar_brand_logo"
+                src={workspaceSidebarLogoSrc}
+                alt=""
+                width={200}
+                height={80}
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                key={workspaceSidebarLogoSrc}
+              />
+            </div>
+          ) : null}
           <h1 className="app_sidebar_title">Investor Portal</h1>
         </div>
         <div className="app_sidebar_nav_region">

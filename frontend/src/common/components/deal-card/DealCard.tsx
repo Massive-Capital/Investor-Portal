@@ -82,7 +82,8 @@ export function DealCard({
               src={coverImageUrl}
               alt={`Property image for ${title}`}
               className="deal_card_cover"
-              loading="lazy"
+              loading="eager"
+              fetchPriority="high"
               decoding="async"
             />
           ) : (

@@ -7,7 +7,6 @@ import {
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
 import "@/modules/usermanagement/user_management.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_modal.css"
 import "@/modules/Syndication/InvestorPortal/Deals/deal-investors-tab.css"
 import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/InvestorPortal/Deals/createDealFormDraftStorage"
@@ -137,7 +136,7 @@ export default function InvestmentsPage() {
     () => [
       {
         id: "investmentName",
-        header: "Investment name",
+        header: "Investment",
         tdClassName: "um_td_user",
         sortValue: (r) => (r.investmentName ?? "").toLowerCase(),
         cell: (r) => (
@@ -151,26 +150,20 @@ export default function InvestmentsPage() {
       },
       {
         id: "offeringName",
-        header: "Offering name",
+        header: "Offering",
         sortValue: (r) => (r.offeringName ?? "").toLowerCase(),
         cell: (r) => r.offeringName || "—",
       },
-      {
-        id: "investmentProfile",
-        header: "Investment profile",
-        sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
-        cell: (r) => r.investmentProfile || "—",
-      },
+      /* "Invested as" hidden: one row per deal in the list; per-profile lines live on the investment detail view. */
+      // {
+      //   id: "investmentProfile",
+      //   header: "Invested as",
+      //   sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
+      //   cell: (r) => r.investmentProfile || "—",
+      // },
       {
         id: "investedAmount",
-        header: (
-          <span className="inv_header_stack">
-            <span>Invested amount</span>
-            <span className="inv_header_sub">
-              Total: {formatUsd(totals.invested)}
-            </span>
-          </span>
-        ),
+        header: "Invested",
         align: "right",
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
@@ -179,14 +172,7 @@ export default function InvestmentsPage() {
       },
       {
         id: "distributedAmount",
-        header: (
-          <span className="inv_header_stack">
-            <span>Distributed amount</span>
-            <span className="inv_header_sub">
-              Total: {formatUsd(totals.distributed)}
-            </span>
-          </span>
-        ),
+        header: "Distributed",
         align: "right",
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
@@ -195,13 +181,13 @@ export default function InvestmentsPage() {
       },
       {
         id: "currentValuation",
-        header: "Current valuation",
+        header: "Valuation",
         sortValue: (r) => (r.currentValuation ?? "").toLowerCase(),
         cell: (r) => r.currentValuation || "—",
       },
       {
         id: "dealCloseDate",
-        header: "Deal close date",
+        header: "Close date",
         sortValue: (r) => (r.dealCloseDate ?? "").toLowerCase(),
         cell: (r) => r.dealCloseDate || "—",
       },
@@ -213,24 +199,27 @@ export default function InvestmentsPage() {
       },
       {
         id: "actionRequired",
-        header: "Action required",
+        header: "Action",
         sortValue: (r) => (r.actionRequired ?? "").toLowerCase(),
         cell: (r) => r.actionRequired || "—",
       },
     ],
-    [totals.invested, totals.distributed],
+    [],
   )
 
   const emptyMessage =
     activeTab === "archives"
-      ? "No archived investments."
-      : "No investment to display."
+      ? "No archived investments here yet."
+      : "No committed investments to show."
 
   return (
-    <section className="um_page deals_list_page investments_page">
-      <div className="um_members_header_block">
+    <section
+      className="um_page deals_list_page investments_page"
+      aria-labelledby="investments-page-title"
+    >
+      <div className="um_members_header_block investments_page_header">
         <div className="um_header_row">
-          <h2 className="um_title um_title_with_icon">
+          <h2 className="um_title um_title_with_icon" id="investments-page-title">
             <Briefcase
               className="um_title_icon"
               size={26}
@@ -240,6 +229,10 @@ export default function InvestmentsPage() {
             Investments
           </h2>
         </div>
+        <p className="investments_page_lead">
+          Your commitments by deal. Select a row to see property details, cash flow, and
+          debt information.
+        </p>
       </div>
 
       <div className="um_members_tabs_outer deals_tabs_outer">
@@ -301,43 +294,71 @@ export default function InvestmentsPage() {
           className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading ? " deals_list_table_panel_loading" : ""}`}
           aria-busy={loading}
         >
-          <div className="um_toolbar deal_inv_table_um_toolbar">
+          <div
+            className="um_toolbar deal_inv_table_um_toolbar investments_page_table_toolbar"
+            aria-label="Table tools"
+          >
             <div className="um_search_wrap">
               <Search className="um_search_icon" size={18} aria-hidden />
               <input
                 type="search"
                 className="um_search_input"
-                placeholder="Search investments…"
+                placeholder="Search by name, offering, or profile…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search investments"
+                aria-label="Filter investments"
               />
             </div>
-            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-              <button
-                type="button"
-                className="um_toolbar_export_btn"
-                onClick={() => setExportModalOpen(true)}
-              >
-                <Download size={18} strokeWidth={2} aria-hidden />
-                <span>Export all investments</span>
-              </button>
+            <div className="investments_page_toolbar_end">
+              {filtered.length > 0 ? (
+                <p className="investments_page_totals" aria-live="polite">
+                  <span className="investments_page_totals_count">
+                    {filtered.length}
+                    {filtered.length === 1
+                      ? " result"
+                      : " results"}
+                  </span>
+                  <span className="investments_page_totals_sep" aria-hidden>
+                    ·
+                  </span>
+                  <span>Invested {formatUsd(totals.invested)}</span>
+                  <span className="investments_page_totals_sep" aria-hidden>
+                    ·
+                  </span>
+                  <span>Distributed {formatUsd(totals.distributed)}</span>
+                </p>
+              ) : null}
+              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+                <button
+                  type="button"
+                  className="um_toolbar_export_btn"
+                  onClick={() => setExportModalOpen(true)}
+                  title="Download all investments in this list as a CSV file"
+                >
+                  <Download size={18} strokeWidth={2} aria-hidden />
+                  <span>Export CSV</span>
+                </button>
+              </div>
             </div>
           </div>
           <DataTable<InvestmentListRow>
             visualVariant="members"
+            membersShell="plain"
             membersTableClassName="um_table_members deal_inv_table"
             columns={columns}
             rows={filtered}
-            getRowKey={(r, i) => r.id || `inv-row-${i}`}
+            isLoading={loading && rows.length === 0}
+            getRowKey={(r, i) =>
+              (r.dealId && r.dealId.trim()) || r.id || `inv-row-${i}`
+            }
             emptyLabel={
               loading && rows.length === 0
-                ? "Loading investments…"
+                ? "Loading…"
                 : query.trim()
-                  ? "No investments match your search."
+                  ? "No investments match this filter. Try a different search."
                   : emptyMessage
             }
-            initialSort={{ columnId: "actionRequired", direction: "asc" }}
+            initialSort={{ columnId: "investmentName", direction: "asc" }}
             pagination={filtered.length > 0 ? pagination : undefined}
           />
         </div>

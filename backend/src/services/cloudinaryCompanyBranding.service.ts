@@ -121,21 +121,22 @@ export async function uploadCompanyBrandingToCloudinary(opts: {
     secure_url?: string;
     public_id?: string;
   }>((resolve, reject) => {
-    // Runtime: `upload_stream(callback, options)`; TS types in cloudinary@2.9 are reversed.
-    const uploader = (
-      cloudinary.uploader as {
-        upload_stream: (
-          cb: (err: Error | null, result?: { secure_url?: string; public_id?: string }) => void,
-          opts: typeof uploadOptions,
-        ) => NodeJS.WritableStream;
-      }
-    ).upload_stream((err, result) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve((result as { secure_url?: string; public_id?: string }) ?? {});
-    }, uploadOptions);
+    /**
+     * `v2` uploader uses `v1_adapters` with `upload_stream: 0` → the public call order is
+     * `(options, callback)`, not the v1 `(callback, options)`. Passing them reversed makes the
+     * options object the “callback” in `v1_result_adapter` → "callback is not a function" when
+     * the upload response arrives.
+     */
+    const uploader = cloudinary.uploader.upload_stream(
+      uploadOptions,
+      (err: Error | null | undefined, result?: { secure_url?: string; public_id?: string }) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve((result as { secure_url?: string; public_id?: string }) ?? {});
+      },
+    );
     uploader.on("error", (e: Error) => reject(e));
     Readable.from(opts.buffer).pipe(uploader);
   });

@@ -110,6 +110,8 @@ export function getUploadsPublicOrigin(): string {
 export function normalizeDealGallerySrc(raw: string | null | undefined): string {
   const s = typeof raw === "string" ? raw.trim() : String(raw ?? "").trim();
   if (!s) return "";
+  /** `blob:` contains `/` (e.g. `blob:http://.../uuid`); do not treat as a relative uploads path. */
+  if (s.startsWith("blob:")) return s;
   if (s.startsWith("data:image/")) return s;
   if (/^https?:\/\//i.test(s)) {
     /**

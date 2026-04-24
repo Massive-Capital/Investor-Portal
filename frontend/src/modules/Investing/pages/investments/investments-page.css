@@ -1,20 +1,75 @@
-/* Stacked headers + active-sort accent on top of syndicating `deals-list.css` chrome */
+/* /investing/investments — list + table chrome on top of deals-list + user management */
 
-.investments_page.deals_list_page .inv_header_stack {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2rem;
-  text-align: left;
-  line-height: 1.25;
+.investments_page {
+  /* Consistent with Investing → Profiles inner panels */
+  --inv-panel-px: clamp(1rem, 2.5vw, 1.5rem);
+  --inv-panel-pt: 1.1rem;
+  --inv-panel-pb: 1.35rem;
 }
 
-.investments_page.deals_list_page .inv_header_sub {
-  font-size: 0.8125rem;
+.investments_page_header {
+  margin-bottom: 0.2rem;
+}
+
+.investments_page_lead {
+  margin: 0.4rem 0 0;
+  max-width: 40rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #64748b);
+}
+
+/* Card surface: room around toolbar + table */
+.investments_page
+  .um_panel.um_members_tab_panel.deals_list_table_panel.deals_list_card_surface {
+  padding: var(--inv-panel-pt) var(--inv-panel-px) var(--inv-panel-pb);
+  box-sizing: border-box;
+}
+
+/* Toolbar: search (left) · summary + actions (right) */
+.investments_page_table_toolbar {
+  margin-bottom: 0.9rem;
+}
+
+.investments_page_table_toolbar .um_search_input {
+  min-width: 0;
+}
+
+.investments_page_toolbar_end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem 1.25rem;
+  flex: 1 1 min(12rem, 100%);
+  min-width: 0;
+}
+
+.investments_page_totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35em 0.2em;
+  margin: 0;
+  text-align: right;
+  font-size: 0.82rem;
+  line-height: 1.35;
   font-weight: 500;
   color: var(--portal-text-muted, #64748b);
 }
 
+.investments_page_totals_count {
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+}
+
+.investments_page_totals_sep {
+  margin: 0 0.1em;
+  user-select: none;
+}
+
+/* Sort accent on the investments list table */
 .investments_page.deals_list_page
   .deals_list_table_panel
   .um_table_sortable
@@ -27,4 +82,18 @@
   .um_sort_header_icon {
   color: var(--portal-primary, #2563eb);
   opacity: 1;
+}
+
+/* Narrow: stack totals / export with comfortable spacing */
+@media (max-width: 640px) {
+  .investments_page_toolbar_end {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .investments_page_totals {
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+  }
 }

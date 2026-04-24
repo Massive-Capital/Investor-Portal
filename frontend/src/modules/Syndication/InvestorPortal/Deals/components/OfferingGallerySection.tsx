@@ -174,7 +174,8 @@ export function OfferingGallerySection({
                   src={src}
                   alt=""
                   className="deal_offering_gallery_img"
-                  loading="lazy"
+                  loading={isCover ? "eager" : "lazy"}
+                  decoding="async"
                 />
               </button>
               <div className="deal_offering_gallery_cell_footer">

@@ -152,6 +152,8 @@ export type CreateDealInvestmentInput = {
   /** Human-readable member label (from directory); stored so list API does not show raw id */
   contactDisplayName: string;
   profileId: string;
+  /** Investing → Profiles book row, optional. */
+  userInvestorProfileId?: string | null;
   investor_role: string;
   status: string;
   investorClass: string;
@@ -522,6 +524,7 @@ export function mapRowToInvestorApi(
       verifiedAccLabel: "Not Started",
       contactId: row.contactId ?? "",
       profileId: row.profileId ?? "",
+      userInvestorProfileId: String(row.userInvestorProfileId ?? "").trim(),
       offeringId: row.offeringId ?? "",
       commitmentAmountRaw: row.commitmentAmount ?? "",
       extraContributionAmounts: extras,
@@ -563,6 +566,7 @@ export function mapRowToInvestorApi(
     /** Raw fields for edit-investment form */
     contactId: row.contactId ?? "",
     profileId: row.profileId ?? "",
+    userInvestorProfileId: String(row.userInvestorProfileId ?? "").trim(),
     offeringId: row.offeringId ?? "",
     commitmentAmountRaw: row.commitmentAmount ?? "",
     extraContributionAmounts: extras,
@@ -789,6 +793,12 @@ export async function enrichInvestorRolesForDealRows(
   });
 }
 
+/**
+ * One **API** investor line per `deal_investment` row. This does not merge or replace
+ * rows by contact—each DB row (including a second commitment with a different
+ * `user_investor_profile_id`) is mapped separately. Use {@link insertDealInvestment}
+ * when a new book profile should add a row instead of updating the existing one.
+ */
 export async function mapDealInvestmentsToInvestorApi(
   rows: DealInvestmentRow[],
 ): Promise<ReturnType<typeof mapRowToInvestorApi>[]> {
@@ -1182,6 +1192,7 @@ export async function insertDealInvestment(params: {
     contactId: params.input.contactId,
     contactDisplayName: params.input.contactDisplayName?.trim() ?? "",
     profileId: params.input.profileId,
+    userInvestorProfileId: params.input.userInvestorProfileId?.trim() ?? null,
     investor_role: params.input.investor_role,
     status: params.input.status,
     investorClass: params.input.investorClass,
@@ -1250,6 +1261,11 @@ export async function updateDealInvestment(params: {
       contactId: params.input.contactId,
       contactDisplayName: params.input.contactDisplayName?.trim() ?? "",
       profileId: params.input.profileId,
+      ...(params.input.userInvestorProfileId === undefined
+        ? {}
+        : {
+            userInvestorProfileId: params.input.userInvestorProfileId?.trim() || null,
+          }),
       investor_role: params.input.investor_role,
       status: params.input.status,
       investorClass: params.input.investorClass,

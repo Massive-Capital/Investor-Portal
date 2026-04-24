@@ -7,6 +7,7 @@ import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail
 import {
   fetchDealById,
   fetchDealInvestors,
+  fetchDealMembers,
   type DealDetailApi,
 } from "../api/dealsApi"
 import { DealDetailsReadonlyPreviewFields } from "./DealDetailsReadonlyPreview"
@@ -76,7 +77,7 @@ export function DealPreviewModal({
   }, [dealId])
 
   useEffect(() => {
-    if (!dealId || listContext !== "investing") {
+    if (!dealId) {
       setViewerDealInvestorRoleRaw(null)
       return
     }
@@ -89,10 +90,14 @@ export function DealPreviewModal({
     setViewerDealInvestorRoleRaw(null)
     void (async () => {
       try {
-        const { investors } = await fetchDealInvestors(dealId)
+        const [{ investors }, membersRoster] = await Promise.all([
+          fetchDealInvestors(dealId),
+          fetchDealMembers(dealId),
+        ])
         if (cancelled) return
         setViewerDealInvestorRoleRaw(
-          resolveViewerDealInvestorRoleRaw(investors, email),
+          resolveViewerDealInvestorRoleRaw(membersRoster, email) ??
+            resolveViewerDealInvestorRoleRaw(investors, email),
         )
       } catch {
         if (!cancelled) setViewerDealInvestorRoleRaw(null)
@@ -101,7 +106,7 @@ export function DealPreviewModal({
     return () => {
       cancelled = true
     }
-  }, [dealId, listContext])
+  }, [dealId])
 
   function handleEdit() {
     if (!dealId) return
@@ -144,7 +149,7 @@ export function DealPreviewModal({
         </div>
 
         <div className="deals_deal_view_modal_body">
-          {listContext === "investing" && viewerDealInvestorRoleRaw ? (
+          {viewerDealInvestorRoleRaw ? (
             <div
               className="deals_deal_view_sponsor_role_banner"
               role="status"

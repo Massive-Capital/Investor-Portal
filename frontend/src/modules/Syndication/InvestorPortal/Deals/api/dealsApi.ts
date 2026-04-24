@@ -1784,6 +1784,17 @@ function normalizeInvestorRowApi(
     ),
     contactId: str(firstDefined(raw, ["contactId", "contact_id"])),
     profileId: str(firstDefined(raw, ["profileId", "profile_id"])),
+    userInvestorProfileId: str(
+      firstDefined(raw, ["userInvestorProfileId", "user_investor_profile_id"]),
+    ),
+    userInvestorProfileName: str(
+      firstDefined(raw, [
+        "userInvestorProfileName",
+        "user_investor_profile_name",
+        "savedProfileName",
+        "saved_profile_name",
+      ]),
+    ),
     offeringId: str(firstDefined(raw, ["offeringId", "offering_id"])),
     commitmentAmountRaw:
       commitmentAmountRaw.trim() !== ""

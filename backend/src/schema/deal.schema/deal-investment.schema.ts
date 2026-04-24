@@ -1,4 +1,5 @@
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { userInvestorProfiles } from "../investing.schema/userProfileBook.schema.js";
 import { addDealForm } from "./add-deal-form.schema.js";
 
 /** Investments added from the investor portal Add Investment flow. */
@@ -12,6 +13,11 @@ export const dealInvestment = pgTable("deal_investment", {
   /** Member label from Add Investment (directory name); avoids showing raw user id in UI */
   contactDisplayName: text("contact_display_name").notNull().default(""),
   profileId: text("profile_id").notNull().default(""),
+  /** Optional saved book profile: Investing → Profiles. */
+  userInvestorProfileId: uuid("user_investor_profile_id").references(
+    () => userInvestorProfiles.id,
+    { onDelete: "set null" },
+  ),
   investor_role: text("investor_role").notNull().default(""),
   status: text("status").notNull().default(""),
   investorClass: text("investor_class").notNull().default(""),

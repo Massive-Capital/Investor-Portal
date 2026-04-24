@@ -87,5 +87,7 @@ export function pageTitleForAppPathname(
 
   if (/^\/investing\/investments\/[^/]+$/.test(p)) return "Investment"
 
+  if (/^\/investing\/profiles\/[^/]+\/edit$/.test(p)) return "Edit profile"
+
   return "Investor Portal"
 }

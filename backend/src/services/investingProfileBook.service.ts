@@ -19,6 +19,29 @@ function displayNameFromUser(row: {
   return String(row.email ?? "").trim() || "—";
 }
 
+const MAX_FORM_SNAPSHOT_BYTES = 256 * 1024;
+const ERR_FORM_SNAPSHOT_TOO_LARGE = "form_snapshot_too_large";
+
+/**
+ * Controllers pass JSON from the body as a UTF-8 string; this turns it into a jsonb-ready object.
+ */
+function formSnapshotFromRequestJson(s: string | null): Record<string, unknown> | null {
+  if (s == null) return null;
+  const t = s.trim();
+  if (!t) return null;
+  if (Buffer.byteLength(t, "utf8") > MAX_FORM_SNAPSHOT_BYTES) {
+    throw new Error(ERR_FORM_SNAPSHOT_TOO_LARGE);
+  }
+  const o = JSON.parse(t) as unknown;
+  if (o == null || typeof o !== "object" || Array.isArray(o)) {
+    return null;
+  }
+  if (Buffer.byteLength(JSON.stringify(o), "utf8") > MAX_FORM_SNAPSHOT_BYTES) {
+    throw new Error(ERR_FORM_SNAPSHOT_TOO_LARGE);
+  }
+  return o as Record<string, unknown>;
+}
+
 export type ProfileBookSnapshot = {
   profiles: Array<{
     id: string;
@@ -28,6 +51,9 @@ export type ProfileBookSnapshot = {
     investmentsCount: number;
     dateCreated: string;
     archived: boolean;
+    lastEditReason: string | null;
+    /** Add-profile wizard; maps to DB `form_snapshot` (jsonb). */
+    profileWizardState: unknown | null;
   }>;
   beneficiaries: Array<{
     id: string;
@@ -76,15 +102,7 @@ export async function getProfileBookForUser(
   ]);
 
   return {
-    profiles: pRows.map((r) => ({
-      id: r.id,
-      profileName: r.profileName,
-      profileType: r.profileType,
-      addedBy: r.addedBy,
-      investmentsCount: r.investmentsCount,
-      dateCreated: r.createdAt.toISOString(),
-      archived: r.archived,
-    })),
+    profiles: pRows.map(mapProfileRow),
     beneficiaries: bRows.map((r) => ({
       id: r.id,
       fullName: r.fullName,
@@ -113,7 +131,7 @@ export async function getProfileBookForUser(
 
 export async function createInvestorProfileForUser(
   userId: string,
-  input: { profileName: string; profileType: string },
+  input: { profileName: string; profileType: string; profileWizardState: string | null },
 ): Promise<ProfileBookSnapshot["profiles"][0] | null> {
   const [u] = await db
     .select({
@@ -127,6 +145,7 @@ export async function createInvestorProfileForUser(
   if (!u) return null;
 
   const addedBy = displayNameFromUser(u);
+  const formSnapshot = formSnapshotFromRequestJson(input.profileWizardState);
   const [row] = await db
     .insert(userInvestorProfiles)
     .values({
@@ -134,19 +153,12 @@ export async function createInvestorProfileForUser(
       profileName: (input.profileName ?? "").trim() || "—",
       profileType: (input.profileType ?? "").trim() || "—",
       addedBy,
+      formSnapshot,
     })
     .returning();
 
   if (!row) return null;
-  return {
-    id: row.id,
-    profileName: row.profileName,
-    profileType: row.profileType,
-    addedBy: row.addedBy,
-    investmentsCount: row.investmentsCount,
-    dateCreated: row.createdAt.toISOString(),
-    archived: row.archived,
-  };
+  return mapProfileRow(row);
 }
 
 export async function setInvestorProfileArchived(
@@ -162,15 +174,7 @@ export async function setInvestorProfileArchived(
     )
     .returning();
   if (!row) return null;
-  return {
-    id: row.id,
-    profileName: row.profileName,
-    profileType: row.profileType,
-    addedBy: row.addedBy,
-    investmentsCount: row.investmentsCount,
-    dateCreated: row.createdAt.toISOString(),
-    archived: row.archived,
-  };
+  return mapProfileRow(row);
 }
 
 export async function createBeneficiaryForUser(
@@ -318,6 +322,10 @@ function mapProfileRow(
     investmentsCount: row.investmentsCount,
     dateCreated: row.createdAt.toISOString(),
     archived: row.archived,
+    lastEditReason: row.lastEditReason != null && String(row.lastEditReason).trim()
+      ? String(row.lastEditReason).trim()
+      : null,
+    profileWizardState: row.formSnapshot,
   };
 }
 
@@ -355,14 +363,35 @@ function mapAddrRow(
 export async function updateInvestorProfileForUser(
   userId: string,
   profileId: string,
-  input: { profileName: string; profileType: string },
+  input: {
+    profileName: string;
+    profileType: string;
+    lastEditReason: string;
+    /** Omit to leave `form_snapshot` unchanged. */
+    profileWizardState?: string | null;
+  },
 ): Promise<ProfileBookSnapshot["profiles"][0] | null> {
+  const reason = (input.lastEditReason ?? "").trim();
   const [row] = await db
     .update(userInvestorProfiles)
-    .set({
-      profileName: (input.profileName ?? "").trim() || "—",
-      profileType: (input.profileType ?? "").trim() || "—",
-    })
+    .set(
+      Object.prototype.hasOwnProperty.call(input, "profileWizardState")
+        ? {
+            profileName: (input.profileName ?? "").trim() || "—",
+            profileType: (input.profileType ?? "").trim() || "—",
+            lastEditReason: reason || null,
+            formSnapshot: formSnapshotFromRequestJson(
+              input.profileWizardState == null
+                ? null
+                : String(input.profileWizardState),
+            ),
+          }
+        : {
+            profileName: (input.profileName ?? "").trim() || "—",
+            profileType: (input.profileType ?? "").trim() || "—",
+            lastEditReason: reason || null,
+          },
+    )
     .where(
       and(eq(userInvestorProfiles.id, profileId), eq(userInvestorProfiles.userId, userId)),
     )

@@ -82,6 +82,85 @@ export function exportBeneficiaryRow(
   downloadCsv(BOM + lines.join("\n"), `${filenameBase}-${stamp}.csv`)
 }
 
+/** Multi-row CSV for export modal (same columns as `exportBeneficiaryRow`). */
+export function buildBeneficiariesExportCsv(
+  rows: (BeneficiaryDraft & { id: string; archived?: boolean })[],
+): string {
+  const headers = [
+    "Name",
+    "Relationship",
+    "Email",
+    "Phone",
+    "Address",
+    "Tax ID",
+    "Archived",
+  ]
+  const lines = [headers.join(",")]
+  for (const row of rows) {
+    lines.push(
+      [
+        esc(row.fullName),
+        esc(row.relationship),
+        esc(row.email),
+        esc(row.phone),
+        esc(row.addressQuery),
+        esc(row.taxId),
+        esc(row.archived ? "Yes" : "No"),
+      ].join(","),
+    )
+  }
+  return lines.join("\n")
+}
+
+/** Multi-row CSV for export modal (same columns as `exportSavedAddressRow`). */
+export function buildAddressesExportCsv(rows: SavedAddress[]): string {
+  const headers = [
+    "Name / company",
+    "Country",
+    "Street 1",
+    "Street 2",
+    "City",
+    "State",
+    "Zip",
+    "Check memo",
+    "Distribution note",
+    "Archived",
+  ]
+  const lines = [headers.join(",")]
+  for (const row of rows) {
+    lines.push(
+      [
+        esc(row.fullNameOrCompany),
+        esc(row.country),
+        esc(row.street1),
+        esc(row.street2),
+        esc(row.city),
+        esc(row.state),
+        esc(row.zip),
+        esc(row.checkMemo),
+        esc(row.distributionNote),
+        esc(row.archived ? "Yes" : "No"),
+      ].join(","),
+    )
+  }
+  return lines.join("\n")
+}
+
+export function downloadExportCsv(
+  content: string,
+  filename: string,
+  withBom = true,
+): void {
+  const payload = withBom ? `${BOM}${content}` : content
+  const blob = new Blob([payload], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 export function exportSavedAddressRow(row: SavedAddress, filenameBase = "address"): void {
   const headers = [
     "Name / company",

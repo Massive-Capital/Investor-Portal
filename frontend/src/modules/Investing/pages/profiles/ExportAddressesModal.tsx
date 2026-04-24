@@ -1,65 +1,25 @@
-import { Search, X } from "lucide-react"
+import { Download, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
-import type { InvestmentListRow } from "./investments.types"
+import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
+import { COUNTRY_OPTIONS, US_STATE_OPTIONS } from "./usStates"
+import {
+  buildAddressesExportCsv,
+  downloadExportCsv,
+} from "./investingProfileBookExport"
 import "@/modules/Syndication/InvestorPortal/Deals/components/export-deals-modal.css"
 
-function downloadCsv(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
-  const headers = [
-    "Investment name",
-    "Offering name",
-    "Invested as",
-    "Invested amount",
-    "Distributed amount",
-    "Current valuation",
-    "Deal close date",
-    "Status",
-    "Action required",
-  ]
-  const esc = (v: string) => {
-    const s = String(v ?? "").replace(/"/g, '""')
-    return `"${s}"`
-  }
-  const lines = [headers.join(",")]
-  for (const r of rows) {
-    lines.push(
-      [
-        esc(r.investmentName),
-        esc(r.offeringName),
-        esc(r.investmentProfile),
-        esc(String(r.investedAmount)),
-        esc(String(r.distributedAmount)),
-        esc(r.currentValuation),
-        esc(r.dealCloseDate),
-        esc(r.status),
-        esc(r.actionRequired),
-      ].join(","),
-    )
-  }
-  return lines.join("\n")
-}
-
-interface ExportInvestmentsModalProps {
+interface ExportAddressesModalProps {
   open: boolean
   onClose: () => void
-  investments: InvestmentListRow[]
+  addresses: SavedAddress[]
 }
 
-export function ExportInvestmentsModal({
+export function ExportAddressesModal({
   open,
   onClose,
-  investments,
-}: ExportInvestmentsModalProps) {
+  addresses,
+}: ExportAddressesModalProps) {
   const [modalQuery, setModalQuery] = useState("")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const selectAllRef = useRef<HTMLInputElement>(null)
@@ -73,23 +33,39 @@ export function ExportInvestmentsModal({
 
   const visibleRows = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
-    let list = [...investments]
-    if (q)
-      list = list.filter(
-        (r) =>
-          (r.investmentName ?? "").toLowerCase().includes(q) ||
-          (r.offeringName ?? "").toLowerCase().includes(q),
-      )
+    let list = [...addresses]
+    if (q) {
+      list = list.filter((a) => {
+        const stateLabel =
+          US_STATE_OPTIONS.find((s) => s.value === a.state)?.label ?? a.state
+        const countryLabel =
+          COUNTRY_OPTIONS.find((c) => c.value === a.country)?.label ?? a.country
+        const line = [
+          a.fullNameOrCompany,
+          a.street1,
+          a.street2,
+          a.city,
+          stateLabel,
+          a.zip,
+          countryLabel,
+          a.checkMemo,
+          a.distributionNote,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+        return line.includes(q) || formatSavedAddressLabel(a).toLowerCase().includes(q)
+      })
+    }
     list.sort((a, b) =>
-      (a.investmentName ?? "").localeCompare(b.investmentName ?? ""),
+      (a.fullNameOrCompany ?? "").localeCompare(b.fullNameOrCompany ?? "", undefined, {
+        sensitivity: "base",
+      }),
     )
     return list
-  }, [investments, modalQuery])
+  }, [addresses, modalQuery])
 
-  const visibleIds = useMemo(
-    () => visibleRows.map((r) => r.id),
-    [visibleRows],
-  )
+  const visibleIds = useMemo(() => visibleRows.map((r) => r.id), [visibleRows])
 
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
@@ -139,13 +115,13 @@ export function ExportInvestmentsModal({
   }, [allVisibleSelected, visibleIds])
 
   function handleExportExcel() {
-    const chosen = investments.filter((r) => selectedIds.has(r.id))
+    const chosen = addresses.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
-    const csv = buildInvestmentsExportCsv(chosen)
+    const csv = buildAddressesExportCsv(chosen)
     const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `investments-export-${stamp}.csv`
-    downloadCsv(csv, filename)
-    toast.success("Investments exported", `Saved as ${filename}`)
+    const filename = `saved-addresses-export-${stamp}.csv`
+    downloadExportCsv(csv, filename, true)
+    toast.success("Addresses exported", `Saved as ${filename}`)
     onClose()
   }
 
@@ -158,14 +134,14 @@ export function ExportInvestmentsModal({
         className="deals_export_modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="investments-export-modal-title"
+        aria-labelledby="addresses-export-modal-title"
       >
         <header className="deals_export_modal_head">
           <h2
-            id="investments-export-modal-title"
+            id="addresses-export-modal-title"
             className="deals_export_modal_title"
           >
-            Export investments
+            Export addresses
           </h2>
           <button
             type="button"
@@ -178,17 +154,17 @@ export function ExportInvestmentsModal({
         </header>
 
         <p className="deals_export_modal_hint">
-          Search and select investments, then export to Excel (CSV format).
+          Search and select addresses, then export to Excel (CSV format).
         </p>
 
         <div className="deals_export_modal_search">
           <input
             type="search"
             className="deals_export_modal_search_input"
-            placeholder="Search investments…"
+            placeholder="Search addresses…"
             value={modalQuery}
             onChange={(e) => setModalQuery(e.target.value)}
-            aria-label="Search investments in export list"
+            aria-label="Search addresses in export list"
           />
           <Search
             className="deals_export_modal_search_icon"
@@ -204,11 +180,13 @@ export function ExportInvestmentsModal({
             type="checkbox"
             checked={allVisibleSelected}
             onChange={toggleSelectAllVisible}
-            aria-label={`Select all ${visibleRows.length} investment${visibleRows.length === 1 ? "" : "s"} shown`}
+            aria-label={`Select all ${visibleRows.length} ${
+              visibleRows.length === 1 ? "address" : "addresses"
+            } shown`}
           />
           <span>
             Select all
-            {visibleRows.length !== investments.length ? (
+            {visibleRows.length !== addresses.length ? (
               <span className="deals_export_modal_select_all_meta">
                 {" "}
                 ({visibleRows.length} shown)
@@ -217,10 +195,10 @@ export function ExportInvestmentsModal({
           </span>
         </label>
 
-        <ul className="deals_export_modal_list" aria-label="Investments to export">
+        <ul className="deals_export_modal_list" aria-label="Addresses to export">
           {visibleRows.length === 0 ? (
             <li className="deals_export_modal_empty">
-              No investments match your search.
+              No addresses match your search.
             </li>
           ) : (
             visibleRows.map((row) => (
@@ -230,13 +208,13 @@ export function ExportInvestmentsModal({
                     type="checkbox"
                     checked={selectedIds.has(row.id)}
                     onChange={() => toggleId(row.id)}
-                    aria-label={`Select ${row.investmentName}`}
+                    aria-label={`Select ${row.fullNameOrCompany || "address"}`}
                   />
                   <span className="deals_export_modal_row_name">
-                    {row.investmentName || "—"}
+                    {row.fullNameOrCompany || "—"}
                   </span>
                   <span className="deals_export_modal_row_meta">
-                    {row.offeringName || "—"}
+                    {formatSavedAddressLabel(row)}
                   </span>
                 </label>
               </li>
@@ -250,6 +228,7 @@ export function ExportInvestmentsModal({
             className="deals_export_modal_btn_secondary"
             onClick={onClose}
           >
+            <X size={16} strokeWidth={2} aria-hidden />
             Cancel
           </button>
           <button
@@ -258,6 +237,7 @@ export function ExportInvestmentsModal({
             onClick={handleExportExcel}
             disabled={selectedIds.size === 0}
           >
+            <Download size={16} strokeWidth={2} aria-hidden />
             Export to Excel
           </button>
         </footer>

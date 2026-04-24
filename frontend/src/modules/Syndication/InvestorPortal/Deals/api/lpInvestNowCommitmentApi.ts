@@ -28,6 +28,9 @@ export async function patchMyLpDealInvestNowCommitment(
     profileId: string
     status: string
     docSignedDate: string
+    /** When true, the server updates `user_investor_profile_id` (or clears if empty). */
+    includeUserInvestorProfileInBody: boolean
+    userInvestorProfileId: string
   },
 ): Promise<PatchMyLpDealInvestNowCommitmentResult> {
   const base = getApiV1Base()
@@ -35,6 +38,15 @@ export async function patchMyLpDealInvestNowCommitment(
   const did = dealId.trim()
   if (!did) return { ok: false, message: "Missing deal id." }
   try {
+    const bodyObj: Record<string, string> = {
+      committed_amount: committedAmount,
+      profile_id: body.profileId.trim(),
+      status: body.status ?? "",
+      doc_signed_date: body.docSignedDate ?? "",
+    }
+    if (body.includeUserInvestorProfileInBody) {
+      bodyObj.user_investor_profile_id = (body.userInvestorProfileId ?? "").trim()
+    }
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(did)}/lp-investors/my-invest-now-commitment`,
       {
@@ -44,12 +56,7 @@ export async function patchMyLpDealInvestNowCommitment(
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({
-          committed_amount: committedAmount,
-          profile_id: body.profileId.trim(),
-          status: body.status ?? "",
-          doc_signed_date: body.docSignedDate ?? "",
-        }),
+        body: JSON.stringify(bodyObj),
       },
     )
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>

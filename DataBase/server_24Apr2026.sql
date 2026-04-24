@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 06zmVyW6WW1qLtNhd9J7TBt8L7FxK6nJBtIcu0d8QXYVHGhKTivDOCl7Owz5eov
+\restrict of7ISF6qAPiNyjp3BwxWN06Vc68ogNnWOJyDTHj0AVqOt2J5gmb6gHUc6HBJBTH
 
 -- Dumped from database version 17.8
 -- Dumped by pg_dump version 17.8
@@ -73,26 +73,23 @@ ALTER SEQUENCE drizzle.__drizzle_migrations_id_seq OWNED BY drizzle.__drizzle_mi
 
 CREATE TABLE public.add_deal_form (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    organization_id uuid,
     deal_name text NOT NULL,
-    deal_type text,
+    deal_type text DEFAULT ''::text NOT NULL,
     deal_stage text NOT NULL,
     sec_type text NOT NULL,
     close_date date,
     owning_entity_name text NOT NULL,
-    funds_required_before_gp_sign boolean DEFAULT false,
-    auto_send_funding_instructions boolean DEFAULT false,
+    funds_required_before_gp_sign boolean DEFAULT false NOT NULL,
+    auto_send_funding_instructions boolean DEFAULT false NOT NULL,
     property_name text NOT NULL,
-    country text,
+    country text DEFAULT ''::text NOT NULL,
     address_line_1 text,
     address_line_2 text,
-    city text,
+    city text DEFAULT ''::text NOT NULL,
     state text,
     zip_code text,
-    images text[] DEFAULT ARRAY[]::text[],
-    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     asset_image_path text,
-    organization_id uuid,
     investor_summary_html text,
     gallery_cover_image_url text,
     key_highlights_json text,
@@ -104,6 +101,7 @@ CREATE TABLE public.add_deal_form (
     internal_name text DEFAULT ''::text NOT NULL,
     offering_overview_asset_ids text DEFAULT '[]'::text NOT NULL,
     offering_gallery_paths text DEFAULT '[]'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
     offering_preview_token text,
     offering_investor_preview_json text,
     CONSTRAINT add_deal_form_deal_stage_check CHECK ((deal_stage = ANY (ARRAY['draft'::text, 'Draft'::text, 'raising_capital'::text, 'capital_raising'::text, 'asset_managing'::text, 'managing_asset'::text, 'liquidated'::text])))
@@ -132,9 +130,9 @@ ALTER TABLE public.assigning_deal_user OWNER TO postgres;
 CREATE TABLE public.companies (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     name character varying(255) NOT NULL,
+    status character varying(50) DEFAULT 'active'::character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    status character varying(50) DEFAULT 'active'::character varying NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -214,7 +212,8 @@ CREATE TABLE public.deal_investment (
     document_storage_path text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     contact_display_name text DEFAULT ''::text NOT NULL,
-    investor_role text DEFAULT ''::text NOT NULL
+    investor_role text DEFAULT ''::text NOT NULL,
+    user_investor_profile_id uuid
 );
 
 
@@ -232,15 +231,15 @@ CREATE TABLE public.deal_investor_class (
     entity_name text DEFAULT ''::text NOT NULL,
     start_date text DEFAULT ''::text NOT NULL,
     offering_size text DEFAULT ''::text NOT NULL,
+    raise_amount_distributions text DEFAULT ''::text NOT NULL,
+    billing_raise_quota text DEFAULT ''::text NOT NULL,
     minimum_investment text DEFAULT ''::text NOT NULL,
     price_per_unit text DEFAULT ''::text NOT NULL,
     status text DEFAULT 'draft'::text NOT NULL,
     visibility text DEFAULT ''::text NOT NULL,
+    advanced_options_json text DEFAULT '{}'::text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    raise_amount_distributions text DEFAULT ''::text NOT NULL,
-    billing_raise_quota text DEFAULT ''::text NOT NULL,
-    advanced_options_json text DEFAULT '{}'::text NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -262,7 +261,8 @@ CREATE TABLE public.deal_lp_investor (
     profile_id text DEFAULT ''::text NOT NULL,
     email character varying(255),
     role character varying(100) DEFAULT ''::character varying NOT NULL,
-    committed_amount text DEFAULT ''::text NOT NULL
+    committed_amount text DEFAULT ''::text NOT NULL,
+    user_investor_profile_id uuid
 );
 
 
@@ -345,6 +345,83 @@ CREATE TABLE public.organization_contact_tag (
 ALTER TABLE public.organization_contact_tag OWNER TO postgres;
 
 --
+-- Name: user_beneficiaries; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.user_beneficiaries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    full_name character varying(200) DEFAULT ''::character varying NOT NULL,
+    relationship character varying(100) DEFAULT ''::character varying NOT NULL,
+    tax_id character varying(100) DEFAULT ''::character varying NOT NULL,
+    phone character varying(32) DEFAULT ''::character varying NOT NULL,
+    email character varying(255) DEFAULT ''::character varying NOT NULL,
+    address_query text DEFAULT ''::text NOT NULL,
+    archived boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.user_beneficiaries OWNER TO postgres;
+
+--
+-- Name: user_investor_profiles; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.user_investor_profiles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    profile_name character varying(255) NOT NULL,
+    profile_type character varying(100) DEFAULT ''::character varying NOT NULL,
+    added_by character varying(255) DEFAULT ''::character varying NOT NULL,
+    investments_count integer DEFAULT 0 NOT NULL,
+    archived boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_edit_reason text,
+    form_snapshot jsonb
+);
+
+
+ALTER TABLE public.user_investor_profiles OWNER TO postgres;
+
+--
+-- Name: TABLE user_investor_profiles; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.user_investor_profiles IS 'Saved investor (LP) profiles: display label, type, and optional add-profile form data per portal user.';
+
+
+--
+-- Name: COLUMN user_investor_profiles.form_snapshot; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.user_investor_profiles.form_snapshot IS 'Add/edit LP profile wizard: one JSON object with all multi-step form fields (identity, tax, distribution, address IDs, beneficiary). NULL for legacy rows or when only list fields were saved.';
+
+
+--
+-- Name: user_saved_addresses; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.user_saved_addresses (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    full_name_or_company character varying(255) DEFAULT ''::character varying NOT NULL,
+    country character varying(100) DEFAULT ''::character varying NOT NULL,
+    street1 character varying(255) DEFAULT ''::character varying NOT NULL,
+    street2 character varying(255) DEFAULT ''::character varying NOT NULL,
+    city character varying(100) DEFAULT ''::character varying NOT NULL,
+    state character varying(100) DEFAULT ''::character varying NOT NULL,
+    zip character varying(32) DEFAULT ''::character varying NOT NULL,
+    check_memo character varying(500) DEFAULT ''::character varying NOT NULL,
+    distribution_note text DEFAULT ''::text NOT NULL,
+    archived boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.user_saved_addresses OWNER TO postgres;
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -353,16 +430,16 @@ CREATE TABLE public.users (
     email character varying(255) NOT NULL,
     username character varying(100) NOT NULL,
     password_hash character varying(255) NOT NULL,
-    role character varying(50) DEFAULT 'user'::character varying NOT NULL,
+    role character varying(50) DEFAULT 'platform_user'::character varying NOT NULL,
     user_status character varying(50) DEFAULT 'active'::character varying NOT NULL,
     user_signup_completed character varying(10) DEFAULT 'true'::character varying NOT NULL,
     organization_id uuid,
     first_name character varying(100) DEFAULT ''::character varying NOT NULL,
     last_name character varying(100) DEFAULT ''::character varying NOT NULL,
+    company_name character varying(255) DEFAULT ''::character varying NOT NULL,
     phone character varying(32) DEFAULT ''::character varying NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    company_name character varying(255) DEFAULT ''::character varying NOT NULL,
     invite_expires_at timestamp with time zone
 );
 
@@ -381,31 +458,32 @@ ALTER TABLE ONLY drizzle.__drizzle_migrations ALTER COLUMN id SET DEFAULT nextva
 --
 
 COPY drizzle.__drizzle_migrations (id, hash, created_at) FROM stdin;
-1	35fb3b45c7a7c5d0f23ee8ba4f8c217a3bd3a02ab17bda72bbe942eb57126a17	1774699093272
-2	f34822bf9dadd654084c28804a0a1f600240f1560ad284c0331fe16df138abe7	1774708226298
-3	8572168a0e5090b1551e12a6c73f238451403e758ea3f9b33fdc4cf519a3541b	1774718789394
-4	fd6e56a346f0a90bcbf3e53404c15762c3795252970586f3609f640dbd30e344	1774720000000
-5	42f6bc2cdbeedb3b0eacb9d86a59169d08a09575b51d92a7d2f1903080e3e8a0	1774721000000
-6	53d39e9cd5c2e901336136c5701afc1e1d25a3d2deeb4d4bf618745cafd29222	1776000000000
-7	a4a2110ca6bf5225ac7b8ffc414fc3cc6e914c20ec9de4c36646b8ad7269b878	1776100000000
-8	e94a0bc9c4ca61f850fcfd962f8eb628bd56c944ff220d7f42e239b0a8f2eb66	1776200000000
-9	bf0c601f880098d8158bbf8b53c6f5c208aeb9f5388d4e23f2c7f47e7ae53564	1776300000000
-10	edd0406dc6c31d6e87a27dd35f10fd2c61fe4b0353b2159379a79ea5992c6bf2	1776400000000
-11	8f341fc2dc10326d65e05772b139a01c2111cc6352ffa9d3f2ce70cbc7672aa8	1776500000000
-12	0cd25b55c63a4ec1f82380103f4e4f49acbdd27738c60bd9fbe305ba7f5143d3	1776600000000
-13	645c2d08a5cc5e50492edb30b3b43f3fdc56e926ac9901a71ce65b2259b4da1d	1776700000000
-14	2b4abd9fea418c51cffa93d88dd399d2d46c25e5ac22b90ad6bdcc98853426f5	1776800000000
-15	4b5a83c79f661e29d2c8b0b53de841ba6a7edb7e1c658443c898de951568de3d	1890000000000
-16	5004f2a861c20fdcf7e5c4404ea027576b77bc377711543202db78a3860beb94	1890100000000
-17	f22ad9543848c3a4208288052be50f608ef4fd8c753fb035e6b95aa3c0d9f43a	1890200000000
-18	3ffe9fcee6154d4f0ba9ec339cebf8edd89998fc7fbc3af363396aef25733d50	1890300000000
-19	e48563c18a1c2468df3a5a839bce6f49f6d25e7db6a4689e1d00f1ed1704b925	1890400000000
-20	c1771dddf1cf1880762b5cb2fdb704c007d0623764b99cded2bb7cc5cef3606f	1890500000000
-21	a77da002b1442521da4daa806ebf3a97d3aef7839724375ba4293444c4853b62	1890600000000
-22	76656b7b82dde3faae9703d99a1f69f0e2efbc700e367bb887f5f2e5241022f4	1890700000000
-23	c2180f3f1750866aa7ba52cd3378d2b59296cfe4659526c781ea9c277d145c00	1890800000000
-24	74df743a4a27cdfeac3bd2315fa106fa45a2d0a791c18d6efc799411c99175cc	1890900000000
-25	63c30599021314b4687d8a9dedb262b1b004ce944a0f875aeed0aa46f01be357	1891000000000
+1	4b5a83c79f661e29d2c8b0b53de841ba6a7edb7e1c658443c898de951568de3d	1890000000000
+2	6b19795541d7b88464e76c756a4fd3c03646a43a989ceb078b5f85533501b4e2	1744300800000
+3	4744f1f70c97adf1407c32ffbcb408a258eb954fbe1afa01033fecb0eedd578d	1776000000000
+4	99d6d6c98ade0ed5ebf67888180b7d9dd50c3d6a6e47935fba7b18904e835338	1776100000000
+5	0b8c916b98a16744c185c3d5215c2eb2d6d42ef7b3ac109e90c3255c9bd49a69	1776200000000
+6	117d1b84744868b1b31a145a531a8c2ed0d15b8a998d69e64f0b4b52289d0c70	1776300000000
+7	77501b4e1dc1f1863405f75d1bb9f543dca2b0115f0dfc32648cc8fa6f107af8	1776400000000
+8	bc482cec5e6285d614f0c959c1d39dc9492d99c7e32b0f41f7902d2cc9679584	1776500000000
+9	0a6c0222e438852ffa7361ff65044cc6a46c06ce5e2570f6468d76febbdb90e4	1776600000000
+10	4fa488cb19d20dc58ea05eb112691ad330b26321dc69f224212414a9b85d9ca0	1776700000000
+11	775d8f8f096c815b8693f61127e3382f5eb2d0f49de6e723a426e5535b290352	1776800000000
+12	5004f2a861c20fdcf7e5c4404ea027576b77bc377711543202db78a3860beb94	1890100000000
+13	f22ad9543848c3a4208288052be50f608ef4fd8c753fb035e6b95aa3c0d9f43a	1890200000000
+14	3ffe9fcee6154d4f0ba9ec339cebf8edd89998fc7fbc3af363396aef25733d50	1890300000000
+15	e48563c18a1c2468df3a5a839bce6f49f6d25e7db6a4689e1d00f1ed1704b925	1890400000000
+16	c1771dddf1cf1880762b5cb2fdb704c007d0623764b99cded2bb7cc5cef3606f	1890500000000
+17	a77da002b1442521da4daa806ebf3a97d3aef7839724375ba4293444c4853b62	1890600000000
+18	76656b7b82dde3faae9703d99a1f69f0e2efbc700e367bb887f5f2e5241022f4	1890700000000
+19	c2180f3f1750866aa7ba52cd3378d2b59296cfe4659526c781ea9c277d145c00	1890800000000
+20	74df743a4a27cdfeac3bd2315fa106fa45a2d0a791c18d6efc799411c99175cc	1890900000000
+21	63c30599021314b4687d8a9dedb262b1b004ce944a0f875aeed0aa46f01be357	1891000000000
+22	4eec8209a4b05ca9d54731498fef3952d4d88f85023988f71aa9f79a2562b6ad	1891100000000
+23	fcc55487c182e8a97ad23d815e5cf1e2f65b1dba201415965bb1c53a5dc9079e	1891200000000
+24	4539f6cb74bd4617dd8131dc547f06d64834080c6712277895564c77876e2844	1891300000000
+25	dd2856aec5eb31ae4f8488be07dd26ecdcd366a08dc858e7e0da9b95274cda81	1891400000000
+26	c56f5f8cce063562206a85a7dfb917c168b75d8c5e69e99852792a522c6350fe	1891500000000
 \.
 
 
@@ -413,7 +491,7 @@ COPY drizzle.__drizzle_migrations (id, hash, created_at) FROM stdin;
 -- Data for Name: add_deal_form; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.add_deal_form (id, deal_name, deal_type, deal_stage, sec_type, close_date, owning_entity_name, funds_required_before_gp_sign, auto_send_funding_instructions, property_name, country, address_line_1, address_line_2, city, state, zip_code, images, created_at, updated_at, asset_image_path, organization_id, investor_summary_html, gallery_cover_image_url, key_highlights_json, deal_announcement_title, deal_announcement_message, offering_status, offering_visibility, show_on_investbase, internal_name, offering_overview_asset_ids, offering_gallery_paths, offering_preview_token, offering_investor_preview_json) FROM stdin;
+COPY public.add_deal_form (id, organization_id, deal_name, deal_type, deal_stage, sec_type, close_date, owning_entity_name, funds_required_before_gp_sign, auto_send_funding_instructions, property_name, country, address_line_1, address_line_2, city, state, zip_code, asset_image_path, investor_summary_html, gallery_cover_image_url, key_highlights_json, deal_announcement_title, deal_announcement_message, offering_status, offering_visibility, show_on_investbase, internal_name, offering_overview_asset_ids, offering_gallery_paths, created_at, offering_preview_token, offering_investor_preview_json) FROM stdin;
 \.
 
 
@@ -429,17 +507,17 @@ COPY public.assigning_deal_user (deal_id, user_id, user_added_deal) FROM stdin;
 -- Data for Name: companies; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.companies (id, name, created_at, updated_at, status) FROM stdin;
-1c57fcf7-1cd8-4e3a-a7bb-1f14ba3ef09e	Test	2026-03-28 22:13:05.693866+05:30	2026-03-29 00:33:47.358+05:30	active
-10fcad37-bf26-4187-b16e-1a070bd84377	Testing	2026-03-29 10:36:22.603757+05:30	2026-03-29 10:36:22.603757+05:30	active
-3d281cb8-089f-4a63-bcb0-bcc39d0b88c2	Demo Company	2026-03-29 12:42:58.245999+05:30	2026-03-29 12:42:58.245999+05:30	active
-0c66fb18-fe7d-4010-b6b7-cfdcb24c5792	Company1	2026-03-29 18:27:59.544209+05:30	2026-03-29 18:27:59.544209+05:30	active
-2bd2ae86-d61b-411a-8a6e-95d3cbf6b0b6	wqe	2026-03-29 19:42:40.35639+05:30	2026-03-29 19:42:40.35639+05:30	active
-5e7de556-ce13-46c7-a217-160e322c49f2	Demo	2026-03-30 08:46:14.837764+05:30	2026-03-30 08:46:14.837764+05:30	active
-67e4cb39-ba18-471d-8f48-5f250ee8cc96	Acme	2026-03-29 09:57:43.023875+05:30	2026-03-30 08:52:24.186+05:30	active
-7308587d-1d76-4448-9d0b-bd155e5bd281	Company01	2026-03-30 08:55:28.659947+05:30	2026-03-30 08:55:28.659947+05:30	active
-380a60f3-6ebf-43d4-9949-f4ee012eb426	Massive	2026-03-31 00:12:12.94893+05:30	2026-03-31 00:12:12.94893+05:30	active
-af6822c5-3a6d-4ce4-8b1a-7b9baf481698	Beetle	2026-03-31 00:22:33.099847+05:30	2026-03-31 00:22:33.099847+05:30	active
+COPY public.companies (id, name, status, created_at, updated_at) FROM stdin;
+1c57fcf7-1cd8-4e3a-a7bb-1f14ba3ef09e	Test	active	2026-03-28 22:13:05.693866+05:30	2026-03-29 00:33:47.358+05:30
+10fcad37-bf26-4187-b16e-1a070bd84377	Testing	active	2026-03-29 10:36:22.603757+05:30	2026-03-29 10:36:22.603757+05:30
+3d281cb8-089f-4a63-bcb0-bcc39d0b88c2	Demo Company	active	2026-03-29 12:42:58.245999+05:30	2026-03-29 12:42:58.245999+05:30
+0c66fb18-fe7d-4010-b6b7-cfdcb24c5792	Company1	active	2026-03-29 18:27:59.544209+05:30	2026-03-29 18:27:59.544209+05:30
+2bd2ae86-d61b-411a-8a6e-95d3cbf6b0b6	wqe	active	2026-03-29 19:42:40.35639+05:30	2026-03-29 19:42:40.35639+05:30
+5e7de556-ce13-46c7-a217-160e322c49f2	Demo	active	2026-03-30 08:46:14.837764+05:30	2026-03-30 08:46:14.837764+05:30
+67e4cb39-ba18-471d-8f48-5f250ee8cc96	Acme	active	2026-03-29 09:57:43.023875+05:30	2026-03-30 08:52:24.186+05:30
+7308587d-1d76-4448-9d0b-bd155e5bd281	Company01	active	2026-03-30 08:55:28.659947+05:30	2026-03-30 08:55:28.659947+05:30
+380a60f3-6ebf-43d4-9949-f4ee012eb426	Massive	active	2026-03-31 00:12:12.94893+05:30	2026-03-31 00:12:12.94893+05:30
+af6822c5-3a6d-4ce4-8b1a-7b9baf481698	Beetle	active	2026-03-31 00:22:33.099847+05:30	2026-03-31 00:22:33.099847+05:30
 \.
 
 
@@ -471,7 +549,7 @@ COPY public.contact (id, first_name, last_name, email, phone, note, tags, lists,
 -- Data for Name: deal_investment; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.deal_investment (id, deal_id, offering_id, contact_id, profile_id, status, investor_class, doc_signed_date, commitment_amount, extra_contribution_amounts, document_storage_path, created_at, contact_display_name, investor_role) FROM stdin;
+COPY public.deal_investment (id, deal_id, offering_id, contact_id, profile_id, status, investor_class, doc_signed_date, commitment_amount, extra_contribution_amounts, document_storage_path, created_at, contact_display_name, investor_role, user_investor_profile_id) FROM stdin;
 \.
 
 
@@ -479,7 +557,7 @@ COPY public.deal_investment (id, deal_id, offering_id, contact_id, profile_id, s
 -- Data for Name: deal_investor_class; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.deal_investor_class (id, deal_id, name, subscription_type, entity_name, start_date, offering_size, minimum_investment, price_per_unit, status, visibility, created_at, updated_at, raise_amount_distributions, billing_raise_quota, advanced_options_json) FROM stdin;
+COPY public.deal_investor_class (id, deal_id, name, subscription_type, entity_name, start_date, offering_size, raise_amount_distributions, billing_raise_quota, minimum_investment, price_per_unit, status, visibility, advanced_options_json, created_at, updated_at) FROM stdin;
 \.
 
 
@@ -487,7 +565,7 @@ COPY public.deal_investor_class (id, deal_id, name, subscription_type, entity_na
 -- Data for Name: deal_lp_investor; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.deal_lp_investor (id, deal_id, added_by, contact_member_id, investor_class, send_invitation_mail, created_at, updated_at, profile_id, email, role, committed_amount) FROM stdin;
+COPY public.deal_lp_investor (id, deal_id, added_by, contact_member_id, investor_class, send_invitation_mail, created_at, updated_at, profile_id, email, role, committed_amount, user_investor_profile_id) FROM stdin;
 \.
 
 
@@ -532,29 +610,37 @@ COPY public.organization_contact_tag (id, organization_id, name, created_at) FRO
 
 
 --
+-- Data for Name: user_beneficiaries; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.user_beneficiaries (id, user_id, full_name, relationship, tax_id, phone, email, address_query, archived, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: user_investor_profiles; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.user_investor_profiles (id, user_id, profile_name, profile_type, added_by, investments_count, archived, created_at, last_edit_reason, form_snapshot) FROM stdin;
+\.
+
+
+--
+-- Data for Name: user_saved_addresses; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.user_saved_addresses (id, user_id, full_name_or_company, country, street1, street2, city, state, zip, check_memo, distribution_note, archived, created_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.users (id, email, username, password_hash, role, user_status, user_signup_completed, organization_id, first_name, last_name, phone, created_at, updated_at, company_name, invite_expires_at) FROM stdin;
-b2c15cb6-1678-4819-9d24-6fdd8d192064	platform.admin@example.com	platformadmin	$2b$10$i6AuCoVjx3XxI32s8hRia.d1flK87VWianJ2VFr5l7Mloa1sTPeMe	platform_admin	active	true	\N	Platform	Admin		2026-03-28 19:32:33.541251+05:30	2026-03-28 19:32:33.541251+05:30	Massive Capital	\N
-7f86eaae-42de-4e52-ac85-e5fddaf15279	test@gmail	sdfsdfdsfsd	$2b$10$EqY7489iNdQ1LuiPAcNxK.syZBxeh8L5T7u611IzMBEGUCRAYcpOa	platform_user	inactive	true	\N	werwe	werwe	wewe	2026-03-28 15:01:11.958608+05:30	2026-03-29 01:26:38.598+05:30	fsdf	\N
-c13c4bb4-7be3-4b45-b8fe-80be1e5b3895	test@example.com	newuser	$2b$10$sKSk9FwOMSlNaagngMMpj.VtppBtNYWI22DXIJxXLcQqjA//8jlmK	company_admin	inactive	true	67e4cb39-ba18-471d-8f48-5f250ee8cc96	New	User	0000000000	2026-03-29 09:57:43.063487+05:30	2026-03-29 10:34:33.928+05:30	Acme Capital	\N
-b47faf8a-69f8-4dc0-8470-e8da7384384a	test1@example.com	username	$2b$10$b8S5jfA4mOSJbLHCOSKXi.RC1LxLcNAcWA5zexXCpHFojT9PEmfgq	platform_user	active	true	67e4cb39-ba18-471d-8f48-5f250ee8cc96	New	User	0000000000	2026-03-29 10:39:12.341682+05:30	2026-03-29 10:39:12.341682+05:30	Acme Capital	\N
-be0b60db-41c1-4256-a911-a62a5e30b4c1	q@gmail.com	invited_6b260132f629074ea93f691e	$2b$10$b8S5jfA4mOSJbLHCOSKXi.RC1LxLcNAcWA5zexXCpHFojT9PEmfgq	company_user	active	false	67e4cb39-ba18-471d-8f48-5f250ee8cc96				2026-03-29 09:59:36.317594+05:30	2026-03-29 09:59:36.317594+05:30	Acme Capital	2026-04-05 09:59:36+05:30
-6fe72aa1-9c44-4d8e-9c27-7fba9625e67e	1@gmail.com	testuser	$2b$10$TvoMWozdaWwn7pwSYGL9buLRjudKZRfpitXKgCabNWJE4Qn63TuvW	company_user	active	true	67e4cb39-ba18-471d-8f48-5f250ee8cc96	User	Test	12345678	2026-03-29 10:22:36.427249+05:30	2026-03-29 10:41:19.116+05:30	Acme Capital	\N
-394c0c31-1ade-430d-8588-d2e349d328ca	testing@gmail.com	invited_c2ef88d3594f0f3016913b2b	$2b$10$b8S5jfA4mOSJbLHCOSKXi.RC1LxLcNAcWA5zexXCpHFojT9PEmfgq	company_user	active	false	67e4cb39-ba18-471d-8f48-5f250ee8cc96				2026-03-29 10:33:18.076008+05:30	2026-03-29 10:33:18.076008+05:30	Acme Capital	2026-04-05 10:33:17+05:30
-3f48abc6-4a1c-4f61-824b-5d8a2f3a065f	testingone@gmail.com	testing	$2b$10$Fh6.pvt48e4r7rXALV/n7ODSZCl8mplha9etb0Em0TN.Iakkhjrga	company_admin	active	true	3d281cb8-089f-4a63-bcb0-bcc39d0b88c2	testing	one	1234567890	2026-03-29 12:42:58.274363+05:30	2026-03-29 12:42:58.274363+05:30	Demo Company	\N
-f4c9b4c9-220c-4a01-9a72-b74485faec2a	ww@gmail.com	invited_7f09c3cc066299daa7257984	$2b$10$GSPYCwPxetXaPSFlMGKb4.E/GjAW3onV3WaKPlsSalxROd50VuKhG	platform_user	active	false	3d281cb8-089f-4a63-bcb0-bcc39d0b88c2				2026-03-29 18:20:01.639602+05:30	2026-03-29 18:20:01.639602+05:30	Demo Company	2026-04-05 18:20:01+05:30
-a97892d9-6f8b-4e09-99ce-fe213ef634c3	company@gmeil.com	q	$2b$10$eF5caKgIZb.g21IBFQVBd.r1qqYPAEIujmx8PTTX3vyJ.UOUcew2K	company_admin	active	true	0c66fb18-fe7d-4010-b6b7-cfdcb24c5792	11	11	1111111111	2026-03-29 18:27:59.593292+05:30	2026-03-29 19:06:15.966+05:30	Company1	\N
-1e8d463c-5ccb-42d9-bc9b-7e819ede4edf	qwqw@gmail.com	qeqe	$2b$10$QkihYeKobXlxT/mmiwbhzeUSzdZTjLFRbLUhU5J.fY8gMAIMBYY56	company_admin	active	true	2bd2ae86-d61b-411a-8a6e-95d3cbf6b0b6	werwer	werwe	1231243242342	2026-03-29 19:42:40.362217+05:30	2026-03-29 19:42:40.362217+05:30	wqe	\N
-e7d39aa2-b005-4ea9-838e-84c1083caa3a	test@gmail.com	invited_c5daf9493ab4d7da27a030fc	$2b$10$aIi/R.hMhyHagjTC.dsdVe4dTyR8dRpjQNaqqq0Q2.vqPSLoXBVrm	company_admin	active	false	3d281cb8-089f-4a63-bcb0-bcc39d0b88c2				2026-03-29 09:50:04.595323+05:30	2026-03-29 19:56:29.112+05:30	Demo Company	2026-04-05 19:56:29+05:30
-ca9fc267-aa0b-4867-a1b9-cbc35591adb0	qq@gmail.com	invited_9b3bca4c7e0e6c6ee74bb98c	$2b$10$G7Zzig2x2ld9mhdfBxYB0eZPVTbi50sdPTKPhAfkDHKsIlqxS9Tn2	company_admin	active	false	0c66fb18-fe7d-4010-b6b7-cfdcb24c5792				2026-03-29 19:56:48.373439+05:30	2026-03-29 19:56:48.373439+05:30	Company1	2026-04-05 19:56:48+05:30
-e37d3560-8937-42e8-a1f1-4b8389c97e7c	testqqq@gmail.com	invited_ce655ce199f35b8dd1d9b842	$2b$10$MLWc31uiArC.ZxNqD8XVueH1iYwfrgjb3aKsb8N8hH2a/qDSR5cLu	company_admin	active	false	10fcad37-bf26-4187-b16e-1a070bd84377				2026-03-29 19:59:47.259331+05:30	2026-03-29 19:59:47.259331+05:30	Testing	2026-04-05 19:59:47+05:30
-8112df9a-60e9-41cb-adb5-1b5917a79942	hi@gmail.com	qqq	$2b$10$2.m2jwOnFtH17.H6xtEBGe3aDbHgXYUyvZe7iJvc9/B71nBChF87u	company_user	active	true	3d281cb8-089f-4a63-bcb0-bcc39d0b88c2	qw	qwe	12345678890	2026-03-30 08:25:18.56943+05:30	2026-03-30 08:28:53.967+05:30	Demo Company	\N
-fb3353a4-bc59-406e-8041-c5a47bee264e	chinmayee.s@qualesce.com	Chinmayee	$2b$10$bUluWCg1avsJFHeLl.1L0e/vL6xTa/ZuM3NOVG6zcx2/Y/KDL6suq	company_admin	active	true	10fcad37-bf26-4187-b16e-1a070bd84377	Chinmayee	S	1234567890	2026-03-30 08:38:53.119742+05:30	2026-03-30 08:41:57.965+05:30	Testing	\N
-37cc6eac-1262-40cc-a96e-6659d00ef43d	test@demo.com	UserOne	$2b$10$aIlTmH1U7bNLo5jbYDjk3uaA2IeA04uPUMCzPbRj2Oyuz1uHBTPGS	company_admin	active	true	7308587d-1d76-4448-9d0b-bd155e5bd281	USer	One	123456667	2026-03-30 08:55:28.693762+05:30	2026-03-30 08:55:28.693762+05:30	Company01	\N
-f006a063-9c3e-4de9-a5c3-b6afa50782a5	sanjay@massive.capital	Sanjay	$2b$10$XjsErn6s3L6mvYS8g78c6OWcZl1qS.NVNK27hoUT0cQU.U45Oe/4.	company_admin	active	true	380a60f3-6ebf-43d4-9949-f4ee012eb426	Sanjay	Aggarwal	6417811933	2026-03-31 00:12:12.951993+05:30	2026-03-31 00:12:12.951993+05:30	Massive	\N
-2f1b05e2-3cdc-4d2a-90a1-dfddaac4b1c5	mikeb@maximum-service.com	Bahian	$2b$10$YPmluYml/h6GpxPKIUTHq.C.3FqQ.Xz32203agYdHHws2xTnz2/zq	company_admin	active	true	af6822c5-3a6d-4ce4-8b1a-7b9baf481698	Michael	Bailey	13463132823	2026-03-31 00:22:33.10401+05:30	2026-03-31 00:22:33.10401+05:30	Beetle	\N
+COPY public.users (id, email, username, password_hash, role, user_status, user_signup_completed, organization_id, first_name, last_name, company_name, phone, created_at, updated_at, invite_expires_at) FROM stdin;
+b2c15cb6-1678-4819-9d24-6fdd8d192064	platform.admin@example.com	platformadmin	$2b$10$i6AuCoVjx3XxI32s8hRia.d1flK87VWianJ2VFr5l7Mloa1sTPeMe	platform_admin	active	true	\N	Platform	Admin	Massive Capital		2026-03-28 19:32:33.541251+05:30	2026-03-28 19:32:33.541251+05:30	\N
+f006a063-9c3e-4de9-a5c3-b6afa50782a5	sanjay@massive.capital	Sanjay	$2b$10$XjsErn6s3L6mvYS8g78c6OWcZl1qS.NVNK27hoUT0cQU.U45Oe/4.	company_admin	active	true	380a60f3-6ebf-43d4-9949-f4ee012eb426	Sanjay	Aggarwal	Massive	6417811933	2026-03-31 00:12:12.951993+05:30	2026-03-31 00:12:12.951993+05:30	\N
+2f1b05e2-3cdc-4d2a-90a1-dfddaac4b1c5	mikeb@maximum-service.com	Bahian	$2b$10$YPmluYml/h6GpxPKIUTHq.C.3FqQ.Xz32203agYdHHws2xTnz2/zq	company_admin	active	true	af6822c5-3a6d-4ce4-8b1a-7b9baf481698	Michael	Bailey	Beetle	13463132823	2026-03-31 00:22:33.10401+05:30	2026-03-31 00:22:33.10401+05:30	\N
 \.
 
 
@@ -562,7 +648,7 @@ f006a063-9c3e-4de9-a5c3-b6afa50782a5	sanjay@massive.capital	Sanjay	$2b$10$XjsErn
 -- Name: __drizzle_migrations_id_seq; Type: SEQUENCE SET; Schema: drizzle; Owner: postgres
 --
 
-SELECT pg_catalog.setval('drizzle.__drizzle_migrations_id_seq', 25, true);
+SELECT pg_catalog.setval('drizzle.__drizzle_migrations_id_seq', 26, true);
 
 
 --
@@ -702,11 +788,35 @@ ALTER TABLE ONLY public.organization_contact_tag
 
 
 --
--- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: user_beneficiaries user_beneficiaries_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_beneficiaries
+    ADD CONSTRAINT user_beneficiaries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_investor_profiles user_investor_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_investor_profiles
+    ADD CONSTRAINT user_investor_profiles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_saved_addresses user_saved_addresses_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_saved_addresses
+    ADD CONSTRAINT user_saved_addresses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: users users_email_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_email_key UNIQUE (email);
+    ADD CONSTRAINT users_email_unique UNIQUE (email);
 
 
 --
@@ -718,11 +828,11 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: users users_username_unique; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_username_key UNIQUE (username);
+    ADD CONSTRAINT users_username_unique UNIQUE (username);
 
 
 --
@@ -730,6 +840,13 @@ ALTER TABLE ONLY public.users
 --
 
 CREATE INDEX contact_organization_id_idx ON public.contact USING btree (organization_id);
+
+
+--
+-- Name: deal_investment_user_investor_profile_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX deal_investment_user_investor_profile_id_idx ON public.deal_investment USING btree (user_investor_profile_id);
 
 
 --
@@ -747,10 +864,38 @@ CREATE INDEX deal_lp_investor_email_lower_idx ON public.deal_lp_investor USING b
 
 
 --
+-- Name: deal_lp_investor_user_investor_profile_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX deal_lp_investor_user_investor_profile_id_idx ON public.deal_lp_investor USING btree (user_investor_profile_id);
+
+
+--
 -- Name: deal_member_deal_id_contact_member_id_uidx; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE UNIQUE INDEX deal_member_deal_id_contact_member_id_uidx ON public.deal_member USING btree (deal_id, contact_member_id);
+
+
+--
+-- Name: user_beneficiaries_user_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX user_beneficiaries_user_id_idx ON public.user_beneficiaries USING btree (user_id);
+
+
+--
+-- Name: user_investor_profiles_user_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX user_investor_profiles_user_id_idx ON public.user_investor_profiles USING btree (user_id);
+
+
+--
+-- Name: user_saved_addresses_user_id_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX user_saved_addresses_user_id_idx ON public.user_saved_addresses USING btree (user_id);
 
 
 --
@@ -834,6 +979,14 @@ ALTER TABLE ONLY public.deal_investment
 
 
 --
+-- Name: deal_investment deal_investment_user_investor_profile_id_user_investor_profiles; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_investment
+    ADD CONSTRAINT deal_investment_user_investor_profile_id_user_investor_profiles FOREIGN KEY (user_investor_profile_id) REFERENCES public.user_investor_profiles(id) ON DELETE SET NULL;
+
+
+--
 -- Name: deal_investor_class deal_investor_class_deal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -855,6 +1008,14 @@ ALTER TABLE ONLY public.deal_lp_investor
 
 ALTER TABLE ONLY public.deal_lp_investor
     ADD CONSTRAINT deal_lp_investor_deal_id_fkey FOREIGN KEY (deal_id) REFERENCES public.add_deal_form(id) ON DELETE CASCADE;
+
+
+--
+-- Name: deal_lp_investor deal_lp_investor_user_investor_profile_id_user_investor_profile; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.deal_lp_investor
+    ADD CONSTRAINT deal_lp_investor_user_investor_profile_id_user_investor_profile FOREIGN KEY (user_investor_profile_id) REFERENCES public.user_investor_profiles(id) ON DELETE SET NULL;
 
 
 --
@@ -914,6 +1075,30 @@ ALTER TABLE ONLY public.organization_contact_tag
 
 
 --
+-- Name: user_beneficiaries user_beneficiaries_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_beneficiaries
+    ADD CONSTRAINT user_beneficiaries_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_investor_profiles user_investor_profiles_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_investor_profiles
+    ADD CONSTRAINT user_investor_profiles_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_saved_addresses user_saved_addresses_user_id_users_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.user_saved_addresses
+    ADD CONSTRAINT user_saved_addresses_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: users users_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -925,5 +1110,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 06zmVyW6WW1qLtNhd9J7TBt8L7FxK6nJBtIcu0d8QXYVHGhKTivDOCl7Owz5eov
+\unrestrict of7ISF6qAPiNyjp3BwxWN06Vc68ogNnWOJyDTHj0AVqOt2J5gmb6gHUc6HBJBTH
 

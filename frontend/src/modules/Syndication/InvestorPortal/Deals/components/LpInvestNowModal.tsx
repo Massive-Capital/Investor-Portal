@@ -7,18 +7,33 @@ import {
   Loader2,
   X,
 } from "lucide-react"
-import { useCallback, useEffect, useId, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
+import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail"
 import { toast } from "../../../../../common/components/Toast"
 import { DropdownSelect } from "../../../../../common/components/dropdown-select"
+import { fetchMyProfileBook } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
+import { fetchDealInvestors } from "../api/dealsApi"
 import { patchMyLpDealInvestNowCommitment } from "../api/lpInvestNowCommitmentApi"
 import { INVESTOR_PROFILE_SELECT_OPTIONS } from "../constants/investor-profile"
 import type { DealInvestorsPayload } from "../types/deal-investors.types"
+import {
+  ALL_SAVED_PROFILES_IN_USE_ON_DEAL_MSG,
+  availableBookProfilesForCommitmentType,
+  buildBlockedProfileKeysForInvestNow,
+  CHOSEN_PROFILE_ALREADY_USED_MSG,
+  isInvestorTypeExhaustedByBlocklist,
+  lpProfileUseKey,
+} from "../utils/lpInvestNowProfileBlocking"
+import {
+  filterBookProfilesByCommitmentKind,
+  NO_SAVED_PROFILES_FOR_INVESTOR_TYPE_MSG,
+} from "../utils/lpInvestNowSavedProfileOptions"
 import {
   blurFormatMoneyInput,
   formatCurrencyUsdTypeInput,
   parseMoneyDigits,
 } from "../utils/offeringMoneyFormat"
-import { fetchLpInvestNowPrefill } from "../utils/prefillLpInvestNowFields"
+import { getLpInvestNowPrefillFromPayload } from "../utils/prefillLpInvestNowFields"
 import "../../../../contacts/contacts.css"
 import "../deal-members/add-investment/add_deal_modal.css"
 import "./lp-invest-now-modal.css"
@@ -36,6 +51,7 @@ export interface LpInvestNowModalProps {
     payload: DealInvestorsPayload,
     saved: {
       profileId: string
+      userInvestorProfileId: string
       committedAmount: number
       status: string
       docSignedDate: string
@@ -55,34 +71,143 @@ export function LpInvestNowModal({
   const amountId = useId()
   const docSignedId = useId()
   const [profile, setProfile] = useState("")
+  const [savedUserProfileId, setSavedUserProfileId] = useState("")
   const [amount, setAmount] = useState("")
   const [status, setStatus] = useState("")
   const [docSignedDate, setDocSignedDate] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [bookLoading, setBookLoading] = useState(false)
+  const [bookProfiles, setBookProfiles] = useState<
+    { id: string; profileName: string; profileType: string }[]
+  >([])
+  const [blockedProfileKeys, setBlockedProfileKeys] = useState<Set<string>>(
+    () => new Set(),
+  )
 
   useEffect(() => {
     if (!open) return
     setProfile("")
+    setSavedUserProfileId("")
     setAmount("")
     setStatus("")
     setDocSignedDate("")
     setError("")
+    setBlockedProfileKeys(new Set())
+    setBookLoading(true)
     let cancelled = false
-    void fetchLpInvestNowPrefill(dealId).then((p) => {
-      if (cancelled || !p) return
-      setProfile(p.profileId)
-      setStatus(p.status)
-      setDocSignedDate(p.docSignedDate)
-    })
+    const did = dealId.trim()
+    const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
+    void (async () => {
+      try {
+        const [book, inv] = await Promise.all([
+          fetchMyProfileBook().catch(() => ({
+            profiles: [] as { id: string; profileName: string; profileType: string }[],
+          })),
+          did
+            ? fetchDealInvestors(did, { lpInvestorsOnly: true }).catch(() => null)
+            : Promise.resolve(null),
+        ])
+        if (cancelled) return
+        setBookProfiles(
+          (book.profiles ?? []).map((p) => ({
+            id: p.id,
+            profileName: p.profileName,
+            profileType: p.profileType,
+          })),
+        )
+        if (inv && em) {
+          const p = getLpInvestNowPrefillFromPayload(inv, em)
+          const blocked = buildBlockedProfileKeysForInvestNow(
+            inv.investors,
+            em,
+            p?.viewerRowId,
+          )
+          setBlockedProfileKeys(blocked)
+          if (p) {
+            setProfile(p.profileId)
+            setSavedUserProfileId(p.userInvestorProfileId ?? "")
+            setStatus(p.status)
+            setDocSignedDate(p.docSignedDate)
+          }
+        } else if (em && !inv) {
+          setBlockedProfileKeys(new Set())
+        }
+      } catch {
+        if (!cancelled) setBookProfiles([])
+      } finally {
+        if (!cancelled) setBookLoading(false)
+      }
+    })()
     return () => {
       cancelled = true
     }
   }, [open, dealId])
 
+  const matchingBookProfiles = useMemo(
+    () => filterBookProfilesByCommitmentKind(bookProfiles, profile),
+    [bookProfiles, profile],
+  )
+
+  const availableBookProfiles = useMemo(
+    () =>
+      availableBookProfilesForCommitmentType(
+        profile,
+        bookProfiles,
+        blockedProfileKeys,
+      ),
+    [bookProfiles, profile, blockedProfileKeys],
+  )
+
+  const noSavedProfilesForType = useMemo(
+    () =>
+      !bookLoading &&
+      Boolean(String(profile).trim()) &&
+      matchingBookProfiles.length === 0,
+    [bookLoading, profile, matchingBookProfiles.length],
+  )
+
+  const allSavedBookProfilesInUse = useMemo(
+    () =>
+      !bookLoading &&
+      Boolean(String(profile).trim()) &&
+      matchingBookProfiles.length > 0 &&
+      availableBookProfiles.length === 0,
+    [
+      bookLoading,
+      profile,
+      matchingBookProfiles.length,
+      availableBookProfiles.length,
+    ],
+  )
+
+  const includeSavedInRequest =
+    !bookLoading && availableBookProfiles.length > 0
+
   const submit = useCallback(async () => {
+    if (bookLoading) {
+      setError("Loading your saved profiles…")
+      return
+    }
     if (!String(profile).trim()) {
-      setError("Select an investor profile")
+      setError("Select an investor profile type")
+      return
+    }
+    if (noSavedProfilesForType) {
+      setError(NO_SAVED_PROFILES_FOR_INVESTOR_TYPE_MSG)
+      return
+    }
+    if (allSavedBookProfilesInUse) {
+      setError(ALL_SAVED_PROFILES_IN_USE_ON_DEAL_MSG)
+      return
+    }
+    if (includeSavedInRequest && !String(savedUserProfileId).trim()) {
+      setError("Select a profile name from your saved profiles")
+      return
+    }
+    const k = lpProfileUseKey(String(profile).trim(), savedUserProfileId)
+    if (blockedProfileKeys.has(k)) {
+      setError(CHOSEN_PROFILE_ALREADY_USED_MSG)
       return
     }
     const n = parseMoneyDigits(String(amount).trim())
@@ -96,6 +221,8 @@ export function LpInvestNowModal({
       profileId: profile.trim(),
       status: status.trim(),
       docSignedDate: docSignedDate.trim(),
+      includeUserInvestorProfileInBody: includeSavedInRequest,
+      userInvestorProfileId: (savedUserProfileId ?? "").trim(),
     })
     setSubmitting(false)
     if (!res.ok) {
@@ -108,12 +235,27 @@ export function LpInvestNowModal({
     )
     onSuccess(res.investorsPayload, {
       profileId: profile.trim(),
+      userInvestorProfileId: (savedUserProfileId ?? "").trim(),
       committedAmount: n,
       status: status.trim(),
       docSignedDate: docSignedDate.trim(),
     })
     onClose()
-  }, [amount, dealId, docSignedDate, onClose, onSuccess, profile, status])
+  }, [
+    allSavedBookProfilesInUse,
+    amount,
+    blockedProfileKeys,
+    bookLoading,
+    dealId,
+    docSignedDate,
+    includeSavedInRequest,
+    noSavedProfilesForType,
+    onClose,
+    onSuccess,
+    profile,
+    savedUserProfileId,
+    status,
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -123,6 +265,15 @@ export function LpInvestNowModal({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onClose])
+
+  useEffect(() => {
+    if (!open || bookLoading) return
+    const id = (savedUserProfileId ?? "").trim()
+    if (!id) return
+    if (availableBookProfiles.length === 0) return
+    const stillValid = availableBookProfiles.some((p) => p.id === id)
+    if (!stillValid) setSavedUserProfileId("")
+  }, [open, bookLoading, profile, availableBookProfiles, savedUserProfileId])
 
   if (!open) return null
 
@@ -176,7 +327,7 @@ export function LpInvestNowModal({
                 <label htmlFor={profileFieldId} className="um_field_label_row">
                   <IdCard className="um_field_label_icon" size={17} aria-hidden />
                   <span>
-                    Investor profile{" "}
+                    Investor profile type{" "}
                     <span className="deal_inv_required" aria-hidden>
                       *
                     </span>
@@ -187,18 +338,83 @@ export function LpInvestNowModal({
                   options={INVESTOR_PROFILE_SELECT_OPTIONS.map((o) => ({
                     value: o.value,
                     label: o.label,
+                    disabled: Boolean(
+                      o.value?.trim() &&
+                        isInvestorTypeExhaustedByBlocklist(
+                          o.value,
+                          bookProfiles,
+                          blockedProfileKeys,
+                        ),
+                    ),
                   }))}
                   value={profile}
                   onChange={(v) => {
                     setProfile(v)
+                    setSavedUserProfileId("")
                     if (error) setError("")
                   }}
-                  placeholder="Select profile"
-                  ariaLabel="Investor profile"
+                  placeholder="Select profile type"
+                  ariaLabel="Investor profile type"
                   disabled={submitting}
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
               </div>
+
+              {noSavedProfilesForType ? (
+                <p
+                  className="um_msg_error um_modal_form_error"
+                  role="alert"
+                >
+                  {NO_SAVED_PROFILES_FOR_INVESTOR_TYPE_MSG}
+                </p>
+              ) : null}
+
+              {allSavedBookProfilesInUse ? (
+                <p
+                  className="um_msg_error um_modal_form_error"
+                  role="alert"
+                >
+                  {ALL_SAVED_PROFILES_IN_USE_ON_DEAL_MSG}
+                </p>
+              ) : null}
+
+              {/*
+                When options exist, profile name rows come from `fetchMyProfileBook`
+                and `filterBookProfilesByCommitmentKind` (book profileType matches the
+                commitment “investor profile” enum above).
+              */}
+              {profile.trim() && availableBookProfiles.length > 0 ? (
+                <div className="um_field">
+                  <label
+                    className="um_field_label_row"
+                    htmlFor="lp-invest-now-saved-profile"
+                  >
+                    <IdCard className="um_field_label_icon" size={17} aria-hidden />
+                    <span>
+                      Profile name{" "}
+                      <span className="deal_inv_required" aria-hidden>
+                        *
+                      </span>
+                    </span>
+                  </label>
+                  <DropdownSelect
+                    id="lp-invest-now-saved-profile"
+                    options={availableBookProfiles.map((p) => ({
+                      value: p.id,
+                      label: p.profileName?.trim() || "—",
+                    }))}
+                    value={savedUserProfileId}
+                    onChange={(v) => {
+                      setSavedUserProfileId(v)
+                      if (error) setError("")
+                    }}
+                    placeholder={bookLoading ? "Loading profiles…" : "Select a saved profile"}
+                    ariaLabel="Profile name from your Investing profiles"
+                    disabled={submitting || bookLoading}
+                    triggerClassName={DROPDOWN_TRIGGER_PILL}
+                  />
+                </div>
+              ) : null}
 
               <div className="um_field">
                 <label htmlFor={amountId} className="um_field_label_row">
@@ -302,7 +518,12 @@ export function LpInvestNowModal({
               type="button"
               className="um_btn_primary"
               onClick={() => void submit()}
-              disabled={submitting}
+              disabled={
+                submitting ||
+                bookLoading ||
+                noSavedProfilesForType ||
+                allSavedBookProfilesInUse
+              }
             >
               {submitting ? (
                 <>

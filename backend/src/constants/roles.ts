@@ -34,7 +34,8 @@ export function isCompanyAdminRole(role: string | null | undefined): boolean {
   return String(role ?? "").trim() === COMPANY_ADMIN;
 }
 
-const LEGACY_USER = "user";
+/** Legacy DB/JWT value; same effective access as {@link PLATFORM_USER} in the frontend (`normalizeRole`). */
+export const LEGACY_USER = "user";
 
 /** Platform admins, company admins, and standard users may invite (per invite rules). */
 export function canInviteUsersRole(role: string | null | undefined): boolean {

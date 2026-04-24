@@ -170,6 +170,7 @@ export function syntheticInvestmentFromDealLpInvestor(
     contactId: m.contactMemberId,
     contactDisplayName: "",
     profileId: m.profileId?.trim() ?? "",
+    userInvestorProfileId: m.userInvestorProfileId ?? null,
     investor_role: investorRoleFromDealLpInvestorRow(m),
     status: "",
     investorClass: m.investorClass,
@@ -392,6 +393,7 @@ export type UpsertDealLpInvestorInput = {
   contactMemberId: string;
   contactDisplayName: string;
   profileId: string;
+  userInvestorProfileId?: string | null;
   investorClass: string;
   sendInvitationMail: string;
   addedByUserId: string;
@@ -416,6 +418,7 @@ export async function upsertDealLpInvestor(
       ? "yes"
       : "no";
   const profileId = String(input.profileId ?? "").trim();
+  const uip = String(input.userInvestorProfileId ?? "").trim() || null;
   const now = new Date();
   const fromClientEmail = String(input.emailFromClient ?? "").trim();
   const fromClientRole = String(input.roleFromClient ?? "").trim();
@@ -432,6 +435,7 @@ export async function upsertDealLpInvestor(
       email: resolvedEmail || null,
       role: roleToStore,
       profileId,
+      userInvestorProfileId: uip,
       investorClass: input.investorClass?.trim() ?? "",
       sendInvitationMail: send,
       updatedAt: now,
@@ -442,6 +446,7 @@ export async function upsertDealLpInvestor(
         email: resolvedEmail || null,
         role: roleToStore,
         profileId,
+        userInvestorProfileId: uip,
         investorClass: input.investorClass?.trim() ?? "",
         sendInvitationMail: send,
         updatedAt: now,
@@ -654,10 +659,34 @@ function formatCumulativeCommitmentStored(total: number): string {
   return String(rounded);
 }
 
+async function sumLpDealInvestmentCommittedForContact(
+  dealId: string,
+  contactMemberId: string,
+): Promise<string> {
+  const rows = await db
+    .select()
+    .from(dealInvestment)
+    .where(
+      and(
+        eq(dealInvestment.dealId, dealId),
+        eq(dealInvestment.contactId, contactMemberId),
+      ),
+    );
+  let t = 0;
+  for (const r of rows) {
+    if (isLpInvestorRole(r.investor_role)) {
+      t += committedNumericFromDealInvestmentRow(r);
+    }
+  }
+  return formatCumulativeCommitmentStored(t);
+}
+
 /**
  * LP self-service: **adds** the submitted amount to the existing committed total on the latest
  * LP `deal_investment` for this deal + contact (locked row, single transaction). Creates a row
- * when missing (requires `profile_id` on first commit). Syncs `deal_lp_investor.profile_id` when sent.
+ * when missing (requires `profile_id` on first commit). If the request sends a **different**
+ * commitment `profile_id` (individual / joint / …) than the locked row, a **new** `deal_investment`
+ * is inserted for this tranche. Syncs `deal_lp_investor.committed_amount` to the sum of LP rows.
  */
 export async function updateMyCommittedAmountForLpDeal(params: {
   dealId: string;
@@ -850,6 +879,74 @@ export async function updateMyCommittedAmountForLpDeal(params: {
       })
       .where(eq(dealLpInvestor.id, target.id));
 
+    return { ok: true };
+  }
+
+  const oldKind = normalizeLpCommitmentProfileId(
+    String(inv.profileId ?? ""),
+  );
+  const switchingCommitmentKind = Boolean(
+    profileOpt && oldKind && profileOpt !== oldKind,
+  );
+  if (switchingCommitmentKind && profileOpt) {
+    const rowProfileId = profileOpt;
+    let roster: DealLpInvestorRow | undefined = target;
+    if (!roster) {
+      if (!viewerUserId) {
+        return {
+          ok: false,
+          message:
+            "Could not determine your account id for LP Investor linking.",
+        };
+      }
+      const icRaw = inv.investorClass?.trim() ?? "";
+      const classRes = icRaw
+        ? await resolveInvestorClassForDealInvestment(
+            params.dealId,
+            icRaw,
+          )
+        : await resolveFirstInvestorClassForDeal(params.dealId);
+      if (!classRes.ok) return { ok: false, message: classRes.message };
+      roster = await upsertDealLpInvestor(params.dealId, {
+        contactMemberId: targetContactMemberId,
+        contactDisplayName: String(inv.contactDisplayName ?? "").trim() || "",
+        profileId: rowProfileId,
+        investorClass: classRes.storedInvestorClass,
+        sendInvitationMail: "no",
+        addedByUserId: viewerUserId,
+        emailFromClient: e,
+        roleFromClient: LP_INVESTOR_TABLE_ROLE,
+      });
+    }
+    await insertDealInvestment({
+      dealId: params.dealId,
+      input: {
+        offeringId: String(inv.offeringId ?? "").trim(),
+        contactId: targetContactMemberId,
+        contactDisplayName: String(inv.contactDisplayName ?? "").trim() || "",
+        profileId: rowProfileId,
+        userInvestorProfileId: null,
+        investor_role: LP_INVESTOR_ROLE_STORED,
+        status: "",
+        investorClass: String(inv.investorClass ?? "").trim() || "",
+        docSignedDate: null,
+        commitmentAmount: incrementStr,
+        extraContributionAmounts: [],
+        documentStoragePath: null,
+      },
+    });
+    const syncedSum = await sumLpDealInvestmentCommittedForContact(
+      params.dealId,
+      targetContactMemberId,
+    );
+    await db
+      .update(dealLpInvestor)
+      .set({
+        committed_amount: syncedSum,
+        updatedAt: now,
+        profileId: rowProfileId,
+      })
+      .where(eq(dealLpInvestor.id, roster.id));
     return { ok: true };
   }
 

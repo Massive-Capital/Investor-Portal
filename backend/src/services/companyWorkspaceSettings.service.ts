@@ -9,6 +9,7 @@ import {
   COMPANY_USER,
   isCompanyAdminRole,
   isPlatformAdminRole,
+  LEGACY_USER,
   PLATFORM_USER,
 } from "../constants/roles.js";
 
@@ -90,6 +91,7 @@ export async function userCanEditCompanyWorkspace(
   const r = String(userRole ?? "").trim();
   if (isCompanyAdminRole(r)) return true;
   if (r === PLATFORM_USER || r === COMPANY_USER) return true;
+  if (r === LEGACY_USER) return true;
   return false;
 }
 

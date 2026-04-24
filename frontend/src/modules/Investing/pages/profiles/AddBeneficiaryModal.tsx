@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
 import { createPortal } from "react-dom"
 import {
   Eye,
@@ -8,13 +8,13 @@ import {
   Mail,
   MapPin,
   Phone,
-  Search,
   Shield,
   UserPlus,
   UserRound,
   X,
 } from "lucide-react"
 import { toast } from "@/common/components/Toast"
+import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
 import { InvestingFormField } from "./InvestingFormField"
 import "@/modules/Syndication/InvestorPortal/Deals/components/add-investment-modal.css"
 import "@/modules/contacts/contacts.css"
@@ -50,6 +50,34 @@ const RELATIONSHIP_OPTIONS = [
   "Other",
 ] as const
 
+/** Non-empty value must look like a normal email. */
+function getEmailError(raw: string): string | null {
+  const t = raw.trim()
+  if (!t) return null
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(t)) {
+    return "Enter a valid email address."
+  }
+  return null
+}
+
+/** Non-empty value must have a plausible digit count; allows +, spaces, and common separators. */
+function getPhoneError(raw: string): string | null {
+  const t = raw.trim()
+  if (!t) return null
+  const allowed = /^[\d+()\s.\-]+$/
+  if (!allowed.test(t)) {
+    return "Use only digits, spaces, and + ( ) - . in the phone number."
+  }
+  const digits = t.replace(/\D/g, "")
+  if (digits.length < 7) {
+    return "Phone number should include at least 7 digits."
+  }
+  if (digits.length > 15) {
+    return "This phone number has too many digits."
+  }
+  return null
+}
+
 interface AddBeneficiaryModalProps {
   open: boolean
   onClose: () => void
@@ -57,15 +85,26 @@ interface AddBeneficiaryModalProps {
   initial?: BeneficiaryDraft | null
   /** "edit" shows save label and title for editing an existing row. */
   variant?: "add" | "edit"
+  /** Address tab rows — used for the address dropdown (active only). */
+  savedAddresses?: SavedAddress[]
 }
 
-function TaxIdHelp() {
+function findAddressIdByLabel(
+  rows: SavedAddress[],
+  addressQuery: string,
+): string {
+  const t = (addressQuery ?? "").trim()
+  if (!t) return ""
+  return rows.find((a) => formatSavedAddressLabel(a) === t)?.id ?? ""
+}
+
+function FieldLabelHint({ title: hintTitle, label }: { title: string; label: string }) {
   return (
     <button
       type="button"
       className="investing_field_hint"
-      title="EIN, SSN, or other tax identifier for the beneficiary or entity"
-      aria-label="Tax ID — more information"
+      title={hintTitle}
+      aria-label={label}
     >
       <Info size={16} strokeWidth={1.75} aria-hidden />
     </button>
@@ -78,15 +117,31 @@ export function AddBeneficiaryModal({
   onSave,
   initial = null,
   variant = "add",
+  savedAddresses = [],
 }: AddBeneficiaryModalProps) {
   const [d, setD] = useState<BeneficiaryDraft>(empty)
   const [taxVisible, setTaxVisible] = useState(false)
+  const [phoneError, setPhoneError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
   const isEdit = variant === "edit"
+  const activeSavedAddresses = useMemo(
+    () => savedAddresses.filter((a) => !a.archived),
+    [savedAddresses],
+  )
+  const selectedAddressId = useMemo(
+    () => findAddressIdByLabel(activeSavedAddresses, d.addressQuery),
+    [activeSavedAddresses, d.addressQuery],
+  )
+  const hasUnmatchedAddressQuery = Boolean(
+    d.addressQuery.trim() && !selectedAddressId,
+  )
 
   useEffect(() => {
     if (!open) return
     setD(initial && Object.keys(initial).length ? { ...empty, ...initial } : { ...empty })
     setTaxVisible(false)
+    setPhoneError(null)
+    setEmailError(null)
   }, [open, initial])
 
   useEffect(() => {
@@ -100,6 +155,8 @@ export function AddBeneficiaryModal({
 
   const patch = useCallback((p: Partial<BeneficiaryDraft>) => {
     setD((prev) => ({ ...prev, ...p }))
+    if (Object.prototype.hasOwnProperty.call(p, "phone")) setPhoneError(null)
+    if (Object.prototype.hasOwnProperty.call(p, "email")) setEmailError(null)
   }, [])
 
   function handleAdd() {
@@ -107,8 +164,22 @@ export function AddBeneficiaryModal({
       toast.error("Name required", "Enter the full name of the individual or entity.")
       return
     }
+    const pErr = getPhoneError(d.phone)
+    const eErr = getEmailError(d.email)
+    setPhoneError(pErr)
+    setEmailError(eErr)
+    if (pErr || eErr) {
+      const first = pErr || eErr || ""
+      toast.error("Check contact details", first)
+      return
+    }
     onSave({ ...d, fullName: d.fullName.trim() })
     onClose()
+  }
+
+  function onFormSubmit(e: FormEvent) {
+    e.preventDefault()
+    handleAdd()
   }
 
   if (!open) return null
@@ -147,14 +218,7 @@ export function AddBeneficiaryModal({
           </button>
         </div>
 
-        <form
-          className="deals_add_inv_modal_form"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void handleAdd()
-          }}
-          noValidate
-        >
+        <form className="deals_add_inv_modal_form" onSubmit={onFormSubmit} noValidate>
           <div className="deals_add_inv_modal_scroll">
             <div
               className="add_contact_name_grid add_beneficiary_field_grid"
@@ -209,7 +273,12 @@ export function AddBeneficiaryModal({
                 id="ben-tax"
                 label="Tax ID"
                 Icon={Shield}
-                labelSuffix={<TaxIdHelp />}
+                labelSuffix={
+                  <FieldLabelHint
+                    title="EIN, SSN, or other tax identifier for the beneficiary or entity"
+                    label="Tax ID — more information"
+                  />
+                }
               >
                 <div className="add_profile_input_wrap">
                   <input
@@ -234,49 +303,91 @@ export function AddBeneficiaryModal({
               </InvestingFormField>
             </div>
 
-            <InvestingFormField id="ben-phone" label="Phone number" Icon={Phone} tight>
+            <InvestingFormField
+              id="ben-phone"
+              label="Phone number"
+              Icon={Phone}
+              tight
+              error={phoneError ?? undefined}
+            >
               <input
                 id="ben-phone"
                 className="deals_add_inv_input deals_add_inv_field_control"
                 type="tel"
+                inputMode="tel"
                 value={d.phone}
                 onChange={(e) => patch({ phone: e.target.value })}
                 autoComplete="tel"
-                placeholder="Phone"
+                placeholder="(555) 000-0000"
+                aria-invalid={Boolean(phoneError)}
+                aria-describedby={phoneError ? "ben-phone-err" : undefined}
               />
             </InvestingFormField>
 
-            <InvestingFormField id="ben-email" label="Email" Icon={Mail} tight>
+            <InvestingFormField
+              id="ben-email"
+              label="Email"
+              Icon={Mail}
+              tight
+              error={emailError ?? undefined}
+            >
               <input
                 id="ben-email"
                 className="deals_add_inv_input deals_add_inv_field_control"
                 type="email"
+                inputMode="email"
                 value={d.email}
                 onChange={(e) => patch({ email: e.target.value })}
                 autoComplete="email"
-                placeholder="Email"
+                placeholder="name@example.com"
+                aria-invalid={Boolean(emailError)}
+                aria-describedby={emailError ? "ben-email-err" : undefined}
               />
             </InvestingFormField>
 
             <div className="add_beneficiary_field_grid__full">
               <InvestingFormField id="ben-addr" label="Address" Icon={MapPin}>
-                <div className="add_profile_search_wrap">
-                  <Search
-                    className="add_profile_search_icon"
-                    size={16}
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                  <input
-                    id="ben-addr"
-                    className="deals_add_inv_input deals_add_inv_field_control add_profile_search"
-                    value={d.addressQuery}
-                    onChange={(e) => patch({ addressQuery: e.target.value })}
-                    placeholder="Search"
-                    autoComplete="off"
-                    aria-label="Search address"
-                  />
-                </div>
+                {activeSavedAddresses.length === 0 ? (
+                  <p className="add_profile_sub" style={{ marginBottom: "0.35em" }}>
+                    Add at least one address in the <strong>Address</strong> tab, then return
+                    here to select it, or continue without an address (leave the menu empty).
+                  </p>
+                ) : null}
+                {hasUnmatchedAddressQuery ? (
+                  <p className="add_profile_sub" style={{ marginBottom: "0.35em" }} role="status">
+                    Address on file does not match a saved row:{" "}
+                    <span className="um_field_hint" style={{ display: "block", marginTop: "0.2em" }}>
+                      {d.addressQuery}
+                    </span>{" "}
+                    Choose a saved address below to replace it.
+                  </p>
+                ) : null}
+                <select
+                  id="ben-addr"
+                  className="um_field_select deals_add_inv_field_control"
+                  value={selectedAddressId}
+                  onChange={(e) => {
+                    const id = e.target.value
+                    if (!id) {
+                      patch({ addressQuery: "" })
+                      return
+                    }
+                    const row = activeSavedAddresses.find((a) => a.id === id)
+                    patch({ addressQuery: row ? formatSavedAddressLabel(row) : "" })
+                  }}
+                  aria-label="Mailing or legal address — choose a saved address"
+                >
+                  <option value="">
+                    {activeSavedAddresses.length
+                      ? "No address (optional)"
+                      : "No saved addresses — add in Address tab"}
+                  </option>
+                  {activeSavedAddresses.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {formatSavedAddressLabel(a)}
+                    </option>
+                  ))}
+                </select>
               </InvestingFormField>
             </div>
             </div>

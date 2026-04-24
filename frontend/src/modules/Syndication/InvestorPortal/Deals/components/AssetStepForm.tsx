@@ -368,7 +368,8 @@ export function AssetStepForm({
                         src={src}
                         alt=""
                         className="asset_step_existing_thumb"
-                        loading="lazy"
+                        loading="eager"
+                        decoding="async"
                       />
                     </div>
                     {onRemoveExistingImage ? (

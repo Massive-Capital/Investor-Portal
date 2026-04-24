@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
+import "./InvestingFormField.css"
 
 /** Single field row: matches Add contact / Add investment (`um_field` + `um_field_label_row` + icon). */
 export function InvestingFormField({
@@ -30,8 +31,10 @@ export function InvestingFormField({
     <div className={rowClass}>
       <label htmlFor={id} className="um_field_label_row">
         <Icon className="um_field_label_icon" size={17} strokeWidth={1.75} aria-hidden />
-        <span>{label}</span>
-        {labelSuffix}
+        <span className="um_field_label_with_suffix">
+          <span className="um_field_label_text">{label}</span>
+          {labelSuffix}
+        </span>
       </label>
       {children}
       {error ? (

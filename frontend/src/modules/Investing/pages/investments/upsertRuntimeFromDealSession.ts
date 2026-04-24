@@ -8,6 +8,7 @@ import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { committedAmountForViewerEmail } from "@/modules/Investing/utils/investingViewerDealScope"
 import type { DealDetailApi } from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
 import type { AddInvestmentFormValues } from "@/modules/Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_member_types"
+import { formatInvestedAsFromInv } from "./investedAsDisplay"
 import { investorProfileLabel } from "@/modules/Syndication/InvestorPortal/Deals/constants/investor-profile"
 import type {
   DealInvestorRow,
@@ -66,11 +67,13 @@ export function upsertRuntimeFromViewerAddInvestmentForm(input: {
   const deal = input.dealDetail
   const investmentName =
     deal?.dealName?.trim() || deal?.propertyName?.trim() || "Deal"
+  const pid = String(input.values.profileId ?? "").trim()
   upsertRuntimeInvestmentRow({
     dealId: input.dealId.trim(),
     investmentName,
     offeringName: investmentName,
-    investmentProfile: investorProfileLabel(input.values.profileId),
+    investmentProfile: pid ? investorProfileLabel(pid) : "—",
+    commitmentProfileId: pid || undefined,
     investedAmount: n,
     distributedAmount: 0,
     currentValuation: deal?.offeringSize?.trim() || "—",
@@ -104,22 +107,23 @@ export function upsertRuntimeForViewerFromInvestorsPayload(
     deal?.dealName?.trim() ||
     deal?.propertyName?.trim() ||
     "Deal"
-  const offeringName =
-    (inv?.investorClass || listRow?.investorClass || investmentName).trim() ||
-    investmentName
-  const investmentProfile = (() => {
-    if (!inv) return "—"
-    const pid = String(inv.profileId ?? "").trim()
-    if (pid) return investorProfileLabel(pid)
-    return (
-      String(inv.entitySubtitle || inv.displayName || "").trim() || "—"
-    )
-  })()
+  /** Match list API: offering column is the deal/offering name, not share class. */
+  const offeringName = investmentName
+  const investmentProfile = formatInvestedAsFromInv(inv, undefined)
   upsertRuntimeInvestmentRow({
     dealId: dealId.trim(),
     investmentName,
     offeringName,
     investmentProfile,
+    commitmentProfileId: inv
+      ? String(inv.profileId ?? "").trim() || undefined
+      : undefined,
+    userInvestorProfileId: inv
+      ? String(inv.userInvestorProfileId ?? "").trim() || undefined
+      : undefined,
+    userInvestorProfileName: inv
+      ? String(inv.userInvestorProfileName ?? "").trim() || undefined
+      : undefined,
     investedAmount: committed,
     distributedAmount: 0,
     currentValuation: deal?.offeringSize?.trim() || "—",

@@ -31,6 +31,7 @@ import InvestmentsPage from "@/modules/Investing/pages/investments/InvestmentsPa
 import InvestmentDetailPage from "@/modules/Investing/pages/investments/InvestmentDetailPage";
 import InvestingProfilesPage from "@/modules/Investing/pages/profiles/InvestingProfilesPage";
 import { AddInvestorProfilePage } from "@/modules/Investing/pages/profiles/AddInvestorProfilePage";
+import { EditInvestorProfilePage } from "@/modules/Investing/pages/profiles/EditInvestorProfilePage";
 import { WorkInProgressPage } from "./common/components/WorkInProgressPage";
 import { InvestorEmailsPage } from "./modules/Syndication/InvestorPortal/InvestorEmails/InvestorEmailsPage";
 import { ReportingPage } from "./modules/Syndication/InvestorPortal/Reporting/ReportingPage";
@@ -164,6 +165,10 @@ function App() {
             <Route
               path="investing/profiles/add"
               element={<AddInvestorProfilePage />}
+            />
+            <Route
+              path="investing/profiles/:profileId/edit"
+              element={<EditInvestorProfilePage />}
             />
             <Route path="investing/profiles" element={<InvestingProfilesPage />} />
             <Route path="investing/deals" element={<InvestingDealsListPage />} />

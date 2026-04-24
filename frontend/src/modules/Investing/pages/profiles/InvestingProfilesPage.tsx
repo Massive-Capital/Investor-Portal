@@ -11,10 +11,15 @@ import {
   AddBeneficiaryModal,
   type BeneficiaryDraft,
 } from "./AddBeneficiaryModal"
+import { ExportAddressesModal } from "./ExportAddressesModal"
+import { ExportBeneficiariesModal } from "./ExportBeneficiariesModal"
 import { ExportInvestorProfilesModal } from "./ExportInvestorProfilesModal"
 import { AddAddressModal } from "./AddAddressModal"
 import { formatSavedAddressLabel, type AddressFormDraft, type SavedAddress } from "./address.types"
 import { COUNTRY_OPTIONS, US_STATE_OPTIONS } from "./usStates"
+import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/InvestorPortal/Deals/createDealFormDraftStorage"
+import { getMergedInvestmentListRows } from "../investments/investmentsRuntimeData"
+import type { InvestmentListRow } from "../investments/investments.types"
 import {
   fetchMyProfileBook,
   patchBeneficiaryArchived,
@@ -23,7 +28,6 @@ import {
   postBeneficiary,
   postSavedAddress,
   putBeneficiary,
-  putInvestorProfile,
   putSavedAddress,
 } from "./investingProfileBookApi"
 import {
@@ -31,12 +35,12 @@ import {
   exportInvestorProfileRow,
   exportSavedAddressRow,
 } from "./investingProfileBookExport"
-import { EditInvestorProfileModal } from "./EditInvestorProfileModal"
 import { InvestingEntityViewModal } from "./InvestingEntityViewModal"
-import type {
-  InvestorProfileListRow,
-  NewInvestorProfilePayload,
-} from "./investor-profiles.types"
+import type { InvestorProfileListRow } from "./investor-profiles.types"
+import {
+  fetchInvestmentCountsByUserInvestorProfileId,
+  mergeInvestorProfileRowsWithLinkedCounts,
+} from "./profileInvestmentCounts"
 import { InvestingProfilesRowActions } from "./InvestingProfilesRowActions"
 import "@/modules/usermanagement/user_management.css"
 import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
@@ -84,6 +88,11 @@ export default function InvestingProfilesPage() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryListRow[]>([])
   const [profiles, setProfiles] = useState<InvestorProfileListRow[]>([])
+  const [mergedInvRows, setMergedInvRows] = useState<InvestmentListRow[]>([])
+  /** One deal commitment per `userInvestorProfileId` from the deals API; not from collapsed list rows. */
+  const [investmentCountByProfileId, setInvestmentCountByProfileId] = useState<
+    ReadonlyMap<string, number> | null
+  >(null)
   const [query, setQuery] = useState("")
   const [beneQuery, setBeneQuery] = useState("")
   const [addrQuery, setAddrQuery] = useState("")
@@ -94,13 +103,14 @@ export default function InvestingProfilesPage() {
   const [addrPage, setAddrPage] = useState(1)
   const [addrPageSize, setAddrPageSize] = useState(10)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [exportBeneModalOpen, setExportBeneModalOpen] = useState(false)
+  const [exportAddrModalOpen, setExportAddrModalOpen] = useState(false)
   const [profilesStatusTab, setProfilesStatusTab] = useState<ListStatusTab>("active")
   const [beneStatusTab, setBeneStatusTab] = useState<ListStatusTab>("active")
   const [addrStatusTab, setAddrStatusTab] = useState<ListStatusTab>("active")
   const [loadError, setLoadError] = useState<string | null>(null)
   const [bookLoading, setBookLoading] = useState(true)
   const [viewModal, setViewModal] = useState<ViewModalState>(null)
-  const [editProfile, setEditProfile] = useState<InvestorProfileListRow | null>(null)
   const [editBeneficiary, setEditBeneficiary] = useState<BeneficiaryListRow | null>(null)
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null)
 
@@ -110,9 +120,17 @@ export default function InvestingProfilesPage() {
     setBookLoading(true)
     void (async () => {
       try {
-        const book = await fetchMyProfileBook()
+        const [book, inv, byProfile] = await Promise.all([
+          fetchMyProfileBook(),
+          getMergedInvestmentListRows().catch((): InvestmentListRow[] => []),
+          fetchInvestmentCountsByUserInvestorProfileId().catch(
+            (): ReadonlyMap<string, number> => new Map(),
+          ),
+        ])
         if (cancelled) return
         setProfiles(book.profiles)
+        setMergedInvRows(inv)
+        setInvestmentCountByProfileId(byProfile)
         setBeneficiaries(book.beneficiaries)
         setSavedAddresses(book.addresses)
       } catch (e) {
@@ -131,6 +149,37 @@ export default function InvestingProfilesPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    function onDealsListRefetch() {
+      void (async () => {
+        try {
+          const [inv, byProfile] = await Promise.all([
+            getMergedInvestmentListRows(),
+            fetchInvestmentCountsByUserInvestorProfileId(),
+          ])
+          setMergedInvRows(inv)
+          setInvestmentCountByProfileId(byProfile)
+        } catch {
+          // keep prior merged rows; profile book API may still have counts
+        }
+      })()
+    }
+    window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
+    return () => {
+      window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
+    }
+  }, [])
+
+  const profilesDisplay = useMemo(
+    () =>
+      mergeInvestorProfileRowsWithLinkedCounts(
+        profiles,
+        mergedInvRows,
+        investmentCountByProfileId,
+      ),
+    [profiles, mergedInvRows, investmentCountByProfileId],
+  )
 
   const addBeneficiary = useCallback(
     (b: BeneficiaryDraft) => {
@@ -239,14 +288,6 @@ export default function InvestingProfilesPage() {
     })()
   }, [])
 
-  const onProfileEditSave = useCallback(
-    async (id: string, body: NewInvestorProfilePayload) => {
-      const row = await putInvestorProfile(id, body)
-      setProfiles((prev) => prev.map((p) => (p.id === id ? row : p)))
-    },
-    [],
-  )
-
   const benInitialDraft = useMemo((): BeneficiaryDraft | null => {
     if (!editBeneficiary) return null
     return {
@@ -286,9 +327,9 @@ export default function InvestingProfilesPage() {
 
   const profilesByStatus = useMemo(() => {
     return profilesStatusTab === "archived"
-      ? profiles.filter((p) => p.archived)
-      : profiles.filter((p) => !p.archived)
-  }, [profiles, profilesStatusTab])
+      ? profilesDisplay.filter((p) => p.archived)
+      : profilesDisplay.filter((p) => !p.archived)
+  }, [profilesDisplay, profilesStatusTab])
 
   const filteredProfiles = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -446,6 +487,10 @@ export default function InvestingProfilesPage() {
           { label: "Investments", value: String(r.investmentsCount ?? 0) },
           { label: "Date created", value: formatProfileListDate(r.dateCreated) },
           { label: "Status", value: r.archived ? "Archived" : "Active" },
+          {
+            label: "Last change note",
+            value: r.lastEditReason?.trim() || "—",
+          },
         ],
       }
     }
@@ -535,7 +580,7 @@ export default function InvestingProfilesPage() {
             archived={Boolean(row.archived)}
             onSetArchived={(v) => setProfileArchived(row.id, v)}
             onView={() => setViewModal({ kind: "profile", row })}
-            onEdit={() => setEditProfile(row)}
+            onEdit={() => void navigate(`/investing/profiles/${encodeURIComponent(row.id)}/edit`)}
             onExport={() =>
               exportInvestorProfileRow(row, fileSlug(row.profileName, "profile"))
             }
@@ -543,7 +588,7 @@ export default function InvestingProfilesPage() {
         ),
       },
     ],
-    [setProfileArchived],
+    [setProfileArchived, navigate],
   )
 
   const beneficiaryColumns: DataTableColumn<BeneficiaryListRow>[] = useMemo(
@@ -942,6 +987,16 @@ export default function InvestingProfilesPage() {
                   aria-label="Search beneficiaries"
                 />
               </div>
+              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+                <button
+                  type="button"
+                  className="um_toolbar_export_btn"
+                  onClick={() => setExportBeneModalOpen(true)}
+                >
+                  <Download size={18} strokeWidth={2} aria-hidden />
+                  <span>Export all beneficiaries</span>
+                </button>
+              </div>
             </div>
             <DataTable<BeneficiaryListRow>
               visualVariant="members"
@@ -1032,6 +1087,16 @@ export default function InvestingProfilesPage() {
                   aria-label="Search saved addresses"
                 />
               </div>
+              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+                <button
+                  type="button"
+                  className="um_toolbar_export_btn"
+                  onClick={() => setExportAddrModalOpen(true)}
+                >
+                  <Download size={18} strokeWidth={2} aria-hidden />
+                  <span>Export all addresses</span>
+                </button>
+              </div>
             </div>
             <DataTable<SavedAddress>
               visualVariant="members"
@@ -1064,16 +1129,20 @@ export default function InvestingProfilesPage() {
           rows={viewModalConfig.rows}
         />
       ) : null}
-      <EditInvestorProfileModal
-        open={editProfile != null}
-        onClose={() => setEditProfile(null)}
-        profile={editProfile}
-        onSave={onProfileEditSave}
-      />
       <ExportInvestorProfilesModal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
-        profiles={profiles}
+        profiles={profilesDisplay}
+      />
+      <ExportBeneficiariesModal
+        open={exportBeneModalOpen}
+        onClose={() => setExportBeneModalOpen(false)}
+        beneficiaries={beneficiaries}
+      />
+      <ExportAddressesModal
+        open={exportAddrModalOpen}
+        onClose={() => setExportAddrModalOpen(false)}
+        addresses={savedAddresses}
       />
       <AddBeneficiaryModal
         open={addBenOpen}
@@ -1084,6 +1153,7 @@ export default function InvestingProfilesPage() {
         onSave={addBeneficiary}
         initial={benInitialDraft}
         variant={editBeneficiary ? "edit" : "add"}
+        savedAddresses={savedAddresses}
       />
       <AddAddressModal
         open={addAddressOpen}

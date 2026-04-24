@@ -57,6 +57,24 @@ function readStoredRows(): StoredRow[] {
         investmentName: String(row.investmentName ?? "").trim() || "—",
         offeringName: String(row.offeringName ?? "").trim() || "—",
         investmentProfile: String(row.investmentProfile ?? "").trim() || "—",
+        commitmentProfileId: (() => {
+          const t = String(
+            (row as Partial<StoredRow>).commitmentProfileId ?? "",
+          ).trim()
+          return t || undefined
+        })(),
+        userInvestorProfileId: (() => {
+          const t = String(
+            (row as Partial<StoredRow>).userInvestorProfileId ?? "",
+          ).trim()
+          return t || undefined
+        })(),
+        userInvestorProfileName: (() => {
+          const t = String(
+            (row as Partial<StoredRow>).userInvestorProfileName ?? "",
+          ).trim()
+          return t || undefined
+        })(),
         investedAmount: Number(row.investedAmount ?? 0) || 0,
         distributedAmount: Number(row.distributedAmount ?? 0) || 0,
         currentValuation: String(row.currentValuation ?? "").trim() || "—",
@@ -92,6 +110,9 @@ export function upsertRuntimeInvestmentRow(input: {
   investmentName: string
   offeringName: string
   investmentProfile: string
+  commitmentProfileId?: string
+  userInvestorProfileId?: string
+  userInvestorProfileName?: string
   investedAmount: number
   distributedAmount?: number
   currentValuation?: string
@@ -111,6 +132,9 @@ export function upsertRuntimeInvestmentRow(input: {
     investmentName: input.investmentName.trim() || "—",
     offeringName: input.offeringName.trim() || "—",
     investmentProfile: input.investmentProfile.trim() || "—",
+    commitmentProfileId: (input.commitmentProfileId ?? "").trim() || undefined,
+    userInvestorProfileId: (input.userInvestorProfileId ?? "").trim() || undefined,
+    userInvestorProfileName: (input.userInvestorProfileName ?? "").trim() || undefined,
     investedAmount: Number.isFinite(input.investedAmount) ? input.investedAmount : 0,
     distributedAmount: Number.isFinite(input.distributedAmount)
       ? Number(input.distributedAmount)
@@ -131,7 +155,9 @@ export function upsertRuntimeInvestmentRow(input: {
 function toPublicListRow(
   s: StoredRow,
 ): InvestmentListRow {
-  const { updatedAtIso: _a, dealId: _b, ownerEmail: _c, ...row } = s
+  // Keep `dealId` on the row so list merge/collapse can key the same as API rows (uuid),
+  // not only `id` = `runtime-...` (which was splitting one deal into two data-table rows).
+  const { updatedAtIso: _a, ownerEmail: _b, ...row } = s
   return row
 }
 

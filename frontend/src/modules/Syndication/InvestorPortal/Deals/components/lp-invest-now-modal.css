@@ -52,3 +52,11 @@
   background: color-mix(in srgb, var(--portal-surface, #1a1a1a) 92%, #fff);
   border-bottom-color: var(--portal-border, #334155);
 }
+
+.lp_invest_now_saved_profile_hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--portal-text-muted, #64748b);
+  font-weight: 400;
+}

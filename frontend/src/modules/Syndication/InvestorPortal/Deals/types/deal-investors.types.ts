@@ -41,6 +41,13 @@ export interface DealInvestorRow {
   /** Editable row fields (from API) — used when opening Edit investment */
   contactId?: string
   profileId?: string
+  /** Investing → Profiles saved row id, when set on the deal investment. */
+  userInvestorProfileId?: string
+  /**
+   * My Profiles **display name** denormalized on the deal investment when the commitment
+   * is saved (so the client need not map id → name). When absent, fall back to the book.
+   */
+  userInvestorProfileName?: string
   offeringId?: string
   commitmentAmountRaw?: string
   extraContributionAmounts?: string[]

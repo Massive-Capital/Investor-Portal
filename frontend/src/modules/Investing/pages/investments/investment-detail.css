@@ -26,6 +26,48 @@
   color: var(--portal-text, #0f172a);
 }
 
+.investment_detail_tabs_outer {
+  margin-bottom: 0.5rem;
+}
+
+.investment_detail_tab_panels {
+  margin-top: 0.25rem;
+}
+
+.investment_detail_section--flush {
+  margin-top: 0;
+}
+
+.investment_detail_lead {
+  margin: 0 0 1rem;
+  font-size: 0.9375rem;
+  color: var(--portal-text-muted, #475569);
+}
+
+.investment_detail_tab_hint {
+  grid-column: 1 / -1;
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #475569);
+}
+
+.investment_detail_tab_hint_link {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--portal-primary, #2563eb);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.investment_detail_tab_hint_link:hover {
+  color: #1d4ed8;
+}
+
 .investment_detail_section {
   margin-bottom: 2rem;
 }
@@ -104,6 +146,33 @@
   cursor: default;
 }
 
+.investment_detail_input--editable {
+  cursor: text;
+  background-color: var(--portal-surface, #f8fafc);
+  border-radius: 4px;
+  padding-left: 0.25rem;
+}
+
+.investment_detail_input--editable:focus {
+  outline: none;
+  border-bottom-color: var(--portal-primary, #2563eb);
+}
+
+textarea.investment_detail_input--multiline {
+  min-height: 5.5rem;
+  resize: vertical;
+  line-height: 1.4;
+  padding: 0.4rem 0.5rem;
+  padding-right: 0.75rem;
+}
+
+/* General: ownership % (not editable) */
+.investment_detail_field--read-only-locked .investment_detail_input {
+  cursor: default;
+  color: var(--portal-text-muted, #64748b);
+  user-select: text;
+}
+
 .investment_detail_input--currency,
 .investment_detail_input--pct {
   padding-left: 1.1rem;
@@ -153,10 +222,68 @@
   color: var(--portal-text, #0f172a);
 }
 
+/* Property information: Status (only editable field) */
+.investment_detail_select--editable:enabled {
+  cursor: pointer;
+  background-color: var(--portal-surface, #f8fafc);
+  border-radius: 4px;
+  padding-left: 0.25rem;
+}
+
+.investment_detail_select--editable:enabled:focus {
+  outline: none;
+  border-bottom-color: var(--portal-primary, #2563eb);
+}
+
 .investment_detail_date_icon {
   position: absolute;
   right: 0;
   bottom: 0.35rem;
   color: var(--portal-text-muted, #64748b);
   pointer-events: none;
+}
+
+/* Profile tab: same card + toolbar + table pattern as /investing/profiles (My Profiles) */
+.investment_detail_inv_profile_card {
+  --inv-profile-px: clamp(1rem, 2.5vw, 1.5rem);
+  --inv-profile-pt: 1.1rem;
+  --inv-profile-pb: 1.35rem;
+}
+
+.investment_detail_inv_profile_card.um_panel.um_members_tab_panel.deals_list_table_panel.deals_list_card_surface {
+  padding: var(--inv-profile-pt) var(--inv-profile-px) var(--inv-profile-pb);
+  box-sizing: border-box;
+}
+
+.investment_detail_inv_profile_table_toolbar {
+  margin-bottom: 0.9rem;
+}
+
+.investment_detail_inv_profile_table_toolbar .um_search_input {
+  min-width: 0;
+}
+
+.investment_detail_inv_profile_toolbar_end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 min(12rem, 100%);
+  min-width: 0;
+}
+
+.investment_detail_inv_profile_totals {
+  margin: 0;
+  text-align: right;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+}
+
+.investment_detail_inv_profile_solo {
+  padding-top: 0.1rem;
+}
+
+.investment_detail_inv_profile_solo .investing_profiles_lead {
+  max-width: none;
 }

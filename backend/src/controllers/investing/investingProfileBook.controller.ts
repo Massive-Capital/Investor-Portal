@@ -14,6 +14,35 @@ import {
 } from "../../services/investingProfileBook.service.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const WIZ_MAX_BYTES = 256 * 1024;
+
+/** `null` in body → clear column. Absent in body → undefined (use default per handler). */
+function bodyProfileWizardStateJson(
+  body: Record<string, unknown>,
+): { ok: true; json: string | null } | { ok: false; message: string } {
+  if (!("profileWizardState" in body)) {
+    return { ok: true, json: null };
+  }
+  const w = body.profileWizardState;
+  if (w === null) return { ok: true, json: null };
+  let s: string;
+  if (typeof w === "string") {
+    try {
+      JSON.parse(w);
+      s = w;
+    } catch {
+      return { ok: false, message: "profileWizardState must be valid JSON" };
+    }
+  } else if (typeof w === "object" && w !== null && !Array.isArray(w)) {
+    s = JSON.stringify(w);
+  } else {
+    return { ok: false, message: "Invalid profileWizardState" };
+  }
+  if (Buffer.byteLength(s, "utf8") > WIZ_MAX_BYTES) {
+    return { ok: false, message: "profileWizardState is too large" };
+  }
+  return { ok: true, json: s };
+}
 
 function isUuid(s: string): boolean {
   return typeof s === "string" && UUID_RE.test(s.trim());
@@ -43,11 +72,22 @@ export async function getMyProfileBook(req: Request, res: Response): Promise<voi
 export async function postMyProfileBookProfile(req: Request, res: Response): Promise<void> {
   const userId = requireUser(req, res);
   if (!userId) return;
-  const body = req.body as { profileName?: unknown; profileType?: unknown };
+  const body = req.body as { profileName?: unknown; profileType?: unknown; profileWizardState?: unknown };
   const profileName = typeof body.profileName === "string" ? body.profileName : "";
   const profileType = typeof body.profileType === "string" ? body.profileType : "";
+  const wiz = bodyProfileWizardStateJson(
+    body as unknown as Record<string, unknown>,
+  );
+  if (!wiz.ok) {
+    res.status(400).json({ message: wiz.message });
+    return;
+  }
   try {
-    const row = await createInvestorProfileForUser(userId, { profileName, profileType });
+    const row = await createInvestorProfileForUser(userId, {
+      profileName,
+      profileType,
+      profileWizardState: wiz.json,
+    });
     if (!row) {
       res.status(404).json({ message: "User not found" });
       return;
@@ -55,7 +95,10 @@ export async function postMyProfileBookProfile(req: Request, res: Response): Pro
     res.status(201).json({ profile: row });
   } catch (err) {
     console.error("postMyProfileBookProfile:", err);
-    res.status(500).json({ message: "Could not save profile. Please try again." });
+    const msg = err instanceof Error && err.message === "form_snapshot_too_large"
+      ? "Profile data is too large."
+      : "Could not save profile. Please try again.";
+    res.status(500).json({ message: msg });
   }
 }
 
@@ -99,15 +142,42 @@ export async function putMyProfileBookProfile(
     res.status(400).json({ message: "Invalid id" });
     return;
   }
-  const body = req.body as { profileName?: unknown; profileType?: unknown };
+  const body = req.body as {
+    profileName?: unknown;
+    profileType?: unknown;
+    lastEditReason?: unknown;
+    profileWizardState?: unknown;
+  };
   const profileName = typeof body.profileName === "string" ? body.profileName : "";
   const profileType = typeof body.profileType === "string" ? body.profileType : "";
+  const lastEditReason = typeof body.lastEditReason === "string" ? body.lastEditReason : "";
   if (!profileName.trim()) {
     res.status(400).json({ message: "Profile name is required" });
     return;
   }
+  if (!lastEditReason.trim()) {
+    res.status(400).json({ message: "Reason for this change is required" });
+    return;
+  }
+  const rawBody = body as unknown as Record<string, unknown>;
+  let updatePayload: Parameters<typeof updateInvestorProfileForUser>[2] = {
+    profileName,
+    profileType,
+    lastEditReason,
+  };
+  if (Object.prototype.hasOwnProperty.call(rawBody, "profileWizardState")) {
+    const wiz = bodyProfileWizardStateJson({
+      ...rawBody,
+      profileWizardState: rawBody.profileWizardState,
+    } as Record<string, unknown>);
+    if (!wiz.ok) {
+      res.status(400).json({ message: wiz.message });
+      return;
+    }
+    updatePayload = { ...updatePayload, profileWizardState: wiz.json };
+  }
   try {
-    const row = await updateInvestorProfileForUser(userId, id, { profileName, profileType });
+    const row = await updateInvestorProfileForUser(userId, id, updatePayload);
     if (!row) {
       res.status(404).json({ message: "Profile not found" });
       return;
@@ -115,7 +185,10 @@ export async function putMyProfileBookProfile(
     res.status(200).json({ profile: row });
   } catch (err) {
     console.error("putMyProfileBookProfile:", err);
-    res.status(500).json({ message: "Could not update profile. Please try again." });
+    const msg = err instanceof Error && err.message === "form_snapshot_too_large"
+      ? "Profile data is too large."
+      : "Could not update profile. Please try again.";
+    res.status(500).json({ message: msg });
   }
 }
 

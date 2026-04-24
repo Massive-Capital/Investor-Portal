@@ -265,7 +265,7 @@ export function DealsListPage({
         remainingRaw: string
         investorCount: number
         investorClassesLine: string
-        /** Signed-in user’s deal roster row: from deal members (Investing) or investors payload (Syndicating). */
+        /** Signed-in user’s deal roster row: match deal members first (sponsor/lead), else investors. */
         viewerRoleMatch: {
           investorRole?: string
           memberRoleLabels?: string[]
@@ -388,21 +388,16 @@ export function DealsListPage({
                       ReturnType<typeof fetchDealInvestorClasses>
                     >)
                   : fetchDealInvestorClasses(id),
-                dealsListContext === "investing"
-                  ? fetchDealMembers(id)
-                  : Promise.resolve([] as Awaited<ReturnType<typeof fetchDealMembers>>),
+                fetchDealMembers(id),
               ])
             const investorClassesLine = classes
               .map((c) => String(c.name ?? "").trim())
               .filter(Boolean)
               .join(", ")
-            const roleRows =
-              dealsListContext === "investing" && membersRoster.length > 0
-                ? membersRoster
-                : investors
             const viewerRoleMatch =
               em && em.includes("@")
-                ? resolveViewerDealMemberMatch(roleRows, sessionEmail)
+                ? resolveViewerDealMemberMatch(membersRoster, sessionEmail) ??
+                  resolveViewerDealMemberMatch(investors, sessionEmail)
                 : null
             return [
               id,

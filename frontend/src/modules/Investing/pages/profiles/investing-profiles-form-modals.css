@@ -53,23 +53,29 @@
 
 /* Add profile uses same `um_modal_actions` / add_contact footer pattern as Add contact. */
 
-/* Info (i) beside field labels */
+/* Info (i) directly after the label text (with icon row: field icon | text | (i)) */
 .investing_field_hint {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--portal-text-secondary, #64748b);
   background: none;
   border: none;
-  padding: 0.15em;
-  cursor: default;
-  border-radius: 4px;
-  margin-left: auto;
+  padding: 0.1em 0.15em;
+  margin: 0;
   flex-shrink: 0;
-  align-self: flex-start;
+  align-self: center;
+  cursor: help;
+  border-radius: 4px;
+  line-height: 1;
+  vertical-align: middle;
 }
 
-.investing_field_hint:hover {
+.investing_field_hint:hover,
+.investing_field_hint:focus-visible {
   color: var(--portal-primary, #00477a);
   background: var(--portal-primary-soft, #e6f0ff);
+  outline: none;
 }
 
 /* Add address: same searchable dropdowns as Add deal — match native selects in this modal */

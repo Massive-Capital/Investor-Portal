@@ -91,6 +91,12 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     }
 
     const profileRaw = bodyString(b.profile_id ?? b.profileId);
+    const hasUserInvestorProfileIdKey =
+      Object.prototype.hasOwnProperty.call(b, "user_investor_profile_id") ||
+      Object.prototype.hasOwnProperty.call(b, "userInvestorProfileId");
+    const userInvestorProfileRaw = hasUserInvestorProfileIdKey
+      ? bodyString(b.user_investor_profile_id ?? b.userInvestorProfileId)
+      : undefined;
     const hasStatusKey = Object.prototype.hasOwnProperty.call(b, "status");
     const hasDocSignedKey =
       Object.prototype.hasOwnProperty.call(b, "doc_signed_date") ||
@@ -110,6 +116,10 @@ export async function patchDealLpInvestorMyInvestNowAddon(
       viewerUserId: user.id,
       committedAmount: raw,
       profileId: profileRaw,
+      userInvestorProfileInBody: hasUserInvestorProfileIdKey,
+      userInvestorProfileId: hasUserInvestorProfileIdKey
+        ? userInvestorProfileRaw
+        : undefined,
       status: statusPatch,
       docSignedDate: hasDocSignedKey ? docSignedPatch : undefined,
     });

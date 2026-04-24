@@ -198,6 +198,12 @@ export async function putDealInvestment(
   let contactId = bodyString(b.contact_id);
   const contactDisplayName = bodyString(b.contact_display_name);
   const profileId = bodyString(b.profile_id);
+  const userInvestorProfileIdFromBody = bodyString(
+    b.user_investor_profile_id ?? b.userInvestorProfileId,
+  ).trim();
+  const hasUipInBody =
+    Object.prototype.hasOwnProperty.call(b, "user_investor_profile_id") ||
+    Object.prototype.hasOwnProperty.call(b, "userInvestorProfileId");
   const investor_role = bodyString(b.investor_role);
   const status = bodyString(b.status);
   const investorClass = bodyString(b.investor_class);
@@ -259,23 +265,52 @@ export async function putDealInvestment(
       });
     }
 
-    const row = await updateDealInvestment({
-      dealId,
-      investmentId,
-      input: {
-        offeringId,
-        contactId,
-        contactDisplayName,
-        profileId,
-        investor_role,
-        status,
-        investorClass: resolvedInvestorClass,
-        docSignedDate,
-        commitmentAmount,
-        extraContributionAmounts,
-        documentStoragePath,
-      },
-    });
+    const oldUip = String(existing.userInvestorProfileId ?? "").trim();
+    const newUip = userInvestorProfileIdFromBody;
+    const switchingBookProfile =
+      !autosave &&
+      Boolean(oldUip) &&
+      Boolean(newUip) &&
+      oldUip.toLowerCase() !== newUip.toLowerCase();
+
+    const row = switchingBookProfile
+      ? await insertDealInvestment({
+          dealId,
+          input: {
+            offeringId,
+            contactId,
+            contactDisplayName,
+            profileId,
+            userInvestorProfileId: newUip,
+            investor_role,
+            status,
+            investorClass: resolvedInvestorClass,
+            docSignedDate,
+            commitmentAmount,
+            extraContributionAmounts,
+            documentStoragePath,
+          },
+        })
+      : await updateDealInvestment({
+          dealId,
+          investmentId,
+          input: {
+            offeringId,
+            contactId,
+            contactDisplayName,
+            profileId,
+            ...(hasUipInBody
+              ? { userInvestorProfileId: userInvestorProfileIdFromBody || null }
+              : {}),
+            investor_role,
+            status,
+            investorClass: resolvedInvestorClass,
+            docSignedDate,
+            commitmentAmount,
+            extraContributionAmounts,
+            documentStoragePath,
+          },
+        });
     if (!row) {
       res.status(404).json({ message: "Investment not found" });
       return;
@@ -325,10 +360,17 @@ export async function putDealInvestment(
         send_invitation_mail: sendInvitationMail,
       },
     });
-    res.status(200).json({
-      message: "Investment updated",
-      investor,
-    });
+    if (switchingBookProfile) {
+      res.status(201).json({
+        message: "Investment recorded for this profile; previous commitment row kept.",
+        investor,
+      });
+    } else {
+      res.status(200).json({
+        message: "Investment updated",
+        investor,
+      });
+    }
   } catch (err) {
     console.error("putDealInvestment:", err);
     res.status(500).json({ message: "Could not update investment" });
@@ -358,6 +400,9 @@ export async function postDealInvestment(
   let contactId = bodyString(b.contact_id);
   const contactDisplayName = bodyString(b.contact_display_name);
   const profileId = bodyString(b.profile_id);
+  const userInvestorProfileId = bodyString(
+    b.user_investor_profile_id ?? b.userInvestorProfileId,
+  ).trim();
   const investor_role = bodyString(b.investor_role);
 
   const status = bodyString(b.status);
@@ -430,6 +475,7 @@ export async function postDealInvestment(
         contactId,
         contactDisplayName,
         profileId,
+        userInvestorProfileId: userInvestorProfileId || null,
         investor_role,
         status,
         investorClass: resolvedInvestorClass,

@@ -54,6 +54,7 @@ function syntheticInvestmentFromDealMember(m: DealMemberRow): DealInvestmentRow 
     contactId: m.contactMemberId,
     contactDisplayName: "",
     profileId: "",
+    userInvestorProfileId: null,
     investor_role: m.dealMemberRole,
     status: "",
     investorClass: "",

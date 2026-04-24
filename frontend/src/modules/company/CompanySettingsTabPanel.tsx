@@ -1155,6 +1155,7 @@ export function CompanySettingsTabPanel({
           <div className="cp_settings_control">
             <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_media_block">
               <div className="cp_media_card">
+
                 <input
                   ref={bgFileInputRef}
                   type="file"

@@ -88,3 +88,42 @@
 }
 
 /* Filter + Add row uses `contacts_toolbar_filters_row` + `contacts_filter_*` (see Contacts page). */
+
+/* View popups: profile / beneficiary / address — same field grid as Contact details, centered title */
+.investing_entity_view_head {
+  position: relative;
+  display: block;
+  text-align: center;
+  margin-bottom: 1.25em;
+  padding: 0 2.75rem;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.investing_entity_view_head .um_modal_title {
+  text-align: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.investing_entity_view_sub {
+  margin: 0.4em 0 0;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--portal-text-secondary, #4f4f4f);
+  max-width: 36em;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.investing_entity_view_head .um_modal_close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+}
