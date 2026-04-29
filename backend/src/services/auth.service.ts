@@ -143,8 +143,8 @@ export async function signInWithPassword(
     );
 
     const { passwordHash: _pw, ...userWithoutSecret } = user_table;
-    let displayCompanyName = String(user_table.companyName ?? "").trim();
-    if (!displayCompanyName && user_table.organizationId) {
+    let displayCompanyName = "";
+    if (user_table.organizationId) {
       const [coName] = await db
         .select({ name: companies.name })
         .from(companies)

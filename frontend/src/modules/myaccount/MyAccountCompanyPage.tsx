@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { Building2, Shield } from "lucide-react"
+import { Building2, CircleUser, Shield } from "lucide-react"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { primaryRoleLabelFromRow } from "../usermanagement/memberAdminShared"
 import { fetchMyProfile } from "./accountApi"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
@@ -11,8 +12,10 @@ function str(u: Record<string, unknown>, key: string): string {
 
 export function MyAccountCompanyPage() {
   const location = useLocation()
+  const { mode } = usePortalMode()
   const [companyName, setCompanyName] = useState("")
   const [role, setRole] = useState("")
+  const portalRoleLabel = mode === "investing" ? "Investor" : "Sponsor"
 
   const loadFromSession = useCallback(() => {
     const u = readSessionUser()
@@ -48,17 +51,33 @@ export function MyAccountCompanyPage() {
         />
       </div>
       <div className="um_field">
-        <label htmlFor="myaccount-company-role" className="um_field_label_row">
+        <label htmlFor="myaccount-company-org-role" className="um_field_label_row">
           <Shield className="um_field_label_icon" size={17} aria-hidden />
-          <span>Role</span>
+          <span>Org Role</span>
         </label>
         <input
-          id="myaccount-company-role"
-          name="role"
+          id="myaccount-company-org-role"
+          name="orgRole"
           type="text"
           value={role}
           onChange={() => {}}
           readOnly
+          autoComplete="off"
+        />
+      </div>
+      <div className="um_field">
+        <label htmlFor="myaccount-portal-role" className="um_field_label_row">
+          <CircleUser className="um_field_label_icon" size={17} aria-hidden />
+          <span>Profile Role</span>
+        </label>
+        <input
+          id="myaccount-portal-role"
+          name="portalRole"
+          type="text"
+          value={portalRoleLabel}
+          onChange={() => {}}
+          readOnly
+          autoComplete="off"
         />
       </div>
     </div>

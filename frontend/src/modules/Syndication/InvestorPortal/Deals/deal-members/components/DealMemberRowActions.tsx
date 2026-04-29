@@ -1,4 +1,5 @@
 import {
+  Banknote,
   Eye,
   Link2,
   Mail,
@@ -40,6 +41,12 @@ export interface DealMemberRowActionsProps {
    * When false, “Copy offering link” is disabled (e.g. visibility is not “Only visible with link”).
    */
   offeringLinkAvailable?: boolean
+  /** Investors tab: advance investment to “funding instructions sent” (optional). */
+  onApproveFund?: (row: DealInvestorRow) => void | Promise<void>
+  /** When true, “Approve fund” is disabled (e.g. LP-only roster row or busy). */
+  approveFundDisabled?: boolean
+  /** Optional tooltip when Approve fund is disabled. */
+  approveFundDisabledTitle?: string
 }
 
 export function DealMemberRowActions({
@@ -53,6 +60,9 @@ export function DealMemberRowActions({
   draftRow = false,
   invitationMailSent = false,
   offeringLinkAvailable = false,
+  onApproveFund,
+  approveFundDisabled = false,
+  approveFundDisabledTitle,
 }: DealMemberRowActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -255,6 +265,33 @@ export function DealMemberRowActions({
                 className="deal_member_row_actions_menu um_kebab_menu um_kebab_menu--portal"
                 role="menu"
               >
+                {onApproveFund ? (
+                  <li role="none">
+                    <button
+                      type="button"
+                      className={`um_kebab_menuitem${
+                        draftRow || approveFundDisabled
+                          ? " um_kebab_menuitem_disabled"
+                          : ""
+                      }`}
+                      role="menuitem"
+                      disabled={draftRow || approveFundDisabled}
+                      title={approveFundDisabledTitle}
+                      onClick={() => {
+                        if (draftRow || approveFundDisabled) return
+                        runMenuAction(() => void onApproveFund(row))
+                      }}
+                    >
+                      <Banknote
+                        className="um_kebab_menuitem_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      Approve fund
+                    </button>
+                  </li>
+                ) : null}
                 {onView ? (
                   <li role="none">
                     <button

@@ -105,6 +105,7 @@ export function addInvestmentFormToRow(
     selfAccredited: "—",
     verifiedAccLabel: "Not Started",
     addedByDisplayName: "—",
+    fundApproved: v.fundApproved ?? false,
   }
 }
 

@@ -64,6 +64,13 @@ INSERT INTO public.companies (id, name, created_at, updated_at, status) VALUES
     'active'
   ),
   (
+    '3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d'::uuid,
+    'Massive Capital',
+    '2026-04-27 00:00:00+00'::timestamptz,
+    '2026-04-27 00:00:00+00'::timestamptz,
+    'active'
+  ),
+  (
     'af6822c5-3a6d-4ce4-8b1a-7b9baf481698'::uuid,
     'Beetle',
     '2026-03-31 00:22:33.099847+05:30'::timestamptz,

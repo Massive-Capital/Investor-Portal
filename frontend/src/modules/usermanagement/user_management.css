@@ -8,6 +8,32 @@
   margin-bottom: 1.25em;
 }
 
+/* Members: tabs + Invite on one row (no separate page title) */
+.um_members_top_row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75em 1.25em;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 0.75em;
+  box-sizing: border-box;
+}
+
+.um_members_top_row .um_members_tabs_outer {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.um_members_top_row_actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
 .um_header_row {
   display: flex;
   flex-wrap: wrap;
@@ -531,6 +557,101 @@
   border-radius: 0 !important;
 }
 
+/* Segmented “pill” tabs: muted track, white active segment, shadow (Settings, Deal, admin lists) */
+.um_segmented_tabs_outer {
+  margin: 0 0 0.75em;
+  padding: 0;
+  max-width: 100%;
+}
+
+.um_segmented_tabs_row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 100%;
+  padding: 0.2rem 0.28rem;
+  background: #e2e8f0;
+  border: 1px solid #c8d4e4;
+  border-radius: 25px;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+.um_segmented_tabs_row .um_segmented_tab.um_members_tab {
+  margin: 0;
+  border: none;
+  border-bottom: none;
+  border-radius: 7px;
+  background: transparent;
+  font-weight: 500;
+  font-size: 0.9em;
+  color: #64748b;
+  padding: 0.45em 0.7em 0.45em 0.6em;
+  min-height: 2.1rem;
+  box-shadow: none;
+}
+
+.um_segmented_tabs_row .um_segmented_tab.um_members_tab:hover:not(.um_members_tab_active) {
+  color: #334155;
+  background: color-mix(in srgb, #fff 25%, transparent);
+}
+
+.um_segmented_tabs_row
+  .um_segmented_tab.um_members_tab.um_members_tab_active {
+  color: #0f172a;
+  font-weight: 600;
+  background: #fff;
+  border: none;
+  border-bottom: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08),
+    0 1px 3px rgba(15, 23, 42, 0.04);
+  /* Override .um_members_tab_active { border-radius: 0 !important } for pill segments */
+  border-radius: 25px !important;
+  margin-bottom: 0;
+}
+
+.um_segmented_tabs_row .um_segmented_tab .um_segmented_tab_icon,
+.um_segmented_tabs_row .um_segmented_tab svg[aria-hidden] {
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.9;
+}
+
+.um_segmented_tabs_row
+  .um_segmented_tab.um_members_tab_active
+  .um_segmented_tab_icon,
+.um_segmented_tabs_row
+  .um_segmented_tab.um_members_tab_active
+  svg[aria-hidden] {
+  opacity: 1;
+}
+
+.um_segmented_tabs_row .um_segmented_tab .um_segmented_tab_label {
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.um_segmented_tabs_row .um_members_tab:focus-visible {
+  outline-offset: 0;
+}
+
+.deals_tabs_row.um_segmented_tabs_row,
+.um_segmented_tabs_row.deals_tabs_row {
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: min(100%, max-content);
+  align-items: center;
+  align-content: center;
+  flex-shrink: 0;
+}
+
+.deals_tabs_row.um_segmented_tabs_row .um_segmented_tab.deals_tabs_tab.um_members_tab,
+.deals_tabs_row.um_segmented_tabs_row
+  .um_segmented_tab.deals_tabs_tab.um_members_tab {
+  min-height: 2.1rem;
+}
+
 .um_members_tab_content {
   margin-top: 0;
 }
@@ -721,6 +842,29 @@
   text-align: center;
   padding-left: 0.5em;
   padding-right: 0.5em;
+}
+
+/* Row selection (Members & Contacts datatables) */
+.um_th_checkbox,
+.um_td_checkbox {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  text-align: center;
+  vertical-align: middle;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  box-sizing: border-box;
+}
+
+.um_th_checkbox .um_table_header_select_cb,
+.um_td_checkbox .um_table_row_select_cb {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  cursor: pointer;
+  vertical-align: middle;
+  accent-color: var(--um-accent, #2563eb);
 }
 
 .um_table_members .um_td_user {
@@ -1071,16 +1215,29 @@
 /* Username + email grid above edit/suspend forms (matches view modal fields). */
 /* Edit member: Role + Status on one row */
 .um_edit_role_status_row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1em 1.25em;
   margin-bottom: 1em;
+  align-items: start;
 }
 
 .um_edit_role_status_row .um_field {
-  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
   margin-bottom: 0;
+}
+
+/* Keep labels + selects aligned across columns when labels differ in length */
+.um_edit_role_status_row .um_field_label_row {
+  min-height: 2.25rem;
+  align-items: center;
+}
+
+.um_edit_role_status_row .um_field_select {
+  align-self: stretch;
 }
 
 .um_view_grid_member_action {
@@ -1154,7 +1311,7 @@ a.um_member_subpage_cancel.um_btn_secondary {
   }
 
   .um_edit_role_status_row {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 0;
   }
 

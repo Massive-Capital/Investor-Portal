@@ -1211,8 +1211,10 @@ a.deal_offering_add_ic_header.um_btn_primary {
 .deal_offering_quill {
   border-radius: 10px;
   border: 1px solid var(--portal-border, #e2e8f0);
-  overflow: hidden;
+  overflow: hidden; /* clip rounded corners; inner .ql-editor wraps text */
   background: var(--portal-surface, #fff);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .deal_offering_quill .ql-toolbar.ql-snow {
@@ -1229,11 +1231,33 @@ a.deal_offering_add_ic_header.um_btn_primary {
   border: none;
   font-size: 0.9375rem;
   min-height: 220px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .deal_offering_quill .ql-editor {
   min-height: 220px;
   line-height: 1.55;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+  hyphens: auto;
+}
+
+/* Long URLs, pasted lines, and code blocks stay inside the editor “display” box. */
+.deal_offering_quill .ql-editor a {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.deal_offering_quill .ql-editor pre,
+.deal_offering_quill .ql-editor .ql-code-block {
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
 }
 
 .deal_offering_investor_summary_actions {

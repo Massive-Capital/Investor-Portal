@@ -35,9 +35,10 @@ import { dealInvestorStatusDisplayLabel } from "../../utils/dealInvestorTableDis
 import {
   displayAddedInvestorsCommittedAmount,
   displayInvestorCommittedAmount,
-  formatCommittedZeroUsd,
+  displayInvestorCommittedAmountExport,
   parseMoneyDigits,
 } from "../../utils/offeringMoneyFormat"
+import { DealInvestorCommittedAmountCell } from "../../components/DealInvestorCommittedAmountCell"
 import { InviteMailStatusBadge } from "../../components/InviteMailStatusBadge"
 import { DealInvestorRoleCell } from "../../components/DealInvestorRoleBadge"
 import { InvestorClassPillsDisplay } from "../../components/InvestorClassPillsDisplay"
@@ -242,7 +243,7 @@ export function DealMembersTab({
         r.status,
         r.addedByDisplayName,
         investorRoleLabel(r.investorRole ?? ""),
-        displayInvestorCommittedAmount(r),
+        displayInvestorCommittedAmountExport(r),
         displayAddedInvestorsCommittedAmount(r),
         mailLabel,
       ]
@@ -358,18 +359,7 @@ export function DealMembersTab({
           parseMoneyDigits(displayInvestorCommittedAmount(r)),
         tdClassName:
           "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
-        cell: (r) => {
-          const text = displayInvestorCommittedAmount(r)
-          const display = String(text ?? "").trim() || formatCommittedZeroUsd()
-          return (
-            <span
-              className="deal_inv_ellipsis_text deal_inv_ellipsis_text_end"
-              title={display}
-            >
-              {display}
-            </span>
-          )
-        },
+        cell: (r) => <DealInvestorCommittedAmountCell row={r} />,
       },
       {
         id: "added_investors_commitment",

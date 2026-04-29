@@ -10,6 +10,7 @@ import {
   filterMergedLpInvestorsForCoSponsorViewer,
   getLpInvestorsTabPayload,
   isViewerCoSponsorOnDeal,
+  mergeDealLpRosterIntoFullInvestorRows,
 } from "../../services/dealLpInvestor.service.js";
 import {
   buildInvestorKpisFromRows,
@@ -58,6 +59,24 @@ function isAutosaveBody(b: Record<string, unknown>): boolean {
   return v === "true" || v === "1" || v.toLowerCase() === "yes";
 }
 
+/** Multipart / JSON: optional `fund_approved` / `fundApproved`; preserves `fallback` when absent. */
+function fundApprovedFromRequestBody(
+  b: Record<string, unknown>,
+  fallback: boolean,
+): boolean {
+  const has =
+    Object.prototype.hasOwnProperty.call(b, "fund_approved") ||
+    Object.prototype.hasOwnProperty.call(b, "fundApproved");
+  if (!has) return fallback;
+  const raw = (b as { fund_approved?: unknown; fundApproved?: unknown })
+    .fund_approved ?? (b as { fundApproved?: unknown }).fundApproved;
+  if (typeof raw === "boolean") return raw;
+  const s = bodyString(raw).trim().toLowerCase();
+  if (s === "true" || s === "1" || s === "yes") return true;
+  if (s === "false" || s === "0" || s === "no") return false;
+  return fallback;
+}
+
 export async function getDealInvestors(
   req: Request,
   res: Response,
@@ -96,6 +115,7 @@ export async function getDealInvestors(
     let rows = await listDealInvestmentsByDealId(dealId, {
       lpInvestorsOnly: false,
     });
+    rows = await mergeDealLpRosterIntoFullInvestorRows(dealId, rows);
     if (await isViewerCoSponsorOnDeal(dealId, user.id)) {
       rows = await filterMergedLpInvestorsForCoSponsorViewer(
         dealId,
@@ -254,6 +274,8 @@ export async function putDealInvestment(
       return;
     }
 
+    const fundApproved = fundApprovedFromRequestBody(b, existing.fundApproved);
+
     let documentStoragePath: string | null = existing.documentStoragePath;
     if (file && "buffer" in file && file.buffer && file.buffer.length > 0) {
       documentStoragePath = await saveSubscriptionDocument({
@@ -283,6 +305,7 @@ export async function putDealInvestment(
             profileId,
             userInvestorProfileId: newUip,
             investor_role,
+            fundApproved,
             status,
             investorClass: resolvedInvestorClass,
             docSignedDate,
@@ -303,6 +326,7 @@ export async function putDealInvestment(
               ? { userInvestorProfileId: userInvestorProfileIdFromBody || null }
               : {}),
             investor_role,
+            fundApproved,
             status,
             investorClass: resolvedInvestorClass,
             docSignedDate,
@@ -346,6 +370,7 @@ export async function putDealInvestment(
         profile_id: row.profileId,
         investor_role: row.investor_role,
         status: row.status,
+        fund_approved: row.fundApproved,
         investor_class: row.investorClass,
         doc_signed_date: row.docSignedDate,
         commitment_amount: row.commitmentAmount,
@@ -458,6 +483,8 @@ export async function postDealInvestment(
     }
     const resolvedInvestorClass = classResolution.storedInvestorClass;
 
+    const fundApproved = fundApprovedFromRequestBody(b, false);
+
     if (file && "buffer" in file && file.buffer && file.buffer.length > 0) {
       documentStoragePath = await saveSubscriptionDocument({
         dealId,
@@ -477,6 +504,7 @@ export async function postDealInvestment(
         profileId,
         userInvestorProfileId: userInvestorProfileId || null,
         investor_role,
+        fundApproved,
         status,
         investorClass: resolvedInvestorClass,
         docSignedDate,
@@ -516,6 +544,7 @@ export async function postDealInvestment(
         profile_id: row.profileId,
         investor_role: row.investor_role,
         status: row.status,
+        fund_approved: row.fundApproved,
         investor_class: row.investorClass,
         doc_signed_date: row.docSignedDate,
         commitment_amount: row.commitmentAmount,

@@ -1,4 +1,4 @@
-import { Search, X } from "lucide-react"
+import { Download, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
 import type { InvestmentListRow } from "./investments.types"
@@ -138,7 +138,17 @@ export function ExportInvestmentsModal({
     })
   }, [allVisibleSelected, visibleIds])
 
-  function handleExportExcel() {
+  function handleExportAll() {
+    if (investments.length === 0) return
+    const csv = buildInvestmentsExportCsv(investments)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const filename = `investments-export-all-${stamp}.csv`
+    downloadCsv(csv, filename)
+    toast.success("Investments exported", `Saved as ${filename}`)
+    onClose()
+  }
+
+  function handleExportSelected() {
     const chosen = investments.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildInvestmentsExportCsv(chosen)
@@ -178,7 +188,8 @@ export function ExportInvestmentsModal({
         </header>
 
         <p className="deals_export_modal_hint">
-          Search and select investments, then export to Excel (CSV format).
+          Use <strong>Export all</strong> to download every row in this list, or search
+          and select specific rows, then use <strong>Export selected</strong> (CSV).
         </p>
 
         <div className="deals_export_modal_search">
@@ -254,11 +265,20 @@ export function ExportInvestmentsModal({
           </button>
           <button
             type="button"
-            className="deals_export_modal_btn_primary"
-            onClick={handleExportExcel}
+            className="deals_export_modal_btn_secondary"
+            onClick={handleExportSelected}
             disabled={selectedIds.size === 0}
           >
-            Export to Excel
+            Export selected
+          </button>
+          <button
+            type="button"
+            className="deals_export_modal_btn_primary"
+            onClick={handleExportAll}
+            disabled={investments.length === 0}
+          >
+            <Download size={16} strokeWidth={2} aria-hidden />
+            Export all
           </button>
         </footer>
       </div>

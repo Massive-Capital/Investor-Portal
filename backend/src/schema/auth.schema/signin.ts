@@ -22,7 +22,6 @@ export const users = pgTable("users", {
   }),
   firstName: varchar("first_name", { length: 100 }).notNull().default(""),
   lastName: varchar("last_name", { length: 100 }).notNull().default(""),
-  companyName: varchar("company_name", { length: 255 }).notNull().default(""),
   phone: varchar("phone", { length: 32 }).notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

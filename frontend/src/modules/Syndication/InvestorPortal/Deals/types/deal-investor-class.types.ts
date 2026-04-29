@@ -44,6 +44,7 @@ export interface DealInvestorClass {
   raiseAmountDistributions: string
   billingRaiseQuota: string
   minimumInvestment: string
+  numberOfUnits: string
   pricePerUnit: string
   status: string
   visibility: string
@@ -61,6 +62,7 @@ export interface DealInvestorClassFormValues {
   raiseAmountDistributions: string
   billingRaiseQuota: string
   minimumInvestment: string
+  numberOfUnits: string
   pricePerUnit: string
   status: string
   visibility: string

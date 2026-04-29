@@ -61,7 +61,6 @@ export async function getUserContactsExportAuditFields(
       email: users.email,
       firstName: users.firstName,
       lastName: users.lastName,
-      companyName: users.companyName,
       orgName: companies.name,
     })
     .from(users)
@@ -74,7 +73,7 @@ export async function getUserContactsExportAuditFields(
   }
   const display =
     [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || r.email;
-  const org = r.companyName?.trim() || r.orgName?.trim() || "";
+  const org = r.orgName?.trim() || "";
   return { email: r.email, displayName: display, orgName: org };
 }
 
@@ -162,7 +161,6 @@ async function getViewerContactScopeContext(
       email: users.email,
       role: users.role,
       organizationId: users.organizationId,
-      companyName: users.companyName,
     })
     .from(users)
     .where(eq(users.id, viewerUserId))
@@ -174,7 +172,6 @@ async function getViewerContactScopeContext(
     row
       ? {
           organizationId: row.organizationId,
-          companyName: row.companyName,
           role: row.role,
         }
       : null,

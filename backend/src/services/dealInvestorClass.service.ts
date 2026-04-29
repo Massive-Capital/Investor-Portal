@@ -15,6 +15,7 @@ export type InvestorClassInput = {
   raiseAmountDistributions: string;
   billingRaiseQuota: string;
   minimumInvestment: string;
+  numberOfUnits: string;
   pricePerUnit: string;
   status: string;
   visibility: string;
@@ -33,6 +34,7 @@ export function mapRowToJson(row: DealInvestorClassRow) {
     raiseAmountDistributions: row.raiseAmountDistributions,
     billingRaiseQuota: row.billingRaiseQuota,
     minimumInvestment: row.minimumInvestment,
+    numberOfUnits: row.numberOfUnits,
     pricePerUnit: row.pricePerUnit,
     status: row.status,
     visibility: row.visibility,
@@ -72,6 +74,7 @@ export async function insertInvestorClass(params: {
     raiseAmountDistributions: params.input.raiseAmountDistributions,
     billingRaiseQuota: params.input.billingRaiseQuota,
     minimumInvestment: params.input.minimumInvestment,
+    numberOfUnits: params.input.numberOfUnits,
     pricePerUnit: params.input.pricePerUnit,
     status: params.input.status,
     visibility: params.input.visibility,
@@ -98,6 +101,7 @@ export async function updateInvestorClass(params: {
       raiseAmountDistributions: params.input.raiseAmountDistributions,
       billingRaiseQuota: params.input.billingRaiseQuota,
       minimumInvestment: params.input.minimumInvestment,
+      numberOfUnits: params.input.numberOfUnits,
       pricePerUnit: params.input.pricePerUnit,
       status: params.input.status,
       visibility: params.input.visibility,

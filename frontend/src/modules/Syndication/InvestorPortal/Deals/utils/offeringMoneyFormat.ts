@@ -1,4 +1,5 @@
 import type { DealInvestorRow } from "../types/deal-investors.types"
+import { investorRowIsFundApproved } from "./dealInvestorTableDisplay"
 
 /** Parse a money-ish string (with $, commas) to a number. */
 export function parseMoneyDigits(s: string): number {
@@ -60,6 +61,53 @@ export function displayInvestorCommittedAmount(row: DealInvestorRow): string {
   return formatCommittedZeroUsd()
 }
 
+/**
+ * When fund is not yet re-approved after an LP increase: last approved total vs additional commitment.
+ * Used for Committed column split display.
+ */
+export function investorCommittedPendingSplit(row: DealInvestorRow): {
+  snapshot: number
+  incremental: number
+} | null {
+  if (investorRowIsFundApproved(row)) return null
+  const snapRaw = String(row.fundApprovedCommitmentSnapshot ?? "").trim()
+  if (!snapRaw) return null
+  const snapshot = parseMoneyDigits(snapRaw)
+  if (!Number.isFinite(snapshot) || snapshot <= 0) return null
+  const total = parseMoneyDigits(displayInvestorCommittedAmount(row))
+  if (!Number.isFinite(total)) return null
+  const incremental = Math.round((total - snapshot) * 100) / 100
+  if (incremental <= 0.009) return null
+  return { snapshot, incremental }
+}
+
+/** Plain text / CSV when split applies: `$100.00 + $50.00`. */
+export function displayInvestorCommittedAmountExport(row: DealInvestorRow): string {
+  const split = investorCommittedPendingSplit(row)
+  if (!split) return displayInvestorCommittedAmount(row)
+  return `${formatCurrencyTableDisplay(String(split.snapshot))} + ${formatCurrencyTableDisplay(String(split.incremental))}`
+}
+
+/**
+ * Dollars for the “Total Funded” KPI: fully funded rows use full commitment;
+ * rows pending re-approval after an LP increase count only the last approved snapshot
+ * (the incremental portion is excluded until the sponsor approves again).
+ */
+export function fundedAmountForTotalFundedKpi(row: DealInvestorRow): number {
+  const total = parseMoneyDigits(displayInvestorCommittedAmount(row))
+  if (!Number.isFinite(total)) return 0
+  if (investorRowIsFundApproved(row)) return total
+  const split = investorCommittedPendingSplit(row)
+  if (split) return split.snapshot
+  return 0
+}
+
+/** True when total committed (same basis as the Committed column) is zero. */
+export function investorRowCommittedAmountIsZero(row: DealInvestorRow): boolean {
+  const n = parseMoneyDigits(displayInvestorCommittedAmount(row))
+  return Number.isFinite(n) && n === 0
+}
+
 /** Deal Members: committed total from other investors this member added (see API field). */
 export function displayAddedInvestorsCommittedAmount(row: DealInvestorRow): string {
   const c = String(row.addedInvestorsCommitted ?? "").trim()
@@ -97,4 +145,16 @@ export function blurFormatMoneyInput(raw: string): string {
 /** Committed-amount field: live typing + prefill (same rules as blur). */
 export function formatCurrencyUsdTypeInput(raw: string): string {
   return blurFormatMoneyInput(raw)
+}
+
+/** Whole number or decimal count for “number of units” (class offering). */
+export function blurFormatNumberOfUnitsInput(raw: string): string {
+  const t = String(raw ?? "").trim()
+  if (!t) return ""
+  const n = parseFloat(t.replace(/[^0-9.]/g, ""))
+  if (!Number.isFinite(n) || n < 0) return ""
+  if (Number.isInteger(n) || Math.abs(n - Math.round(n)) < 1e-9) {
+    return String(Math.max(0, Math.round(n)))
+  }
+  return String(Math.round(n * 1e6) / 1e6)
 }

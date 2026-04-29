@@ -56,8 +56,7 @@
   top: calc(100% + 0.5em);
   right: 0;
   /* Avoid 100vw — it ignores scrollbar width and can widen past the layout, causing page horizontal scroll */
-  width: min(18.75em, calc(100dvw - 2em));
-  max-width: 300px;
+  width: min(20.75em, calc(100dvw - 2em));
   box-sizing: border-box;
   padding: 1em 0 0.5em;
   background: var(--portal-surface);

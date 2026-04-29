@@ -50,6 +50,9 @@ export const INVESTMENT_STATUS_SELECT_OPTIONS = [
   },
 ] as const
 
+/** Status applied when a sponsor uses Approve fund on the Investors tab (kebab). */
+export const INVESTMENT_STATUS_APPROVE_FUND = "Funding instructions sent" as const
+
 export function investmentStatusLabel(value: string): string {
   if (!value?.trim()) return "—"
   const row = INVESTMENT_STATUS_SELECT_OPTIONS.find((o) => o.value === value)

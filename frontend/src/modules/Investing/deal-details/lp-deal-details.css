@@ -29,19 +29,17 @@
   padding: 0.75rem 0 0.25rem;
 }
 
-.lpdd_back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+/* Align with syndication / deals: .deals_list_inline_back (deals-list.css) + portal link color */
+.lpdd_back_row .deals_list_inline_back {
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--lpdd-muted);
+  color: var(--portal-primary, #0f3d2e);
   text-decoration: none;
 }
 
-.lpdd_back:hover {
-  color: var(--lpdd-text);
+.lpdd_back_row .deals_list_inline_back:hover {
   text-decoration: underline;
+  color: var(--portal-text, #0f172a);
 }
 
 .lpdd_hero {

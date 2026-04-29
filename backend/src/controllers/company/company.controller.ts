@@ -4,6 +4,7 @@ import {
   COMPANY_AUDIT_ACTION_EDIT,
   COMPANY_AUDIT_ACTION_SUSPEND,
   createCompany,
+  ensureCompanyRowForOrganizationId,
   listCompanies,
   updateCompany,
   type CompanyAuditAction,
@@ -11,7 +12,7 @@ import {
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
 import { db } from "../../database/db.js";
-import { users } from "../../schema/schema.js";
+import { companies, users } from "../../schema/schema.js";
 import { getUserContactsExportAuditFields } from "../../services/contact.service.js";
 import { sanitizeExportedLinesForNotify } from "../../services/exportNotifySanitize.js";
 import { sendWorkspaceExportAuditNotification } from "../../services/workspaceExportAudit.service.js";
@@ -33,6 +34,13 @@ function jsonForCmdLog(value: unknown): string {
  * `GET /companies` JSON in the terminal (counts, ids, names) for debugging
  * mismatches vs. the Members tab (`GET /users?organizationId=...`).
  */
+function actorRoleFromRow(
+  actor: { role: string | null },
+  jwt: { userRole?: string },
+): string {
+  return String(actor.role ?? "").trim() || String(jwt.userRole ?? "").trim();
+}
+
 export async function getCompanies(req: Request, res: Response): Promise<void> {
   const user = getJwtUser(req);
   if (!user?.id) {
@@ -40,6 +48,25 @@ export async function getCompanies(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
+    const [actor] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    if (actor) {
+      const role = actorRoleFromRow(actor, user);
+      if (isPlatformAdminRole(role) && actor.organizationId) {
+        const [co] = await db
+          .select({ name: companies.name })
+          .from(companies)
+          .where(eq(companies.id, actor.organizationId))
+          .limit(1);
+        await ensureCompanyRowForOrganizationId(
+          actor.organizationId,
+          String(co?.name ?? ""),
+        );
+      }
+    }
     const rows = await listCompanies();
     const logCompanies =
       process.env.LOG_COMPANIES_RESPONSE === "1" ||

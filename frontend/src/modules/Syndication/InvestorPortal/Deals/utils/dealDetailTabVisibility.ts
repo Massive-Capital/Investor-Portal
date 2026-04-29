@@ -8,8 +8,20 @@ export type ViewerDealMemberRole =
   | "lp_investor"
   | null
 
+function roleLikeStringsForMember(m: DealInvestorRow): string[] {
+  const out: string[] = []
+  const r = String(m.investorRole ?? "").trim()
+  if (r && r !== "—") out.push(r)
+  for (const lab of m.memberRoleLabels ?? []) {
+    const t = String(lab ?? "").trim()
+    if (t && t !== "—") out.push(t)
+  }
+  return out
+}
+
 /**
  * Match the signed-in user’s email to a deal roster row and classify sponsor / LP role.
+ * Uses `memberRoleLabels` as well as `investorRole` (same row can rely on labels only).
  * Returns null when the viewer is not on the roster (typical org owner / admin).
  */
 export function resolveViewerDealMemberRole(
@@ -25,16 +37,22 @@ export function resolveViewerDealMemberRole(
   for (const m of members) {
     const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
     if (rowEmail !== em) continue
-    const role = String(m.investorRole ?? "").trim().toLowerCase()
-    if (!role || role === "—") continue
-    if (role === "lead sponsor") hasLead = true
-    else if (role === "admin sponsor") hasAdmin = true
-    else if (role === "co-sponsor" || role === "co sponsor") hasCo = true
-    if (
-      role === LP_INVESTOR_ROLE_VALUE.toLowerCase() ||
-      role === "lp investors"
-    )
-      hasLp = true
+    const roles = roleLikeStringsForMember(m)
+    if (roles.length === 0) continue
+    for (const raw of roles) {
+      const role = String(raw).trim().toLowerCase()
+      if (!role) continue
+      if (role === "lead sponsor") hasLead = true
+      else if (role === "admin sponsor") hasAdmin = true
+      else if (role === "co-sponsor" || role === "co sponsor") hasCo = true
+      if (
+        role === LP_INVESTOR_ROLE_VALUE.toLowerCase() ||
+        role === "lp investors" ||
+        role === "lp investor"
+      ) {
+        hasLp = true
+      }
+    }
   }
   if (hasLead) return "lead_sponsor"
   if (hasAdmin) return "admin_sponsor"

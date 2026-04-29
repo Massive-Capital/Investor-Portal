@@ -35,7 +35,6 @@ export async function resolveDealViewerScope(
   const [row] = await db
     .select({
       organizationId: users.organizationId,
-      companyName: users.companyName,
       role: users.role,
       email: users.email,
     })
@@ -47,7 +46,6 @@ export async function resolveDealViewerScope(
     row
       ? {
           organizationId: row.organizationId,
-          companyName: row.companyName,
           role: row.role,
         }
       : null,

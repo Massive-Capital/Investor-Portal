@@ -90,11 +90,15 @@ export async function postInviteUser(req: Request, res: Response): Promise<void>
   } else {
     try {
       const [inviter] = await db
-        .select()
+        .select({
+          organizationId: users.organizationId,
+          orgName: companies.name,
+        })
         .from(users)
+        .leftJoin(companies, eq(users.organizationId, companies.id))
         .where(eq(users.id, jwtUser.id))
         .limit(1);
-      const name = (inviter?.companyName ?? "").toString().trim();
+      const name = (inviter?.orgName ?? "").toString().trim();
       const orgId = inviter?.organizationId
         ? String(inviter.organizationId).trim()
         : null;

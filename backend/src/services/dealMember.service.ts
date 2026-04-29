@@ -56,6 +56,8 @@ function syntheticInvestmentFromDealMember(m: DealMemberRow): DealInvestmentRow 
     profileId: "",
     userInvestorProfileId: null,
     investor_role: m.dealMemberRole,
+    fundApproved: false,
+    fundApprovedCommitmentSnapshot: "",
     status: "",
     investorClass: "",
     docSignedDate: null,

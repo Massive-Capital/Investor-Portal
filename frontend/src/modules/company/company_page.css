@@ -1943,3 +1943,19 @@ select.cp_settings_input_pill.um_field_select {
   }
 }
 
+/* Settings tab — Billing */
+.cp_settings_billing_tab {
+  max-width: 42rem;
+}
+.cp_settings_billing_tab_title {
+  margin: 0 0 0.75em;
+  font-size: 1.125em;
+  font-weight: 600;
+  color: var(--font-color-title, #0f172a);
+}
+
+/* Settings tab — Members: embed user management */
+.company_page .cp_settings_members_embed .um_page {
+  margin-top: 0;
+  max-width: none;
+}

@@ -114,7 +114,17 @@ export function ExportAddressesModal({
     })
   }, [allVisibleSelected, visibleIds])
 
-  function handleExportExcel() {
+  function handleExportAll() {
+    if (addresses.length === 0) return
+    const csv = buildAddressesExportCsv(addresses)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const filename = `saved-addresses-export-all-${stamp}.csv`
+    downloadExportCsv(csv, filename, true)
+    toast.success("Addresses exported", `Saved as ${filename}`)
+    onClose()
+  }
+
+  function handleExportSelected() {
     const chosen = addresses.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildAddressesExportCsv(chosen)
@@ -154,7 +164,8 @@ export function ExportAddressesModal({
         </header>
 
         <p className="deals_export_modal_hint">
-          Search and select addresses, then export to Excel (CSV format).
+          Use <strong>Export all</strong> to download every address in this list, or search
+          and select rows, then <strong>Export selected</strong> (CSV).
         </p>
 
         <div className="deals_export_modal_search">
@@ -233,12 +244,20 @@ export function ExportAddressesModal({
           </button>
           <button
             type="button"
-            className="deals_export_modal_btn_primary"
-            onClick={handleExportExcel}
+            className="deals_export_modal_btn_secondary"
+            onClick={handleExportSelected}
             disabled={selectedIds.size === 0}
           >
+            Export selected
+          </button>
+          <button
+            type="button"
+            className="deals_export_modal_btn_primary"
+            onClick={handleExportAll}
+            disabled={addresses.length === 0}
+          >
             <Download size={16} strokeWidth={2} aria-hidden />
-            Export to Excel
+            Export all
           </button>
         </footer>
       </div>

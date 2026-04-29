@@ -15,6 +15,7 @@ import {
   Trash2,
   TrendingUp,
   X,
+  Hash,
 } from "lucide-react"
 import {
   useCallback,
@@ -47,6 +48,7 @@ import {
 } from "../utils/offeringDisplayLabels"
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import {
+  blurFormatNumberOfUnitsInput,
   blurFormatMoneyInput,
   formatMoneyFieldDisplay,
 } from "../utils/offeringMoneyFormat"
@@ -1063,6 +1065,9 @@ function validateInvestorClassStep1(
   if (isRequiredMoneyMissing(form.minimumInvestment)) {
     return "Minimum investment is required."
   }
+  if (!String(form.numberOfUnits ?? "").trim()) {
+    return "Number of units is required."
+  }
   if (form.subscriptionType === "mezzanine") {
     if (!form.advanced.classPreferredReturnType.trim()) {
       return "Preferred return type is required."
@@ -1081,6 +1086,7 @@ function emptyForm(): DealInvestorClassFormValues {
     raiseAmountDistributions: "",
     billingRaiseQuota: "",
     minimumInvestment: "",
+    numberOfUnits: "",
     pricePerUnit: "",
     status: "closed",
     visibility: "",
@@ -1100,6 +1106,7 @@ function rowToForm(row: DealInvestorClass): DealInvestorClassFormValues {
     ),
     billingRaiseQuota: blurFormatMoneyInput(row.billingRaiseQuota ?? ""),
     minimumInvestment: blurFormatMoneyInput(row.minimumInvestment ?? ""),
+    numberOfUnits: blurFormatNumberOfUnitsInput(row.numberOfUnits ?? ""),
     pricePerUnit: blurFormatMoneyInput(row.pricePerUnit ?? ""),
     status: row.status || "closed",
     visibility: row.visibility,
@@ -1328,6 +1335,9 @@ function InvestorClassModalFormBody({
               }
               if (isRequiredMoneyMissing(form.billingRaiseQuota)) {
                 patch.billingRaiseQuota = "$0"
+              }
+              if (!String(form.numberOfUnits ?? "").trim()) {
+                patch.numberOfUnits = "0"
               }
             }
             if (subscriptionType === "mezzanine") {
@@ -2006,6 +2016,45 @@ function InvestorClassModalFormBody({
                 <div className="um_field add_contact_field_tight">
                   <label
                     className="um_field_label_row"
+                    htmlFor={`${idPrefix}-adv-nou`}
+                  >
+                    <Hash className="um_field_label_icon" size={17} aria-hidden />
+                    <span>Number of units</span>
+                    <span className="contacts_required" aria-hidden>
+                      {" "}
+                      *
+                    </span>
+                    <span className="deals_add_inv_label_info deal_inv_ic_raise_own_info">
+                      <InfoIconPanel
+                        ariaLabel="More information: Number of units"
+                        infoContent={
+                          <p>Total units in this class offering (e.g. shares).</p>
+                        }
+                      />
+                    </span>
+                  </label>
+                  <input
+                    id={`${idPrefix}-adv-nou`}
+                    type="text"
+                    className={advInputCtl}
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={form.numberOfUnits}
+                    disabled={disabled}
+                    onChange={(e) => setForm({ numberOfUnits: e.target.value })}
+                    onBlur={(e) =>
+                      setForm({
+                        numberOfUnits: blurFormatNumberOfUnitsInput(
+                          e.target.value,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="um_field add_contact_field_tight">
+                  <label
+                    className="um_field_label_row"
                     htmlFor={`${idPrefix}-adv-ppu`}
                   >
                     <Tag className="um_field_label_icon" size={17} aria-hidden />
@@ -2231,6 +2280,14 @@ function ReadOnlyInvestorClassCard({
             </span>
           </div>
           <div className="deal_inv_class_metric_h">
+            <span className="deal_inv_class_metric_h_label">
+              Number of units
+            </span>
+            <span className="deal_inv_class_metric_h_value">
+              {row.numberOfUnits?.trim() ? row.numberOfUnits.trim() : "—"}
+            </span>
+          </div>
+          <div className="deal_inv_class_metric_h">
             <span className="deal_inv_class_metric_h_label">Price per unit</span>
             <span className="deal_inv_class_metric_h_value">
               {formatMoneyFieldDisplay(row.pricePerUnit)}
@@ -2376,6 +2433,13 @@ export function AddInvestorClassPanel({
     }
     if (isRequiredMoneyMissing(form.minimumInvestment)) {
       setErr("Minimum investment is required.")
+      return
+    }
+    if (
+      form.subscriptionType !== "gp" &&
+      !String(form.numberOfUnits ?? "").trim()
+    ) {
+      setErr("Number of units is required.")
       return
     }
     if (form.subscriptionType === "mezzanine") {
@@ -2629,6 +2693,13 @@ export function EditInvestorClassPanel({
     }
     if (isRequiredMoneyMissing(form.minimumInvestment)) {
       setErr("Minimum investment is required.")
+      return
+    }
+    if (
+      form.subscriptionType !== "gp" &&
+      !String(form.numberOfUnits ?? "").trim()
+    ) {
+      setErr("Number of units is required.")
       return
     }
     if (form.subscriptionType === "mezzanine") {

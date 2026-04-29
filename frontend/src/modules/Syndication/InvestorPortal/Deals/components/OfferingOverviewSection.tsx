@@ -11,7 +11,10 @@ import {
 import { computeDealAssetRowsFromClientStorage } from "../types/deal-asset.types"
 import { DEAL_FORM_TYPE_OPTIONS } from "../types/deals.types"
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
-import { blurFormatMoneyInput } from "../utils/offeringMoneyFormat"
+import {
+  blurFormatMoneyInput,
+  blurFormatNumberOfUnitsInput,
+} from "../utils/offeringMoneyFormat"
 import {
   DEFAULT_OFFERING_STATUS,
   DEFAULT_OFFERING_VISIBILITY,
@@ -39,6 +42,7 @@ type OverviewDraft = {
   selectedClassId: string
   classOfferingSize: string
   classMinimumInvestment: string
+  classNumberOfUnits: string
   classPricePerUnit: string
 }
 
@@ -64,6 +68,7 @@ function stateFromDetail(d: DealDetailApi): OverviewDraft {
     selectedClassId: "",
     classOfferingSize: "",
     classMinimumInvestment: "",
+    classNumberOfUnits: "",
     classPricePerUnit: "",
   }
 }
@@ -80,6 +85,7 @@ function mergeOverviewDraftWithClasses(
       selectedClassId: "",
       classOfferingSize: "",
       classMinimumInvestment: "",
+      classNumberOfUnits: "",
       classPricePerUnit: "",
     }
   }
@@ -94,6 +100,7 @@ function mergeOverviewDraftWithClasses(
       selectedClassId: pick,
       classOfferingSize: "",
       classMinimumInvestment: "",
+      classNumberOfUnits: "",
       classPricePerUnit: "",
     }
   }
@@ -104,12 +111,25 @@ function mergeOverviewDraftWithClasses(
     classMinimumInvestment: blurFormatMoneyInput(
       row.minimumInvestment ?? "",
     ),
+    classNumberOfUnits: blurFormatNumberOfUnitsInput(
+      row.numberOfUnits ?? "",
+    ),
     classPricePerUnit: blurFormatMoneyInput(row.pricePerUnit ?? ""),
   }
 }
 
 function sortedIdsKey(ids: string[]): string {
   return [...ids].sort().join("\0")
+}
+
+function isMoneyFieldEmpty(raw: string): boolean {
+  return String(raw ?? "")
+    .replace(/[$,\s]/g, "")
+    .trim() === ""
+}
+
+function isNumberOfUnitsFieldEmpty(raw: string): boolean {
+  return String(raw ?? "").trim() === ""
 }
 
 function draftEqual(a: OverviewDraft, b: OverviewDraft): boolean {
@@ -122,6 +142,7 @@ function draftEqual(a: OverviewDraft, b: OverviewDraft): boolean {
     a.selectedClassId === b.selectedClassId &&
     a.classOfferingSize === b.classOfferingSize &&
     a.classMinimumInvestment === b.classMinimumInvestment &&
+    a.classNumberOfUnits === b.classNumberOfUnits &&
     a.classPricePerUnit === b.classPricePerUnit
   )
 }
@@ -170,6 +191,14 @@ export function OfferingOverviewSection({
     [draft, savedSnapshot],
   )
 
+  const assetRows = useMemo(
+    () =>
+      computeDealAssetRowsFromClientStorage(detail).filter(
+        (r) => !r.archived,
+      ),
+    [detail],
+  )
+
   const handleReset = useCallback(() => {
     setDraft({ ...savedSnapshot })
   }, [savedSnapshot])
@@ -180,6 +209,36 @@ export function OfferingOverviewSection({
     if (!name) {
       toast.error("Offering name is required.")
       return
+    }
+    if (!draft.dealType.trim()) {
+      toast.error("Deal type is required.")
+      return
+    }
+    if (assetRows.length > 0 && draft.selectedAssetIds.length === 0) {
+      toast.error("Select at least one asset.")
+      return
+    }
+    if (classes.length > 0) {
+      if (!draft.selectedClassId) {
+        toast.error("Select an investor class.")
+        return
+      }
+      if (isMoneyFieldEmpty(draft.classMinimumInvestment)) {
+        toast.error("Minimum investment is required.")
+        return
+      }
+      if (isMoneyFieldEmpty(draft.classOfferingSize)) {
+        toast.error("Offering size is required.")
+        return
+      }
+      if (isNumberOfUnitsFieldEmpty(draft.classNumberOfUnits)) {
+        toast.error("Number of units is required.")
+        return
+      }
+      if (isMoneyFieldEmpty(draft.classPricePerUnit)) {
+        toast.error("Price per unit is required.")
+        return
+      }
     }
 
     const overviewBitsEqual =
@@ -194,6 +253,7 @@ export function OfferingOverviewSection({
       draft.selectedClassId === savedSnapshot.selectedClassId &&
       draft.classOfferingSize === savedSnapshot.classOfferingSize &&
       draft.classMinimumInvestment === savedSnapshot.classMinimumInvestment &&
+      draft.classNumberOfUnits === savedSnapshot.classNumberOfUnits &&
       draft.classPricePerUnit === savedSnapshot.classPricePerUnit
 
     if (overviewBitsEqual && classBitsEqual) return
@@ -236,6 +296,7 @@ export function OfferingOverviewSection({
         const form = investorClassRowToFormValues(row)
         form.offeringSize = draft.classOfferingSize
         form.minimumInvestment = draft.classMinimumInvestment
+        form.numberOfUnits = draft.classNumberOfUnits
         form.pricePerUnit = draft.classPricePerUnit
         try {
           await updateDealInvestorClass(
@@ -289,7 +350,7 @@ export function OfferingOverviewSection({
     } finally {
       setSaving(false)
     }
-  }, [classes, detail.id, draft, onSaved, savedSnapshot, saving])
+  }, [assetRows, classes, detail.id, draft, onSaved, savedSnapshot, saving])
 
   const visibilityOptionHint = useMemo(() => {
     const opt = OFFERING_VISIBILITY_OPTIONS.find(
@@ -299,14 +360,6 @@ export function OfferingOverviewSection({
       ? (opt as { optionHint?: string }).optionHint
       : undefined
   }, [draft.offeringVisibility])
-
-  const assetRows = useMemo(
-    () =>
-      computeDealAssetRowsFromClientStorage(detail).filter(
-        (r) => !r.archived,
-      ),
-    [detail],
-  )
 
   const id = detail.id
   const classFieldsDisabled = classes.length === 0
@@ -355,6 +408,7 @@ export function OfferingOverviewSection({
                   id={`deal-ov-status-${id}`}
                   className="deal_kh_select"
                   value={draft.offeringStatus}
+                  aria-required
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
@@ -388,6 +442,7 @@ export function OfferingOverviewSection({
                   id={`deal-ov-vis-${id}`}
                   className="deal_kh_select"
                   value={draft.offeringVisibility}
+                  aria-required
                   aria-describedby={
                     visibilityOptionHint ? visibilityHintId : undefined
                   }
@@ -454,6 +509,8 @@ export function OfferingOverviewSection({
                   type="text"
                   className="deal_kh_input"
                   value={draft.dealName}
+                  required
+                  aria-required
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, dealName: e.target.value }))
                   }
@@ -470,6 +527,9 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   <span>Deal type</span>
+                  <span className="deal_offering_ov_req" aria-hidden>
+                    *
+                  </span>
                   <span
                     className="deal_offering_ov_help"
                     title="Syndication structure (same as create-deal wizard)."
@@ -483,6 +543,8 @@ export function OfferingOverviewSection({
                   id={`deal-ov-dtype-${id}`}
                   className="deal_kh_select"
                   value={draft.dealType}
+                  required
+                  aria-required
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, dealType: e.target.value }))
                   }
@@ -504,6 +566,11 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   <span>Assets</span>
+                  {assetRows.length > 0 ? (
+                    <span className="deal_offering_ov_req" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
                   <span
                     className="deal_offering_ov_help"
                     title="Link one or more assets from this deal’s Assets list (saved with the offering)."
@@ -537,6 +604,11 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   <span>Investor class</span>
+                  {classes.length > 0 ? (
+                    <span className="deal_offering_ov_req" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
                   <span
                     className="deal_offering_ov_help"
                     title="Economics below apply to this class; manage full class terms under Classes."
@@ -550,6 +622,7 @@ export function OfferingOverviewSection({
                   id={`deal-ov-class-${id}`}
                   className="deal_kh_select"
                   disabled={classFieldsDisabled}
+                  aria-required={!classFieldsDisabled}
                   value={draft.selectedClassId}
                   onChange={(e) => {
                     const cid = e.target.value
@@ -564,6 +637,9 @@ export function OfferingOverviewSection({
                             ),
                             classMinimumInvestment: blurFormatMoneyInput(
                               row.minimumInvestment ?? "",
+                            ),
+                            classNumberOfUnits: blurFormatNumberOfUnitsInput(
+                              row.numberOfUnits ?? "",
                             ),
                             classPricePerUnit: blurFormatMoneyInput(
                               row.pricePerUnit ?? "",
@@ -592,6 +668,11 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   Minimum investment
+                  {!classFieldsDisabled ? (
+                    <span className="deal_offering_ov_req" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
                 </span>
               </div>
               <div className="deal_kh_td" role="cell">
@@ -601,6 +682,8 @@ export function OfferingOverviewSection({
                   className="deal_kh_input"
                   inputMode="decimal"
                   disabled={classFieldsDisabled}
+                  required={!classFieldsDisabled}
+                  aria-required={!classFieldsDisabled}
                   value={draft.classMinimumInvestment}
                   onChange={(e) =>
                     setDraft((d) => ({
@@ -629,6 +712,11 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   Offering size
+                  {!classFieldsDisabled ? (
+                    <span className="deal_offering_ov_req" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
                 </span>
               </div>
               <div className="deal_kh_td" role="cell">
@@ -638,6 +726,8 @@ export function OfferingOverviewSection({
                   className="deal_kh_input"
                   inputMode="decimal"
                   disabled={classFieldsDisabled}
+                  required={!classFieldsDisabled}
+                  aria-required={!classFieldsDisabled}
                   value={draft.classOfferingSize}
                   onChange={(e) =>
                     setDraft((d) => ({
@@ -663,7 +753,56 @@ export function OfferingOverviewSection({
             >
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
+                  Number of units
+                  {!classFieldsDisabled ? (
+                    <span className="deal_offering_ov_req" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <div className="deal_kh_td" role="cell">
+                <input
+                  id={`deal-ov-nunits-${id}`}
+                  type="text"
+                  className="deal_kh_input"
+                  inputMode="decimal"
+                  disabled={classFieldsDisabled}
+                  required={!classFieldsDisabled}
+                  aria-required={!classFieldsDisabled}
+                  value={draft.classNumberOfUnits}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      classNumberOfUnits: e.target.value,
+                    }))
+                  }
+                  onBlur={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      classNumberOfUnits: blurFormatNumberOfUnitsInput(
+                        e.target.value,
+                      ),
+                    }))
+                  }
+                  autoComplete="off"
+                  aria-label="Number of units"
+                />
+              </div>
+            </div>
+
+            <div
+              className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
+              role="row"
+            >
+              <div className="deal_kh_td" role="cell">
+                <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   Price per unit
+                  {!classFieldsDisabled ? (
+                    <span className="deal_offering_ov_req" aria-hidden>
+                      *
+                    </span>
+                  ) : null}
                 </span>
               </div>
               <div className="deal_kh_td" role="cell">
@@ -673,6 +812,8 @@ export function OfferingOverviewSection({
                   className="deal_kh_input"
                   inputMode="decimal"
                   disabled={classFieldsDisabled}
+                  required={!classFieldsDisabled}
+                  aria-required={!classFieldsDisabled}
                   value={draft.classPricePerUnit}
                   onChange={(e) =>
                     setDraft((d) => ({

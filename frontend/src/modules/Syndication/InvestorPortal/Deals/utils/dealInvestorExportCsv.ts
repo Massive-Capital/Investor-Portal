@@ -3,9 +3,12 @@ import { investorRoleLabel } from "../constants/investor-profile"
 import type { DealInvestorRow } from "../types/deal-investors.types"
 import {
   displayAddedInvestorsCommittedAmount,
-  displayInvestorCommittedAmount,
+  displayInvestorCommittedAmountExport,
 } from "../utils/offeringMoneyFormat"
-import { dealInvestorStatusForTable } from "./dealInvestorTableDisplay"
+import {
+  dealInvestorStatusForTable,
+  investorFundedColumnLabel,
+} from "./dealInvestorTableDisplay"
 
 export function escapeCsvCell(value: string): string {
   if (/[",\n\r]/.test(value)) {
@@ -67,9 +70,9 @@ export function buildDealInvestorsExportCsv(
       invClass,
       dealInvestorStatusForTable(row),
       String(row.addedByDisplayName ?? "").trim() || "—",
-      displayInvestorCommittedAmount(row),
+      displayInvestorCommittedAmountExport(row),
       row.signedDate,
-      row.fundedDate,
+      investorFundedColumnLabel(row),
       row.selfAccredited,
       row.verifiedAccLabel,
       row.userDisplayName,
@@ -98,7 +101,7 @@ export function buildDealMembersTableExportCsv(rows: DealInvestorRow[]): string 
       row.displayName,
       investorRoleLabel(row.investorRole ?? ""),
       row.investorClass,
-      displayInvestorCommittedAmount(row),
+      displayInvestorCommittedAmountExport(row),
       displayAddedInvestorsCommittedAmount(row),
       dealInvestorStatusForTable(row),
       row.addedByDisplayName,

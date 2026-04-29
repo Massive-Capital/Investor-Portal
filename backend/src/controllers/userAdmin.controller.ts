@@ -68,14 +68,24 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const fromQuery = organizationIdFromQuery(req);
+  const orgFromQuery =
+    fromQuery && ORG_UUID_RE.test(fromQuery.trim())
+      ? fromQuery.trim()
+      : undefined;
+  const orgFromActor =
+    actor.organizationId != null &&
+    ORG_UUID_RE.test(String(actor.organizationId).trim())
+      ? String(actor.organizationId).trim()
+      : undefined;
   const filterOrganizationId = isPlatformAdminRole(role)
-    ? organizationIdFromQuery(req)
+    ? orgFromQuery ?? orgFromActor
     : undefined;
 
   const rows = await listUsersForAdmin(
     role,
     actor.organizationId ?? null,
-    filterOrganizationId !== undefined
+    isPlatformAdminRole(role)
       ? { filterOrganizationId }
       : undefined,
   );
@@ -85,8 +95,8 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
   }
 
   const restrictToOrganizationId: string | null =
-    isCompanyAdminRole(role) && actor.organizationId
-      ? actor.organizationId
+    isCompanyAdminRole(role) && orgFromActor
+      ? orgFromActor
       : filterOrganizationId && ORG_UUID_RE.test(filterOrganizationId)
         ? filterOrganizationId
         : null;

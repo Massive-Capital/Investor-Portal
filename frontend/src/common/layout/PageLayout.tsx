@@ -1,18 +1,17 @@
-import { type ComponentType, useEffect } from "react"
+import { type ComponentType, useEffect, useId, useState } from "react"
 import {
   Briefcase,
   Building2,
+  ChevronDown,
   ContactRound,
-  CreditCard,
   FileText,
   Files,
   LayoutDashboard,
-  Mail,
+  Mails,
   Settings,
   Star,
   TrendingUp,
   UserCircle,
-  UserPlus,
   Users,
 } from "lucide-react"
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
@@ -36,12 +35,14 @@ import "./page_layout.css"
 
 type SidebarIcon = ComponentType<{ size?: number; className?: string }>
 
-type NavItem = {
-  label: string
-  to: string
-  icon: SidebarIcon
-  children?: undefined
-}
+type NavSubItem = { label: string; to: string; icon?: SidebarIcon }
+
+type NavItemLink = { label: string; to: string; icon: SidebarIcon }
+
+type NavItemGroup = { label: string; icon: SidebarIcon; submenu: NavSubItem[] }
+
+/** Top-level link, or a collapsible group (e.g. Contacts → All contacts, Email Templates). */
+type NavItem = NavItemLink | NavItemGroup
 
 /** Deals list, create, or deal detail — not investor-emails / reporting (their own nav items). */
 function isSyndicatingDealsNavActive(pathname: string): boolean {
@@ -54,25 +55,123 @@ function isSyndicatingDealsNavActive(pathname: string): boolean {
   return false
 }
 
+function isNavItemGroup(item: NavItem): item is NavItemGroup {
+  return "submenu" in item && Array.isArray(item.submenu)
+}
+
+/**
+ * Collapsible sidebar group (e.g. Contacts: All contacts + Email Templates).
+ */
+function SidebarNavGroup({
+  label,
+  icon: Icon,
+  items,
+  pathname,
+  isPathInGroup,
+}: {
+  label: string
+  icon: SidebarIcon
+  items: NavSubItem[]
+  pathname: string
+  isPathInGroup: (p: string) => boolean
+}) {
+  const reactId = useId()
+  const inSection = isPathInGroup(pathname)
+  const [open, setOpen] = useState(inSection)
+  useEffect(() => {
+    if (inSection) setOpen(true)
+  }, [inSection])
+  const headId = `${reactId}-nav-group-head`
+  const subId = `${reactId}-nav-group-sub`
+  return (
+    <div className="app_sidebar_group">
+      <button
+        type="button"
+        id={headId}
+        className={`app_sidebar_expand_btn${open ? " app_sidebar_expand_btn_open" : ""}${
+          inSection ? " app_sidebar_link_active" : ""
+        }`}
+        aria-expanded={open}
+        aria-controls={subId}
+        onClick={() => {
+          setOpen((o) => !o)
+        }}
+      >
+        <Icon size={18} />
+        <span className="app_sidebar_expand_label">{label}</span>
+        <ChevronDown
+          size={16}
+          className={`app_sidebar_expand_chevron${open ? " app_sidebar_expand_chevron_open" : ""}`}
+          aria-hidden
+        />
+      </button>
+      {open ? (
+        <div
+          id={subId}
+          className="app_sidebar_subnav"
+          role="group"
+          aria-labelledby={headId}
+        >
+          {items.map((s) => {
+            const SubIcon = s.icon
+            return (
+              <NavLink
+                key={s.to}
+                to={s.to}
+                end
+                className={({ isActive }) =>
+                  `app_sidebar_link app_sidebar_sublink${
+                    SubIcon ? " app_sidebar_sublink_with_icon" : ""
+                  }${
+                    isActive
+                      ? " app_sidebar_link_active app_sidebar_sublink_active"
+                      : ""
+                  }`
+                }
+              >
+                {SubIcon ? (
+                  <SubIcon
+                    size={16}
+                    className="app_sidebar_sublink_icon"
+                    aria-hidden
+                  />
+                ) : null}
+                <span>{s.label}</span>
+              </NavLink>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 const sharedSidebarItems: NavItem[] = [
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
-  { label: "Leads", to: "/leads", icon: UserPlus },
-  { label: "All contacts", to: "/contacts", icon: ContactRound },
+  // { label: "Leads", to: "/leads", icon: UserPlus },
+  {
+    label: "Contacts",
+    icon: ContactRound,
+    submenu: [
+      { label: "All contacts", to: "/contacts", icon: Users },
+      { label: "Email Templates", to: "/contacts/email-templates", icon: Mails },
+    ],
+  },
   { label: "Settings", to: "/settings", icon: Settings },
   { label: "Customers", to: "/customers", icon: Building2 },
-  { label: "Billing", to: "/billing", icon: CreditCard },
-  { label: "Members", to: "/members", icon: Users },
+  // { label: "Billing", to: "/billing", icon: CreditCard },
+  // { label: "Members", to: "/members", icon: Users },
 ]
 
 /** Syndicating — unique `to` per item so only one NavLink is active */
-const syndicationPortalNavItems: NavItem[] = [
+const syndicationPortalNavItems: NavItemLink[] = [
   { label: "Deals", to: "/deals", icon: Briefcase },
-  { label: "Investor emails", to: "/deals/investor-emails", icon: Mail },
+  // { label: "Investor emails", to: "/deals/investor-emails", icon: Mail },
   { label: "Reporting", to: "/deals/reporting", icon: Files },
 ]
 
 /** Investing mode — flat nav (reference UI) */
-const investingNavItems: NavItem[] = [
+const investingNavItems: NavItemLink[] = [
   { label: "Dashboard", to: "/", icon: LayoutDashboard },
   { label: "Company overview", to: "/investing/company", icon: Building2 },
   { label: "Investments", to: "/investing/investments", icon: TrendingUp },
@@ -113,17 +212,19 @@ function PageLayoutInner() {
     )
   }, [location.pathname, location.search])
 
-  /** After Contacts: Settings, Customers, Billing, Members — filtered by {@link canAccessSyndicationSidebarPath} */
+  /** After Contacts group: Settings, Customers, Billing, Members — filtered by {@link canAccessSyndicationSidebarPath} */
   const sharedSidebarTail = sharedSidebarItems
-    .slice(3)
-    .filter((item) =>
-      canAccessSyndicationSidebarPath(item.to, getStoredUserRole()),
-    )
+    .slice(2)
+    .filter((item) => {
+      const path = "to" in item && item.to ? item.to : null
+      if (!path) return true
+      return canAccessSyndicationSidebarPath(path, getStoredUserRole())
+    })
 
   const sidebarItems: NavItem[] = [
     sharedSidebarItems[0],
+    // [1] is Contacts group (sub: All contacts, Email Templates)
     sharedSidebarItems[1],
-    sharedSidebarItems[2],
     ...syndicationPortalNavItems,
     ...sharedSidebarTail,
   ]
@@ -198,6 +299,21 @@ function PageLayoutInner() {
                   )
                 })
               : sidebarItems.map((item) => {
+                  if (isNavItemGroup(item)) {
+                    return (
+                      <SidebarNavGroup
+                        key={item.label}
+                        label={item.label}
+                        icon={item.icon}
+                        items={item.submenu}
+                        pathname={location.pathname}
+                        isPathInGroup={(p) =>
+                          p === "/contacts" || p.startsWith("/contacts/")
+                        }
+                      />
+                    )
+                  }
+
                   const { label, to, icon: Icon } = item
 
                   if (to === "/deals") {

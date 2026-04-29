@@ -33,6 +33,16 @@ export interface DealInvestorRow {
    */
   memberRoleLabels?: string[]
   status: string
+  /**
+   * Stored `deal_investment.fund_approved` when API sends it; otherwise infer from
+   * workflow status for older payloads.
+   */
+  fundApproved?: boolean
+  /**
+   * Stored approved commitment total when sponsor last approved fund (numeric string).
+   * With further LP commits before re-approval, UI shows snapshot + new amount.
+   */
+  fundApprovedCommitmentSnapshot?: string
   committed: string
   signedDate: string
   fundedDate: string
@@ -56,6 +66,8 @@ export interface DealInvestorRow {
   addedByDisplayName?: string
   /** `users.id` of the sponsor who added this investor (when API sends it). */
   addedByUserId?: string
+  /** True when `addedByUserId` is a Lead / Admin / Co-sponsor on this deal’s roster. */
+  addedByIsSponsorOnDeal?: boolean
   /**
    * Deal Members tab: total committed (USD) on other investors this member added to the
    * roster (excludes their own commitment). From API `addedInvestorsCommitted`.

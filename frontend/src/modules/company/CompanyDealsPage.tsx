@@ -30,6 +30,8 @@ import {
   exportAuditLinesForDealListRows,
 } from "../Syndication/InvestorPortal/Deals/utils/dealsListExportCsv"
 import type { CustomerCompanyOutletContext } from "./CustomerCompanyLayout"
+import "../Syndication/InvestorPortal/Deals/deal-investors-tab.css"
+import "../Syndication/InvestorPortal/Deals/deals-list.css"
 import "../usermanagement/user_management.css"
 import "./company_page.css"
 
@@ -336,13 +338,16 @@ export default function CompanyDealsPage() {
 
   return (
     <div
-      className="um_panel um_members_tab_panel"
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${
+        loading ? " deals_list_table_panel_loading" : ""
+      }`}
       id="cp-company-panel-deals"
       role="tabpanel"
       aria-labelledby="cp-company-tab-deals"
+      aria-busy={loading}
     >
       <div className="cp_company_tab_panel_inner">
-        <div className="um_toolbar cp_company_tab_toolbar">
+        <div className="um_toolbar cp_company_tab_toolbar deal_inv_table_um_toolbar">
           <p className="cp_company_tab_toolbar_hint">
             Deals created for{" "}
             <strong className="cp_company_tab_toolbar_strong">
@@ -381,7 +386,8 @@ export default function CompanyDealsPage() {
         <div className="cp_company_tab_table_wrap">
           <DataTable
             visualVariant="members"
-            membersTableClassName="um_table_members cp_company_deals_table"
+            membersTableClassName="um_table_members deal_inv_table cp_company_deals_table"
+            initialSort={{ columnId: "name", direction: "asc" }}
             columns={columns}
             rows={loading ? [] : deals}
             getRowKey={(row, i) => row.id || `deal-${i}`}

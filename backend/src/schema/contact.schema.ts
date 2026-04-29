@@ -16,7 +16,7 @@ export const contact = pgTable("contact", {
   /**
    * Same `companies.id` as `users.organization_id` for the creating user (set on insert via
    * `resolveOrganizationIdForUserId` — usually the creator’s `users.organization_id`, or
-   * resolved from `users.company_name` when org id is not set yet).
+   * resolved from `companies` via the portal user’s `organization_id`).
    */
   organizationId: uuid("organization_id").references(() => companies.id, {
     onDelete: "set null",

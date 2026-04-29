@@ -4,6 +4,405 @@
   min-width: 0;
 }
 
+.email_templates_page .email_templates_tab_panel {
+  margin-top: 0.35rem;
+  max-width: 40em;
+}
+
+/* Templates tab: full width like Deal Members (table scrolls horizontally when zoomed out) */
+.email_templates_page .email_templates_tab_panel.email_templates_tab_panel_templates {
+  max-width: none;
+  width: 100%;
+}
+
+.email_templates_page .email_templates_panel_hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.9375em;
+  color: var(--portal-text-muted);
+}
+
+.email_templates_view_modal_body {
+  padding: 0 1.25rem 1rem;
+  box-sizing: border-box;
+}
+
+.email_templates_view_field_block {
+  margin-bottom: 1rem;
+}
+
+.email_templates_view_field_block:last-of-type {
+  margin-bottom: 0;
+}
+
+.email_templates_view_label {
+  margin-bottom: 0.35rem;
+}
+
+.email_templates_view_value {
+  margin: 0;
+  font-size: 1.05em;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  overflow-wrap: anywhere;
+}
+
+.email_templates_name_cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email_templates_meta_cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email_templates_edit_meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 1rem;
+  padding: 0 0.05rem;
+  font-size: 0.875em;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_templates_edit_meta strong {
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+}
+
+.email_templates_body_html {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--portal-muted-surface, #f8fafc);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--portal-text, #0f172a);
+  overflow-wrap: anywhere;
+  max-height: min(50vh, 24rem);
+  overflow: auto;
+}
+
+.email_templates_body_html :first-child {
+  margin-top: 0;
+}
+
+.email_templates_body_html :last-child {
+  margin-bottom: 0;
+}
+
+/* View template — layout like a received email (subject, headers, body pane, attachment). */
+.email_preview_modal_body {
+  padding: 0 1.25rem 1rem;
+}
+
+.email_preview_internal_note {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0 0 0.85rem;
+  font-size: 0.8125rem;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_preview_internal_icon {
+  flex-shrink: 0;
+  color: var(--portal-text-muted, #94a3b8);
+}
+
+.email_preview_sheet {
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.email_preview_subject_line {
+  margin: 0;
+  padding: 1rem 1.15rem 0.65rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--portal-text, #0f172a);
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+  overflow-wrap: anywhere;
+}
+
+.email_preview_header_lines {
+  margin: 0;
+  padding: 0.65rem 1.15rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+  background: color-mix(
+    in srgb,
+    var(--portal-text, #0f172a) 3%,
+    var(--portal-surface, #fff)
+  );
+}
+
+.email_preview_dl_row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 0.35rem 0.65rem;
+  margin: 0;
+  padding: 0.2rem 0;
+}
+
+.email_preview_dl_row dt {
+  margin: 0;
+  font-weight: 600;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_preview_dl_row dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--portal-text, #0f172a);
+  overflow-wrap: anywhere;
+}
+
+.email_preview_message_card {
+  padding: 1rem 1.15rem 1.15rem;
+  background: var(--portal-surface, #fff);
+}
+
+.email_preview_message_body {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: var(--portal-text, #0f172a);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: min(52vh, 26rem);
+  overflow: auto;
+}
+
+.email_preview_message_body :first-child {
+  margin-top: 0;
+}
+
+.email_preview_message_body :last-child {
+  margin-bottom: 0;
+}
+
+.email_preview_message_body a {
+  color: var(--portal-primary, #2563eb);
+  word-break: break-all;
+}
+
+.email_preview_empty_body {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-style: italic;
+  color: var(--portal-text-muted, #94a3b8);
+}
+
+.email_preview_attachments {
+  padding: 0 1.15rem 1rem;
+  border-top: 1px solid var(--portal-border, #e2e8f0);
+  background: color-mix(
+    in srgb,
+    var(--portal-text, #0f172a) 2%,
+    var(--portal-surface, #fff)
+  );
+}
+
+.email_preview_attachments_label {
+  margin: 0 0 0.45rem;
+  padding-top: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_preview_attachment_chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--portal-surface, #fff);
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--portal-text, #0f172a);
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.email_preview_attachment_chip:hover {
+  border-color: var(--portal-primary, #2563eb);
+  background: var(--portal-primary-soft, #eff6ff);
+}
+
+.email_preview_attachment_icon {
+  flex-shrink: 0;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_preview_attachment_name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email_preview_attachment_action {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-primary, #2563eb);
+}
+
+:root[data-theme="dark"] .email_preview_sheet {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+}
+
+:root[data-theme="dark"] .email_preview_header_lines,
+:root[data-theme="dark"] .email_preview_attachments {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.email_templates_attachment_download_btn {
+  margin-top: 0.25rem;
+}
+
+.email_template_new_page {
+  min-width: 0;
+}
+
+.email_template_new_title.deals_list_title {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+}
+
+.email_template_new_title_icon {
+  flex-shrink: 0;
+  color: var(--portal-primary, #2563eb);
+}
+
+.email_template_new_form {
+  padding: 1.25rem 1.25rem 1.5rem;
+  box-sizing: border-box;
+}
+
+.email_template_new_form .um_field {
+  margin-bottom: 1.15rem;
+}
+
+.email_template_new_label_row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.email_template_char_count {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+  flex-shrink: 0;
+}
+
+.email_template_field_hint {
+  margin-top: 0.35rem;
+  margin-bottom: 0;
+}
+
+.email_template_body_field {
+  min-width: 0;
+}
+
+.email_template_body_textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.email_template_attachment_field .email_template_attachment_upload_btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  margin-top: 0.35rem;
+}
+
+.email_template_attachment_input_hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.email_template_attachment_chosen {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.email_template_attachment_name {
+  font-weight: 600;
+  max-width: min(100%, 28rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.email_template_attachment_size {
+  font-size: 0.875em;
+  color: var(--portal-text-muted);
+}
+
+.email_template_attachment_remove {
+  margin-left: auto;
+}
+
+.email_template_new_actions {
+  margin-top: 0.5rem;
+  padding-top: 0;
+  justify-content: flex-end;
+}
+
+@keyframes email_template_new_btn_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.email_template_new_btn_spin {
+  animation: email_template_new_btn_spin 0.85s linear infinite;
+}
+
 /* Tags / Lists / Contacts tables — action cells are icon-only buttons */
 .contacts_row_icon_actions {
   display: inline-flex;
@@ -244,7 +643,12 @@
   box-sizing: border-box;
 }
 
-.contacts_um_table tbody tr.contacts_row_suspended td {
+/* Main contacts list uses `.deal_inv_table` (same as Deal Members / Investors) */
+.deal_inv_table_panel.contacts_table_panel
+  .um_table.deal_inv_table
+  tbody
+  tr.contacts_row_suspended
+  td {
   opacity: 0.78;
 }
 
@@ -267,6 +671,11 @@
   overflow-x: hidden;
   min-width: 0;
   box-sizing: border-box;
+}
+
+/* Email template “View” = reading-pane style preview (wider than default contact view). */
+.contacts_view_modal.um_modal.um_modal_view.email_templates_email_preview_modal {
+  max-width: min(44rem, 100%);
 }
 
 .contacts_view_modal .um_modal_head {
@@ -338,7 +747,13 @@
   box-sizing: border-box;
 }
 
-/* Table wrap: match Members directory — single horizontal scroll, no nested deals shell. */
+.contacts_view_modal_footer .contacts_view_modal_close_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+}
+
+/* Tags / Lists tables: plain shell, fixed layout (All contacts uses `deal-investors-tab` + `.deal_inv_table`) */
 .contacts_table_panel .um_table_wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -356,18 +771,28 @@
   vertical-align: middle;
 }
 
-/* Deal count: center header + numeric cell (overrides .um_table td { text-align: left }). */
-.contacts_table_panel .um_table.contacts_um_table th.contacts_th_deals_count,
-.contacts_table_panel .um_table.contacts_um_table td.contacts_td_deals_count {
+/* Main contacts: Deals column — match centered numeric header/cell on `.deal_inv_table` */
+.deal_inv_table_panel.contacts_table_panel
+  .um_table.deal_inv_table
+  th.contacts_th_deals_count,
+.deal_inv_table_panel.contacts_table_panel
+  .um_table.deal_inv_table
+  td.contacts_td_deals_count {
   text-align: center;
 }
 
-.contacts_table_panel .um_table.contacts_um_table th.contacts_th_deals_count .um_sort_header_ctl {
+.deal_inv_table_panel.contacts_table_panel
+  .um_table.deal_inv_table
+  th.contacts_th_deals_count
+  .um_sort_header_ctl {
   justify-content: center;
   text-align: center;
 }
 
-.contacts_table_panel .um_table.contacts_um_table th.contacts_th_deals_count .um_sort_header_label {
+.deal_inv_table_panel.contacts_table_panel
+  .um_table.deal_inv_table
+  th.contacts_th_deals_count
+  .um_sort_header_label {
   flex: 0 1 auto;
 }
 

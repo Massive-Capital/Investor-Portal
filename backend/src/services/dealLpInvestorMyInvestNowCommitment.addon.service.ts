@@ -344,6 +344,7 @@ export async function applyMyInvestNowCommitmentAddon(
                     ? undefined
                     : (sUip.value as string | null) ?? null,
                 investor_role: LP_INVESTOR_ROLE_STORED,
+                fundApproved: false,
                 status: statusOpt !== undefined ? statusOpt : "",
                 investorClass: classRes.storedInvestorClass,
                 docSignedDate: docNorm.value === undefined ? null : docNorm.value,
@@ -457,6 +458,7 @@ export async function applyMyInvestNowCommitmentAddon(
             profileId: rowProfileId,
             userInvestorProfileId: rowUip,
             investor_role: LP_INVESTOR_ROLE_STORED,
+            fundApproved: false,
             status: statusOpt !== undefined ? String(statusOpt) : "",
             investorClass: String(inv.investorClass ?? "").trim() || "",
             docSignedDate:
@@ -502,9 +504,13 @@ export async function applyMyInvestNowCommitmentAddon(
                 throw new Error("LP_COMMITMENT_ROW_MISSING");
             const previous = committedNumericFromDealInvestmentRow(fresh);
             const newTotal = previous + increment;
+            const wasFundApproved = Boolean(fresh.fundApproved);
             const invPatch: Pick<
                 DealInvestmentInsert,
-                "commitmentAmount" | "extraContributionAmounts" | "userInvestorProfileId"
+                | "commitmentAmount"
+                | "extraContributionAmounts"
+                | "userInvestorProfileId"
+                | "fundApproved"
             > & {
                 profileId?: string;
                 status?: string;
@@ -513,6 +519,13 @@ export async function applyMyInvestNowCommitmentAddon(
                 commitmentAmount: formatCumulativeCommitmentStored(newTotal),
                 extraContributionAmounts: [],
             };
+            // Further LP commitment after sponsor approval requires re-approval; committed total is prior + new increment.
+            if (wasFundApproved) {
+                invPatch.fundApproved = false;
+                if (statusOpt === undefined) {
+                    invPatch.status = "";
+                }
+            }
             if (profileOpt)
                 invPatch.profileId = profileOpt;
             if (statusOpt !== undefined)

@@ -1,4 +1,11 @@
-import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { userInvestorProfiles } from "../investing.schema/userProfileBook.schema.js";
 import { addDealForm } from "./add-deal-form.schema.js";
 
@@ -19,6 +26,12 @@ export const dealInvestment = pgTable("deal_investment", {
     { onDelete: "set null" },
   ),
   investor_role: text("investor_role").notNull().default(""),
+  /** Sponsor “Funded” / approve-fund flag; UI maps to Approved vs Not Approved. */
+  fundApproved: boolean("fund_approved").notNull().default(false),
+  /** Committed total (numeric string) when fund was last approved; used for split UI after LP adds more. */
+  fundApprovedCommitmentSnapshot: text("fund_approved_commitment_snapshot")
+    .notNull()
+    .default(""),
   status: text("status").notNull().default(""),
   investorClass: text("investor_class").notNull().default(""),
   docSignedDate: text("doc_signed_date"),

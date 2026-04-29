@@ -79,6 +79,7 @@
   align-items: center;
   gap: 0.4em;
   margin-left: 0.25em;
+  min-height: 2.25em;
 }
 
 .um_table_pagination_page_size_label {
@@ -94,12 +95,16 @@
 }
 
 .um_table_pagination_select {
+  box-sizing: border-box;
   margin: 0;
-  padding: 0.35em 2em 0.35em 0.65em;
+  height: 2.25em;
+  min-height: 2.25em;
+  padding: 0 2em 0 0.65em;
   font-family: var(--portal-font-sans, "Inter", sans-serif);
   font-style: normal;
   font-size: 0.9375rem;
   font-weight: 500;
+  line-height: 1.2;
   color: #334155;
   background: #fff;
   border: 1px solid #e2e8f0;

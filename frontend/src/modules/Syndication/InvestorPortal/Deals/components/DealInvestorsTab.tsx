@@ -1,20 +1,16 @@
 import {
   Activity,
   BadgeCheck,
-  Calculator,
   CircleDollarSign,
-  Clock,
   DollarSign,
   Download,
+  FileCheck,
   Landmark,
-  ListOrdered,
   PiggyBank,
   Plus,
   Search,
   Tag,
   UserRound,
-  Users,
-  UserX,
 } from "lucide-react"
 import {
   forwardRef,
@@ -41,6 +37,7 @@ import {
 import { notifyDealInvestorsExportAudit } from "../api/dealInvestorsExportNotifyApi"
 import { InviteMailStatusBadge } from "./InviteMailStatusBadge"
 import { DealMemberUserCell } from "./DealMemberUserCell"
+import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCell"
 import { DealInvestorRoleCell } from "./DealInvestorRoleBadge"
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal"
 import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay"
@@ -50,7 +47,9 @@ import { DealInvestorViewModal } from "./DealInvestorViewModal"
 import type { AddInvestmentFormValues } from "../deal-members"
 import {
   displayInvestorCommittedAmount,
+  fundedAmountForTotalFundedKpi,
   formatMoneyFieldDisplay,
+  investorRowCommittedAmountIsZero,
   parseMoneyDigits,
 } from "../utils/offeringMoneyFormat"
 import {
@@ -58,7 +57,9 @@ import {
   type DataTableColumn,
 } from "../../../../../common/components/data-table/DataTable"
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
+import { toast } from "../../../../../common/components/Toast"
 import { ToolStyleCard } from "../../../../../common/components/tool-style-card/ToolStyleCard"
+import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
 import {
   upsertRuntimeForViewerFromInvestorsPayload,
   upsertRuntimeFromViewerAddInvestmentForm,
@@ -79,13 +80,18 @@ import {
   investorRoleSelectValueFromStored,
   isLpInvestorRole,
 } from "../constants/investor-profile"
+import { INVESTMENT_STATUS_APPROVE_FUND } from "../constants/investment-status"
 import { formatMemberUsername } from "../../../../usermanagement/memberAdminShared"
 import {
   buildDealInvestorsExportCsv,
   downloadDealExportCsv,
   exportAuditLinesForDealInvestorRows,
 } from "../utils/dealInvestorExportCsv"
-import { dealInvestorStatusDisplayLabel } from "../utils/dealInvestorTableDisplay"
+import {
+  dealInvestorStatusDisplayLabel,
+  investorFundedColumnLabel,
+  investorRowIsFundApproved,
+} from "../utils/dealInvestorTableDisplay"
 import type {
   DealInvestorRow,
   DealInvestorsKpis,
@@ -182,6 +188,16 @@ function formatUsdKpiDisplay(n: number): string {
   }).format(n)
 }
 
+/** Total Funded tile: always show USD (including `$0`); never em dash. */
+function formatUsdKpiTotalFunded(n: number): string {
+  const v = Number.isFinite(n) ? Math.max(0, n) : 0
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(v)
+}
+
 /**
  * Same source order as the deals list Investor Class column: investor-classes API
  * first, then list-row snapshot from deal detail when the API has not loaded classes yet.
@@ -229,7 +245,27 @@ function dealInvestorRowToFormValues(row: DealInvestorRow): AddInvestmentFormVal
     extraContributionAmounts: [...(row.extraContributionAmounts ?? [])],
     documentFileName: null,
     sendInvitationMail: "no",
+    fundApproved:
+      typeof row.fundApproved === "boolean"
+        ? row.fundApproved
+        : investorRowIsFundApproved(row),
   }
+}
+
+function investorRowSupportsApproveFund(row: DealInvestorRow): boolean {
+  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false
+  if (row.investorKind === "lp_roster") return false
+  return true
+}
+
+/** True when status is already at/after “Approve fund” or terminal — action disabled. */
+function investorRowApproveFundNotApplicable(row: DealInvestorRow): boolean {
+  if (investorRowIsFundApproved(row)) return true
+  const s = (row.status ?? "").trim()
+  if (!s || s === "—") return false
+  if (s.startsWith("Inactive")) return true
+  if (s.startsWith("Canceled")) return true
+  return false
 }
 
 function resolveInvestorClassLabelForRow(
@@ -284,14 +320,13 @@ function DealInvEllipsisText({
 }
 
 /**
- * Offering Size KPI: sum of all investor-class offering sizes (Offering Information),
- * then deal `offeringSize` / list `raiseTarget`, then API KPIs.
+ * Same basis as the Offering Size KPI tile — numeric dollars, or `null` when unknown.
  */
-function resolveOfferingSizeKpi(
+function resolveOfferingSizeKpiAmount(
   base: DealInvestorsKpis,
   dealDetail: DealDetailApi | null | undefined,
   investorClasses: DealInvestorClass[],
-): string {
+): number | null {
   let sumFromClasses = 0
   let hasAnyClassAmount = false
   for (const c of investorClasses) {
@@ -301,19 +336,41 @@ function resolveOfferingSizeKpi(
       sumFromClasses += n
     }
   }
-  if (hasAnyClassAmount)
-    return formatMoneyFieldDisplay(String(sumFromClasses))
+  if (hasAnyClassAmount) return sumFromClasses
 
-  if (dealDetail?.offeringSize?.trim())
-    return formatMoneyFieldDisplay(dealDetail.offeringSize)
+  if (dealDetail?.offeringSize?.trim()) {
+    const n = parseMoneyDigits(dealDetail.offeringSize)
+    return Number.isFinite(n) ? n : null
+  }
 
   const raise = dealDetail?.listRow?.raiseTarget?.trim()
-  if (raise && raise !== "—") return formatMoneyFieldDisplay(raise)
+  if (raise && raise !== "—") {
+    const n = parseMoneyDigits(raise)
+    return Number.isFinite(n) ? n : null
+  }
 
   const apiOs = base.offeringSize?.trim()
-  if (apiOs && apiOs !== "—") return formatMoneyFieldDisplay(apiOs)
+  if (apiOs && apiOs !== "—") {
+    const n = parseMoneyDigits(apiOs)
+    return Number.isFinite(n) ? n : null
+  }
 
-  return "—"
+  return null
+}
+
+/**
+ * Offering Size KPI: sum of all investor-class offering sizes (Offering Information),
+ * then deal `offeringSize` / list `raiseTarget`, then API KPIs.
+ */
+function resolveOfferingSizeKpi(
+  base: DealInvestorsKpis,
+  dealDetail: DealDetailApi | null | undefined,
+  investorClasses: DealInvestorClass[],
+): string {
+  const amt = resolveOfferingSizeKpiAmount(base, dealDetail, investorClasses)
+  return amt != null && Number.isFinite(amt)
+    ? formatMoneyFieldDisplay(String(amt))
+    : "—"
 }
 
 function DealInvestorsPopulated({
@@ -328,6 +385,7 @@ function DealInvestorsPopulated({
   onCopyOfferingLink,
   onDeleteMember,
   offeringLinkAvailable,
+  onRefreshInvestors,
 }: {
   initialPayload: DealInvestorsPayload
   dealId: string
@@ -340,10 +398,54 @@ function DealInvestorsPopulated({
   onCopyOfferingLink?: (row: DealInvestorRow) => void
   onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>
   offeringLinkAvailable: boolean
+  onRefreshInvestors?: () => void | Promise<void>
 }) {
   const [query, setQuery] = useState("")
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [rows, setRows] = useState<DealInvestorRow[]>(initialPayload.investors)
+  const [approveFundBusyId, setApproveFundBusyId] = useState<string | null>(null)
+
+  const handleApproveFund = useCallback(
+    async (row: DealInvestorRow) => {
+      if (!getApiV1Base()) {
+        toast.error(
+          "Not available",
+          "Configure the API base URL to update investments.",
+        )
+        return
+      }
+      if (
+        !investorRowSupportsApproveFund(row) ||
+        investorRowApproveFundNotApplicable(row) ||
+        investorRowCommittedAmountIsZero(row)
+      ) {
+        return
+      }
+      setApproveFundBusyId(row.id)
+      try {
+        const values: AddInvestmentFormValues = {
+          ...dealInvestorRowToFormValues(row),
+          status: INVESTMENT_STATUS_APPROVE_FUND,
+          fundApproved: true,
+        }
+        const res = await putDealInvestment(dealId, row.id, values, null)
+        if (!res.ok) {
+          toast.error("Could not approve fund", res.message)
+          return
+        }
+        if (res.mode !== "api") {
+          toast.error("Not available", "API is not configured.")
+          return
+        }
+        toast.success("Fund approved", "Investment status updated.")
+        await onRefreshInvestors?.()
+      } finally {
+        setApproveFundBusyId(null)
+      }
+    },
+    [dealId, onRefreshInvestors],
+  )
+
   const kpis = useMemo((): DealInvestorsKpis => {
     const base = initialPayload.kpis
     const sum = rows.reduce(
@@ -353,6 +455,18 @@ function DealInvestorsPopulated({
     )
     const count = rows.length
     const avg = count > 0 && sum > 0 ? sum / count : 0
+    const approvedInvestorCount = rows.filter(
+      (r) =>
+        r.id !== ADD_MEMBER_DRAFT_ROW_ID && investorRowIsFundApproved(r),
+    ).length
+    const fundedSum = rows
+      .filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID)
+      .reduce((acc, r) => acc + fundedAmountForTotalFundedKpi(r), 0)
+    const offeringAmt = resolveOfferingSizeKpiAmount(
+      base,
+      dealDetail,
+      investorClasses,
+    )
     return {
       ...base,
       offeringSize: resolveOfferingSizeKpi(
@@ -362,9 +476,17 @@ function DealInvestorsPopulated({
       ),
       committed: formatUsdKpiDisplay(sum),
       totalApproved: formatUsdKpiDisplay(sum),
-      approvedCount: String(count),
+      /** Headcount of fund-approved investors (matches Funded column / investorRowIsFundApproved). */
+      approvedCount: String(approvedInvestorCount),
       averageApproved:
         count > 0 && sum > 0 ? formatUsdKpiDisplay(avg) : "—",
+      /** Sum of funded $: full commitment when Funded is Approved; if pending re-approval after LP increase, only the approved snapshot counts until sponsor approves again. */
+      totalFunded: formatUsdKpiTotalFunded(fundedSum),
+      /** Offering size (same basis as tile) minus total funded; unknown offering → "—". */
+      remaining:
+        offeringAmt != null && Number.isFinite(offeringAmt)
+          ? formatUsdKpiTotalFunded(offeringAmt - fundedSum)
+          : "—",
     }
   }, [
     initialPayload.kpis,
@@ -379,6 +501,18 @@ function DealInvestorsPopulated({
   const [filterAccreditation, setFilterAccreditation] = useState("")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+
+  /** Count of investors with a signed date (excludes add-member draft row). */
+  const documentSignedKpi = useMemo(() => {
+    const dataRows = rows.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID)
+    const signedCount = dataRows.filter((r) => {
+      const s = String(r.signedDate ?? "").trim()
+      return s && s !== "—"
+    }).length
+    return dataRows.length > 0
+      ? `${signedCount} of ${dataRows.length}`
+      : "—"
+  }, [rows])
 
   useEffect(() => {
     setRows(initialPayload.investors)
@@ -399,7 +533,7 @@ function DealInvestorsPopulated({
             ? "mail sent"
             : "not sent"
         const haystack =
-          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel}`.toLowerCase()
+          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel} ${investorFundedColumnLabel(r)}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       if (filterClass) {
@@ -427,10 +561,10 @@ function DealInvestorsPopulated({
           return false
       }
       if (filterFunding === "funded") {
-        if (!r.fundedDate?.trim() || r.fundedDate === "—") return false
+        if (!investorRowIsFundApproved(r)) return false
       }
       if (filterFunding === "pending") {
-        if (r.fundedDate && r.fundedDate !== "—") return false
+        if (investorRowIsFundApproved(r)) return false
       }
       return true
     })
@@ -612,12 +746,7 @@ function DealInvestorsPopulated({
         thClassName: "deals_th_align_right",
         sortValue: (row) => displayInvestorCommittedAmount(row),
         tdClassName: "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
-        cell: (row) => (
-          <DealInvEllipsisText
-            alignEnd
-            text={displayInvestorCommittedAmount(row)}
-          />
-        ),
+        cell: (row) => <DealInvestorCommittedAmountCell row={row} />,
       },
       {
         id: "signed",
@@ -629,9 +758,11 @@ function DealInvestorsPopulated({
       {
         id: "funded",
         header: "Funded",
-        sortValue: (row) => row.fundedDate ?? "",
+        sortValue: (row) => (investorRowIsFundApproved(row) ? "1" : "0"),
         tdClassName: "deal_inv_td_ellipsis",
-        cell: (row) => <DealInvEllipsisText text={row.fundedDate ?? "—"} />,
+        cell: (row) => (
+          <DealInvEllipsisText text={investorFundedColumnLabel(row)} />
+        ),
       },
       {
         id: "selfAcc",
@@ -686,6 +817,24 @@ function DealInvestorsPopulated({
               onSendInvite={(r) => {
                 void onSendInvitationMail?.(r)
               }}
+              onApproveFund={handleApproveFund}
+              approveFundDisabled={
+                approveFundBusyId === row.id ||
+                !investorRowSupportsApproveFund(row) ||
+                investorRowApproveFundNotApplicable(row) ||
+                investorRowCommittedAmountIsZero(row)
+              }
+              approveFundDisabledTitle={
+                approveFundBusyId === row.id
+                  ? "Approving…"
+                  : !investorRowSupportsApproveFund(row)
+                    ? "Available only for investors with an investment record"
+                    : investorRowApproveFundNotApplicable(row)
+                      ? "Already past this step or closed"
+                      : investorRowCommittedAmountIsZero(row)
+                        ? "Committed amount must be greater than $0"
+                        : undefined
+              }
               onDelete={(r) => {
                 void onDeleteMember?.(r)
               }}
@@ -704,6 +853,8 @@ function DealInvestorsPopulated({
       onCopyOfferingLink,
       onDeleteMember,
       offeringLinkAvailable,
+      handleApproveFund,
+      approveFundBusyId,
     ],
   )
 
@@ -728,47 +879,22 @@ function DealInvestorsPopulated({
             description: kpis.offeringSize,
           },
           { icon: DollarSign, title: "Committed", description: kpis.committed },
-          { icon: PiggyBank, title: "Remaining", description: kpis.remaining },
           {
-            icon: BadgeCheck,
-            title: "Total Approved",
-            description: kpis.totalApproved,
+            icon: FileCheck,
+            title: "Document signed",
+            description: documentSignedKpi,
           },
           {
-            icon: Clock,
-            title: "Total Pending",
-            description: kpis.totalPending,
+            icon: BadgeCheck,
+            title: "Approved",
+            description: kpis.approvedCount,
           },
           {
             icon: Landmark,
             title: "Total Funded",
             description: kpis.totalFunded,
           },
-          {
-            icon: Users,
-            title: "Approved",
-            description: kpis.approvedCount,
-          },
-          {
-            icon: UserRound,
-            title: "Pending",
-            description: kpis.pendingCount,
-          },
-          {
-            icon: ListOrdered,
-            title: "Waitlist",
-            description: kpis.waitlistCount,
-          },
-          {
-            icon: Calculator,
-            title: "Average Approved",
-            description: kpis.averageApproved,
-          },
-          {
-            icon: UserX,
-            title: "Non-Accredited",
-            description: kpis.nonAccreditedCount,
-          },
+          { icon: PiggyBank, title: "Remaining", description: kpis.remaining },
         ] as const
       ).map((item) => (
         <ToolStyleCard
@@ -779,7 +905,7 @@ function DealInvestorsPopulated({
           description={item.description}
         />
       )),
-    [kpis],
+    [kpis, documentSignedKpi],
   )
 
   return (
@@ -907,17 +1033,18 @@ function DealInvestorsPopulated({
                 htmlFor={`deal-inv-filter-funding-${dealId}`}
               >
                 <Landmark size={14} strokeWidth={2} aria-hidden />
-                Funding status
+                Funded
               </label>
               <select
                 id={`deal-inv-filter-funding-${dealId}`}
                 className="deal_inv_filter_select"
                 value={filterFunding}
                 onChange={(e) => setFilterFunding(e.target.value)}
+                aria-label="Filter by funded status"
               >
                 <option value="">All</option>
-                <option value="funded">Funded</option>
-                <option value="pending">Pending</option>
+                <option value="funded">Approved</option>
+                <option value="pending">Not Approved</option>
               </select>
             </div>
             <div className="deal_inv_filter_field">
@@ -1338,6 +1465,18 @@ export const DealInvestorsTab = forwardRef<
   /** Investors table/KPI (`modalOnly` false): always use Add/Edit Investor chrome. Deal Members tab (`modalOnly` true) follows parent `addInvestmentEntry` for Add/Edit Member vs shared flows. */
   const addEntryForModal = modalOnly ? addInvestmentEntry : "investor"
 
+  const refreshInvestorsFromApi = useCallback(async () => {
+    const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
+    setPayload(data)
+    const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+    upsertRuntimeForViewerFromInvestorsPayload(
+      dealId,
+      full,
+      dealDetail ?? null,
+    )
+    onInvestorsChanged?.()
+  }, [dealId, dealDetail, onInvestorsChanged])
+
   const modal = (
     <AddInvestmentModal
       dealId={dealId}
@@ -1457,6 +1596,7 @@ export const DealInvestorsTab = forwardRef<
         onCopyOfferingLink={onCopyOfferingLink}
         onDeleteMember={onDeleteMember}
         offeringLinkAvailable={offeringLinkAvailable}
+        onRefreshInvestors={refreshInvestorsFromApi}
       />
       <DealInvestorViewModal
         row={viewInvestorRow}

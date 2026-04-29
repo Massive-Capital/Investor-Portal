@@ -159,6 +159,8 @@
 .deal_offer_pf_about_offering_section {
   margin-top: 0;
   padding-top: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Offering preview — Documents (local list; View opens in a new tab) */
@@ -823,6 +825,10 @@
 
 .deal_offer_pf_summary_prose--compact {
   font-size: 0.8125rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .deal_offer_pf_bullets--compact {
@@ -1778,7 +1784,13 @@
   font-size: 0.9375em;
   line-height: 1.6;
   color: var(--portal-text, #334155);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  word-wrap: break-word;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .deal_offer_pf_summary_prose p {
@@ -1817,6 +1829,24 @@
 .deal_offer_pf_summary_prose a {
   color: var(--portal-link, #2563eb);
   text-decoration: underline;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.deal_offer_pf_summary_prose pre,
+.deal_offer_pf_summary_prose code {
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  box-decoration-break: clone;
+}
+.deal_offer_pf_summary_prose table {
+  max-width: 100%;
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .deal_offer_pf_summary_prose img,

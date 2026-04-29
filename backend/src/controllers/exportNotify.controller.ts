@@ -19,7 +19,6 @@ async function loadExporterAuditContext(userId: string): Promise<{
       email: users.email,
       firstName: users.firstName,
       lastName: users.lastName,
-      companyName: users.companyName,
       orgName: companies.name,
     })
     .from(users)
@@ -30,8 +29,7 @@ async function loadExporterAuditContext(userId: string): Promise<{
   if (!r) return null;
   const display =
     [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || r.email;
-  const org =
-    r.companyName?.trim() || r.orgName?.trim() || "—";
+  const org = r.orgName?.trim() || "—";
   return {
     exporterDisplayName: display,
     exporterEmail: r.email,

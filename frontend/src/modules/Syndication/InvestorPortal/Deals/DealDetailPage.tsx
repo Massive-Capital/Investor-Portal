@@ -599,10 +599,10 @@ export function DealDetailPage() {
 
       {showSyndicatingDealChrome ? (
         <>
-      <div className="um_members_tabs_outer deals_tabs_outer">
-        <TabsScrollStrip scrollClassName="deals_tabs_scroll">
+      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
-            className="um_members_tabs_row deals_tabs_row"
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
             role="tablist"
             aria-label="Deal sections"
           >
@@ -617,16 +617,20 @@ export function DealDetailPage() {
                   aria-selected={isActive}
                   aria-controls="deal-detail-tabpanel"
                   id={`deal-tab-${tab.id}`}
-                  className={`um_members_tab deals_tabs_tab${isActive ? " um_members_tab_active" : ""}`}
+                  className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                    isActive ? " um_members_tab_active" : ""
+                  }`}
                   onClick={() => setActiveTab(tab.id)}
                 >
                   <TabIcon
-                    className="deals_tabs_icon"
-                    size={18}
-                    strokeWidth={1.75}
+                    className="deals_tabs_icon um_segmented_tab_icon"
+                    size={16}
+                    strokeWidth={2}
                     aria-hidden
                   />
-                  <span className="deals_tabs_label">{tab.label}</span>
+                  <span className="deals_tabs_label um_segmented_tab_label">
+                    {tab.label}
+                  </span>
                 </button>
               )
             })}

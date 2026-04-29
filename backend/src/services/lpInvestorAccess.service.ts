@@ -1,11 +1,13 @@
 /**
- * LP investing-mode nav, session flags, and deal allowlists are **only** from `deal_lp_investor`
- * (email via `contact_member_id` → `contact.email`). `deal_member` / sponsors never grant
- * investing shell — matches “only LP investors on the LP roster table get the investing portal.”
+ * LP investing-mode nav, session flags, and deal allowlists from:
+ * - `deal_lp_investor` (contact email and/or denormalized `deal_lp_investor.email`),
+ * - `deal_member` where the viewer was added (`added_by`) by a user who is a sponsor on the same deal, and
+ * - `deal_investment` where `contact_id` is the viewer’s portal user id or a contact with the same email
+ *   (cap table, including $0 before commitment).
  */
-import { and, inArray, sql } from "drizzle-orm";
+import { and, inArray, or, sql } from "drizzle-orm";
 import { isCompanyAdminRole, isPlatformAdminRole } from "../constants/roles.js";
-import { db } from "../database/db.js";
+import { db, pool } from "../database/db.js";
 import { dealLpInvestor } from "../schema/deal.schema/deal-lp-investor.schema.js";
 import { contact } from "../schema/schema.js";
 
@@ -22,40 +24,144 @@ export function isLpInvestorRoleInLpTable(role: string | null | undefined): bool
 }
 
 /**
- * Distinct `deal_id`s where this email matches the LP investor row's contact (`contact_member_id` → `contact.email`).
- * Rows on `deal_lp_investor` are LP investor entries; email is resolved from `contact`, not a column on `deal_lp_investor`.
+ * Distinct `deal_id`s where this email matches the LP row via `contact.email` and/or
+ * denormalized `deal_lp_investor.email` (e.g. invite flow sets the column before contact is updated).
  */
-/** `deal_id`s where this email appears on `deal_lp_investor` (contact match). */
 async function listDealIdsFromLpInvestorTableForEmail(
   emailNorm: string,
 ): Promise<string[]> {
   const e = String(emailNorm ?? "").trim().toLowerCase();
   if (!e || !e.includes("@")) return [];
 
-  const rows = await db
-    .selectDistinct({ dealId: dealLpInvestor.dealId })
-    .from(dealLpInvestor)
-    .innerJoin(
-      contact,
-      sql`${contact.id}::text = trim(both from ${dealLpInvestor.contactMemberId})`,
-    )
-    .where(
-      sql`(nullif(trim(${contact.email}), '') IS NOT NULL AND lower(trim(${contact.email})) = ${e})`,
-    );
+  const [fromContact, fromLpRowEmail] = await Promise.all([
+    db
+      .selectDistinct({ dealId: dealLpInvestor.dealId })
+      .from(dealLpInvestor)
+      .innerJoin(
+        contact,
+        sql`${contact.id}::text = trim(both from ${dealLpInvestor.contactMemberId})`,
+      )
+      .where(
+        sql`(nullif(trim(${contact.email}), '') IS NOT NULL AND lower(trim(${contact.email})) = ${e})`,
+      ),
+    db
+      .selectDistinct({ dealId: dealLpInvestor.dealId })
+      .from(dealLpInvestor)
+      .where(
+        sql`nullif(trim(${dealLpInvestor.email}), '') IS NOT NULL AND lower(trim(${dealLpInvestor.email})) = ${e}`,
+      ),
+  ]);
 
-  return [...new Set(rows.map((r) => String(r.dealId ?? "").trim()).filter(Boolean))];
-}
-
-/** Distinct deal ids for LP investing portal: `deal_lp_investor` only (no `deal_member`). */
-export async function listLpInvestorDealIdsForUserEmail(
-  emailNorm: string,
-): Promise<string[]> {
-  return listDealIdsFromLpInvestorTableForEmail(emailNorm);
+  return [
+    ...new Set(
+      [...fromContact, ...fromLpRowEmail]
+        .map((r) => String(r.dealId ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /**
- * For each deal id, the `deal_lp_investor.role` for this portal user (contact email match).
- * Used by GET /deals list when the viewer is LP email–scoped.
+ * Deals where this email appears on `deal_member`, was added to the roster by `added_by`,
+ * and that adder is a Lead / Admin / Co-sponsor on the same `deal_member` set.
+ */
+async function listDealIdsFromSponsorInvitedDealMemberForEmail(
+  emailNorm: string,
+): Promise<string[]> {
+  const e = String(emailNorm ?? "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return [];
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT dm_investor.deal_id::text AS deal_id
+     FROM deal_member dm_investor
+     INNER JOIN users viewer_u ON lower(trim(viewer_u.email)) = $1
+     INNER JOIN users adder_u ON adder_u.id = dm_investor.added_by
+     INNER JOIN deal_member dm_sponsor ON
+       dm_sponsor.deal_id = dm_investor.deal_id
+       AND lower(trim(dm_sponsor.deal_member_role)) IN (
+         'lead sponsor', 'admin sponsor', 'co-sponsor', 'co sponsor'
+       )
+       AND (
+         trim(dm_sponsor.contact_member_id) = adder_u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm_sponsor.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(adder_u.email))
+         )
+       )
+     WHERE dm_investor.added_by IS NOT NULL
+       AND (
+         trim(dm_investor.contact_member_id) = viewer_u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c2
+           WHERE c2.id::text = trim(both from dm_investor.contact_member_id)
+             AND lower(trim(c2.email)) = $1
+         )
+       )`,
+    [e],
+  );
+  return [
+    ...new Set(
+      res.rows.map((r) => String(r.deal_id ?? "").trim()).filter(Boolean),
+    ),
+  ];
+}
+
+/**
+ * Deals with a `deal_investment` row for this person: `contact_id` = portal `users.id`,
+ * or a CRM `contact` id whose email matches. Includes $0 commitment (sponsor-added
+ * rows before a commitment is entered). This path is required because LP–role
+ * lines skip `deal_member` and may not yet match `deal_lp_investor` email joins.
+ */
+async function listDealIdsFromDealInvestmentForEmail(
+  emailNorm: string,
+): Promise<string[]> {
+  const e = String(emailNorm ?? "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return [];
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT di.deal_id::text AS deal_id
+     FROM deal_investment di
+     INNER JOIN users viewer_u ON lower(trim(viewer_u.email)) = $1
+     WHERE nullif(trim(di.contact_id), '') IS NOT NULL
+       AND (
+         trim(both from di.contact_id) = viewer_u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from di.contact_id)
+             AND nullif(trim(c.email), '') IS NOT NULL
+             AND lower(trim(c.email)) = $1
+         )
+       )`,
+    [e],
+  );
+  return [
+    ...new Set(
+      res.rows.map((r) => String(r.deal_id ?? "").trim()).filter(Boolean),
+    ),
+  ];
+}
+
+/**
+ * Distinct deal ids for LP investing portal: `deal_lp_investor`, sponsor-invited
+ * `deal_member`, and `deal_investment` cap-table rows for this email (any amount).
+ */
+export async function listLpInvestorDealIdsForUserEmail(
+  emailNorm: string,
+): Promise<string[]> {
+  const fromLp = await listDealIdsFromLpInvestorTableForEmail(emailNorm);
+  const fromSponsorInv = await listDealIdsFromSponsorInvitedDealMemberForEmail(
+    emailNorm,
+  );
+  const fromInvestments = await listDealIdsFromDealInvestmentForEmail(
+    emailNorm,
+  );
+  return [
+    ...new Set([...fromLp, ...fromSponsorInv, ...fromInvestments]),
+  ];
+}
+
+/**
+ * For each deal id, the `deal_lp_investor.role` for this portal user (contact email
+ * and/or `deal_lp_investor.email` match). Used by GET /deals list when the viewer is LP email–scoped.
  */
 export async function mapLpInvestorRoleDisplayByDealIdForUserEmail(
   emailNorm: string,
@@ -71,14 +177,17 @@ export async function mapLpInvestorRoleDisplayByDealIdForUserEmail(
       role: dealLpInvestor.role,
     })
     .from(dealLpInvestor)
-    .innerJoin(
+    .leftJoin(
       contact,
       sql`${contact.id}::text = trim(both from ${dealLpInvestor.contactMemberId})`,
     )
     .where(
       and(
         inArray(dealLpInvestor.dealId, ids),
-        sql`(nullif(trim(${contact.email}), '') IS NOT NULL AND lower(trim(${contact.email})) = ${e})`,
+        or(
+          sql`(nullif(trim(${contact.email}), '') IS NOT NULL AND lower(trim(${contact.email})) = ${e})`,
+          sql`nullif(trim(${dealLpInvestor.email}), '') IS NOT NULL AND lower(trim(${dealLpInvestor.email})) = ${e}`,
+        ),
       ),
     );
 

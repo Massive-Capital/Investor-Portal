@@ -41,26 +41,21 @@ function stripPassword(u: UserRow): Omit<UserRow, "passwordHash"> {
   return rest;
 }
 
-/** Shape aligned with sign-in `userDetails` entries for the frontend. */
-export function serializeUserForClient(u: UserRow): Record<string, unknown> {
+/**
+ * Shape aligned with sign-in `userDetails` entries for the frontend.
+ * `companyName` is the linked organization’s name from `companies`, not a column on `users`.
+ */
+export function serializeUserForClient(
+  u: UserRow,
+  companyNameFromOrganization?: string | null,
+): Record<string, unknown> {
   const rest = stripPassword(u);
+  const name = String(companyNameFromOrganization ?? "").trim();
   return {
     ...rest,
     organization_id: rest.organizationId ?? null,
+    companyName: name,
   };
-}
-
-function serializeUserForClientWithResolvedCompany(
-  u: UserRow,
-  organizationNameFromJoin: string | null | undefined,
-): Record<string, unknown> {
-  const base = serializeUserForClient(u);
-  const own = String(u.companyName ?? "").trim();
-  const fromOrg = String(organizationNameFromJoin ?? "").trim();
-  if (!own && fromOrg) {
-    return { ...base, companyName: fromOrg };
-  }
-  return base;
 }
 
 const ORG_UUID_RE =
@@ -75,31 +70,22 @@ export async function listUsersForAdmin(
     const filterOrg = opts?.filterOrganizationId?.trim() ?? "";
     const applyOrgFilter =
       filterOrg.length > 0 && ORG_UUID_RE.test(filterOrg);
+    if (!applyOrgFilter) {
+      return [];
+    }
 
-    const rows = applyOrgFilter
-      ? await db
-          .select({
-            ...getTableColumns(users),
-            orgName: companies.name,
-          })
-          .from(users)
-          .leftJoin(companies, eq(users.organizationId, companies.id))
-          .where(eq(users.organizationId, filterOrg))
-          .orderBy(desc(users.createdAt))
-      : await db
-          .select({
-            ...getTableColumns(users),
-            orgName: companies.name,
-          })
-          .from(users)
-          .leftJoin(companies, eq(users.organizationId, companies.id))
-          .orderBy(desc(users.createdAt));
+    const rows = await db
+      .select({
+        ...getTableColumns(users),
+        orgName: companies.name,
+      })
+      .from(users)
+      .leftJoin(companies, eq(users.organizationId, companies.id))
+      .where(eq(users.organizationId, filterOrg))
+      .orderBy(desc(users.createdAt));
     const mapped = rows.map((r) => {
       const { orgName, ...userCols } = r;
-      return serializeUserForClientWithResolvedCompany(
-        userCols as UserRow,
-        orgName,
-      );
+      return serializeUserForClient(userCols as UserRow, orgName);
     });
     const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
     return enrichUserRowsWithMemberships(withDeal);
@@ -116,10 +102,7 @@ export async function listUsersForAdmin(
       .orderBy(desc(users.createdAt));
     const mapped = rows.map((r) => {
       const { orgName, ...userCols } = r;
-      return serializeUserForClientWithResolvedCompany(
-        userCols as UserRow,
-        orgName,
-      );
+      return serializeUserForClient(userCols as UserRow, orgName);
     });
     const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
     return enrichUserRowsWithMemberships(withDeal);
@@ -259,7 +242,7 @@ export async function updateMemberUser(
   }
 
   try {
-    const updated = await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       const [row] = await tx
         .update(users)
         .set(updates)
@@ -273,12 +256,24 @@ export async function updateMemberUser(
         reason: audit.reason,
         changesJson,
       });
-      return row;
     });
+    const [withOrg] = await db
+      .select({
+        ...getTableColumns(users),
+        orgName: companies.name,
+      })
+      .from(users)
+      .leftJoin(companies, eq(users.organizationId, companies.id))
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    if (!withOrg) {
+      return { ok: false, status: 500, message: "Could not load updated member" };
+    }
+    const { orgName, ...uCols } = withOrg;
     return {
       ok: true,
       user: await enrichUserRecordForDealParticipant(
-        serializeUserForClient(updated),
+        serializeUserForClient(uCols as UserRow, orgName),
         targetUserId,
       ),
     };

@@ -175,9 +175,11 @@ a.sponsor_dash_add_link.um_btn_secondary {
 
 .sponsor_dash_sort_wrap {
   display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-  padding: 0 0em 0 0.65em;
+  align-items: stretch;
+  gap: 0.45em;
+  padding: 0 0.5em 0 0.75em;
+  box-sizing: border-box;
+  min-height: 40px;
   height: 40px;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
@@ -185,26 +187,52 @@ a.sponsor_dash_add_link.um_btn_secondary {
   color: var(--portal-text);
 }
 
+.sponsor_dash_sort_wrap:focus-within {
+  border-color: var(--portal-text-muted);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
+}
+
+:root[data-theme="dark"] .sponsor_dash_sort_wrap:focus-within {
+  box-shadow: var(
+    --portal-field-focus-shadow-dark,
+    0 0 0 2px rgb(249 250 251 / 12%)
+  );
+}
+
 .sponsor_dash_sort_icon {
+  align-self: center;
   color: var(--portal-text-muted);
   flex-shrink: 0;
 }
 
 .sponsor_dash_sort_select {
+  flex: 1 1 auto;
+  min-width: min(11rem, 60vw);
+  margin: 0;
+  padding: 0 1.35em 0 0;
   border: none;
-  background: transparent;
+  border-radius: 0;
+  box-sizing: border-box;
+  align-self: stretch;
   font-family: inherit;
   font-style: normal;
   font-size: 0.875em;
   font-weight: 600;
+  line-height: calc(40px - 2px);
   color: var(--portal-text);
-  cursor: pointer;
-  min-height: 36px;
-  padding-right: 1.4285714em;
+  background-color: transparent;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.1714286em center;
+  background-position: right 0.15em center;
+  background-size: 12px 12px;
+  cursor: pointer;
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+:root[data-theme="dark"] .sponsor_dash_sort_select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
 }
 
 .sponsor_dash_sort_select:focus {

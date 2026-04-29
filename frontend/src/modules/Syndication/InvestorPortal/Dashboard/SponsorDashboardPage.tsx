@@ -1,6 +1,5 @@
 import {
   ClipboardList,
-  CreditCard,
   DollarSign,
   LayoutDashboard,
   LineChart,
@@ -123,15 +122,13 @@ function SyndicatingDashboard() {
           description="—"
           // footer={<a href="#reviews">Turn on reviews</a>}
         />
-        <ToolStyleCard
+        {/* <ToolStyleCard
           variant="metric"
           icon={CreditCard}
           title="Billing quota"
           description="—"
           hintTitle="Your syndication billing quota for active deals."
-        />
- 
-       
+        /> */}
       </section>
 
       <SyndicatingDealsSection dealsHeadingId="sponsor-deals-heading" />

@@ -8,6 +8,9 @@ import {
   type CompanyRow,
 } from "../schema/schema.js";
 
+const ORG_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const COMPANY_AUDIT_ACTION_EDIT = "company_edit";
 export const COMPANY_AUDIT_ACTION_SUSPEND = "company_suspend";
 
@@ -29,19 +32,53 @@ function normalizeCompanyNameKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/**
+ * Ensures a `companies` row exists for the given `users.organization_id` (same UUID).
+ * Use when a platform admin’s org should appear in the company directory but the row
+ * is missing (legacy data, or admin created before the company was inserted).
+ */
+export async function ensureCompanyRowForOrganizationId(
+  organizationId: string,
+  nameHint: string,
+): Promise<void> {
+  const oid = String(organizationId ?? "").trim();
+  if (!oid || !ORG_UUID_RE.test(oid)) return;
+  const [existing] = await db
+    .select({ id: companies.id })
+    .from(companies)
+    .where(eq(companies.id, oid))
+    .limit(1);
+  if (existing) return;
+  const rawName = String(nameHint ?? "").trim();
+  const name =
+    rawName.length > 0
+      ? rawName.slice(0, 255)
+      : "Organization";
+  const now = new Date();
+  try {
+    await db
+      .insert(companies)
+      .values({
+        id: oid,
+        name,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing({ target: companies.id });
+  } catch (err) {
+    console.error("ensureCompanyRowForOrganizationId:", err);
+  }
+}
+
 export async function listCompanies(): Promise<CompanyWithStats[]> {
   /**
    * Counts use grouped queries (not correlated subqueries) so they stay aligned
-   * with list APIs: `GET /users?organizationId=…`, `GET /deals?organizationId=…`,
-   * plus legacy rows with null `organization_id` and matching free-text names.
+   * with list APIs: `GET /users?organizationId=…`, `GET /deals?organizationId=…`.
+   * Legacy deals may still be keyed by `owning_entity_name` when `organization_id` is null.
    */
-  const [
-    rows,
-    orgUserCounts,
-    legacyUserNameCounts,
-    orgDealCounts,
-    legacyDealNameCounts,
-  ] = await Promise.all([
+  const [rows, orgUserCounts, orgDealCounts, legacyDealNameCounts] =
+    await Promise.all([
     db
       .select({
         id: companies.id,
@@ -60,14 +97,6 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
       .from(users)
       .where(isNotNull(users.organizationId))
       .groupBy(users.organizationId),
-    db
-      .select({
-        nameNorm: sql<string>`lower(trim(${users.companyName}))`,
-        cnt: sql<number>`count(*)::int`,
-      })
-      .from(users)
-      .where(isNull(users.organizationId))
-      .groupBy(sql`lower(trim(${users.companyName}))`),
     db
       .select({
         organizationId: addDealForm.organizationId,
@@ -92,12 +121,6 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
     if (id) byOrgId.set(id, Number(r.cnt));
   }
 
-  const byLegacyName = new Map<string, number>();
-  for (const r of legacyUserNameCounts) {
-    const k = String(r.nameNorm ?? "").trim();
-    if (k) byLegacyName.set(k, Number(r.cnt));
-  }
-
   const byDealOrgId = new Map<string, number>();
   for (const r of orgDealCounts) {
     const id = r.organizationId;
@@ -112,13 +135,12 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
 
   return rows.map((r) => {
     const userByOrg = byOrgId.get(r.id) ?? 0;
-    const userByName = byLegacyName.get(normalizeCompanyNameKey(r.name)) ?? 0;
     const dealByOrg = byDealOrgId.get(r.id) ?? 0;
     const dealByName =
       byLegacyDealName.get(normalizeCompanyNameKey(r.name)) ?? 0;
     return {
       ...r,
-      userCount: userByOrg + userByName,
+      userCount: userByOrg,
       dealCount: dealByOrg + dealByName,
     };
   });

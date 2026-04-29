@@ -1198,6 +1198,7 @@ function normalizeInvestorClass(
     minimumInvestment: str(
       raw.minimumInvestment ?? raw.minimum_investment,
     ),
+    numberOfUnits: str(raw.numberOfUnits ?? raw.number_of_units),
     pricePerUnit: str(raw.pricePerUnit ?? raw.price_per_unit),
     status: str(raw.status, "draft"),
     visibility: str(raw.visibility),
@@ -1270,6 +1271,7 @@ function jsonBody(values: DealInvestorClassFormValues): Record<string, string> {
     raise_amount_distributions: values.raiseAmountDistributions,
     billing_raise_quota: values.billingRaiseQuota,
     minimum_investment: values.minimumInvestment,
+    number_of_units: values.numberOfUnits,
     price_per_unit: values.pricePerUnit,
     status: values.status,
     visibility: values.visibility,
@@ -1853,6 +1855,25 @@ function normalizeInvestorRowApi(
         return { invitationMailSent: false as const }
       return {}
     })(),
+    ...(() => {
+      const v = firstDefined(raw, ["fundApproved", "fund_approved"])
+      if (v === true) return { fundApproved: true as const }
+      if (v === false) return { fundApproved: false as const }
+      const s = String(v ?? "")
+        .trim()
+        .toLowerCase()
+      if (s === "true" || s === "1" || s === "yes") return { fundApproved: true as const }
+      if (s === "false" || s === "0" || s === "no")
+        return { fundApproved: false as const }
+      return {}
+    })(),
+    fundApprovedCommitmentSnapshot: str(
+      firstDefined(raw, [
+        "fundApprovedCommitmentSnapshot",
+        "fund_approved_commitment_snapshot",
+      ]),
+      "",
+    ),
   }
 }
 
@@ -2348,6 +2369,10 @@ function appendDealInvestmentMultipartFields(
   )
   if (documentFile) fd.append("subscriptionDocument", documentFile)
   fd.append("send_invitation_mail", values.sendInvitationMail ?? "no")
+  fd.append(
+    "fund_approved",
+    values.fundApproved === true ? "true" : "false",
+  )
   if (options?.autosave) fd.append("autosave", "true")
 }
 

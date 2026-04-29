@@ -42,6 +42,8 @@ import CustomerCompanyLayout from "./modules/company/CustomerCompanyLayout";
 import MembersLayout from "./modules/usermanagement/MembersLayout";
 import UserManagementPage from "./modules/usermanagement/UserManagementPage";
 import ContactsPage from "./modules/contacts/ContactsPage";
+import EmailTemplatesPage from "./modules/contacts/EmailTemplatesPage";
+import EmailTemplateNewPage from "./modules/contacts/EmailTemplateNewPage";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
 import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
 import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
@@ -231,6 +233,15 @@ function App() {
             <Route path="members" element={<MembersLayout />}>
               <Route index element={<UserManagementPage />} />
             </Route>
+            <Route
+              path="contacts/email-templates/new"
+              element={<EmailTemplateNewPage />}
+            />
+            <Route
+              path="contacts/email-templates/edit/:templateId"
+              element={<EmailTemplateNewPage />}
+            />
+            <Route path="contacts/email-templates" element={<EmailTemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             </Route>
             </Route>

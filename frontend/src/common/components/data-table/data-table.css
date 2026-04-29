@@ -211,3 +211,63 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/**
+ * Investors tab parity for all members DataTables using `.deal_inv_table`:
+ * horizontal scroll when zoomed out / narrow viewports (same as Deal Investors).
+ */
+.um_table_wrap.data_table_shell
+  .data_table_scroll_region:has(.um_table.deal_inv_table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.um_table_wrap.data_table_shell .data_table_scroll_region .um_table.deal_inv_table {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.um_table_wrap.data_table_shell .data_table_scroll_region .um_table.deal_inv_table th,
+.um_table_wrap.data_table_shell .data_table_scroll_region .um_table.deal_inv_table td {
+  vertical-align: middle;
+  min-width: 0;
+}
+
+/* `membersShell="plain"` — table directly under `.um_table_wrap` (no `.data_table_shell`) */
+.um_table_wrap:not(.data_table_shell):has(.um_table.deal_inv_table) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.um_table_wrap:not(.data_table_shell) .um_table.deal_inv_table {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.um_table_wrap:not(.data_table_shell) .um_table.deal_inv_table th,
+.um_table_wrap:not(.data_table_shell) .um_table.deal_inv_table td {
+  vertical-align: middle;
+  min-width: 0;
+}
+
+/* Default-variant DataTable (`visualVariant="default"`): same zoom/scroll behavior as Investors. */
+.data_table_scroll .data_table {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.data_table_scroll .data_table th,
+.data_table_scroll .data_table td {
+  vertical-align: middle;
+  min-width: 0;
+}

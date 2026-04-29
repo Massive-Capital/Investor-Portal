@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../config/uploadPaths.js";
 import { db, pool } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
+import { companies } from "../schema/schema.js";
 import { contact } from "../schema/contact.schema.js";
 import { addDealForm } from "../schema/deal.schema/add-deal-form.schema.js";
 import {
@@ -15,6 +16,7 @@ import {
 import { dealLpInvestor } from "../schema/deal.schema/deal-lp-investor.schema.js";
 import { dealMember } from "../schema/deal.schema/deal-member.schema.js";
 import { listInvestorClassesByDealId } from "./dealInvestorClass.service.js";
+import { isPortalUserSponsorOnDeal } from "./dealMemberScope.service.js";
 import { formatDdMmmYyyy } from "../utils/formatDdMmmYyyy.js";
 
 const UPLOAD_SUBDIR = "deal-investments";
@@ -155,6 +157,8 @@ export type CreateDealInvestmentInput = {
   /** Investing → Profiles book row, optional. */
   userInvestorProfileId?: string | null;
   investor_role: string;
+  /** Sponsor funded / approve-fund (column `fund_approved`). */
+  fundApproved: boolean;
   status: string;
   investorClass: string;
   docSignedDate: string | null;
@@ -183,7 +187,7 @@ function formatMemberDisplayFromUser(u: {
   firstName: string;
   lastName: string;
   username: string;
-  companyName: string;
+  companyName: string | null;
 }): string {
   const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
   if (full) return full;
@@ -221,9 +225,10 @@ export async function resolveUsersByContactIds(
       firstName: users.firstName,
       lastName: users.lastName,
       username: users.username,
-      companyName: users.companyName,
+      companyName: companies.name,
     })
     .from(users)
+    .leftJoin(companies, eq(users.organizationId, companies.id))
     .where(inArray(users.id, ids));
   const m = new Map<string, ResolvedPortalUser>();
   for (const u of found) {
@@ -299,9 +304,10 @@ export async function resolveUserDisplayNamesByIds(
       firstName: users.firstName,
       lastName: users.lastName,
       username: users.username,
-      companyName: users.companyName,
+      companyName: companies.name,
     })
     .from(users)
+    .leftJoin(companies, eq(users.organizationId, companies.id))
     .where(inArray(users.id, idList));
   const m = new Map<string, string>();
   for (const u of found) {
@@ -365,6 +371,21 @@ function committedAmountParts(
     .filter((n) => Number.isFinite(n));
 }
 
+/** Plain numeric string for `fund_approved_commitment_snapshot` when sponsor approves. */
+function fundApprovedSnapshotStoredFromInput(
+  input: CreateDealInvestmentInput,
+): string {
+  const nums = committedAmountParts(
+    input.commitmentAmount,
+    input.extraContributionAmounts ?? [],
+  );
+  if (nums.length === 0) return "0";
+  const t = nums.reduce((a, b) => a + b, 0);
+  if (!Number.isFinite(t) || t < 0) return "0";
+  const rounded = Math.round(t * 100) / 100;
+  return String(rounded);
+}
+
 function formatCommitted(
   commitmentAmount: string,
   extras: string[] | null | undefined,
@@ -404,6 +425,32 @@ function formatUsdKpi(n: number): string {
   }).format(n);
 }
 
+/** USD string for KPI tiles; allows $0 (unlike `formatUsdKpi`). */
+function formatUsdKpiFundedTile(n: number): string {
+  const v = Number.isFinite(n) ? Math.max(0, n) : 0;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(v);
+}
+
+/**
+ * Dollars counted toward total funded: full commitment when `fund_approved`;
+ * when LP added after approval (pending re-approval), only `fund_approved_commitment_snapshot`.
+ */
+function fundedNumericForInvestorKpiRow(r: DealInvestmentRow): number {
+  const total = rowCommittedNumeric(r);
+  if (!Number.isFinite(total) || total < 0) return 0;
+  if (Boolean(r.fundApproved)) return total;
+  const snapRaw = String(r.fundApprovedCommitmentSnapshot ?? "").trim();
+  if (!snapRaw) return 0;
+  const snap = parseFloat(snapRaw.replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(snap) || snap <= 0) return 0;
+  if (total > snap + 1e-6) return Math.round(snap * 100) / 100;
+  return 0;
+}
+
 export function buildInvestorKpisFromRows(rows: DealInvestmentRow[]): {
   offeringSize: string;
   committed: string;
@@ -418,7 +465,11 @@ export function buildInvestorKpisFromRows(rows: DealInvestmentRow[]): {
   nonAccreditedCount: string;
 } {
   let total = 0;
-  for (const r of rows) total += rowCommittedNumeric(r);
+  let fundedTotal = 0;
+  for (const r of rows) {
+    total += rowCommittedNumeric(r);
+    fundedTotal += fundedNumericForInvestorKpiRow(r);
+  }
   const count = rows.length;
   const avg = count > 0 && total > 0 ? total / count : 0;
   return {
@@ -427,7 +478,7 @@ export function buildInvestorKpisFromRows(rows: DealInvestmentRow[]): {
     remaining: "—",
     totalApproved: formatUsdKpi(total),
     totalPending: "—",
-    totalFunded: "—",
+    totalFunded: formatUsdKpiFundedTile(fundedTotal),
     approvedCount: String(count),
     pendingCount: "—",
     waitlistCount: "—",
@@ -514,6 +565,10 @@ export function mapRowToInvestorApi(
       investorClass: row.investorClass?.trim() || "—",
       investorRole: row.investor_role?.trim() || "",
       status: row.status?.trim() || "—",
+      fundApproved: Boolean(row.fundApproved),
+      fundApprovedCommitmentSnapshot: String(
+        row.fundApprovedCommitmentSnapshot ?? "",
+      ).trim(),
       committed: formatCommitted(
         row.commitmentAmount,
         row.extraContributionAmounts as string[] | null,
@@ -555,6 +610,10 @@ export function mapRowToInvestorApi(
     investorClass: row.investorClass?.trim() || "—",
     investorRole: row.investor_role?.trim() || "",
     status: row.status?.trim() || "—",
+    fundApproved: Boolean(row.fundApproved),
+    fundApprovedCommitmentSnapshot: String(
+      row.fundApprovedCommitmentSnapshot ?? "",
+    ).trim(),
     committed: formatCommitted(
       row.commitmentAmount,
       row.extraContributionAmounts as string[] | null,
@@ -916,8 +975,9 @@ async function resolvePortalUserIdLowerByContactMemberIds(
 }
 
 /**
- * Sum of commitment from investors a **deal member** brought in: roster `added_by` equals
- * that member’s portal `users.id`, excluding the member’s **own** commitment.
+ * Sum of commitment a **deal member** brought: roster `added_by` equals that member’s portal
+ * `users.id` for other investors, **plus** that member’s own commitment (e.g. a sponsor who
+ * also has an investment row).
  *
  * For contacts in `deal_lp_investor`, the displayed total uses **`committed_amount` only**
  * (Invest Now / LP path). `deal_investment` rows for the same contact are skipped so we do
@@ -959,15 +1019,6 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
     if (rk) contactKeyUsesLpCommittedAmount.add(rk);
   }
 
-  const invContactKeys = new Set<string>();
-  for (const inv of investments) {
-    const rk = rosterContactKey(inv.contactId);
-    if (rk) invContactKeys.add(rk);
-  }
-  const portalByInvContactKey = await resolvePortalUserIdLowerByContactMemberIds([
-    ...invContactKeys,
-  ]);
-
   const sumBySponsorUserId = new Map<string, number>();
 
   for (const inv of investments) {
@@ -977,10 +1028,6 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
     if (!adderRaw) continue;
     const adderUid = String(adderRaw).toLowerCase();
     if (!interestedSponsorIds.has(adderUid)) continue;
-    const invPortal = portalByInvContactKey.get(invCk);
-    const isSelf =
-      (invPortal && invPortal === adderUid) || invCk === adderUid;
-    if (isSelf) continue;
     const n = rowCommittedNumeric(inv);
     sumBySponsorUserId.set(
       adderUid,
@@ -988,23 +1035,10 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
     );
   }
 
-  const lpContactKeys = new Set<string>();
-  for (const r of lpRows) {
-    const rk = rosterContactKey(r.contactMemberId);
-    if (rk) lpContactKeys.add(rk);
-  }
-  const portalByLpContactKey = await resolvePortalUserIdLowerByContactMemberIds([
-    ...lpContactKeys,
-  ]);
-
   for (const r of lpRows) {
     if (!r.addedBy) continue;
     const adderUid = String(r.addedBy).toLowerCase();
     if (!interestedSponsorIds.has(adderUid)) continue;
-    const ck = rosterContactKey(r.contactMemberId);
-    const invPortal = portalByLpContactKey.get(ck);
-    const isSelf = (invPortal && invPortal === adderUid) || ck === adderUid;
-    if (isSelf) continue;
     const n = parseFloat(
       String(r.committed_amount ?? "").replace(/[^0-9.-]/g, ""),
     );
@@ -1066,8 +1100,16 @@ function resolveRosterAddedByUserId(
  */
 export async function enrichInvestorApiRowsWithAddedBy<
   T extends { contactId?: string; addedByDisplayName?: string },
->(dealId: string, rows: T[]): Promise<Array<T & { addedByUserId?: string }>> {
-  if (rows.length === 0) return rows as Array<T & { addedByUserId?: string }>;
+>(
+  dealId: string,
+  rows: T[],
+): Promise<
+  Array<T & { addedByUserId?: string; addedByIsSponsorOnDeal?: boolean }>
+> {
+  if (rows.length === 0)
+    return rows as Array<
+      T & { addedByUserId?: string; addedByIsSponsorOnDeal?: boolean }
+    >;
   const rosterAddedByByContactKey =
     await loadRosterAddedByUserIdByContactKey(dealId);
   const idSet = new Set<string>();
@@ -1082,15 +1124,27 @@ export async function enrichInvestorApiRowsWithAddedBy<
     ...idSet,
   ]);
   const uidsNeeded = new Set<string>();
+  const uniqueAdderIds = new Map<string, string>();
   for (const row of rows) {
     const uid = resolveRosterAddedByUserId(
       row.contactId,
       rosterAddedByByContactKey,
       rawToCanonical,
     );
-    if (uid) uidsNeeded.add(String(uid).toLowerCase());
+    if (uid) {
+      const low = String(uid).toLowerCase();
+      uidsNeeded.add(low);
+      if (!uniqueAdderIds.has(low)) uniqueAdderIds.set(low, String(uid).trim());
+    }
   }
   const names = await resolveUserDisplayNamesByIds([...uidsNeeded]);
+  const sponsorByAdderLower = new Map<string, boolean>();
+  await Promise.all(
+    [...uniqueAdderIds.values()].map(async (id) => {
+      const isS = await isPortalUserSponsorOnDeal(dealId, id);
+      sponsorByAdderLower.set(String(id).toLowerCase(), isS);
+    }),
+  );
   return rows.map((row) => {
     const uid = resolveRosterAddedByUserId(
       row.contactId,
@@ -1099,11 +1153,25 @@ export async function enrichInvestorApiRowsWithAddedBy<
     );
     const nk = uid ? String(uid).toLowerCase() : "";
     const display = nk && names.has(nk) ? names.get(nk)! : undefined;
-    const patch: { addedByUserId?: string; addedByDisplayName?: string } = {};
-    if (uid) patch.addedByUserId = uid;
+    const patch: {
+      addedByUserId?: string;
+      addedByDisplayName?: string;
+      addedByIsSponsorOnDeal?: boolean;
+    } = {};
+    if (uid) {
+      patch.addedByUserId = uid;
+      patch.addedByIsSponsorOnDeal = sponsorByAdderLower.get(nk) ?? false;
+    }
     if (display) patch.addedByDisplayName = display;
-    if (Object.keys(patch).length === 0) return row as T & { addedByUserId?: string };
-    return { ...row, ...patch } as T & { addedByUserId?: string };
+    if (Object.keys(patch).length === 0)
+      return row as T & {
+        addedByUserId?: string;
+        addedByIsSponsorOnDeal?: boolean;
+      };
+    return { ...row, ...patch } as T & {
+      addedByUserId?: string;
+      addedByIsSponsorOnDeal?: boolean;
+    };
   });
 }
 
@@ -1194,6 +1262,10 @@ export async function insertDealInvestment(params: {
     profileId: params.input.profileId,
     userInvestorProfileId: params.input.userInvestorProfileId?.trim() ?? null,
     investor_role: params.input.investor_role,
+    fundApproved: params.input.fundApproved,
+    fundApprovedCommitmentSnapshot: params.input.fundApproved
+      ? fundApprovedSnapshotStoredFromInput(params.input)
+      : "",
     status: params.input.status,
     investorClass: params.input.investorClass,
     docSignedDate: params.input.docSignedDate ?? null,
@@ -1267,6 +1339,13 @@ export async function updateDealInvestment(params: {
             userInvestorProfileId: params.input.userInvestorProfileId?.trim() || null,
           }),
       investor_role: params.input.investor_role,
+      fundApproved: params.input.fundApproved,
+      ...(params.input.fundApproved
+        ? {
+            fundApprovedCommitmentSnapshot:
+              fundApprovedSnapshotStoredFromInput(params.input),
+          }
+        : {}),
       status: params.input.status,
       investorClass: params.input.investorClass,
       docSignedDate: params.input.docSignedDate ?? null,

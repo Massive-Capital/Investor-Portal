@@ -45,6 +45,7 @@ import {
 import { decodeJwtPayload } from "../auth/utils/decode-jwt-payload";
 import { getApiV1Base } from "../../common/utils/apiBaseUrl";
 import { isCompanyAdmin, isPlatformAdmin } from "../../common/auth/roleUtils";
+import { resolvePlatformAdminMembersListScope } from "../../common/auth/sessionOrganization";
 import { DataTablePagination } from "../../common/components/DataTablePagination/DataTablePagination";
 import { ViewReadonlyField } from "../../common/components/ViewReadonlyField";
 import { toast } from "../../common/components/Toast";
@@ -365,7 +366,37 @@ function MembersRoleInfoPanel() {
   );
 }
 
-export default function UserManagementPage() {
+const ORG_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type UserManagementPageProps = {
+  /**
+   * **Settings → Members (embedded):** pass the platform admin’s target
+   * `organizationId` so the list is `GET /users?organizationId=…` for that org.
+   * Use `false` when they have no org. Omit on standalone `/members` to resolve
+   * the org from session/workspace (same as this page embedded in Company settings).
+   */
+  membersOrganizationScope?: string | false;
+};
+
+function usersListUrl(
+  api: string,
+  membersOrganizationScope: string | false | undefined,
+): string | null {
+  const base = `${api}/users`;
+  if (membersOrganizationScope === false) return null;
+  if (
+    typeof membersOrganizationScope === "string" &&
+    ORG_UUID_RE.test(membersOrganizationScope)
+  ) {
+    return `${base}?organizationId=${encodeURIComponent(membersOrganizationScope)}`;
+  }
+  return base;
+}
+
+export default function UserManagementPage({
+  membersOrganizationScope,
+}: UserManagementPageProps = {}) {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   const apiV1 = getApiV1Base();
 
@@ -377,6 +408,13 @@ export default function UserManagementPage() {
     return String(id).trim().toLowerCase();
   }, [token]);
 
+  const membersListScope = useMemo((): string | false | undefined => {
+    if (membersOrganizationScope !== undefined) {
+      return membersOrganizationScope;
+    }
+    return resolvePlatformAdminMembersListScope();
+  }, [membersOrganizationScope, token, currentUserId]);
+
   const [memberRows, setMemberRows] =
     useState<Record<string, unknown>[]>(readSessionMemberRows);
   const [membersLoadError, setMembersLoadError] = useState("");
@@ -387,11 +425,22 @@ export default function UserManagementPage() {
       setMembersLoading(false);
       return;
     }
+    if (membersListScope === false) {
+      setMemberRows([]);
+      setMembersLoadError("");
+      setMembersLoading(false);
+      return;
+    }
+    const listUrl = usersListUrl(apiV1, membersListScope);
+    if (listUrl == null) {
+      setMembersLoading(false);
+      return;
+    }
     let cancelled = false;
     setMembersLoading(true);
     setMembersLoadError("");
     void (async () => {
-      const res = await fetch(`${apiV1}/users`, {
+      const res = await fetch(listUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -418,12 +467,18 @@ export default function UserManagementPage() {
     return () => {
       cancelled = true;
     };
-  }, [token, apiV1]);
+  }, [token, apiV1, membersListScope]);
 
   const refreshMembersAfterInvite = useCallback(async () => {
     if (!token || !apiV1) return;
+    if (membersListScope === false) {
+      setMemberRows([]);
+      return;
+    }
+    const listUrl = usersListUrl(apiV1, membersListScope);
+    if (listUrl == null) return;
     try {
-      const res = await fetch(`${apiV1}/users`, {
+      const res = await fetch(listUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -439,7 +494,7 @@ export default function UserManagementPage() {
     } catch {
       /* ignore */
     }
-  }, [token, apiV1]);
+  }, [token, apiV1, membersListScope]);
 
   useEffect(() => {
     if (!token || !apiV1) return;
@@ -450,7 +505,13 @@ export default function UserManagementPage() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [token, apiV1, refreshMembersAfterInvite]);
 
-  const showCompanyColumn = isPlatformAdmin();
+  /**
+   * Global multi-company members list (company picker in invite) is not used; platform
+   * lists are org-scoped, so this stays false for platform. Kept for the rare case where
+   * `membersListScope` is still undefined (non–platform admin).
+   */
+  const showCompanyColumn =
+    isPlatformAdmin() && membersListScope === undefined;
   const sortColumns = useMemo(() => buildSortColumns(), []);
 
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -469,6 +530,10 @@ export default function UserManagementPage() {
   const [membersPageSize, setMembersPageSize] = useState(10);
   const [toolbarNotice, setToolbarNotice] = useState("");
   const [membersExportOpen, setMembersExportOpen] = useState(false);
+  const [selectedMemberRowIds, setSelectedMemberRowIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const memberSelectAllRef = useRef<HTMLInputElement | null>(null);
   const [sortKey, setSortKey] = useState<MemberSortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null);
@@ -541,6 +606,86 @@ export default function UserManagementPage() {
     const start = (membersPageSafe - 1) * membersPageSize;
     return sortedRows.slice(start, start + membersPageSize);
   }, [sortedRows, membersPageSafe, membersPageSize]);
+
+  const sortedRowStableIds = useMemo(
+    () => sortedRows.map((row, i) => rowStableId(row, i)),
+    [sortedRows],
+  );
+
+  const allMembersFilteredSelected =
+    sortedRows.length > 0 &&
+    sortedRowStableIds.every((id) => selectedMemberRowIds.has(id));
+  const someMembersSelected =
+    sortedRowStableIds.some((id) => selectedMemberRowIds.has(id)) &&
+    !allMembersFilteredSelected;
+
+  useLayoutEffect(() => {
+    const el = memberSelectAllRef.current;
+    if (el) {
+      el.indeterminate = someMembersSelected;
+    }
+  }, [someMembersSelected, allMembersFilteredSelected]);
+
+  useEffect(() => {
+    const valid = new Set(
+      sortedRows.map((row, i) => rowStableId(row, i)),
+    );
+    setSelectedMemberRowIds((prev) => {
+      if (prev.size === 0) {
+        return prev;
+      }
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (valid.has(id)) {
+          next.add(id);
+        }
+      }
+      if (next.size === prev.size) {
+        for (const id of prev) {
+          if (!next.has(id)) {
+            return next;
+          }
+        }
+        return prev;
+      }
+      return next;
+    });
+  }, [sortedRows]);
+
+  const toggleMemberRowSelected = useCallback(
+    (row: Record<string, unknown>, indexInSorted: number) => {
+      const id = rowStableId(row, indexInSorted);
+      setSelectedMemberRowIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleSelectAllMembersFiltered = useCallback(() => {
+    if (sortedRowStableIds.length === 0) {
+      return;
+    }
+    if (allMembersFilteredSelected) {
+      setSelectedMemberRowIds((prev) => {
+        const next = new Set(prev);
+        for (const id of sortedRowStableIds) {
+          next.delete(id);
+        }
+        return next;
+      });
+    } else {
+      setSelectedMemberRowIds(
+        (prev) => new Set([...prev, ...sortedRowStableIds]),
+      );
+    }
+  }, [sortedRowStableIds, allMembersFilteredSelected]);
 
   const openMenuContext =
     actionMenuRowId && actionMenuRow
@@ -1005,9 +1150,17 @@ export default function UserManagementPage() {
     setInviteLoading(true);
     setInviteError("");
     try {
+      const orgForSingleCompanyInvite =
+        !showCompanyColumn &&
+        typeof membersListScope === "string" &&
+        ORG_UUID_RE.test(membersListScope)
+          ? membersListScope
+          : undefined;
       const result = await sendInviteForEmail(
         inviteEmail,
-        showCompanyColumn ? inviteCompanyId : undefined,
+        showCompanyColumn
+          ? inviteCompanyId
+          : orgForSingleCompanyInvite,
         showCompanyColumn ? inviteInvitedRole.trim() : undefined,
       );
       if (!result.ok) {
@@ -1049,14 +1202,64 @@ export default function UserManagementPage() {
     );
   }
 
+  if (membersListScope === false) {
+    return (
+      <section className="um_page">
+        <h2 className="um_title um_title_with_icon">
+          <Users className="um_title_icon" size={26} strokeWidth={1.75} aria-hidden />
+          Members
+        </h2>
+        <div className="um_panel">
+          <p className="um_hint">
+            No company organization is on your user profile, so there is no member
+            list to show here. Associate your account with a company, then return to
+            this tab to manage members for that organization.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section className="um_page">
-      <div className="um_members_header_block">
-        <div className="um_header_row">
-          <h2 className="um_title um_title_with_icon">
-            <Users className="um_title_icon" size={26} strokeWidth={1.75} aria-hidden />
-            Members
-          </h2>
+    <section className="um_page" aria-label="Members">
+      <div className="um_members_top_row">
+        <div className="um_members_tabs_outer">
+          <div
+            className="um_members_tabs_row"
+            role="tablist"
+            aria-label="Members sections"
+          >
+            <button
+              type="button"
+              id="um-members-tab-users"
+              role="tab"
+              aria-selected={membersTab === "users"}
+              aria-controls="um-members-panel-users"
+              className={`um_members_tab${
+                membersTab === "users" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setMembersTab("users")}
+            >
+              <Users size={18} strokeWidth={1.75} aria-hidden />
+              <span>Users &amp; Roles</span>
+            </button>
+            <button
+              type="button"
+              id="um-members-tab-general"
+              role="tab"
+              aria-selected={membersTab === "general"}
+              aria-controls="um-members-panel-general"
+              className={`um_members_tab${
+                membersTab === "general" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setMembersTab("general")}
+            >
+              <Info size={18} strokeWidth={1.75} aria-hidden />
+              <span>General Info</span>
+            </button>
+          </div>
+        </div>
+        <div className="um_members_top_row_actions">
           <button
             type="button"
             className="um_btn_primary"
@@ -1064,43 +1267,6 @@ export default function UserManagementPage() {
           >
             <UserPlus size={18} aria-hidden />
             Invite Member
-          </button>
-        </div>
-      </div>
-
-      <div className="um_members_tabs_outer">
-        <div
-          className="um_members_tabs_row"
-          role="tablist"
-          aria-label="Members sections"
-        >
-          <button
-            type="button"
-            id="um-members-tab-users"
-            role="tab"
-            aria-selected={membersTab === "users"}
-            aria-controls="um-members-panel-users"
-            className={`um_members_tab${
-              membersTab === "users" ? " um_members_tab_active" : ""
-            }`}
-            onClick={() => setMembersTab("users")}
-          >
-            <Users size={18} strokeWidth={1.75} aria-hidden />
-            <span>Users &amp; Roles</span>
-          </button>
-          <button
-            type="button"
-            id="um-members-tab-general"
-            role="tab"
-            aria-selected={membersTab === "general"}
-            aria-controls="um-members-panel-general"
-            className={`um_members_tab${
-              membersTab === "general" ? " um_members_tab_active" : ""
-            }`}
-            onClick={() => setMembersTab("general")}
-          >
-            <Info size={18} strokeWidth={1.75} aria-hidden />
-            <span>General Info</span>
           </button>
         </div>
       </div>
@@ -1167,6 +1333,17 @@ export default function UserManagementPage() {
             <table className="um_table um_table_sortable um_table_members">
               <thead>
                 <tr>
+                  <th scope="col" className="um_th_checkbox">
+                    <input
+                      ref={memberSelectAllRef}
+                      type="checkbox"
+                      className="um_table_header_select_cb"
+                      checked={allMembersFilteredSelected}
+                      onChange={toggleSelectAllMembersFiltered}
+                      disabled={sortedRows.length === 0}
+                      aria-label="Select all members in this list"
+                    />
+                  </th>
                   {sortColumns.map(({ key, label }) => {
                     const active = sortKey === key;
                     const ariaSort = active
@@ -1231,6 +1408,22 @@ export default function UserManagementPage() {
                   const rowAccountStatus = accountStatusForUi(row);
                   return (
                     <tr key={rowId}>
+                      <td className="um_td_checkbox">
+                        <input
+                          type="checkbox"
+                          className="um_table_row_select_cb"
+                          checked={selectedMemberRowIds.has(rowId)}
+                          onChange={() =>
+                            toggleMemberRowSelected(row, globalIndex)
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={
+                            rawEmail
+                              ? `Select member ${rawEmail}`
+                              : "Select member"
+                          }
+                        />
+                      </td>
                       <td className="um_td_user">
                         <div className="um_user_cell">
                           <div className="um_user_avatar_ring" aria-hidden>

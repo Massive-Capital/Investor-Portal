@@ -125,6 +125,7 @@ function emptyForm(): AddInvestmentFormValues {
     profileId: "",
     investorRole: "",
     status: "",
+    fundApproved: false,
     investorClass: "",
     docSignedDate: "",
     commitmentAmount: "",

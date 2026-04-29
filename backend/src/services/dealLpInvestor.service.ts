@@ -172,6 +172,8 @@ export function syntheticInvestmentFromDealLpInvestor(
     profileId: m.profileId?.trim() ?? "",
     userInvestorProfileId: m.userInvestorProfileId ?? null,
     investor_role: investorRoleFromDealLpInvestorRow(m),
+    fundApproved: false,
+    fundApprovedCommitmentSnapshot: "",
     status: "",
     investorClass: m.investorClass,
     docSignedDate: null,
@@ -180,6 +182,37 @@ export function syntheticInvestmentFromDealLpInvestor(
     documentStoragePath: null,
     createdAt: m.createdAt,
   };
+}
+
+/**
+ * `GET /deals/:dealId/investors` (full roster) is built from `deal_investment` only.
+ * Contacts that exist only on `deal_lp_investor` (e.g. sponsor added LP, $0, no
+ * `deal_investment` row yet) would be missing — add them so investing `/deals`
+ * and the Investors tab can match the user by email.
+ */
+export async function mergeDealLpRosterIntoFullInvestorRows(
+  dealId: string,
+  investments: DealInvestmentRow[],
+): Promise<DealInvestmentRow[]> {
+  const withInvestmentContact = new Set<string>();
+  for (const inv of investments) {
+    const k = normalizeContactKey(inv.contactId ?? "");
+    if (k) withInvestmentContact.add(k);
+  }
+  const roster = await db
+    .select()
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, dealId));
+  const extra: DealInvestmentRow[] = [];
+  for (const m of roster) {
+    const k = normalizeContactKey(m.contactMemberId);
+    if (!k || withInvestmentContact.has(k)) continue;
+    extra.push(syntheticInvestmentFromDealLpInvestor(m));
+  }
+  if (extra.length === 0) return investments;
+  return [...investments, ...extra].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 }
 
 /** LP investor row id + labels; financials from latest investment for this deal/contact (any role). */
@@ -207,6 +240,7 @@ function syntheticLpRosterWithInvestmentFinancials(
     profileId: inv.profileId?.trim() ? inv.profileId : syn.profileId,
     offeringId: inv.offeringId?.trim() ? inv.offeringId : syn.offeringId,
     documentStoragePath: inv.documentStoragePath ?? syn.documentStoragePath,
+    fundApproved: inv.fundApproved ?? false,
     /** LP investor row drives role; investment row may differ. */
     investor_role: syn.investor_role,
   };
@@ -841,6 +875,7 @@ export async function updateMyCommittedAmountForLpDeal(params: {
         contactDisplayName: "",
         profileId: profileOpt,
         investor_role: LP_INVESTOR_ROLE_STORED,
+        fundApproved: false,
         status: "",
         investorClass: classRes.storedInvestorClass,
         docSignedDate: null,
@@ -927,6 +962,7 @@ export async function updateMyCommittedAmountForLpDeal(params: {
         profileId: rowProfileId,
         userInvestorProfileId: null,
         investor_role: LP_INVESTOR_ROLE_STORED,
+        fundApproved: false,
         status: "",
         investorClass: String(inv.investorClass ?? "").trim() || "",
         docSignedDate: null,
@@ -965,12 +1001,16 @@ export async function updateMyCommittedAmountForLpDeal(params: {
       }
       const previous = committedNumericFromDealInvestmentRow(fresh);
       const newTotal = previous + increment;
+      const wasFundApproved = Boolean(fresh.fundApproved);
       await tx
         .update(dealInvestment)
         .set({
           commitmentAmount: formatCumulativeCommitmentStored(newTotal),
           extraContributionAmounts: [],
           ...(profileOpt ? { profileId: profileOpt } : {}),
+          ...(wasFundApproved
+            ? { fundApproved: false, status: "" }
+            : {}),
         })
         .where(eq(dealInvestment.id, inv.id));
     });

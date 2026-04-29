@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns } from "drizzle-orm";
 import { db } from "../database/db.js";
-import { users } from "../schema/schema.js";
+import { companies, users, type UserRow } from "../schema/schema.js";
 import { enrichUserRecordForDealParticipant } from "./dealParticipantProfile.service.js";
 import { mergeLpInvestorFlagsIntoUserPayload } from "./lpInvestorAccess.service.js";
 import { serializeUserForClient } from "./userAdmin.service.js";
@@ -59,10 +59,14 @@ export async function changePasswordForUser(
     };
   }
 
-  let row: (typeof users.$inferSelect) | undefined;
+  let row: UserRow | undefined;
   try {
-    const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    row = rows[0];
+    const rows = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    row = rows[0] as UserRow | undefined;
   } catch (err) {
     console.error("changePasswordForUser: load user failed", err);
     return {
@@ -117,10 +121,19 @@ export async function changePasswordForUser(
     };
   }
 
-  let updated: (typeof users.$inferSelect) | undefined;
+  type UserWithOrgName = UserRow & { orgName: string | null };
+  let withOrg: UserWithOrgName | undefined;
   try {
-    const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    updated = rows[0];
+    const rows = await db
+      .select({
+        ...getTableColumns(users),
+        orgName: companies.name,
+      })
+      .from(users)
+      .leftJoin(companies, eq(users.organizationId, companies.id))
+      .where(eq(users.id, userId))
+      .limit(1);
+    withOrg = rows[0] as UserWithOrgName | undefined;
   } catch (err) {
     console.error("changePasswordForUser: reload user failed", err);
     return {
@@ -129,13 +142,14 @@ export async function changePasswordForUser(
       message: "Password was updated but we could not reload your profile.",
     };
   }
-  if (!updated) {
+  if (!withOrg) {
     return { ok: false, status: 500, message: "Could not update password" };
   }
+  const { orgName, ...updated } = withOrg;
   return {
     ok: true,
     user: await userDetailsShapeWithDealParticipant(
-      serializeUserForClient(updated),
+      serializeUserForClient(updated as UserRow, orgName),
       userId,
     ),
   };
@@ -155,14 +169,23 @@ export async function getOwnProfile(
   | { ok: true; user: Record<string, unknown> }
   | { ok: false; status: number; message: string }
 > {
-  const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!row) {
+  const [r] = await db
+    .select({
+      ...getTableColumns(users),
+      orgName: companies.name,
+    })
+    .from(users)
+    .leftJoin(companies, eq(users.organizationId, companies.id))
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!r) {
     return { ok: false, status: 404, message: "User not found" };
   }
+  const { orgName, ...row } = r;
   return {
     ok: true,
     user: await userDetailsShapeWithDealParticipant(
-      serializeUserForClient(row),
+      serializeUserForClient(row as UserRow, orgName),
       userId,
     ),
   };
@@ -188,28 +211,55 @@ export async function updateOwnProfile(
     return { ok: false, status: 404, message: "User not found" };
   }
 
-  const setObj: {
-    updatedAt: Date;
-    firstName?: string;
-    lastName?: string;
-    phone?: string;
-    companyName?: string;
-  } = { updatedAt: new Date() };
-  if (hasFirst) setObj.firstName = patch.firstName ?? "";
-  if (hasLast) setObj.lastName = patch.lastName ?? "";
-  if (hasPhone) setObj.phone = patch.phone ?? "";
-  if (hasCompany) setObj.companyName = patch.companyName ?? "";
+  if (hasCompany) {
+    if (!row.organizationId) {
+      return {
+        ok: false,
+        status: 400,
+        message: "No organization to update",
+      };
+    }
+    const name = (patch.companyName ?? "").trim();
+    if (!name) {
+      return { ok: false, status: 400, message: "Company name is required" };
+    }
+    await db
+      .update(companies)
+      .set({ name, updatedAt: new Date() })
+      .where(eq(companies.id, row.organizationId));
+  }
 
-  await db.update(users).set(setObj).where(eq(users.id, userId));
+  const hasUserFieldUpdates = hasFirst || hasLast || hasPhone;
+  if (hasUserFieldUpdates) {
+    const setObj: {
+      updatedAt: Date;
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+    } = { updatedAt: new Date() };
+    if (hasFirst) setObj.firstName = patch.firstName ?? "";
+    if (hasLast) setObj.lastName = patch.lastName ?? "";
+    if (hasPhone) setObj.phone = patch.phone ?? "";
+    await db.update(users).set(setObj).where(eq(users.id, userId));
+  }
 
-  const [updated] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const [updated] = await db
+    .select({
+      ...getTableColumns(users),
+      orgName: companies.name,
+    })
+    .from(users)
+    .leftJoin(companies, eq(users.organizationId, companies.id))
+    .where(eq(users.id, userId))
+    .limit(1);
   if (!updated) {
     return { ok: false, status: 500, message: "Could not update profile" };
   }
+  const { orgName, ...u } = updated;
   return {
     ok: true,
     user: await userDetailsShapeWithDealParticipant(
-      serializeUserForClient(updated),
+      serializeUserForClient(u as UserRow, orgName),
       userId,
     ),
   };

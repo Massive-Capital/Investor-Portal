@@ -22,6 +22,8 @@ export const dealInvestorClass = pgTable("deal_investor_class", {
     .default(""),
   billingRaiseQuota: text("billing_raise_quota").notNull().default(""),
   minimumInvestment: text("minimum_investment").notNull().default(""),
+  /** Count of units in the class offering (e.g. shares); stored as text like other money fields. */
+  numberOfUnits: text("number_of_units").notNull().default(""),
   pricePerUnit: text("price_per_unit").notNull().default(""),
   status: text("status").notNull().default("draft"),
   visibility: text("visibility").notNull().default(""),

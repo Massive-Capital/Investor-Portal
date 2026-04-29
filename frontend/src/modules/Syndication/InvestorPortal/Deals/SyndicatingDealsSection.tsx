@@ -29,6 +29,7 @@ import { filterDealListToViewerInvested } from "@/modules/Investing/utils/invest
 import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import "./deals-list.css"
+import "./deal-investors-tab.css"
 import "../Dashboard/sponsor-dashboard.css"
 
 export type DealsSortKey = "createdAt" | "title" | "target"
@@ -463,14 +464,19 @@ export function SyndicatingDealsSection({
           </div>
         </div>
       ) : (
-        <DataTable
-          columns={columns}
-          rows={filtered}
-          getRowKey={(row, rowIndex) => row.id || `sponsor-deal-${rowIndex}`}
-          emptyLabel={
-            query.trim() ? "No deals match your search." : "No deal to display."
-          }
-        />
+        <div className="um_panel um_members_tab_panel deal_inv_table_panel sponsor_dash_deals_list_table_wrap">
+          <DataTable
+            visualVariant="members"
+            columns={columns}
+            rows={filtered}
+            getRowKey={(row, rowIndex) => row.id || `sponsor-deal-${rowIndex}`}
+            emptyLabel={
+              query.trim()
+                ? "No deals match your search."
+                : "No deal to display."
+            }
+          />
+        </div>
       )}
     </section>
   )

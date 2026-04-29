@@ -11,6 +11,8 @@ export interface AddInvestmentFormValues {
   /** Stored `investor_role` on investment (option value from INVESTOR_ROLE_SELECT_OPTIONS) */
   investorRole: string
   status: string
+  /** Mirrors DB `fund_approved` on save (Approved vs Not Approved). */
+  fundApproved?: boolean
   investorClass: string
   docSignedDate: string
   commitmentAmount: string

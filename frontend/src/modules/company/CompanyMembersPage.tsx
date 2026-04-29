@@ -62,6 +62,8 @@ import { UserOrganizationsCell } from "../usermanagement/UserOrganizationsCell"
 import { escapeCsvCell, exportAuditLinesForMembers } from "../usermanagement/memberCsv"
 import { notifyMembersExportAudit } from "../usermanagement/membersExportNotifyApi"
 import type { CustomerCompanyOutletContext } from "./CustomerCompanyLayout"
+import "../Syndication/InvestorPortal/Deals/deal-investors-tab.css"
+import "../Syndication/InvestorPortal/Deals/deals-list.css"
 import "../usermanagement/user_management.css"
 import "./company_page.css"
 
@@ -751,13 +753,16 @@ export default function CompanyMembersPage() {
 
   return (
     <div
-      className="um_panel um_members_tab_panel"
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${
+        loading ? " deals_list_table_panel_loading" : ""
+      }`}
       id="cp-company-panel-members"
       role="tabpanel"
       aria-labelledby="cp-company-tab-members"
+      aria-busy={loading}
     >
       <div className="cp_company_tab_panel_inner">
-        <div className="um_toolbar cp_company_tab_toolbar">
+        <div className="um_toolbar cp_company_tab_toolbar deal_inv_table_um_toolbar">
           <p className="cp_company_tab_toolbar_hint">
             Portal members assigned to{" "}
             <strong className="cp_company_tab_toolbar_strong">
@@ -782,24 +787,27 @@ export default function CompanyMembersPage() {
           </p>
         ) : null}
 
-        {loading ? (
-          <p className="um_hint">Loading members…</p>
-        ) : members.length === 0 ? (
-          <p className="um_hint">No members in this company.</p>
-        ) : (
+        {!error ? (
           <div className="cp_company_tab_table_wrap">
             <DataTable
               visualVariant="members"
-              membersShell="plain"
-              membersTableClassName="um_table_members"
+              membersTableClassName="um_table_members deal_inv_table"
+              initialSort={{ columnId: "user", direction: "asc" }}
               columns={columns}
-              rows={members}
+              rows={loading ? [] : members}
               getRowKey={(row, i) => rowStableId(row, i)}
-              emptyLabel="No rows."
-              pagination={pagination}
+              emptyLabel={
+                loading
+                  ? "Loading members…"
+                  : "No members in this company."
+              }
+              emptyStateRole={loading ? "status" : undefined}
+              pagination={
+                !loading && members.length > 0 ? pagination : undefined
+              }
             />
           </div>
-        )}
+        ) : null}
       </div>
 
       {actionMenuRowId &&

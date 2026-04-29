@@ -7,29 +7,35 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Archive,
   Ban,
   Building2,
   ClipboardList,
+  Contact2,
+  CreditCard,
   Download,
   Eye,
   LayoutGrid,
+  Mail,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
   Search,
+  Settings,
   Upload,
   Users,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
 } from "../../common/components/data-table/DataTable";
+import { TabsScrollStrip } from "../../common/components/tabs-scroll-strip/TabsScrollStrip";
 import { ViewReadonlyField } from "../../common/components/ViewReadonlyField";
 import { toast } from "../../common/components/Toast";
 import { getApiV1Base } from "../../common/utils/apiBaseUrl";
@@ -40,6 +46,7 @@ import {
 } from "../../common/auth/sessionKeys";
 import { getSessionOrganizationCompanyId } from "../../common/auth/sessionOrganization";
 import {
+  canAccessMembersPage,
   canEditCompanyWorkspace,
   isPlatformAdmin,
 } from "../../common/auth/roleUtils";
@@ -48,6 +55,7 @@ import { CompanyEmailSettingsTab } from "./CompanyEmailSettingsTab";
 import { CompanyOfferingsPageTab } from "./CompanyOfferingsPageTab";
 import { CompanySettingsTabPanel } from "./CompanySettingsTabPanel";
 import { ExportCompaniesModal } from "./ExportCompaniesModal";
+import UserManagementPage from "../usermanagement/UserManagementPage";
 import {
   escapeCsvCell,
   exportAuditLinesForCompanies,
@@ -64,6 +72,8 @@ type CompanyPageTab =
   | "email"
   | "contact"
   | "offerings"
+  | "billing"
+  | "members"
   | "companies";
 
 /** Display name from sign-in `userDetails` (the member’s company, not the directory cache). */
@@ -256,6 +266,7 @@ type CompanyPageProps = {
 
 export default function CompanyPage({ variant = "default" }: CompanyPageProps = {}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const customersStandalone = variant === "customers";
   const apiV1 = getApiV1Base();
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
@@ -269,9 +280,11 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   const [companiesExportOpen, setCompaniesExportOpen] = useState(false);
   const [customersListTab, setCustomersListTab] =
     useState<CustomersListTab>("active");
-  const [companyPageTab, setCompanyPageTab] = useState<CompanyPageTab>(() =>
-    variant === "customers" && isPlatformAdmin() ? "companies" : "settings",
-  );
+  const [companyPageTab, setCompanyPageTab] = useState<CompanyPageTab>(() => {
+    if (variant === "customers" && isPlatformAdmin()) return "companies";
+    if (canAccessMembersPage()) return "members";
+    return "settings";
+  });
   const [companiesPage, setCompaniesPage] = useState(1);
   const [companiesPageSize, setCompaniesPageSize] = useState(10);
 
@@ -416,6 +429,23 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     return g && COMPANY_ID_UUID_RE.test(g) ? g : "";
   }, [platformAdmin, platformAdminWorkspaceCompanyId, userDetailsRev]);
 
+  /**
+   * Settings → Members: platform admins use GET /users?organizationId=…
+   * Prefer the signed-in org from session; if the profile has no `organization_id` yet,
+   * use the same workspace company id (stored / first company in directory) as Settings.
+   */
+  const settingsMembersOrganizationScope = useMemo(():
+    | string
+    | false
+    | undefined => {
+    if (!platformAdmin) return undefined;
+    const oid = readSessionOrganizationId().trim().toLowerCase();
+    if (COMPANY_ID_UUID_RE.test(oid)) return oid;
+    const wid = workspaceCompanyId.trim().toLowerCase();
+    if (COMPANY_ID_UUID_RE.test(wid)) return wid;
+    return false;
+  }, [platformAdmin, userDetailsRev, workspaceCompanyId]);
+
   const handleCompanyDisplayNamePersisted = useCallback(
     (name: string) => {
       writeSessionCompanyDisplayName(name);
@@ -446,30 +476,48 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   }, [workspaceCompanyId, companies, sessionCompanyName]);
 
   const companyPageTabDefs = useMemo(() => {
-    const tabs: { id: CompanyPageTab; label: string }[] = [
-      { id: "settings", label: "Settings" },
-      { id: "email", label: "Email settings" },
-      { id: "contact", label: "Contact attributes" },
-      { id: "offerings", label: "Offerings page" },
+    const mainTabs: { id: CompanyPageTab; label: string; icon: LucideIcon }[] = [
+      { id: "settings", label: "Settings", icon: Settings },
+      { id: "email", label: "Email settings", icon: Mail },
+      { id: "contact", label: "Contact attributes", icon: Contact2 },
+      { id: "offerings", label: "Offerings page", icon: LayoutGrid },
+      { id: "billing", label: "Billing", icon: CreditCard },
     ];
-    return tabs;
-  }, []);
+    if (canAccessMembersPage()) {
+      return [{ id: "members", label: "Org Members", icon: Users } as const, ...mainTabs];
+    }
+    return mainTabs;
+  }, [userDetailsRev]);
+
+  const firstCompanyPageTab: CompanyPageTab = companyPageTabDefs[0]?.id ?? "settings";
 
   const activeCompanyPageTab = useMemo(() => {
     const allowed = new Set(companyPageTabDefs.map((t) => t.id));
     if (allowed.has(companyPageTab)) return companyPageTab;
-    return "settings";
-  }, [companyPageTabDefs, companyPageTab]);
+    return firstCompanyPageTab;
+  }, [companyPageTabDefs, companyPageTab, firstCompanyPageTab]);
 
   useEffect(() => {
     if (customersStandalone) return;
     const allowed = new Set(companyPageTabDefs.map((t) => t.id));
-    if (!allowed.has(companyPageTab)) setCompanyPageTab("settings");
-  }, [companyPageTabDefs, companyPageTab, customersStandalone]);
+    if (!allowed.has(companyPageTab)) setCompanyPageTab(firstCompanyPageTab);
+  }, [companyPageTabDefs, companyPageTab, customersStandalone, firstCompanyPageTab]);
 
   useEffect(() => {
     if (customersStandalone && platformAdmin) setCompanyPageTab("companies");
   }, [customersStandalone, platformAdmin]);
+
+  /** Open Members first when visiting Settings or Company (sidebar), not the Settings sub-tab. */
+  useEffect(() => {
+    if (customersStandalone) return;
+    if (!canAccessMembersPage()) return;
+    const p = location.pathname.replace(/\/$/, "") || "/";
+    const segs = p.split("/").filter(Boolean);
+    const last = segs[segs.length - 1] ?? "";
+    if (last === "settings" || last === "company") {
+      setCompanyPageTab("members");
+    }
+  }, [location.pathname, customersStandalone]);
 
   const customersArchivedCount = useMemo(
     () => companies.filter((c) => companyRowIsArchived(c)).length,
@@ -927,7 +975,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       <section className="um_page company_page">
         <h2 className="um_title um_title_with_icon">
           <Building2 className="um_title_icon" size={26} strokeWidth={1.75} aria-hidden />
-          {customersStandalone ? "Customers" : "Company"}
+          {customersStandalone ? "Customers" : "Settings"}
         </h2>
         <div className="um_panel">
           <p className="um_hint">
@@ -937,7 +985,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
             >
               Sign in
             </Link>{" "}
-            {customersStandalone ? "to view customers." : "to view companies."}
+            {customersStandalone ? "to view customers." : "to access settings."}
           </p>
         </div>
       </section>
@@ -950,7 +998,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         <div className="um_header_row">
           <h2 className="um_title um_title_with_icon">
             <Building2 className="um_title_icon" size={26} strokeWidth={1.75} aria-hidden />
-            {customersStandalone ? "Customers" : "Company"}
+            {customersStandalone ? "Customers" : "Settings"}
           </h2>
           {platformAdmin && customersStandalone ? (
             <button
@@ -966,82 +1014,113 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       </div>
 
       {platformAdmin && customersStandalone ? (
-        <div className="um_members_tabs_outer">
-          <div
-            className="um_members_tabs_row"
-            role="tablist"
-            aria-label="Customer company lists"
-          >
-            <button
-              type="button"
-              id="cp-customers-tab-active"
-              role="tab"
-              aria-selected={customersListTab === "active"}
-              aria-controls="cp-customers-panel-active"
-              aria-label={`Active companies, ${customersActiveCount}`}
-              className={`um_members_tab${
-                customersListTab === "active" ? " um_members_tab_active" : ""
-              }`}
-              onClick={() => {
-                setCustomersListTab("active");
-                setToolbarNotice("");
-              }}
+        <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
+          <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+            <div
+              className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
+              role="tablist"
+              aria-label="Customer company lists"
             >
-              <Activity size={18} strokeWidth={1.75} aria-hidden />
-              <span>Active</span>
-              <span className="cp_customers_tab_count" aria-hidden>
-                ({customersActiveCount})
-              </span>
-            </button>
-            <button
-              type="button"
-              id="cp-customers-tab-archived"
-              role="tab"
-              aria-selected={customersListTab === "archived"}
-              aria-controls="cp-customers-panel-archived"
-              aria-label={`Archived companies, ${customersArchivedCount}`}
-              className={`um_members_tab${
-                customersListTab === "archived" ? " um_members_tab_active" : ""
-              }`}
-              onClick={() => {
-                setCustomersListTab("archived");
-                setToolbarNotice("");
-              }}
-            >
-              <Archive size={18} strokeWidth={1.75} aria-hidden />
-              <span>Archived</span>
-              <span className="cp_customers_tab_count" aria-hidden>
-                ({customersArchivedCount})
-              </span>
-            </button>
-          </div>
+              <button
+                type="button"
+                id="cp-customers-tab-active"
+                role="tab"
+                aria-selected={customersListTab === "active"}
+                aria-controls="cp-customers-panel-active"
+                aria-label={`Active companies, ${customersActiveCount}`}
+                className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                  customersListTab === "active" ? " um_members_tab_active" : ""
+                }`}
+                onClick={() => {
+                  setCustomersListTab("active");
+                  setToolbarNotice("");
+                }}
+              >
+                <Activity
+                  className="deals_tabs_icon um_segmented_tab_icon"
+                  size={16}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span className="deals_tabs_label um_segmented_tab_label">
+                  Active
+                </span>
+                <span className="deals_tabs_count" aria-hidden>
+                  ({customersActiveCount})
+                </span>
+              </button>
+              <button
+                type="button"
+                id="cp-customers-tab-archived"
+                role="tab"
+                aria-selected={customersListTab === "archived"}
+                aria-controls="cp-customers-panel-archived"
+                aria-label={`Archived companies, ${customersArchivedCount}`}
+                className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                  customersListTab === "archived" ? " um_members_tab_active" : ""
+                }`}
+                onClick={() => {
+                  setCustomersListTab("archived");
+                  setToolbarNotice("");
+                }}
+              >
+                <Archive
+                  className="deals_tabs_icon um_segmented_tab_icon"
+                  size={16}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span className="deals_tabs_label um_segmented_tab_label">
+                  Archived
+                </span>
+                <span className="deals_tabs_count" aria-hidden>
+                  ({customersArchivedCount})
+                </span>
+              </button>
+            </div>
+          </TabsScrollStrip>
         </div>
       ) : null}
 
       {!customersStandalone ? (
-        <div className="um_members_tabs_outer">
-          <div
-            className="um_members_tabs_row"
-            role="tablist"
-            aria-label="Company page sections"
-          >
-            {companyPageTabDefs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                id={`cp-page-tab-${tab.id}`}
-                aria-selected={activeCompanyPageTab === tab.id}
-                aria-controls={`cp-page-panel-${tab.id}`}
-                className={`um_members_tab${
-                  activeCompanyPageTab === tab.id ? " um_members_tab_active" : ""
-                }`}
-                onClick={() => setCompanyPageTab(tab.id)}
-              >
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
+        <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
+          <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+            <div
+              className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
+              role="tablist"
+              aria-label="Settings page sections"
+            >
+              {companyPageTabDefs.map((tab) => {
+                const TabIcon = tab.icon
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`cp-page-tab-${tab.id}`}
+                    aria-selected={activeCompanyPageTab === tab.id}
+                    aria-controls={`cp-page-panel-${tab.id}`}
+                    className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                      activeCompanyPageTab === tab.id
+                        ? " um_members_tab_active"
+                        : ""
+                    }`}
+                    onClick={() => setCompanyPageTab(tab.id)}
+                  >
+                    <TabIcon
+                      className="deals_tabs_icon um_segmented_tab_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <span className="deals_tabs_label um_segmented_tab_label">
+                      {tab.label}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </TabsScrollStrip>
         </div>
       ) : null}
 
@@ -1104,6 +1183,46 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                 workspaceCompanyId={workspaceCompanyId || undefined}
               />
             </div>
+
+            <div
+              className="um_panel um_members_tab_panel"
+              id="cp-page-panel-billing"
+              role="tabpanel"
+              aria-labelledby="cp-page-tab-billing"
+              hidden={activeCompanyPageTab !== "billing"}
+            >
+              <div className="cp_settings_billing_tab">
+                <h3 className="cp_settings_billing_tab_title">Billing</h3>
+                <p className="um_hint">
+                  Subscription and payment options are available on the billing
+                  page.
+                </p>
+                <p className="um_hint">
+                  <Link
+                    to="/billing"
+                    style={{ color: "var(--main-auth-button-color, #2563eb)" }}
+                  >
+                    Open full billing page
+                  </Link>
+                </p>
+              </div>
+            </div>
+
+            {canAccessMembersPage() ? (
+              <div
+                className="um_panel um_members_tab_panel cp_settings_members_tab"
+                id="cp-page-panel-members"
+                role="tabpanel"
+                aria-labelledby="cp-page-tab-members"
+                hidden={activeCompanyPageTab !== "members"}
+              >
+                <div className="cp_settings_members_embed">
+                  <UserManagementPage
+                    membersOrganizationScope={settingsMembersOrganizationScope}
+                  />
+                </div>
+              </div>
+            ) : null}
           </>
         ) : null}
 

@@ -103,7 +103,17 @@ export function ExportBeneficiariesModal({
     })
   }, [allVisibleSelected, visibleIds])
 
-  function handleExportExcel() {
+  function handleExportAll() {
+    if (beneficiaries.length === 0) return
+    const csv = buildBeneficiariesExportCsv(beneficiaries)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const filename = `beneficiaries-export-all-${stamp}.csv`
+    downloadExportCsv(csv, filename, true)
+    toast.success("Beneficiaries exported", `Saved as ${filename}`)
+    onClose()
+  }
+
+  function handleExportSelected() {
     const chosen = beneficiaries.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildBeneficiariesExportCsv(chosen)
@@ -143,7 +153,8 @@ export function ExportBeneficiariesModal({
         </header>
 
         <p className="deals_export_modal_hint">
-          Search and select beneficiaries, then export to Excel (CSV format).
+          Use <strong>Export all</strong> to download every beneficiary in this list, or
+          search and select rows, then <strong>Export selected</strong> (CSV).
         </p>
 
         <div className="deals_export_modal_search">
@@ -225,12 +236,20 @@ export function ExportBeneficiariesModal({
           </button>
           <button
             type="button"
-            className="deals_export_modal_btn_primary"
-            onClick={handleExportExcel}
+            className="deals_export_modal_btn_secondary"
+            onClick={handleExportSelected}
             disabled={selectedIds.size === 0}
           >
+            Export selected
+          </button>
+          <button
+            type="button"
+            className="deals_export_modal_btn_primary"
+            onClick={handleExportAll}
+            disabled={beneficiaries.length === 0}
+          >
             <Download size={16} strokeWidth={2} aria-hidden />
-            Export to Excel
+            Export all
           </button>
         </footer>
       </div>

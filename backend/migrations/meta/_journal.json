@@ -183,6 +183,48 @@
       "when": 1891500000000,
       "tag": "0026_user_investor_profile_form_snapshot_jsonb",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1891600000000,
+      "tag": "0027_drop_users_company_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1891700000000,
+      "tag": "0028_platform_admin_massive_capital",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1891800000000,
+      "tag": "0029_split_massive_and_massive_capital",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1891900000000,
+      "tag": "0030_deal_investor_class_number_of_units",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1892000000000,
+      "tag": "0031_deal_investment_fund_approved",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1892100000000,
+      "tag": "0032_deal_investment_fund_approved_commitment_snapshot",
+      "breakpoints": true
     }
   ]
 }

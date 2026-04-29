@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify";
 import {
+  ArrowLeft,
   Building2,
   Download,
   ExternalLink,
@@ -24,6 +25,7 @@ import { LpDealGalleryCarousel } from "../components/lp-deal-gallery-carousel";
 import { LpDealStickyCta } from "../components/lp-deal-sticky-cta";
 import { useLpDealRecord } from "../hooks/useLpDealRecord";
 import { listDocumentsForLpDealPage } from "../utils/lpDealDocuments";
+import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css";
 import "../lp-deal-details.css";
 
 function safeDownloadFilename(name: string): string {
@@ -114,8 +116,9 @@ export function LpDealDetailsPage({
     <div className="lpdd">
       <div className="lpdd_shell">
         <div className="lpdd_back_row">
-          <Link className="lpdd_back" to={backTo}>
-            ← Back to deals
+          <Link className="deals_list_inline_back" to={backTo}>
+            <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+            Back to deals
           </Link>
         </div>
 

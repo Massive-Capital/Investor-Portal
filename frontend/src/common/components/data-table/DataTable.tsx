@@ -104,6 +104,12 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const stickyFirstColumn =
     stickyFirstColumnProp ?? visualVariant === "members";
+  /** Match Investors tab: same table classes when callers omit `membersTableClassName`. */
+  const membersTableClassResolved =
+    visualVariant === "members" &&
+    !String(membersTableClassName ?? "").trim()
+      ? "um_table_members deal_inv_table"
+      : (membersTableClassName ?? "");
   const [sortCol, setSortCol] = useState<string | null>(
     () => initialSort?.columnId ?? null,
   );
@@ -161,7 +167,7 @@ export function DataTable<T>({
       ? [
           "um_table",
           "um_table_sortable",
-          membersTableClassName,
+          membersTableClassResolved,
           stickyFirstColumn ? "data_table_sticky_first" : "",
         ]
           .filter(Boolean)

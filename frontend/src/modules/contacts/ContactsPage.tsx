@@ -20,7 +20,9 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react"
@@ -29,6 +31,7 @@ import {
   DataTable,
   type DataTableColumn,
 } from "../../common/components/data-table/DataTable"
+import { TabsScrollStrip } from "../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../common/components/Toast"
 import { ViewReadonlyField } from "../../common/components/ViewReadonlyField"
 import "../../modules/usermanagement/user_management.css"
@@ -49,6 +52,8 @@ import {
 import { ExportContactsModal } from "./components/ExportContactsModal"
 import { ViewContactModal } from "./components/ViewContactModal"
 import "./contacts.css"
+import "../Syndication/InvestorPortal/Deals/deal-investors-tab.css"
+import "../Syndication/InvestorPortal/Deals/deals-list.css"
 import type { ContactRow } from "./types/contact.types"
 import {
   buildContactsCsv,
@@ -164,6 +169,10 @@ function ContactsPage() {
   const [suspendReason, setSuspendReason] = useState("")
   const [suspendSaving, setSuspendSaving] = useState(false)
   const [suspendErr, setSuspendErr] = useState("")
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const contactSelectAllRef = useRef<HTMLInputElement | null>(null)
   const [contactsListTab, setContactsListTab] =
     useState<ContactsListTab>("active")
   const [mainTab, setMainTab] = useState<ContactsMainTab>("contacts")
@@ -294,6 +303,89 @@ function ContactsPage() {
     () => tabRows.filter((r) => contactRowMatchesSearch(r, searchQuery)),
     [tabRows, searchQuery],
   )
+
+  const allContactsInFilterSelected = useMemo(
+    () =>
+      filteredRows.length > 0 &&
+      filteredRows.every((r) => selectedContactIds.has(r.id)),
+    [filteredRows, selectedContactIds],
+  )
+  const someContactsFilterSelected = useMemo(
+    () =>
+      filteredRows.some((r) => selectedContactIds.has(r.id)) &&
+      !allContactsInFilterSelected,
+    [filteredRows, selectedContactIds, allContactsInFilterSelected],
+  )
+
+  useLayoutEffect(() => {
+    const el = contactSelectAllRef.current
+    if (el) {
+      el.indeterminate = someContactsFilterSelected
+    }
+  }, [someContactsFilterSelected, allContactsInFilterSelected, filteredRows.length])
+
+  useEffect(() => {
+    setSelectedContactIds((prev) => {
+      if (prev.size === 0) {
+        return prev
+      }
+      const valid = new Set(filteredRows.map((r) => r.id))
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (valid.has(id)) {
+          next.add(id)
+        }
+      }
+      if (next.size === prev.size) {
+        for (const id of prev) {
+          if (!next.has(id)) {
+            return next
+          }
+        }
+        return prev
+      }
+      return next
+    })
+  }, [filteredRows])
+
+  useEffect(() => {
+    setSelectedContactIds(new Set())
+  }, [contactsListTab])
+
+  const toggleSelectContact = useCallback((id: string) => {
+    setSelectedContactIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const toggleSelectAllContactsFiltered = useCallback(() => {
+    if (filteredRows.length === 0) {
+      return
+    }
+    if (allContactsInFilterSelected) {
+      setSelectedContactIds((prev) => {
+        const next = new Set(prev)
+        for (const r of filteredRows) {
+          next.delete(r.id)
+        }
+        return next
+      })
+    } else {
+      setSelectedContactIds((prev) => {
+        const next = new Set(prev)
+        for (const r of filteredRows) {
+          next.add(r.id)
+        }
+        return next
+      })
+    }
+  }, [filteredRows, allContactsInFilterSelected])
 
   const loadContacts = useCallback(async () => {
     setLoading(true)
@@ -807,6 +899,38 @@ function ContactsPage() {
   const columns: DataTableColumn<ContactRow>[] = useMemo(
     () => [
       {
+        id: "select",
+        header: (
+          <input
+            ref={contactSelectAllRef}
+            type="checkbox"
+            className="um_table_header_select_cb"
+            checked={allContactsInFilterSelected}
+            onChange={toggleSelectAllContactsFiltered}
+            disabled={loading || filteredRows.length === 0}
+            aria-label="Select all contacts in this list"
+          />
+        ),
+        align: "center",
+        thClassName: "um_th_checkbox",
+        tdClassName: "um_td_checkbox",
+        cell: (row) => (
+          <input
+            type="checkbox"
+            className="um_table_row_select_cb"
+            checked={selectedContactIds.has(row.id)}
+            onChange={() => toggleSelectContact(row.id)}
+            onClick={(e) => e.stopPropagation()}
+            disabled={loading}
+            aria-label={`Select contact ${
+              [row.firstName, row.lastName].filter(Boolean).join(" ").trim() ||
+              row.email ||
+              row.id
+            }`}
+          />
+        ),
+      },
+      {
         id: "user",
         header: "User",
         sortValue: (row) =>
@@ -964,11 +1088,17 @@ function ContactsPage() {
       },
     ],
     [
+      allContactsInFilterSelected,
       contactsListTab,
       exportContactRow,
+      filteredRows.length,
+      loading,
       openEditPanel,
       openSuspendContact,
       openViewPanel,
+      selectedContactIds,
+      toggleSelectAllContactsFiltered,
+      toggleSelectContact,
     ],
   )
 
@@ -1038,64 +1168,87 @@ function ContactsPage() {
         </div>
       </div>
 
-      <div className="um_members_tabs_outer contacts_main_tabs_outer">
-        <div
-          className="um_members_tabs_row"
-          role="tablist"
-          aria-label="Contacts, tags, and lists"
-        >
-          <button
-            type="button"
-            id="contacts-main-tab-contacts"
-            role="tab"
-            aria-selected={mainTab === "contacts"}
-            aria-controls="contacts-main-panel-contacts"
-            className={`um_members_tab${
-              mainTab === "contacts" ? " um_members_tab_active" : ""
-            }`}
-            onClick={() => {
-              setMainTab("contacts")
-              setToolbarNotice("")
-            }}
+      <div className="um_members_tabs_outer deals_tabs_outer contacts_main_tabs_outer um_segmented_tabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+          <div
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
+            role="tablist"
+            aria-label="Contacts, tags, and lists"
           >
-            <ContactRound size={18} strokeWidth={1.75} aria-hidden />
-            <span>Contact</span>
-          </button>
-          <button
-            type="button"
-            id="contacts-main-tab-tags"
-            role="tab"
-            aria-selected={mainTab === "tags"}
-            aria-controls="contacts-main-panel-tags"
-            className={`um_members_tab${
-              mainTab === "tags" ? " um_members_tab_active" : ""
-            }`}
-            onClick={() => {
-              setMainTab("tags")
-              setToolbarNotice("")
-            }}
-          >
-            <Tag size={18} strokeWidth={1.75} aria-hidden />
-            <span>Tags</span>
-          </button>
-          <button
-            type="button"
-            id="contacts-main-tab-lists"
-            role="tab"
-            aria-selected={mainTab === "lists"}
-            aria-controls="contacts-main-panel-lists"
-            className={`um_members_tab${
-              mainTab === "lists" ? " um_members_tab_active" : ""
-            }`}
-            onClick={() => {
-              setMainTab("lists")
-              setToolbarNotice("")
-            }}
-          >
-            <LayoutList size={18} strokeWidth={1.75} aria-hidden />
-            <span>Lists</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              id="contacts-main-tab-contacts"
+              role="tab"
+              aria-selected={mainTab === "contacts"}
+              aria-controls="contacts-main-panel-contacts"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                mainTab === "contacts" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => {
+                setMainTab("contacts")
+                setToolbarNotice("")
+              }}
+            >
+              <ContactRound
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Contact
+              </span>
+            </button>
+            <button
+              type="button"
+              id="contacts-main-tab-tags"
+              role="tab"
+              aria-selected={mainTab === "tags"}
+              aria-controls="contacts-main-panel-tags"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                mainTab === "tags" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => {
+                setMainTab("tags")
+                setToolbarNotice("")
+              }}
+            >
+              <Tag
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Tags
+              </span>
+            </button>
+            <button
+              type="button"
+              id="contacts-main-tab-lists"
+              role="tab"
+              aria-selected={mainTab === "lists"}
+              aria-controls="contacts-main-panel-lists"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                mainTab === "lists" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => {
+                setMainTab("lists")
+                setToolbarNotice("")
+              }}
+            >
+              <LayoutList
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Lists
+              </span>
+            </button>
+          </div>
+        </TabsScrollStrip>
       </div>
 
       {mainTab === "contacts" ? (
@@ -1167,7 +1320,7 @@ function ContactsPage() {
       >
       <div className="um_members_tab_content contacts_main_tab_content_flush">
         <div
-          className="um_panel um_members_tab_panel contacts_table_panel"
+          className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel"
           id="contacts-directory-panel"
           role="region"
           aria-label={
@@ -1189,13 +1342,13 @@ function ContactsPage() {
             )
           ) : (
             <>
-              <div className="um_toolbar">
+              <div className="um_toolbar deal_inv_table_um_toolbar">
                 <div className="um_search_wrap">
                   <Search className="um_search_icon" size={18} aria-hidden />
                   <input
                     type="search"
                     className="um_search_input"
-                    placeholder="Search"
+                    placeholder="Search…"
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value)
@@ -1209,7 +1362,7 @@ function ContactsPage() {
                     disabled={loading}
                   />
                 </div>
-                <div className="um_toolbar_actions">
+                <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
                   <button
                     type="button"
                     className="um_btn_toolbar"
@@ -1245,9 +1398,7 @@ function ContactsPage() {
               ) : null}
               <DataTable
                 visualVariant="members"
-                membersShell="plain"
-                stickyFirstColumn={false}
-                membersTableClassName="um_table_members contacts_um_table"
+                stickyFirstColumn
                 columns={columns}
                 rows={loading ? [] : filteredRows}
                 getRowKey={(row) => row.id}
@@ -1345,7 +1496,7 @@ function ContactsPage() {
             role="tabpanel"
             aria-labelledby="contacts-main-tab-tags"
           >
-            <div className="um_panel um_members_tab_panel contacts_table_panel">
+            <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
               <div className="um_toolbar">
                 <div className="um_search_wrap">
                   <Search className="um_search_icon" size={18} aria-hidden />
@@ -1361,9 +1512,6 @@ function ContactsPage() {
               </div>
               <DataTable
                 visualVariant="members"
-                membersShell="plain"
-                stickyFirstColumn={false}
-                membersTableClassName="um_table_members contacts_um_table"
                 columns={tagColumns}
                 rows={filteredTagCatalogRows}
                 getRowKey={(r) => r.id}
@@ -1448,7 +1596,7 @@ function ContactsPage() {
             role="tabpanel"
             aria-labelledby="contacts-main-tab-lists"
           >
-            <div className="um_panel um_members_tab_panel contacts_table_panel">
+            <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
               <div className="um_toolbar">
                 <div className="um_search_wrap">
                   <Search className="um_search_icon" size={18} aria-hidden />
@@ -1464,9 +1612,6 @@ function ContactsPage() {
               </div>
               <DataTable
                 visualVariant="members"
-                membersShell="plain"
-                stickyFirstColumn={false}
-                membersTableClassName="um_table_members contacts_um_table"
                 columns={listColumns}
                 rows={filteredListCatalogRows}
                 getRowKey={(r) => r.id}

@@ -61,13 +61,11 @@ export async function upsertPendingInvitedUser(
     }
 
     const patch: {
-      companyName: string;
       role: string;
       inviteExpiresAt: Date;
       updatedAt: Date;
       organizationId?: string | null;
     } = {
-      companyName: (company.companyName ?? existing.companyName ?? "").toString(),
       role: invitedRole,
       inviteExpiresAt,
       updatedAt: new Date(),
@@ -96,7 +94,6 @@ export async function upsertPendingInvitedUser(
     userStatus: "active",
     userSignupCompleted: "false",
     organizationId: company.companyId ?? null,
-    companyName: (company.companyName ?? "").toString(),
     inviteExpiresAt,
   });
 

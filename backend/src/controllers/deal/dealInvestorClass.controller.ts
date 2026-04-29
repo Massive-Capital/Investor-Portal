@@ -34,6 +34,9 @@ function parseInput(b: Record<string, unknown>): InvestorClassInput {
     minimumInvestment: bodyString(
       b.minimum_investment ?? b.minimumInvestment,
     ).trim(),
+    numberOfUnits: bodyString(
+      b.number_of_units ?? b.numberOfUnits,
+    ).trim(),
     pricePerUnit: bodyString(b.price_per_unit ?? b.pricePerUnit).trim(),
     status: bodyString(b.status).trim() || "draft",
     visibility: bodyString(b.visibility).trim(),

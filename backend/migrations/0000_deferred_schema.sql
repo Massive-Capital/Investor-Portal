@@ -104,6 +104,8 @@ ALTER TABLE public.deal_investor_class ADD COLUMN IF NOT EXISTS billing_raise_qu
 --> statement-breakpoint
 ALTER TABLE public.deal_investor_class ADD COLUMN IF NOT EXISTS advanced_options_json text NOT NULL DEFAULT '{}';
 --> statement-breakpoint
+ALTER TABLE public.deal_investor_class ADD COLUMN IF NOT EXISTS number_of_units text NOT NULL DEFAULT '';
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS contact (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   first_name varchar(200) NOT NULL,

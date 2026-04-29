@@ -235,10 +235,10 @@ export default function InvestmentsPage() {
         </p>
       </div>
 
-      <div className="um_members_tabs_outer deals_tabs_outer">
-        <TabsScrollStrip scrollClassName="deals_tabs_scroll">
+      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
-            className="um_members_tabs_row deals_tabs_row"
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
             role="tablist"
             aria-label="Investment views"
           >
@@ -248,16 +248,18 @@ export default function InvestmentsPage() {
               role="tab"
               aria-selected={activeTab === "investments"}
               aria-controls="investments-list-tabpanel"
-              className={`um_members_tab deals_tabs_tab${activeTab === "investments" ? " um_members_tab_active" : ""}`}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "investments" ? " um_members_tab_active" : ""}`}
               onClick={() => setActiveTab("investments")}
             >
               <TrendingUp
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">Investments</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Investments
+              </span>
               <span className="deals_tabs_count">({activeCount})</span>
             </button>
             <button
@@ -266,16 +268,18 @@ export default function InvestmentsPage() {
               role="tab"
               aria-selected={activeTab === "archives"}
               aria-controls="investments-list-tabpanel"
-              className={`um_members_tab deals_tabs_tab${activeTab === "archives" ? " um_members_tab_active" : ""}`}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "archives" ? " um_members_tab_active" : ""}`}
               onClick={() => setActiveTab("archives")}
             >
               <Archive
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">Archives</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Archives
+              </span>
               <span className="deals_tabs_count">({archivedCount})</span>
             </button>
           </div>
@@ -333,18 +337,16 @@ export default function InvestmentsPage() {
                   type="button"
                   className="um_toolbar_export_btn"
                   onClick={() => setExportModalOpen(true)}
-                  title="Download all investments in this list as a CSV file"
+                  title="Export all investments in this view (CSV) or pick rows in the dialog"
                 >
                   <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export CSV</span>
+                  <span>Export all</span>
                 </button>
               </div>
             </div>
           </div>
           <DataTable<InvestmentListRow>
             visualVariant="members"
-            membersShell="plain"
-            membersTableClassName="um_table_members deal_inv_table"
             columns={columns}
             rows={filtered}
             isLoading={loading && rows.length === 0}
@@ -367,7 +369,7 @@ export default function InvestmentsPage() {
       <ExportInvestmentsModal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
-        investments={rows}
+        investments={rowsForTab}
       />
     </section>
   )

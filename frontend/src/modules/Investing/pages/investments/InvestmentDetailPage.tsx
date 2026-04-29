@@ -576,10 +576,10 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
 
   return (
     <>
-      <div className="um_members_tabs_outer deals_tabs_outer investment_detail_tabs_outer">
-        <TabsScrollStrip scrollClassName="deals_tabs_scroll">
+      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer investment_detail_tabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
-            className="um_members_tabs_row deals_tabs_row"
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
             role="tablist"
             aria-label="Investment detail views"
           >
@@ -589,18 +589,20 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               role="tab"
               aria-selected={activeTab === "details"}
               aria-controls="inv-detail-panel-details"
-              className={`um_members_tab deals_tabs_tab${
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
                 activeTab === "details" ? " um_members_tab_active" : ""
               }`}
               onClick={() => setActiveTab("details")}
             >
               <Building2
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">Details</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Details
+              </span>
             </button>
             <button
               type="button"
@@ -608,18 +610,20 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               role="tab"
               aria-selected={activeTab === "profile"}
               aria-controls="inv-detail-panel-profile"
-              className={`um_members_tab deals_tabs_tab${
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
                 activeTab === "profile" ? " um_members_tab_active" : ""
               }`}
               onClick={() => setActiveTab("profile")}
             >
               <UserCircle
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">Profile and investment</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Profile and investment
+              </span>
               {profileLineCount > 0 ? (
                 <span className="deals_tabs_count">({profileLineCount})</span>
               ) : null}

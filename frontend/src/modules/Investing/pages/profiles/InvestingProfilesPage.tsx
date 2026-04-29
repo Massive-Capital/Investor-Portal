@@ -750,10 +750,10 @@ export default function InvestingProfilesPage() {
         </div>
       ) : null}
 
-      <div className="um_members_tabs_outer deals_tabs_outer">
-        <TabsScrollStrip scrollClassName="deals_tabs_scroll">
+      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
-            className="um_members_tabs_row deals_tabs_row"
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
             role="tablist"
             aria-label="Profiles sections"
           >
@@ -763,16 +763,18 @@ export default function InvestingProfilesPage() {
               role="tab"
               aria-selected={activeTab === "my-profiles"}
               aria-controls="profiles-panel-my-profiles"
-              className={`um_members_tab deals_tabs_tab${activeTab === "my-profiles" ? " um_members_tab_active" : ""}`}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "my-profiles" ? " um_members_tab_active" : ""}`}
               onClick={() => setActiveTab("my-profiles")}
             >
               <UserCircle
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">My Profiles</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                My Profiles
+              </span>
               <span className="deals_tabs_count">({profiles.length})</span>
             </button>
             <button
@@ -781,16 +783,18 @@ export default function InvestingProfilesPage() {
               role="tab"
               aria-selected={activeTab === "beneficiaries"}
               aria-controls="profiles-panel-beneficiaries"
-              className={`um_members_tab deals_tabs_tab${activeTab === "beneficiaries" ? " um_members_tab_active" : ""}`}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "beneficiaries" ? " um_members_tab_active" : ""}`}
               onClick={() => setActiveTab("beneficiaries")}
             >
               <Users
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">Beneficiaries</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Beneficiaries
+              </span>
               <span className="deals_tabs_count">({beneficiaries.length})</span>
             </button>
             <button
@@ -799,16 +803,18 @@ export default function InvestingProfilesPage() {
               role="tab"
               aria-selected={activeTab === "addresses"}
               aria-controls="profiles-panel-addresses"
-              className={`um_members_tab deals_tabs_tab${activeTab === "addresses" ? " um_members_tab_active" : ""}`}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "addresses" ? " um_members_tab_active" : ""}`}
               onClick={() => setActiveTab("addresses")}
             >
               <MapPin
-                className="deals_tabs_icon"
-                size={18}
-                strokeWidth={1.75}
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
                 aria-hidden
               />
-              <span className="deals_tabs_label">Address</span>
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Address
+              </span>
               <span className="deals_tabs_count">({savedAddresses.length})</span>
             </button>
           </div>
@@ -1132,17 +1138,17 @@ export default function InvestingProfilesPage() {
       <ExportInvestorProfilesModal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
-        profiles={profilesDisplay}
+        profiles={profilesByStatus}
       />
       <ExportBeneficiariesModal
         open={exportBeneModalOpen}
         onClose={() => setExportBeneModalOpen(false)}
-        beneficiaries={beneficiaries}
+        beneficiaries={beneficiariesByStatus}
       />
       <ExportAddressesModal
         open={exportAddrModalOpen}
         onClose={() => setExportAddrModalOpen(false)}
-        addresses={savedAddresses}
+        addresses={addressesByStatus}
       />
       <AddBeneficiaryModal
         open={addBenOpen}

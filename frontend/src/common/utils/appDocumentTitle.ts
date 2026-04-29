@@ -53,11 +53,14 @@ export function pageTitleForAppPathname(
   }
 
   const exact: Record<string, string> = {
-    "/company": "Company",
+    "/settings": "Settings",
+    "/company": "Settings",
     "/customers": "Customers",
     "/billing": "Billing",
     "/members": "Members",
     "/contacts": "All contacts",
+    "/contacts/email-templates/new": "New email template",
+    "/contacts/email-templates": "Email Templates",
     "/leads": "Leads",
     "/deals": "My deals",
     "/deals/investor-emails": "Investor emails",
@@ -88,6 +91,8 @@ export function pageTitleForAppPathname(
   if (/^\/investing\/investments\/[^/]+$/.test(p)) return "Investment"
 
   if (/^\/investing\/profiles\/[^/]+\/edit$/.test(p)) return "Edit profile"
+
+  if (/^\/contacts\/email-templates\/edit\//.test(p)) return "Edit email template"
 
   return "Investor Portal"
 }
