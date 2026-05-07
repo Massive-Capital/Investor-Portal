@@ -16,9 +16,9 @@ import {
 import { toast } from "@/common/components/Toast"
 import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
 import { InvestingFormField } from "./InvestingFormField"
-import "@/modules/Syndication/InvestorPortal/Deals/components/add-investment-modal.css"
-import "@/modules/contacts/contacts.css"
-import "@/modules/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
+import "@/modules/Syndication/contacts/contacts.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
 import "./investing-profiles-form-modals.css"
 

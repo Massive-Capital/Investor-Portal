@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { dealMemberRoleDisplayForShell } from "../../modules/usermanagement/memberAdminShared"
+import { dealMemberRoleDisplayForShell } from "../../modules/Syndication/usermanagement/memberAdminShared"
 import { readSessionUser } from "../../modules/myaccount/sessionUser"
 
 function computeLabel(): string {

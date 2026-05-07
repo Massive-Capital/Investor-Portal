@@ -65,13 +65,13 @@
 
 .um_table_pagination_btn_active {
   color: #fff;
-  background: #000000;
-  border-color: #000000;
+  background: var(--portal-primary);
+  border-color: var(--portal-primary)
 }
 
 .um_table_pagination_btn_active:hover:not(:disabled) {
-  background: #1a1a1a;
-  border-color: #1a1a1a;
+   background: var(--portal-primary);
+  border-color: var(--portal-primary)
 }
 
 .um_table_pagination_page_size {

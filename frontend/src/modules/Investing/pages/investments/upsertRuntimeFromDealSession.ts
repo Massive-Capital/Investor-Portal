@@ -6,15 +6,15 @@
  */
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { committedAmountForViewerEmail } from "@/modules/Investing/utils/investingViewerDealScope"
-import type { DealDetailApi } from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
-import type { AddInvestmentFormValues } from "@/modules/Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_member_types"
+import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
+import type { AddInvestmentFormValues } from "@/modules/Syndication/Deals/tabs/deal_members/add-investment/add_deal_member_types"
 import { formatInvestedAsFromInv } from "./investedAsDisplay"
-import { investorProfileLabel } from "@/modules/Syndication/InvestorPortal/Deals/constants/investor-profile"
+import { investorProfileLabel } from "@/modules/Syndication/Deals/constants/investor-profile"
 import type {
   DealInvestorRow,
   DealInvestorsPayload,
-} from "@/modules/Syndication/InvestorPortal/Deals/types/deal-investors.types"
-import { parseMoneyDigits } from "@/modules/Syndication/InvestorPortal/Deals/utils/offeringMoneyFormat"
+} from "@/modules/Syndication/Deals/types/deal-investors.types"
+import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import { upsertRuntimeInvestmentRow } from "./investmentsRuntimeStore"
 
 function normEmail(s: string): string {

@@ -2,10 +2,11 @@ import { useEffect } from "react";
 import "./termpolicy.css";
 import companyLogo from "@/assets/images/massive-capital-logo.png";
 import { useNavigate } from "react-router-dom";
+import { formatTitle } from "@/utils/title";
 
 const TermsService = () => {
   useEffect(() => {
-    document.title = "Investor Portal LLC | Terms of Services";
+    document.title = formatTitle("Terms of Services");
   }, []);
   const navigate = useNavigate();
 

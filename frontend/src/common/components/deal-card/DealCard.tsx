@@ -1,6 +1,6 @@
 import { CameraOff, CircleDot, MapPin, Star, StarHalf } from "lucide-react"
-import { dealStageChipCompactClassName } from "../../../modules/Syndication/InvestorPortal/Deals/utils/dealStageChip"
-import "../../../modules/Syndication/InvestorPortal/Deals/deals-list.css"
+import { dealStageChipCompactClassName } from "../../../modules/Syndication/Deals/utils/dealStageChip"
+import "../../../modules/Syndication/Deals/deals-list.css"
 import "./deal-card.css"
 
 export interface DealCardMetric {

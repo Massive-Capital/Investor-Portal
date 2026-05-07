@@ -7,7 +7,7 @@ import {
   isCompanyAdminRole,
   isPlatformAdminRole,
 } from "../constants/roles.js";
-import { listSponsorTotalInvestmentsForScope } from "../services/sponsorTotalInvestment.service.js";
+import { listSponsorTotalInvestmentsForScope } from "../services/deal/sponsorTotalInvestment.service.js";
 
 function organizationIdFromQuery(req: Request): string | undefined {
   const raw = req.query.organizationId ?? req.query.organization_id;

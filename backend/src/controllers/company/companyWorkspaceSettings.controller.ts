@@ -6,7 +6,7 @@ import {
   upsertWorkspaceTabPayload,
   userCanAccessCompanyWorkspace,
   userCanEditCompanyWorkspace,
-} from "../../services/companyWorkspaceSettings.service.js";
+} from "../../services/company/companyWorkspaceSettings.service.js";
 
 function paramStr(v: string | string[] | undefined): string {
   if (v == null) return "";

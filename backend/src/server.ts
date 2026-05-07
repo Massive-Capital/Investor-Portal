@@ -1,8 +1,4 @@
-import dotenv from "dotenv";
-
-// dotenv.config({ path: ".env" });
-dotenv.config({ path: ".env.local" });
-
+import "./env.bootstrap.js";
 import express from "express";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +8,7 @@ import { db, pool } from "./database/db.js";
 import { getUploadsPhysicalRoot } from "./config/uploadPaths.js";
 import { postCompanySettingsBranding } from "./controllers/company/companySettingsBranding.controller.js";
 import { uploadCompanySettingsBranding } from "./middleware/companySettingsBrandingUpload.middleware.js";
+import { socHttpAuditMiddleware } from "./middleware/socHttpAudit.middleware.js";
 import userRoutes from "./routes/userRoutes.routes.js";
 import companyRoutes from "./routes/companyRoutes.routes.js";
 import dealFormRoutes from "./routes/dealForm.routes.js";
@@ -35,7 +32,7 @@ app.use(
       // In development, allow any localhost origin so CORS never blocks
       if (
         process.env.NODE_ENV !== "production" &&
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+        /^https?:\/\/(\[::1\]|localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
       ) {
         return cb(null, true);
       }
@@ -59,7 +56,7 @@ app.use((req, res, next) => {
     origin &&
     (allowedOrigins.includes(origin) ||
       (process.env.NODE_ENV !== "production" &&
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)))
+        /^https?:\/\/(\[::1\]|localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)))
   ) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
@@ -70,13 +67,16 @@ app.use((req, res, next) => {
 /* Multipart branding upload must run before any body parser (multer/busboy reads the stream). */
 app.post(
   "/api/v1/companies/:companyId/settings/branding/:assetType",
+  socHttpAuditMiddleware,
   uploadCompanySettingsBranding,
   postCompanySettingsBranding,
 );
 
-// Allow larger request bodies (default is ~100kb; Investor Portal and other forms can exceed this)
+// Allow larger request bodies (default is ~100kb; SyndicationX forms can exceed this)
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
+
+app.use("/api/v1", socHttpAuditMiddleware);
 
 // Preflight: respond to OPTIONS for any /api/v1 path with 204 (CORS headers set by cors() above)
 app.use("/api/v1", (req, res, next) => {

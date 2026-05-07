@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { requestPasswordResetWithEmail } from "../../services/passwordReset.service.js";
+import { requestPasswordResetWithEmail } from "../../services/auth/passwordReset.service.js";
 
 export async function postForgotPassword(
   req: Request,

@@ -10,9 +10,9 @@ import {
 import { AddInvestorProfileModal } from "./AddInvestorProfileModal"
 import type { SavedAddress } from "./address.types"
 import type { InvestorProfileListRow, UpdateInvestorProfilePayload } from "./investor-profiles.types"
-import "@/modules/usermanagement/user_management.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-create.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/deals-list.css"
+import "@/modules/Syndication/Deals/deals-create.css"
 import "./add-investor-profile-modal.css"
 import "./investing-profiles.css"
 

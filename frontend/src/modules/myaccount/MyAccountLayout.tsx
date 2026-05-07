@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom"
 import { Building2, LockKeyhole, UserCircle } from "lucide-react"
-import "../usermanagement/user_management.css"
+import "../Syndication/usermanagement/user_management.css"
 import "./my_account.css"
 
 export function MyAccountLayout() {

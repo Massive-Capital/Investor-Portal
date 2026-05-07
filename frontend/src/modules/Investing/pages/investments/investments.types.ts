@@ -40,6 +40,12 @@ export type InvestmentBreakdownLine = {
   investorType: string
   /** For this line: this commitment’s `committed` amount in USD in the table. */
   investedAmount: number
+  /** When this investment row was created (invested). */
+  investedAtIso?: string
+  /** Sponsor display name that approved this amount. */
+  approvedBy?: string
+  /** When this amount was approved by sponsor. */
+  approvedAtIso?: string
 }
 
 /** Full property / investment / debt snapshot for the investment detail form. */

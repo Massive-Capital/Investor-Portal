@@ -117,6 +117,18 @@
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
+/**
+ * Portaled fixed panel: inline style sets `left` + `width`. Base `.portal_dropdown_select_panel`
+ * uses `right: 0`, which would otherwise stretch the panel to the viewport edge and cause
+ * horizontal overflow / layout shift.
+ */
+.portal_dropdown_select_panel--fixed {
+  right: auto;
+  min-width: 0;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
 .portal_dropdown_select_panel > li {
   margin: 0 0.5em;
   padding: 0;

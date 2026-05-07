@@ -12,6 +12,7 @@ type VerifyOk = {
   email: string;
   companyName: string;
   dealId: string;
+  accountExists?: boolean;
 };
 
 export default function DealInvitePage() {
@@ -47,6 +48,7 @@ export default function DealInvitePage() {
           email?: string;
           companyName?: string;
           dealId?: string;
+          accountExists?: boolean;
           message?: string;
         };
         if (cancelled) return;
@@ -64,6 +66,7 @@ export default function DealInvitePage() {
           email: data.email,
           companyName: String(data.companyName ?? "").trim() || "—",
           dealId: data.dealId,
+          accountExists: Boolean(data.accountExists),
         });
         setPhase("ready");
       } catch {
@@ -126,6 +129,7 @@ export default function DealInvitePage() {
 
   const signupHref = `/signup/${encodeURIComponent(token)}`;
   const signinState = { from: `/deals/${encodeURIComponent(ctx.dealId)}` };
+  const accountExists = Boolean(ctx.accountExists);
 
   return (
     <AuthLayout
@@ -135,11 +139,14 @@ export default function DealInvitePage() {
       <div className="deal_invite_shell deal_invite_panel">
         <p className="deal_invite_kicker">Deal invitation</p>
         <h1 className="deal_invite_title">
-          You need an account to open this deal
+          {accountExists
+            ? "Your account is already on this deal"
+            : "You need an account to open this deal"}
         </h1>
         <p className="deal_invite_body">
-          No account was found for this invitation. Create one with the email
-          below, or sign in if you already use the portal.
+          {accountExists
+            ? "An account already exists for this invitation email. Sign in to open the deal."
+            : "No account was found for this invitation. Create one with the email below, or sign in if you already use the portal."}
         </p>
 
         <div className="deal_invite_summary">
@@ -154,13 +161,15 @@ export default function DealInvitePage() {
         </div>
 
         <div className="deal_invite_actions">
-          <Link to={signupHref} className="deal_invite_btn_primary">
-            Sign up <ArrowRight size={18} aria-hidden />
-          </Link>
+          {!accountExists ? (
+            <Link to={signupHref} className="deal_invite_btn_primary">
+              Sign up <ArrowRight size={18} aria-hidden />
+            </Link>
+          ) : null}
           <Link
             to="/signin"
             state={signinState}
-            className="deal_invite_btn_secondary"
+            className={accountExists ? "deal_invite_btn_primary" : "deal_invite_btn_secondary"}
           >
             Sign in
           </Link>

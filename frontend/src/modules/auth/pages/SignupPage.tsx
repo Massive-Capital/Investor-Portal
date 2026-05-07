@@ -4,7 +4,7 @@ import SignupForm from "../components/SignupForm";
 export default function SignupPage() {
   return (
     <AuthLayout
-      title="Investor Portal LLC | Sign Up"
+      title="Sign Up"
       caption="Create your investor account"
     >
       <SignupForm />

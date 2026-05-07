@@ -208,9 +208,19 @@ export function DropdownSelect({
     return () => document.removeEventListener("pointerdown", onDoc, true)
   }, [open, close])
 
+  /** Keep keyboard highlight visible without calling `scrollIntoView` (that scrolls the whole page and can cause horizontal drift + white gaps). */
   useLayoutEffect(() => {
     if (!open || activeIndex < 0) return
-    optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" })
+    const panel = panelRef.current
+    const opt = optionRefs.current[activeIndex]
+    if (!panel || !opt) return
+    const edge = 6
+    const ot = opt.offsetTop
+    const ob = ot + opt.offsetHeight
+    const st = panel.scrollTop
+    const sh = panel.clientHeight
+    if (ot < st + edge) panel.scrollTop = Math.max(0, ot - edge)
+    else if (ob > st + sh - edge) panel.scrollTop = ob - sh + edge
   }, [activeIndex, open])
 
   const syncFixedPanelPosition = useCallback(() => {
@@ -218,11 +228,34 @@ export function DropdownSelect({
     const el = triggerRef.current
     if (!el) return
     const r = el.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const gap = 4
+    const pad = 8
+    let width = Math.min(r.width, vw - pad * 2)
+    let left = r.left
+    if (left + width > vw - pad) left = vw - pad - width
+    if (left < pad) left = pad
+
+    const belowTop = r.bottom + gap
+    const spaceBelow = vh - belowTop - pad
+    let top = belowTop
+    let maxHeight = Math.min(280, Math.max(80, spaceBelow))
+
+    if (spaceBelow < 100 && r.top > gap + pad + 80) {
+      const spaceAbove = r.top - gap - pad
+      maxHeight = Math.min(280, Math.max(80, spaceAbove))
+      top = Math.max(pad, r.top - gap - maxHeight)
+    }
+
     setFixedPanelStyle({
       position: "fixed",
-      top: r.bottom + 4,
-      left: r.left,
-      width: r.width,
+      top,
+      left,
+      width,
+      maxWidth: `calc(100vw - ${pad * 2}px)`,
+      maxHeight,
+      boxSizing: "border-box",
       zIndex: 13000,
     })
   }, [useFixedPanel, open])
@@ -357,6 +390,7 @@ export function DropdownSelect({
       aria-labelledby={baseId}
       className={[
         "portal_dropdown_select_panel",
+        useFixedPanel ? "portal_dropdown_select_panel--fixed" : "",
         panelClassName,
       ]
         .filter(Boolean)

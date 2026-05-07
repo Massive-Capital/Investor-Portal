@@ -1,98 +1,107 @@
-export const APP_DOCUMENT_TITLE_PREFIX = "Investor Portal LLC"
+import { APP_NAME } from "@/config/app";
+import { formatTitle } from "@/utils/title";
 
 export function formatAppDocumentTitle(pageLabel: string): string {
-  const t = pageLabel.trim()
-  if (!t) return APP_DOCUMENT_TITLE_PREFIX
-  return `${APP_DOCUMENT_TITLE_PREFIX} | ${t}`
-}
-
-export type SetAppDocumentTitleOptions = {
-  /**
-   * When true, sets `document.title` to `pageLabel` only (no
-   * `Investor Portal LLC |` prefix). Use for public offering preview / share
-   * surfaces where the title should read as a single phrase.
-   */
-  plain?: boolean
+  return formatTitle(pageLabel);
 }
 
 export function setAppDocumentTitle(
   pageLabel: string,
-  options?: SetAppDocumentTitleOptions,
+  plain = false,
 ): void {
-  const t = pageLabel.trim()
-  if (options?.plain) {
-    document.title = t || APP_DOCUMENT_TITLE_PREFIX
-    return
+  const title = pageLabel.trim();
+
+  document.title = plain
+    ? title || APP_NAME
+    : formatTitle(title);
+}
+
+function normalizePath(path: string): string {
+  if (path !== "/" && path.endsWith("/")) {
+    return path.slice(0, -1);
   }
-  document.title = formatAppDocumentTitle(t)
+
+  return path;
 }
 
-function normalizePathname(pathname: string): string {
-  if (pathname.length > 1 && pathname.endsWith("/"))
-    return pathname.slice(0, -1)
-  return pathname
-}
+const PAGE_TITLES: Record<string, string> = {
+  "/": "Dashboard",
 
-/** Page label for routes rendered inside `PageLayout` (no prefix). */
+  "/settings": "Settings",
+  "/company": "Settings",
+
+  "/customers": "Customers",
+
+  "/billing": "Billing",
+  "/members": "Members",
+
+  "/contacts": "All contacts",
+  "/contacts/email-templates": "Email Templates",
+  "/contacts/email-templates/new": "New email template",
+
+  "/leads": "Leads",
+
+  "/deals": "My deals",
+  "/deals/investor-emails": "Investor emails",
+  "/deals/reporting": "Reporting",
+
+  "/investing/opportunities": "Opportunities",
+  "/investing/investments": "Investments",
+  "/investing/documents": "Documents",
+  "/investing/profiles": "Profiles",
+  "/investing/profiles/add": "Add profile",
+  "/investing/deals": "Deals",
+  "/investing/company": "Company overview",
+  "/investing/cashflows": "Cashflows",
+  "/investing/settings": "Settings",
+  "/investing/review": "Leave a review",
+
+  "/account": "My account",
+  "/refer-a-friend": "Refer a friend",
+  "/support": "Support",
+};
+
 export function pageTitleForAppPathname(
   pathname: string,
   search = "",
 ): string {
-  const p = normalizePathname(pathname)
+  const path = normalizePath(pathname);
 
-  if (p === "/" || p === "") return "Dashboard"
-
-  if (p === "/deals/create") {
-    const qs = search.startsWith("?")
-      ? search
-      : search
-        ? `?${search}`
-        : ""
-    const editId = new URLSearchParams(qs).get("edit")?.trim()
-    return editId ? "Edit deal" : "Create deal"
+  // Simple exact match
+  if (PAGE_TITLES[path]) {
+    return PAGE_TITLES[path];
   }
 
-  const exact: Record<string, string> = {
-    "/settings": "Settings",
-    "/company": "Settings",
-    "/customers": "Customers",
-    "/billing": "Billing",
-    "/members": "Members",
-    "/contacts": "All contacts",
-    "/contacts/email-templates/new": "New email template",
-    "/contacts/email-templates": "Email Templates",
-    "/leads": "Leads",
-    "/deals": "My deals",
-    "/deals/investor-emails": "Investor emails",
-    "/deals/reporting": "Reporting",
-    "/investing/opportunities": "Opportunities",
-    "/investing/investments": "Investments",
-    "/investing/documents": "Documents",
-    "/investing/profiles": "Profiles",
-    "/investing/profiles/add": "Add profile",
-    "/investing/deals": "Deals",
-    "/investing/company": "Company overview",
-    "/investing/cashflows": "Cashflows",
-    "/investing/settings": "Settings",
-    "/investing/review": "Leave a review",
-    "/account": "My account",
-    "/refer-a-friend": "Refer a friend",
-    "/support": "Support",
+  // Deals create/edit
+  if (path === "/deals/create") {
+    const params = new URLSearchParams(search);
+    return params.get("edit") ? "Edit deal" : "Create deal";
   }
 
-  if (exact[p]) return exact[p]
+  // Dynamic routes
+  if (path.match(/^\/customers\/[^/]+\/members$/)) {
+    return "Company members";
+  }
 
-  if (/^\/customers\/[^/]+\/members$/.test(p)) return "Company members"
+  if (path.match(/^\/customers\/[^/]+\/deals$/)) {
+    return "Company deals";
+  }
 
-  if (/^\/customers\/[^/]+\/deals$/.test(p)) return "Company deals"
+  if (path.match(/^\/deals\/[^/]+$/)) {
+    return "Deal";
+  }
 
-  if (/^\/deals\/[^/]+$/.test(p)) return "Deal"
+  if (path.match(/^\/investing\/investments\/[^/]+$/)) {
+    return "Investment";
+  }
 
-  if (/^\/investing\/investments\/[^/]+$/.test(p)) return "Investment"
+  if (path.match(/^\/investing\/profiles\/[^/]+\/edit$/)) {
+    return "Edit profile";
+  }
 
-  if (/^\/investing\/profiles\/[^/]+\/edit$/.test(p)) return "Edit profile"
+  if (path.startsWith("/contacts/email-templates/edit/")) {
+    return "Edit email template";
+  }
 
-  if (/^\/contacts\/email-templates\/edit\//.test(p)) return "Edit email template"
-
-  return "Investor Portal"
+  return "SyndicationX";
 }

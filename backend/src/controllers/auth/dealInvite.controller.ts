@@ -1,9 +1,12 @@
 import type { Request, Response } from "express";
+import { sql } from "drizzle-orm";
+import { db } from "../../database/db.js";
+import { users } from "../../schema/schema.js";
 import {
   verifyDealMemberInviteToken,
   type DealMemberInviteJwtPayload,
-} from "../../services/dealMemberInviteToken.service.js";
-import { getAddDealFormById } from "../../services/dealForm.service.js";
+} from "../../services/deal/dealMemberInviteToken.service.js";
+import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
 
 function queryToken(req: Request): string {
   const q = req.query as Record<string, unknown>;
@@ -63,11 +66,18 @@ export async function getDealInviteVerify(
     return;
   }
 
+  const [existingUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`lower(trim(${users.email})) = ${p.email}`)
+    .limit(1);
+
   res.status(200).json({
     valid: true,
     email: p.email,
     companyName: p.companyName,
     dealId: p.dealId,
     companyId: p.companyId,
+    accountExists: Boolean(existingUser),
   });
 }

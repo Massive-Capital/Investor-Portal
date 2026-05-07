@@ -5,7 +5,7 @@ import {
   fetchPublicCompanyBranding,
   withBrandingVersionOnUrl,
   type CompanyBranding,
-} from "@/modules/company/companyBranding";
+} from "@/modules/Syndication/company/companyBranding";
 import { formatAppDocumentTitle } from "../utils/appDocumentTitle";
 import { normalizeDealGallerySrc } from "../utils/apiBaseUrl";
 import "./auth_layout.css";

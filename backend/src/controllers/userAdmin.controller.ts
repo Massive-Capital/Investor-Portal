@@ -7,20 +7,87 @@ import {
   isCompanyAdminRole,
   isPlatformAdminRole,
 } from "../constants/roles.js";
-import { countAssignedDealsByUserIdsForViewer } from "../services/assigningDealUser.service.js";
+import { countAssignedDealsByUserIdsForViewer } from "../services/deal/assigningDealUser.service.js";
 import {
   listMemberAdminAuditLogsForTarget,
   listUsersForAdmin,
   MEMBER_AUDIT_ACTION_EDIT,
   MEMBER_AUDIT_ACTION_SUSPEND,
   updateMemberUser,
-} from "../services/userAdmin.service.js";
-import { getUserContactsExportAuditFields } from "../services/contact.service.js";
-import { sanitizeExportedLinesForNotify } from "../services/exportNotifySanitize.js";
-import { sendWorkspaceExportAuditNotification } from "../services/workspaceExportAudit.service.js";
+} from "../services/user/userAdmin.service.js";
+import { getUserContactsExportAuditFields } from "../services/contact/contact.service.js";
+import { sanitizeExportedLinesForNotify } from "../services/workspace/exportNotifySanitize.js";
+import { sendWorkspaceExportAuditNotification } from "../services/workspace/workspaceExportAudit.service.js";
+import {
+  logSocMembershipAdminChange,
+  logSocMembershipAuditTrailAccess,
+  logSocMembershipExportNotify,
+  logSocMembershipListView,
+} from "../audit/index.js";
+import emailConfig, {
+  getEmailBccFromEnv,
+  smtpEnvelopeForSendMail,
+} from "../functions/emailconfig.js";
 
 function bodyString(v: unknown): string {
   return typeof v === "string" ? v : v != null ? String(v) : "";
+}
+
+function normalizeAddressList(v: string | string[] | undefined): string[] {
+  if (!v) return [];
+  if (Array.isArray(v)) {
+    return [...new Set(v.map((x) => String(x).trim()).filter((x) => x.includes("@")))];
+  }
+  return [...new Set(String(v).split(",").map((x) => x.trim()).filter((x) => x.includes("@")))];
+}
+
+function normalizeAddressListUnknown(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return [
+      ...new Set(
+        v
+          .map((x) => String(x).trim())
+          .filter((x) => x.includes("@")),
+      ),
+    ];
+  }
+  if (typeof v === "string") {
+    return [
+      ...new Set(
+        v
+          .split(/[;,]/)
+          .map((x) => x.trim())
+          .filter((x) => x.includes("@")),
+      ),
+    ];
+  }
+  return [];
+}
+
+function decodeHtmlEntities(input: string): string {
+  if (!input) return "";
+  const named: Record<string, string> = {
+    nbsp: " ",
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: '"',
+    apos: "'",
+  };
+  return input
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (full, entityRaw: string) => {
+      const entity = String(entityRaw).toLowerCase();
+      if (entity.startsWith("#x")) {
+        const code = Number.parseInt(entity.slice(2), 16);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : full;
+      }
+      if (entity.startsWith("#")) {
+        const code = Number.parseInt(entity.slice(1), 10);
+        return Number.isFinite(code) ? String.fromCodePoint(code) : full;
+      }
+      return named[entity] ?? full;
+    })
+    .replace(/\u00a0/g, " ");
 }
 
 /** `organizationId` or `organization_id` — platform admin only (customer company drill-in). */
@@ -126,12 +193,125 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
     };
   });
 
+  const scopeLog =
+    restrictToOrganizationId ??
+    (typeof filterOrganizationId === "string" &&
+    ORG_UUID_RE.test(filterOrganizationId)
+      ? filterOrganizationId
+      : null);
+
+  logSocMembershipListView({
+    actorUserId: jwtUser.id,
+    resultCount: enriched.length,
+    organizationScopeId: scopeLog ?? undefined,
+  });
+
   res.status(200).json({ users: enriched });
+}
+
+/** Frontend send-mail composer defaults (auth required). */
+export async function getMailDefaults(req: Request, res: Response): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const bcc = normalizeAddressList(getEmailBccFromEnv());
+  res.status(200).json({ bcc });
+}
+
+/** Sends email from app without opening local mail client. */
+export async function postSendMail(req: Request, res: Response): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const b = req.body as Record<string, unknown>;
+  // console.log("body",b)
+  const to = normalizeAddressListUnknown(b.to);
+  const cc = normalizeAddressListUnknown(b.cc);
+  const subject = decodeHtmlEntities(bodyString(b.subject))
+    .replace(/\s+/g, " ")
+    .trim();
+  const bodyHtml = bodyString(b.bodyHtml);
+  const bodyText = decodeHtmlEntities(bodyString(b.bodyText))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  const [actor] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, jwtUser.id))
+    .limit(1);
+  const actorEmail = bodyString(actor?.email).trim();
+  const jwtEmail = bodyString(jwtUser.email).trim();
+  const senderEmail =
+    actorEmail.includes("@")
+      ? actorEmail
+      : jwtEmail.includes("@")
+        ? jwtEmail
+      : "";
+
+  if (to.length === 0) {
+    res.status(400).json({ message: "At least one valid recipient is required" });
+    return;
+  }
+  if (!subject) {
+    res.status(400).json({ message: "Email subject is required" });
+    return;
+  }
+  if (!senderEmail) {
+    res.status(400).json({ message: "Sender user email is required" });
+    return;
+  }
+
+  const configuredSenderAddress = bodyString(process.env.SENDER_EMAIL_ID).trim();
+
+  if (!configuredSenderAddress || !configuredSenderAddress.includes("@")) {
+    res.status(500).json({ message: "Sender email is not configured on server" });
+    return;
+  }
+  const envBcc = normalizeAddressList(getEmailBccFromEnv());
+  const bcc = [
+    ...new Set(
+      [...envBcc, senderEmail].filter((x) => !!x),
+    ),
+  ];
+  const fromAddress = senderEmail;
+  console.log("fromAddress",fromAddress)
+
+  try {
+    const transporter = emailConfig();
+    await transporter.sendMail({
+      from: fromAddress,
+      to,
+      ...(cc.length > 0 ? { cc } : {}),
+      ...(bcc.length > 0 ? { bcc } : {}),
+      ...(senderEmail ? { replyTo: senderEmail } : {}),
+      subject,
+      html: bodyHtml || "<p></p>",
+      text: bodyText || "",
+      envelope: smtpEnvelopeForSendMail({
+        fromAddress: configuredSenderAddress,
+        to,
+        ...(cc.length > 0 ? { cc } : {}),
+        ...(bcc.length > 0 ? { bcc } : {}),
+      }),
+    });
+    res.status(200).json({ sent: true });
+  } catch (err) {
+    console.error("postSendMail:", err);
+    res.status(500).json({ message: "Could not send email" });
+  }
 }
 
 type PatchUserBody = {
   role?: unknown;
   userStatus?: unknown;
+  /** Same as `companies.id`; platform admins only (move member between orgs). */
+  organizationId?: unknown;
+  companyId?: unknown;
   reason?: unknown;
   action?: unknown;
 };
@@ -162,9 +342,20 @@ export async function patchUser(req: Request, res: Response): Promise<void> {
   }
 
   const body = req.body as PatchUserBody;
-  const patch: { role?: string; userStatus?: string } = {};
+  const patch: {
+    role?: string;
+    userStatus?: string;
+    organizationId?: string;
+  } = {};
   if (typeof body.role === "string") patch.role = body.role;
   if (typeof body.userStatus === "string") patch.userStatus = body.userStatus;
+  const orgRaw =
+    typeof body.organizationId === "string"
+      ? body.organizationId.trim()
+      : typeof body.companyId === "string"
+        ? body.companyId.trim()
+        : "";
+  if (orgRaw) patch.organizationId = orgRaw;
 
   const reasonRaw =
     typeof body.reason === "string" ? body.reason.trim() : "";
@@ -200,6 +391,12 @@ export async function patchUser(req: Request, res: Response): Promise<void> {
     res.status(result.status).json({ message: result.message });
     return;
   }
+
+  logSocMembershipAdminChange({
+    actorUserId: jwtUser.id,
+    targetUserId: userId.trim(),
+    auditAction: actionRaw,
+  });
 
   res.status(200).json({
     message: "Member updated",
@@ -241,6 +438,11 @@ export async function getMemberAuditLogs(req: Request, res: Response): Promise<v
     res.status(result.status).json({ message: result.message });
     return;
   }
+
+  logSocMembershipAuditTrailAccess({
+    actorUserId: jwtUser.id,
+    targetUserId: targetUserId.trim(),
+  });
 
   res.status(200).json({ logs: result.logs });
 }
@@ -303,6 +505,13 @@ export async function postMembersExportNotify(
       exporterOrgName: audit.orgName || "—",
       rowCount,
       exportedSampleLines: exportedLines,
+    });
+
+    const notified = result.status === "sent";
+    logSocMembershipExportNotify({
+      actorUserId: jwtUser.id,
+      rowCount,
+      notified,
     });
 
     if (result.status === "sent") {

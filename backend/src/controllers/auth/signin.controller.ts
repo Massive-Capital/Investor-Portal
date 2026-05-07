@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { signInWithPassword } from "../../services/auth.service.js";
+import { signInWithPassword } from "../../services/auth/auth.service.js";
 
 type SigninBody = {
   emailOrUsername?: unknown;

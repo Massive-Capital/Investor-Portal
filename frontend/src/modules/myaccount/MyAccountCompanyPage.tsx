@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { Building2, CircleUser, Shield } from "lucide-react"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
-import { primaryRoleLabelFromRow } from "../usermanagement/memberAdminShared"
+import { primaryRoleLabelFromRow } from "../Syndication/usermanagement/memberAdminShared"
 import { fetchMyProfile } from "./accountApi"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
 

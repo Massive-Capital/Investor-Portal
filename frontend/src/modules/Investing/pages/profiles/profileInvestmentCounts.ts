@@ -1,8 +1,8 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { applyLpSessionDealIdScope } from "@/modules/Investing/utils/investingViewerDealScope"
 import type { InvestmentListRow } from "@/modules/Investing/pages/investments/investments.types"
-import { fetchDealsList, fetchDealInvestors } from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
-import { parseMoneyDigits } from "@/modules/Syndication/InvestorPortal/Deals/utils/offeringMoneyFormat"
+import { fetchDealsList, fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
+import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
 
 function normEmail(s: string): string {

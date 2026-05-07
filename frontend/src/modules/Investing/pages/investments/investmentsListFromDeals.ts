@@ -11,11 +11,11 @@ import {
   fetchDealById,
   fetchDealInvestors,
   fetchDealsList,
-} from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
-import type { DealDetailApi } from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
-import type { DealInvestorRow } from "@/modules/Syndication/InvestorPortal/Deals/types/deal-investors.types"
-import type { DealListRow } from "@/modules/Syndication/InvestorPortal/Deals/types/deals.types"
-import { parseMoneyDigits } from "@/modules/Syndication/InvestorPortal/Deals/utils/offeringMoneyFormat"
+} from "@/modules/Syndication/Deals/api/dealsApi"
+import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
+import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
+import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import {
   fetchUserInvestorProfileNameMap,
   formatInvestedAsFromInv,
@@ -92,6 +92,15 @@ function buildProfileBreakdownForDeal(
       profileName: profileNameForInvestmentBreakdown(inv, nameMap),
       investorType: investorCommitmentTypeFromInv(inv),
       investedAmount: amt,
+      investedAtIso: String(inv.investedAtIso ?? "").trim() || undefined,
+      approvedBy:
+        inv.fundApproved === true
+          ? String(inv.fundApprovedByDisplayName ?? "").trim() || undefined
+          : undefined,
+      approvedAtIso:
+        inv.fundApproved === true
+          ? String(inv.fundApprovedAtIso ?? "").trim() || undefined
+          : undefined,
     })
   }
   return out.sort((a, b) => {

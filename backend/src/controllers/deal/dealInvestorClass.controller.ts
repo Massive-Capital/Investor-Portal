@@ -1,10 +1,11 @@
 import type { Request, Response } from "express";
+import { logSocDestructiveDealAction } from "../../audit/index.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
-} from "../../services/dealAccess.service.js";
+} from "../../services/deal/dealAccess.service.js";
 import {
   deleteInvestorClass,
   insertInvestorClass,
@@ -12,7 +13,7 @@ import {
   mapRowToJson,
   type InvestorClassInput,
   updateInvestorClass,
-} from "../../services/dealInvestorClass.service.js";
+} from "../../services/deal/dealInvestorClass.service.js";
 
 function bodyString(v: unknown): string {
   return typeof v === "string" ? v : v != null ? String(v) : "";
@@ -209,6 +210,12 @@ export async function deleteDealInvestorClass(
       res.status(404).json({ message: "Investor class not found" });
       return;
     }
+    logSocDestructiveDealAction({
+      action: "deal.investor_class_delete",
+      actorUserId: user.id,
+      dealId,
+      resourceId: classId,
+    });
     res.status(200).json({ message: "Investor class deleted" });
   } catch (err) {
     console.error("deleteDealInvestorClass:", err);

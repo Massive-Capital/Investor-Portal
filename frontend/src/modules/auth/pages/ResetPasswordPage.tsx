@@ -4,7 +4,7 @@ import ResetPasswordForm from "../components/ResetPasswordForm";
 export default function ResetPasswordPage() {
   return (
     <AuthLayout
-      title="Investor Portal LLC | Reset Password"
+      title="Reset Password"
       caption="Reset Password"
       authPageClassName="authPage--resetPassword"
     >

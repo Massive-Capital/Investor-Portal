@@ -186,8 +186,10 @@
   border-radius: 9999px;
   background: var(--ui-button-background-add);
   color: #ffffff;
-  font-size: 0.75em;
-  font-weight: 600;
+font-size: 0.9em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -4,16 +4,16 @@ import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
-} from "../../services/dealAccess.service.js";
+} from "../../services/deal/dealAccess.service.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
-import { getAddDealFormById } from "../../services/dealForm.service.js";
+import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
 import { isDealStageCapitalRaising } from "../../utils/dealStageCapitalRaising.js";
-import { reconcileAssigningDealUsersForDeal } from "../../services/assigningDealUser.service.js";
+import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
   getLpInvestorsTabPayload,
-} from "../../services/dealLpInvestor.service.js";
-import { applyMyInvestNowCommitmentAddon } from "../../services/dealLpInvestorMyInvestNowCommitment.addon.service.js";
+} from "../../services/deal/dealLpInvestor.service.js";
+import { applyMyInvestNowCommitmentAddon } from "../../services/deal/dealLpInvestorMyInvestNowCommitment.addon.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;

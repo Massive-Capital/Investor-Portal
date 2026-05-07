@@ -2,13 +2,15 @@
   margin: 0;
   padding: 0.9em 0.3em 0.9em 0.3em;
   text-align: left;
-  background: var(--portal-surface);
+  /* background: var(--portal-surface); */
+  background-color: #f6f6f6;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-card-radius);
   display: flex;
   flex-direction: column;
   gap: 0.75em;
   min-width: 0;
+  flex-grow: 0.2;
   font-family: inherit;
   font-style: normal;
   color: inherit;
@@ -42,7 +44,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: var(--portal-surface);
+  /* background: var(--portal-surface); */
 }
 
 .tool_style_card_icon {

@@ -8,14 +8,14 @@ import {
   listCompanies,
   updateCompany,
   type CompanyAuditAction,
-} from "../../services/company.service.js";
+} from "../../services/company/company.service.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
 import { db } from "../../database/db.js";
 import { companies, users } from "../../schema/schema.js";
-import { getUserContactsExportAuditFields } from "../../services/contact.service.js";
-import { sanitizeExportedLinesForNotify } from "../../services/exportNotifySanitize.js";
-import { sendWorkspaceExportAuditNotification } from "../../services/workspaceExportAudit.service.js";
+import { getUserContactsExportAuditFields } from "../../services/contact/contact.service.js";
+import { sanitizeExportedLinesForNotify } from "../../services/workspace/exportNotifySanitize.js";
+import { sendWorkspaceExportAuditNotification } from "../../services/workspace/workspaceExportAudit.service.js";
 
 function bodyString(v: unknown): string {
   return typeof v === "string" ? v : v != null ? String(v) : "";

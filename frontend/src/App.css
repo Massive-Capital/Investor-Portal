@@ -170,20 +170,44 @@ button {
   border-radius: 10px;
 }
 
-.app_shell select {
+/* Global native dropdown style — matches Add Deal form select UI. */
+select {
+  font-family: inherit;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--portal-text, #0f172a);
+  background: var(--portal-surface, #fff);
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--ui-button-border-radius, 25px);
   display: block;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  /* min-height: 2.6666667em; */
-  padding: 0.5333333em 2.4em 0.5333333em 0.8em;
+  padding: 0.55em 2.5em 0.55em 1em;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.75em center;
+  background-position: right 0.65em center;
+  background-size: 1em;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+select:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--portal-text, #0f172a) 14%,
+    var(--portal-border, #e2e8f0)
+  );
+}
+
+:root[data-theme="dark"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
 }
 
 .app_shell
@@ -204,7 +228,8 @@ button {
     [type="color"]
   ):not(.deal_assets_search):focus-visible,
 .app_shell textarea:focus-visible,
-.app_shell select:focus-visible {
+.app_shell select:focus-visible,
+select:focus-visible {
   outline: none;
   border-color: var(--portal-text-muted);
   box-shadow: var(--portal-field-focus-shadow);

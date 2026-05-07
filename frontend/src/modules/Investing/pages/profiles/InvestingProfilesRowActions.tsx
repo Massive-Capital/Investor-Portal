@@ -9,7 +9,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { toast } from "@/common/components/Toast"
-import "@/modules/usermanagement/user_management.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
 
 type RowEntityKind = "profile" | "beneficiary" | "address"
 

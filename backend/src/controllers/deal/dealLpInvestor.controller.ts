@@ -4,23 +4,23 @@ import {
   assertDealIdInViewerScope,
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
-} from "../../services/dealAccess.service.js";
+} from "../../services/deal/dealAccess.service.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { eq } from "drizzle-orm";
 import {
   isLpInvestorRole,
   resolveInvestorClassForDealInvestment,
-} from "../../services/dealInvestment.service.js";
-import { reconcileAssigningDealUsersForDeal } from "../../services/assigningDealUser.service.js";
-import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/dealMemberInvitationEmail.service.js";
+} from "../../services/deal/dealInvestment.service.js";
+import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
+import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import {
   getDealLpInvestorById,
   getLpInvestorsTabPayload,
   updateDealLpInvestorById,
   updateMyCommittedAmountForLpDeal,
   upsertDealLpInvestor,
-} from "../../services/dealLpInvestor.service.js";
+} from "../../services/deal/dealLpInvestor.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -69,9 +69,11 @@ export async function postDealLpInvestor(
   );
   const investorClass = bodyString(b.investor_class ?? b.investorClass);
   const profileId = bodyString(b.profile_id ?? b.profileId);
-  const sendInvitationMail = bodyString(
+  const sendInvitationMailRaw = bodyString(
     b.send_invitation_mail ?? b.sendInvitationMail,
   );
+  /** Autosave updates draft rows only; invitation mail is persisted/sent on explicit Save. */
+  const sendInvitationMail = autosave ? "no" : sendInvitationMailRaw;
   const contactEmail = bodyString(
     b.contact_email ?? b.contactEmail ?? b.email,
   );
@@ -170,9 +172,11 @@ export async function putDealLpInvestor(
   );
   const investorClass = bodyString(b.investor_class ?? b.investorClass);
   const profileId = bodyString(b.profile_id ?? b.profileId);
-  const sendInvitationMail = bodyString(
+  const sendInvitationMailRaw = bodyString(
     b.send_invitation_mail ?? b.sendInvitationMail,
   );
+  /** Autosave updates draft rows only; invitation mail is persisted/sent on explicit Save. */
+  const sendInvitationMail = autosave ? "no" : sendInvitationMailRaw;
   const contactEmail = bodyString(
     b.contact_email ?? b.contactEmail ?? b.email,
   );

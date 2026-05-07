@@ -1,8 +1,17 @@
+import {
+  buildSyndicationXEmailBrandHeaderHtml,
+  buildSyndicationXEmailFooterHtml,
+  SX_EMAIL_BUTTON_STYLE,
+  SX_EMAIL_MUTED,
+  SX_EMAIL_PAGE_BG,
+  SX_EMAIL_PRIMARY,
+} from "./emailSyndicationXLayout.js";
+
 export interface OfferingPreviewShareTemplateVars {
-  dealName: string
+  dealName: string;
   /** Public offering preview URL (no login). */
-  previewUrl: string
-  senderBrand: string
+  previewUrl: string;
+  senderBrand: string;
 }
 
 function escHtml(s: string): string {
@@ -10,33 +19,51 @@ function escHtml(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/"/g, "&quot;");
 }
 
 export function buildOfferingPreviewShareEmailText(
   v: OfferingPreviewShareTemplateVars,
 ): string {
   const lines = [
-    `Offering preview: ${v.dealName}`,
+    `Offering preview: ${v.dealName} · SyndicationX`,
     "",
-    "You can view this investment offering without signing in:",
+    "View this investment offering (no sign-in required):",
     v.previewUrl,
     "",
     `— ${v.senderBrand}`,
-  ]
-  return lines.join("\n")
+  ];
+  return lines.join("\n");
 }
 
 export function buildOfferingPreviewShareEmailHtml(
   v: OfferingPreviewShareTemplateVars,
 ): string {
-  const name = escHtml(v.dealName)
-  const url = escHtml(v.previewUrl)
-  const brand = escHtml(v.senderBrand)
-  return `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a;">
-<p style="margin:0 0 12px;font-size:16px;font-weight:600;">Offering preview: ${name}</p>
-<p style="margin:0 0 12px;">You can view this investment offering without signing in:</p>
-<p style="margin:0 0 16px;"><a href="${url}" style="color:#2563eb;">${url}</a></p>
-<p style="margin:0;font-size:13px;color:#64748b;">— ${brand}</p>
-</body></html>`
+  const name = escHtml(v.dealName);
+  const href = escHtml(v.previewUrl);
+  const brand = escHtml(v.senderBrand);
+  const header = buildSyndicationXEmailBrandHeaderHtml();
+  const footer = buildSyndicationXEmailFooterHtml(brand);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offering preview · SyndicationX</title>
+</head>
+<body style="margin:0;padding:0;background:${SX_EMAIL_PAGE_BG};font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+<div style="max-width:600px;margin:24px auto;padding:32px 28px;background:#ffffff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,0.06);">
+  ${header}
+  <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${SX_EMAIL_MUTED};font-family:Arial,Helvetica,sans-serif;">Public preview</p>
+  <h1 style="color:${SX_EMAIL_PRIMARY};font-size:22px;line-height:1.25;margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-weight:700;">Offering preview</h1>
+  <p style="font-size:16px;line-height:1.55;color:#1e293b;margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;">You’ve been shared access to review <strong>${name}</strong>. Open the link below — no SyndicationX account required for this preview.</p>
+  <div style="margin:24px 0;">
+    <a href="${href}" style="${SX_EMAIL_BUTTON_STYLE}">View offering</a>
+  </div>
+  <p style="font-size:12px;line-height:1.45;color:${SX_EMAIL_MUTED};margin:0;font-family:Arial,Helvetica,sans-serif;word-break:break-all;">${href}</p>
+  ${footer}
+</div>
+</body>
+</html>`;
 }

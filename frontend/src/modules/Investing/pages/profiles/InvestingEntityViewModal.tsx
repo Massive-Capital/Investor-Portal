@@ -13,9 +13,9 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { ViewReadonlyField } from "@/common/components/ViewReadonlyField"
-import "@/modules/Syndication/InvestorPortal/Deals/components/add-investment-modal.css"
-import "@/modules/contacts/contacts.css"
-import "@/modules/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
+import "@/modules/Syndication/contacts/contacts.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
 import "./investing-profiles.css"
 
 type DetailRow = { label: string; value: string }

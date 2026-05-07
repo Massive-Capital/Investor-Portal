@@ -17,7 +17,7 @@ import { ExportInvestorProfilesModal } from "./ExportInvestorProfilesModal"
 import { AddAddressModal } from "./AddAddressModal"
 import { formatSavedAddressLabel, type AddressFormDraft, type SavedAddress } from "./address.types"
 import { COUNTRY_OPTIONS, US_STATE_OPTIONS } from "./usStates"
-import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/InvestorPortal/Deals/createDealFormDraftStorage"
+import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
 import { getMergedInvestmentListRows } from "../investments/investmentsRuntimeData"
 import type { InvestmentListRow } from "../investments/investments.types"
 import {
@@ -42,9 +42,9 @@ import {
   mergeInvestorProfileRowsWithLinkedCounts,
 } from "./profileInvestmentCounts"
 import { InvestingProfilesRowActions } from "./InvestingProfilesRowActions"
-import "@/modules/usermanagement/user_management.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
-import "@/modules/contacts/contacts.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/deals-list.css"
+import "@/modules/Syndication/contacts/contacts.css"
 import "./investing-profiles.css"
 
 type ProfilesTab = "my-profiles" | "beneficiaries" | "addresses"

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { resetPasswordWithToken } from "../../services/passwordReset.service.js";
+import { resetPasswordWithToken } from "../../services/auth/passwordReset.service.js";
 
 type ResetPasswordBody = {
   token?: unknown;

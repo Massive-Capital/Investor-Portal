@@ -1,15 +1,19 @@
 import type { Request, Response } from "express";
+import {
+  logSocDealMemberInvitationSent,
+  logSocDestructiveDealAction,
+} from "../../audit/index.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
-} from "../../services/dealAccess.service.js";
+} from "../../services/deal/dealAccess.service.js";
 import {
   deleteDealMemberRosterEntry,
   listDealMembersMappedToInvestorApi,
-} from "../../services/dealMember.service.js";
-import { sendDealMemberInvitationEmail } from "../../services/dealMemberInvitationEmail.service.js";
+} from "../../services/deal/dealMember.service.js";
+import { sendDealMemberInvitationEmail } from "../../services/deal/dealMemberInvitationEmail.service.js";
 
 /**
  * GET /deals/:dealId/members — roster from `deal_member`, merged with investment
@@ -135,6 +139,10 @@ export async function postDealMemberInvitationEmail(
       return;
     }
 
+    logSocDealMemberInvitationSent({
+      actorUserId: user.id,
+      dealId: dealId.trim(),
+    });
     res.status(200).json({ message: "Invitation email sent" });
   } catch (err) {
     console.error("postDealMemberInvitationEmail:", err);
@@ -177,6 +185,12 @@ export async function deleteDealMember(
       res.status(404).json({ message: result.message });
       return;
     }
+    logSocDestructiveDealAction({
+      action: "deal.member_remove",
+      actorUserId: user.id,
+      dealId: dealId.trim(),
+      resourceId: rowId.trim(),
+    });
     res.status(200).json({ message: "Member removed" });
   } catch (err) {
     console.error("deleteDealMember:", err);

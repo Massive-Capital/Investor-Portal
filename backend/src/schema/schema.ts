@@ -45,8 +45,12 @@ export {
 } from "./deal.schema/deal-investor-class.schema.js";
 export {
   contact,
+  contactEmailTemplate,
   type ContactInsert,
   type ContactRow,
+  type ContactEmailTemplateInsert,
+  type ContactEmailTemplateRow,
+  type EmailTemplateAttachment,
 } from "./contact.schema.js";
 export {
   organizationContactList,
@@ -62,3 +66,8 @@ export {
   type UserBeneficiaryRow,
   type UserSavedAddressRow,
 } from "./investing.schema/userProfileBook.schema.js";
+export {
+  socAuthAuditLogs,
+  type SocAuthAuditLogInsert,
+  type SocAuthAuditLogRow,
+} from "./socAuthAudit.schema.js";

@@ -43,3 +43,36 @@ export const contact = pgTable("contact", {
 
 export type ContactRow = typeof contact.$inferSelect;
 export type ContactInsert = typeof contact.$inferInsert;
+
+export type EmailTemplateAttachment = {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  dataBase64: string;
+};
+
+/** Reusable contact email templates, scoped by organization. */
+export const contactEmailTemplate = pgTable("contact_email_template", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => companies.id, {
+    onDelete: "set null",
+  }),
+  name: varchar("name", { length: 255 }).notNull(),
+  subject: varchar("subject", { length: 255 }).notNull().default(""),
+  body: text("body").notNull().default(""),
+  attachment: jsonb("attachment").$type<EmailTemplateAttachment | null>(),
+  archived: boolean("archived").notNull().default(false),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export type ContactEmailTemplateRow = typeof contactEmailTemplate.$inferSelect;
+export type ContactEmailTemplateInsert =
+  typeof contactEmailTemplate.$inferInsert;

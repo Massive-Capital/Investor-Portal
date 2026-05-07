@@ -9,7 +9,9 @@ import { postForgotPassword } from "../controllers/auth/forgotPassword.controlle
 import { postResetPassword } from "../controllers/auth/resetPassword.controller.js";
 import { postInviteUser } from "../controllers/auth/invite.controller.js";
 import {
+  getMailDefaults,
   getMemberAuditLogs,
+  postSendMail,
   getUsers,
   patchUser,
   postMembersExportNotify,
@@ -36,6 +38,8 @@ userRoutes
 .post("/auth/forgot-password", postForgotPassword)
 .post("/auth/reset-password", postResetPassword)
 .post("/auth/invite", postInviteUser)
+.get("/mail/defaults", getMailDefaults)
+.post("/mail/send", postSendMail)
 .get("/users", getUsers)
 .post("/users/export-notify", postMembersExportNotify)
 .get("/users/:userId/audit-logs", getMemberAuditLogs)

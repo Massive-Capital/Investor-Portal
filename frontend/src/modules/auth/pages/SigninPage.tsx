@@ -6,7 +6,7 @@ const SigninPage = () => {
  
 
   return (
-    <AuthLayout title="Investor Portal LLC | Signin" caption="Sign in to your account">
+    <AuthLayout title="Signin" caption="Sign in to your account">
      <SigninForm/>
     </AuthLayout>
   );

@@ -6,10 +6,10 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
-import "@/modules/usermanagement/user_management.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deal-investors-tab.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
-import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/InvestorPortal/Deals/createDealFormDraftStorage"
+import "@/modules/Syndication/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/deal-investors-tab.css"
+import "@/modules/Syndication/Deals/deals-list.css"
+import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
 import { ExportInvestmentsModal } from "./ExportInvestmentsModal"
 import { getMergedInvestmentListRows } from "./investmentsRuntimeData"
 import type { InvestmentListRow } from "./investments.types"

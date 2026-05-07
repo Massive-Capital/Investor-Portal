@@ -1,12 +1,11 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
-import { fetchDealInvestors } from "@/modules/Syndication/InvestorPortal/Deals/api/dealsApi"
+import { fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
 import type {
   DealInvestorRow,
   DealInvestorsPayload,
-} from "@/modules/Syndication/InvestorPortal/Deals/types/deal-investors.types"
-import type { DealListRow } from "@/modules/Syndication/InvestorPortal/Deals/types/deals.types"
-import { resolveViewerDealMemberRole } from "@/modules/Syndication/InvestorPortal/Deals/utils/dealDetailTabVisibility"
-import { parseMoneyDigits } from "@/modules/Syndication/InvestorPortal/Deals/utils/offeringMoneyFormat"
+} from "@/modules/Syndication/Deals/types/deal-investors.types"
+import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
+import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 
 /**
  * Committed (USD) across investor rows for the given login email. Matches
@@ -79,10 +78,21 @@ function adderInInvestorsListIsSponsor(
   return false
 }
 
+function rowHasLpInvestorRole(m: DealInvestorRow): boolean {
+  const role = String(m.investorRole ?? "").trim().toLowerCase()
+  if (role === "lp investor" || role === "lp investors") return true
+  for (const lab of m.memberRoleLabels ?? []) {
+    const label = String(lab ?? "").trim().toLowerCase()
+    if (label === "lp investor" || label === "lp investors") return true
+  }
+  return false
+}
+
 /**
- * Viewer’s roster row: added by a sponsor (API flag, or adder row in the investors list).
+ * Viewer is invited / linked to this deal as an LP investor (no positive
+ * commitment required yet).
  */
-function viewerOnDealInvitedBySponsor(
+function viewerOnDealAsInvitedInvestor(
   payload: DealInvestorsPayload,
   viewerEmailNorm: string,
 ): boolean {
@@ -90,6 +100,8 @@ function viewerOnDealInvitedBySponsor(
   for (const m of payload.investors) {
     const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
     if (rowEmail !== viewerEmailNorm) continue
+    if (m.investorKind === "lp_roster") return true
+    if (rowHasLpInvestorRole(m)) return true
     if (m.addedByIsSponsorOnDeal === true) return true
     if (
       m.addedByIsSponsorOnDeal === undefined &&
@@ -103,47 +115,16 @@ function viewerOnDealInvitedBySponsor(
 }
 
 /**
- * Any investors-tab row for this login (same email on the line item).
- * Covers {@link resolveViewerDealMemberRole} returning null when `investorRole` is
- * empty but role is only on `memberRoleLabels`, and any LP on the deal with $0
- * who was not matched by the sponsor-invite heuristics.
- */
-function viewerEmailOnAnyInvestorRow(
-  members: DealInvestorRow[],
-  viewerEmailNorm: string,
-): boolean {
-  if (!viewerEmailNorm) return false
-  for (const m of members) {
-    const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
-    if (!rowEmail || rowEmail === "—") continue
-    if (rowEmail === viewerEmailNorm) return true
-  }
-  return false
-}
-
-/**
- * `/investing/deals` table: any deal you appear on in the investors list (roster
- * or LP), you sponsor, you have capital committed, or a sponsor added you to the
- * deal roster.
+ * `/investing/deals` table: only deals where the viewer is invested (positive
+ * committed amount) or invited / linked as an LP investor on the roster.
  */
 export function dealIsInViewerInvestingDealsPageScope(
   payload: DealInvestorsPayload,
 ): boolean {
-  const sessionEmail = getSessionUserEmail()
-  const em = sessionEmail.trim().toLowerCase()
+  const em = getSessionUserEmail().trim().toLowerCase()
   if (!em) return false
   if (committedAmountForViewerEmail(payload, em) > 0) return true
-  if (viewerOnDealInvitedBySponsor(payload, em)) return true
-  const kind = resolveViewerDealMemberRole(payload.investors, sessionEmail)
-  if (
-    kind === "lead_sponsor" ||
-    kind === "admin_sponsor" ||
-    kind === "co_sponsor" ||
-    kind === "lp_investor"
-  ) {
-    return true
-  }
-  return viewerEmailOnAnyInvestorRow(payload.investors, em)
+  return viewerOnDealAsInvitedInvestor(payload, em)
 }
 
 function investingViewerEmailNorm(): string {

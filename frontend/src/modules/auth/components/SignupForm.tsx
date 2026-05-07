@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   Building2,
@@ -28,10 +28,34 @@ function digitsOnlyPhone(value: string): string {
   return value.replace(/\D/g, "").slice(0, PHONE_MAX_DIGITS);
 }
 
+function normalizeApiBaseUrl(rawBase: string): string {
+  const trimmed = String(rawBase ?? "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/$/, "");
+  if (trimmed.startsWith("/")) {
+    return `${window.location.origin}${trimmed}`.replace(/\/$/, "");
+  }
+  const hostLike = trimmed.replace(/^\/+/, "");
+  return `${window.location.protocol}//${hostLike}`.replace(/\/$/, "");
+}
+
+function buildApiUrl(rawBase: string, path: string): URL | null {
+  const base = normalizeApiBaseUrl(rawBase);
+  if (!base) return null;
+  try {
+    const safePath = String(path ?? "").replace(/^\/+/, "");
+    return new URL(safePath, `${base}/`);
+  } catch {
+    return null;
+  }
+}
+
 export default function SignupForm() {
   const apiV1 = getApiV1Base();
   const navigate = useNavigate();
-  const { token } = useParams();
+  const { token: tokenParam } = useParams();
+  const [searchParams] = useSearchParams();
+  const token = (tokenParam ?? "").trim() || searchParams.get("token")?.trim() || "";
 
   const [isVisible, setIsVisible] = useState(false);
   const [isVisibleConfirm, setIsVisibleConfirm] = useState(false);
@@ -41,6 +65,11 @@ export default function SignupForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [crmPrefillNote, setCrmPrefillNote] = useState(false);
+  const [lockedPrefill, setLockedPrefill] = useState({
+    firstName: false,
+    lastName: false,
+    phone: false,
+  });
 
   const decode = token
     ? decodeJwtPayload<{
@@ -54,26 +83,70 @@ export default function SignupForm() {
   const decodeEmail = decode?.email ?? "";
   const decodeCompanyName = (decode?.companyName ?? "").trim();
   const dealInviteDealId = decode?.dealId?.trim() ?? "";
-  /** Deal email invite — scope prefill to this deal’s roster when `typ` is `deal_member_invite`. */
-  const dealIdForPrefillQuery =
-    decode?.typ === "deal_member_invite" && dealInviteDealId
-      ? dealInviteDealId
-      : "";
+  const [resolvedInviteEmail, setResolvedInviteEmail] = useState(decodeEmail);
+  const [resolvedInviteCompanyName, setResolvedInviteCompanyName] =
+    useState(decodeCompanyName);
+  const [resolvedInviteDealId, setResolvedInviteDealId] = useState(
+    dealInviteDealId,
+  );
+  /** Deal email invite — scope prefill to this deal’s roster when deal invite context is available. */
+  const dealIdForPrefillQuery = (
+    decode?.typ === "deal_member_invite"
+      ? resolvedInviteDealId || dealInviteDealId
+      : resolvedInviteDealId
+  ).trim();
 
   useEffect(() => {
-    if (decodeEmail) {
-      setSignUpFormData((prev) => ({ ...prev, email: decodeEmail }));
+    if (decodeEmail.trim()) setResolvedInviteEmail(decodeEmail.trim());
+    if (decodeCompanyName.trim()) {
+      setResolvedInviteCompanyName(decodeCompanyName.trim());
     }
-  }, [decodeEmail]);
+    if (dealInviteDealId.trim()) setResolvedInviteDealId(dealInviteDealId.trim());
+  }, [decodeEmail, decodeCompanyName, dealInviteDealId]);
 
   useEffect(() => {
-    if (decodeCompanyName) {
+    if (!apiV1 || !token || resolvedInviteEmail.trim()) return;
+    const ac = new AbortController();
+    void (async () => {
+      try {
+        const u = buildApiUrl(apiV1, "auth/deal-invite/verify");
+        if (!u) return;
+        u.searchParams.set("token", token);
+        const res = await fetch(u.toString(), { signal: ac.signal });
+        const data = (await res.json().catch(() => ({}))) as {
+          valid?: boolean;
+          email?: string;
+          companyName?: string;
+          dealId?: string;
+        };
+        if (!res.ok || !data.valid) return;
+        const em = String(data.email ?? "").trim().toLowerCase();
+        const cn = String(data.companyName ?? "").trim();
+        const did = String(data.dealId ?? "").trim();
+        if (em) setResolvedInviteEmail(em);
+        if (cn) setResolvedInviteCompanyName(cn);
+        if (did) setResolvedInviteDealId(did);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    })();
+    return () => ac.abort();
+  }, [apiV1, token, resolvedInviteEmail]);
+
+  useEffect(() => {
+    if (resolvedInviteEmail) {
+      setSignUpFormData((prev) => ({ ...prev, email: resolvedInviteEmail }));
+    }
+  }, [resolvedInviteEmail]);
+
+  useEffect(() => {
+    if (resolvedInviteCompanyName) {
       setSignUpFormData((prev) => ({
         ...prev,
-        companyName: decodeCompanyName,
+        companyName: resolvedInviteCompanyName,
       }));
     }
-  }, [decodeCompanyName]);
+  }, [resolvedInviteCompanyName]);
 
   useEffect(() => {
     if (!token) {
@@ -81,11 +154,7 @@ export default function SignupForm() {
       return;
     }
     const d = decodeJwtPayload<{ exp?: number }>(token);
-    if (!d) {
-      setLinkExpired(true);
-      return;
-    }
-    if (d.exp != null && d.exp < Date.now() / 1000) {
+    if (d?.exp != null && d.exp < Date.now() / 1000) {
       setLinkExpired(true);
       return;
     }
@@ -98,32 +167,80 @@ export default function SignupForm() {
    * email invite), the server prefers roster rows for that deal.
    */
   useEffect(() => {
-    if (!apiV1 || !token || !decodeEmail.trim()) return;
+    if (!apiV1 || !token || !resolvedInviteEmail.trim()) return;
     const d = decodeJwtPayload<{ exp?: number }>(token);
-    if (!d || (d.exp != null && d.exp < Date.now() / 1000)) return;
+    if (d?.exp != null && d.exp < Date.now() / 1000) return;
 
     const ac = new AbortController();
     void (async () => {
       try {
-        const u = new URL(`${apiV1}/auth/signup/prefill`);
-        u.searchParams.set("email", decodeEmail.trim().toLowerCase());
+        const u = buildApiUrl(apiV1, "auth/signup/prefill");
+        if (!u) {
+          console.log("[signup-prefill] skipped apply", {
+            reason: "invalid api base url",
+            apiV1,
+          });
+          return;
+        }
+        u.searchParams.set("email", resolvedInviteEmail.trim().toLowerCase());
         if (dealIdForPrefillQuery) {
           u.searchParams.set("dealId", dealIdForPrefillQuery);
         }
+        console.log("[signup-prefill] request", {
+          url: u.toString(),
+          tokenPresent: Boolean(token),
+          inviteEmail: resolvedInviteEmail.trim().toLowerCase(),
+          dealId: dealIdForPrefillQuery || null,
+        });
         const res = await fetch(u.toString(), { signal: ac.signal });
         const data = (await res.json().catch(() => ({}))) as {
           found?: boolean;
           firstName?: string;
+          first_name?: string;
           lastName?: string;
+          last_name?: string;
           phone?: string;
+          phoneNumber?: string;
+          phone_number?: string;
           userName?: string;
+          username?: string;
+          user_name?: string;
         };
-        if (!res.ok || !data.found) return;
-        const fn = (data.firstName ?? "").trim();
-        const ln = (data.lastName ?? "").trim();
-        const ph = digitsOnlyPhone(String(data.phone ?? ""));
-        const un = (data.userName ?? "").trim();
-        if (!fn && !ln && !ph && !un) return;
+        console.log("[signup-prefill] response", {
+          ok: res.ok,
+          status: res.status,
+          found: Boolean(data.found),
+          raw: data,
+        });
+        if (!res.ok || !data.found) {
+          console.log("[signup-prefill] skipped apply", {
+            reason: !res.ok ? "non-ok response" : "found=false",
+          });
+          return;
+        }
+        const fn = (data.firstName ?? data.first_name ?? "").trim();
+        const ln = (data.lastName ?? data.last_name ?? "").trim();
+        const ph = digitsOnlyPhone(
+          String(data.phone ?? data.phoneNumber ?? data.phone_number ?? ""),
+        );
+        const un = (
+          data.userName ??
+          data.username ??
+          data.user_name ??
+          ""
+        ).trim();
+        console.log("[signup-prefill] normalized", {
+          firstName: fn,
+          lastName: ln,
+          phoneDigits: ph,
+          userName: un,
+        });
+        if (!fn && !ln && !ph && !un) {
+          console.log("[signup-prefill] skipped apply", {
+            reason: "all normalized fields empty",
+          });
+          return;
+        }
         setSignUpFormData((prev) => ({
           ...prev,
           firstName: fn || prev.firstName,
@@ -134,13 +251,30 @@ export default function SignupForm() {
               ? ph
               : prev.phone,
         }));
+        setLockedPrefill((prev) => ({
+          firstName: prev.firstName || Boolean(fn),
+          lastName: prev.lastName || Boolean(ln),
+          phone:
+            prev.phone ||
+            Boolean(
+              ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS,
+            ),
+        }));
         setCrmPrefillNote(true);
+        console.log("[signup-prefill] applied", {
+          firstNameLocked: Boolean(fn),
+          lastNameLocked: Boolean(ln),
+          phoneLocked:
+            ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS,
+          crmPrefillNote: true,
+        });
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") return;
+        console.log("[signup-prefill] request failed", e);
       }
     })();
     return () => ac.abort();
-  }, [apiV1, token, decodeEmail, dealIdForPrefillQuery]);
+  }, [apiV1, token, resolvedInviteEmail, dealIdForPrefillQuery]);
 
   const REDIRECT_DELAY_MS = 5000;
   useEffect(() => {
@@ -152,7 +286,7 @@ export default function SignupForm() {
   }, [isConfirmSignup, navigate]);
 
   const [signUpFormData, setSignUpFormData] = useState<SignUpFormState>({
-    email: decodeEmail,
+    email: resolvedInviteEmail,
     companyName: "",
     phone: "",
     firstName: "",
@@ -216,10 +350,14 @@ export default function SignupForm() {
     setIsLoading(true);
     setIsError("");
     try {
-      const path = token
-        ? `${apiV1}/auth/signup/${encodeURIComponent(token)}`
-        : `${apiV1}/auth/signup`;
-      const response = await fetch(path, {
+      const submitUrl = token
+        ? buildApiUrl(apiV1, `auth/signup/${encodeURIComponent(token)}`)
+        : buildApiUrl(apiV1, "auth/signup");
+      if (!submitUrl) {
+        setIsError("API base URL is invalid. Check VITE_BASE_URL.");
+        return;
+      }
+      const response = await fetch(submitUrl.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -313,21 +451,6 @@ export default function SignupForm() {
             autoComplete="off"
             onSubmit={handleSubmit}
           >
-            {crmPrefillNote ? (
-              <p
-                className="signup_prefill_hint"
-                role="status"
-                style={{
-                  margin: "0 0 0.85em",
-                  fontSize: "0.875rem",
-                  color: "var(--portal-text-muted, #64748b)",
-                  lineHeight: 1.45,
-                }}
-              >
-                We filled in available details from this deal and/or your contact
-                record for this email.
-              </p>
-            ) : null}
         <div className="signupForm_row">
           <div className="emailData">
             <Input
@@ -338,7 +461,7 @@ export default function SignupForm() {
               name="email"
               value={signUpFormData.email}
               onChange={handleChange}
-              readOnly={Boolean(token && decodeEmail)}
+              readOnly={Boolean(token && resolvedInviteEmail)}
               disabled={isLoading}
               aria-invalid={!!isError}
               required
@@ -353,7 +476,7 @@ export default function SignupForm() {
               name="companyName"
               value={signUpFormData.companyName}
               onChange={handleChange}
-              readOnly={Boolean(token && decodeCompanyName)}
+              readOnly={Boolean(token && resolvedInviteCompanyName)}
               disabled={isLoading}
               aria-invalid={!!isError}
               required
@@ -388,6 +511,7 @@ export default function SignupForm() {
               value={signUpFormData.phone}
               onChange={handleChange}
               maxLength={PHONE_MAX_DIGITS}
+              readOnly={lockedPrefill.phone}
               disabled={isLoading}
               aria-invalid={!!isError}
               required
@@ -405,6 +529,7 @@ export default function SignupForm() {
               name="firstName"
               value={signUpFormData.firstName}
               onChange={handleChange}
+              readOnly={lockedPrefill.firstName}
               disabled={isLoading}
               aria-invalid={!!isError}
               required
@@ -419,6 +544,7 @@ export default function SignupForm() {
               name="lastName"
               value={signUpFormData.lastName}
               onChange={handleChange}
+              readOnly={lockedPrefill.lastName}
               disabled={isLoading}
               aria-invalid={!!isError}
               required

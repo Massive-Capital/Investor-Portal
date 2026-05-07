@@ -7,9 +7,9 @@ import {
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
 import { setAppDocumentTitle } from "@/common/utils/appDocumentTitle"
-import "@/modules/usermanagement/user_management.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
-import "@/modules/contacts/contacts.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/deals-list.css"
+import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Investing/pages/profiles/investing-profiles.css"
 import { loadInvestmentDetailFromDeal } from "./investmentsListFromDeals"
 import {
@@ -35,6 +35,20 @@ function formatInvDetailUsd(n: number): string {
     maximumFractionDigits: 0,
   }).format(abs)
   return n < 0 ? `(${formatted})` : formatted
+}
+
+function formatInvDetailDateTime(iso: string | undefined): string {
+  const raw = String(iso ?? "").trim()
+  if (!raw) return "—"
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d)
 }
 
 type DebtInfoFields = {
@@ -538,6 +552,27 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.investedAmount,
         cell: (r) => formatInvDetailUsd(r.investedAmount),
+      },
+      {
+        id: "investedOn",
+        header: "Invested on",
+        sortValue: (r) => String(r.investedAtIso ?? ""),
+        tdClassName: "um_td_user",
+        cell: (r) => formatInvDetailDateTime(r.investedAtIso),
+      },
+      {
+        id: "approvedBy",
+        header: "Approved by",
+        sortValue: (r) => String(r.approvedBy ?? "").toLowerCase(),
+        tdClassName: "um_td_user",
+        cell: (r) => String(r.approvedBy ?? "").trim() || "—",
+      },
+      {
+        id: "approvedOn",
+        header: "Approved on",
+        sortValue: (r) => String(r.approvedAtIso ?? ""),
+        tdClassName: "um_td_user",
+        cell: (r) => formatInvDetailDateTime(r.approvedAtIso),
       },
     ],
     [],

@@ -57,6 +57,13 @@ const SigninForm = () => {
         userDetails?: unknown;
       };
       if (!response.ok) {
+        if (response.status === 403) {
+          setError(
+            data.message ||
+              "Sign in forbidden (403). Check that the backend is running and Vite’s `/api` proxy target matches BACKEND_PORT (set VITE_DEV_API_PROXY if needed).",
+          );
+          return;
+        }
         setError(data.message || "Sign in failed. Please try again.");
         return;
       }

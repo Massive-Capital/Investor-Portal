@@ -1,5 +1,9 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
+import {
+  logSocDealOfferingAssetUpload,
+  logSocDestructiveDealAction,
+} from "../../audit/index.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
@@ -8,14 +12,14 @@ import type { AddDealFormRow } from "../../schema/deal.schema/add-deal-form.sche
 import {
   getAddDealFormForViewer,
   getAddDealFormForViewerOrAssignedParticipant,
-  listDealsForViewerIncludingAssignedParticipation,
   resolveDealViewerScope,
   type DealViewerScope,
-} from "../../services/dealAccess.service.js";
-import { sendOfferingPreviewShareEmails } from "../../services/offeringPreviewShareEmail.service.js";
+} from "../../services/deal/dealAccess.service.js";
+import { sendOfferingPreviewShareEmails } from "../../services/deal/offeringPreviewShareEmail.service.js";
 import {
   getAddDealFormById,
   insertAddDealForm,
+  listAddDealFormsByIds,
   listAddDealFormsByOrganizationId,
   listAddDealFormsForViewer,
   deleteAddDealFormById,
@@ -39,7 +43,7 @@ import {
   type CreateDealFormInput,
   type DealFormFieldErrors,
   type DealMemoryUploadFile,
-} from "../../services/dealForm.service.js";
+} from "../../services/deal/dealForm.service.js";
 import { sanitizeDealAnnouncement } from "../../utils/sanitizeDealAnnouncement.js";
 import {
   KeyHighlightsJsonInvalidError,
@@ -64,14 +68,17 @@ import {
   buildInvestorKpisFromRows,
   listDealInvestmentsByDealId,
   mapDealInvestmentsToInvestorApi,
-} from "../../services/dealInvestment.service.js";
-import { countDealLpInvestorsByDealIdsForViewer } from "../../services/dealLpInvestor.service.js";
-import { mapLpInvestorRoleDisplayByDealIdForUserEmail } from "../../services/lpInvestorAccess.service.js";
+} from "../../services/deal/dealInvestment.service.js";
+import { countDealLpInvestorsByDealIdsForViewer } from "../../services/deal/dealLpInvestor.service.js";
+import {
+  listLpInvestorDealIdsForUserEmail,
+  mapLpInvestorRoleDisplayByDealIdForUserEmail,
+} from "../../services/investing/lpInvestorAccess.service.js";
 import {
   listInvestorClassesByDealId,
   mapRowToJson as mapInvestorClassRowToJson,
-} from "../../services/dealInvestorClass.service.js";
-import { enrichDealListRowForApi } from "../../services/dealListRowEnrichment.service.js";
+} from "../../services/deal/dealInvestorClass.service.js";
+import { enrichDealListRowForApi } from "../../services/deal/dealListRowEnrichment.service.js";
 
 function parseBoolField(
   v: unknown,
@@ -219,6 +226,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
       String(incRaw ?? "").toLowerCase() === "yes";
 
     let rows: AddDealFormRow[];
+    let includeParticipantViewerEmailNorm = "";
 
     if (orgParam && DEALS_ORG_UUID_RE.test(orgParam)) {
       if (!scope.isPlatformAdmin) {
@@ -227,9 +235,25 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
       }
       rows = await listAddDealFormsByOrganizationId(orgParam);
     } else {
-      rows = includeParticipantDeals
-        ? await listDealsForViewerIncludingAssignedParticipation(scope)
-        : await listAddDealFormsForViewer(scope);
+      if (includeParticipantDeals) {
+        const [uRow] = await db
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1);
+        includeParticipantViewerEmailNorm = String(uRow?.email ?? "")
+          .trim()
+          .toLowerCase();
+        const lpDealIds = includeParticipantViewerEmailNorm
+          ? await listLpInvestorDealIdsForUserEmail(
+              includeParticipantViewerEmailNorm,
+            )
+          : [];
+        rows =
+          lpDealIds.length > 0 ? await listAddDealFormsByIds(lpDealIds) : [];
+      } else {
+        rows = await listAddDealFormsForViewer(scope);
+      }
     }
 
     const dealIds = rows.map((r) => String(r.id ?? ""));
@@ -239,13 +263,24 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
         : new Map<string, number>();
 
     let lpRoleByDealId = new Map<string, string>();
-    if (scope.lpInvestorEmailScopedDealIds?.length && rows.length > 0) {
-      const [uRow] = await db
-        .select({ email: users.email })
-        .from(users)
-        .where(eq(users.id, user.id))
-        .limit(1);
-      const emailNorm = String(uRow?.email ?? "").trim().toLowerCase();
+    const shouldAttachLpRole =
+      rows.length > 0 &&
+      (Boolean(scope.lpInvestorEmailScopedDealIds?.length) ||
+        includeParticipantDeals);
+    if (shouldAttachLpRole) {
+      const emailNorm =
+        includeParticipantViewerEmailNorm ||
+        String(
+          (
+            await db
+              .select({ email: users.email })
+              .from(users)
+              .where(eq(users.id, user.id))
+              .limit(1)
+          )[0]?.email ?? "",
+        )
+          .trim()
+          .toLowerCase();
       if (emailNorm) {
         lpRoleByDealId = await mapLpInvestorRoleDisplayByDealIdForUserEmail(
           emailNorm,
@@ -265,7 +300,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
           }).listRow,
           ...enriched,
         };
-        if (!scope.lpInvestorEmailScopedDealIds?.length) return listRow;
+        if (!shouldAttachLpRole) return listRow;
         return {
           ...listRow,
           yourRole: lpRoleByDealId.get(id) ?? "LP Investor",
@@ -736,6 +771,12 @@ export async function postDealOfferingDocumentUploads(
       return;
     }
     const newPaths = await saveDealAssetFiles({ files: fileList, dealId });
+    logSocDealOfferingAssetUpload({
+      actorUserId: user.id,
+      dealId,
+      assetKind: "offering_documents",
+      fileCount: fileList.length,
+    });
     res.status(200).json({
       message: "Offering documents uploaded",
       newPaths,
@@ -781,6 +822,12 @@ export async function postDealOfferingGalleryUploads(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
+    logSocDealOfferingAssetUpload({
+      actorUserId: user.id,
+      dealId,
+      assetKind: "offering_gallery",
+      fileCount: fileList.length,
+    });
     res.status(200).json({
       message: "Gallery images uploaded",
       newPaths,
@@ -1204,6 +1251,11 @@ export async function deleteDeal(req: Request, res: Response): Promise<void> {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
+    logSocDestructiveDealAction({
+      action: "deal.delete",
+      actorUserId: user.id,
+      dealId,
+    });
     res.status(204).send();
   } catch (err) {
     console.error("deleteDeal:", err);

@@ -2,12 +2,14 @@ import type { Request, Response } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { companies, users } from "../../schema/schema.js";
-import { createInviteForEmail } from "../../services/invite.service.js";
-import { sendInviteSignupEmail } from "../../services/inviteEmail.service.js";
-import { upsertPendingInvitedUser } from "../../services/invitePendingUser.service.js";
+import { createInviteForEmail } from "../../services/auth/invite.service.js";
+import { sendInviteSignupEmail } from "../../services/auth/inviteEmail.service.js";
+import { upsertPendingInvitedUser } from "../../services/auth/invitePendingUser.service.js";
 import {
   canInviteUsersRole,
+  COMPANY_USER,
   isInviteAssignableRole,
+  isCompanyAdminRole,
   isPlatformAdminRole,
   PLATFORM_USER,
 } from "../../constants/roles.js";
@@ -119,6 +121,9 @@ export async function postInviteUser(req: Request, res: Response): Promise<void>
       typeof body.invitedRole === "string" ? body.invitedRole.trim() : "";
     invitedRoleForJwt =
       raw && isInviteAssignableRole(raw) ? raw : PLATFORM_USER;
+  } else if (isCompanyAdminRole(jwtUser.userRole)) {
+    // Company admins invite members into their own company by default.
+    invitedRoleForJwt = COMPANY_USER;
   }
 
   const result = createInviteForEmail(

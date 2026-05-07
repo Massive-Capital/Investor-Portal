@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { companies } from "../../schema/schema.js";
-import { getWorkspaceTabPayloadWithUpdatedAt } from "../../services/companyWorkspaceSettings.service.js";
+import { getWorkspaceTabPayloadWithUpdatedAt } from "../../services/company/companyWorkspaceSettings.service.js";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

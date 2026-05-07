@@ -7,7 +7,7 @@ import {
   buildAddressesExportCsv,
   downloadExportCsv,
 } from "./investingProfileBookExport"
-import "@/modules/Syndication/InvestorPortal/Deals/components/export-deals-modal.css"
+import "@/modules/Syndication/Deals/components/export-deals-modal.css"
 
 interface ExportAddressesModalProps {
   open: boolean

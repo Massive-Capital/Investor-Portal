@@ -4,7 +4,7 @@
 export {
   COUNTRY_OPTIONS,
   DEFAULT_ASSET_COUNTRY,
-} from "@/modules/Syndication/InvestorPortal/Deals/types/deals.types"
+} from "@/modules/Syndication/Deals/types/deals.types"
 
 /** U.S. states + DC for address forms (value = USPS abbreviation). */
 export const US_STATE_OPTIONS: { value: string; label: string }[] = [

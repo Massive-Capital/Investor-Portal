@@ -11,7 +11,7 @@ import {
   updateBeneficiaryForUser,
   updateInvestorProfileForUser,
   updateSavedAddressForUser,
-} from "../../services/investingProfileBook.service.js";
+} from "../../services/investing/investingProfileBook.service.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const WIZ_MAX_BYTES = 256 * 1024;

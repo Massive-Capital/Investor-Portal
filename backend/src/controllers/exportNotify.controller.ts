@@ -3,11 +3,12 @@ import { eq } from "drizzle-orm";
 import { getJwtUser } from "../middleware/jwtUser.js";
 import { db } from "../database/db.js";
 import { companies, users } from "../schema/schema.js";
-import { sanitizeExportedLinesForNotify } from "../services/exportNotifySanitize.js";
+import { sanitizeExportedLinesForNotify } from "../services/workspace/exportNotifySanitize.js";
 import {
   sendWorkspaceExportAuditNotification,
   type WorkspaceExportAuditKind,
-} from "../services/workspaceExportAudit.service.js";
+} from "../services/workspace/workspaceExportAudit.service.js";
+import { logSocWorkspaceExportNotify } from "../audit/index.js";
 
 async function loadExporterAuditContext(userId: string): Promise<{
   exporterDisplayName: string;
@@ -87,6 +88,15 @@ async function handleExportNotify(
     console.error(`[export-notify:${kind}] send failed`, result.error);
   }
 
+  const effectiveRows =
+    rowCount > 0 ? rowCount : exportedSampleLines?.length ?? 0;
+  logSocWorkspaceExportNotify({
+    exportKind: kind,
+    actorUserId: jwtUser.id,
+    rowCount: effectiveRows,
+    notifyStatus: result.status,
+  });
+
   res.status(200).json({
     ok: true,
     notifyStatus: result.status,
@@ -157,6 +167,15 @@ export async function postDealInvestorsExportNotify(
     console.error(`[export-notify:deal_investors] send failed`, result.error);
   }
 
+  const effectiveRows =
+    rowCount > 0 ? rowCount : exportedSampleLines?.length ?? 0;
+  logSocWorkspaceExportNotify({
+    exportKind: "deal_investors",
+    actorUserId: jwtUser.id,
+    rowCount: effectiveRows,
+    notifyStatus: result.status,
+  });
+
   res.status(200).json({
     ok: true,
     notifyStatus: result.status,
@@ -198,6 +217,15 @@ export async function postDealMembersExportNotify(
   if (result.status === "failed") {
     console.error(`[export-notify:deal_members] send failed`, result.error);
   }
+
+  const effectiveRows =
+    rowCount > 0 ? rowCount : exportedSampleLines?.length ?? 0;
+  logSocWorkspaceExportNotify({
+    exportKind: "deal_members",
+    actorUserId: jwtUser.id,
+    rowCount: effectiveRows,
+    notifyStatus: result.status,
+  });
 
   res.status(200).json({
     ok: true,

@@ -4,7 +4,7 @@ import {
   type CompanyBranding,
   fetchPublicCompanyBranding,
   withBrandingVersionOnUrl,
-} from "@/modules/company/companyBranding"
+} from "@/modules/Syndication/company/companyBranding"
 import { normalizeDealGallerySrc } from "../utils/apiBaseUrl"
 
 const COMPANY_BRANDING_UPDATED = "company-branding-updated"

@@ -14,24 +14,24 @@ import {
   X,
 } from "lucide-react"
 import { toast } from "@/common/components/Toast"
-import { useUsCountriesNowLocations } from "@/modules/Syndication/InvestorPortal/Deals/hooks/useUsCountriesNowLocations"
+import { useUsCountriesNowLocations } from "@/modules/Syndication/Deals/hooks/useUsCountriesNowLocations"
 import {
   getUsCitiesForStateCode,
   getUsStateDropdownOptions,
   isUnitedStatesCountry,
   resolveUsStateCodeForDraft,
-} from "@/modules/Syndication/InvestorPortal/Deals/constants/usLocations"
-import { DealsCreateDropdownSelect } from "@/modules/Syndication/InvestorPortal/Deals/components/DealsCreateDropdownSelect"
+} from "@/modules/Syndication/Deals/constants/usLocations"
+import { DealsCreateDropdownSelect } from "@/modules/Syndication/Deals/components/DealsCreateDropdownSelect"
 import {
   COUNTRY_OPTIONS,
   DEFAULT_ASSET_COUNTRY,
-} from "@/modules/Syndication/InvestorPortal/Deals/types/deals.types"
-import { normalizeZipCodeDigits, zipCodeFieldError } from "@/modules/Syndication/InvestorPortal/Deals/utils/dealZipCode"
+} from "@/modules/Syndication/Deals/types/deals.types"
+import { normalizeZipCodeDigits, zipCodeFieldError } from "@/modules/Syndication/Deals/utils/dealZipCode"
 import type { AddressFormDraft } from "./address.types"
 import { InvestingFormField } from "./InvestingFormField"
-import "@/modules/Syndication/InvestorPortal/Deals/components/add-investment-modal.css"
-import "@/modules/contacts/contacts.css"
-import "@/modules/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
+import "@/modules/Syndication/contacts/contacts.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
 import "./investing-profiles-form-modals.css"
 

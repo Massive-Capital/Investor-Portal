@@ -28,6 +28,10 @@ export const dealInvestment = pgTable("deal_investment", {
   investor_role: text("investor_role").notNull().default(""),
   /** Sponsor “Funded” / approve-fund flag; UI maps to Approved vs Not Approved. */
   fundApproved: boolean("fund_approved").notNull().default(false),
+  /** Portal user/contact id who last approved funding for this investment row. */
+  fundApprovedBy: text("fund_approved_by"),
+  /** Timestamp when funding was last approved for this investment row. */
+  fundApprovedAt: timestamp("fund_approved_at", { withTimezone: true }),
   /** Committed total (numeric string) when fund was last approved; used for split UI after LP adds more. */
   fundApprovedCommitmentSnapshot: text("fund_approved_commitment_snapshot")
     .notNull()

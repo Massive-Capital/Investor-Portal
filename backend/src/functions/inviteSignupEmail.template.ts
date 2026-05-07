@@ -1,3 +1,12 @@
+import {
+  buildSyndicationXEmailAuthFooterHtml,
+  buildSyndicationXEmailBrandHeaderHtml,
+  SX_EMAIL_BUTTON_STYLE,
+  SX_EMAIL_MUTED,
+  SX_EMAIL_PAGE_BG,
+  SX_EMAIL_PRIMARY,
+} from "./emailSyndicationXLayout.js";
+
 function humanizeInviteExpiry(expiresIn: string): string {
   const m = /^(\d+)\s*d$/i.exec(expiresIn.trim());
   if (m) {
@@ -5,6 +14,20 @@ function humanizeInviteExpiry(expiresIn: string): string {
     if (Number.isFinite(n)) return `${n} day${n === 1 ? "" : "s"}`;
   }
   return expiresIn;
+}
+
+function escAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+function escHtmlText(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /** Plain-text body for the invite email (deliverability / plain clients). */
@@ -15,7 +38,7 @@ export function buildInviteSignupEmailText(
 ): string {
   const human = humanizeInviteExpiry(expiresDescription);
   return [
-    "You're invited to Investor Portal",
+    "You're invited to SyndicationX",
     "",
     "An administrator invited you to create your account. Open this link to accept and complete registration:",
     signupLink,
@@ -25,7 +48,7 @@ export function buildInviteSignupEmailText(
     `This invitation was sent to: ${inviteeEmail}`,
     "",
     "Thanks,",
-    "The Investor Portal Team",
+    "The SyndicationX team",
   ].join("\n");
 }
 
@@ -36,35 +59,30 @@ export function buildInviteSignupEmailHtml(
   expiresDescription: string,
 ): string {
   const human = humanizeInviteExpiry(expiresDescription);
-  const esc = human.replace(/</g, "&lt;");
-  const escEmail = inviteeEmail.replace(/</g, "&lt;");
+  const escHuman = escHtmlText(human);
+  const escEmail = escHtmlText(inviteeEmail);
+  const safeHref = escAttr(signupLink);
+  const header = buildSyndicationXEmailBrandHeaderHtml();
+  const authFooter = buildSyndicationXEmailAuthFooterHtml();
+
   return `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>You're invited</title>
-<style>
-  body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f4f6f8; color:#333333; }
-  .container { max-width: 600px; margin: 20px auto; padding: 30px; background: #ffffff; border-radius: 8px; color:#333333; }
-  h1 { color: #2463eb; }
-  p { font-size:16px; line-height:1.5; color:#333333; }
-  .button-container { margin:20px 0; }
-  .confirm-button { background-color: #2463eb; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block; }
-  .footer { font-size:12px; color:#666666; margin-top:20px; text-align:center; }
-</style>
+<title>You're invited · SyndicationX</title>
 </head>
-<body style="font-family: Arial, sans-serif; margin:0; padding:0; background:#f4f6f8; color:#333333;">
-<div class="container" style="max-width: 600px; margin: 20px auto; padding: 30px; background: #ffffff; border-radius: 8px; color:#333333;">
-  <h1 style="color: #2463eb;">You're invited to Investor Portal</h1>
-  <p style="font-size:16px; line-height:1.5; color:#333333;">An administrator invited you to create your account. Click the button below to confirm and complete registration.</p>
-  <div class="button-container" style="margin:20px 0;">
-    <a href="${signupLink}" class="confirm-button" style="background-color: #2463eb; color:#ffffff; padding:14px 28px; border-radius:6px; text-decoration:none; font-weight:bold; display:inline-block;">Accept invitation</a>
+<body style="margin:0;padding:0;background:${SX_EMAIL_PAGE_BG};font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+<div style="max-width:600px;margin:24px auto;padding:32px 28px;background:#ffffff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 1px 3px rgba(15,23,42,0.06);">
+  ${header}
+  <h1 style="color:${SX_EMAIL_PRIMARY};font-size:22px;line-height:1.25;margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-weight:700;">You're invited to SyndicationX</h1>
+  <p style="font-size:16px;line-height:1.55;color:#1e293b;margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;">Your administrator has invited you to join the SyndicationX investor portal. Create your account to collaborate on deals, manage documents, and participate in investor activities.</p>
+  <div style="margin:24px 0;">
+    <a href="${safeHref}" style="${SX_EMAIL_BUTTON_STYLE}">Accept invitation</a>
   </div>
-  <p style="font-size:16px; line-height:1.5; color:#333333;">This link expires in <strong>${esc}</strong>. If you did not expect this email, you can ignore it.</p>
-  <p style="font-size:14px; line-height:1.5; color:#64748b;">This invitation was sent to <strong>${escEmail}</strong>.</p>
-  <p style="font-size:16px; line-height:1.5; color:#333333;">Thanks,<br>The Investor Portal Team</p>
-  <div class="footer" style="font-size:12px; color:#666666; margin-top:20px; text-align:center;">&copy; 2026 Investor Portal LLC. All rights reserved.</div>
+  <p style="font-size:15px;line-height:1.55;color:#475569;margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;">This secure link expires in <strong>${escHuman}</strong>. If you didn’t expect this message, you can ignore it.</p>
+  <p style="font-size:13px;line-height:1.5;color:${SX_EMAIL_MUTED};margin:0;font-family:Arial,Helvetica,sans-serif;">Sent to <strong style="color:#475569;">${escEmail}</strong></p>
+  ${authFooter}
 </div>
 </body>
 </html>`;

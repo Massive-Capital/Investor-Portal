@@ -12,13 +12,27 @@ import {
   listContactsForViewer,
   patchContactStatusForViewer,
   updateContactFieldsForViewer,
-} from "../services/contact.service.js";
+} from "../services/contact/contact.service.js";
+import {
+  insertContactEmailTemplate,
+  listContactEmailTemplatesForViewer,
+  updateContactEmailTemplateForViewer,
+} from "../services/contact/contactEmailTemplate.service.js";
 import {
   getOrganizationIdForUser,
   listOrganizationContactListNames,
   listOrganizationContactTagNames,
-} from "../services/organizationContactLabels.service.js";
-import type { ContactRow } from "../schema/contact.schema.js";
+} from "../services/contact/organizationContactLabels.service.js";
+import type {
+  ContactEmailTemplateRow,
+  ContactRow,
+  EmailTemplateAttachment,
+} from "../schema/contact.schema.js";
+import {
+  logSocContactDirectoryView,
+  logSocContactLabelsRead,
+  logSocContactWrite,
+} from "../audit/index.js";
 
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,9 +74,32 @@ function bodyString(v: unknown): string {
   return typeof v === "string" ? v : v != null ? String(v) : "";
 }
 
+function bodyBoolean(v: unknown): boolean {
+  return Boolean(v);
+}
+
 function bodyStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => String(x).trim()).filter(Boolean);
+}
+
+function bodyAttachment(v: unknown): EmailTemplateAttachment | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const fileName = bodyString(o.fileName).trim();
+  const mimeType = bodyString(o.mimeType).trim();
+  const dataBase64 = bodyString(o.dataBase64).trim();
+  const sizeRaw = o.size;
+  const size = typeof sizeRaw === "number" && Number.isFinite(sizeRaw)
+    ? Math.max(0, Math.trunc(sizeRaw))
+    : 0;
+  if (!fileName || !dataBase64) return null;
+  return {
+    fileName,
+    mimeType: mimeType || "application/octet-stream",
+    size,
+    dataBase64,
+  };
 }
 
 function dedupeOwnersPreserveOrder(items: string[]): string[] {
@@ -101,6 +138,33 @@ function mapContactToJson(row: ContactRow) {
   };
 }
 
+async function mapContactEmailTemplateToJsonWithName(
+  row: ContactEmailTemplateRow,
+) {
+  const createdByDisplayName = (await getUserDisplayNameById(row.createdBy)).trim();
+  return {
+    id: row.id,
+    organizationId: row.organizationId ?? null,
+    organization_id: row.organizationId ?? null,
+    name: row.name,
+    subject: row.subject,
+    body: row.body,
+    attachment: row.attachment ?? null,
+    archived: row.archived,
+    createdBy: createdByDisplayName || row.createdBy,
+    createdByUserId: row.createdBy,
+    createdByDisplayName: createdByDisplayName || undefined,
+    createdAt:
+      row.createdAt instanceof Date
+        ? row.createdAt.toISOString()
+        : String(row.createdAt),
+    updatedAt:
+      row.updatedAt instanceof Date
+        ? row.updatedAt.toISOString()
+        : String(row.updatedAt),
+  };
+}
+
 async function mapContactToJsonWithNames(
   row: ContactRow,
   dealCounts?: Map<string, number>,
@@ -136,6 +200,11 @@ export async function getOrganizationContactTags(
       return;
     }
     const tags = await listOrganizationContactTagNames(orgId);
+    logSocContactLabelsRead({
+      actorUserId: user.id,
+      organizationId: orgId,
+      kind: "tags",
+    });
     res.status(200).json({ tags });
   } catch (err) {
     console.error("getOrganizationContactTags:", err);
@@ -160,6 +229,11 @@ export async function getOrganizationContactLists(
       return;
     }
     const lists = await listOrganizationContactListNames(orgId);
+    logSocContactLabelsRead({
+      actorUserId: user.id,
+      organizationId: orgId,
+      kind: "lists",
+    });
     res.status(200).json({ lists });
   } catch (err) {
     console.error("getOrganizationContactLists:", err);
@@ -187,6 +261,10 @@ export async function getContacts(
     const contacts = await Promise.all(
       rows.map((r) => mapContactToJsonWithNames(r, dealCounts)),
     );
+    logSocContactDirectoryView({
+      actorUserId: user.id,
+      resultCount: contacts.length,
+    });
     console.log("Fetched Contacts:", contacts);
     res.status(200).json({ contacts });
   } catch (err) {
@@ -252,6 +330,11 @@ export async function postContact(req: Request, res: Response): Promise<void> {
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
       contactIds: [String(row.id)],
+    });
+    logSocContactWrite({
+      operation: "create",
+      actorUserId: user.id,
+      contactId: String(row.id),
     });
     res.status(201).json({
       message: "Contact created",
@@ -342,6 +425,11 @@ export async function patchContact(req: Request, res: Response): Promise<void> {
       jwtUserRole: user.userRole,
       contactIds: [String(updated.id)],
     });
+    logSocContactWrite({
+      operation: "update",
+      actorUserId: user.id,
+      contactId: String(updated.id),
+    });
     res.status(200).json({
       message: "Contact updated",
       contact: await mapContactToJsonWithNames(updated, dealCounts),
@@ -390,6 +478,12 @@ export async function patchContactStatus(
       jwtUserRole: user.userRole,
       contactIds: [String(updated.id)],
     });
+    logSocContactWrite({
+      operation: "status_update",
+      actorUserId: user.id,
+      contactId: String(updated.id),
+      status,
+    });
     res.status(200).json({
       message: "Contact status updated",
       contact: await mapContactToJsonWithNames(updated, dealCounts),
@@ -397,5 +491,135 @@ export async function patchContactStatus(
   } catch (err) {
     console.error("patchContactStatus:", err);
     res.status(500).json({ message: "Could not update contact status" });
+  }
+}
+
+const EMAIL_TEMPLATE_SUBJECT_MAX = 255;
+const EMAIL_TEMPLATE_NAME_MAX = 255;
+const EMAIL_TEMPLATE_BODY_HTML_MAX = 200_000;
+const EMAIL_TEMPLATE_ATTACHMENT_BASE64_MAX = 1_400_000;
+
+/** GET /contacts/email-templates */
+export async function getContactEmailTemplates(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const rows = await listContactEmailTemplatesForViewer(user.id, user.userRole);
+    const templates = await Promise.all(
+      rows.map((r) => mapContactEmailTemplateToJsonWithName(r)),
+    );
+    res.status(200).json({
+      templates,
+    });
+  } catch (err) {
+    console.error("getContactEmailTemplates:", err);
+    res.status(500).json({ message: "Could not load email templates" });
+  }
+}
+
+/** POST /contacts/email-templates */
+export async function postContactEmailTemplate(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const b = req.body as Record<string, unknown>;
+  const name = bodyString(b.name).trim().slice(0, EMAIL_TEMPLATE_NAME_MAX);
+  const subject = bodyString(b.subject).slice(0, EMAIL_TEMPLATE_SUBJECT_MAX);
+  const body = bodyString(b.body).slice(0, EMAIL_TEMPLATE_BODY_HTML_MAX);
+  const archived = bodyBoolean(b.archived);
+  const attachment = bodyAttachment(b.attachment);
+
+  if (!name) {
+    res.status(400).json({ message: "Template name is required" });
+    return;
+  }
+  if (
+    attachment &&
+    attachment.dataBase64.length > EMAIL_TEMPLATE_ATTACHMENT_BASE64_MAX
+  ) {
+    res.status(400).json({ message: "Attachment is too large" });
+    return;
+  }
+
+  try {
+    const row = await insertContactEmailTemplate({
+      createdByUserId: user.id,
+      input: { name, subject, body, attachment, archived },
+    });
+    res.status(201).json({
+      message: "Email template created",
+      template: await mapContactEmailTemplateToJsonWithName(row),
+    });
+  } catch (err) {
+    console.error("postContactEmailTemplate:", err);
+    res.status(500).json({ message: "Could not create email template" });
+  }
+}
+
+/** PATCH /contacts/email-templates/:templateId */
+export async function patchContactEmailTemplate(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const templateId = paramStr(req.params.templateId);
+  if (!templateId) {
+    res.status(400).json({ message: "Template id required" });
+    return;
+  }
+  const b = req.body as Record<string, unknown>;
+  const name = bodyString(b.name).trim().slice(0, EMAIL_TEMPLATE_NAME_MAX);
+  const subject = bodyString(b.subject).slice(0, EMAIL_TEMPLATE_SUBJECT_MAX);
+  const body = bodyString(b.body).slice(0, EMAIL_TEMPLATE_BODY_HTML_MAX);
+  const archived = bodyBoolean(b.archived);
+  const attachment = bodyAttachment(b.attachment);
+
+  if (!name) {
+    res.status(400).json({ message: "Template name is required" });
+    return;
+  }
+  if (
+    attachment &&
+    attachment.dataBase64.length > EMAIL_TEMPLATE_ATTACHMENT_BASE64_MAX
+  ) {
+    res.status(400).json({ message: "Attachment is too large" });
+    return;
+  }
+
+  try {
+    const updated = await updateContactEmailTemplateForViewer({
+      viewerUserId: user.id,
+      viewerRole: user.userRole,
+      templateId,
+      input: { name, subject, body, attachment, archived },
+    });
+    if (!updated) {
+      res
+        .status(404)
+        .json({ message: "Email template not found or access denied" });
+      return;
+    }
+    res.status(200).json({
+      message: "Email template updated",
+      template: await mapContactEmailTemplateToJsonWithName(updated),
+    });
+  } catch (err) {
+    console.error("patchContactEmailTemplate:", err);
+    res.status(500).json({ message: "Could not update email template" });
   }
 }

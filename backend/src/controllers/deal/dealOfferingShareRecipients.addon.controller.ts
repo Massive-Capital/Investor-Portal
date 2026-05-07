@@ -3,8 +3,8 @@ import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
   getAddDealFormForViewerOrAssignedParticipant,
   resolveDealViewerScope,
-} from "../../services/dealAccess.service.js";
-import { loadOfferingShareRecipientDirectory } from "../../services/offeringShareRecipientDirectory.service.js";
+} from "../../services/deal/dealAccess.service.js";
+import { loadOfferingShareRecipientDirectory } from "../../services/deal/offeringShareRecipientDirectory.service.js";
 
 /**
  * Authenticated: contacts and company members for the deal’s organization (for share-by-email UI).

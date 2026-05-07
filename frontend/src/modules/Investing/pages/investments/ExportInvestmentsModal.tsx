@@ -2,7 +2,7 @@ import { Download, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
 import type { InvestmentListRow } from "./investments.types"
-import "@/modules/Syndication/InvestorPortal/Deals/components/export-deals-modal.css"
+import "@/modules/Syndication/Deals/components/export-deals-modal.css"
 
 function downloadCsv(content: string, filename: string): void {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" })

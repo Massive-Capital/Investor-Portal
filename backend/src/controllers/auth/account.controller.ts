@@ -4,7 +4,7 @@ import {
   changePasswordForUser,
   getOwnProfile,
   updateOwnProfile,
-} from "../../services/account.service.js";
+} from "../../services/auth/account.service.js";
 
 export async function getMyProfile(req: Request, res: Response): Promise<void> {
   try {

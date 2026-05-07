@@ -36,7 +36,18 @@ export default defineConfig(({ mode }) => {
     ? proxyOverride.replace(/\/$/, "")
     : `http://127.0.0.1:${backendPort}`
 
-  const onProxyError: NonNullable<ProxyOptions["configure"]> = (proxy) => {
+  const configureApiProxy: NonNullable<ProxyOptions["configure"]> = (proxy) => {
+    /**
+     * Some upstream servers reject proxied POSTs unless Content-Type / Content-Length are
+     * re-applied with canonical casing (see vitejs/vite#17755). Express tolerates both;
+     * re-sending is harmless and avoids spurious 403/empty-body failures behind strict proxies.
+     */
+    proxy.on("proxyReq", (proxyReq, req) => {
+      const ct = req.headers["content-type"]
+      if (typeof ct === "string" && ct.trim()) proxyReq.setHeader("Content-Type", ct)
+      const cl = req.headers["content-length"]
+      if (typeof cl === "string" && cl.trim()) proxyReq.setHeader("Content-Length", cl)
+    })
     proxy.on("error", (err, _req, res) => {
       console.error(
         "\n[vite] /api|/uploads proxy error — target:",
@@ -84,12 +95,12 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: backendDevUrl,
           changeOrigin: true,
-          configure: onProxyError,
+          configure: configureApiProxy,
         },
         "/uploads": {
           target: backendDevUrl,
           changeOrigin: true,
-          configure: onProxyError,
+          configure: configureApiProxy,
         },
       },
     },

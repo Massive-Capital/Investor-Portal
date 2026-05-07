@@ -261,7 +261,7 @@ function PageLayoutInner() {
               />
             </div>
           ) : null}
-          <h1 className="app_sidebar_title">Investor Portal</h1>
+          <h1 className="app_sidebar_title">SyndicationX</h1>
         </div>
         <div className="app_sidebar_nav_region">
           <nav className="app_sidebar_nav" aria-label="Main navigation">
@@ -354,10 +354,19 @@ function PageLayoutInner() {
           className="app_sidebar_mode_footer"
           role="status"
           aria-live="polite"
-          aria-label="Workspace mode"
+          aria-label="Workspace mode and platform attribution"
         >
-          {/* <span className="app_sidebar_mode_eyebrow">Workspace</span> */}
-          <p className="app_sidebar_mode">{modeLabel}</p>
+          <p className="app_sidebar_mode_workspace">{modeLabel}</p>
+          <div
+            className="app_sidebar_powered_lockup"
+            aria-label="Powered by SyndicationX"
+          >
+            <span className="app_sidebar_powered_accent" aria-hidden />
+            <div className="app_sidebar_powered_text">
+              <span className="app_sidebar_powered_by">Powered by</span>
+              <span className="app_sidebar_powered_brand">SyndicationX</span>
+            </div>
+          </div>
         </footer>
       </aside>
 

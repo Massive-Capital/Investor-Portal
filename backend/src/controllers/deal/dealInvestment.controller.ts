@@ -4,14 +4,14 @@ import {
   assertDealIdInViewerScope,
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
-} from "../../services/dealAccess.service.js";
-import { reconcileAssigningDealUsersForDeal } from "../../services/assigningDealUser.service.js";
+} from "../../services/deal/dealAccess.service.js";
+import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
   filterMergedLpInvestorsForCoSponsorViewer,
   getLpInvestorsTabPayload,
   isViewerCoSponsorOnDeal,
   mergeDealLpRosterIntoFullInvestorRows,
-} from "../../services/dealLpInvestor.service.js";
+} from "../../services/deal/dealLpInvestor.service.js";
 import {
   buildInvestorKpisFromRows,
   DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
@@ -26,9 +26,11 @@ import {
   resolveInvestorClassForDealInvestment,
   saveSubscriptionDocument,
   updateDealInvestment,
-} from "../../services/dealInvestment.service.js";
-import { upsertDealMemberForDeal } from "../../services/dealMember.service.js";
-import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/dealMemberInvitationEmail.service.js";
+} from "../../services/deal/dealInvestment.service.js";
+import { sendDealFundApprovedNotification } from "../../services/deal/dealFundApprovedEmail.service.js";
+import { upsertDealMemberForDeal } from "../../services/deal/dealMember.service.js";
+import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
+import { logSocDealInvestmentWrite } from "../../audit/index.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -230,7 +232,9 @@ export async function putDealInvestment(
   const docSignedDate = bodyString(b.doc_signed_date) || null;
   let commitmentAmount = bodyString(b.commitment_amount);
   const extraContributionAmounts = parseExtras(b.extra_contribution_amounts);
-  const sendInvitationMail = bodyString(b.send_invitation_mail);
+  const sendInvitationMailRaw = bodyString(b.send_invitation_mail);
+  /** Autosave updates draft rows only; invitation mail is persisted/sent on explicit Save. */
+  const sendInvitationMail = autosave ? "no" : sendInvitationMailRaw;
 
   if (autosave) {
     if (!contactId.trim()) {
@@ -275,6 +279,17 @@ export async function putDealInvestment(
     }
 
     const fundApproved = fundApprovedFromRequestBody(b, existing.fundApproved);
+    const fundApprovedBecameTrue = fundApproved && !existing.fundApproved;
+    const fundApprovedBy = fundApproved
+      ? fundApprovedBecameTrue
+        ? user.id
+        : String(existing.fundApprovedBy ?? "").trim() || user.id
+      : null;
+    const fundApprovedAt = fundApproved
+      ? fundApprovedBecameTrue
+        ? new Date()
+        : existing.fundApprovedAt ?? new Date()
+      : null;
 
     let documentStoragePath: string | null = existing.documentStoragePath;
     if (file && "buffer" in file && file.buffer && file.buffer.length > 0) {
@@ -306,6 +321,8 @@ export async function putDealInvestment(
             userInvestorProfileId: newUip,
             investor_role,
             fundApproved,
+            fundApprovedBy,
+            fundApprovedAt,
             status,
             investorClass: resolvedInvestorClass,
             docSignedDate,
@@ -327,6 +344,8 @@ export async function putDealInvestment(
               : {}),
             investor_role,
             fundApproved,
+            fundApprovedBy,
+            fundApprovedAt,
             status,
             investorClass: resolvedInvestorClass,
             docSignedDate,
@@ -357,9 +376,35 @@ export async function putDealInvestment(
         contactId,
         contactDisplayName: contactDisplayName.trim(),
         sendInvitationMail,
+        dealMemberRole: investor_role,
+      });
+    }
+    const fundNewlyApproved =
+      fundApproved &&
+      !autosave &&
+      !contactIsPlaceholder &&
+      (switchingBookProfile || !existing.fundApproved);
+    if (fundNewlyApproved) {
+      await sendDealFundApprovedNotification({
+        dealId,
+        contactId,
+        contactDisplayName: contactDisplayName.trim(),
       });
     }
     const [investor] = await mapDealInvestmentsToInvestorApi([row]);
+    if (!autosave) {
+      const fundApprovalChanged =
+        Boolean(existing.fundApproved) !== Boolean(row.fundApproved);
+      logSocDealInvestmentWrite({
+        operation: switchingBookProfile ? "create" : "update",
+        actorUserId: user.id,
+        dealId,
+        investmentId: row.id,
+        fundApproved: Boolean(row.fundApproved),
+        fundApprovalChanged: switchingBookProfile ? undefined : fundApprovalChanged,
+        subscriptionDocumentAttached: Boolean(documentStoragePath),
+      });
+    }
     console.log("[putDealInvestment] saved to database", {
       deal_investment: {
         id: row.id,
@@ -435,7 +480,9 @@ export async function postDealInvestment(
   const docSignedDate = bodyString(b.doc_signed_date) || null;
   let commitmentAmount = bodyString(b.commitment_amount);
   const extraContributionAmounts = parseExtras(b.extra_contribution_amounts);
-  const sendInvitationMail = bodyString(b.send_invitation_mail);
+  const sendInvitationMailRaw = bodyString(b.send_invitation_mail);
+  /** Autosave updates draft rows only; invitation mail is persisted/sent on explicit Save. */
+  const sendInvitationMail = autosave ? "no" : sendInvitationMailRaw;
 
   if (isLpInvestorRole(investor_role)) {
     res.status(400).json({
@@ -484,6 +531,8 @@ export async function postDealInvestment(
     const resolvedInvestorClass = classResolution.storedInvestorClass;
 
     const fundApproved = fundApprovedFromRequestBody(b, false);
+    const fundApprovedBy = fundApproved ? user.id : null;
+    const fundApprovedAt = fundApproved ? new Date() : null;
 
     if (file && "buffer" in file && file.buffer && file.buffer.length > 0) {
       documentStoragePath = await saveSubscriptionDocument({
@@ -505,6 +554,8 @@ export async function postDealInvestment(
         userInvestorProfileId: userInvestorProfileId || null,
         investor_role,
         fundApproved,
+        fundApprovedBy,
+        fundApprovedAt,
         status,
         investorClass: resolvedInvestorClass,
         docSignedDate,
@@ -531,9 +582,27 @@ export async function postDealInvestment(
         contactId,
         contactDisplayName: contactDisplayName.trim(),
         sendInvitationMail,
+        dealMemberRole: investor_role,
+      });
+    }
+    if (!autosave && !contactIsPlaceholder && fundApproved) {
+      await sendDealFundApprovedNotification({
+        dealId,
+        contactId,
+        contactDisplayName: contactDisplayName.trim(),
       });
     }
     const [investor] = await mapDealInvestmentsToInvestorApi([row]);
+    if (!autosave) {
+      logSocDealInvestmentWrite({
+        operation: "create",
+        actorUserId: user.id,
+        dealId,
+        investmentId: row.id,
+        fundApproved: Boolean(row.fundApproved),
+        subscriptionDocumentAttached: Boolean(documentStoragePath),
+      });
+    }
     console.log("[postDealInvestment] saved to database", {
       deal_investment: {
         id: row.id,

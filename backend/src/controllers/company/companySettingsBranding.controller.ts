@@ -7,12 +7,13 @@ import {
   getWorkspaceTabPayload,
   upsertWorkspaceTabPayload,
   userCanEditCompanyWorkspace,
-} from "../../services/companyWorkspaceSettings.service.js";
+} from "../../services/company/companyWorkspaceSettings.service.js";
 import {
   destroyCloudinaryByPublicId,
   isCloudinaryConfigured,
   uploadCompanyBrandingToCloudinary,
-} from "../../services/cloudinaryCompanyBranding.service.js";
+} from "../../services/company/cloudinaryCompanyBranding.service.js";
+import { logSocCompanyBrandingUpload } from "../../audit/index.js";
 
 const ASSET_TYPES = new Set(["logo", "background", "logoIcon"]);
 
@@ -278,6 +279,12 @@ export async function postCompanySettingsBranding(
       if (oldCloudPublicId && oldCloudPublicId !== newPublicId) {
         void destroyCloudinaryByPublicId(oldCloudPublicId);
       }
+      logSocCompanyBrandingUpload({
+        actorUserId: user.id,
+        companyId,
+        assetType,
+        storage: "cloudinary",
+      });
       res.status(200).json({ url: secureUrl, publicId: newPublicId });
     } catch (e) {
       console.error("postCompanySettingsBranding Cloudinary:", e);
@@ -341,5 +348,11 @@ export async function postCompanySettingsBranding(
     });
     return;
   }
+  logSocCompanyBrandingUpload({
+    actorUserId: user.id,
+    companyId,
+    assetType,
+    storage: "disk",
+  });
   res.status(200).json({ url, publicId: null });
 }

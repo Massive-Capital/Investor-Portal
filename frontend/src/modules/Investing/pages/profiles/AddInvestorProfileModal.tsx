@@ -41,17 +41,19 @@ import type {
   NewInvestorProfilePayload,
   UpdateInvestorProfilePayload,
 } from "./investor-profiles.types"
-import "@/modules/Syndication/InvestorPortal/Deals/deal-members/add-investment/add_deal_modal.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-create.css"
-import "@/modules/Syndication/InvestorPortal/Deals/deals-list.css"
-import "@/modules/contacts/contacts.css"
-import "@/modules/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/tabs/deal_members/add-investment/add_deal_modal.css"
+import "@/modules/Syndication/Deals/deals-create.css"
+import "@/modules/Syndication/Deals/deals-list.css"
+import "@/modules/Syndication/contacts/contacts.css"
+import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
 import "./investing-profiles-form-modals.css"
 
 const PROFILE_TYPE_INDIVIDUAL = "Individual"
 const PROFILE_TYPE_JOINT_TENANCY = "Joint tenancy"
 const PROFILE_TYPE_ENTITY = "Entity"
+const PROFILE_TYPE_ENTITY_CUSTODIAN = "__entity_custodian_ira_401k__"
+const PROFILE_TYPE_ENTITY_LLC_CORP_TRUST = "__entity_llc_corp_trust_etc__"
 
 /**
  * Add flow: steps 1–4 are Profile type, Details, Distributions, Address.
@@ -159,6 +161,12 @@ function formToJsonSnapshot(f: FormState): Record<string, unknown> {
   return JSON.parse(JSON.stringify(f)) as Record<string, unknown>
 }
 
+function profileTypeSelectValue(f: FormState): string {
+  if (f.profileType !== PROFILE_TYPE_ENTITY) return f.profileType
+  if (f.custodianIra === "yes") return PROFILE_TYPE_ENTITY_CUSTODIAN
+  return PROFILE_TYPE_ENTITY_LLC_CORP_TRUST
+}
+
 /**
  * Merge saved `profile_wizard_state` (same shape as `FormState`) into a partial; unknown keys are ignored.
  */
@@ -262,10 +270,10 @@ function distributionDetailsHint(m: DistributionMethod): string {
 }
 
 function distributionDetailsPlaceholder(m: DistributionMethod): string {
-  if (m === "ach") return "Search"
+  if (m === "ach") return "Enter bank account details"
   if (m === "check") return "Search or enter payee and address"
   if (m === "other") return "Enter details"
-  return "Search"
+  return "Enter details"
 }
 
 function distributionDetailsInputAria(m: DistributionMethod): string {
@@ -807,13 +815,24 @@ export function AddInvestorProfileModal({
   }, [])
 
   function handleProfileTypeChange(value: string) {
+    const isCustodianEntity = value === PROFILE_TYPE_ENTITY_CUSTODIAN
+    const isLlcCorpTrustEntity = value === PROFILE_TYPE_ENTITY_LLC_CORP_TRUST
+    const nextProfileType =
+      isCustodianEntity || isLlcCorpTrustEntity ? PROFILE_TYPE_ENTITY : value
+    const nextCustodianIra = isCustodianEntity
+      ? ("yes" as const)
+      : isLlcCorpTrustEntity
+        ? ("no" as const)
+        : ("" as const)
+
     setForm((prev) => ({
       ...prev,
-      profileType: value,
-      ...(value === PROFILE_TYPE_JOINT_TENANCY || value === PROFILE_TYPE_ENTITY
+      profileType: nextProfileType,
+      ...(nextProfileType === PROFILE_TYPE_JOINT_TENANCY ||
+      nextProfileType === PROFILE_TYPE_ENTITY
         ? { beneficiary: null, beneficiaryPickId: "" as const }
         : {}),
-      ...(value !== PROFILE_TYPE_ENTITY
+      ...(nextProfileType !== PROFILE_TYPE_ENTITY
         ? {
             entitySubType: "",
             entityLegalName: "",
@@ -833,13 +852,13 @@ export function AddInvestorProfileModal({
             iraPartnerEinVisible: false,
             iraCustodianEinVisible: false,
           }
-        : {}),
+        : { custodianIra: nextCustodianIra }),
     }))
     setFieldError((f) => (f.profileType ? { ...f, profileType: undefined } : f))
     if (
-      value !== PROFILE_TYPE_INDIVIDUAL &&
-      value !== PROFILE_TYPE_JOINT_TENANCY &&
-      value !== PROFILE_TYPE_ENTITY
+      nextProfileType !== PROFILE_TYPE_INDIVIDUAL &&
+      nextProfileType !== PROFILE_TYPE_JOINT_TENANCY &&
+      nextProfileType !== PROFILE_TYPE_ENTITY
     ) {
       setStep(1)
     }
@@ -1115,7 +1134,7 @@ export function AddInvestorProfileModal({
                     "um_field_select deals_add_inv_field_control",
                     Boolean(fieldError.profileType),
                   )}
-                  value={form.profileType}
+                  value={profileTypeSelectValue(form)}
                   onChange={(e) => handleProfileTypeChange(e.target.value)}
                   aria-invalid={Boolean(fieldError.profileType)}
                   aria-describedby={
@@ -1124,9 +1143,12 @@ export function AddInvestorProfileModal({
                 >
                   <option value="">Select profile type</option>
                   <option value={PROFILE_TYPE_INDIVIDUAL}>Individual</option>
+                  <option value={PROFILE_TYPE_ENTITY_CUSTODIAN}>
+                    Custodian IRA or custodian based 401(k)
+                  </option>
                   <option value={PROFILE_TYPE_JOINT_TENANCY}>Joint tenancy</option>
-                  <option value={PROFILE_TYPE_ENTITY}>
-                    LLC, corporation, partnership, trust, IRA, or 401(k)
+                  <option value={PROFILE_TYPE_ENTITY_LLC_CORP_TRUST}>
+                    LLC, corp, partnership, trust, solo 401(k), or checkbook IRA
                   </option>
                 </select>
               </InvestingFormField>
@@ -2284,16 +2306,10 @@ export function AddInvestorProfileModal({
                     {distributionDetailsHint(form.distributionMethod)}
                   </span>
                   <div className="add_profile_search_wrap">
-                    <Search
-                      className="add_profile_search_icon"
-                      size={16}
-                      strokeWidth={2}
-                      aria-hidden
-                    />
                     <input
                       id="ap-bank"
                       className={invClass(
-                        "deals_add_inv_input deals_add_inv_field_control add_profile_search",
+                        "deals_add_inv_input deals_add_inv_field_control add_profile_search add_profile_search_no_icon",
                         Boolean(fieldError.bankAccountQuery),
                       )}
                       value={form.bankAccountQuery}

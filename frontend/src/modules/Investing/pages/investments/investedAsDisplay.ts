@@ -2,8 +2,8 @@
  * "Invested as" / investment profile column: saved **profile name** (My Profiles) plus
  * **commitment type** the user chose (individual, joint, entity, …) when available.
  */
-import { investorProfileLabel } from "@/modules/Syndication/InvestorPortal/Deals/constants/investor-profile"
-import type { DealInvestorRow } from "@/modules/Syndication/InvestorPortal/Deals/types/deal-investors.types"
+import { investorProfileLabel } from "@/modules/Syndication/Deals/constants/investor-profile"
+import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import { fetchMyProfileBook } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
 import type { InvestmentListRow } from "./investments.types"
 
