@@ -15,12 +15,15 @@ import { ensureCompanyByName } from "../company/company.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../deal/assigningDealUser.service.js";
 import { markContactsAsPortalUserByEmailNorm } from "../contact/contact.service.js";
 import { getAddDealFormById } from "../deal/dealForm.service.js";
+import { sendSignupSuccessEmail } from "./signupSuccessEmail.service.js";
+import {
+  canonicalUsPhoneKey10,
+  parseUsPhoneToE164,
+} from "../../utils/usPhone.js";
 
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 16;
-const PHONE_MIN_DIGITS = 7;
-const PHONE_MAX_DIGITS = 15;
 
 export type SignupBody = {
   email?: unknown;
@@ -34,7 +37,7 @@ export type SignupBody = {
 };
 
 export type SignupResult =
-  | { ok: true; message: string }
+  | { ok: true; message: string; emailSent: boolean }
   | { ok: false; status: number; message: string };
 
 type InvitePayload = {
@@ -54,15 +57,16 @@ function str(v: unknown): string {
 /** Same phone may not be shared by two members (including pending) in one organization. */
 async function assertPhoneUniqueInOrganization(params: {
   organizationId: string | undefined;
-  phoneDigits: string;
+  /** Last 10 NANP digits (matches legacy 10-digit rows and E.164 +1… rows). */
+  phoneCanonical10: string;
   excludeUserId?: string;
 }): Promise<SignupResult | null> {
-  const { organizationId, phoneDigits, excludeUserId } = params;
-  if (!organizationId || !phoneDigits) return null;
+  const { organizationId, phoneCanonical10, excludeUserId } = params;
+  if (!organizationId || !phoneCanonical10) return null;
 
   const parts = [
     eq(users.organizationId, organizationId),
-    eq(users.phone, phoneDigits),
+    sql`right(regexp_replace(coalesce(${users.phone}, ''), '[^0-9]', '', 'g'), 10) = ${phoneCanonical10}`,
   ];
   if (excludeUserId) parts.push(ne(users.id, excludeUserId));
 
@@ -89,14 +93,14 @@ export async function registerUser(
 ): Promise<SignupResult> {
   const userName = str(body.userName);
   let companyName = str(body.companyName);
-  const phone = str(body.phone);
+  const phoneRaw = str(body.phone);
   const firstName = str(body.firstName);
   const lastName = str(body.lastName);
   const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
   const confirmPassword =
     typeof body.confirmPassword === "string" ? body.confirmPassword : "";
 
-  if (!userName || !companyName || !phone || !firstName || !lastName) {
+  if (!userName || !companyName || !phoneRaw || !firstName || !lastName) {
     return {
       ok: false,
       status: 400,
@@ -105,18 +109,21 @@ export async function registerUser(
     };
   }
 
-  if (!/^\d+$/.test(phone)) {
+  const phone = parseUsPhoneToE164(phoneRaw);
+  if (!phone) {
     return {
       ok: false,
       status: 400,
-      message: "Phone number must contain only digits (no spaces or symbols)",
+      message:
+        "Enter a valid 10-digit U.S. phone number (area code and exchange cannot start with 0 or 1).",
     };
   }
-  if (phone.length < PHONE_MIN_DIGITS || phone.length > PHONE_MAX_DIGITS) {
+  const phoneCanonical10 = canonicalUsPhoneKey10(phone);
+  if (!phoneCanonical10) {
     return {
       ok: false,
       status: 400,
-      message: `Phone number must be between ${PHONE_MIN_DIGITS} and ${PHONE_MAX_DIGITS} digits`,
+      message: "Enter a valid U.S. phone number.",
     };
   }
 
@@ -304,6 +311,9 @@ export async function registerUser(
       organizationId = companyResult.company.id;
       if (applyInviteRole) {
         roleForUser = invitedRoleFromToken!;
+      } else if (!inviteToken?.trim()) {
+        // Self-serve signup (user enters company name on the form): always company admin.
+        roleForUser = COMPANY_ADMIN;
       } else if (companyResult.created) {
         roleForUser = COMPANY_ADMIN;
       } else {
@@ -315,7 +325,7 @@ export async function registerUser(
 
     const phoneDup = await assertPhoneUniqueInOrganization({
       organizationId,
-      phoneDigits: phone,
+      phoneCanonical10,
       excludeUserId: pendingId,
     });
     if (phoneDup) return phoneDup;
@@ -376,9 +386,25 @@ export async function registerUser(
       }
     }
 
+    let emailSent = false;
+    try {
+      const mailResult = await sendSignupSuccessEmail({
+        toEmail: emailNorm,
+        firstName,
+        lastName,
+      });
+      emailSent = mailResult.ok;
+      if (!mailResult.ok) {
+        console.error("Signup success email could not be sent:", mailResult.error);
+      }
+    } catch (e) {
+      console.error("Signup success email:", e);
+    }
+
     return {
       ok: true,
       message: "Account created successfully",
+      emailSent,
     };
   } catch (err: unknown) {
     const pg =

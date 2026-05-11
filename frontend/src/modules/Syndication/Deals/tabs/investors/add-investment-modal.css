@@ -51,7 +51,7 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 0.2em 0.75em 0;
+  /* padding: 0 0.2em 0.75em 0; */
   margin-bottom: 0.25em;
 }
 

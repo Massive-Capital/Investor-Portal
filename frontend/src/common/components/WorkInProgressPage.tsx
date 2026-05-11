@@ -11,7 +11,7 @@ interface WorkInProgressPageProps {
 
 export function WorkInProgressPage({
   title,
-  backTo = "/",
+  backTo = "/dashboard",
   backLabel = "Home",
   parentCrumbPlain = false,
 }: WorkInProgressPageProps) {

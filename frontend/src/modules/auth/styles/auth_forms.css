@@ -124,7 +124,19 @@
   text-decoration: none;
 }
 
-.forgotPassword a {
+/* Links are `<a>` (react-router `Link`); class may be on the anchor itself. */
+.forgotPassword a,
+a.forgot-password,
+.forgot-password {
+  text-decoration: none;
+}
+
+.forgotPassword a:hover,
+.forgotPassword a:focus,
+.forgotPassword a:visited,
+a.forgot-password:hover,
+a.forgot-password:focus,
+a.forgot-password:visited {
   text-decoration: none;
 }
 

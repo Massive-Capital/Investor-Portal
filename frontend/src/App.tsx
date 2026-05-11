@@ -65,7 +65,7 @@ const PlaceholderPage = ({ title }: PlaceholderPageProps) => {
 function CompanyRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
-  if (!canAccessCompanyPage()) return <Navigate to="/" replace />;
+  if (!canAccessCompanyPage()) return <Navigate to="/dashboard" replace />;
   return <CompanyPage />;
 }
 
@@ -81,7 +81,7 @@ function CompanyRoute() {
 function CustomersRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
-  if (!canAccessCompanyPage()) return <Navigate to="/" replace />;
+  if (!canAccessCompanyPage()) return <Navigate to="/dashboard" replace />;
   if (!isPlatformAdmin()) {
     return <Navigate to="/settings" replace />;
   }
@@ -103,8 +103,9 @@ function App() {
         <Routes>
           <Route element={<RequireAuth />}>
             <Route element={<LpInvestorShellGuard />}>
-            <Route path="/" element={<PageLayout />}>
-              <Route index element={<SponsorDashboardPage />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route element={<PageLayout />}>
+              <Route path="dashboard" element={<SponsorDashboardPage />} />
             <Route path="deals" element={<DealsLayout />}>
               <Route index element={<DealsListPage />} />
               <Route path="investor-emails" element={<InvestorEmailsPage />} />
@@ -138,7 +139,7 @@ function App() {
               element={
                 <WorkInProgressPage
                   title="Leads"
-                  backTo="/"
+                  backTo="/dashboard"
                   backLabel="Dashboard"
                 />
               }
@@ -154,7 +155,7 @@ function App() {
               element={
                 <WorkInProgressPage
                   title="Documents"
-                  backTo="/"
+                  backTo="/dashboard"
                   backLabel="Dashboard"
                 />
               }
@@ -179,7 +180,7 @@ function App() {
               element={
                 <WorkInProgressPage
                   title="Settings"
-                  backTo="/"
+                  backTo="/dashboard"
                   backLabel="Dashboard"
                 />
               }
@@ -189,7 +190,7 @@ function App() {
               element={
                 <WorkInProgressPage
                   title="Leave a review"
-                  backTo="/"
+                  backTo="/dashboard"
                   backLabel="Dashboard"
                 />
               }
@@ -229,7 +230,6 @@ function App() {
               <Route path="deals" element={<CompanyDealsPage />} />
             </Route>
             <Route path="customers" element={<CustomersRoute />} />
-            <Route path="billing" element={<PlaceholderPage title="Billing" />} />
             <Route path="members" element={<MembersLayout />}>
               <Route index element={<UserManagementPage />} />
             </Route>

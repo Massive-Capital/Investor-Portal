@@ -13,7 +13,14 @@ import {
   UserRound,
   X,
 } from "lucide-react"
+import { UsPhoneInput } from "@/common/components/UsPhoneInput"
 import { toast } from "@/common/components/Toast"
+import {
+  isValidUsNanp10,
+  national10ToE164,
+  nationalDigitsFromStoredPhone,
+  nationalTenDigitsFromRawInput,
+} from "@/common/phone/usPhoneNumber"
 import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
 import { InvestingFormField } from "./InvestingFormField"
 import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
@@ -56,24 +63,6 @@ function getEmailError(raw: string): string | null {
   if (!t) return null
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(t)) {
     return "Enter a valid email address."
-  }
-  return null
-}
-
-/** Non-empty value must have a plausible digit count; allows +, spaces, and common separators. */
-function getPhoneError(raw: string): string | null {
-  const t = raw.trim()
-  if (!t) return null
-  const allowed = /^[\d+()\s.\-]+$/
-  if (!allowed.test(t)) {
-    return "Use only digits, spaces, and + ( ) - . in the phone number."
-  }
-  const digits = t.replace(/\D/g, "")
-  if (digits.length < 7) {
-    return "Phone number should include at least 7 digits."
-  }
-  if (digits.length > 15) {
-    return "This phone number has too many digits."
   }
   return null
 }
@@ -121,6 +110,7 @@ export function AddBeneficiaryModal({
 }: AddBeneficiaryModalProps) {
   const [d, setD] = useState<BeneficiaryDraft>(empty)
   const [taxVisible, setTaxVisible] = useState(false)
+  const [phoneNationalDigits, setPhoneNationalDigits] = useState("")
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
   const isEdit = variant === "edit"
@@ -139,6 +129,9 @@ export function AddBeneficiaryModal({
   useEffect(() => {
     if (!open) return
     setD(initial && Object.keys(initial).length ? { ...empty, ...initial } : { ...empty })
+    setPhoneNationalDigits(
+      nationalDigitsFromStoredPhone(initial?.phone ?? ""),
+    )
     setTaxVisible(false)
     setPhoneError(null)
     setEmailError(null)
@@ -155,7 +148,6 @@ export function AddBeneficiaryModal({
 
   const patch = useCallback((p: Partial<BeneficiaryDraft>) => {
     setD((prev) => ({ ...prev, ...p }))
-    if (Object.prototype.hasOwnProperty.call(p, "phone")) setPhoneError(null)
     if (Object.prototype.hasOwnProperty.call(p, "email")) setEmailError(null)
   }, [])
 
@@ -164,7 +156,15 @@ export function AddBeneficiaryModal({
       toast.error("Name required", "Enter the full name of the individual or entity.")
       return
     }
-    const pErr = getPhoneError(d.phone)
+    const pd = nationalTenDigitsFromRawInput(phoneNationalDigits)
+    let pErr: string | null = null
+    if (pd.length > 0) {
+      if (pd.length < 10) {
+        pErr = "Enter a complete 10-digit U.S. phone number."
+      } else if (!isValidUsNanp10(pd)) {
+        pErr = "That is not a valid U.S. area code or exchange."
+      }
+    }
     const eErr = getEmailError(d.email)
     setPhoneError(pErr)
     setEmailError(eErr)
@@ -173,7 +173,9 @@ export function AddBeneficiaryModal({
       toast.error("Check contact details", first)
       return
     }
-    onSave({ ...d, fullName: d.fullName.trim() })
+    const phoneE164 =
+      pd.length === 0 ? "" : national10ToE164(phoneNationalDigits) ?? ""
+    onSave({ ...d, fullName: d.fullName.trim(), phone: phoneE164 })
     onClose()
   }
 
@@ -308,19 +310,20 @@ export function AddBeneficiaryModal({
               label="Phone number"
               Icon={Phone}
               tight
-              error={phoneError ?? undefined}
             >
-              <input
+              <UsPhoneInput
                 id="ben-phone"
+                name="phone"
+                nationalDigits={phoneNationalDigits}
+                onNationalDigitsChange={(next) => {
+                  setPhoneNationalDigits(next)
+                  setPhoneError(null)
+                }}
                 className="deals_add_inv_input deals_add_inv_field_control"
-                type="tel"
-                inputMode="tel"
-                value={d.phone}
-                onChange={(e) => patch({ phone: e.target.value })}
                 autoComplete="tel"
-                placeholder="(555) 000-0000"
                 aria-invalid={Boolean(phoneError)}
                 aria-describedby={phoneError ? "ben-phone-err" : undefined}
+                error={phoneError}
               />
             </InvestingFormField>
 

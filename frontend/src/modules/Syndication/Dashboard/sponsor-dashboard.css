@@ -28,7 +28,7 @@ a.sponsor_dash_add_link.um_btn_secondary {
   display: flex;
   justify-content: space-between;
   gap: 1em;
-  margin-bottom: 2em;
+  /* margin-bottom: 0.3em; */
 }
 .sponsor_dash_metrics_investing_mode {
   display: grid;
@@ -50,7 +50,7 @@ a.sponsor_dash_add_link.um_btn_secondary {
   flex-direction: column;
   align-items: stretch;
   gap: 0.75em;
-  margin-bottom: 1.25em;
+  margin:2em 0 1.25em 0;
 }
 
 .sponsor_dash_deals_toolbar {

@@ -125,10 +125,19 @@ export function rowDisplayName(row: Record<string, unknown>): string {
   return [first, last].filter(Boolean).join(" ") || "—";
 }
 
-/** Matches backend `INVITE_ASSIGNABLE_ROLES` (platform admin invites only). */
+/**
+ * Assignable role codes for platform-admin invites (backend `INVITE_ASSIGNABLE_ROLES`).
+ * The Invite member modal filters this list by selected company name (see UserManagementPage).
+ */
 export const PLATFORM_INVITE_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "platform_admin", label: "Platform Admin" },
   { value: "platform_user", label: "Platform user" },
+  { value: "company_admin", label: "Company Admin" },
+  { value: "company_user", label: "Company Member" },
+];
+
+/** Roles a company admin may assign when inviting a member (Invite member modal). */
+export const COMPANY_INVITE_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "company_admin", label: "Company Admin" },
   { value: "company_user", label: "Company Member" },
 ];
@@ -137,7 +146,7 @@ export const PLATFORM_INVITE_ROLE_OPTIONS: { value: string; label: string }[] = 
 export const COMPANY_EDIT_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "company_admin", label: "Company Admin" },
   { value: "company_user", label: "Company Member" },
-  { value: "platform_user", label: "Platform user" },
+  // { value: "platform_user", label: "Platform user" },
 ];
 
 /**

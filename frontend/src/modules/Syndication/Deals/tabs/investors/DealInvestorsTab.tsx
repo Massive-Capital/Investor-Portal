@@ -4,10 +4,12 @@ import {
   CircleDollarSign,
   DollarSign,
   Download,
+  Eye,
   FileCheck,
   Info,
   Landmark,
   Mail,
+  Pencil,
   PiggyBank,
   Plus,
   Search,
@@ -106,9 +108,13 @@ import {
   type EmailTemplateRow,
 } from "../../../contacts/emailTemplatesStorage"
 import {
+  buildSendMailPreviewHref,
+  emailTemplateHtmlToPlainText,
   getCurrentSessionUserEmail,
   openSendMailDraft,
+  parseEmailInput,
 } from "../../../../../common/features/send-mail"
+import { useNavigate } from "react-router-dom"
 import "../../../usermanagement/user_management.css"
 import "../../../Dashboard/sponsor-dashboard.css"
 import "../../deals-list.css"
@@ -413,6 +419,7 @@ function DealInvestorsPopulated({
   offeringLinkAvailable: boolean
   onRefreshInvestors?: () => void | Promise<void>
 }) {
+  const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [rows, setRows] = useState<DealInvestorRow[]>(initialPayload.investors)
@@ -663,6 +670,10 @@ function DealInvestorsPopulated({
     [filtered, selectedInvestorIds],
   )
   const senderEmail = useMemo(() => getCurrentSessionUserEmail(), [])
+  const selectedTemplate = useMemo(
+    () => emailTemplates.find((t) => t.id === selectedTemplateId) ?? null,
+    [emailTemplates, selectedTemplateId],
+  )
   const openSendMailModal = useCallback(() => {
     void (async () => {
       const templates = (await loadEmailTemplates()).filter((t) => !t.archived)
@@ -680,6 +691,41 @@ function DealInvestorsPopulated({
   const closeSendMailModal = useCallback(() => {
     setSendMailModalOpen(false)
   }, [])
+
+  const goNewTemplateFromSendMail = useCallback(() => {
+    navigate("/contacts/email-templates/new")
+  }, [navigate])
+
+  const goEditTemplateFromSendMail = useCallback(() => {
+    const id = selectedTemplateId.trim()
+    if (!id) return
+    navigate(`/contacts/email-templates/edit/${encodeURIComponent(id)}`)
+  }, [navigate, selectedTemplateId])
+
+  const handlePreviewTemplateFromSendMail = useCallback(() => {
+    const template = emailTemplates.find((t) => t.id === selectedTemplateId)
+    if (!template) {
+      toast.error("Template required", "Choose an email template first.")
+      return
+    }
+    const emails = [
+      ...new Set(
+        selectedInvestorRows
+          .map((r) => String(r.userEmail ?? "").trim())
+          .filter((e) => e.includes("@")),
+      ),
+    ]
+    if (emails.length === 0) {
+      toast.error("No email recipients", "Selected investors have no valid email.")
+      return
+    }
+    window.location.href = buildSendMailPreviewHref({
+      to: emails,
+      cc: parseEmailInput(sendMailCc),
+      subject: template.subject,
+      body: emailTemplateHtmlToPlainText(template.body),
+    })
+  }, [emailTemplates, selectedInvestorRows, selectedTemplateId, sendMailCc])
 
   useEffect(() => {
     setPage(1)
@@ -782,6 +828,7 @@ function DealInvestorsPopulated({
       {
         id: "role",
         header: "Role",
+        thClassName: "deal_inv_th_role",
         sortValue: (row) => (row.investorRole ?? "").trim().toLowerCase(),
         tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
         cell: (row) => <DealInvestorRoleCell row={row} />,
@@ -1089,17 +1136,6 @@ function DealInvestorsPopulated({
         {kpiMetricCards}
       </section>
 
-      <div className="um_header_row deal_inv_investors_cta_row">
-        <button
-          type="button"
-          className="deals_list_add_btn"
-          onClick={onAddInvestor}
-        >
-          <Plus size={18} strokeWidth={2} aria-hidden />
-          Add Investor
-        </button>
-      </div>
-
       <div className="deal_inv_controls">
         {/* Share with lead sponsor + Send email (deferred)
         <div className="deal_inv_toolbar">
@@ -1327,27 +1363,61 @@ function DealInvestorsPopulated({
               />
             </div>
             <div className="um_field contacts_suspend_reason_field">
-              <label
-                className="um_field_label_row"
-                htmlFor="deal-investors-send-mail-template"
-              >
-                <span>Email template</span>
-              </label>
-              <select
-                id="deal-investors-send-mail-template"
-                className="um_field_select"
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-              >
-                {emailTemplates.length === 0 ? (
-                  <option value="">No active templates</option>
+              <div className="contacts_send_mail_template_head">
+                <label
+                  className="um_field_label_row"
+                  htmlFor="deal-investors-send-mail-template"
+                >
+                  <span>Email template</span>
+                </label>
+                <button
+                  type="button"
+                  className="um_btn_secondary contacts_send_mail_template_new_btn"
+                  onClick={goNewTemplateFromSendMail}
+                >
+                  <Plus size={15} strokeWidth={2} aria-hidden />
+                  New Template
+                </button>
+              </div>
+              <div className="contacts_send_mail_template_select_row">
+                <select
+                  id="deal-investors-send-mail-template"
+                  className="um_field_select contacts_send_mail_template_select"
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                >
+                  {emailTemplates.length === 0 ? (
+                    <option value="">No active templates</option>
+                  ) : null}
+                  {emailTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedTemplate ? (
+                  <>
+                    <button
+                      type="button"
+                      className="contacts_send_mail_template_edit_btn"
+                      aria-label={`Preview ${selectedTemplate.name}`}
+                      title={`Preview ${selectedTemplate.name}`}
+                      onClick={handlePreviewTemplateFromSendMail}
+                    >
+                      <Eye size={16} strokeWidth={2} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="contacts_send_mail_template_edit_btn"
+                      aria-label={`Edit ${selectedTemplate.name}`}
+                      title={`Edit ${selectedTemplate.name}`}
+                      onClick={goEditTemplateFromSendMail}
+                    >
+                      <Pencil size={16} strokeWidth={2} aria-hidden />
+                    </button>
+                  </>
                 ) : null}
-                {emailTemplates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name}
-                  </option>
-                ))}
-              </select>
+              </div>
               {emailTemplates.length === 0 ? (
                 <p className="um_hint" role="status">
                   Create an email template first in Email Templates.
@@ -1407,6 +1477,14 @@ function DealInvestorsPopulated({
             >
               <Download size={18} strokeWidth={2} aria-hidden />
               <span>Export all investors</span>
+            </button>
+            <button
+              type="button"
+              className="deals_list_add_btn deal_inv_toolbar_add_investor_btn"
+              onClick={onAddInvestor}
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden />
+              Add Investor
             </button>
           </div>
         </div>

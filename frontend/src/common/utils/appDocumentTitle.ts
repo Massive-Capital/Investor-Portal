@@ -26,13 +26,13 @@ function normalizePath(path: string): string {
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
+  "/dashboard": "Dashboard",
 
   "/settings": "Settings",
   "/company": "Settings",
 
   "/customers": "Customers",
 
-  "/billing": "Billing",
   "/members": "Members",
 
   "/contacts": "All contacts",

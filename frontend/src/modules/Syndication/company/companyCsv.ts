@@ -8,6 +8,7 @@ export type CompanyExportRow = {
   updatedAt?: string
   userCount?: number
   dealCount?: number
+  contactCount?: number
 }
 
 export function escapeCsvCell(value: string): string {
@@ -31,7 +32,14 @@ function companyStatusLabel(row: CompanyExportRow): string {
 }
 
 export function buildCompaniesCsv(rows: CompanyExportRow[]): string {
-  const headers = ["Company", "Deals", "Members", "Status", "Created"];
+  const headers = [
+    "Company",
+    "Deals",
+    "Members",
+    "No. of contacts",
+    "Status",
+    "Created",
+  ];
   const lines = [headers.map(escapeCsvCell).join(",")];
   for (const row of rows) {
     lines.push(
@@ -39,6 +47,7 @@ export function buildCompaniesCsv(rows: CompanyExportRow[]): string {
         row.name,
         String(row.dealCount ?? 0),
         String(row.userCount ?? 0),
+        String(row.contactCount ?? 0),
         companyStatusLabel(row),
         row.createdAt ? formatDateDdMmmYyyy(row.createdAt) : "—",
       ]

@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { useEffect } from "react"
 import { ViewReadonlyField } from "../../../../common/components/ViewReadonlyField"
+import { formatUsPhoneStoredForUi } from "../../../../common/phone/usPhoneNumber"
 import "../../Deals/tabs/investors/add-investment-modal.css"
 import "../../usermanagement/user_management.css"
 import "../contacts.css"
@@ -94,7 +95,11 @@ export function ViewContactModal({
               value={displayName}
             />
             <ViewReadonlyField Icon={Mail} label="Email" value={contact.email || "—"} />
-            <ViewReadonlyField Icon={Phone} label="Phone" value={contact.phone || "—"} />
+            <ViewReadonlyField
+              Icon={Phone}
+              label="Phone"
+              value={formatUsPhoneStoredForUi(contact.phone)}
+            />
             <ViewReadonlyField
               Icon={Briefcase}
               label="Deals"

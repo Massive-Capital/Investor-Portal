@@ -5,6 +5,7 @@ import { isPlatformAdminRole } from "../constants/roles.js";
 import { db } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
 import {
+  ContactInvalidPhoneError,
   ContactScopeConflictError,
   countDealInvestmentsByContactIdForViewer,
   getUserDisplayNameById,
@@ -341,6 +342,10 @@ export async function postContact(req: Request, res: Response): Promise<void> {
       contact: await mapContactToJsonWithNames(row, dealCounts),
     });
   } catch (err) {
+    if (err instanceof ContactInvalidPhoneError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     if (err instanceof ContactScopeConflictError) {
       res.status(409).json({ message: err.message });
       return;
@@ -435,6 +440,10 @@ export async function patchContact(req: Request, res: Response): Promise<void> {
       contact: await mapContactToJsonWithNames(updated, dealCounts),
     });
   } catch (err) {
+    if (err instanceof ContactInvalidPhoneError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     if (err instanceof ContactScopeConflictError) {
       res.status(409).json({ message: err.message });
       return;

@@ -5,6 +5,7 @@ import { companies, users, type UserRow } from "../../schema/schema.js";
 import { enrichUserRecordForDealParticipant } from "../deal/dealParticipantProfile.service.js";
 import { mergeLpInvestorFlagsIntoUserPayload } from "../investing/lpInvestorAccess.service.js";
 import { serializeUserForClient } from "../user/userAdmin.service.js";
+import { parseUsPhoneToE164 } from "../../utils/usPhone.js";
 
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
@@ -239,7 +240,23 @@ export async function updateOwnProfile(
     } = { updatedAt: new Date() };
     if (hasFirst) setObj.firstName = patch.firstName ?? "";
     if (hasLast) setObj.lastName = patch.lastName ?? "";
-    if (hasPhone) setObj.phone = patch.phone ?? "";
+    if (hasPhone) {
+      const raw = String(patch.phone ?? "").trim();
+      if (!raw) {
+        setObj.phone = "";
+      } else {
+        const e164 = parseUsPhoneToE164(raw);
+        if (!e164) {
+          return {
+            ok: false,
+            status: 400,
+            message:
+              "Enter a valid 10-digit U.S. phone number, or leave phone blank.",
+          };
+        }
+        setObj.phone = e164;
+      }
+    }
     await db.update(users).set(setObj).where(eq(users.id, userId));
   }
 

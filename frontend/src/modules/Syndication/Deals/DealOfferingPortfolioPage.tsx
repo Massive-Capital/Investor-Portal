@@ -324,14 +324,14 @@ export function DealOfferingPortfolioPage() {
 
   useEffect(() => {
     if (loading) {
-      setAppDocumentTitle("Investor Portal Offering", { plain: true })
+      setAppDocumentTitle("Investor Portal Offering", true)
       return
     }
     if (notFound || !detail) {
-      setAppDocumentTitle("Investor Portal Offering not found", { plain: true })
+      setAppDocumentTitle("Investor Portal Offering not found", true)
       return
     }
-    setAppDocumentTitle(`Investor Portal ${title} Offering`, { plain: true })
+    setAppDocumentTitle(`Investor Portal ${title} Offering`, true)
   }, [loading, notFound, detail, title])
 
   if (!effectiveDealId) {

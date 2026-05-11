@@ -45,6 +45,7 @@ export function ExportCompaniesModal({
           r.id,
           String(r.dealCount ?? ""),
           String(r.userCount ?? ""),
+          String(r.contactCount ?? ""),
           String(r.status ?? ""),
         ]
           .join(" ")
@@ -221,7 +222,8 @@ export function ExportCompaniesModal({
                   <span className="deals_export_modal_row_name">{row.name}</span>
                   <span className="deals_export_modal_row_meta">
                     {String(row.userCount ?? 0)} members ·{" "}
-                    {String(row.dealCount ?? 0)} deals
+                    {String(row.dealCount ?? 0)} deals ·{" "}
+                    {String(row.contactCount ?? 0)} contacts
                   </span>
                 </label>
               </li>

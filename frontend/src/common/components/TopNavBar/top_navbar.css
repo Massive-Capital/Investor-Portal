@@ -221,6 +221,7 @@ font-size: 0.9em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: capitalize;
 }
 
 .top_navbar_user_role_badge {

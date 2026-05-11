@@ -30,6 +30,13 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react"
+import { UsPhoneInput } from "../../../../common/components/UsPhoneInput"
+import {
+  isValidUsNanp10,
+  national10ToE164,
+  nationalDigitsFromStoredPhone,
+  nationalTenDigitsFromRawInput,
+} from "../../../../common/phone/usPhoneNumber"
 import { fetchMyProfile } from "../../../myaccount/accountApi"
 import { getSessionUserDisplayName } from "../../../../common/auth/sessionUserDisplayName"
 import type { ContactRow } from "../types/contact.types"
@@ -77,10 +84,6 @@ function displayNameFromProfileUser(u: Record<string, unknown>): string {
   return ""
 }
 
-function normalizePhoneDigits(s: string): string {
-  return String(s).replace(/\D/g, "")
-}
-
 function normalizeEmailForCompare(s: string): string {
   return String(s).trim().toLowerCase()
 }
@@ -120,14 +123,6 @@ function isValidEmailFormat(raw: string): boolean {
   }
   const tld = labels[labels.length - 1] ?? ""
   return tld.length >= 2 && /[a-zA-Z]/.test(tld)
-}
-
-/** When phone is left blank it is valid; otherwise require E.164-style digit count (7–15). */
-function isValidOptionalPhone(raw: string): boolean {
-  const trimmed = String(raw).trim()
-  if (!trimmed) return true
-  const digits = normalizePhoneDigits(raw)
-  return digits.length >= 7 && digits.length <= 15
 }
 
 function ChipRow({
@@ -460,7 +455,7 @@ export function AddContactPanel({
       setFirstName(contactToEdit.firstName)
       setLastName(contactToEdit.lastName)
       setEmail(contactToEdit.email)
-      setPhone(normalizePhoneDigits(contactToEdit.phone))
+      setPhone(nationalDigitsFromStoredPhone(contactToEdit.phone))
       setNote(contactToEdit.note)
       setTags([...contactToEdit.tags])
       setLists([...contactToEdit.lists])
@@ -593,17 +588,16 @@ export function AddContactPanel({
           "This email is already used by another contact in your company."
       }
     }
-    const phoneTrim = phone.trim()
-    if (phoneTrim.length > 0) {
-      if (!isValidOptionalPhone(phone)) {
+    const phoneD = nationalTenDigitsFromRawInput(phone)
+    if (phoneD.length > 0) {
+      if (phoneD.length < 10 || !isValidUsNanp10(phoneD)) {
         err.phone =
-          "Enter a valid phone number with 7–15 digits, or leave blank."
+          "Enter a valid 10-digit U.S. phone number, or leave blank."
       } else {
-        const phoneNorm = normalizePhoneDigits(phone)
         const dupPhone = existingContacts.some(
           (c) =>
             c.id !== contactToEdit?.id &&
-            normalizePhoneDigits(c.phone) === phoneNorm,
+            nationalDigitsFromStoredPhone(c.phone) === phoneD,
         )
         if (dupPhone) {
           err.phone =
@@ -648,7 +642,10 @@ export function AddContactPanel({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
-        phone: phone.trim(),
+        phone:
+          nationalTenDigitsFromRawInput(phone).length === 0
+            ? ""
+            : national10ToE164(phone) ?? "",
         note: note.trim(),
         tags: [...tags],
         lists: [...lists],
@@ -921,41 +918,21 @@ export function AddContactPanel({
                       />
                       <span>Phone</span>
                     </label>
-                    <input
+                    <UsPhoneInput
                       id="contact-phone"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={15}
-                      className={
-                        fieldError.phone ? "um_field_input_invalid" : undefined
-                      }
-                      value={phone}
-                      onChange={(e) => {
-                        const digits = normalizePhoneDigits(e.target.value).slice(
-                          0,
-                          15,
-                        )
-                        setPhone(digits)
+                      name="phone"
+                      nationalDigits={phone}
+                      onNationalDigitsChange={(next) => {
+                        setPhone(next)
                         if (fieldError.phone)
                           setFieldError((f) => ({ ...f, phone: undefined }))
                       }}
+                      className="um_field_input"
+                      invalidClassName="um_field_input_invalid"
                       autoComplete="tel"
-                      placeholder="15551234567"
-                      title="Digits only, 7–15 characters"
                       aria-invalid={Boolean(fieldError.phone)}
-                      aria-describedby={
-                        fieldError.phone ? "contact-phone-err" : undefined
-                      }
+                      error={fieldError.phone ?? null}
                     />
-                    {fieldError.phone ? (
-                      <p
-                        id="contact-phone-err"
-                        className="um_field_hint um_field_hint_error"
-                      >
-                        {fieldError.phone}
-                      </p>
-                    ) : null}
                   </div>
 
                   <div className="um_field">

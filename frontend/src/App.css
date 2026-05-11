@@ -89,7 +89,7 @@ body {
 
   /* ===== UI ===== */
   --ui-border-radius: 6px;
-  --portal-card-radius: 10px;
+  --portal-card-radius: 8px;
   --portal-pill-radius: 9999px;
   --portal-icon-box-radius: 10px;
 

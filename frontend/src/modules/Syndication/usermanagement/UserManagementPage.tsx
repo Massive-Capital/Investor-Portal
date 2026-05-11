@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -26,6 +26,7 @@ import {
   MoreHorizontal,
   Pencil,
   Phone,
+  Plus,
   RefreshCw,
   Search,
   Send,
@@ -43,6 +44,7 @@ import {
   SESSION_USER_DETAILS_KEY,
 } from "../../../common/auth/sessionKeys";
 import { decodeJwtPayload } from "../../auth/utils/decode-jwt-payload";
+import { formatUsPhoneStoredForUi } from "../../../common/phone/usPhoneNumber";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { isCompanyAdmin, isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { resolvePlatformAdminMembersListScope } from "../../../common/auth/sessionOrganization";
@@ -51,6 +53,7 @@ import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
 import { toast } from "../../../common/components/Toast";
 import {
   COMPANY_EDIT_ROLE_OPTIONS,
+  COMPANY_INVITE_ROLE_OPTIONS,
   MEMBER_AUDIT_ACTION_EDIT,
   MEMBER_AUDIT_ACTION_SUSPEND,
   MEMBER_STATUS_EDIT_OPTIONS,
@@ -80,14 +83,19 @@ import { ExportMembersModal } from "./ExportMembersModal";
 import { escapeCsvCell, exportAuditLinesForMembers } from "./memberCsv";
 import { notifyMembersExportAudit } from "./membersExportNotifyApi";
 import {
+  buildSendMailPreviewHref,
+  emailTemplateHtmlToPlainText,
   getCurrentSessionUserEmail,
   openSendMailDraft,
+  parseEmailInput,
 } from "../../../common/features/send-mail";
+import { RadioPillGroup } from "../../../common/components/radio-pill-group/RadioPillGroup";
 import { DealsCreateDropdownSelect } from "../Deals/components/DealsCreateDropdownSelect";
 import {
   loadEmailTemplates,
   type EmailTemplateRow,
 } from "../contacts/emailTemplatesStorage";
+import "../contacts/contacts.css";
 import "./user_management.css";
 import "../Deals/tabs/investors/add-investment-modal.css";
 
@@ -160,7 +168,7 @@ function rowMatchesSearch(
     formatValue(row.email),
     formatMemberUsername(row.username),
     formatValue(row.companyName),
-    formatValue(row.phone),
+    formatUsPhoneStoredForUi(row.phone),
     formatValue(row.role),
     roleBadgeLabel(row),
     primaryRoleLabelFromRow(row),
@@ -378,6 +386,9 @@ function MembersRoleInfoPanel() {
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Platform-admin invite modal: this org name gets platform roles only; others get company roles only. */
+const SYNDICATION_X_INVITE_COMPANY_NAME = "SyndicationX";
+
 export type UserManagementPageProps = {
   /**
    * **Settings → Members (embedded):** pass the platform admin’s target
@@ -408,6 +419,7 @@ export default function UserManagementPage({
 }: UserManagementPageProps = {}) {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   const apiV1 = getApiV1Base();
+  const navigate = useNavigate();
 
   const currentUserId = useMemo(() => {
     if (!token) return "";
@@ -519,6 +531,7 @@ export default function UserManagementPage({
    * the current members list organization only (no picker).
    */
   const showCompanyColumn = isPlatformAdmin();
+  const showInviteRolePicker = showCompanyColumn || isCompanyAdmin();
   const sortColumns = useMemo(() => buildSortColumns(), []);
 
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -632,6 +645,10 @@ export default function UserManagementPage({
     [sortedRows, selectedMemberRowIds],
   );
   const senderEmail = useMemo(() => getCurrentSessionUserEmail(), []);
+  const selectedTemplate = useMemo(
+    () => emailTemplates.find((t) => t.id === selectedTemplateId) ?? null,
+    [emailTemplates, selectedTemplateId],
+  );
   const allMembersFilteredSelected =
     sortedRows.length > 0 &&
     sortedRowStableIds.every((id) => selectedMemberRowIds.has(id));
@@ -893,7 +910,9 @@ export default function UserManagementPage({
       const orgId = showCompanyColumn ? rowOrganizationId(row) : undefined;
       const invitedRole = showCompanyColumn
         ? String(row.role ?? "").trim() || undefined
-        : undefined;
+        : isCompanyAdmin()
+          ? String(row.role ?? "").trim() || "company_user"
+          : undefined;
       const result = await sendInviteForEmail(email, orgId, invitedRole);
       if (result.ok) {
         toast.success("User invited successfully");
@@ -930,6 +949,41 @@ export default function UserManagementPage({
   const closeSendMailModal = useCallback(() => {
     setSendMailModalOpen(false);
   }, []);
+
+  const goNewTemplateFromSendMail = useCallback(() => {
+    navigate("/contacts/email-templates/new");
+  }, [navigate]);
+
+  const goEditTemplateFromSendMail = useCallback(() => {
+    const id = selectedTemplateId.trim();
+    if (!id) return;
+    navigate(`/contacts/email-templates/edit/${encodeURIComponent(id)}`);
+  }, [navigate, selectedTemplateId]);
+
+  const handlePreviewTemplateFromSendMail = useCallback(() => {
+    const template = emailTemplates.find((t) => t.id === selectedTemplateId);
+    if (!template) {
+      toast.error("Template required", "Choose an email template first.");
+      return;
+    }
+    const emails = [
+      ...new Set(
+        selectedMemberRows
+          .map((r) => String(r.email ?? "").trim())
+          .filter((e) => e.includes("@")),
+      ),
+    ];
+    if (emails.length === 0) {
+      toast.error("No email recipients", "Selected members have no valid email.");
+      return;
+    }
+    window.location.href = buildSendMailPreviewHref({
+      to: emails,
+      cc: parseEmailInput(sendMailCc),
+      subject: template.subject,
+      body: emailTemplateHtmlToPlainText(template.body),
+    });
+  }, [emailTemplates, selectedMemberRows, selectedTemplateId, sendMailCc]);
 
   const handleSendMailToSelectedMembers = useCallback(async () => {
     const emails = [
@@ -977,7 +1031,9 @@ export default function UserManagementPage({
         ? membersListScope
         : ""
     setInviteCompanyId(showCompanyColumn ? scopedOrg : "");
-    setInviteInvitedRole("");
+    setInviteInvitedRole(
+      showCompanyColumn ? "" : isCompanyAdmin() ? "company_user" : "",
+    );
     setInviteCompaniesError("");
     setInviteError("");
   }
@@ -1197,6 +1253,41 @@ export default function UserManagementPage({
     [showCompanyColumn],
   );
 
+  const inviteModalRoleOptions = useMemo(() => {
+    if (!showCompanyColumn || !inviteCompanyId.trim()) return [];
+    const company = inviteCompanies.find((c) => c.id === inviteCompanyId);
+    if (!company) return [];
+    const name = String(company.name ?? "").trim();
+    const isSyndicationX = name === SYNDICATION_X_INVITE_COMPANY_NAME;
+    if (isSyndicationX) {
+      return PLATFORM_INVITE_ROLE_OPTIONS.filter((o) =>
+        o.value === "platform_admin" || o.value === "platform_user",
+      );
+    }
+    return PLATFORM_INVITE_ROLE_OPTIONS.filter(
+      (o) => o.value === "company_admin" || o.value === "company_user",
+    );
+  }, [showCompanyColumn, inviteCompanies, inviteCompanyId]);
+
+  const inviteRolePickerOptions = useMemo(() => {
+    if (showCompanyColumn) return inviteModalRoleOptions;
+    if (isCompanyAdmin()) return COMPANY_INVITE_ROLE_OPTIONS;
+    return [];
+  }, [showCompanyColumn, inviteModalRoleOptions]);
+
+  useEffect(() => {
+    if (!inviteOpen || !showInviteRolePicker) return;
+    if (!inviteInvitedRole.trim()) return;
+    const allowed = inviteRolePickerOptions.map((o) => o.value);
+    if (allowed.length === 0) return;
+    if (!allowed.includes(inviteInvitedRole)) setInviteInvitedRole("");
+  }, [
+    inviteOpen,
+    showInviteRolePicker,
+    inviteInvitedRole,
+    inviteRolePickerOptions,
+  ]);
+
   useEffect(() => {
     if ((!inviteOpen && !editRow) || !showCompanyColumn || !token || !apiV1)
       return;
@@ -1239,7 +1330,7 @@ export default function UserManagementPage({
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
     if (!token || !apiV1) return;
-    if (showCompanyColumn && !inviteInvitedRole.trim()) {
+    if (showInviteRolePicker && !inviteInvitedRole.trim()) {
       setInviteError("Please select a role.");
       return;
     }
@@ -1257,7 +1348,7 @@ export default function UserManagementPage({
         showCompanyColumn
           ? inviteCompanyId
           : orgForSingleCompanyInvite,
-        showCompanyColumn ? inviteInvitedRole.trim() : undefined,
+        showInviteRolePicker ? inviteInvitedRole.trim() : undefined,
       );
       if (!result.ok) {
         setInviteError(result.message);
@@ -1828,7 +1919,7 @@ export default function UserManagementPage({
               <ViewReadonlyField
                 Icon={Phone}
                 label="Phone"
-                value={formatValue(viewRow.phone)}
+                value={formatUsPhoneStoredForUi(viewRow.phone)}
               />
               <ViewReadonlyField
                 Icon={Activity}
@@ -1926,27 +2017,27 @@ export default function UserManagementPage({
               ) : null}
               <div className="um_edit_role_status_row">
                 <div className="um_field">
-                  <label
-                    htmlFor="um-edit-member-role"
+                  <div
+                    id="um-edit-member-role-heading"
                     className="um_field_label_row"
                   >
                     <UserCog className="um_field_label_icon" size={17} aria-hidden />
                     <span>Role</span>
-                  </label>
-                  <select
-                    id="um-edit-member-role"
-                    className="um_field_select"
-                    value={editRole}
-                    onChange={(e) => setEditRole(e.target.value)}
-                    required
-                    disabled={editSaving}
+                  </div>
+                  <div
+                    className={
+                      editSaving ? "um_role_pills_interaction_lock" : undefined
+                    }
                   >
-                    {editRoleSelectOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    <RadioPillGroup
+                      name="umEditMemberRole"
+                      className="um_role_radio_group"
+                      value={editRole}
+                      options={editRoleSelectOptions}
+                      onChange={(v) => setEditRole(v)}
+                      ariaLabelledBy="um-edit-member-role-heading"
+                    />
+                  </div>
                 </div>
                 <div className="um_field">
                   <label
@@ -2203,27 +2294,32 @@ export default function UserManagementPage({
                     />
                   </div>
                 ) : null}
-                {showCompanyColumn ? (
+                {showInviteRolePicker ? (
                   <div className="um_field">
-                    <label htmlFor="um-invite-role" className="um_field_label_row">
+                    <div id="um-invite-role-heading" className="um_field_label_row">
                       <UserCog className="um_field_label_icon" size={17} aria-hidden />
                       <span>Role</span>
-                    </label>
-                    <select
-                      id="um-invite-role"
-                      className="um_field_select"
-                      value={inviteInvitedRole}
-                      onChange={(e) => setInviteInvitedRole(e.target.value)}
-                      required
-                      disabled={inviteLoading}
-                    >
-                      <option value="">Select a role</option>
-                      {PLATFORM_INVITE_ROLE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    </div>
+                    {inviteRolePickerOptions.length > 0 ? (
+                      <div
+                        className={
+                          inviteLoading ||
+                          (showCompanyColumn &&
+                            (!inviteCompanyId.trim() || !!inviteCompaniesError))
+                            ? "um_role_pills_interaction_lock"
+                            : undefined
+                        }
+                      >
+                        <RadioPillGroup
+                          name="umInviteMemberRole"
+                          className="um_role_radio_group"
+                          value={inviteInvitedRole}
+                          options={inviteRolePickerOptions}
+                          onChange={(v) => setInviteInvitedRole(v)}
+                          ariaLabelledBy="um-invite-role-heading"
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {inviteError ? (
@@ -2252,10 +2348,12 @@ export default function UserManagementPage({
                   disabled={
                     inviteLoading ||
                     !inviteEmail.trim() ||
-                    (showCompanyColumn &&
+                    ((showCompanyColumn &&
                       (!inviteCompanyId.trim() ||
-                        !inviteInvitedRole.trim() ||
-                        !!inviteCompaniesError))
+                        !!inviteCompaniesError)) ||
+                      (showInviteRolePicker &&
+                        (!inviteInvitedRole.trim() ||
+                          inviteRolePickerOptions.length === 0)))
                   }
                 >
                   <Send size={16} aria-hidden />
@@ -2331,24 +2429,58 @@ export default function UserManagementPage({
               />
             </div>
             <div className="um_field contacts_suspend_reason_field">
-              <label className="um_field_label_row" htmlFor="um-send-mail-template">
-                <span>Email template</span>
-              </label>
-              <select
-                id="um-send-mail-template"
-                className="um_field_select"
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-              >
-                {emailTemplates.length === 0 ? (
-                  <option value="">No active templates</option>
+              <div className="contacts_send_mail_template_head">
+                <label className="um_field_label_row" htmlFor="um-send-mail-template">
+                  <span>Email template</span>
+                </label>
+                <button
+                  type="button"
+                  className="um_btn_secondary contacts_send_mail_template_new_btn"
+                  onClick={goNewTemplateFromSendMail}
+                >
+                  <Plus size={15} strokeWidth={2} aria-hidden />
+                  New Template
+                </button>
+              </div>
+              <div className="contacts_send_mail_template_select_row">
+                <select
+                  id="um-send-mail-template"
+                  className="um_field_select contacts_send_mail_template_select"
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                >
+                  {emailTemplates.length === 0 ? (
+                    <option value="">No active templates</option>
+                  ) : null}
+                  {emailTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedTemplate ? (
+                  <>
+                    <button
+                      type="button"
+                      className="contacts_send_mail_template_edit_btn"
+                      aria-label={`Preview ${selectedTemplate.name}`}
+                      title={`Preview ${selectedTemplate.name}`}
+                      onClick={handlePreviewTemplateFromSendMail}
+                    >
+                      <Eye size={16} strokeWidth={2} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="contacts_send_mail_template_edit_btn"
+                      aria-label={`Edit ${selectedTemplate.name}`}
+                      title={`Edit ${selectedTemplate.name}`}
+                      onClick={goEditTemplateFromSendMail}
+                    >
+                      <Pencil size={16} strokeWidth={2} aria-hidden />
+                    </button>
+                  </>
                 ) : null}
-                {emailTemplates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name}
-                  </option>
-                ))}
-              </select>
+              </div>
               {emailTemplates.length === 0 ? (
                 <p className="um_hint" role="status">
                   Create an email template first in Email Templates.

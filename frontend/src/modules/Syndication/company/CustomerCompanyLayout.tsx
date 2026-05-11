@@ -97,7 +97,7 @@ export default function CustomerCompanyLayout() {
       return;
     }
     if (!canAccessCompanyPage()) {
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
       return;
     }
     if (!isPlatformAdmin()) {

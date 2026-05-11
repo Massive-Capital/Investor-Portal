@@ -80,13 +80,14 @@ const SigninForm = () => {
       }
       const state = location.state as { from?: string } | undefined;
       const from = state?.from;
-      const redirectTo =
+      let redirectTo =
         typeof from === "string" &&
         from.startsWith("/") &&
         !from.startsWith("//") &&
         from !== "/signin"
           ? from
-          : "/";
+          : "/dashboard";
+      if (redirectTo === "/") redirectTo = "/dashboard";
       navigate(redirectTo, { replace: true });
     } catch {
       setError("Unable to connect. Please try again later.");

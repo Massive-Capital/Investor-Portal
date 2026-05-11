@@ -29,6 +29,26 @@ import {
   type ContactRow,
 } from "../../schema/contact.schema.js";
 import { syncOrganizationContactLabels } from "./organizationContactLabels.service.js";
+import {
+  canonicalUsPhoneKey10,
+  parseUsPhoneToE164,
+} from "../../utils/usPhone.js";
+
+/** Thrown when a non-empty phone is not a valid U.S. NANP number. */
+export class ContactInvalidPhoneError extends Error {
+  constructor() {
+    super("Enter a valid 10-digit U.S. phone number, or leave phone blank.");
+    this.name = "ContactInvalidPhoneError";
+  }
+}
+
+function normalizeContactPhoneForWrite(raw: string): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  const e164 = parseUsPhoneToE164(t);
+  if (!e164) throw new ContactInvalidPhoneError();
+  return e164;
+}
 
 /** First + last name, else email, else username — for CRM "owner" display */
 export async function getUserDisplayNameById(
@@ -108,10 +128,6 @@ function normalizeContactEmailForScope(e: string): string {
   return e.trim().toLowerCase();
 }
 
-function normalizeContactPhoneDigits(p: string): string {
-  return String(p ?? "").replace(/\D/g, "");
-}
-
 /**
  * Latest CRM `contact` row for this email (signup form prefill). If multiple orgs
  * share the same email, the most recently created row wins.
@@ -135,12 +151,12 @@ export async function findContactByEmailForSignupPrefill(
   if (!r) return null;
   const fn = String(r.firstName ?? "").trim();
   const ln = String(r.lastName ?? "").trim();
-  const phoneDigits = normalizeContactPhoneDigits(r.phone ?? "");
-  if (!fn && !ln && !phoneDigits) return null;
+  const phoneRaw = String(r.phone ?? "").trim();
+  if (!fn && !ln && !phoneRaw) return null;
   return {
     firstName: fn,
     lastName: ln,
-    phone: phoneDigits,
+    phone: phoneRaw,
   };
 }
 
@@ -258,7 +274,8 @@ async function assertContactEmailPhoneUniqueForCreatorScope(params: {
   existingContactOrganizationId?: string | null;
 }): Promise<void> {
   const emailNorm = normalizeContactEmailForScope(params.email);
-  const phoneDigits = normalizeContactPhoneDigits(params.phone);
+  const phoneTrim = String(params.phone ?? "").trim();
+  const phoneCanonical = phoneTrim ? canonicalUsPhoneKey10(phoneTrim) : null;
 
   const orgId =
     params.existingContactOrganizationId !== undefined
@@ -282,8 +299,8 @@ async function assertContactEmailPhoneUniqueForCreatorScope(params: {
 
   const emailMatch = sql`lower(trim(${contact.email})) = ${emailNorm}`;
   const phoneMatch =
-    phoneDigits.length > 0
-      ? sql`regexp_replace(${contact.phone}, '[^0-9]', '', 'g') = ${phoneDigits}`
+    phoneCanonical
+      ? sql`right(regexp_replace(coalesce(${contact.phone}, ''), '[^0-9]', '', 'g'), 10) = ${phoneCanonical}`
       : sql`false`;
 
   const conflictClause = or(emailMatch, phoneMatch);
@@ -311,10 +328,11 @@ export async function insertContact(params: {
   input: CreateContactInput;
   createdByUserId: string;
 }): Promise<ContactRow> {
+  const phoneStored = normalizeContactPhoneForWrite(params.input.phone);
   await assertContactEmailPhoneUniqueForCreatorScope({
     creatorUserId: params.createdByUserId,
     email: params.input.email,
-    phone: params.input.phone,
+    phone: phoneStored,
   });
 
   const organizationId = await resolveOrganizationIdForUserId(
@@ -326,7 +344,7 @@ export async function insertContact(params: {
     firstName: params.input.firstName,
     lastName: params.input.lastName,
     email: params.input.email,
-    phone: params.input.phone,
+    phone: phoneStored,
     note: params.input.note,
     tags: params.input.tags,
     lists: params.input.lists,
@@ -590,10 +608,11 @@ export async function updateContactFieldsForViewer(
   if (!(await viewerCanAccessContactRow(viewerUserId, row, viewerRole)))
     return null;
 
+  const phoneStored = normalizeContactPhoneForWrite(fields.phone);
   await assertContactEmailPhoneUniqueForCreatorScope({
     creatorUserId: row.createdBy,
     email: fields.email,
-    phone: fields.phone,
+    phone: phoneStored,
     excludeContactId: contactId,
     existingContactOrganizationId: row.organizationId,
   });
@@ -605,7 +624,7 @@ export async function updateContactFieldsForViewer(
       firstName: fields.firstName,
       lastName: fields.lastName,
       email: fields.email,
-      phone: fields.phone,
+      phone: phoneStored,
       note: fields.note,
       tags: fields.tags,
       lists: fields.lists,

@@ -147,7 +147,7 @@ function SidebarNavGroup({
 }
 
 const sharedSidebarItems: NavItem[] = [
-  { label: "Dashboard", to: "/", icon: LayoutDashboard },
+  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   // { label: "Leads", to: "/leads", icon: UserPlus },
   {
     label: "Contacts",
@@ -172,7 +172,7 @@ const syndicationPortalNavItems: NavItemLink[] = [
 
 /** Investing mode — flat nav (reference UI) */
 const investingNavItems: NavItemLink[] = [
-  { label: "Dashboard", to: "/", icon: LayoutDashboard },
+  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   { label: "Company overview", to: "/investing/company", icon: Building2 },
   { label: "Investments", to: "/investing/investments", icon: TrendingUp },
   { label: "Documents", to: "/investing/documents", icon: FileText },
@@ -184,7 +184,7 @@ const investingNavItems: NavItemLink[] = [
 
 /** LP Investor deal participants — investing shell only; no company admin / syndication items */
 // const lpInvestorInvestingNavItems: NavItem[] = [
-//   { label: "Dashboard", to: "/", icon: LayoutDashboard },
+//   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
 //   { label: "Deals", to: "/investing/deals", icon: Briefcase },
 //   { label: "Portfolio", to: "/investing/investments", icon: TrendingUp },
 //   { label: "Cashflows", to: "/investing/cashflows", icon: Banknote },
@@ -288,7 +288,7 @@ function PageLayoutInner() {
                     <NavLink
                       key={item.label}
                       to={item.to}
-                      end={item.to === "/"}
+                      end={item.to === "/dashboard"}
                       className={({ isActive }) =>
                         `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
                       }
@@ -333,7 +333,7 @@ function PageLayoutInner() {
                     )
                   }
 
-                  const linkEnd = to === "/"
+                  const linkEnd = to === "/dashboard"
                   return (
                     <NavLink
                       key={label}

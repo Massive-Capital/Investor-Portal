@@ -1,4 +1,10 @@
 import { Loader2, X } from "lucide-react"
+import { UsPhoneInput } from "../../../../../../common/components/UsPhoneInput"
+import {
+  isValidUsNanp10,
+  national10ToE164,
+  nationalTenDigitsFromRawInput,
+} from "../../../../../../common/phone/usPhoneNumber"
 import {
   useCallback,
   useId,
@@ -33,7 +39,7 @@ export function AddContactQuickModal({
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
-  const [phone, setPhone] = useState("")
+  const [phoneNationalDigits, setPhoneNationalDigits] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -41,7 +47,7 @@ export function AddContactQuickModal({
     setFirstName("")
     setLastName("")
     setEmail("")
-    setPhone("")
+    setPhoneNationalDigits("")
     setFormError(null)
     setSubmitting(false)
   }, [])
@@ -80,6 +86,14 @@ export function AddContactQuickModal({
       return
     }
 
+    const phoneD = nationalTenDigitsFromRawInput(phoneNationalDigits)
+    if (phoneD.length > 0 && (phoneD.length < 10 || !isValidUsNanp10(phoneD))) {
+      setFormError(
+        "Enter a valid 10-digit U.S. phone number, or leave phone blank.",
+      )
+      return
+    }
+
     setSubmitting(true)
     try {
       const ownerName = getSessionUserDisplayName().trim()
@@ -87,7 +101,10 @@ export function AddContactQuickModal({
         firstName: fn,
         lastName: ln,
         email: em,
-        phone: phone.trim(),
+        phone:
+          phoneD.length === 0
+            ? ""
+            : national10ToE164(phoneNationalDigits) ?? "",
         note: "",
         tags: [],
         lists: [],
@@ -174,12 +191,13 @@ export function AddContactQuickModal({
             </label>
             <label className="add_contact_quick_label">
               Phone <span className="add_contact_quick_optional">(optional)</span>
-              <input
-                className="add_contact_quick_input deals_add_inv_field_pill"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                autoComplete="tel"
+              <UsPhoneInput
+                id={`${titleId}-phone`}
+                name="phone"
+                nationalDigits={phoneNationalDigits}
+                onNationalDigitsChange={setPhoneNationalDigits}
                 disabled={submitting}
+                className="add_contact_quick_input deals_add_inv_field_pill"
               />
             </label>
           </div>

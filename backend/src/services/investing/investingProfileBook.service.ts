@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../database/db.js";
+import { parseUsPhoneToE164 } from "../../utils/usPhone.js";
 import {
   userBeneficiaries,
   userInvestorProfiles,
@@ -21,6 +22,21 @@ function displayNameFromUser(row: {
 
 const MAX_FORM_SNAPSHOT_BYTES = 256 * 1024;
 const ERR_FORM_SNAPSHOT_TOO_LARGE = "form_snapshot_too_large";
+
+export class BeneficiaryInvalidPhoneError extends Error {
+  constructor() {
+    super("Enter a valid 10-digit U.S. phone number, or leave phone blank.");
+    this.name = "BeneficiaryInvalidPhoneError";
+  }
+}
+
+function normalizeBeneficiaryPhoneForWrite(raw: string): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  const e164 = parseUsPhoneToE164(t);
+  if (!e164) throw new BeneficiaryInvalidPhoneError();
+  return e164;
+}
 
 /**
  * Controllers pass JSON from the body as a UTF-8 string; this turns it into a jsonb-ready object.
@@ -188,6 +204,7 @@ export async function createBeneficiaryForUser(
     addressQuery: string;
   },
 ): Promise<ProfileBookSnapshot["beneficiaries"][0] | null> {
+  const phoneStored = normalizeBeneficiaryPhoneForWrite(input.phone);
   const [row] = await db
     .insert(userBeneficiaries)
     .values({
@@ -195,7 +212,7 @@ export async function createBeneficiaryForUser(
       fullName: input.fullName ?? "",
       relationship: input.relationship ?? "",
       taxId: input.taxId ?? "",
-      phone: input.phone ?? "",
+      phone: phoneStored,
       email: input.email ?? "",
       addressQuery: input.addressQuery ?? "",
     })
@@ -412,13 +429,14 @@ export async function updateBeneficiaryForUser(
     addressQuery: string;
   },
 ): Promise<ProfileBookSnapshot["beneficiaries"][0] | null> {
+  const phoneStored = normalizeBeneficiaryPhoneForWrite(input.phone);
   const [row] = await db
     .update(userBeneficiaries)
     .set({
       fullName: input.fullName ?? "",
       relationship: input.relationship ?? "",
       taxId: input.taxId ?? "",
-      phone: input.phone ?? "",
+      phone: phoneStored,
       email: input.email ?? "",
       addressQuery: input.addressQuery ?? "",
     })

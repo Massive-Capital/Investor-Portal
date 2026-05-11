@@ -100,5 +100,6 @@ export async function postSignup(req: Request, res: Response): Promise<void> {
 
   res.status(201).json({
     message: result.message,
+    emailSent: result.emailSent,
   });
 }

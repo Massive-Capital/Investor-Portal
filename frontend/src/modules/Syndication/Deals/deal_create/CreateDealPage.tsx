@@ -53,7 +53,7 @@ function DealStepBillingNote() {
       <p className="deals_create_billing_info" role="note">
         Your default billing method will be charged automatically. To assign a
         different billing method, go to{" "}
-        <Link className="deals_create_billing_info_link" to="/billing">
+        <Link className="deals_create_billing_info_link" to="/settings">
           Billing
         </Link>
         .

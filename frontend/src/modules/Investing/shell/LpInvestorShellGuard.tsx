@@ -38,7 +38,7 @@ export function isLpDealDetailPath(pathname: string): boolean {
 /** Paths LP investors may open (investing experience only; blocks syndication / admin shell routes). */
 export function isPathAllowedForLpInvestor(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, "") || "/"
-  if (p === "/") return true
+  if (p === "/" || p === "/dashboard") return true
   if (isLpDealOfferingPortfolioPath(p)) return true
   if (isLpDealDetailPath(p)) return true
   for (const prefix of LP_INVESTOR_ALLOWED_PREFIXES) {

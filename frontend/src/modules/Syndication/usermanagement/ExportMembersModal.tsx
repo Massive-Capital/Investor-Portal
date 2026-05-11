@@ -1,6 +1,7 @@
 import { Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "../Deals/components/export-deals-modal.css"
+import { formatUsPhoneStoredForUi } from "../../../common/phone/usPhoneNumber"
 import {
   accountStatusLabel,
   formatMemberUsername,
@@ -64,7 +65,7 @@ export function ExportMembersModal({
           formatMemberUsername(r.username),
           formatValue(r.companyName),
           formatValue(r.company_name),
-          formatValue(r.phone),
+          formatUsPhoneStoredForUi(r.phone),
           formatValue(r.role),
           memberRoleDisplayName(r.role),
           primaryRoleLabelFromRow(r),

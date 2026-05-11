@@ -130,14 +130,14 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
     closeMenu()
     // Navigate before switching mode: `DealsLayout` redirects to `/investing/opportunities`
     // if mode becomes investing while still on `/deals` (not a deal detail UUID).
-    navigate("/", { replace: true })
+    navigate("/dashboard", { replace: true })
     switchToInvesting()
   }
 
   function handleSwitchToSyndicating() {
     switchToSyndicating()
     closeMenu()
-    navigate("/")
+    navigate("/dashboard")
   }
 
   return (

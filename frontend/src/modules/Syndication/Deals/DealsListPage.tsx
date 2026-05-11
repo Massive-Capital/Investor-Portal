@@ -132,18 +132,23 @@ function DealListNameCell({ row }: { row: DealListRow }) {
 
   return (
     <div className="deals_list_name_cell">
-      <div className="deals_list_name_primary">{nameLink}</div>
-      {showDraftMarker ? (
-        <div className="deals_list_name_subrow">
-          <span
-            className="deals_list_draft_icon deals_list_draft_icon--draft"
-            title="Incomplete draft"
-          >
-            <FilePenLine size={14} strokeWidth={2} aria-hidden />
-            <span className="deals_list_sr_only">Draft</span>
-          </span>
-        </div>
-      ) : null}
+      <div className="deals_list_deal_avatar" aria-hidden>
+        <Briefcase size={18} strokeWidth={1.75} />
+      </div>
+      <div className="deals_list_name_text">
+        <div className="deals_list_name_primary">{nameLink}</div>
+        {showDraftMarker ? (
+          <div className="deals_list_name_subrow">
+            <span
+              className="deals_list_draft_icon deals_list_draft_icon--draft"
+              title="Incomplete draft"
+            >
+              <FilePenLine size={14} strokeWidth={2} aria-hidden />
+              <span className="deals_list_sr_only">Draft</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

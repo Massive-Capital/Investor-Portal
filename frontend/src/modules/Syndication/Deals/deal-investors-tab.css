@@ -51,12 +51,6 @@
   margin-bottom: 0;
 }
 
-/* Same pattern as Deal Members: primary action right-aligned under KPI strip */
-.deal_inv_populated .deal_inv_investors_cta_row.um_header_row {
-  justify-content: flex-end;
-  margin-bottom: 0;
-}
-
 /* Top row: optional share (left) — actions + search (right). Filters are a separate block below. */
 .deal_inv_controls {
   display: flex;
@@ -188,21 +182,24 @@
 
 .deal_inv_table_panel thead th.deals_th_align_center {
   text-align: center;
+  min-width: 7.5rem;
 }
 
 .deal_inv_table_panel thead th.deals_th_align_right {
   text-align: right;
+  min-width: 9.5rem;
 }
 
 .deal_inv_table_panel .um_table_sortable .um_sort_header_ctl {
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .deal_inv_table_panel .um_table_sortable .um_sort_header_label {
-  min-width: 0;
-  white-space: normal;
+  flex: 0 1 auto;
+  min-width: min-content;
+  white-space: nowrap;
 }
 
 /* Search + export inside white panel (matches User Management / Contacts toolbar) */
@@ -304,6 +301,12 @@
 /* Table toolbar: rows-per-page + export */
 .deal_inv_table_toolbar_actions {
   align-items: center;
+}
+
+.deal_inv_table_toolbar_actions .deals_list_add_btn.deal_inv_toolbar_add_investor_btn {
+  min-height: 40px;
+  padding-left: 1.1em;
+  padding-right: 1.1em;
 }
 
 .deal_inv_rows_per_page {
@@ -582,17 +585,25 @@
   max-width: 10em;
 }
 
+.deal_inv_table_panel thead th.deal_inv_th_role,
 .deal_inv_table_panel .deal_inv_td_role {
-  max-width: 14em;
+  min-width: 15.5rem;
+  max-width: none;
+  width: auto;
   vertical-align: top;
 }
 
-/* Stacked deal roles (multiple badges) — Deal Members / Investors "Deal role" column */
+.deal_inv_table_panel .deal_inv_td_role .um_role_badge {
+  white-space: nowrap;
+}
+
+/* Stacked deal roles (multiple badges) — keep on one row when space allows */
 .deal_inv_roles_stack {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.35rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
   min-width: 0;
 }
 
@@ -635,17 +646,20 @@
   color: var(--portal-text-muted, #64748b);
 }
 
-/* Actions column: kebab menu (Investors + Deal Members). */
+/* Actions column: kebab menu (Deals list, Investors, Deal Members, etc.). */
 .deal_inv_table_panel .deal_inv_table.um_table_members thead .um_th_actions {
-  width: auto;
+  width: 10%;
   min-width: 4.5rem;
   max-width: none;
   box-sizing: border-box;
 }
 
-.deal_inv_td_actions {
+.deal_inv_table_panel
+  .deal_inv_table.um_table_members
+  tbody
+  td.um_td_actions.deal_inv_td_actions {
   white-space: normal;
-  width: auto;
+  width: 10%;
   min-width: 4.5rem;
   max-width: none;
   overflow: visible;

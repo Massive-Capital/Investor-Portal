@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
+  BeneficiaryInvalidPhoneError,
   createBeneficiaryForUser,
   createInvestorProfileForUser,
   createSavedAddressForUser,
@@ -215,6 +216,10 @@ export async function postMyProfileBookBeneficiary(
     }
     res.status(201).json({ beneficiary: row });
   } catch (err) {
+    if (err instanceof BeneficiaryInvalidPhoneError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     console.error("postMyProfileBookBeneficiary:", err);
     res.status(500).json({ message: "Could not save beneficiary. Please try again." });
   }
@@ -277,6 +282,10 @@ export async function putMyProfileBookBeneficiary(
     }
     res.status(200).json({ beneficiary: row });
   } catch (err) {
+    if (err instanceof BeneficiaryInvalidPhoneError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     console.error("putMyProfileBookBeneficiary:", err);
     res.status(500).json({ message: "Could not update beneficiary. Please try again." });
   }

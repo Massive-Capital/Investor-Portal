@@ -174,43 +174,9 @@ a.deals_list_add_link.um_btn_primary {
   min-width: 0;
 }
 
-.deal_documents_tab_panel {
-  border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 10px;
-  background: var(--portal-surface, #fff);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
-  overflow: hidden;
-}
-
-.deal_documents_tab_header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.85rem 1.25rem;
-  padding: 1rem 1.1rem 1rem;
-  border-bottom: 1px solid var(--portal-border, #e2e8f0);
-  background: color-mix(
-    in srgb,
-    var(--portal-text, #0f172a) 2.5%,
-    var(--portal-surface, #fff)
-  );
-}
-
-.deal_documents_tab_header_text {
-  flex: 1 1 min(100%, 22rem);
-  min-width: 0;
-}
-
-.deal_documents_tab_lead {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.55;
-  color: var(--portal-text-muted, #64748b);
-}
-
+/* Intro strip matches Offering Details `deal_offering_top` (see DealDocumentsTab). */
 .deal_documents_tab_lead strong {
-  color: var(--portal-text, #334155);
+  color: var(--portal-text-muted);
   font-weight: 600;
 }
 
@@ -255,17 +221,6 @@ a.deals_list_add_link.um_btn_primary {
   padding-right: 0.15em;
 }
 
-:root[data-theme="dark"] .deal_documents_tab_panel {
-  border-color: var(--portal-border);
-  background: var(--portal-surface);
-  box-shadow: none;
-}
-
-:root[data-theme="dark"] .deal_documents_tab_header {
-  background: rgba(255, 255, 255, 0.04);
-  border-bottom-color: var(--portal-border);
-}
-
 :root[data-theme="dark"] .deal_documents_tab_lead strong {
   color: var(--portal-text, #e2e8f0);
 }
@@ -276,7 +231,8 @@ a.deals_list_add_link.um_btn_primary {
   color: var(--portal-text, #e2e8f0);
 }
 
-.deal_documents_tab_panel .deal_docs {
+/* Padding inside the bordered section card (same stack pattern as Offering Details). */
+.deal_documents_list_section > .deal_docs {
   padding: 1rem 1.1rem 1.15rem;
 }
 
@@ -647,6 +603,25 @@ a.deals_list_add_link.um_btn_primary {
   background: #f8f8f8;
 }
 
+/* Subtle separator when horizontal scroll reveals sticky deal name column */
+.deals_list_table_panel .um_table.data_table_sticky_first thead th.data_table_col_sticky,
+.deals_list_table_panel .um_table.data_table_sticky_first tbody td.data_table_col_sticky {
+  box-shadow: 1px 0 0 0 color-mix(in srgb, var(--portal-border, #e2e8f0) 90%, transparent);
+}
+
+:root[data-theme="dark"]
+  .deals_list_table_panel
+  .um_table.data_table_sticky_first
+  thead
+  th.data_table_col_sticky,
+:root[data-theme="dark"]
+  .deals_list_table_panel
+  .um_table.data_table_sticky_first
+  tbody
+  td.data_table_col_sticky {
+  box-shadow: 1px 0 0 0 color-mix(in srgb, var(--portal-border, #334155) 85%, transparent);
+}
+
 :root[data-theme="dark"] .deals_list_table_panel .um_table.data_table_sticky_first thead th.data_table_col_sticky,
 :root[data-theme="dark"] .deals_list_table_panel .um_table.data_table_sticky_first tbody td.data_table_col_sticky {
   background: var(--portal-surface, #121212);
@@ -656,12 +631,20 @@ a.deals_list_add_link.um_btn_primary {
   font-size: var(--portal-table-font-size, 0.9375rem);
 }
 
-.deals_list_table_panel .um_table_sortable thead th:not(.um_th_actions) {
-  padding: 0.35em 0.35em;
+/**
+ * Sortable headers: keep `th` padding at 0 (same as Members / user_management)
+ * so horizontal rhythm comes only from `.um_sort_header_ctl` — matches body `td` padding.
+ */
+.deals_list_table_panel
+  .um_table_sortable
+  thead
+  th:not(.um_th_actions):not(.um_th_checkbox) {
+  padding: 0;
 }
 
 .deals_list_table_panel .um_table_sortable thead th.um_th_actions {
-  padding: 0.35em 0.25em;
+  padding: 0.65em 0.5em;
+  vertical-align: middle;
 }
 
 .deals_list_table_panel .um_table td {
@@ -670,19 +653,32 @@ a.deals_list_add_link.um_btn_primary {
   hyphens: auto;
 }
 
+/**
+ * Sort header label: avoid `flex: 1` + `min-width: 0` shrinking labels until words
+ * break mid-character ("Funde" / "d"). Prefer one line + horizontal scroll on the table.
+ */
 .deals_list_table_panel .um_table th .um_sort_header_label {
-  min-width: 0;
-  white-space: normal;
+  flex: 0 1 auto;
+  min-width: min-content;
+  white-space: nowrap;
 }
 
 .deals_list_table_panel .um_table th .um_sort_header_ctl {
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
-  white-space: normal;
+  white-space: nowrap;
   font-size: var(--portal-table-font-size, 0.9375rem);
   font-weight: 600;
-  padding: 0.35em 0.4em;
-  gap: 0.2em;
+  /* Align with `.um_table td` (0.65em 0.75em) for column edges that line up header ↔ body */
+  padding: 0.65em 0.75em;
+  gap: 0.35em;
+}
+
+/* Hint + label row — do not cap at 100% width inside sort control (prevents pathological wrapping) */
+.deals_list_table_panel .um_sort_header_label .deals_table_col_header {
+  max-width: none;
+  white-space: nowrap;
+  min-width: min-content;
 }
 
 .deals_list_table_panel .um_sort_header_icon,
@@ -717,9 +713,10 @@ a.deals_list_add_link.um_btn_primary {
 
 .deals_list_table_panel .um_td_actions,
 .deals_list_table_panel .um_th_actions {
-  width: 3.5em;
-  max-width: 3.5em;
-  min-width: 0;
+  width: 10%;
+  min-width: 4.5rem;
+  max-width: none;
+  box-sizing: border-box;
   overflow: visible;
   word-break: normal;
   hyphens: none;
@@ -952,15 +949,18 @@ a.deals_list_add_link.um_btn_primary {
 /* Column header alignment: dates / text vs amounts */
 .deals_list_table_panel thead th.deals_th_align_center {
   text-align: center;
+  min-width: 8.25rem;
 }
 
 .deals_list_table_panel thead th.deals_th_align_right {
   text-align: right;
+  min-width: 10.75rem;
 }
 
 /* Amount / currency cells — tabular figures + right edge alignment */
 .deals_list_table_panel .um_table_members tbody td.um_td_numeric {
   font-variant-numeric: tabular-nums;
+  min-width: 9rem;
 }
 
 .deals_list_table_panel thead th.deals_th_actions_head {
@@ -1237,10 +1237,39 @@ a.deals_list_add_link.um_btn_primary {
 
 .deals_list_name_cell {
   display: flex;
-  /* flex-direction: column; */
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.deals_list_name_cell--sponsor_dash {
+  align-items: center;
+}
+
+.deals_list_deal_avatar {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--ui-button-background-add, #2563eb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.deals_list_deal_avatar svg {
+  flex-shrink: 0;
+}
+
+.deals_list_name_text {
+  display: flex;
+  flex-direction: column;
   align-items: flex-start;
   gap: 0.35rem;
   min-width: 0;
+  flex: 1;
 }
 
 .deals_list_name_primary {

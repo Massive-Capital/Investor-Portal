@@ -17,6 +17,10 @@ import { ExportInvestorProfilesModal } from "./ExportInvestorProfilesModal"
 import { AddAddressModal } from "./AddAddressModal"
 import { formatSavedAddressLabel, type AddressFormDraft, type SavedAddress } from "./address.types"
 import { COUNTRY_OPTIONS, US_STATE_OPTIONS } from "./usStates"
+import {
+  formatUsPhoneStoredForUi,
+  nationalDigitsFromStoredPhone,
+} from "@/common/phone/usPhoneNumber"
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
 import { getMergedInvestmentListRows } from "../investments/investmentsRuntimeData"
 import type { InvestmentListRow } from "../investments/investments.types"
@@ -388,6 +392,12 @@ export default function InvestingProfilesPage() {
         (b.relationship ?? "").toLowerCase().includes(q) ||
         (b.email ?? "").toLowerCase().includes(q) ||
         (b.phone ?? "").toLowerCase().includes(q) ||
+        formatUsPhoneStoredForUi(b.phone).toLowerCase().includes(q) ||
+        (() => {
+          const dq = q.replace(/\D/g, "")
+          if (!dq) return false
+          return nationalDigitsFromStoredPhone(String(b.phone ?? "")).includes(dq)
+        })() ||
         (b.addressQuery ?? "").toLowerCase().includes(q) ||
         (b.taxId ?? "").toLowerCase().includes(q)
       )
@@ -502,7 +512,7 @@ export default function InvestingProfilesPage() {
           { label: "Name", value: r.fullName },
           { label: "Relationship", value: r.relationship },
           { label: "Email", value: r.email },
-          { label: "Phone", value: r.phone },
+          { label: "Phone", value: formatUsPhoneStoredForUi(r.phone) },
           { label: "Address", value: r.addressQuery },
           { label: "Tax ID", value: r.taxId },
           { label: "Status", value: r.archived ? "Archived" : "Active" },
@@ -615,8 +625,8 @@ export default function InvestingProfilesPage() {
       {
         id: "phone",
         header: "Phone",
-        sortValue: (r) => (r.phone ?? "").toLowerCase(),
-        cell: (r) => r.phone?.trim() || "—",
+        sortValue: (r) => nationalDigitsFromStoredPhone(String(r.phone ?? "")),
+        cell: (r) => formatUsPhoneStoredForUi(r.phone),
       },
       {
         id: "address",

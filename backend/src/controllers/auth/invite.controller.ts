@@ -7,6 +7,7 @@ import { sendInviteSignupEmail } from "../../services/auth/inviteEmail.service.j
 import { upsertPendingInvitedUser } from "../../services/auth/invitePendingUser.service.js";
 import {
   canInviteUsersRole,
+  COMPANY_ADMIN,
   COMPANY_USER,
   isInviteAssignableRole,
   isCompanyAdminRole,
@@ -122,8 +123,10 @@ export async function postInviteUser(req: Request, res: Response): Promise<void>
     invitedRoleForJwt =
       raw && isInviteAssignableRole(raw) ? raw : PLATFORM_USER;
   } else if (isCompanyAdminRole(jwtUser.userRole)) {
-    // Company admins invite members into their own company by default.
-    invitedRoleForJwt = COMPANY_USER;
+    const raw =
+      typeof body.invitedRole === "string" ? body.invitedRole.trim() : "";
+    invitedRoleForJwt =
+      raw === COMPANY_ADMIN || raw === COMPANY_USER ? raw : COMPANY_USER;
   }
 
   const result = createInviteForEmail(

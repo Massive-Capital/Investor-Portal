@@ -30,7 +30,14 @@ import {
   X,
   Save,
 } from "lucide-react"
+import { UsPhoneInput } from "@/common/components/UsPhoneInput"
 import { toast } from "@/common/components/Toast"
+import {
+  isValidUsNanp10,
+  national10ToE164,
+  nationalDigitsFromStoredPhone,
+  nationalTenDigitsFromRawInput,
+} from "@/common/phone/usPhoneNumber"
 import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
 import type { ProfileBookSnapshot } from "./investingProfileBookApi"
 import { BENEFICIARY_LEGAL_DISCLAIMER } from "./beneficiary-legal"
@@ -161,6 +168,20 @@ function formToJsonSnapshot(f: FormState): Record<string, unknown> {
   return JSON.parse(JSON.stringify(f)) as Record<string, unknown>
 }
 
+/** Persist U.S. phones as E.164 in wizard JSON (`phone2`, `beneficiary.phone`). */
+function normalizeFormPhonesForPersist(f: FormState): FormState {
+  const p2d = nationalTenDigitsFromRawInput(f.phone2)
+  const phone2 = p2d.length === 0 ? "" : national10ToE164(f.phone2) ?? ""
+  if (!f.beneficiary) return { ...f, phone2 }
+  const benDigits = nationalDigitsFromStoredPhone(f.beneficiary.phone)
+  const benNational = nationalTenDigitsFromRawInput(benDigits)
+  const benPhone =
+    benNational.length === 0
+      ? ""
+      : national10ToE164(benDigits) ?? ""
+  return { ...f, phone2, beneficiary: { ...f.beneficiary, phone: benPhone } }
+}
+
 function profileTypeSelectValue(f: FormState): string {
   if (f.profileType !== PROFILE_TYPE_ENTITY) return f.profileType
   if (f.custodianIra === "yes") return PROFILE_TYPE_ENTITY_CUSTODIAN
@@ -184,6 +205,10 @@ function partialFormFromSavedWizard(raw: unknown): Partial<FormState> {
       else if (typeof v === "object" && !Array.isArray(v)) {
         out.beneficiary = v as BeneficiaryDraft
       }
+      continue
+    }
+    if (k === "phone2" && typeof v === "string") {
+      out.phone2 = nationalDigitsFromStoredPhone(v)
       continue
     }
     (out as Record<string, unknown>)[k] = v
@@ -212,6 +237,7 @@ type AddProfileFieldErrorKey =
   | "firstName2"
   | "lastName2"
   | "email2"
+  | "phone2"
   | "ssn"
   | "bankAccountQuery"
   | "checkPayeeName"
@@ -755,6 +781,11 @@ export function AddInvestorProfileModal({
       if (!form.firstName2.trim()) err.firstName2 = REQUIRED_MSG
       if (!form.lastName2.trim()) err.lastName2 = REQUIRED_MSG
       if (!form.email2.trim()) err.email2 = REQUIRED_MSG
+      const p2 = nationalTenDigitsFromRawInput(form.phone2)
+      if (p2.length > 0 && (p2.length < 10 || !isValidUsNanp10(p2))) {
+        err.phone2 =
+          "Enter a valid 10-digit U.S. phone number, or leave phone 2 blank."
+      }
       if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
       setFieldError(err)
       return Object.keys(err).length === 0
@@ -873,6 +904,11 @@ export function AddInvestorProfileModal({
       if (!form.firstName2.trim()) err.firstName2 = REQUIRED_MSG
       if (!form.lastName2.trim()) err.lastName2 = REQUIRED_MSG
       if (!form.email2.trim()) err.email2 = REQUIRED_MSG
+      const p2Full = nationalTenDigitsFromRawInput(form.phone2)
+      if (p2Full.length > 0 && (p2Full.length < 10 || !isValidUsNanp10(p2Full))) {
+        err.phone2 =
+          "Enter a valid 10-digit U.S. phone number, or leave phone 2 blank."
+      }
       if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
       addDistributionValidationErrors(form, err)
       if (!form.taxAddressId.trim()) {
@@ -891,6 +927,7 @@ export function AddInvestorProfileModal({
           err.firstName2 ||
           err.lastName2 ||
           err.email2 ||
+          err.phone2 ||
           err.ssn
         ) {
           setStep(2)
@@ -988,7 +1025,7 @@ export function AddInvestorProfileModal({
     const payload: NewInvestorProfilePayload = {
       profileName: buildDisplayProfileName(form),
       profileType: form.profileType,
-      profileWizardState: formToJsonSnapshot(form),
+      profileWizardState: formToJsonSnapshot(normalizeFormPhonesForPersist(form)),
     }
     if (onProfileCreated) {
       void (async () => {
@@ -1027,7 +1064,7 @@ export function AddInvestorProfileModal({
       profileName: buildDisplayProfileName(form),
       profileType: form.profileType,
       lastEditReason: lastEditReason.trim(),
-      profileWizardState: formToJsonSnapshot(form),
+      profileWizardState: formToJsonSnapshot(normalizeFormPhonesForPersist(form)),
     }
     if (onProfileUpdated) {
       void (async () => {
@@ -1958,14 +1995,21 @@ export function AddInvestorProfileModal({
                 Icon={Phone}
                 tight
               >
-                <input
+                <UsPhoneInput
                   id="ap-jt-2-phone"
-                  className="deals_add_inv_input deals_add_inv_field_control"
-                  type="tel"
+                  name="phone2"
+                  nationalDigits={form.phone2}
+                  onNationalDigitsChange={(next) =>
+                    patch({ phone2: next }, "phone2")
+                  }
+                  className={invClass(
+                    "deals_add_inv_input deals_add_inv_field_control",
+                    Boolean(fieldError.phone2),
+                  )}
+                  invalidClassName="um_field_input_invalid"
                   autoComplete="tel"
-                  value={form.phone2}
-                  onChange={(e) => patch({ phone2: e.target.value })}
-                  placeholder="Phone"
+                  aria-invalid={Boolean(fieldError.phone2)}
+                  error={fieldError.phone2 ?? null}
                 />
               </InvestingFormField>
 

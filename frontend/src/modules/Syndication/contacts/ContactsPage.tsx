@@ -8,6 +8,7 @@ import {
   ClipboardList,
   ContactRound,
   Download,
+  Eye,
   Info,
   LayoutList,
   Mail,
@@ -32,6 +33,10 @@ import {
   DataTable,
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
+import {
+  formatUsPhoneStoredForUi,
+  nationalDigitsFromStoredPhone,
+} from "../../../common/phone/usPhoneNumber"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
@@ -46,8 +51,11 @@ import {
   updateContact,
 } from "./api/contactsApi"
 import {
+  buildSendMailPreviewHref,
+  emailTemplateHtmlToPlainText,
   getCurrentSessionUserEmail,
   openSendMailDraft,
+  parseEmailInput,
 } from "../../../common/features/send-mail"
 import { AddContactPanel } from "./components/AddContactPanel"
 import {
@@ -119,6 +127,8 @@ function contactRowMatchesSearch(row: ContactRow, query: string): boolean {
     row.lastName,
     row.email,
     row.phone,
+    nationalDigitsFromStoredPhone(String(row.phone ?? "")),
+    formatUsPhoneStoredForUi(row.phone),
     row.note,
     ...row.tags,
     ...row.lists,
@@ -472,6 +482,31 @@ function ContactsPage() {
     if (!id) return
     navigate(`/contacts/email-templates/edit/${encodeURIComponent(id)}`)
   }, [navigate, selectedTemplateId])
+
+  const handlePreviewTemplateFromSendMail = useCallback(() => {
+    const template = emailTemplates.find((t) => t.id === selectedTemplateId)
+    if (!template) {
+      toast.error("Template required", "Choose an email template first.")
+      return
+    }
+    const emails = [
+      ...new Set(
+        selectedContacts
+          .map((r) => String(r.email ?? "").trim())
+          .filter((e) => e.includes("@")),
+      ),
+    ]
+    if (emails.length === 0) {
+      toast.error("No email recipients", "Selected contacts have no valid email.")
+      return
+    }
+    window.location.href = buildSendMailPreviewHref({
+      to: emails,
+      cc: parseEmailInput(sendMailCc),
+      subject: template.subject,
+      body: emailTemplateHtmlToPlainText(template.body),
+    })
+  }, [emailTemplates, selectedContacts, selectedTemplateId, sendMailCc])
 
   const handleSendMailToSelectedContacts = useCallback(async () => {
     const emails = [
@@ -934,7 +969,7 @@ function ContactsPage() {
         header: "Actions",
         align: "right",
         thClassName: "um_th_actions",
-        tdClassName: "um_td_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (r) => (
           <ContactCatalogRowActions
             itemLabel={r.name}
@@ -973,7 +1008,7 @@ function ContactsPage() {
         header: "Actions",
         align: "right",
         thClassName: "um_th_actions",
-        tdClassName: "um_td_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (r) => (
           <ContactCatalogRowActions
             itemLabel={r.name}
@@ -1097,8 +1132,8 @@ function ContactsPage() {
       {
         id: "phone",
         header: "Phone",
-        sortValue: (row) => row.phone ?? "",
-        cell: (row) => row.phone || "—",
+        sortValue: (row) => nationalDigitsFromStoredPhone(String(row.phone ?? "")),
+        cell: (row) => formatUsPhoneStoredForUi(row.phone),
       },
       // {
       //   id: "note",
@@ -1156,7 +1191,7 @@ function ContactsPage() {
         header: "Actions",
         align: "right",
         thClassName: "um_th_actions",
-        tdClassName: "um_td_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (row) => (
           <ContactRowActions
             contactLabel={
@@ -2019,15 +2054,26 @@ function ContactsPage() {
                   ))}
                 </select>
                 {selectedTemplate ? (
-                  <button
-                    type="button"
-                    className="contacts_send_mail_template_edit_btn"
-                    aria-label={`Edit ${selectedTemplate.name}`}
-                    title={`Edit ${selectedTemplate.name}`}
-                    onClick={goEditTemplateFromSendMail}
-                  >
-                    <Pencil size={16} strokeWidth={2} aria-hidden />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="contacts_send_mail_template_edit_btn"
+                      aria-label={`Preview ${selectedTemplate.name}`}
+                      title={`Preview ${selectedTemplate.name}`}
+                      onClick={handlePreviewTemplateFromSendMail}
+                    >
+                      <Eye size={16} strokeWidth={2} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="contacts_send_mail_template_edit_btn"
+                      aria-label={`Edit ${selectedTemplate.name}`}
+                      title={`Edit ${selectedTemplate.name}`}
+                      onClick={goEditTemplateFromSendMail}
+                    >
+                      <Pencil size={16} strokeWidth={2} aria-hidden />
+                    </button>
+                  </>
                 ) : null}
               </div>
               {emailTemplates.length === 0 ? (

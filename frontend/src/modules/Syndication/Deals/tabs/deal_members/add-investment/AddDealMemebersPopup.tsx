@@ -26,6 +26,7 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import { toast } from "../../../../../../common/components/Toast"
+import { formatUsPhoneStoredForUi } from "../../../../../../common/phone/usPhoneNumber"
 import {
   DataTable,
   type DataTableColumn,
@@ -1130,7 +1131,11 @@ export function AddInvestmentModal({
     (): DataTableColumn<ContactDraftTableRow>[] => [
       { id: "name", header: "Name", cell: (r) => r.name },
       { id: "email", header: "Email", cell: (r) => r.email },
-      { id: "phone", header: "Phone", cell: (r) => r.phone },
+      {
+        id: "phone",
+        header: "Phone",
+        cell: (r) => formatUsPhoneStoredForUi(r.phone),
+      },
       { id: "status", header: "Status", cell: (r) => r.status },
       {
         id: "actions",

@@ -2,6 +2,12 @@ import type { FormEvent } from "react"
 import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { AtSign, Loader2, Mail, Phone, Save, User } from "lucide-react"
+import { UsPhoneInput } from "../../common/components/UsPhoneInput"
+import {
+  national10ToE164,
+  nationalDigitsFromStoredPhone,
+  nationalTenDigitsFromRawInput,
+} from "../../common/phone/usPhoneNumber"
 import { toast } from "../../common/components/Toast"
 import { patchMyProfile } from "./accountApi"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
@@ -14,7 +20,7 @@ export function MyAccountPersonalPage() {
   const location = useLocation()
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
-  const [phone, setPhone] = useState("")
+  const [phoneNationalDigits, setPhoneNationalDigits] = useState("")
   const [email, setEmail] = useState("")
   const [username, setUsername] = useState("")
   const [error, setError] = useState("")
@@ -25,7 +31,7 @@ export function MyAccountPersonalPage() {
     if (!u) return
     setFirstName(str(u, "firstName"))
     setLastName(str(u, "lastName"))
-    setPhone(str(u, "phone"))
+    setPhoneNationalDigits(nationalDigitsFromStoredPhone(str(u, "phone")))
     setEmail(str(u, "email"))
     setUsername(str(u, "username"))
   }, [])
@@ -37,12 +43,28 @@ export function MyAccountPersonalPage() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError("")
+    const d = nationalTenDigitsFromRawInput(phoneNationalDigits)
+    if (d.length > 0 && d.length < 10) {
+      setError("Enter a complete 10-digit U.S. phone number.")
+      return
+    }
+    if (d.length === 10) {
+      const e164 = national10ToE164(phoneNationalDigits)
+      if (!e164) {
+        setError(
+          "That is not a valid U.S. area code or exchange. Update the number or clear the field.",
+        )
+        return
+      }
+    }
     setIsSaving(true)
     try {
+      const phonePayload =
+        d.length === 0 ? "" : national10ToE164(phoneNationalDigits) ?? ""
       const { user } = await patchMyProfile({
         firstName,
         lastName,
-        phone,
+        phone: phonePayload,
       })
       mergeSessionUserDetails(user)
       loadFromSession()
@@ -140,18 +162,17 @@ export function MyAccountPersonalPage() {
             <Phone className="um_field_label_icon" size={17} aria-hidden />
             <span>Phone</span>
           </label>
-          <input
+          <UsPhoneInput
             id="myaccount-phone"
             name="phone"
-            type="text"
-            inputMode="tel"
-            autoComplete="tel"
-            value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value)
+            nationalDigits={phoneNationalDigits}
+            onNationalDigitsChange={(next) => {
+              setPhoneNationalDigits(next)
               if (error) setError("")
             }}
             disabled={isSaving}
+            className="um_field_input"
+            invalidClassName="um_field_input_invalid"
             aria-invalid={!!error}
           />
         </div>

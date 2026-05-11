@@ -43,10 +43,10 @@ export function DealDocumentsTab({
 
   return (
     <div className="deal_documents_tab_root">
-      <div className="deal_documents_tab_panel">
-        <header className="deal_documents_tab_header">
-          <div className="deal_documents_tab_header_text">
-            <p className="deal_documents_tab_lead">
+      <div className="deal_offering_top deal_documents_tab_intro">
+        <div className="deal_offering_top_row">
+          <div className="deal_offering_intro_block">
+            <p className="deal_offering_intro deal_documents_tab_lead">
               Add PDFs or external links for the offering preview.{" "}
               <strong>Make it visible to Investors</strong> must be on, or
               documents won’t show in <strong>Preview offering</strong> or on the{" "}
@@ -71,12 +71,20 @@ export function DealDocumentsTab({
               Make it visible to Investors
             </span>
           </label>
-        </header>
-        <DocumentsSection
-          key={dealId}
-          dealId={dealId}
-          onOfferingPreviewSynced={onOfferingPreviewSynced}
-        />
+        </div>
+      </div>
+      <div className="deal_offering_stack" role="list">
+        <section
+          className="deal_offering_section deal_documents_list_section"
+          role="listitem"
+          aria-label="Offering documents"
+        >
+          <DocumentsSection
+            key={dealId}
+            dealId={dealId}
+            onOfferingPreviewSynced={onOfferingPreviewSynced}
+          />
+        </section>
       </div>
     </div>
   )

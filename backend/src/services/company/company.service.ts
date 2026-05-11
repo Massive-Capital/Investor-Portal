@@ -4,6 +4,7 @@ import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
   companies,
   companyAdminAuditLogs,
+  contact,
   users,
   type CompanyRow,
 } from "../../schema/schema.js";
@@ -26,6 +27,8 @@ export type CompanyWithStats = {
   updatedAt: Date;
   userCount: number;
   dealCount: number;
+  /** Rows in `contact` with `organization_id` = company id. */
+  contactCount: number;
 };
 
 function normalizeCompanyNameKey(name: string): string {
@@ -77,7 +80,7 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
    * with list APIs: `GET /users?organizationId=…`, `GET /deals?organizationId=…`.
    * Legacy deals may still be keyed by `owning_entity_name` when `organization_id` is null.
    */
-  const [rows, orgUserCounts, orgDealCounts, legacyDealNameCounts] =
+  const [rows, orgUserCounts, orgDealCounts, legacyDealNameCounts, orgContactCounts] =
     await Promise.all([
     db
       .select({
@@ -113,6 +116,14 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
       .from(addDealForm)
       .where(isNull(addDealForm.organizationId))
       .groupBy(sql`lower(trim(${addDealForm.owningEntityName}))`),
+    db
+      .select({
+        organizationId: contact.organizationId,
+        cnt: sql<number>`count(*)::int`,
+      })
+      .from(contact)
+      .where(isNotNull(contact.organizationId))
+      .groupBy(contact.organizationId),
   ]);
 
   const byOrgId = new Map<string, number>();
@@ -133,6 +144,12 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
     if (k) byLegacyDealName.set(k, Number(r.cnt));
   }
 
+  const byOrgContact = new Map<string, number>();
+  for (const r of orgContactCounts) {
+    const id = r.organizationId;
+    if (id) byOrgContact.set(id, Number(r.cnt));
+  }
+
   return rows.map((r) => {
     const userByOrg = byOrgId.get(r.id) ?? 0;
     const dealByOrg = byDealOrgId.get(r.id) ?? 0;
@@ -142,6 +159,7 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
       ...r,
       userCount: userByOrg,
       dealCount: dealByOrg + dealByName,
+      contactCount: byOrgContact.get(r.id) ?? 0,
     };
   });
 }

@@ -4,7 +4,7 @@ export default function Opportunities() {
   return (
     <WorkInProgressPage
       title="Opportunities"
-      backTo="/"
+      backTo="/dashboard"
       backLabel="Dashboard"
     />
   )

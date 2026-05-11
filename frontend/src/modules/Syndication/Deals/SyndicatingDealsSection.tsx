@@ -1,4 +1,11 @@
-import { ArrowUpDown, CircleDot, LayoutGrid, LayoutList, Search } from "lucide-react"
+import {
+  ArrowUpDown,
+  Briefcase,
+  CircleDot,
+  LayoutGrid,
+  LayoutList,
+  Search,
+} from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import {
@@ -227,12 +234,19 @@ export function SyndicatingDealsSection({
         header: "Deal",
         sortValue: (row) => (row.title ?? "").toLowerCase(),
         cell: (row) => (
-          <Link
-            className="sponsor_dash_table_link"
-            to={`/deals/${encodeURIComponent(row.id)}`}
-          >
-            {row.title || "—"}
-          </Link>
+          <div className="deals_list_name_cell deals_list_name_cell--sponsor_dash">
+            <div className="deals_list_deal_avatar" aria-hidden>
+              <Briefcase size={18} strokeWidth={1.75} />
+            </div>
+            <div className="deals_list_name_text">
+              <Link
+                className="sponsor_dash_table_link"
+                to={`/deals/${encodeURIComponent(row.id)}`}
+              >
+                {row.title || "—"}
+              </Link>
+            </div>
+          </div>
         ),
       },
       {

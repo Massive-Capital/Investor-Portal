@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
+  Asterisk,
   Building2,
   CheckCircle,
   CircleAlert,
@@ -15,18 +16,18 @@ import {
 } from "lucide-react";
 import FooterForm from "../../../common/components/FooterForm";
 import Input from "../../../common/components/Input";
+import { UsPhoneInput } from "../../../common/components/UsPhoneInput";
+import {
+  isValidUsNanp10,
+  national10ToE164,
+  nationalDigitsFromStoredPhone,
+  nationalTenDigitsFromRawInput,
+} from "../../../common/phone/usPhoneNumber";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import "./signup_form.css";
 import { decodeJwtPayload } from "../utils/decode-jwt-payload";
 
 const LOGIN_PATH = "/signin";
-
-const PHONE_MIN_DIGITS = 7;
-const PHONE_MAX_DIGITS = 15;
-
-function digitsOnlyPhone(value: string): string {
-  return value.replace(/\D/g, "").slice(0, PHONE_MAX_DIGITS);
-}
 
 function normalizeApiBaseUrl(rawBase: string): string {
   const trimmed = String(rawBase ?? "").trim();
@@ -60,11 +61,13 @@ export default function SignupForm() {
   const [isVisible, setIsVisible] = useState(false);
   const [isVisibleConfirm, setIsVisibleConfirm] = useState(false);
   const [isConfirmSignup, setIsConfirmSignup] = useState(false);
+  const [signupConfirmationEmailSent, setSignupConfirmationEmailSent] =
+    useState(false);
   const [isError, setIsError] = useState("");
   const [linkExpired, setLinkExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [crmPrefillNote, setCrmPrefillNote] = useState(false);
+  const [, setCrmPrefillNote] = useState(false);
   const [lockedPrefill, setLockedPrefill] = useState({
     firstName: false,
     lastName: false,
@@ -220,7 +223,7 @@ export default function SignupForm() {
         }
         const fn = (data.firstName ?? data.first_name ?? "").trim();
         const ln = (data.lastName ?? data.last_name ?? "").trim();
-        const ph = digitsOnlyPhone(
+        const ph = nationalDigitsFromStoredPhone(
           String(data.phone ?? data.phoneNumber ?? data.phone_number ?? ""),
         );
         const un = (
@@ -235,6 +238,7 @@ export default function SignupForm() {
           phoneDigits: ph,
           userName: un,
         });
+        const phOkPrefill = ph.length === 10 && isValidUsNanp10(ph);
         if (!fn && !ln && !ph && !un) {
           console.log("[signup-prefill] skipped apply", {
             reason: "all normalized fields empty",
@@ -246,26 +250,18 @@ export default function SignupForm() {
           firstName: fn || prev.firstName,
           lastName: ln || prev.lastName,
           userName: un || prev.userName,
-          phone:
-            ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS
-              ? ph
-              : prev.phone,
+          phone: phOkPrefill ? ph : prev.phone,
         }));
         setLockedPrefill((prev) => ({
           firstName: prev.firstName || Boolean(fn),
           lastName: prev.lastName || Boolean(ln),
-          phone:
-            prev.phone ||
-            Boolean(
-              ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS,
-            ),
+          phone: prev.phone || phOkPrefill,
         }));
         setCrmPrefillNote(true);
         console.log("[signup-prefill] applied", {
           firstNameLocked: Boolean(fn),
           lastNameLocked: Boolean(ln),
-          phoneLocked:
-            ph.length >= PHONE_MIN_DIGITS && ph.length <= PHONE_MAX_DIGITS,
+          phoneLocked: phOkPrefill,
           crmPrefillNote: true,
         });
       } catch (e) {
@@ -300,14 +296,7 @@ export default function SignupForm() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
     const { name, value } = e.target;
-    if (name === "phone") {
-      setSignUpFormData((prev) => ({
-        ...prev,
-        phone: digitsOnlyPhone(value),
-      }));
-    } else {
-      setSignUpFormData((prev) => ({ ...prev, [name]: value }));
-    }
+    setSignUpFormData((prev) => ({ ...prev, [name]: value }));
     if (isError) setIsError("");
   }
 
@@ -319,10 +308,8 @@ export default function SignupForm() {
     setIsVisibleConfirm((prev) => !prev);
   }
 
-  const phoneOk =
-    signUpFormData.phone.length >= PHONE_MIN_DIGITS &&
-    signUpFormData.phone.length <= PHONE_MAX_DIGITS &&
-    /^\d+$/.test(signUpFormData.phone);
+  const phoneNational = nationalTenDigitsFromRawInput(signUpFormData.phone);
+  const phoneOk = isValidUsNanp10(phoneNational);
 
   const isDisabledBtn =
     Object.values(signUpFormData).some((val) => val.trim() === "") ||
@@ -337,13 +324,10 @@ export default function SignupForm() {
       setIsError("API base URL is not configured (VITE_BASE_URL).");
       return;
     }
-    const phoneDigits = digitsOnlyPhone(signUpFormData.phone);
-    if (
-      phoneDigits.length < PHONE_MIN_DIGITS ||
-      phoneDigits.length > PHONE_MAX_DIGITS
-    ) {
+    const phoneE164 = national10ToE164(signUpFormData.phone);
+    if (!phoneE164) {
       setIsError(
-        `Phone number must be ${PHONE_MIN_DIGITS}–${PHONE_MAX_DIGITS} digits (numbers only).`,
+        "Enter a valid 10-digit U.S. phone number (area code and exchange cannot start with 0 or 1).",
       );
       return;
     }
@@ -364,7 +348,7 @@ export default function SignupForm() {
           email: signUpFormData.email.trim().toLowerCase(),
           companyName: signUpFormData.companyName.trim(),
           userName: signUpFormData.userName.trim(),
-          phone: phoneDigits,
+          phone: phoneE164,
           firstName: signUpFormData.firstName.trim(),
           lastName: signUpFormData.lastName.trim(),
           newPassword: signUpFormData.newPassword,
@@ -373,6 +357,7 @@ export default function SignupForm() {
       });
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
+        emailSent?: boolean;
       };
       if (!response.ok) {
         setIsError(
@@ -380,6 +365,7 @@ export default function SignupForm() {
         );
         return;
       }
+      setSignupConfirmationEmailSent(data.emailSent === true);
       setIsConfirmSignup(true);
     } catch {
       setIsError("Unable to connect. Please try again later.");
@@ -428,6 +414,19 @@ export default function SignupForm() {
             Your account has been{" "}
             <span style={{ fontWeight: 600 }}>successfully activated.</span>
           </p>
+          {signupConfirmationEmailSent ? (
+            <p className="contentTwo" style={{ maxWidth: "28rem", margin: 0 }}>
+              We sent a <strong>signup successful</strong> message to your email
+              with a sign-in link. Check your inbox (and spam) before you sign in.
+            </p>
+          ) : (
+            <p className="contentTwo" style={{ maxWidth: "28rem", margin: 0 }}>
+              Your investor portal account is ready. We could not send the
+              confirmation email (mail or portal URL may not be configured on the
+              server). You can still sign in below with the email and password you
+              chose.
+            </p>
+          )}
           <p className="contentTwo">Redirecting to sign in in a few seconds…</p>
           <Link to={LOGIN_PATH} className="login-btn signup_success_signin_btn">
             Sign in <ArrowRight width={20} aria-hidden />
@@ -500,22 +499,46 @@ export default function SignupForm() {
             />
           </div>
           <div className="emailData">
-            <Input
-              labelName="Phone number"
-              id="signup-phone"
-              icon={<Phone width={20} strokeWidth={1.5} aria-hidden />}
-              type="text"
-              inputMode="numeric"
-              autoComplete="tel"
-              name="phone"
-              value={signUpFormData.phone}
-              onChange={handleChange}
-              maxLength={PHONE_MAX_DIGITS}
-              readOnly={lockedPrefill.phone}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              required
-            />
+            <div className="input_wrapper">
+              <label
+                htmlFor="signup-phone"
+                className="input_wrapper__label_row"
+              >
+                <span className="input_wrapper__label_leading">
+                  <span className="input_wrapper__label_icon">
+                    <Phone width={20} strokeWidth={1.5} aria-hidden />
+                  </span>
+                  <span className="input_wrapper__label_text">
+                    Phone number
+                  </span>
+                </span>
+                <span
+                  className="input_wrapper__required_mark"
+                  title="Required"
+                  aria-hidden
+                >
+                  <Asterisk
+                    className="input_wrapper__required_icon"
+                    size={14}
+                    strokeWidth={2.5}
+                    aria-hidden
+                  />
+                </span>
+              </label>
+              <UsPhoneInput
+                id="signup-phone"
+                name="phone"
+                nationalDigits={signUpFormData.phone}
+                onNationalDigitsChange={(digits) => {
+                  setSignUpFormData((prev) => ({ ...prev, phone: digits }));
+                  if (isError) setIsError("");
+                }}
+                readOnly={lockedPrefill.phone}
+                disabled={isLoading}
+                className="input_field"
+                aria-invalid={!!isError}
+              />
+            </div>
           </div>
         </div>
 

@@ -254,6 +254,7 @@
   justify-content: space-between;
   gap: 0.75em;
   margin-bottom: 1em;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);;
 }
 
 .um_modal_head .um_modal_title {
@@ -312,10 +313,18 @@
   margin-bottom: 0.35em;
 }
 
-.um_field label.um_field_label_row {
+.um_field label.um_field_label_row,
+.um_field div.um_field_label_row {
   display: flex;
   align-items: center;
   gap: 0.45em;
+}
+
+.um_field div.um_field_label_row {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text-muted);
+  margin-bottom: 0.35em;
 }
 
 .um_field_label_icon {
@@ -955,7 +964,7 @@ select option {
 .um_user_meta {
   display: flex;
   flex-direction: column;
-  gap: 0.2em;
+  /* gap: 0.2em; */
   min-width: 0;
 }
 
@@ -966,6 +975,8 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: capitalize;
+ 
 }
 
 .um_user_meta_username--placeholder {
@@ -975,22 +986,23 @@ select option {
 
 .um_user_meta_email {
   font-size: 1em;
-  color: #64748b;
+  /* color: #64748b; */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .um_user_meta_email_link {
-  color: #000;
+  /* color: #000; */
   text-decoration: none;
+  color: var(--portal-primary);
 }
 
 .um_user_meta_email_link:hover {
-  color: #000;
+  /* color: #000; */
   text-decoration: underline;
 }
-
+/*  */
 /* Status + account status: dot + label (active green, inactive coral, invited blue) */
 .um_status_cell {
   display: inline-flex;
@@ -1092,7 +1104,8 @@ select option {
 }
 
 .um_td_memberships {
-  vertical-align: top;
+  /* vertical-align: top; */
+  vertical-align: middle;
 }
 
 .um_td_actions {
@@ -1285,6 +1298,19 @@ select option {
 
 .um_edit_role_status_row .um_field_select {
   align-self: stretch;
+}
+
+.um_edit_role_status_row .um_role_radio_group.radio-group {
+  width: 100%;
+}
+
+.deals_add_inv_modal_form .um_role_radio_group.radio-group {
+  width: 100%;
+}
+
+.um_role_pills_interaction_lock {
+  pointer-events: none;
+  opacity: 0.65;
 }
 
 .um_view_grid_member_action {

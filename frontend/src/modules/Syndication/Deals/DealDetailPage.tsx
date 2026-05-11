@@ -194,7 +194,7 @@ export function DealDetailPage() {
       setInvestorsListRefreshKey((k) => k + 1)
       setDealMembersRefreshKey((r) => r + 1)
       void dealInvestorsTabRef.current?.refetchInvestors()
-      navigate("/", { replace: true })
+      navigate("/dashboard", { replace: true })
     },
     [dealId, dealDetailApi, navigate],
   )

@@ -31,6 +31,21 @@
   white-space: nowrap;
 }
 
+/* /customers directory DataTable — Actions column width (scoped to this panel only) */
+.company_page
+  .cp_companies_tab_panel.deal_inv_table_panel
+  .um_table_members.deal_inv_table
+  thead
+  th.um_th_actions,
+.company_page
+  .cp_companies_tab_panel.deal_inv_table_panel
+  .um_table_members.deal_inv_table
+  tbody
+  td.um_td_actions.deal_inv_td_actions {
+  width: 10%;
+  box-sizing: border-box;
+}
+
 .cp_company_avatar {
   background: var(--ui-button-background-add);
 }
@@ -1945,13 +1960,247 @@ select.cp_settings_input_pill.um_field_select {
 
 /* Settings tab — Billing */
 .cp_settings_billing_tab {
-  max-width: 42rem;
+  max-width: 72rem;
 }
 .cp_settings_billing_tab_title {
-  margin: 0 0 0.75em;
+  margin: 0 0 0.25em;
   font-size: 1.125em;
   font-weight: 600;
   color: var(--font-color-title, #0f172a);
+}
+
+.cp_billing_header {
+  margin-bottom: 1.25em;
+}
+.cp_billing_subtitle {
+  margin: 0;
+  font-size: 0.875em;
+  color: #64748b;
+}
+
+/* Billing cycle radio toggle */
+.cp_billing_cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.25em;
+  margin-bottom: 1.5em;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+}
+.cp_billing_cycle_option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.45em 1em;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.875em;
+  font-weight: 500;
+  color: #475569;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease;
+  user-select: none;
+}
+.cp_billing_cycle_option input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 0.95em;
+  height: 0.95em;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 999px;
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  background: #ffffff;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.cp_billing_cycle_option input[type="radio"]:checked {
+  border-color: var(--main-auth-button-color, #155abf);
+  background: var(--main-auth-button-color, #155abf);
+  box-shadow: inset 0 0 0 3px #ffffff;
+}
+.cp_billing_cycle_option_active {
+  background: #ffffff;
+  color: var(--font-color-title, #0f172a);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.cp_billing_cycle_save {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1em 0.5em;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Plan cards grid */
+.cp_billing_plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25em;
+}
+
+.cp_billing_plan_card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5em;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.875em;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.15s ease, transform 0.15s ease,
+    border-color 0.15s ease;
+}
+.cp_billing_plan_card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+}
+.cp_billing_plan_card_featured {
+  border-color: var(--main-auth-button-color, #155abf);
+  box-shadow: 0 6px 18px rgba(21, 90, 191, 0.12);
+}
+
+.cp_billing_plan_badge {
+  position: absolute;
+  top: -0.7em;
+  right: 1em;
+  padding: 0.25em 0.7em;
+  background: var(--main-auth-button-color, #155abf);
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cp_billing_plan_name {
+  margin: 0;
+  font-size: 1.125em;
+  font-weight: 600;
+  color: var(--font-color-title, #0f172a);
+}
+.cp_billing_plan_tagline {
+  margin: 0.35em 0 1.1em;
+  font-size: 0.85em;
+  color: #64748b;
+  min-height: 2.4em;
+}
+
+.cp_billing_plan_price {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25em;
+  margin-bottom: 1.25em;
+  min-height: 2.4em;
+}
+.cp_billing_plan_price_amount {
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--font-color-title, #0f172a);
+  line-height: 1;
+}
+.cp_billing_plan_price_suffix {
+  font-size: 0.85em;
+  color: #64748b;
+  font-weight: 500;
+}
+.cp_billing_plan_price_custom {
+  font-size: 1.35em;
+  font-weight: 600;
+  color: var(--font-color-title, #0f172a);
+}
+
+.cp_billing_plan_body {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  margin-bottom: 1.5em;
+  flex: 1;
+}
+.cp_billing_plan_section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+.cp_billing_plan_section_title {
+  margin: 0;
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.cp_billing_plan_section + .cp_billing_plan_features {
+  margin-top: 0.25em;
+  padding-top: 0.85em;
+  border-top: 1px solid #e2e8f0;
+}
+.cp_billing_plan_features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+}
+.cp_billing_plan_features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  font-size: 0.875em;
+  color: #334155;
+}
+.cp_billing_plan_features li svg {
+  flex-shrink: 0;
+  color: #16a34a;
+  margin-top: 0.15em;
+}
+
+.cp_billing_plan_cta {
+  width: 100%;
+  padding: 0.65em 1em;
+  border-radius: 0.5em;
+  font-size: 0.875em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease;
+}
+.cp_billing_plan_cta_primary {
+  border: 1px solid var(--main-auth-button-color, #155abf);
+  background: var(--main-auth-button-color, #155abf);
+  color: #ffffff;
+}
+.cp_billing_plan_cta_primary:hover {
+  background: #114a9f;
+  border-color: #114a9f;
+}
+.cp_billing_plan_cta_secondary {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: var(--font-color-title, #0f172a);
+}
+.cp_billing_plan_cta_secondary:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+@media (max-width: 1024px) {
+  .cp_billing_plans {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .cp_billing_plans {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Settings tab — Members: embed user management */

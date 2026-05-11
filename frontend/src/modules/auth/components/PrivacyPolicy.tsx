@@ -13,7 +13,7 @@ const PrivacyPolicy = () => {
   const handleHomeClick = () => {
     const isLoggedIn = !!sessionStorage.getItem("bearerToken");
     if (isLoggedIn) {
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } else {
       sessionStorage.clear();
       navigate("/signup", { replace: true });
