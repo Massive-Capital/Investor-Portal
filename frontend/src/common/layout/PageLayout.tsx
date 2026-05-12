@@ -31,6 +31,8 @@ import {
   setAppDocumentTitle,
 } from "../utils/appDocumentTitle"
 import { useAppShellBranding } from "../hooks/useAppShellBranding"
+// import { SX_LOGO_SRC } from "@/assets/branding"
+import { SX_SIDENAV_LOGO } from "@/assets/branding"
 import "./page_layout.css"
 
 type SidebarIcon = ComponentType<{ size?: number; className?: string }>
@@ -121,8 +123,6 @@ function SidebarNavGroup({
                 end
                 className={({ isActive }) =>
                   `app_sidebar_link app_sidebar_sublink${
-                    SubIcon ? " app_sidebar_sublink_with_icon" : ""
-                  }${
                     isActive
                       ? " app_sidebar_link_active app_sidebar_sublink_active"
                       : ""
@@ -196,6 +196,7 @@ function PageLayoutInner() {
   const { mode, portalSwitchOverlay } = usePortalMode()
   const lpInvestor = isLpInvestorSessionUser()
   const { sidebarLogoSrc: workspaceSidebarLogoSrc } = useAppShellBranding()
+  const sidebarHeaderLogoSrc = workspaceSidebarLogoSrc ?? SX_SIDENAV_LOGO
 
   useEffect(() => {
     if (!portalSwitchOverlay) return
@@ -246,22 +247,20 @@ function PageLayoutInner() {
       ) : null}
       <aside className="app_sidebar">
         <div className="app_sidebar_brand app_sidebar_brand_static">
-          {workspaceSidebarLogoSrc ? (
-            <div className="app_sidebar_brand_mark">
-              <img
-                className="app_sidebar_brand_logo"
-                src={workspaceSidebarLogoSrc}
-                alt=""
-                width={200}
-                height={80}
-                loading="eager"
-                fetchPriority="high"
-                decoding="async"
-                key={workspaceSidebarLogoSrc}
-              />
-            </div>
-          ) : null}
-          <h1 className="app_sidebar_title">SyndicationX</h1>
+          <div className="app_sidebar_brand_mark">
+            <img
+              className="app_sidebar_brand_logo"
+              src={sidebarHeaderLogoSrc}
+              alt="SyndicationX"
+              width={220}
+              height={80}
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              key={sidebarHeaderLogoSrc}
+            />
+          </div>
+          <h1 className="app_sidebar_title app_sidebar_title_sr_only">SyndicationX</h1>
         </div>
         <div className="app_sidebar_nav_region">
           <nav className="app_sidebar_nav" aria-label="Main navigation">
@@ -361,6 +360,15 @@ function PageLayoutInner() {
             className="app_sidebar_powered_lockup"
             aria-label="Powered by SyndicationX"
           >
+            {/* <img
+              className="app_sidebar_powered_logo"
+              src={SX_SIDENAV_LOGO}
+              alt=""
+              width={200}
+              height={40}
+              loading="lazy"
+              decoding="async"
+            /> */}
             <span className="app_sidebar_powered_accent" aria-hidden />
             <div className="app_sidebar_powered_text">
               <span className="app_sidebar_powered_by">Powered by</span>

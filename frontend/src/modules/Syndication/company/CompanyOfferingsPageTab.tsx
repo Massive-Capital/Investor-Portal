@@ -308,10 +308,15 @@ export function CompanyOfferingsPageTab(props: Props) {
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((row) => (
+              {pageRows.map((row, i) => (
                 <tr
                   key={row.id}
-                  className={row.warnRow ? "cp_offerings_row_warn" : undefined}
+                  className={[
+                    row.warnRow ? "cp_offerings_row_warn" : undefined,
+                    i % 2 === 0 ? "data_table_row_odd" : "data_table_row_even",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
                   <td className="cp_offerings_td_drag">
                     <span className="cp_offerings_drag" aria-hidden>

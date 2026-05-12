@@ -49,6 +49,7 @@ import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
 import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
 import { MyAccountPasswordPage } from "./modules/myaccount/MyAccountPasswordPage";
 import { CompanyOverview } from "./modules/Investing/pages/company_overview/CompanyOverview";
+import Landing_Page from "./modules/Landing_Page/Landing_Page";
 
 type PlaceholderPageProps = {
   title: string;
@@ -101,9 +102,9 @@ function App() {
     <>
       <BrowserRouter basename={routerBasename()}>
         <Routes>
+          <Route path="/" element={<Landing_Page />} />
           <Route element={<RequireAuth />}>
             <Route element={<LpInvestorShellGuard />}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route element={<PageLayout />}>
               <Route path="dashboard" element={<SponsorDashboardPage />} />
             <Route path="deals" element={<DealsLayout />}>

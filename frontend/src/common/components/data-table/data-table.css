@@ -271,3 +271,149 @@
   vertical-align: middle;
   min-width: 0;
 }
+
+/* --- Striped body rows (all DataTables; row index = sorted + paginated slice) --- */
+.data_table tbody tr.data_table_row_odd td {
+  background-color: #ffffff;
+}
+
+.data_table tbody tr.data_table_row_even td {
+  background-color: #f8fafc;
+}
+
+.data_table_sticky_first tbody tr.data_table_row_odd td.data_table_col_sticky {
+  background-color: #ffffff;
+}
+
+.data_table_sticky_first tbody tr.data_table_row_even td.data_table_col_sticky {
+  background-color: #f8fafc;
+}
+
+.um_table tbody tr.data_table_row_odd td {
+  background-color: #ffffff;
+}
+
+.um_table tbody tr.data_table_row_even td {
+  background-color: #f8fafc;
+}
+
+.um_table.data_table_sticky_first tbody tr.data_table_row_odd td.data_table_col_sticky {
+  background-color: #ffffff;
+}
+
+.um_table.data_table_sticky_first tbody tr.data_table_row_even td.data_table_col_sticky {
+  background-color: #f8fafc;
+}
+
+/* Deal Investors / Members: panel rules set sticky #f8f8f8 — zebra must win. */
+.deal_inv_table_panel .um_table.deal_inv_table tbody tr.data_table_row_odd td {
+  background-color: #ffffff;
+}
+
+.deal_inv_table_panel .um_table.deal_inv_table tbody tr.data_table_row_even td {
+  background-color: #f8fafc;
+}
+
+.deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_odd
+  td.data_table_col_sticky {
+  background-color: #ffffff;
+}
+
+.deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_even
+  td.data_table_col_sticky {
+  background-color: #f8fafc;
+}
+
+:root[data-theme="dark"] .data_table tbody tr.data_table_row_odd td,
+:root[data-theme="dark"] .um_table tbody tr.data_table_row_odd td {
+  background-color: var(--portal-surface, #121212);
+}
+
+:root[data-theme="dark"] .data_table tbody tr.data_table_row_even td,
+:root[data-theme="dark"] .um_table tbody tr.data_table_row_even td {
+  background-color: color-mix(
+    in srgb,
+    var(--portal-text, #f1f5f9) 4%,
+    var(--portal-surface, #121212)
+  );
+}
+
+:root[data-theme="dark"]
+  .data_table_sticky_first
+  tbody
+  tr.data_table_row_odd
+  td.data_table_col_sticky,
+:root[data-theme="dark"]
+  .um_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_odd
+  td.data_table_col_sticky {
+  background-color: var(--portal-surface, #121212);
+}
+
+:root[data-theme="dark"]
+  .data_table_sticky_first
+  tbody
+  tr.data_table_row_even
+  td.data_table_col_sticky,
+:root[data-theme="dark"]
+  .um_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_even
+  td.data_table_col_sticky {
+  background-color: color-mix(
+    in srgb,
+    var(--portal-text, #f1f5f9) 4%,
+    var(--portal-surface, #121212)
+  );
+}
+
+:root[data-theme="dark"]
+  .deal_inv_table_panel
+  .um_table.deal_inv_table
+  tbody
+  tr.data_table_row_odd
+  td {
+  background-color: var(--portal-surface, #121212);
+}
+
+:root[data-theme="dark"]
+  .deal_inv_table_panel
+  .um_table.deal_inv_table
+  tbody
+  tr.data_table_row_even
+  td {
+  background-color: color-mix(
+    in srgb,
+    var(--portal-text, #f1f5f9) 4%,
+    var(--portal-surface, #121212)
+  );
+}
+
+:root[data-theme="dark"]
+  .deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_odd
+  td.data_table_col_sticky {
+  background-color: var(--portal-surface, #121212);
+}
+
+:root[data-theme="dark"]
+  .deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_even
+  td.data_table_col_sticky {
+  background-color: color-mix(
+    in srgb,
+    var(--portal-text, #f1f5f9) 4%,
+    var(--portal-surface, #121212)
+  );
+}

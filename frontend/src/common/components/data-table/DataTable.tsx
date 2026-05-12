@@ -50,8 +50,11 @@ type DataTableProps<T> = {
     onPageSizeChange?: (nextSize: number) => void;
     ariaLabel?: string;
   };
-  /** Optional extra `class` on each body row (e.g. suspended state). */
-  getRowClassName?: (row: T) => string | undefined;
+  /**
+   * Optional extra `class` on each body row (e.g. suspended state).
+   * `rowIndex` is the index in the current view (sorted + paginated slice), 0-based.
+   */
+  getRowClassName?: (row: T, rowIndex: number) => string | undefined;
   /** Default sort when the table first mounts (members-style sortable tables). */
   initialSort?: { columnId: string; direction: "asc" | "desc" };
   /**
@@ -64,6 +67,11 @@ type DataTableProps<T> = {
    * scroll (`position: sticky; left: 0`). Defaults to `true` for members-style tables.
    */
   stickyFirstColumn?: boolean;
+  /**
+   * Alternating row backgrounds by visible index (sorted + paginated). Uses
+   * `.data_table_row_odd` / `.data_table_row_even` in `data-table.css`.
+   */
+  stripedRows?: boolean;
 };
 
 function sortHeaderLabel(header: ReactNode, columnId: string): string {
@@ -101,6 +109,7 @@ export function DataTable<T>({
   onBodyRowClick,
   stickyFirstColumn: stickyFirstColumnProp,
   isLoading = false,
+  stripedRows = true,
 }: DataTableProps<T>) {
   const stickyFirstColumn =
     stickyFirstColumnProp ?? visualVariant === "members";
@@ -326,7 +335,15 @@ export function DataTable<T>({
             </tr>
           ) : (
             displayRows.map((row, i) => {
-              const rowClass = getRowClassName?.(row);
+              const stripeClass = stripedRows
+                ? i % 2 === 0
+                  ? "data_table_row_odd"
+                  : "data_table_row_even"
+                : "";
+              const extraClass = getRowClassName?.(row, i);
+              const rowClass = [stripeClass, extraClass]
+                .filter(Boolean)
+                .join(" ") || undefined;
               function handleRowClick(e: MouseEvent<HTMLTableRowElement>) {
                 if (!onBodyRowClick) return;
                 const t = e.target as HTMLElement | null;

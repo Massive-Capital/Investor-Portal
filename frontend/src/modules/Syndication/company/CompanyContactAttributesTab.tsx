@@ -259,8 +259,13 @@ export function CompanyContactAttributesTab(props: Props) {
                 </td>
               </tr>
             ) : (
-              contactPaginatedRows.map((row) => (
-                <tr key={row.id}>
+              contactPaginatedRows.map((row, i) => (
+                <tr
+                  key={row.id}
+                  className={
+                    i % 2 === 0 ? "data_table_row_odd" : "data_table_row_even"
+                  }
+                >
                   <td>{row.label}</td>
                   <td>{row.type}</td>
                   <td>{row.createdBy}</td>

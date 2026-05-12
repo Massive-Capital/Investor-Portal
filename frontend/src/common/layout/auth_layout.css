@@ -31,6 +31,7 @@ body:has(.authPage) {
 
 .authPage .loginForm {
   background-color: white;
+  /* background-color: #FAF7F2; */
 }
 
 .authContent {

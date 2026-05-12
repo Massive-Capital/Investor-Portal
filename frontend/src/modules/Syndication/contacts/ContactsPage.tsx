@@ -1006,7 +1006,7 @@ function ContactsPage() {
       {
         id: "actions",
         header: "Actions",
-        align: "right",
+        align: "center",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (r) => (
@@ -1189,7 +1189,7 @@ function ContactsPage() {
       {
         id: "actions",
         header: "Actions",
-        align: "right",
+        align: "center",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (row) => (

@@ -1603,7 +1603,14 @@ export default function UserManagementPage({
                   const rowUserStatus = userStatusForUi(row);
                   const rowAccountStatus = accountStatusForUi(row);
                   return (
-                    <tr key={rowId}>
+                    <tr
+                      key={rowId}
+                      className={
+                        i % 2 === 0
+                          ? "data_table_row_odd"
+                          : "data_table_row_even"
+                      }
+                    >
                       <td className="um_td_checkbox">
                         <input
                           type="checkbox"

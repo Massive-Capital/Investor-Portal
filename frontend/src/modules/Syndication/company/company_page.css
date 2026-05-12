@@ -1899,6 +1899,11 @@ select.cp_settings_input_pill.um_field_select {
   background: #fefce8;
 }
 
+/* Beat global DataTable zebra so warning rows stay tinted */
+.um_table.cp_offerings_table tbody tr.cp_offerings_row_warn td {
+  background: #fefce8;
+}
+
 .cp_offerings_name_link {
   margin: 0;
   padding: 0;
