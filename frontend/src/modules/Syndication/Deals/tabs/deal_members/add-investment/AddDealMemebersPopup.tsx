@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react"
 import {
-  Activity,
   Briefcase,
   Calendar,
   DollarSign,
@@ -52,7 +51,6 @@ import {
 } from "../../../api/dealsApi"
 import { getApiV1Base } from "../../../../../../common/utils/apiBaseUrl"
 import { MEMBER_SELECT_OPTIONS } from "../../../constants/member-options"
-import { INVESTMENT_STATUS_SELECT_OPTIONS } from "../../../constants/investment-status"
 import {
   INVESTOR_PROFILE_SELECT_OPTIONS,
   INVESTOR_ROLE_SELECT_OPTIONS,
@@ -1136,7 +1134,7 @@ export function AddInvestmentModal({
         header: "Phone",
         cell: (r) => formatUsPhoneStoredForUi(r.phone),
       },
-      { id: "status", header: "Status", cell: (r) => r.status },
+      // { id: "status", header: "Status", cell: (r) => r.status },
       {
         id: "actions",
         header: "Actions",
@@ -1408,7 +1406,7 @@ export function AddInvestmentModal({
                         />
                       )}
                     </InvFormField>
-                     <InvFormField id="add-inv-status" label="Status" Icon={Activity}>
+                     {/* <InvFormField id="add-inv-status" label="Status" Icon={Activity}>
                     <DropdownSelect
                       id="add-inv-status"
                       options={INVESTMENT_STATUS_SELECT_OPTIONS.map((o) => ({
@@ -1421,7 +1419,7 @@ export function AddInvestmentModal({
                       ariaLabel="Status"
                       triggerClassName={DROPDOWN_TRIGGER_PILL}
                     />
-                  </InvFormField>
+                  </InvFormField> */}
                   </div>
 
                  

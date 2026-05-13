@@ -9,7 +9,13 @@
   min-height: 100dvh;
 }
 
-.sx-landing__reveal-nav,
+.sx-landing__reveal-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+}
+
 .sx-landing__reveal-main,
 .sx-landing__reveal-footer {
   width: 100%;

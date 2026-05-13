@@ -1,9 +1,9 @@
 import "./Navbar.css"
 import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowRight, Menu, Video, X } from "lucide-react"
+import { ArrowRight, CalendarPlus, Menu, Video, X } from "lucide-react"
 import { SX_LOGO_SRC } from "@/assets/branding"
-import { navLinks } from "../../data/content"
+import { navLinks, scheduleDemoUrl } from "../../data/content"
 import { observeSections, scrollToSection } from "../../utils/helpers"
 
 interface NavbarProps {
@@ -32,6 +32,8 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
     },
     [onNavigateSection],
   )
+
+  const scheduleDemoIsHttp = scheduleDemoUrl.startsWith("http")
 
   return (
     <>
@@ -76,6 +78,16 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
           </nav>
 
           <div className="sx-nav__actions">
+            <a
+              href={scheduleDemoUrl}
+              className="sx-btn-outline"
+              {...(scheduleDemoIsHttp
+                ? { target: "_blank", rel: "noreferrer noopener" }
+                : {})}
+            >
+              <CalendarPlus size={18} strokeWidth={2} aria-hidden />
+              Schedule a demo
+            </a>
             <button
               type="button"
               className="sx-btn-outline"
@@ -85,7 +97,7 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
               Webinar
             </button>
             <Link to="/signin" className="sx-btn-glow sx-btn-glow--wide">
-              Start Investing
+              Start Raising
               <ArrowRight size={18} strokeWidth={2} aria-hidden />
             </Link>
           </div>
@@ -118,6 +130,17 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
             </button>
           ))}
           <div className="sx-nav__sheet-actions">
+            <a
+              href={scheduleDemoUrl}
+              className="sx-btn-outline"
+              onClick={() => setMenuOpen(false)}
+              {...(scheduleDemoIsHttp
+                ? { target: "_blank", rel: "noreferrer noopener" }
+                : {})}
+            >
+              <CalendarPlus size={18} strokeWidth={2} aria-hidden />
+              Schedule a demo
+            </a>
             <button
               type="button"
               className="sx-btn-outline"
@@ -127,7 +150,7 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
               Webinar
             </button>
             <Link to="/signin" className="sx-btn-glow sx-btn-glow--wide" onClick={() => setMenuOpen(false)}>
-              Start Investing
+              Start Raising
               <ArrowRight size={18} strokeWidth={2} aria-hidden />
             </Link>
           </div>

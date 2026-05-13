@@ -6,7 +6,7 @@
 
 .authPage:has(.signup_page) .loginForm {
   /* padding: clamp(0.65em, 2.5vw, 1.1em); */
-  padding: 2em 5em;
+  padding: 1em 4em;
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -22,7 +22,7 @@
   color: black;
   font-size: 1.1em;
   font-weight: 700;
-  margin: 1em 0;
+  margin: 0.5em 0  0.5em 0;
 }
 
 body:has(.signup_page) .companyContent {
@@ -31,6 +31,10 @@ body:has(.signup_page) .companyContent {
 
 .authPage:has(.signup_page) {
   background-color: #f8f8f8;
+  /* Tall form: start from top so flex centering does not cause a sliver of page scroll */
+  align-items: flex-start;
+  justify-content: center;
+  padding-block: clamp(0.75rem, 3vw, 1.25rem);
 }
 
 .signup_page .signup_modal_content {
@@ -40,11 +44,9 @@ body:has(.signup_page) .companyContent {
   box-sizing: border-box;
   border-radius: 10px;
   box-shadow: none;
-  background-color: white;
-  max-height: min(36em, 72svh);
-  max-height: min(36em, 72dvh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  background-color: #FAF7F2;
+  /* Let the page scroll as one column — capped height + overflow-y:auto caused a tight inner scrollbar */
+  overflow: visible;
 }
 
 .signup_page .settings_form {

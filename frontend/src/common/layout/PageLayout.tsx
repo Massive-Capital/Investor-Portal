@@ -179,7 +179,8 @@ const investingNavItems: NavItemLink[] = [
   { label: "Profiles", to: "/investing/profiles", icon: UserCircle },
   { label: "Deals", to: "/investing/deals", icon: Briefcase },
   { label: "Settings", to: "/investing/settings", icon: Settings },
-  { label: "Leave a review", to: "/investing/review", icon: Star },
+  // { label: "Leave a review", to: "/investing/review", icon: Star },
+  { label: "FeedBack", to: "/investing/feedback", icon: Star },
 ]
 
 /** LP Investor deal participants — investing shell only; no company admin / syndication items */

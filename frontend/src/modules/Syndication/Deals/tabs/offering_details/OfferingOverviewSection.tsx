@@ -397,7 +397,7 @@ export function OfferingOverviewSection({
             >
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
-                  Status
+                  Deal Status
                   <span className="deal_offering_ov_req" aria-hidden>
                     *
                   </span>

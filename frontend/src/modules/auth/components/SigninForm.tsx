@@ -220,7 +220,7 @@ const SigninForm = () => {
         <div className="companyContent">
           <div className="contentOne">
             <p>
-              Welcome to the Massive Capital Investor Portal where you can
+              Welcome to the SyndicationX Investor Portal where you can
               access a wide range of investor information and documentation.
             </p>
             <p className="contentTwo">

@@ -187,10 +187,10 @@ function App() {
               }
             />
             <Route
-              path="investing/review"
+              path="investing/feedback"
               element={
                 <WorkInProgressPage
-                  title="Leave a review"
+                  title="Feedback"
                   backTo="/dashboard"
                   backLabel="Dashboard"
                 />

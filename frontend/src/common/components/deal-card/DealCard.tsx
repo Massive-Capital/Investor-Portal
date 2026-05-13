@@ -1,4 +1,4 @@
-import { CameraOff, CircleDot, MapPin, Star, StarHalf } from "lucide-react"
+import { CameraOff, CircleDot, MapPin } from "lucide-react"
 import { dealStageChipCompactClassName } from "../../../modules/Syndication/Deals/utils/dealStageChip"
 import "../../../modules/Syndication/Deals/deals-list.css"
 import "./deal-card.css"
@@ -41,36 +41,8 @@ export function DealCard({
   metrics,
   coverImageUrl,
   onUploadCoverClick,
-  reviewPlaceholderSeed,
-  reviewLoading = false,
-  reviewRating,
-  reviewCount,
 }: DealCardProps) {
   const hasCover = Boolean(coverImageUrl?.trim())
-  const hasApiRating =
-    typeof reviewRating === "number" && Number.isFinite(reviewRating)
-  const hasApiCount =
-    typeof reviewCount === "number" && Number.isFinite(reviewCount)
-  const hasApiReview = hasApiRating || hasApiCount
-  const seededPlaceholders = USE_DEAL_CARD_PLACEHOLDER_REVIEWS
-    ? placeholderReviewsFromSeed(reviewPlaceholderSeed ?? title)
-    : null
-  const p =
-    !hasApiReview && !reviewLoading && seededPlaceholders !== null
-      ? seededPlaceholders
-      : null
-  const displayRating = p
-    ? p.rating
-    : hasApiRating
-      ? Math.min(5, Math.max(0, reviewRating))
-      : 4.5
-  const hasReviewCount = Boolean(p) || hasApiCount
-  const displayReviewCount = p
-    ? p.count
-    : hasApiCount
-    ? Math.max(0, Math.floor(Number(reviewCount)))
-    : 0
-  const showNoReviewsYetLabel = !p && !hasApiCount
 
   return (
     <article className="deal_card">
@@ -124,7 +96,7 @@ export function DealCard({
                   <span className="deal_card_location_text">{location}</span>
                 </p>
               ) : null}
-              <div
+              {/* <div
                 className="deal_card_reviews"
                 role="group"
                 aria-label={
@@ -175,7 +147,7 @@ export function DealCard({
                     {DEAL_CARD_REVIEW_DEFAULT_TEXT}
                   </span>
                 ) : null}
-              </div>
+              </div> */}
             </div>
           </div>
         </section>
@@ -194,46 +166,4 @@ export function DealCard({
   )
 }
 
-type DealCardStarKind = "full" | "half" | "empty"
-
-function dealCardStarRow(rating: number): DealCardStarKind[] {
-  const r = Math.min(5, Math.max(0, rating))
-  let rem = r
-  const out: DealCardStarKind[] = []
-  for (let i = 0; i < 5; i++) {
-    if (rem >= 1) {
-      out.push("full")
-      rem -= 1
-    } else if (rem >= 0.5) {
-      out.push("half")
-      rem = 0
-    } else {
-      out.push("empty")
-    }
-  }
-  return out
-}
-
-/**
- * When true, cards without API review fields show a deterministic “random”
- * count + rating. Turn off when real review data is always returned.
- */
-const USE_DEAL_CARD_PLACEHOLDER_REVIEWS = true
-
-/**
- * Seeded from deal id (or title) so values stay stable across re-renders
- * and differ per deal — not `Math.random()` on each render.
- */
-function placeholderReviewsFromSeed(seed: string): { rating: number, count: number } {
-  let h = 0
-  for (let i = 0; i < seed.length; i++)
-    h = (Math.imul(31, h) + seed.charCodeAt(i)) | 0
-  const u = Math.abs(h) >>> 0
-  const count = 1 + (u % 20)
-  const rBand = 3 + ((u % 8) * 0.5)
-  const rating = Math.min(5, rBand)
-  return { count, rating }
-}
-
-/** Shown in muted text beside “0 Reviews” when `reviewCount` is not from the API. */
-const DEAL_CARD_REVIEW_DEFAULT_TEXT = "No reviews yet"
+// Review UI is commented out in JSX; optional review* props stay on DealCardProps for callers.

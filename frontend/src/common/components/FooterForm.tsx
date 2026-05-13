@@ -4,7 +4,7 @@ const FooterForm = () => {
   return (
     <>
     <div className="copyright">
-        <p>© 2026 Massive Capital</p>
+        <p>© 2026 SyndicationX</p>
       </div>
       <div className="poweredBy">
         <p>

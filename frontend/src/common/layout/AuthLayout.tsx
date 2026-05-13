@@ -10,7 +10,9 @@ import { formatAppDocumentTitle } from "../utils/appDocumentTitle";
 import { normalizeDealGallerySrc } from "../utils/apiBaseUrl";
 import "./auth_layout.css";
 import "../../modules/auth/styles/auth_forms.css";
-import companyLogo from "@/assets/images/massive-capital-logo.png";
+// import companyLogo from "@/assets/images/massive-capital-logo.png";
+// import companyLogo from "@/assets/images/syndicationx_high_resolution_logo.png"
+import companyLogo from "@/assets/images/sx_logo_width_reduced.png";
 import authPageBackgroundUrl from "@/assets/images/inital_img.webp?url";
 
 interface AuthLayoutProps {

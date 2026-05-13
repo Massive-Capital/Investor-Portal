@@ -13,10 +13,10 @@ export const OFFERING_STATUS_OPTIONS = [
     value: "open_soft_commitment",
     label: "Open to soft commitment",
   },
-  {
-    value: "open_hard_commitment",
-    label: "Open to hard commitment",
-  },
+  // {
+  //   value: "open_hard_commitment",
+  //   label: "Open to hard commitment",
+  // },
   {
     value: "open_investment",
     label: "Open to investment",
