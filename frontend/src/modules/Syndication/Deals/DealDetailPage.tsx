@@ -722,6 +722,7 @@ export function DealDetailPage() {
         ) : activeTab === "documents" && dealDetailApi ? (
           <DealDocumentsTab
             dealId={dealDetailApi.id}
+            investorsListRefreshKey={investorsListRefreshKey}
             onOfferingPreviewSynced={handleDealPersisted}
           />
         ) : activeTab === "esign_templates" ? (

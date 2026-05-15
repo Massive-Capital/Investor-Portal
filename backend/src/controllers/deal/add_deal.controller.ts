@@ -511,6 +511,18 @@ export async function patchDealOfferingOverview(
       deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      err.message === "VALIDATION" &&
+      "fieldErrors" in err
+    ) {
+      res.status(400).json({
+        message: "Validation failed",
+        errors: (err as Error & { fieldErrors: DealFormFieldErrors })
+          .fieldErrors,
+      });
+      return;
+    }
     console.error("patchDealOfferingOverview:", err);
     res.status(500).json({ message: "Could not update offering overview" });
   }

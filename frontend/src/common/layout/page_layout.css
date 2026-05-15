@@ -62,7 +62,7 @@
   flex-shrink: 0;
   display: block;
   width: 100%;
-  margin: 0 0 0.85em;
+  /* margin: 0 0 0.85em; */
   padding: 0.15em 0.25em 0.15em 0;
   border: none;
   border-radius: 0;
@@ -121,17 +121,19 @@
 .app_sidebar_brand_mark {
   display: flex;
   align-items: center;
-  margin: 0 0 0.75em;
+  /* margin: 0 0 0.75em; */
   min-height: 2.25rem;
   max-width: 100%;
 }
 
 .app_sidebar_brand_logo {
-  width: 100%;
-  max-width: 100%;
+  /* width: 100%; */
+  /* max-width: 100%; */
+  width: 8em;
+  margin: 0 auto;
   height: auto;
-  max-height: 4.5rem;
-  min-height: 2.25rem;
+  /* max-height: 4.5rem; */
+  /* min-height: 2.25rem; */
   object-fit: contain;
   object-position:center;
   display: block;
@@ -469,7 +471,8 @@
   .app_sidebar {
     /* font-size: 0.8125em; */
     font-size: 1em;
-    padding: 1.05em 0.85em;
+    /* padding: 1.05em 0.85em; */
+    padding:0 0.85em 1.05em 0.85em;
   }
 
   .app_sidebar_nav {

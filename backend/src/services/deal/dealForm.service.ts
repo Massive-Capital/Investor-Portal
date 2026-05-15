@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
 import { db } from "../../database/db.js";
 import {
@@ -16,6 +16,47 @@ import { encryptOfferingPreviewDealId } from "../../utils/offeringPreviewCrypto.
 import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
 
 const UPLOAD_SUBDIR = "deal-assets";
+
+/** Autosave placeholders — multiple in-progress drafts may share these titles. */
+const DEAL_NAME_UNIQUENESS_EXEMPT = new Set(["untitled deal", "pending"]);
+
+function isDealNameUniquenessExempt(dealName: string): boolean {
+  return DEAL_NAME_UNIQUENESS_EXEMPT.has(dealName.trim().toLowerCase());
+}
+
+function throwDealFormValidation(fieldErrors: DealFormFieldErrors): never {
+  const err = new Error("VALIDATION") as Error & {
+    fieldErrors: DealFormFieldErrors;
+  };
+  err.fieldErrors = fieldErrors;
+  throw err;
+}
+
+async function assertDealNameUnique(params: {
+  dealName: string;
+  organizationId: string | null;
+  excludeDealId?: string;
+}): Promise<void> {
+  if (isDealNameUniquenessExempt(params.dealName)) return;
+  const norm = params.dealName.trim().toLowerCase();
+  const conditions = [sql`lower(trim(${addDealForm.dealName})) = ${norm}`];
+  if (params.organizationId) {
+    conditions.push(eq(addDealForm.organizationId, params.organizationId));
+  }
+  if (params.excludeDealId) {
+    conditions.push(ne(addDealForm.id, params.excludeDealId));
+  }
+  const [dup] = await db
+    .select({ id: addDealForm.id })
+    .from(addDealForm)
+    .where(and(...conditions))
+    .limit(1);
+  if (dup) {
+    throwDealFormValidation({
+      deal_name: "A deal with this name already exists.",
+    });
+  }
+}
 
 function normalizeAssetImagePathSegment(p: string): string {
   return p.trim().replace(/^\/+/, "");
@@ -282,13 +323,12 @@ export async function insertAddDealForm(
     zipCode: normalizeDealZipCode(input.zipCode),
   };
   const validationErrors = validateCreateInput(normalizedInput);
-  if (validationErrors) {
-    const err = new Error("VALIDATION") as Error & {
-      fieldErrors: DealFormFieldErrors;
-    };
-    err.fieldErrors = validationErrors;
-    throw err;
-  }
+  if (validationErrors) throwDealFormValidation(validationErrors);
+
+  await assertDealNameUnique({
+    dealName: normalizedInput.dealName,
+    organizationId: organizationId ?? null,
+  });
 
   const baseRow: Omit<AddDealFormInsert, "dealStage"> = {
     organizationId: organizationId ?? null,
@@ -801,6 +841,13 @@ export async function updateDealOfferingOverviewById(
 ): Promise<AddDealFormRow | undefined> {
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
+  if (patch.dealName !== undefined) {
+    await assertDealNameUnique({
+      dealName: patch.dealName,
+      organizationId: existing.organizationId ?? null,
+      excludeDealId: id,
+    });
+  }
   const [updated] = await db
     .update(addDealForm)
     .set({
@@ -934,13 +981,15 @@ export async function updateAddDealFormById(
     zipCode: normalizeDealZipCode(input.zipCode),
   };
   const validationErrors = validateCreateInput(normalizedInput);
-  if (validationErrors) {
-    const err = new Error("VALIDATION") as Error & {
-      fieldErrors: DealFormFieldErrors;
-    };
-    err.fieldErrors = validationErrors;
-    throw err;
-  }
+  if (validationErrors) throwDealFormValidation(validationErrors);
+
+  const orgForUniqueness =
+    existing.organizationId ?? options?.organizationId ?? null;
+  await assertDealNameUnique({
+    dealName: normalizedInput.dealName,
+    organizationId: orgForUniqueness,
+    excludeDealId: id,
+  });
 
   const useReplaceBase = options?.replaceAssetImageBase !== undefined;
   const prevPaths = existing.assetImagePath?.split(";").filter(Boolean) ?? [];

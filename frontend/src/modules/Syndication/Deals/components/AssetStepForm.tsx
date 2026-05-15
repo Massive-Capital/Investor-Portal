@@ -208,27 +208,7 @@ export function AssetStepForm({
           />
         </label>
 
-        <label className="deals_create_label asset_step_label_full">
-          Street address line 1
-          <input
-            type="text"
-            className="deals_create_input asset_step_input_underline"
-            value={draft.streetAddress1}
-            onChange={(e) => onChange({ streetAddress1: e.target.value })}
-            autoComplete="street-address"
-          />
-        </label>
-
-        <label className="deals_create_label asset_step_label_full">
-          Street address line 2
-          <input
-            className="deals_create_input asset_step_input_underline"
-            value={draft.streetAddress2}
-            onChange={(e) => onChange({ streetAddress2: e.target.value })}
-          />
-        </label>
-
-        <label className="deals_create_label">
+           <label className="deals_create_label">
           State
           {isUs ? (
             <>
@@ -333,6 +313,28 @@ export function AssetStepForm({
           )}
           <FieldError message={errors.city} />
         </label>
+
+        <label className="deals_create_label asset_step_label_full">
+          Street address line 1
+          <input
+            type="text"
+            className="deals_create_input asset_step_input_underline"
+            value={draft.streetAddress1}
+            onChange={(e) => onChange({ streetAddress1: e.target.value })}
+            autoComplete="street-address"
+          />
+        </label>
+
+        <label className="deals_create_label asset_step_label_full">
+          Street address line 2
+          <input
+            className="deals_create_input asset_step_input_underline"
+            value={draft.streetAddress2}
+            onChange={(e) => onChange({ streetAddress2: e.target.value })}
+          />
+        </label>
+
+     
 
         <label className="deals_create_label">
           Zip code

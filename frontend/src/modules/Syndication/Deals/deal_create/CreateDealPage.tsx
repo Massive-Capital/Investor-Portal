@@ -428,9 +428,14 @@ export function CreateDealPage() {
         ? await updateDealMultipart(persistedId, formData)
         : await createDealMultipart(formData)
       if (!result.ok) {
+        const dealNameErr = result.fieldErrors?.deal_name
+        if (dealNameErr) {
+          setDealErrors((e) => ({ ...e, dealName: dealNameErr }))
+          setStep(0)
+        }
         toast.error(
-          result.message,
-          result.fieldErrors
+          dealNameErr ?? result.message,
+          result.fieldErrors && !dealNameErr
             ? Object.values(result.fieldErrors).join(" ")
             : undefined,
         )

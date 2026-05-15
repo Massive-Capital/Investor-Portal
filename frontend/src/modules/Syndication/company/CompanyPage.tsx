@@ -13,7 +13,6 @@ import {
   Archive,
   Ban,
   Building2,
-  Check,
   ClipboardList,
   Contact2,
   CreditCard,
@@ -54,6 +53,7 @@ import {
 import { CompanyContactAttributesTab } from "./CompanyContactAttributesTab";
 import { CompanyEmailSettingsTab } from "./CompanyEmailSettingsTab";
 import { CompanyOfferingsPageTab } from "./CompanyOfferingsPageTab";
+import { CompanyBillingTab } from "./CompanyBillingTab";
 import { CompanySettingsTabPanel } from "./CompanySettingsTabPanel";
 import { ExportCompaniesModal } from "./ExportCompaniesModal";
 import UserManagementPage from "../usermanagement/UserManagementPage";
@@ -286,9 +286,6 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     if (canAccessMembersPage()) return "members";
     return "settings";
   });
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annually">(
-    "monthly"
-  );
   const [companiesPage, setCompaniesPage] = useState(1);
   const [companiesPageSize, setCompaniesPageSize] = useState(10);
 
@@ -1224,199 +1221,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               aria-labelledby="cp-page-tab-billing"
               hidden={activeCompanyPageTab !== "billing"}
             >
-              <div className="cp_settings_billing_tab">
-                <div className="cp_billing_header">
-                  <h3 className="cp_settings_billing_tab_title">Billing</h3>
-                  <p className="cp_billing_subtitle">
-                    Choose the plan that best fits your team.
-                  </p>
-                </div>
-
-                <div
-                  className="cp_billing_cycle"
-                  role="radiogroup"
-                  aria-label="Billing cycle"
-                >
-                  <label
-                    className={`cp_billing_cycle_option ${
-                      billingCycle === "monthly"
-                        ? "cp_billing_cycle_option_active"
-                        : ""
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="cp_billing_cycle"
-                      value="monthly"
-                      checked={billingCycle === "monthly"}
-                      onChange={() => setBillingCycle("monthly")}
-                    />
-                    <span>Monthly</span>
-                  </label>
-                  <label
-                    className={`cp_billing_cycle_option ${
-                      billingCycle === "annually"
-                        ? "cp_billing_cycle_option_active"
-                        : ""
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="cp_billing_cycle"
-                      value="annually"
-                      checked={billingCycle === "annually"}
-                      onChange={() => setBillingCycle("annually")}
-                    />
-                    <span>Annually</span>
-                    <span className="cp_billing_cycle_save">Save 16%</span>
-                  </label>
-                </div>
-
-                <div className="cp_billing_plans">
-                  {[
-                    {
-                      id: "portal",
-                      name: "Portal",
-                      tagline: "For small teams getting started",
-                      monthly: 29,
-                      annually: 290,
-                      featured: false,
-                      cta: "Choose Portal",
-                      sections: [
-                        {
-                          title: "Deals",
-                          items: [
-                            "5 deals",
-                            "2 assets for each deal",
-                            "1 lead sponsor for each deal",
-                          ],
-                        },
-                        {
-                          title: "Email Templates",
-                          items: ["5 templates"],
-                        },
-                      ] as { title: string; items: string[] }[],
-                      features: [
-                        "Up to 10 investors",
-                        "Basic deal management",
-                        "Email support",
-                        "Standard reporting",
-                      ],
-                    },
-                    {
-                      id: "platform",
-                      name: "Platform",
-                      tagline: "For growing syndication businesses",
-                      monthly: 99,
-                      annually: 990,
-                      featured: true,
-                      cta: "Choose Platform",
-                      sections: [] as { title: string; items: string[] }[],
-                      features: [
-                        "Unlimited investors",
-                        "Advanced deal workflows",
-                        "Priority support",
-                        "Custom branding",
-                        "Advanced analytics",
-                      ],
-                    },
-                    {
-                      id: "custom",
-                      name: "Custom",
-                      tagline: "Tailored solutions for enterprises",
-                      monthly: null as number | null,
-                      annually: null as number | null,
-                      featured: false,
-                      cta: "Contact sales",
-                      sections: [] as { title: string; items: string[] }[],
-                      features: [
-                        "Everything in Platform",
-                        "Dedicated account manager",
-                        "Custom integrations",
-                        "SLA & onboarding",
-                        "Volume pricing",
-                      ],
-                    },
-                  ].map((plan) => {
-                    const price =
-                      billingCycle === "monthly" ? plan.monthly : plan.annually;
-                    const priceSuffix =
-                      billingCycle === "monthly" ? "/mo" : "/yr";
-                    return (
-                      <div
-                        key={plan.id}
-                        className={`cp_billing_plan_card ${
-                          plan.featured ? "cp_billing_plan_card_featured" : ""
-                        }`}
-                      >
-                        {plan.featured ? (
-                          <span className="cp_billing_plan_badge">
-                            Most popular
-                          </span>
-                        ) : null}
-                        <h4 className="cp_billing_plan_name">{plan.name}</h4>
-                        <p className="cp_billing_plan_tagline">
-                          {plan.tagline}
-                        </p>
-                        <div className="cp_billing_plan_price">
-                          {price === null ? (
-                            <span className="cp_billing_plan_price_custom">
-                              Let&apos;s talk
-                            </span>
-                          ) : (
-                            <>
-                              <span className="cp_billing_plan_price_amount">
-                                ${price}
-                              </span>
-                              <span className="cp_billing_plan_price_suffix">
-                                {priceSuffix}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        <div className="cp_billing_plan_body">
-                          {plan.sections.map((section) => (
-                            <div
-                              key={section.title}
-                              className="cp_billing_plan_section"
-                            >
-                              <h5 className="cp_billing_plan_section_title">
-                                {section.title}
-                              </h5>
-                              <ul className="cp_billing_plan_features">
-                                {section.items.map((item) => (
-                                  <li key={item}>
-                                    <Check size={16} aria-hidden="true" />
-                                    <span>{item}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                          <ul className="cp_billing_plan_features">
-                            {plan.features.map((f) => (
-                              <li key={f}>
-                                <Check size={16} aria-hidden="true" />
-                                <span>{f}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <button
-                          type="button"
-                          className={`cp_billing_plan_cta ${
-                            plan.featured
-                              ? "cp_billing_plan_cta_primary"
-                              : "cp_billing_plan_cta_secondary"
-                          }`}
-                        >
-                          {plan.cta}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <CompanyBillingTab />
             </div>
 
             {canAccessMembersPage() ? (

@@ -36,6 +36,7 @@ import {
   getDealMembers,
   postDealMemberInvitationEmail,
 } from "../controllers/deal/dealMember.controller.js";
+import { postDealDocumentSharedNotification } from "../controllers/deal/dealDocumentNotification.controller.js";
 import {
   deleteDealInvestorClass,
   getDealInvestorClasses,
@@ -95,6 +96,10 @@ router.delete("/deals/:dealId/members/:rowId", deleteDealMember);
 router.post(
   "/deals/:dealId/members/send-invitation-email",
   postDealMemberInvitationEmail,
+);
+router.post(
+  "/deals/:dealId/documents/send-shared-notification",
+  postDealDocumentSharedNotification,
 );
 router.post(
   "/deals/:dealId/investments",

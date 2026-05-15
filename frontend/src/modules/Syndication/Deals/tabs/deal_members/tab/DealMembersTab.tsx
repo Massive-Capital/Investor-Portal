@@ -1,4 +1,14 @@
-import { Download, Eye, Info, Mail, Pencil, Plus, Search, X } from "lucide-react"
+import {
+  Download,
+  Eye,
+  Info,
+  Mail,
+  Pencil,
+  Plus,
+  Search,
+  Send,
+  X,
+} from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -55,8 +65,10 @@ import {
   type EmailTemplateRow,
 } from "../../../../contacts/emailTemplatesStorage"
 import {
-  buildSendMailPreviewHref,
-  emailTemplateHtmlToPlainText,
+  SendMailEmailPreviewModal,
+  type SendMailEmailPreviewPayload,
+} from "../../../../contacts/components/SendMailEmailPreviewModal"
+import {
   getCurrentSessionUserEmail,
   openSendMailDraft,
   parseEmailInput,
@@ -139,6 +151,8 @@ export function DealMembersTab({
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRow[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const [sendMailCc, setSendMailCc] = useState("")
+  const [sendMailEmailPreview, setSendMailEmailPreview] =
+    useState<SendMailEmailPreviewPayload | null>(null)
   const memberSelectAllRef = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async () => {
@@ -365,42 +379,59 @@ export function DealMembersTab({
 
   const closeSendMailModal = useCallback(() => {
     setSendMailModalOpen(false)
+    setSendMailEmailPreview(null)
   }, [])
 
   const goNewTemplateFromSendMail = useCallback(() => {
     navigate("/contacts/email-templates/new")
   }, [navigate])
 
-  const goEditTemplateFromSendMail = useCallback(() => {
-    const id = selectedTemplateId.trim()
-    if (!id) return
-    navigate(`/contacts/email-templates/edit/${encodeURIComponent(id)}`)
-  }, [navigate, selectedTemplateId])
+  const openSendMailEmailPreview = useCallback(
+    (mode: "view" | "edit") => {
+      const template = emailTemplates.find((t) => t.id === selectedTemplateId)
+      if (!template) {
+        toast.error("Template required", "Choose an email template first.")
+        return
+      }
+      const emails = [
+        ...new Set(
+          selectedMemberRows
+            .map((r) => String(r.userEmail ?? "").trim())
+            .filter((e) => e.includes("@")),
+        ),
+      ]
+      if (emails.length === 0) {
+        toast.error("No email recipients", "Selected deal members have no valid email.")
+        return
+      }
+      setSendMailEmailPreview({
+        templateId: template.id,
+        templateName: template.name,
+        templateArchived: Boolean(template.archived),
+        createdBy: template.createdBy,
+        createdAt: template.createdAt,
+        subject: template.subject,
+        bodyHtml: template.body,
+        toEmails: emails,
+        ccEmails: parseEmailInput(sendMailCc),
+        attachment: template.attachment,
+        startInEditMode: mode === "edit",
+      })
+    },
+    [emailTemplates, selectedMemberRows, selectedTemplateId, sendMailCc],
+  )
 
-  const handlePreviewTemplateFromSendMail = useCallback(() => {
-    const template = emailTemplates.find((t) => t.id === selectedTemplateId)
-    if (!template) {
-      toast.error("Template required", "Choose an email template first.")
-      return
-    }
-    const emails = [
-      ...new Set(
-        selectedMemberRows
-          .map((r) => String(r.userEmail ?? "").trim())
-          .filter((e) => e.includes("@")),
-      ),
-    ]
-    if (emails.length === 0) {
-      toast.error("No email recipients", "Selected deal members have no valid email.")
-      return
-    }
-    window.location.href = buildSendMailPreviewHref({
-      to: emails,
-      cc: parseEmailInput(sendMailCc),
-      subject: template.subject,
-      body: emailTemplateHtmlToPlainText(template.body),
-    })
-  }, [emailTemplates, selectedMemberRows, selectedTemplateId, sendMailCc])
+  const handleSendMailPreviewSaved = useCallback(
+    (patch: { subject: string; bodyHtml: string }) => {
+      setSendMailEmailPreview((p) =>
+        p ? { ...p, ...patch, startInEditMode: false } : null,
+      )
+      void loadEmailTemplates().then((rows) => {
+        setEmailTemplates(rows.filter((t) => !t.archived))
+      })
+    },
+    [],
+  )
 
   useEffect(() => {
     setPage(1)
@@ -689,13 +720,14 @@ export function DealMembersTab({
       return
     }
     toast.success("Email sent", "Message was sent from server.")
-    setSendMailModalOpen(false)
+    closeSendMailModal()
   }, [
     emailTemplates,
     selectedMemberRows,
     selectedTemplateId,
     sendMailCc,
     senderEmail,
+    closeSendMailModal,
   ])
 
   return (
@@ -803,14 +835,6 @@ export function DealMembersTab({
                 >
                   <span>Email template</span>
                 </label>
-                <button
-                  type="button"
-                  className="um_btn_secondary contacts_send_mail_template_new_btn"
-                  onClick={goNewTemplateFromSendMail}
-                >
-                  <Plus size={15} strokeWidth={2} aria-hidden />
-                  New Template
-                </button>
               </div>
               <div className="contacts_send_mail_template_select_row">
                 <select
@@ -833,23 +857,32 @@ export function DealMembersTab({
                     <button
                       type="button"
                       className="contacts_send_mail_template_edit_btn"
-                      aria-label={`Preview ${selectedTemplate.name}`}
-                      title={`Preview ${selectedTemplate.name}`}
-                      onClick={handlePreviewTemplateFromSendMail}
+                      aria-label="View"
+                      title="View"
+                      onClick={() => openSendMailEmailPreview("view")}
                     >
                       <Eye size={16} strokeWidth={2} aria-hidden />
                     </button>
                     <button
                       type="button"
                       className="contacts_send_mail_template_edit_btn"
-                      aria-label={`Edit ${selectedTemplate.name}`}
-                      title={`Edit ${selectedTemplate.name}`}
-                      onClick={goEditTemplateFromSendMail}
+                      aria-label="Edit"
+                      title="Edit"
+                      onClick={() => openSendMailEmailPreview("edit")}
                     >
                       <Pencil size={16} strokeWidth={2} aria-hidden />
                     </button>
                   </>
                 ) : null}
+                <button
+                  type="button"
+                  className="contacts_send_mail_template_edit_btn"
+                  aria-label="New template"
+                  title="New template"
+                  onClick={goNewTemplateFromSendMail}
+                >
+                  <Plus size={16} strokeWidth={2} aria-hidden />
+                </button>
               </div>
               {emailTemplates.length === 0 ? (
                 <p className="um_hint" role="status">
@@ -872,13 +905,19 @@ export function DealMembersTab({
                 disabled={!selectedTemplateId || selectedMemberRows.length === 0}
                 onClick={handleSendMailToSelectedMembers}
               >
-                <Mail size={16} strokeWidth={2} aria-hidden />
-                Send Mail
+                <Send size={16} strokeWidth={2} aria-hidden />
+                Send
               </button>
             </div>
           </div>
         </div>
       ) : null}
+
+      <SendMailEmailPreviewModal
+        preview={sendMailEmailPreview}
+        onClose={() => setSendMailEmailPreview(null)}
+        onSaved={handleSendMailPreviewSaved}
+      />
 
       <div className="um_panel um_members_tab_panel deal_inv_table_panel">
         {loading ? (
@@ -906,8 +945,8 @@ export function DealMembersTab({
                   onClick={openSendMailModal}
                   disabled={selectedMemberRows.length === 0}
                 >
-                  <Mail size={18} strokeWidth={2} aria-hidden />
-                  Send Mail
+                  <Send size={18} strokeWidth={2} aria-hidden />
+                  Send mail
                 </button>
                 <button
                   type="button"

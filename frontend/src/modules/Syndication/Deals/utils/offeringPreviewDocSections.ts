@@ -43,6 +43,19 @@ export type NestedPreviewDocument = {
    * Preview shows: "{that section's label} — {filename}".
    */
   lpDisplaySectionId: string
+  /**
+   * Optional LP audience: deal investor-class ids. Empty means no class-specific selection.
+   */
+  sharedDealClassIds: string[]
+  /**
+   * Optional LP audience: deal investor row ids. Empty means no investor-specific selection.
+   */
+  sharedInvestorIds: string[]
+  /**
+   * When true, the document is intended for every investor on the deal (deal members and
+   * contacts from the Investors list). Individual `sharedInvestorIds` are ignored.
+   */
+  sharedWithAllInvestors: boolean
 }
 
 export type OfferingPreviewSection = {
@@ -72,6 +85,13 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v)
 }
 
+function parseIdListField(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    .map((s) => s.trim())
+}
+
 function normalizeNested(
   raw: unknown,
   parentSectionId: string,
@@ -99,7 +119,21 @@ function normalizeNested(
   const refRaw = raw.lpDisplaySectionId
   const lpDisplaySectionId =
     typeof refRaw === "string" && refRaw.trim() ? refRaw.trim() : parentSectionId
-  return { id, name, url, dateAdded, lpDisplaySectionId }
+  const sharedDealClassIds = parseIdListField(raw.sharedDealClassIds)
+  const sharedWithAllInvestors = Boolean(raw.sharedWithAllInvestors)
+  const sharedInvestorIds = sharedWithAllInvestors
+    ? []
+    : parseIdListField(raw.sharedInvestorIds)
+  return {
+    id,
+    name,
+    url,
+    dateAdded,
+    lpDisplaySectionId,
+    sharedDealClassIds,
+    sharedInvestorIds,
+    sharedWithAllInvestors,
+  }
 }
 
 function normalizeSection(raw: unknown): OfferingPreviewSection | null {
@@ -167,10 +201,18 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
       ...s,
       sharedWithScope,
       visibility: sectionSharedWithDisplay(sharedWithScope),
-      nestedDocuments: s.nestedDocuments.map((d) => ({
-        ...d,
-        lpDisplaySectionId: ids.has(d.lpDisplaySectionId) ? d.lpDisplaySectionId : s.id,
-      })),
+      nestedDocuments: s.nestedDocuments.map((d) => {
+        const sharedWithAllInvestors = Boolean(d.sharedWithAllInvestors)
+        return {
+          ...d,
+          lpDisplaySectionId: ids.has(d.lpDisplaySectionId) ? d.lpDisplaySectionId : s.id,
+          sharedDealClassIds: parseIdListField(d.sharedDealClassIds),
+          sharedInvestorIds: sharedWithAllInvestors
+            ? []
+            : parseIdListField(d.sharedInvestorIds),
+          sharedWithAllInvestors,
+        }
+      }),
     }
   })
 }
@@ -197,6 +239,9 @@ function migrateFlatToSections(flat: OfferingPreviewDocument[]): OfferingPreview
     url: d.url,
     dateAdded: d.dateAdded?.trim() || "—",
     lpDisplaySectionId: sectionId,
+    sharedDealClassIds: [],
+    sharedInvestorIds: [],
+    sharedWithAllInvestors: false,
   }))
   const datePool = nestedDocuments.map((d) => d.dateAdded).filter((d) => d !== "—")
   const dateAdded =

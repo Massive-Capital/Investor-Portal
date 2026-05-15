@@ -11,11 +11,13 @@ import { scheduleOfferingInvestorPreviewServerSync } from "../../utils/offeringP
 
 type DealDocumentsTabProps = {
   dealId: string
+  investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
 }
 
 export function DealDocumentsTab({
   dealId,
+  investorsListRefreshKey = 0,
   onOfferingPreviewSynced,
 }: DealDocumentsTabProps) {
   const [documentsInvestorLink, setDocumentsInvestorLink] = useState(true)
@@ -51,11 +53,14 @@ export function DealDocumentsTab({
               <strong>Make it visible to Investors</strong> must be on, or
               documents won’t show in <strong>Preview offering</strong> or on the{" "}
               <strong>shared investor link</strong>. In each section’s table,{" "}
-              <strong>Shared with</strong> (scroll the table on narrow screens)
+              <strong>Visibility</strong> (scroll the table on narrow screens)
               means: <strong>Offering page</strong> — preview, shared link, and
               portal; <strong>LP Investor</strong> —{" "}
               <em>only</em> when an LP is logged in on the deal in the portal, not
-              on the no-login shared link.
+              on the no-login shared link. Use <strong>Shared With</strong> on each
+              file to pick deal classes, <strong>All Investors</strong>, and/or
+              individual investors (deal members appear there as investors; name and
+              email) when you want to note who the document is for.
             </p>
           </div>
           <label className="deal_documents_tab_investor_toggle">
@@ -82,6 +87,7 @@ export function DealDocumentsTab({
           <DocumentsSection
             key={dealId}
             dealId={dealId}
+            investorsListRefreshKey={investorsListRefreshKey}
             onOfferingPreviewSynced={onOfferingPreviewSynced}
           />
         </section>

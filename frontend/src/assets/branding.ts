@@ -2,6 +2,7 @@
 import sxLogoSrc from "./images/sx_logo_without_bg.png"
 // import sidenavSxLogo from "./images/sx_logo.jpg";
 import sidenavSxLogo from "./images/sx_logo_without_bg.png";
+// import sidenavSxLogo from "./images/syndicationx_high_resolution_logo.png";
 
 /**
  * Default SyndicationX product logo (`src/assets/images/sx_logo.svg`).

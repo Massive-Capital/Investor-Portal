@@ -161,6 +161,7 @@ export function OfferingOverviewSection({
     stateFromDetail(detail),
   )
   const [saving, setSaving] = useState(false)
+  const [dealNameError, setDealNameError] = useState<string | undefined>()
 
   const reloadClasses = useCallback(async () => {
     const list = await fetchDealInvestorClasses(detail.id)
@@ -281,7 +282,9 @@ export function OfferingOverviewSection({
           offeringOverviewAssetIds: draft.selectedAssetIds,
         })
         if (!res.ok) {
-          toast.error(res.message)
+          const nameErr = res.fieldErrors?.deal_name
+          if (nameErr) setDealNameError(nameErr)
+          toast.error(nameErr ?? res.message)
           return
         }
         dealOut = res.deal
@@ -511,12 +514,26 @@ export function OfferingOverviewSection({
                   value={draft.dealName}
                   required
                   aria-required
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setDealNameError(undefined)
                     setDraft((d) => ({ ...d, dealName: e.target.value }))
-                  }
+                  }}
                   autoComplete="off"
                   aria-label="Offering name"
+                  aria-invalid={dealNameError ? true : undefined}
+                  aria-describedby={
+                    dealNameError ? `deal-ov-oname-err-${id}` : undefined
+                  }
                 />
+                {dealNameError ? (
+                  <p
+                    id={`deal-ov-oname-err-${id}`}
+                    className="deals_create_field_error"
+                    role="alert"
+                  >
+                    {dealNameError}
+                  </p>
+                ) : null}
               </div>
             </div>
 

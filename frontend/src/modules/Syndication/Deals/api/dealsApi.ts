@@ -886,7 +886,8 @@ export async function patchDealOfferingOverview(
   dealId: string,
   payload: OfferingOverviewPayload,
 ): Promise<
-  { ok: true; deal: DealDetailApi } | { ok: false; message: string }
+  | { ok: true; deal: DealDetailApi }
+  | { ok: false; message: string; fieldErrors?: Record<string, string> }
 > {
   const base = getApiV1Base()
   if (!base)
@@ -913,9 +914,17 @@ export async function patchDealOfferingOverview(
     const data = (await res.json().catch(() => ({}))) as {
       deal?: DealDetailApi & Record<string, unknown>
       message?: string
+      errors?: Record<string, string>
     }
     if (res.status === 200 && data.deal) {
       return { ok: true, deal: normalizeDealDetailApi(data.deal) }
+    }
+    if (res.status === 400 && data.errors) {
+      return {
+        ok: false,
+        message: data.message || "Validation failed",
+        fieldErrors: data.errors,
+      }
     }
     return {
       ok: false,
@@ -2146,6 +2155,63 @@ export async function postDealMemberInvitationEmail(
       return { ok: false, message: msg || "Could not send email" }
     }
     return { ok: true }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type PostDealDocumentSharedNotificationResult =
+  | { ok: true; sent: number; failures: { email: string; message: string }[] }
+  | { ok: false; message: string }
+
+/**
+ * POST `/deals/:dealId/documents/send-shared-notification` — notifies recipients
+ * that selected document(s) were shared with them (server SMTP).
+ */
+export async function postDealDocumentSharedNotification(
+  dealId: string,
+  input: {
+    recipients: { to_email: string; member_display_name?: string }[]
+    document_names: string[]
+  },
+): Promise<PostDealDocumentSharedNotificationResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/documents/send-shared-notification`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          recipients: input.recipients.map((r) => ({
+            to_email: r.to_email.trim(),
+            member_display_name: r.member_display_name?.trim() ?? "",
+          })),
+          document_names: input.document_names,
+        }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: unknown
+      sent?: unknown
+      failures?: { email: string; message: string }[]
+    }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return { ok: false, message: msg || "Could not send notification emails" }
+    }
+    const sent =
+      typeof data.sent === "number" && Number.isFinite(data.sent) ? data.sent : 0
+    const failures = Array.isArray(data.failures) ? data.failures : []
+    return { ok: true, sent, failures }
   } catch {
     return { ok: false, message: "Network error" }
   }

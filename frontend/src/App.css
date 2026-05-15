@@ -170,6 +170,7 @@ button {
   /* 2.5rem / 0.9375rem font ≈ 2.6667em; padding 0.5/0.75 rem as fraction of field font */
   /* min-height: 2.6666667em; */
   padding: 0.5333333em 0.8em;
+  border: 1px solid #d1d5db;
 }
 
 .app_shell textarea {

@@ -274,6 +274,65 @@
   color: var(--portal-primary, #2563eb);
 }
 
+.email_preview_header_lines_edit {
+  margin: 0;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+}
+
+.email_preview_edit_fields {
+  padding: 0.85rem 1.15rem 0;
+}
+
+.email_preview_edit_label {
+  display: block;
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_preview_edit_subject_input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.35rem;
+}
+
+.email_preview_body_len_hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.email_preview_quill_host {
+  min-height: 180px;
+  max-height: min(40vh, 22rem);
+  margin-bottom: 0.75rem;
+  overflow-y: auto;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--portal-surface, #fff);
+}
+
+.email_preview_quill_host .ql-toolbar {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.send_mail_preview_modal_footer {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.email_preview_save_spinner {
+  animation: email_preview_spin 0.85s linear infinite;
+}
+
+@keyframes email_preview_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 :root[data-theme="dark"] .email_preview_sheet {
   box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
 }
@@ -1602,16 +1661,9 @@
 .contacts_send_mail_template_head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.6em;
   margin-bottom: 0.35em;
-}
-
-.contacts_send_mail_template_new_btn {
-  padding: 0.25em 0.6em;
-  min-height: 2em;
-  font-size: 0.8125em;
-  gap: 0.35em;
 }
 
 .contacts_send_mail_template_select_row {

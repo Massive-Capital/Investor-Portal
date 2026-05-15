@@ -32,9 +32,18 @@ import { dealAssetRelativePathToUploadsUrl } from "../../../../../common/utils/a
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import "../../deals-list.css"
 import {
+  fetchDealInvestorClasses,
+  fetchDealInvestors,
   postDealOfferingDocumentUploads,
   type DealDetailApi,
 } from "../../api/dealsApi"
+import type { DealInvestorClass } from "../../types/deal-investor-class.types"
+import type { DealInvestorRow } from "../../types/deal-investors.types"
+import {
+  DocumentSharedWithPicker,
+  sharedAudienceSearchBlob,
+  toggleIdInList,
+} from "./DocumentSharedWithPicker"
 import {
   readOfferingPreviewSections,
   sectionDisplayLabel,
@@ -48,6 +57,7 @@ import { scheduleOfferingInvestorPreviewServerSync } from "../../utils/offeringP
 
 interface DocumentsSectionProps {
   dealId: string
+  investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
 }
 
@@ -139,6 +149,7 @@ function revokeBlobUrlIfOrphaned(
 
 export function DocumentsSection({
   dealId,
+  investorsListRefreshKey = 0,
   onOfferingPreviewSynced,
 }: DocumentsSectionProps) {
   const addSectionTitleId = useId()
@@ -162,6 +173,8 @@ export function DocumentsSection({
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [uploadDocsError, setUploadDocsError] = useState<string | null>(null)
   const [documentUploadBusy, setDocumentUploadBusy] = useState(false)
+  const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
+  const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
   const onSyncedRef = useRef(onOfferingPreviewSynced)
   onSyncedRef.current = onOfferingPreviewSynced
 
@@ -170,6 +183,28 @@ export function DocumentsSection({
     setExpandedSections({})
     setCheckedDocsBySection({})
   }, [dealId])
+
+  useEffect(() => {
+    const id = dealId.trim()
+    if (!id) {
+      setDealClasses([])
+      setInvestorRows([])
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const [classes, payload] = await Promise.all([
+        fetchDealInvestorClasses(id),
+        fetchDealInvestors(id),
+      ])
+      if (cancelled) return
+      setDealClasses(classes)
+      setInvestorRows(payload.investors)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [dealId, investorsListRefreshKey])
 
   const toggleSection = useCallback((sectionId: string) => {
     setExpandedSections((prev) => ({
@@ -280,6 +315,9 @@ export function DocumentsSection({
                 url: stored || null,
                 dateAdded: formatDateAdded(),
                 lpDisplaySectionId: newSectionId,
+                sharedDealClassIds: [],
+                sharedInvestorIds: [],
+                sharedWithAllInvestors: false,
               }
             })
           } catch (err) {
@@ -379,6 +417,9 @@ export function DocumentsSection({
               url: stored || null,
               dateAdded: formatDateAdded(),
               lpDisplaySectionId: "",
+              sharedDealClassIds: [],
+              sharedInvestorIds: [],
+              sharedWithAllInvestors: false,
             }
           })
         } catch (err) {
@@ -446,6 +487,9 @@ export function DocumentsSection({
         ...doc,
         id: nid,
         name: `${doc.name.replace(/\s*\(copy\)\s*$/i, "")} (copy)`,
+        sharedDealClassIds: [...doc.sharedDealClassIds],
+        sharedInvestorIds: [...doc.sharedInvestorIds],
+        sharedWithAllInvestors: doc.sharedWithAllInvestors,
       }
       setSections((prev) =>
         prev.map((s) =>
@@ -471,14 +515,24 @@ export function DocumentsSection({
         ...s.nestedDocuments.flatMap((d) => {
           const ref =
             sections.find((sec) => sec.id === d.lpDisplaySectionId) ?? s
-          return [d.name, sectionDisplayLabel(ref)]
+          return [
+            d.name,
+            sectionDisplayLabel(ref),
+            sharedAudienceSearchBlob(
+              d.sharedDealClassIds,
+              d.sharedInvestorIds,
+              d.sharedWithAllInvestors,
+              dealClasses,
+              investorRows,
+            ),
+          ]
         }),
       ]
         .join(" ")
         .toLowerCase()
       return blob.includes(q)
     })
-  }, [sections, query])
+  }, [sections, query, dealClasses, investorRows])
 
   const emptyLabel =
     sections.length === 0
@@ -618,9 +672,26 @@ export function DocumentsSection({
                               <th className="deal_docs_ui_th deal_docs_ui_th_date" scope="col">
                                 Date added
                               </th>
+                              <th
+                                className="deal_docs_ui_th deal_docs_ui_th_shared_entities"
+                                scope="col"
+                              >
+                                <DocumentsTableColumnHeader
+                                  label="Shared With"
+                                  hint={
+                                    <p className="deals_table_header_tooltip_p">
+                                      Pick deal classes, <strong>All Investors</strong>, and/or
+                                      individual investors (deal members appear in this list as
+                                      investors). Leave everything unchecked to use the section&apos;s
+                                      visibility only. Use the mail icon to notify recipients by
+                                      email.
+                                    </p>
+                                  }
+                                />
+                              </th>
                               <th className="deal_docs_ui_th deal_docs_ui_th_shared" scope="col">
                                 <DocumentsTableColumnHeader
-                                  label="Shared with"
+                                  label="Visibility"
                                   hint={
                                     <>
                                       <p className="deals_table_header_tooltip_p">
@@ -735,12 +806,96 @@ export function DocumentsSection({
                                   <td className="deal_docs_ui_td deal_docs_ui_td_date">
                                     {d.dateAdded}
                                   </td>
+                                  <td className="deal_docs_ui_td deal_docs_ui_td_shared_entities">
+                                    <DocumentSharedWithPicker
+                                      dealId={dealId}
+                                      idPrefix={`${section.id}-${d.id}`}
+                                      classIds={d.sharedDealClassIds}
+                                      investorIds={d.sharedInvestorIds}
+                                      allInvestors={d.sharedWithAllInvestors}
+                                      dealClasses={dealClasses}
+                                      investors={investorRows}
+                                      docName={d.name}
+                                      onClassChange={(classId, checked) => {
+                                        setSections((prev) =>
+                                          prev.map((s) =>
+                                            s.id !== section.id
+                                              ? s
+                                              : {
+                                                  ...s,
+                                                  nestedDocuments: s.nestedDocuments.map(
+                                                    (n) =>
+                                                      n.id !== d.id
+                                                        ? n
+                                                        : {
+                                                            ...n,
+                                                            sharedDealClassIds: toggleIdInList(
+                                                              n.sharedDealClassIds,
+                                                              classId,
+                                                              checked,
+                                                            ),
+                                                          },
+                                                  ),
+                                                },
+                                          ),
+                                        )
+                                      }}
+                                      onAllInvestorsChange={(checked) => {
+                                        setSections((prev) =>
+                                          prev.map((s) =>
+                                            s.id !== section.id
+                                              ? s
+                                              : {
+                                                  ...s,
+                                                  nestedDocuments: s.nestedDocuments.map(
+                                                    (n) =>
+                                                      n.id !== d.id
+                                                        ? n
+                                                        : {
+                                                            ...n,
+                                                            sharedWithAllInvestors: checked,
+                                                            sharedInvestorIds: checked
+                                                              ? []
+                                                              : n.sharedInvestorIds,
+                                                          },
+                                                  ),
+                                                },
+                                          ),
+                                        )
+                                      }}
+                                      onInvestorChange={(investorRowId, checked) => {
+                                        setSections((prev) =>
+                                          prev.map((s) =>
+                                            s.id !== section.id
+                                              ? s
+                                              : {
+                                                  ...s,
+                                                  nestedDocuments: s.nestedDocuments.map(
+                                                    (n) =>
+                                                      n.id !== d.id
+                                                        ? n
+                                                        : {
+                                                            ...n,
+                                                            sharedWithAllInvestors: false,
+                                                            sharedInvestorIds: toggleIdInList(
+                                                              n.sharedInvestorIds,
+                                                              investorRowId,
+                                                              checked,
+                                                            ),
+                                                          },
+                                                  ),
+                                                },
+                                          ),
+                                        )
+                                      }}
+                                    />
+                                  </td>
                                   <td className="deal_docs_ui_td deal_docs_ui_td_shared">
                                     <div className="deal_docs_ui_shared">
                                       <div className="deal_docs_ui_shared_body">
                                         <select
                                           className="deal_docs_ui_pill_select deal_docs_ui_shared_select"
-                                          aria-label={`Shared with for ${section.sectionLabel}`}
+                                          aria-label={`Visibility for ${section.sectionLabel}`}
                                           value={section.sharedWithScope}
                                           onChange={(e) => {
                                             const v = e.target.value as SectionSharedWithScope
