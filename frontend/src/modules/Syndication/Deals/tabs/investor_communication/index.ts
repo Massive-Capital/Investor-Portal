@@ -1,1 +1,7 @@
-/** Reserved for deal detail tab id `investor_communication` (see `DealDetailPage` `DEAL_DETAIL_TABS`). */
+export { InvestorCommunicationTab } from "./InvestorCommunicationTab"
+export type { InvestorCommunicationTabProps } from "./InvestorCommunicationTab"
+export { DealSendMailModal } from "./DealSendMailModal"
+export type {
+  InvestorCommunicationMailRow,
+  InvestorCommunicationMailStatus,
+} from "./investor-communication.types"

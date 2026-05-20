@@ -17,7 +17,10 @@ import {
   SESSION_BEARER_KEY,
   SESSION_USER_DETAILS_KEY,
 } from "../../../common/auth/sessionKeys";
+import { isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
+import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePath";
+import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import "./signin_form.css";
 
 const SigninForm = () => {
@@ -78,7 +81,10 @@ const SigninForm = () => {
       } else {
         sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
       }
-      const state = location.state as { from?: string } | undefined;
+      const state = location.state as
+        | { from?: string; investNow?: boolean }
+        | undefined;
+      const storedIntent = consumeInvestNowIntent();
       const from = state?.from;
       let redirectTo =
         typeof from === "string" &&
@@ -86,9 +92,21 @@ const SigninForm = () => {
         !from.startsWith("//") &&
         from !== "/signin"
           ? from
-          : "/dashboard";
-      if (redirectTo === "/") redirectTo = "/dashboard";
-      navigate(redirectTo, { replace: true });
+          : isPlatformAdmin()
+            ? "/metrics"
+            : "/dashboard";
+      if (storedIntent?.dealId) {
+        redirectTo = dealWorkspacePath(storedIntent.dealId);
+      }
+      if (redirectTo === "/") {
+        redirectTo = isPlatformAdmin() ? "/metrics" : "/dashboard";
+      }
+      const wantsInvestNow =
+        state?.investNow === true || Boolean(storedIntent?.dealId);
+      const postSignInState = wantsInvestNow
+        ? { investNow: true as const }
+        : undefined;
+      navigate(redirectTo, { replace: true, state: postSignInState });
     } catch {
       setError("Unable to connect. Please try again later.");
     } finally {

@@ -41,6 +41,8 @@ export interface DealMemberRowActionsProps {
    * When false, “Copy offering link” is disabled (e.g. visibility is not “Only visible with link”).
    */
   offeringLinkAvailable?: boolean
+  /** Deal lifecycle is Draft — offering preview link must not be copied. */
+  offeringLinkBlockedBecauseDraft?: boolean
   /** Investors tab: advance investment to “funding instructions sent” (optional). */
   onApproveFund?: (row: DealInvestorRow) => void | Promise<void>
   /** When true, “Approve fund” is disabled (e.g. LP-only roster row or busy). */
@@ -60,6 +62,7 @@ export function DealMemberRowActions({
   draftRow = false,
   invitationMailSent = false,
   offeringLinkAvailable = false,
+  offeringLinkBlockedBecauseDraft = false,
   onApproveFund,
   approveFundDisabled = false,
   approveFundDisabledTitle,
@@ -337,9 +340,11 @@ export function DealMemberRowActions({
                     role="menuitem"
                     disabled={draftRow || !offeringLinkAvailable}
                     title={
-                      !offeringLinkAvailable
-                        ? 'Set visibility to “Only visible with link” in Offering Details to enable this link.'
-                        : undefined
+                      offeringLinkBlockedBecauseDraft
+                        ? "Change the deal stage from Draft before copying an offering preview link."
+                        : !offeringLinkAvailable
+                          ? 'Set visibility to “Only visible with link” in Offering Details to enable this link.'
+                          : undefined
                     }
                     onClick={() => {
                       if (draftRow || !offeringLinkAvailable) return

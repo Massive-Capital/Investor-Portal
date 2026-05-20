@@ -187,3 +187,24 @@ export async function updateContactEmailTemplateForViewer(params: {
 
   return updated ?? null;
 }
+
+export async function deleteContactEmailTemplateForViewer(params: {
+  viewerUserId: string;
+  viewerRole?: string | null;
+  templateId: string;
+}): Promise<boolean> {
+  const existing = await getContactEmailTemplateById(params.templateId);
+  if (!existing) return false;
+  const canAccess = await viewerCanAccessTemplate(
+    params.viewerUserId,
+    params.viewerRole,
+    existing,
+  );
+  if (!canAccess) return false;
+
+  const result = await db
+    .delete(contactEmailTemplate)
+    .where(eq(contactEmailTemplate.id, params.templateId))
+    .returning({ id: contactEmailTemplate.id });
+  return result.length > 0;
+}

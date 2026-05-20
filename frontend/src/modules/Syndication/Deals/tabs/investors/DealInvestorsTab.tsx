@@ -17,7 +17,7 @@ import {
   Tag,
   UserRound,
   X,
-} from "lucide-react"
+} from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -27,50 +27,50 @@ import {
   useMemo,
   useRef,
   useState,
-} from "react"
-import { AddInvestmentModal } from "../deal_members"
+} from "react";
+import { AddInvestmentModal } from "../deal_members";
 import {
   addInvestmentFormToRow,
   ADD_MEMBER_DRAFT_ROW_ID,
   buildAddMemberDraftInvestorRow,
   investorRowShowsDraftBadge,
-} from "../deal_members/add-investment/addMemberDraftInvestorRow"
+} from "../deal_members/add-investment/addMemberDraftInvestorRow";
 import {
   ADD_MEMBER_DRAFT_UPDATED_EVENT,
   clearAddMemberDraft,
   isAddMemberSessionDraftRedundantWithApiRows,
   loadAddMemberDraft,
-} from "../deal_members/add-investment/addMemberFormDraftStorage"
-import { notifyDealInvestorsExportAudit } from "../../api/dealInvestorsExportNotifyApi"
-import { InviteMailStatusBadge } from "./InviteMailStatusBadge"
-import { DealMemberUserCell } from "./DealMemberUserCell"
-import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCell"
-import { DealInvestorRoleCell } from "./DealInvestorRoleBadge"
-import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal"
-import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay"
-import { DealMemberRowActions } from "../deal_members/components/DealMemberRowActions"
-import { AddLpInvestorModal } from "./AddLpInvestorModal"
-import { DealInvestorViewModal } from "./DealInvestorViewModal"
-import type { AddInvestmentFormValues } from "../deal_members"
+} from "../deal_members/add-investment/addMemberFormDraftStorage";
+import { notifyDealInvestorsExportAudit } from "../../api/dealInvestorsExportNotifyApi";
+import { InviteMailStatusBadge } from "./InviteMailStatusBadge";
+import { DealMemberUserCell } from "./DealMemberUserCell";
+import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCell";
+import { DealInvestorRoleCell } from "./DealInvestorRoleBadge";
+import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal";
+import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay";
+import { DealMemberRowActions } from "../deal_members/components/DealMemberRowActions";
+import { AddLpInvestorModal } from "./AddLpInvestorModal";
+import { DealInvestorViewModal } from "./DealInvestorViewModal";
+import type { AddInvestmentFormValues } from "../deal_members";
 import {
   displayInvestorCommittedAmount,
   fundedAmountForTotalFundedKpi,
   formatMoneyFieldDisplay,
   investorRowCommittedAmountIsZero,
   parseMoneyDigits,
-} from "../../utils/offeringMoneyFormat"
+} from "../../utils/offeringMoneyFormat";
 import {
   DataTable,
   type DataTableColumn,
-} from "../../../../../common/components/data-table/DataTable"
-import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
-import { toast } from "../../../../../common/components/Toast"
-import { ToolStyleCard } from "../../../../../common/components/tool-style-card/ToolStyleCard"
-import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
+} from "../../../../../common/components/data-table/DataTable";
+import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip";
+import { toast } from "../../../../../common/components/Toast";
+import { ToolStyleCard } from "../../../../../common/components/tool-style-card/ToolStyleCard";
+import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl";
 import {
   upsertRuntimeForViewerFromInvestorsPayload,
   upsertRuntimeFromViewerAddInvestmentForm,
-} from "@/modules/Investing/pages/investments/upsertRuntimeFromDealSession"
+} from "@/modules/Investing/pages/investments/upsertRuntimeFromDealSession";
 import {
   fetchDealInvestorClasses,
   fetchDealInvestors,
@@ -80,144 +80,145 @@ import {
   putDealInvestment,
   putDealLpInvestor,
   type DealDetailApi,
-} from "../../api/dealsApi"
-import type { DealInvestorClass } from "../../types/deal-investor-class.types"
+} from "../../api/dealsApi";
+import type { DealInvestorClass } from "../../types/deal-investor-class.types";
 import {
   investorProfileIdFromLabel,
   investorRoleSelectValueFromStored,
   isLpInvestorRole,
-} from "../../constants/investor-profile"
-import { INVESTMENT_STATUS_APPROVE_FUND } from "../../constants/investment-status"
-import { formatMemberUsername } from "../../../usermanagement/memberAdminShared"
+} from "../../constants/investor-profile";
+import { INVESTMENT_STATUS_APPROVE_FUND } from "../../constants/investment-status";
+import { formatMemberUsername } from "../../../usermanagement/memberAdminShared";
 import {
   buildDealInvestorsExportCsv,
   downloadDealExportCsv,
   exportAuditLinesForDealInvestorRows,
-} from "../../utils/dealInvestorExportCsv"
+} from "../../utils/dealInvestorExportCsv";
 import {
   dealInvestorStatusDisplayLabel,
   investorFundedColumnLabel,
   investorRowIsFundApproved,
-} from "../../utils/dealInvestorTableDisplay"
+} from "../../utils/dealInvestorTableDisplay";
 import type {
   DealInvestorRow,
   DealInvestorsKpis,
   DealInvestorsPayload,
-} from "../../types/deal-investors.types"
+} from "../../types/deal-investors.types";
 import {
   loadEmailTemplates,
   type EmailTemplateRow,
-} from "../../../contacts/emailTemplatesStorage"
+} from "../../../contacts/emailTemplatesStorage";
 import {
   SendMailEmailPreviewModal,
   type SendMailEmailPreviewPayload,
-} from "../../../contacts/components/SendMailEmailPreviewModal"
+} from "../../../contacts/components/SendMailEmailPreviewModal";
 import {
   getCurrentSessionUserEmail,
   openSendMailDraft,
   parseEmailInput,
-} from "../../../../../common/features/send-mail"
-import { useNavigate } from "react-router-dom"
-import "../../../usermanagement/user_management.css"
-import "../../../Dashboard/sponsor-dashboard.css"
-import "../../deals-list.css"
-import "../../deal-investors-tab.css"
-import "../deal_members/tab/deal-members.css"
-import "../../../contacts/contacts.css"
+} from "../../../../../common/features/send-mail";
+import { useNavigate } from "react-router-dom";
+import "../../../usermanagement/user_management.css";
+import "../../../Dashboard/sponsor-dashboard.css";
+import "../../deals-list.css";
+import "../../deal-investors-tab.css";
+import "../deal_members/tab/deal-members.css";
+import "../../../contacts/contacts.css";
 
 export interface DealInvestorsTabHandle {
-  openViewInvestor: (row: DealInvestorRow) => void
-  openEditInvestor: (row: DealInvestorRow) => void
+  openViewInvestor: (row: DealInvestorRow) => void;
+  openEditInvestor: (row: DealInvestorRow) => void;
   /** Refetch LP investors from the API without remounting (e.g. after member delete). */
-  refetchInvestors: () => Promise<void>
+  refetchInvestors: () => Promise<void>;
 }
 
 /** Same compact “Add Investors” modal as add — `deal_lp_investor` rows, not full investment form. */
 function shouldUseLpInvestorsModalForEdit(row: DealInvestorRow): boolean {
-  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false
-  if (row.investorKind === "lp_roster") return true
-  if (row.investorKind === "investment") return false
-  return isLpInvestorRole(row.investorRole ?? "")
+  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false;
+  if (row.investorKind === "lp_roster") return true;
+  if (row.investorKind === "investment") return false;
+  return isLpInvestorRole(row.investorRole ?? "");
 }
 
 /** LP tab row, or add-member draft with a contact picked but role not set yet. */
 function isLpInvestorsTabRow(r: DealInvestorRow): boolean {
-   if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
-    if (isLpInvestorRole(r.investorRole ?? "")) return true
-    const role = String(r.investorRole ?? "").trim()
-    const unset = !role || role === "—"
-    return unset && Boolean(r.contactId?.trim())
+  if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
+    if (isLpInvestorRole(r.investorRole ?? "")) return true;
+    const role = String(r.investorRole ?? "").trim();
+    const unset = !role || role === "—";
+    return unset && Boolean(r.contactId?.trim());
   }
-  return isLpInvestorRole(r.investorRole ?? "")
+  return isLpInvestorRole(r.investorRole ?? "");
 }
 
 interface DealInvestorsTabProps {
-  dealId: string
-  dealName: string
+  dealId: string;
+  dealName: string;
   /** When set, KPI cards can show offering size from deal / investor classes if API KPIs are empty. */
-  dealDetail?: DealDetailApi | null
-  addInvestmentOpen: boolean
+  dealDetail?: DealDetailApi | null;
+  addInvestmentOpen: boolean;
   /** Hide KPI/table; only host Add Investment modal (e.g. when Deal Members tab is open). */
-  modalOnly?: boolean
-  onAddInvestmentClose: () => void
+  modalOnly?: boolean;
+  onAddInvestmentClose: () => void;
   /** Opens the full add/edit investment modal (Deal Members flow + draft “Continue editing”). */
-  onOpenFullInvestmentModal?: () => void
+  onOpenFullInvestmentModal?: () => void;
   /** Mirrors deal detail state: drives “Add Investor” vs “Add Member” modal title. */
-  addInvestmentEntry?: "member" | "investor"
+  addInvestmentEntry?: "member" | "investor";
   /**
    * Add mode: restore autosaved add-member draft (default true). Deal detail sets false for
    * “Add Member” (empty form without clearing the table draft row); draft “Continue editing” uses true.
    */
-  restoreAddMemberSessionDraft?: boolean
+  restoreAddMemberSessionDraft?: boolean;
   /** Called after investors are added or updated — refreshes the Deal Members table only. */
-  onInvestorsChanged?: () => void
+  onInvestorsChanged?: () => void;
   /** Send investor invitation email from the Investors table row menu. */
-  onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>
+  onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>;
   /** Copy offering link (same as Deal Members). */
-  onCopyOfferingLink?: (row: DealInvestorRow) => void
+  onCopyOfferingLink?: (row: DealInvestorRow) => void;
   /**
    * When true, “Copy offering link” is enabled (Offering Details → “Only visible with link”).
    */
-  offeringLinkAvailable?: boolean
+  offeringLinkAvailable?: boolean;
+  offeringLinkBlockedBecauseDraft?: boolean;
   /** Remove member / roster row (same as Deal Members). */
-  onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>
+  onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>;
   /** Fires when Add or Edit investment modal is open — hide session draft row in Deal Members table. */
-  onSharedInvestmentModalOpenChange?: (open: boolean) => void
+  onSharedInvestmentModalOpenChange?: (open: boolean) => void;
   /**
    * Increment when investors change outside this tab (e.g. LP “Invest now” on the deal)
    * so the table and KPIs refetch from the API.
    */
-  investorsListRefreshKey?: number
+  investorsListRefreshKey?: number;
   /**
    * After send-invitation API succeeds, rows marked here show Mail sent / Re-send
    * until the list response includes `send_invitation_mail` / `invitationMailSent`.
    */
-  invitationMailStatusByRowId?: Record<string, true>
+  invitationMailStatusByRowId?: Record<string, true>;
 }
 
 function parseCommittedCellToNumber(s: string | undefined): number {
-  if (!s || s === "—") return 0
-  const n = parseFloat(String(s).replace(/[^0-9.-]/g, ""))
-  return Number.isFinite(n) ? n : 0
+  if (!s || s === "—") return 0;
+  const n = parseFloat(String(s).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function formatUsdKpiDisplay(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—"
+  if (!Number.isFinite(n) || n <= 0) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
-  }).format(n)
+  }).format(n);
 }
 
 /** Total Funded tile: always show USD (including `$0`); never em dash. */
 function formatUsdKpiTotalFunded(n: number): string {
-  const v = Number.isFinite(n) ? Math.max(0, n) : 0
+  const v = Number.isFinite(n) ? Math.max(0, n) : 0;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
-  }).format(v)
+  }).format(v);
 }
 
 /**
@@ -231,22 +232,24 @@ function buildDealClassNamesLine(
   const fromClasses = investorClasses
     .map((c) => String(c.name ?? "").trim())
     .filter(Boolean)
-    .join(", ")
-  if (fromClasses) return fromClasses
-  const raw = dealDetail?.listRow?.investorClass?.trim()
-  if (!raw || raw === "—") return ""
+    .join(", ");
+  if (fromClasses) return fromClasses;
+  const raw = dealDetail?.listRow?.investorClass?.trim();
+  if (!raw || raw === "—") return "";
   return raw
     .split(/[;,]/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .join(", ")
+    .join(", ");
 }
 
-function dealInvestorRowToFormValues(row: DealInvestorRow): AddInvestmentFormValues {
+function dealInvestorRowToFormValues(
+  row: DealInvestorRow,
+): AddInvestmentFormValues {
   const profileId =
     row.profileId?.trim() ||
     investorProfileIdFromLabel(row.entitySubtitle) ||
-    ""
+    "";
   return {
     offeringId: row.offeringId?.trim() || "primary",
     contactId: row.contactId ?? "",
@@ -271,39 +274,39 @@ function dealInvestorRowToFormValues(row: DealInvestorRow): AddInvestmentFormVal
       typeof row.fundApproved === "boolean"
         ? row.fundApproved
         : investorRowIsFundApproved(row),
-  }
+  };
 }
 
 function investorRowSupportsApproveFund(row: DealInvestorRow): boolean {
-  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false
-  if (row.investorKind === "lp_roster") return false
-  return true
+  if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false;
+  if (row.investorKind === "lp_roster") return false;
+  return true;
 }
 
 /** True when status is already at/after “Approve fund” or terminal — action disabled. */
 function investorRowApproveFundNotApplicable(row: DealInvestorRow): boolean {
-  if (investorRowIsFundApproved(row)) return true
-  const s = (row.status ?? "").trim()
-  if (!s || s === "—") return false
-  if (s.startsWith("Inactive")) return true
-  if (s.startsWith("Canceled")) return true
-  return false
+  if (investorRowIsFundApproved(row)) return true;
+  const s = (row.status ?? "").trim();
+  if (!s || s === "—") return false;
+  if (s.startsWith("Inactive")) return true;
+  if (s.startsWith("Canceled")) return true;
+  return false;
 }
 
 function resolveInvestorClassLabelForRow(
   formValue: string,
   classes: DealInvestorClass[],
 ): string {
-  const t = formValue.trim()
-  if (!t) return ""
-  const byId = classes.find((c) => c.id === t)
-  if (byId) return byId.name.trim() || byId.id
-  return t
+  const t = formValue.trim();
+  if (!t) return "";
+  const byId = classes.find((c) => c.id === t);
+  if (byId) return byId.name.trim() || byId.id;
+  return t;
 }
 
 function VerifiedAccBadge({ label }: { label: string }) {
-  const t = String(label ?? "").trim() || "—"
-  const hint = t !== "—" ? t : undefined
+  const t = String(label ?? "").trim() || "—";
+  const hint = t !== "—" ? t : undefined;
   return (
     <span
       className="deal_inv_verified_badge deal_inv_verified_badge_ellipsis"
@@ -311,7 +314,7 @@ function VerifiedAccBadge({ label }: { label: string }) {
     >
       <span className="deal_inv_verified_badge_inner">{t}</span>
     </span>
-  )
+  );
 }
 
 /** Single-line cell: ellipsis + native tooltip (`title`) for overflow; full text stays in DOM for screen readers. */
@@ -321,16 +324,14 @@ function DealInvEllipsisText({
   className = "",
   title: titleProp,
 }: {
-  text: string
-  alignEnd?: boolean
-  className?: string
+  text: string;
+  alignEnd?: boolean;
+  className?: string;
   /** Optional richer tooltip (e.g. name + `addedByUserId`). */
-  title?: string
+  title?: string;
 }) {
-  const display = String(text ?? "").trim() || "—"
-  const hint =
-    titleProp?.trim() ||
-    (display !== "—" ? display : undefined)
+  const display = String(text ?? "").trim() || "—";
+  const hint = titleProp?.trim() || (display !== "—" ? display : undefined);
   return (
     <span
       className={`deal_inv_ellipsis_text${alignEnd ? " deal_inv_ellipsis_text_end" : ""}${className ? ` ${className}` : ""}`.trim()}
@@ -338,7 +339,7 @@ function DealInvEllipsisText({
     >
       {display}
     </span>
-  )
+  );
 }
 
 /**
@@ -349,35 +350,35 @@ function resolveOfferingSizeKpiAmount(
   dealDetail: DealDetailApi | null | undefined,
   investorClasses: DealInvestorClass[],
 ): number | null {
-  let sumFromClasses = 0
-  let hasAnyClassAmount = false
+  let sumFromClasses = 0;
+  let hasAnyClassAmount = false;
   for (const c of investorClasses) {
-    const n = parseMoneyDigits(String(c.offeringSize ?? ""))
+    const n = parseMoneyDigits(String(c.offeringSize ?? ""));
     if (Number.isFinite(n)) {
-      hasAnyClassAmount = true
-      sumFromClasses += n
+      hasAnyClassAmount = true;
+      sumFromClasses += n;
     }
   }
-  if (hasAnyClassAmount) return sumFromClasses
+  if (hasAnyClassAmount) return sumFromClasses;
 
   if (dealDetail?.offeringSize?.trim()) {
-    const n = parseMoneyDigits(dealDetail.offeringSize)
-    return Number.isFinite(n) ? n : null
+    const n = parseMoneyDigits(dealDetail.offeringSize);
+    return Number.isFinite(n) ? n : null;
   }
 
-  const raise = dealDetail?.listRow?.raiseTarget?.trim()
+  const raise = dealDetail?.listRow?.raiseTarget?.trim();
   if (raise && raise !== "—") {
-    const n = parseMoneyDigits(raise)
-    return Number.isFinite(n) ? n : null
+    const n = parseMoneyDigits(raise);
+    return Number.isFinite(n) ? n : null;
   }
 
-  const apiOs = base.offeringSize?.trim()
+  const apiOs = base.offeringSize?.trim();
   if (apiOs && apiOs !== "—") {
-    const n = parseMoneyDigits(apiOs)
-    return Number.isFinite(n) ? n : null
+    const n = parseMoneyDigits(apiOs);
+    return Number.isFinite(n) ? n : null;
   }
 
-  return null
+  return null;
 }
 
 /**
@@ -389,10 +390,10 @@ function resolveOfferingSizeKpi(
   dealDetail: DealDetailApi | null | undefined,
   investorClasses: DealInvestorClass[],
 ): string {
-  const amt = resolveOfferingSizeKpiAmount(base, dealDetail, investorClasses)
+  const amt = resolveOfferingSizeKpiAmount(base, dealDetail, investorClasses);
   return amt != null && Number.isFinite(amt)
     ? formatMoneyFieldDisplay(String(amt))
-    : "—"
+    : "—";
 }
 
 function DealInvestorsPopulated({
@@ -407,36 +408,40 @@ function DealInvestorsPopulated({
   onCopyOfferingLink,
   onDeleteMember,
   offeringLinkAvailable,
+  offeringLinkBlockedBecauseDraft = false,
   onRefreshInvestors,
 }: {
-  initialPayload: DealInvestorsPayload
-  dealId: string
-  dealDetail?: DealDetailApi | null
-  investorClasses: DealInvestorClass[]
-  onEditInvestor: (row: DealInvestorRow) => void
-  onAddInvestor: () => void
-  onContinueDraftEdit?: () => void
-  onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>
-  onCopyOfferingLink?: (row: DealInvestorRow) => void
-  onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>
-  offeringLinkAvailable: boolean
-  onRefreshInvestors?: () => void | Promise<void>
+  initialPayload: DealInvestorsPayload;
+  dealId: string;
+  dealDetail?: DealDetailApi | null;
+  investorClasses: DealInvestorClass[];
+  onEditInvestor: (row: DealInvestorRow) => void;
+  onAddInvestor: () => void;
+  onContinueDraftEdit?: () => void;
+  onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>;
+  onCopyOfferingLink?: (row: DealInvestorRow) => void;
+  onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>;
+  offeringLinkAvailable: boolean;
+  offeringLinkBlockedBecauseDraft?: boolean;
+  onRefreshInvestors?: () => void | Promise<void>;
 }) {
-  const navigate = useNavigate()
-  const [query, setQuery] = useState("")
-  const [exportModalOpen, setExportModalOpen] = useState(false)
-  const [rows, setRows] = useState<DealInvestorRow[]>(initialPayload.investors)
-  const [approveFundBusyId, setApproveFundBusyId] = useState<string | null>(null)
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [rows, setRows] = useState<DealInvestorRow[]>(initialPayload.investors);
+  const [approveFundBusyId, setApproveFundBusyId] = useState<string | null>(
+    null,
+  );
   const [selectedInvestorIds, setSelectedInvestorIds] = useState<Set<string>>(
     () => new Set(),
-  )
-  const [sendMailModalOpen, setSendMailModalOpen] = useState(false)
-  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRow[]>([])
-  const [selectedTemplateId, setSelectedTemplateId] = useState("")
-  const [sendMailCc, setSendMailCc] = useState("")
+  );
+  const [sendMailModalOpen, setSendMailModalOpen] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRow[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [sendMailCc, setSendMailCc] = useState("");
   const [sendMailEmailPreview, setSendMailEmailPreview] =
-    useState<SendMailEmailPreviewPayload | null>(null)
-  const investorSelectAllRef = useRef<HTMLInputElement | null>(null)
+    useState<SendMailEmailPreviewPayload | null>(null);
+  const investorSelectAllRef = useRef<HTMLInputElement | null>(null);
 
   const handleApproveFund = useCallback(
     async (row: DealInvestorRow) => {
@@ -444,75 +449,69 @@ function DealInvestorsPopulated({
         toast.error(
           "Not available",
           "Configure the API base URL to update investments.",
-        )
-        return
+        );
+        return;
       }
       if (
         !investorRowSupportsApproveFund(row) ||
         investorRowApproveFundNotApplicable(row) ||
         investorRowCommittedAmountIsZero(row)
       ) {
-        return
+        return;
       }
-      setApproveFundBusyId(row.id)
+      setApproveFundBusyId(row.id);
       try {
         const values: AddInvestmentFormValues = {
           ...dealInvestorRowToFormValues(row),
           status: INVESTMENT_STATUS_APPROVE_FUND,
           fundApproved: true,
-        }
-        const res = await putDealInvestment(dealId, row.id, values, null)
+        };
+        const res = await putDealInvestment(dealId, row.id, values, null);
         if (!res.ok) {
-          toast.error("Could not approve fund", res.message)
-          return
+          toast.error("Could not approve fund", res.message);
+          return;
         }
         if (res.mode !== "api") {
-          toast.error("Not available", "API is not configured.")
-          return
+          toast.error("Not available", "API is not configured.");
+          return;
         }
-        toast.success("Fund approved", "Investment status updated.")
-        await onRefreshInvestors?.()
+        toast.success("Fund approved", "Investment status updated.");
+        await onRefreshInvestors?.();
       } finally {
-        setApproveFundBusyId(null)
+        setApproveFundBusyId(null);
       }
     },
     [dealId, onRefreshInvestors],
-  )
+  );
 
   const kpis = useMemo((): DealInvestorsKpis => {
-    const base = initialPayload.kpis
+    const base = initialPayload.kpis;
     const sum = rows.reduce(
       (acc, r) =>
         acc + parseCommittedCellToNumber(displayInvestorCommittedAmount(r)),
       0,
-    )
-    const count = rows.length
-    const avg = count > 0 && sum > 0 ? sum / count : 0
+    );
+    const count = rows.length;
+    const avg = count > 0 && sum > 0 ? sum / count : 0;
     const approvedInvestorCount = rows.filter(
-      (r) =>
-        r.id !== ADD_MEMBER_DRAFT_ROW_ID && investorRowIsFundApproved(r),
-    ).length
+      (r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID && investorRowIsFundApproved(r),
+    ).length;
     const fundedSum = rows
       .filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID)
-      .reduce((acc, r) => acc + fundedAmountForTotalFundedKpi(r), 0)
+      .reduce((acc, r) => acc + fundedAmountForTotalFundedKpi(r), 0);
     const offeringAmt = resolveOfferingSizeKpiAmount(
       base,
       dealDetail,
       investorClasses,
-    )
+    );
     return {
       ...base,
-      offeringSize: resolveOfferingSizeKpi(
-        base,
-        dealDetail,
-        investorClasses,
-      ),
+      offeringSize: resolveOfferingSizeKpi(base, dealDetail, investorClasses),
       committed: formatUsdKpiDisplay(sum),
       totalApproved: formatUsdKpiDisplay(sum),
       /** Headcount of fund-approved investors (matches Funded column / investorRowIsFundApproved). */
       approvedCount: String(approvedInvestorCount),
-      averageApproved:
-        count > 0 && sum > 0 ? formatUsdKpiDisplay(avg) : "—",
+      averageApproved: count > 0 && sum > 0 ? formatUsdKpiDisplay(avg) : "—",
       /** Sum of funded $: full commitment when Funded is Approved; if pending re-approval after LP increase, only the approved snapshot counts until sponsor approves again. */
       totalFunded: formatUsdKpiTotalFunded(fundedSum),
       /** Offering size (same basis as tile) minus total funded; unknown offering → "—". */
@@ -520,87 +519,78 @@ function DealInvestorsPopulated({
         offeringAmt != null && Number.isFinite(offeringAmt)
           ? formatUsdKpiTotalFunded(offeringAmt - fundedSum)
           : "—",
-    }
-  }, [
-    initialPayload.kpis,
-    rows,
-    dealDetail,
-    investorClasses,
-  ])
-  const [filterClass, setFilterClass] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
-  const [filterEsign, setFilterEsign] = useState("")
-  const [filterFunding, setFilterFunding] = useState("")
-  const [filterAccreditation, setFilterAccreditation] = useState("")
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+    };
+  }, [initialPayload.kpis, rows, dealDetail, investorClasses]);
+  const [filterClass, setFilterClass] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterEsign, setFilterEsign] = useState("");
+  const [filterFunding, setFilterFunding] = useState("");
+  const [filterAccreditation, setFilterAccreditation] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   /** Count of investors with a signed date (excludes add-member draft row). */
   const documentSignedKpi = useMemo(() => {
-    const dataRows = rows.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID)
+    const dataRows = rows.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID);
     const signedCount = dataRows.filter((r) => {
-      const s = String(r.signedDate ?? "").trim()
-      return s && s !== "—"
-    }).length
-    return dataRows.length > 0
-      ? `${signedCount} of ${dataRows.length}`
-      : "—"
-  }, [rows])
+      const s = String(r.signedDate ?? "").trim();
+      return s && s !== "—";
+    }).length;
+    return dataRows.length > 0 ? `${signedCount} of ${dataRows.length}` : "—";
+  }, [rows]);
 
   useEffect(() => {
-    setRows(initialPayload.investors)
-  }, [initialPayload])
+    setRows(initialPayload.investors);
+  }, [initialPayload]);
 
   /** Classes on this deal: Offering Information API, else list row (matches deals list column). */
   const dealAllClassNamesLine = useMemo(
     () => buildDealClassNamesLine(investorClasses, dealDetail),
     [investorClasses, dealDetail],
-  )
+  );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (q) {
         const mailLabel =
-          r.invitationMailSent === true
-            ? "mail sent"
-            : "not sent"
+          r.invitationMailSent === true ? "mail sent" : "not sent";
         const haystack =
-          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel} ${investorFundedColumnLabel(r)}`.toLowerCase()
-        if (!haystack.includes(q)) return false
+          `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel} ${investorFundedColumnLabel(r)}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
       }
       if (filterClass) {
-        const rowClass = (r.investorClass ?? "").trim()
+        const rowClass = (r.investorClass ?? "").trim();
         if (rowClass) {
-          if (rowClass !== filterClass) return false
+          if (rowClass !== filterClass) return false;
         } else {
-          const dealLine = dealAllClassNamesLine.trim()
+          const dealLine = dealAllClassNamesLine.trim();
           const tokens = dealLine
             .split(",")
             .map((s) => s.trim())
-            .filter(Boolean)
-          if (!tokens.includes(filterClass)) return false
+            .filter(Boolean);
+          if (!tokens.includes(filterClass)) return false;
         }
       }
-      if (filterStatus && r.status !== filterStatus) return false
+      if (filterStatus && r.status !== filterStatus) return false;
       if (filterAccreditation && r.selfAccredited !== filterAccreditation)
-        return false
+        return false;
       if (filterEsign === "not_started") {
         if (!String(r.verifiedAccLabel).toLowerCase().includes("not started"))
-          return false
+          return false;
       }
       if (filterEsign === "complete") {
         if (String(r.verifiedAccLabel).toLowerCase().includes("not started"))
-          return false
+          return false;
       }
       if (filterFunding === "funded") {
-        if (!investorRowIsFundApproved(r)) return false
+        if (!investorRowIsFundApproved(r)) return false;
       }
       if (filterFunding === "pending") {
-        if (investorRowIsFundApproved(r)) return false
+        if (investorRowIsFundApproved(r)) return false;
       }
-      return true
-    })
+      return true;
+    });
   }, [
     rows,
     query,
@@ -610,104 +600,108 @@ function DealInvestorsPopulated({
     filterFunding,
     filterAccreditation,
     dealAllClassNamesLine,
-  ])
+  ]);
 
   const allFilteredInvestorsSelected = useMemo(
     () =>
       filtered.length > 0 &&
       filtered.every((r) => selectedInvestorIds.has(r.id)),
     [filtered, selectedInvestorIds],
-  )
+  );
 
   const someFilteredInvestorsSelected = useMemo(
     () =>
       filtered.some((r) => selectedInvestorIds.has(r.id)) &&
       !allFilteredInvestorsSelected,
     [filtered, selectedInvestorIds, allFilteredInvestorsSelected],
-  )
+  );
 
   useLayoutEffect(() => {
-    const el = investorSelectAllRef.current
-    if (el) el.indeterminate = someFilteredInvestorsSelected
-  }, [someFilteredInvestorsSelected, allFilteredInvestorsSelected, filtered.length])
+    const el = investorSelectAllRef.current;
+    if (el) el.indeterminate = someFilteredInvestorsSelected;
+  }, [
+    someFilteredInvestorsSelected,
+    allFilteredInvestorsSelected,
+    filtered.length,
+  ]);
 
   useEffect(() => {
     setSelectedInvestorIds((prev) => {
-      if (prev.size === 0) return prev
-      const valid = new Set(filtered.map((r) => r.id))
-      const next = new Set<string>()
+      if (prev.size === 0) return prev;
+      const valid = new Set(filtered.map((r) => r.id));
+      const next = new Set<string>();
       for (const id of prev) {
-        if (valid.has(id)) next.add(id)
+        if (valid.has(id)) next.add(id);
       }
-      if (next.size === prev.size) return prev
-      return next
-    })
-  }, [filtered])
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [filtered]);
 
   const toggleSelectInvestor = useCallback((id: string) => {
     setSelectedInvestorIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const toggleSelectAllFilteredInvestors = useCallback(() => {
-    if (filtered.length === 0) return
+    if (filtered.length === 0) return;
     if (allFilteredInvestorsSelected) {
       setSelectedInvestorIds((prev) => {
-        const next = new Set(prev)
-        for (const r of filtered) next.delete(r.id)
-        return next
-      })
-      return
+        const next = new Set(prev);
+        for (const r of filtered) next.delete(r.id);
+        return next;
+      });
+      return;
     }
     setSelectedInvestorIds((prev) => {
-      const next = new Set(prev)
-      for (const r of filtered) next.add(r.id)
-      return next
-    })
-  }, [filtered, allFilteredInvestorsSelected])
+      const next = new Set(prev);
+      for (const r of filtered) next.add(r.id);
+      return next;
+    });
+  }, [filtered, allFilteredInvestorsSelected]);
 
   const selectedInvestorRows = useMemo(
     () => filtered.filter((r) => selectedInvestorIds.has(r.id)),
     [filtered, selectedInvestorIds],
-  )
-  const senderEmail = useMemo(() => getCurrentSessionUserEmail(), [])
+  );
+  const senderEmail = useMemo(() => getCurrentSessionUserEmail(), []);
   const selectedTemplate = useMemo(
     () => emailTemplates.find((t) => t.id === selectedTemplateId) ?? null,
     [emailTemplates, selectedTemplateId],
-  )
+  );
   const openSendMailModal = useCallback(() => {
     void (async () => {
-      const templates = (await loadEmailTemplates()).filter((t) => !t.archived)
-      setEmailTemplates(templates)
+      const templates = (await loadEmailTemplates()).filter((t) => !t.archived);
+      setEmailTemplates(templates);
       setSelectedTemplateId((prev) =>
         prev && templates.some((t) => t.id === prev)
           ? prev
           : (templates[0]?.id ?? ""),
-      )
-      setSendMailCc("")
-      setSendMailModalOpen(true)
-    })()
-  }, [])
+      );
+      setSendMailCc("");
+      setSendMailModalOpen(true);
+    })();
+  }, []);
 
   const closeSendMailModal = useCallback(() => {
-    setSendMailModalOpen(false)
-    setSendMailEmailPreview(null)
-  }, [])
+    setSendMailModalOpen(false);
+    setSendMailEmailPreview(null);
+  }, []);
 
   const goNewTemplateFromSendMail = useCallback(() => {
-    navigate("/contacts/email-templates/new")
-  }, [navigate])
+    navigate("/contacts/email-templates/new");
+  }, [navigate]);
 
   const openSendMailEmailPreview = useCallback(
     (mode: "view" | "edit") => {
-      const template = emailTemplates.find((t) => t.id === selectedTemplateId)
+      const template = emailTemplates.find((t) => t.id === selectedTemplateId);
       if (!template) {
-        toast.error("Template required", "Choose an email template first.")
-        return
+        toast.error("Template required", "Choose an email template first.");
+        return;
       }
       const emails = [
         ...new Set(
@@ -715,10 +709,13 @@ function DealInvestorsPopulated({
             .map((r) => String(r.userEmail ?? "").trim())
             .filter((e) => e.includes("@")),
         ),
-      ]
+      ];
       if (emails.length === 0) {
-        toast.error("No email recipients", "Selected investors have no valid email.")
-        return
+        toast.error(
+          "No email recipients",
+          "Selected investors have no valid email.",
+        );
+        return;
       }
       setSendMailEmailPreview({
         templateId: template.id,
@@ -732,25 +729,25 @@ function DealInvestorsPopulated({
         ccEmails: parseEmailInput(sendMailCc),
         attachment: template.attachment,
         startInEditMode: mode === "edit",
-      })
+      });
     },
     [emailTemplates, selectedInvestorRows, selectedTemplateId, sendMailCc],
-  )
+  );
 
   const handleSendMailPreviewSaved = useCallback(
     (patch: { subject: string; bodyHtml: string }) => {
       setSendMailEmailPreview((p) =>
         p ? { ...p, ...patch, startInEditMode: false } : null,
-      )
+      );
       void loadEmailTemplates().then((rows) => {
-        setEmailTemplates(rows.filter((t) => !t.archived))
-      })
+        setEmailTemplates(rows.filter((t) => !t.archived));
+      });
     },
     [],
-  )
+  );
 
   useEffect(() => {
-    setPage(1)
+    setPage(1);
   }, [
     query,
     filterClass,
@@ -758,35 +755,35 @@ function DealInvestorsPopulated({
     filterEsign,
     filterFunding,
     filterAccreditation,
-  ])
+  ]);
 
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-    if (page > totalPages) setPage(totalPages)
-  }, [filtered.length, pageSize, page])
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filtered.length, pageSize, page]);
 
   const classOptions = useMemo(() => {
     const s = new Set(
       rows.map((r) => r.investorClass).filter(Boolean) as string[],
-    )
+    );
     for (const c of investorClasses) {
-      const n = String(c.name ?? "").trim()
-      if (n) s.add(n)
+      const n = String(c.name ?? "").trim();
+      if (n) s.add(n);
     }
-    const listRaw = dealDetail?.listRow?.investorClass?.trim()
+    const listRaw = dealDetail?.listRow?.investorClass?.trim();
     if (listRaw && listRaw !== "—") {
       for (const p of listRaw.split(/[;,]/)) {
-        const t = p.trim()
-        if (t) s.add(t)
+        const t = p.trim();
+        if (t) s.add(t);
       }
     }
-    return [...s].sort()
-  }, [rows, investorClasses, dealDetail])
+    return [...s].sort();
+  }, [rows, investorClasses, dealDetail]);
 
   const statusOptions = useMemo(() => {
-    const s = new Set(rows.map((r) => r.status).filter(Boolean))
-    return [...s].sort()
-  }, [rows])
+    const s = new Set(rows.map((r) => r.status).filter(Boolean));
+    return [...s].sort();
+  }, [rows]);
 
   const pagination = useMemo(
     () => ({
@@ -798,12 +795,12 @@ function DealInvestorsPopulated({
       ariaLabel: "Investors table pagination",
     }),
     [page, pageSize, filtered.length],
-  )
+  );
 
   const exportModalRows = useMemo(
     () => filtered.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID),
     [filtered],
-  )
+  );
 
   const columns: DataTableColumn<DealInvestorRow>[] = useMemo(
     () => [
@@ -882,33 +879,32 @@ function DealInvestorsPopulated({
         tdClassName:
           "deal_inv_td_investor_class deal_inv_td_investor_class_cell deal_inv_td_investor_class_center",
         sortValue: (row) => {
-          const a = (row.investorClass ?? "").trim()
-          if (a) return a.toLowerCase()
-          return dealAllClassNamesLine.toLowerCase()
+          const a = (row.investorClass ?? "").trim();
+          if (a) return a.toLowerCase();
+          return dealAllClassNamesLine.toLowerCase();
         },
         cell: (row) => {
-          const assignedRaw = (row.investorClass ?? "").trim()
-          const dealLine = dealAllClassNamesLine.trim()
-          const pillSource = assignedRaw || dealLine
+          const assignedRaw = (row.investorClass ?? "").trim();
+          const dealLine = dealAllClassNamesLine.trim();
+          const pillSource = assignedRaw || dealLine;
           if (!pillSource.trim())
-            return <span className="deal_inv_class_pill_muted">—</span>
+            return <span className="deal_inv_class_pill_muted">—</span>;
           const titleForTooltip =
             assignedRaw && dealLine && assignedRaw !== dealLine
               ? `${assignedRaw} · Deal: ${dealLine}`
-              : pillSource
+              : pillSource;
           return (
             <InvestorClassPillsDisplay
               pillSource={pillSource}
               titleForTooltip={titleForTooltip}
             />
-          )
+          );
         },
       },
       {
         id: "status",
         header: "Status",
-        sortValue: (row) =>
-          dealInvestorStatusDisplayLabel(row).toLowerCase(),
+        sortValue: (row) => dealInvestorStatusDisplayLabel(row).toLowerCase(),
         tdClassName: "deal_inv_td_ellipsis",
         cell: (row) => (
           <DealInvEllipsisText text={dealInvestorStatusDisplayLabel(row)} />
@@ -917,24 +913,23 @@ function DealInvestorsPopulated({
       {
         id: "added_by",
         header: "Added by",
-        sortValue: (row) =>
-          String(row.addedByDisplayName ?? "").toLowerCase(),
+        sortValue: (row) => String(row.addedByDisplayName ?? "").toLowerCase(),
         tdClassName: "deal_inv_td_ellipsis",
         cell: (row) => {
-          const s = String(row.addedByDisplayName ?? "").trim()
-          const adderId = String(row.addedByUserId ?? "").trim()
+          const s = String(row.addedByDisplayName ?? "").trim();
+          const adderId = String(row.addedByUserId ?? "").trim();
           const title =
             adderId && s && s !== "—"
               ? `${s} (${adderId})`
               : adderId
                 ? adderId
-                : undefined
+                : undefined;
           return (
             <DealInvEllipsisText
               text={s && s !== "—" ? s : "—"}
               title={title}
             />
-          )
+          );
         },
       },
       {
@@ -974,9 +969,7 @@ function DealInvestorsPopulated({
         header: "Verified Acc",
         sortValue: (row) => row.verifiedAccLabel ?? "",
         tdClassName: "deal_inv_td_ellipsis deal_inv_td_verified",
-        cell: (row) => (
-          <VerifiedAccBadge label={row.verifiedAccLabel ?? "—"} />
-        ),
+        cell: (row) => <VerifiedAccBadge label={row.verifiedAccLabel ?? "—"} />,
       },
       {
         id: "mailStatus",
@@ -1003,17 +996,18 @@ function DealInvestorsPopulated({
               draftRow={row.id === ADD_MEMBER_DRAFT_ROW_ID}
               invitationMailSent={row.invitationMailSent === true}
               offeringLinkAvailable={offeringLinkAvailable}
+              offeringLinkBlockedBecauseDraft={offeringLinkBlockedBecauseDraft}
               onEdit={(r) => {
                 if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
-                  if (onContinueDraftEdit) onContinueDraftEdit()
-                  else onAddInvestor()
-                  return
+                  if (onContinueDraftEdit) onContinueDraftEdit();
+                  else onAddInvestor();
+                  return;
                 }
-                onEditInvestor(r)
+                onEditInvestor(r);
               }}
               onCopyLink={(r) => onCopyOfferingLink?.(r)}
               onSendInvite={(r) => {
-                void onSendInvitationMail?.(r)
+                void onSendInvitationMail?.(r);
               }}
               onApproveFund={handleApproveFund}
               approveFundDisabled={
@@ -1034,7 +1028,7 @@ function DealInvestorsPopulated({
                         : undefined
               }
               onDelete={(r) => {
-                void onDeleteMember?.(r)
+                void onDeleteMember?.(r);
               }}
             />
           </div>
@@ -1059,17 +1053,17 @@ function DealInvestorsPopulated({
       handleApproveFund,
       approveFundBusyId,
     ],
-  )
+  );
 
   function handleExportInvestors(selected: DealInvestorRow[]) {
-    const csv = buildDealInvestorsExportCsv(selected, dealAllClassNamesLine)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const safeDeal = dealId.replace(/[^\w-]+/g, "_").slice(0, 36)
-    downloadDealExportCsv(csv, `deal-investors-${safeDeal}-${stamp}.csv`)
+    const csv = buildDealInvestorsExportCsv(selected, dealAllClassNamesLine);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const safeDeal = dealId.replace(/[^\w-]+/g, "_").slice(0, 36);
+    downloadDealExportCsv(csv, `deal-investors-${safeDeal}-${stamp}.csv`);
     void notifyDealInvestorsExportAudit(dealId, {
       rowCount: selected.length,
       exportedLines: exportAuditLinesForDealInvestorRows(selected),
-    })
+    });
   }
 
   const handleSendMailToSelectedInvestors = useCallback(async () => {
@@ -1079,15 +1073,18 @@ function DealInvestorsPopulated({
           .map((r) => String(r.userEmail ?? "").trim())
           .filter((e) => e.includes("@")),
       ),
-    ]
+    ];
     if (emails.length === 0) {
-      toast.error("No email recipients", "Selected investors have no valid email.")
-      return
+      toast.error(
+        "No email recipients",
+        "Selected investors have no valid email.",
+      );
+      return;
     }
-    const template = emailTemplates.find((t) => t.id === selectedTemplateId)
+    const template = emailTemplates.find((t) => t.id === selectedTemplateId);
     if (!template) {
-      toast.error("Template required", "Choose an email template first.")
-      return
+      toast.error("Template required", "Choose an email template first.");
+      return;
     }
     const result = await openSendMailDraft({
       to: emails,
@@ -1095,13 +1092,13 @@ function DealInvestorsPopulated({
       templateSubject: template.subject,
       templateBodyHtml: template.body,
       senderEmail,
-    })
+    });
     if (!result.ok) {
-      toast.error("Could not send email", result.message)
-      return
+      toast.error("Could not send email", result.message);
+      return;
     }
-    toast.success("Email sent", "Message was sent from server.")
-    closeSendMailModal()
+    toast.success("Email sent", "Message was sent from server.");
+    closeSendMailModal();
   }, [
     emailTemplates,
     selectedInvestorRows,
@@ -1109,7 +1106,7 @@ function DealInvestorsPopulated({
     sendMailCc,
     senderEmail,
     closeSendMailModal,
-  ])
+  ]);
 
   const kpiMetricCards = useMemo(
     () =>
@@ -1148,7 +1145,7 @@ function DealInvestorsPopulated({
         />
       )),
     [kpis, documentSignedKpi],
-  )
+  );
 
   return (
     <div className="deal_inv_populated deal_members_tab">
@@ -1158,148 +1155,6 @@ function DealInvestorsPopulated({
       >
         {kpiMetricCards}
       </section>
-
-      <div className="deal_inv_controls">
-        {/* Share with lead sponsor + Send email (deferred)
-        <div className="deal_inv_toolbar">
-          <div className="deal_inv_toolbar_leading">
-            <button
-              type="button"
-              className="um_btn_toolbar deal_inv_toolbar_share_btn"
-            >
-              Share Investor Details with Lead Sponsor
-            </button>
-          </div>
-          <div
-            className="deal_inv_toolbar_actions"
-            role="toolbar"
-            aria-label="Investor list actions"
-          >
-            <button type="button" className="um_btn_toolbar" disabled>
-              <Mail size={16} strokeWidth={2} aria-hidden />
-              Send email
-            </button>
-          </div>
-        </div>
-        */}
-
-        <section
-          className="deal_inv_filters_section"
-          aria-labelledby="deal-inv-filters-heading"
-        >
-          <h3 id="deal-inv-filters-heading" className="deal_inv_filters_heading">
-            Filters
-          </h3>
-          <div
-            className="deal_inv_filters_grid"
-            role="group"
-            aria-label="Investor list filters"
-          >
-            <div className="deal_inv_filter_field">
-              <label
-                className="deal_inv_filter_label"
-                htmlFor={`deal-inv-filter-class-${dealId}`}
-              >
-                <Tag size={14} strokeWidth={2} aria-hidden />
-                Investor class
-              </label>
-              <select
-                id={`deal-inv-filter-class-${dealId}`}
-                className="deal_inv_filter_select"
-                value={filterClass}
-                onChange={(e) => setFilterClass(e.target.value)}
-              >
-                <option value="">All classes</option>
-                {classOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="deal_inv_filter_field">
-              <label
-                className="deal_inv_filter_label"
-                htmlFor={`deal-inv-filter-status-${dealId}`}
-              >
-                <Activity size={14} strokeWidth={2} aria-hidden />
-                Investment status
-              </label>
-              <select
-                id={`deal-inv-filter-status-${dealId}`}
-                className="deal_inv_filter_select"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="">All statuses</option>
-                {statusOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="deal_inv_filter_field">
-              <label
-                className="deal_inv_filter_label"
-                htmlFor={`deal-inv-filter-esign-${dealId}`}
-              >
-                <BadgeCheck size={14} strokeWidth={2} aria-hidden />
-                eSign status
-              </label>
-              <select
-                id={`deal-inv-filter-esign-${dealId}`}
-                className="deal_inv_filter_select"
-                value={filterEsign}
-                onChange={(e) => setFilterEsign(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="not_started">Not started</option>
-                <option value="complete">Complete</option>
-              </select>
-            </div>
-            <div className="deal_inv_filter_field">
-              <label
-                className="deal_inv_filter_label"
-                htmlFor={`deal-inv-filter-funding-${dealId}`}
-              >
-                <Landmark size={14} strokeWidth={2} aria-hidden />
-                Funded
-              </label>
-              <select
-                id={`deal-inv-filter-funding-${dealId}`}
-                className="deal_inv_filter_select"
-                value={filterFunding}
-                onChange={(e) => setFilterFunding(e.target.value)}
-                aria-label="Filter by funded status"
-              >
-                <option value="">All</option>
-                <option value="funded">Approved</option>
-                <option value="pending">Not Approved</option>
-              </select>
-            </div>
-            <div className="deal_inv_filter_field">
-              <label
-                className="deal_inv_filter_label"
-                htmlFor={`deal-inv-filter-accred-${dealId}`}
-              >
-                <UserRound size={14} strokeWidth={2} aria-hidden />
-                Accreditation
-              </label>
-              <select
-                id={`deal-inv-filter-accred-${dealId}`}
-                className="deal_inv_filter_select"
-                value={filterAccreditation}
-                onChange={(e) => setFilterAccreditation(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </div>
-          </div>
-        </section>
-      </div>
 
       <ExportDealInvestorRowsModal
         open={exportModalOpen}
@@ -1313,7 +1168,10 @@ function DealInvestorsPopulated({
         onExportExcel={handleExportInvestors}
       />
       {sendMailModalOpen ? (
-        <div className="um_modal_overlay contacts_suspend_overlay" role="presentation">
+        <div
+          className="um_modal_overlay contacts_suspend_overlay"
+          role="presentation"
+        >
           <div
             className="um_modal contacts_suspend_modal"
             role="dialog"
@@ -1460,7 +1318,9 @@ function DealInvestorsPopulated({
               <button
                 type="button"
                 className="um_btn_primary"
-                disabled={!selectedTemplateId || selectedInvestorRows.length === 0}
+                disabled={
+                  !selectedTemplateId || selectedInvestorRows.length === 0
+                }
                 onClick={handleSendMailToSelectedInvestors}
               >
                 <Send size={16} strokeWidth={2} aria-hidden />
@@ -1478,36 +1338,8 @@ function DealInvestorsPopulated({
       />
 
       <div className="um_panel um_members_tab_panel deal_inv_table_panel">
-        <div className="um_toolbar deal_inv_table_um_toolbar">
-          <div className="um_search_wrap">
-            <Search className="um_search_icon" size={18} aria-hidden />
-            <input
-              type="search"
-              className="um_search_input"
-              placeholder="Search investors…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search investors"
-            />
-          </div>
-          <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
-            <button
-              type="button"
-              className="um_btn_toolbar"
-              onClick={openSendMailModal}
-              disabled={selectedInvestorRows.length === 0}
-            >
-              <Send size={18} strokeWidth={2} aria-hidden />
-              Send mail
-            </button>
-            <button
-              type="button"
-              className="um_toolbar_export_btn"
-              onClick={() => setExportModalOpen(true)}
-            >
-              <Download size={18} strokeWidth={2} aria-hidden />
-              <span>Export all investors</span>
-            </button>
+        <div className="deal_inv_controls">
+          <div className="deal_inv_panel_add_row">
             <button
               type="button"
               className="deals_list_add_btn deal_inv_toolbar_add_investor_btn"
@@ -1516,6 +1348,187 @@ function DealInvestorsPopulated({
               <Plus size={18} strokeWidth={2} aria-hidden />
               Add Investor
             </button>
+          </div>
+
+          {/* Share with lead sponsor + Send email (deferred)
+          <div className="deal_inv_toolbar">
+            <div className="deal_inv_toolbar_leading">
+              <button
+                type="button"
+                className="um_btn_toolbar deal_inv_toolbar_share_btn"
+              >
+                Share Investor Details with Lead Sponsor
+              </button>
+            </div>
+            <div
+              className="deal_inv_toolbar_actions"
+              role="toolbar"
+              aria-label="Investor list actions"
+            >
+              <button type="button" className="um_btn_toolbar" disabled>
+                <Mail size={16} strokeWidth={2} aria-hidden />
+                Send email
+              </button>
+            </div>
+          </div>
+          */}
+
+          <section
+            className="deal_inv_filters_section"
+            aria-labelledby="deal-inv-filters-heading"
+          >
+            <h3
+              id="deal-inv-filters-heading"
+              className="deal_inv_filters_heading"
+            >
+              Filters
+            </h3>
+            <div
+              className="deal_inv_filters_grid"
+              role="group"
+              aria-label="Investor list filters"
+            >
+              <div className="deal_inv_filter_field">
+                <label
+                  className="deal_inv_filter_label"
+                  htmlFor={`deal-inv-filter-class-${dealId}`}
+                >
+                  <Tag size={14} strokeWidth={2} aria-hidden />
+                  Investor class
+                </label>
+                <select
+                  id={`deal-inv-filter-class-${dealId}`}
+                  className="deal_inv_filter_select"
+                  value={filterClass}
+                  onChange={(e) => setFilterClass(e.target.value)}
+                >
+                  <option value="">All classes</option>
+                  {classOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="deal_inv_filter_field">
+                <label
+                  className="deal_inv_filter_label"
+                  htmlFor={`deal-inv-filter-status-${dealId}`}
+                >
+                  <Activity size={14} strokeWidth={2} aria-hidden />
+                  Investment status
+                </label>
+                <select
+                  id={`deal-inv-filter-status-${dealId}`}
+                  className="deal_inv_filter_select"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                  <option value="">All statuses</option>
+                  {statusOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="deal_inv_filter_field">
+                <label
+                  className="deal_inv_filter_label"
+                  htmlFor={`deal-inv-filter-esign-${dealId}`}
+                >
+                  <BadgeCheck size={14} strokeWidth={2} aria-hidden />
+                  eSign status
+                </label>
+                <select
+                  id={`deal-inv-filter-esign-${dealId}`}
+                  className="deal_inv_filter_select"
+                  value={filterEsign}
+                  onChange={(e) => setFilterEsign(e.target.value)}
+                >
+                  <option value="">All</option>
+                  <option value="not_started">Not started</option>
+                  <option value="complete">Complete</option>
+                </select>
+              </div>
+              <div className="deal_inv_filter_field">
+                <label
+                  className="deal_inv_filter_label"
+                  htmlFor={`deal-inv-filter-funding-${dealId}`}
+                >
+                  <Landmark size={14} strokeWidth={2} aria-hidden />
+                  Funded
+                </label>
+                <select
+                  id={`deal-inv-filter-funding-${dealId}`}
+                  className="deal_inv_filter_select"
+                  value={filterFunding}
+                  onChange={(e) => setFilterFunding(e.target.value)}
+                  aria-label="Filter by funded status"
+                >
+                  <option value="">All</option>
+                  <option value="funded">Approved</option>
+                  <option value="pending">Not Approved</option>
+                </select>
+              </div>
+              <div className="deal_inv_filter_field">
+                <label
+                  className="deal_inv_filter_label"
+                  htmlFor={`deal-inv-filter-accred-${dealId}`}
+                >
+                  <UserRound size={14} strokeWidth={2} aria-hidden />
+                  Accreditation
+                </label>
+                <select
+                  id={`deal-inv-filter-accred-${dealId}`}
+                  className="deal_inv_filter_select"
+                  value={filterAccreditation}
+                  onChange={(e) => setFilterAccreditation(e.target.value)}
+                >
+                  <option value="">All</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+            <div
+              className="um_toolbar_actions deal_inv_table_toolbar_actions"
+              role="toolbar"
+              aria-label="Investor list actions"
+            >
+              <button
+                type="button"
+                className="um_btn_toolbar"
+                onClick={openSendMailModal}
+                disabled={selectedInvestorRows.length === 0}
+              >
+                <Send size={18} strokeWidth={2} aria-hidden />
+                Send mail
+              </button>
+              <button
+                type="button"
+                className="um_toolbar_export_btn"
+                onClick={() => setExportModalOpen(true)}
+                aria-label="Export All"
+              >
+                <Download size={18} strokeWidth={2} aria-hidden />
+                <span>Export All</span>
+              </button>
+            </div>
+            <div className="um_search_wrap">
+              <Search className="um_search_icon" size={18} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search investors…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search investors"
+              />
+            </div>
           </div>
         </div>
 
@@ -1533,7 +1546,7 @@ function DealInvestorsPopulated({
         />
       </div>
     </div>
-  )
+  );
 }
 
 export const DealInvestorsTab = forwardRef<
@@ -1556,165 +1569,172 @@ export const DealInvestorsTab = forwardRef<
     onDeleteMember,
     onSharedInvestmentModalOpenChange,
     offeringLinkAvailable = false,
+    offeringLinkBlockedBecauseDraft = false,
     investorsListRefreshKey = 0,
     invitationMailStatusByRowId,
   },
   ref,
 ) {
-  const [addLpInvestorOpen, setAddLpInvestorOpen] = useState(false)
+  const [addLpInvestorOpen, setAddLpInvestorOpen] = useState(false);
   /** “Continue editing” on draft row: prefill AddLpInvestorModal from session add-member draft. */
-  const [lpResumeAddMemberDraft, setLpResumeAddMemberDraft] = useState(false)
-  const [payload, setPayload] = useState<DealInvestorsPayload | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [lpResumeAddMemberDraft, setLpResumeAddMemberDraft] = useState(false);
+  const [payload, setPayload] = useState<DealInvestorsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
   const [localAddedInvestors, setLocalAddedInvestors] = useState<
     DealInvestorRow[]
-  >([])
-  const [investorClasses, setInvestorClasses] = useState<DealInvestorClass[]>([])
-  const [editRow, setEditRow] = useState<DealInvestorRow | null>(null)
-  const [editLpRow, setEditLpRow] = useState<DealInvestorRow | null>(null)
-  const [viewInvestorRow, setViewInvestorRow] = useState<DealInvestorRow | null>(
-    null,
-  )
-  const [addMemberDraftTick, setAddMemberDraftTick] = useState(0)
+  >([]);
+  const [investorClasses, setInvestorClasses] = useState<DealInvestorClass[]>(
+    [],
+  );
+  const [editRow, setEditRow] = useState<DealInvestorRow | null>(null);
+  const [editLpRow, setEditLpRow] = useState<DealInvestorRow | null>(null);
+  const [viewInvestorRow, setViewInvestorRow] =
+    useState<DealInvestorRow | null>(null);
+  const [addMemberDraftTick, setAddMemberDraftTick] = useState(0);
 
   useEffect(() => {
     function onDraftUpdated() {
-      setAddMemberDraftTick((t) => t + 1)
+      setAddMemberDraftTick((t) => t + 1);
     }
-    window.addEventListener(ADD_MEMBER_DRAFT_UPDATED_EVENT, onDraftUpdated)
+    window.addEventListener(ADD_MEMBER_DRAFT_UPDATED_EVENT, onDraftUpdated);
     return () =>
-      window.removeEventListener(ADD_MEMBER_DRAFT_UPDATED_EVENT, onDraftUpdated)
-  }, [])
+      window.removeEventListener(
+        ADD_MEMBER_DRAFT_UPDATED_EVENT,
+        onDraftUpdated,
+      );
+  }, []);
 
   const editFormInitialValues = useMemo(
     () => (editRow ? dealInvestorRowToFormValues(editRow) : null),
     [editRow],
-  )
+  );
 
   const dealClassNamesLineForView = useMemo(
     () => buildDealClassNamesLine(investorClasses, dealDetail),
     [investorClasses, dealDetail],
-  )
+  );
 
   const handleEditInvestor = useCallback(
     (row: DealInvestorRow) => {
-      setViewInvestorRow(null)
-      setLpResumeAddMemberDraft(false)
+      setViewInvestorRow(null);
+      setLpResumeAddMemberDraft(false);
       /** Dismiss “Add investment” so `addInvestmentOpen` is false; otherwise the effect
        * below clears `editRow` while the modal stays in add mode and session draft POSTs again. */
-      onAddInvestmentClose()
+      onAddInvestmentClose();
       if (shouldUseLpInvestorsModalForEdit(row)) {
-        setEditRow(null)
-        setEditLpRow(row)
-        return
+        setEditRow(null);
+        setEditLpRow(row);
+        return;
       }
-      setEditLpRow(null)
-      setEditRow(row)
+      setEditLpRow(null);
+      setEditRow(row);
     },
     [onAddInvestmentClose],
-  )
+  );
 
   const handleContinueDraftInvestor = useCallback(() => {
-    const draft = loadAddMemberDraft(dealId)
+    const draft = loadAddMemberDraft(dealId);
     if (draft && isLpInvestorRole(draft.form.investorRole ?? "")) {
-      setLpResumeAddMemberDraft(true)
-      setAddLpInvestorOpen(true)
-      return
+      setLpResumeAddMemberDraft(true);
+      setAddLpInvestorOpen(true);
+      return;
     }
-    onOpenFullInvestmentModal?.()
-  }, [dealId, onOpenFullInvestmentModal])
+    onOpenFullInvestmentModal?.();
+  }, [dealId, onOpenFullInvestmentModal]);
 
   useImperativeHandle(
     ref,
     () => ({
       openViewInvestor: (row: DealInvestorRow) => {
-        setViewInvestorRow(row)
+        setViewInvestorRow(row);
       },
       openEditInvestor: (row: DealInvestorRow) => {
-        setViewInvestorRow(null)
-        setLpResumeAddMemberDraft(false)
-        onAddInvestmentClose()
+        setViewInvestorRow(null);
+        setLpResumeAddMemberDraft(false);
+        onAddInvestmentClose();
         if (shouldUseLpInvestorsModalForEdit(row)) {
-          setEditRow(null)
-          setEditLpRow(row)
-          return
+          setEditRow(null);
+          setEditLpRow(row);
+          return;
         }
-        setEditLpRow(null)
-        setEditRow(row)
+        setEditLpRow(null);
+        setEditRow(row);
       },
       refetchInvestors: async () => {
-        const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
-        setPayload(data)
+        const data = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: true,
+        });
+        setPayload(data);
       },
     }),
     [dealId, onAddInvestmentClose],
-  )
+  );
 
   useEffect(() => {
     if (addInvestmentOpen) {
-      setEditRow(null)
-      setEditLpRow(null)
+      setEditRow(null);
+      setEditLpRow(null);
     }
-  }, [addInvestmentOpen])
+  }, [addInvestmentOpen]);
 
   useLayoutEffect(() => {
     onSharedInvestmentModalOpenChange?.(
       Boolean(
         addInvestmentOpen ||
-          editRow !== null ||
-          editLpRow !== null ||
-          addLpInvestorOpen,
+        editRow !== null ||
+        editLpRow !== null ||
+        addLpInvestorOpen,
       ),
-    )
+    );
   }, [
     addInvestmentOpen,
     editRow,
     editLpRow,
     addLpInvestorOpen,
     onSharedInvestmentModalOpenChange,
-  ])
+  ]);
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     void (async () => {
-      setLoading(true)
-      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
+      setLoading(true);
+      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true });
       if (!cancelled) {
-        setPayload(data)
-        setLoading(false)
+        setPayload(data);
+        setLoading(false);
       }
-    })()
+    })();
     return () => {
-      cancelled = true
-    }
-  }, [dealId, investorsListRefreshKey])
+      cancelled = true;
+    };
+  }, [dealId, investorsListRefreshKey]);
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     void fetchDealInvestorClasses(dealId).then((list) => {
-      if (!cancelled) setInvestorClasses(list)
-    })
+      if (!cancelled) setInvestorClasses(list);
+    });
     return () => {
-      cancelled = true
-    }
-  }, [dealId])
+      cancelled = true;
+    };
+  }, [dealId]);
 
   useEffect(() => {
-    setLocalAddedInvestors([])
-  }, [dealId])
+    setLocalAddedInvestors([]);
+  }, [dealId]);
 
   const sessionDraftRow = useMemo((): DealInvestorRow | null => {
-    void addMemberDraftTick
-    return buildAddMemberDraftInvestorRow(dealId, investorClasses)
-  }, [dealId, investorClasses, addMemberDraftTick])
+    void addMemberDraftTick;
+    return buildAddMemberDraftInvestorRow(dealId, investorClasses);
+  }, [dealId, investorClasses, addMemberDraftTick]);
 
   const mergedInvestors = useMemo(() => {
-    const combined = [...(payload?.investors ?? []), ...localAddedInvestors]
-    const lpOnly = combined.filter((r) => isLpInvestorsTabRow(r))
+    const combined = [...(payload?.investors ?? []), ...localAddedInvestors];
+    const lpOnly = combined.filter((r) => isLpInvestorsTabRow(r));
     const draftRedundantWithApi = isAddMemberSessionDraftRedundantWithApiRows(
       dealId,
       combined,
-    )
+    );
     const showDraft =
       sessionDraftRow &&
       !draftRedundantWithApi &&
@@ -1722,9 +1742,9 @@ export const DealInvestorsTab = forwardRef<
       !editLpRow &&
       !addInvestmentOpen &&
       !addLpInvestorOpen &&
-      isLpInvestorsTabRow(sessionDraftRow)
-    if (showDraft) return [...lpOnly, sessionDraftRow]
-    return lpOnly
+      isLpInvestorsTabRow(sessionDraftRow);
+    if (showDraft) return [...lpOnly, sessionDraftRow];
+    return lpOnly;
   }, [
     dealId,
     payload,
@@ -1734,31 +1754,31 @@ export const DealInvestorsTab = forwardRef<
     editLpRow,
     addInvestmentOpen,
     addLpInvestorOpen,
-  ])
+  ]);
 
   const mergedPayload = useMemo((): DealInvestorsPayload | null => {
-    if (!payload) return null
-    const o = invitationMailStatusByRowId
+    if (!payload) return null;
+    const o = invitationMailStatusByRowId;
     if (!o || Object.keys(o).length === 0) {
-      return { ...payload, investors: mergedInvestors }
+      return { ...payload, investors: mergedInvestors };
     }
     return {
       ...payload,
       investors: mergedInvestors.map((r) => {
-        if (!o[r.id]) return r
-        if (r.invitationMailSent === true) return r
-        return { ...r, invitationMailSent: true }
+        if (!o[r.id]) return r;
+        if (r.invitationMailSent === true) return r;
+        return { ...r, invitationMailSent: true };
       }),
-    }
-  }, [payload, mergedInvestors, invitationMailStatusByRowId])
+    };
+  }, [payload, mergedInvestors, invitationMailStatusByRowId]);
 
   async function handleSaveAddInvestment(
     values: AddInvestmentFormValues,
     subscriptionDocument: File | null,
   ) {
-    const draftMeta = loadAddMemberDraft(dealId)
-    const autosavedLpId = draftMeta?.backendLpInvestorId?.trim()
-    const autosavedInvId = draftMeta?.backendInvestmentId?.trim()
+    const draftMeta = loadAddMemberDraft(dealId);
+    const autosavedLpId = draftMeta?.backendLpInvestorId?.trim();
+    const autosavedInvId = draftMeta?.backendInvestmentId?.trim();
     const result = isLpInvestorRole(values.investorRole)
       ? autosavedLpId
         ? await putDealLpInvestor(dealId, autosavedLpId, values)
@@ -1770,44 +1790,44 @@ export const DealInvestorsTab = forwardRef<
             values,
             subscriptionDocument,
           )
-        : await postDealInvestment(dealId, values, subscriptionDocument)
-    if (!result.ok) throw new Error(result.message)
+        : await postDealInvestment(dealId, values, subscriptionDocument);
+    if (!result.ok) throw new Error(result.message);
     upsertRuntimeFromViewerAddInvestmentForm({
       dealId,
       values,
       dealDetail: dealDetail ?? null,
-    })
+    });
     const valuesForDisplay: AddInvestmentFormValues = {
       ...values,
       investorClass: resolveInvestorClassLabelForRow(
         values.investorClass,
         investorClasses,
       ),
-    }
+    };
     if (result.mode === "client") {
       setLocalAddedInvestors((prev) => [
         ...prev,
         addInvestmentFormToRow(valuesForDisplay, dealId),
-      ])
+      ]);
     } else {
-      setLocalAddedInvestors([])
-      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
-      setPayload(data)
-      const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+      setLocalAddedInvestors([]);
+      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true });
+      setPayload(data);
+      const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false });
       upsertRuntimeForViewerFromInvestorsPayload(
         dealId,
         full,
         dealDetail ?? null,
-      )
+      );
     }
-    onAddInvestmentClose()
-    onInvestorsChanged?.()
+    onAddInvestmentClose();
+    onInvestorsChanged?.();
   }
 
   function handleCloseInvestmentModal() {
-    setEditRow(null)
-    setEditLpRow(null)
-    onAddInvestmentClose()
+    setEditRow(null);
+    setEditLpRow(null);
+    onAddInvestmentClose();
   }
 
   async function handleSaveInvestmentModal(
@@ -1823,71 +1843,71 @@ export const DealInvestorsTab = forwardRef<
               editRow.id,
               values,
               subscriptionDocument,
-            )
-      if (!result.ok) throw new Error(result.message)
+            );
+      if (!result.ok) throw new Error(result.message);
       /** Stale add-member session draft would still append a draft row — same person appears twice. */
-      clearAddMemberDraft(dealId)
+      clearAddMemberDraft(dealId);
       upsertRuntimeFromViewerAddInvestmentForm({
         dealId,
         values,
         dealDetail: dealDetail ?? null,
-      })
+      });
       if (result.mode === "client") {
         setPayload((prev) => {
-          if (!prev) return prev
+          if (!prev) return prev;
           const valuesForDisplay: AddInvestmentFormValues = {
             ...values,
             investorClass: resolveInvestorClassLabelForRow(
               values.investorClass,
               investorClasses,
             ),
-          }
+          };
           const merged: DealInvestorRow = {
             ...addInvestmentFormToRow(valuesForDisplay, dealId),
             id: editRow.id,
-          }
+          };
           return {
             ...prev,
             investors: prev.investors.map((r) =>
               r.id === editRow.id ? merged : r,
             ),
-          }
-        })
-        setEditRow(null)
-        onAddInvestmentClose()
-        onInvestorsChanged?.()
-        return
+          };
+        });
+        setEditRow(null);
+        onAddInvestmentClose();
+        onInvestorsChanged?.();
+        return;
       }
-      setEditRow(null)
-      onAddInvestmentClose()
-      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
-      setPayload(data)
-      const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+      setEditRow(null);
+      onAddInvestmentClose();
+      const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true });
+      setPayload(data);
+      const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false });
       upsertRuntimeForViewerFromInvestorsPayload(
         dealId,
         full,
         dealDetail ?? null,
-      )
-      onInvestorsChanged?.()
-      return
+      );
+      onInvestorsChanged?.();
+      return;
     }
-    await handleSaveAddInvestment(values, subscriptionDocument)
+    await handleSaveAddInvestment(values, subscriptionDocument);
   }
 
   /** Investors table/KPI (`modalOnly` false): always use Add/Edit Investor chrome. Deal Members tab (`modalOnly` true) follows parent `addInvestmentEntry` for Add/Edit Member vs shared flows. */
-  const addEntryForModal = modalOnly ? addInvestmentEntry : "investor"
+  const addEntryForModal = modalOnly ? addInvestmentEntry : "investor";
 
   const refreshInvestorsFromApi = useCallback(async () => {
-    const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
-    setPayload(data)
-    const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+    const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true });
+    setPayload(data);
+    const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false });
     upsertRuntimeForViewerFromInvestorsPayload(
       dealId,
       full,
       dealDetail ?? null,
-    )
-    onInvestorsChanged?.()
-  }, [dealId, dealDetail, onInvestorsChanged])
+    );
+    onInvestorsChanged?.();
+  }, [dealId, dealDetail, onInvestorsChanged]);
 
   const modal = (
     <AddInvestmentModal
@@ -1907,29 +1927,34 @@ export const DealInvestorsTab = forwardRef<
       onBackendAutosave={async (detail) => {
         const data = await fetchDealInvestors(dealId, {
           lpInvestorsOnly: true,
-        })
-        setPayload(data)
-        const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+        });
+        setPayload(data);
+        const full = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: false,
+        });
         upsertRuntimeForViewerFromInvestorsPayload(
           dealId,
           full,
           dealDetail ?? null,
-        )
-        if (detail?.createdInvestment) onInvestorsChanged?.()
+        );
+        if (detail?.createdInvestment) onInvestorsChanged?.();
       }}
       dealBlocksInvitationEmails={
         dealDetail != null &&
-        (String(dealDetail.dealStage ?? "").trim().toLowerCase() ===
-          "draft" ||
+        (String(dealDetail.dealStage ?? "")
+          .trim()
+          .toLowerCase() === "draft" ||
           isDealDetailFormIncomplete(dealDetail))
       }
     />
-  )
+  );
 
   const lpBlocksInvites =
     dealDetail != null &&
-    (String(dealDetail.dealStage ?? "").trim().toLowerCase() === "draft" ||
-      isDealDetailFormIncomplete(dealDetail))
+    (String(dealDetail.dealStage ?? "")
+      .trim()
+      .toLowerCase() === "draft" ||
+      isDealDetailFormIncomplete(dealDetail));
 
   const lpInvestorModal = (
     <AddLpInvestorModal
@@ -1940,25 +1965,29 @@ export const DealInvestorsTab = forwardRef<
       resumeAddMemberDraft={lpResumeAddMemberDraft}
       dealBlocksInvitationEmails={lpBlocksInvites}
       onClose={() => {
-        setAddLpInvestorOpen(false)
-        setEditLpRow(null)
-        setLpResumeAddMemberDraft(false)
+        setAddLpInvestorOpen(false);
+        setEditLpRow(null);
+        setLpResumeAddMemberDraft(false);
       }}
       onSaved={async () => {
-        setLocalAddedInvestors([])
-        setEditLpRow(null)
-        const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true })
-        setPayload(data)
-        const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+        setLocalAddedInvestors([]);
+        setEditLpRow(null);
+        const data = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: true,
+        });
+        setPayload(data);
+        const full = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: false,
+        });
         upsertRuntimeForViewerFromInvestorsPayload(
           dealId,
           full,
           dealDetail ?? null,
-        )
-        onInvestorsChanged?.()
+        );
+        onInvestorsChanged?.();
       }}
     />
-  )
+  );
 
   if (modalOnly)
     return (
@@ -1973,7 +2002,7 @@ export const DealInvestorsTab = forwardRef<
           onEdit={handleEditInvestor}
         />
       </>
-    )
+    );
 
   if (loading)
     return (
@@ -1984,9 +2013,9 @@ export const DealInvestorsTab = forwardRef<
           Loading investors…
         </p>
       </>
-    )
+    );
 
-  if (!mergedPayload) return null
+  if (!mergedPayload) return null;
 
   return (
     <>
@@ -1999,15 +2028,16 @@ export const DealInvestorsTab = forwardRef<
         investorClasses={investorClasses}
         onEditInvestor={handleEditInvestor}
         onAddInvestor={() => {
-          setEditLpRow(null)
-          setLpResumeAddMemberDraft(false)
-          setAddLpInvestorOpen(true)
+          setEditLpRow(null);
+          setLpResumeAddMemberDraft(false);
+          setAddLpInvestorOpen(true);
         }}
         onContinueDraftEdit={handleContinueDraftInvestor}
         onSendInvitationMail={onSendInvitationMail}
         onCopyOfferingLink={onCopyOfferingLink}
         onDeleteMember={onDeleteMember}
         offeringLinkAvailable={offeringLinkAvailable}
+        offeringLinkBlockedBecauseDraft={offeringLinkBlockedBecauseDraft}
         onRefreshInvestors={refreshInvestorsFromApi}
       />
       <DealInvestorViewModal
@@ -2018,5 +2048,5 @@ export const DealInvestorsTab = forwardRef<
         onEdit={handleEditInvestor}
       />
     </>
-  )
-})
+  );
+});

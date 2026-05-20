@@ -32,6 +32,27 @@ export const userInvestorProfiles = pgTable("user_investor_profiles", {
    * `jsonb` in Postgres; API still exposes it as `profileWizardState` for the client.
    */
   formSnapshot: jsonb("form_snapshot").$type<Record<string, unknown> | null>(),
+  /** `ach` | `check` | `other` — synced from wizard on save. */
+  distributionMethod: varchar("distribution_method", { length: 32 })
+    .notNull()
+    .default(""),
+  achRoutingNumber: varchar("ach_routing_number", { length: 9 })
+    .notNull()
+    .default(""),
+  achAccountNumber: varchar("ach_account_number", { length: 34 })
+    .notNull()
+    .default(""),
+  achBankAddress: text("ach_bank_address").notNull().default(""),
+  achBankName: varchar("ach_bank_name", { length: 255 }).notNull().default(""),
+  achBankAccountType: varchar("ach_bank_account_type", { length: 32 })
+    .notNull()
+    .default(""),
+  /** Free-text distribution instructions when method is `other`. */
+  bankAccountQuery: text("bank_account_query").notNull().default(""),
+  checkPayeeName: varchar("check_payee_name", { length: 255 })
+    .notNull()
+    .default(""),
+  checkMailingAddressId: uuid("check_mailing_address_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

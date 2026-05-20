@@ -5,11 +5,11 @@ import {
   File,
   FileSignature,
   FileText,
-  Megaphone,
+  Pencil,
   Users,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import {
   dealDetailApiToRecord,
   dealStageLabel,
@@ -29,6 +29,7 @@ import {
   postDealMemberInvitationEmail,
   type DealDetailApi,
 } from "./api/dealsApi"
+import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
 import { EMPTY_INVESTORS_PAYLOAD } from "./dealOfferingPreviewShared"
 import { LpDealDetailsPage } from "@/modules/Investing/pages/deals/deal-details"
 import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
@@ -47,6 +48,7 @@ import { DealMembersTab } from "./tabs/deal_members"
 import { DealEsignTemplatesTab } from "./components/DealEsignTemplatesTab"
 import { DealDocumentsTab } from "./tabs/documents/DealDocumentsTab"
 import { DealOfferingDetailsTab } from "./tabs/offering_details/DealOfferingDetailsTab"
+import { InvestorCommunicationTab } from "./tabs/investor_communication"
 import type {
   DealInvestorRow,
   DealInvestorsPayload,
@@ -58,6 +60,7 @@ import {
   visibleDealDetailTabIds,
 } from "./utils/dealDetailTabVisibility"
 import { toast } from "../../../common/components/Toast"
+import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
 import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
@@ -100,9 +103,10 @@ const DEAL_DETAIL_TABS: DealDetailTabDef[] = [
 ]
 
 export function DealDetailPage() {
-  const { mode } = usePortalMode()
+  const { mode, switchToInvesting } = usePortalMode()
   const { dealId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [activeTab, setActiveTab] = useState<string>("offering_details")
   const [addInvestmentOpen, setAddInvestmentOpen] = useState(false)
   /** True while shared Add/Edit investment modal is open (add or edit) — hides session draft row in Deal Members table. */
@@ -138,6 +142,7 @@ export function DealDetailPage() {
     DealInvestorRow[]
   >([])
   const [lpInvestNowOpen, setLpInvestNowOpen] = useState(false)
+  const [pendingInvestNowOpen, setPendingInvestNowOpen] = useState(false)
   function formatDealCloseDateForInvestments(raw: string | undefined): string {
     const t = String(raw ?? "").trim()
     if (!t) return "—"
@@ -301,6 +306,28 @@ export function DealDetailPage() {
   }, [mode, dealId])
 
   useEffect(() => {
+    if (!dealId?.trim() || deal === undefined || deal === null) return
+    const st = location.state as { investNow?: boolean } | null
+    if (!st?.investNow) return
+    switchToInvesting()
+    setPendingInvestNowOpen(true)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [
+    dealId,
+    deal,
+    location.state,
+    location.pathname,
+    navigate,
+    switchToInvesting,
+  ])
+
+  useEffect(() => {
+    if (!pendingInvestNowOpen || mode !== "investing" || !dealDetailApi) return
+    setLpInvestNowOpen(true)
+    setPendingInvestNowOpen(false)
+  }, [pendingInvestNowOpen, mode, dealDetailApi])
+
+  useEffect(() => {
     if (!dealId) return
     if (deal === undefined) {
       setAppDocumentTitle("Deal")
@@ -340,22 +367,32 @@ export function DealDetailPage() {
     dealDetailApi?.dealAnnouncementTitle?.trim() ?? ""
   const announcementMessage =
     dealDetailApi?.dealAnnouncementMessage?.trim() ?? ""
-  const showDealAnnouncement =
-    Boolean(announcementTitle) || Boolean(announcementMessage)
-
   const hideStagePillBecauseDraftBadge =
     dealFormIncomplete &&
     dealDetailApi != null &&
     String(dealDetailApi.dealStage ?? "").trim().toLowerCase() === "draft"
 
+  const isDealDraftStage = isDealStageDraft(dealDetailApi?.dealStage)
+
   const offeringLinkAvailable = useMemo(
-    () => dealHasOfferingShareLink(dealDetailApi),
-    [dealDetailApi],
+    () => dealHasOfferingShareLink(dealDetailApi) && !isDealDraftStage,
+    [dealDetailApi, isDealDraftStage],
   )
+
+  const handleEditDeal = useCallback(() => {
+    if (!dealId?.trim()) return
+    const id = encodeURIComponent(dealId.trim())
+    navigate(`/deals/create?edit=${id}&from=detail`)
+  }, [dealId, navigate])
 
   const handleCopyMemberOfferingLink = useCallback(
     async (_row: DealInvestorRow) => {
-      if (!dealId?.trim() || !dealDetailApi || !dealHasOfferingShareLink(dealDetailApi))
+      if (
+        !dealId?.trim() ||
+        !dealDetailApi ||
+        !dealHasOfferingShareLink(dealDetailApi) ||
+        isDealDraftStage
+      )
         return
       try {
         const url = await buildDealOfferingPreviewShareUrl(dealId.trim(), {
@@ -372,7 +409,7 @@ export function DealDetailPage() {
         toast.error("Could not copy link", msg)
       }
     },
-    [dealId, dealDetailApi],
+    [dealId, dealDetailApi, isDealDraftStage],
   )
 
   /** **Investors** tab: email framed as an investor invite. */
@@ -514,35 +551,11 @@ export function DealDetailPage() {
     <div className="deals_list_page deals_detail_page">
       {showSyndicatingDealChrome ? (
       <header className="deals_list_head">
-        {showDealAnnouncement ? (
-          <div
-            className="deal_detail_announcement_banner"
-            role="region"
-            aria-label="Deal announcement"
-          >
-            <Megaphone
-              size={16}
-              strokeWidth={2}
-              className="deal_detail_announcement_banner_icon"
-              aria-hidden
-            />
-            <div className="deal_detail_announcement_banner_body">
-              <p className="deal_detail_announcement_banner_label">
-                Announcement
-              </p>
-              {announcementTitle ? (
-                <p className="deal_detail_announcement_banner_title">
-                  {announcementTitle}
-                </p>
-              ) : null}
-              {announcementMessage ? (
-                <p className="deal_detail_announcement_banner_message">
-                  {announcementMessage}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        <DealAnnouncementBanner
+          title={announcementTitle}
+          message={announcementMessage}
+          variant="page"
+        />
         <div className="deals_list_title_row">
           <Link
             className="deals_list_back_circle"
@@ -571,6 +584,14 @@ export function DealDetailPage() {
               </span>
             ) : null}
           </div>
+          <button
+            type="button"
+            className="um_btn_secondary deals_detail_edit_deal_btn"
+            onClick={handleEditDeal}
+          >
+            <Pencil size={16} strokeWidth={2} aria-hidden />
+            {dealFormIncomplete ? "Continue editing" : "Edit deal"}
+          </button>
         </div>
       </header>
       ) : null}
@@ -657,6 +678,7 @@ export function DealDetailPage() {
               <DealMembersTab
                 dealId={dealId}
                 offeringLinkAvailable={offeringLinkAvailable}
+                offeringLinkBlockedBecauseDraft={isDealDraftStage}
                 addInvestmentOpen={addInvestmentOpen}
                 sharedInvestmentModalOpen={sharedInvestmentModalOpen}
                 investorsRefreshKey={dealMembersRefreshKey}
@@ -711,6 +733,7 @@ export function DealDetailPage() {
               onCopyOfferingLink={handleCopyMemberOfferingLink}
               onDeleteMember={handleDeleteMember}
               offeringLinkAvailable={offeringLinkAvailable}
+              offeringLinkBlockedBecauseDraft={isDealDraftStage}
               invitationMailStatusByRowId={invitationMailSentByRowId}
             />
           </>
@@ -727,6 +750,8 @@ export function DealDetailPage() {
           />
         ) : activeTab === "esign_templates" ? (
           <DealEsignTemplatesTab dealId={dealId} />
+        ) : activeTab === "investor_communication" && dealId?.trim() ? (
+          <InvestorCommunicationTab dealId={dealId.trim()} />
         ) : (
           <div className="deal_detail_wip_wrap" role="status">
             <p className="deal_detail_wip_title">Working in progress</p>

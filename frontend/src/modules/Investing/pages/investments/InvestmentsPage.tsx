@@ -299,10 +299,22 @@ export default function InvestmentsPage() {
           aria-busy={loading}
         >
           <div
-            className="um_toolbar deal_inv_table_um_toolbar investments_page_table_toolbar"
+            className="um_toolbar deal_inv_table_um_toolbar investments_page_table_toolbar um_toolbar_export_then_search"
             aria-label="Table tools"
           >
-            <div className="um_search_wrap">
+            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+              <button
+                type="button"
+                className="um_toolbar_export_btn"
+                onClick={() => setExportModalOpen(true)}
+                title="Export all rows in this view (CSV) or pick rows in the dialog"
+                aria-label="Export All"
+              >
+                <Download size={18} strokeWidth={2} aria-hidden />
+                <span>Export All</span>
+              </button>
+            </div>
+            <div className="um_search_wrap deal_inv_toolbar_search">
               <Search className="um_search_icon" size={18} aria-hidden />
               <input
                 type="search"
@@ -313,37 +325,22 @@ export default function InvestmentsPage() {
                 aria-label="Filter investments"
               />
             </div>
-            <div className="investments_page_toolbar_end">
-              {filtered.length > 0 ? (
-                <p className="investments_page_totals" aria-live="polite">
-                  <span className="investments_page_totals_count">
-                    {filtered.length}
-                    {filtered.length === 1
-                      ? " result"
-                      : " results"}
-                  </span>
-                  <span className="investments_page_totals_sep" aria-hidden>
-                    ·
-                  </span>
-                  <span>Invested {formatUsd(totals.invested)}</span>
-                  <span className="investments_page_totals_sep" aria-hidden>
-                    ·
-                  </span>
-                  <span>Distributed {formatUsd(totals.distributed)}</span>
-                </p>
-              ) : null}
-              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-                <button
-                  type="button"
-                  className="um_toolbar_export_btn"
-                  onClick={() => setExportModalOpen(true)}
-                  title="Export all investments in this view (CSV) or pick rows in the dialog"
-                >
-                  <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export all</span>
-                </button>
-              </div>
-            </div>
+            {filtered.length > 0 ? (
+              <p className="investments_page_totals" aria-live="polite">
+                <span className="investments_page_totals_count">
+                  {filtered.length}
+                  {filtered.length === 1 ? " result" : " results"}
+                </span>
+                <span className="investments_page_totals_sep" aria-hidden>
+                  ·
+                </span>
+                <span>Invested {formatUsd(totals.invested)}</span>
+                <span className="investments_page_totals_sep" aria-hidden>
+                  ·
+                </span>
+                <span>Distributed {formatUsd(totals.distributed)}</span>
+              </p>
+            ) : null}
           </div>
           <DataTable<InvestmentListRow>
             visualVariant="members"

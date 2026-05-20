@@ -206,7 +206,6 @@
   min-height: var(--deals-add-inv-control-min-h);
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--portal-border, #e5e5e5);
-  border-radius: var(--deals-add-inv-control-radius);
   font-family: var(--deals-add-inv-font-family);
   font-size: var(--deals-add-inv-control-font);
   font-weight: 400;
@@ -214,6 +213,10 @@
   letter-spacing: -0.01em;
   color: var(--portal-text, #282828);
   background: var(--portal-surface, #fff);
+}
+
+.deals_add_inv_input.deals_add_inv_field_control:not(.deals_add_inv_field_pill) {
+  border-radius: var(--deals-add-inv-control-radius);
 }
 
 .deals_add_inv_input.deals_add_inv_field_control:focus-visible {
@@ -233,11 +236,11 @@
     [type="radio"]
   ):not(.visually_hidden):not(.contacts_chips_combobox_input):not(
     .add_contact_chip_input
-  ) {
+  ):not(.deals_add_inv_field_pill) {
   box-sizing: border-box;
   min-height: var(--deals-add-inv-control-min-h);
   padding: 0.5rem 0.75rem;
-  border-radius: var(--deals-add-inv-control-radius);
+  border-radius: 9999px;
   font-family: var(--deals-add-inv-font-family);
   font-size: var(--deals-add-inv-control-font);
   font-weight: 400;

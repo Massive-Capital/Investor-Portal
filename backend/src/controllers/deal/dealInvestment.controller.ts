@@ -7,6 +7,7 @@ import {
 } from "../../services/deal/dealAccess.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
+  enrichFullInvestorApiFromLpRoster,
   filterMergedLpInvestorsForCoSponsorViewer,
   getLpInvestorsTabPayload,
   isViewerCoSponsorOnDeal,
@@ -126,7 +127,15 @@ export async function getDealInvestors(
       );
     }
     const mapped = await mapDealInvestmentsToInvestorApi(rows);
-    const investors = await enrichInvestorApiRowsWithAddedBy(dealId, mapped);
+    const withLpRosterMeta = await enrichFullInvestorApiFromLpRoster(
+      dealId,
+      rows,
+      mapped,
+    );
+    const investors = await enrichInvestorApiRowsWithAddedBy(
+      dealId,
+      withLpRosterMeta,
+    );
     const kpis = buildInvestorKpisFromRows(rows);
     res.status(200).json({
       kpis,

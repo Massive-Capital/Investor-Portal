@@ -202,13 +202,38 @@
   white-space: nowrap;
 }
 
-/* Search + export inside white panel (matches User Management / Contacts toolbar) */
-.deal_inv_table_panel > .deal_inv_table_um_toolbar.um_toolbar {
+.deal_inv_table_panel .deal_inv_controls {
+  margin-bottom: 0.75em;
+}
+
+.deal_inv_panel_add_row {
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 0.75em;
 }
 
 .deal_inv_filters_section {
   padding-top: 0.75em;
+}
+
+.deal_inv_table_panel .deal_inv_filters_section {
+  padding-top: 0;
+  margin-bottom: 0.75em;
+}
+
+.deal_inv_table_panel .deal_inv_controls > .um_toolbar.um_toolbar_export_then_search {
+  margin-bottom: 0.75em;
+}
+
+.deal_inv_table_panel .deal_inv_controls > .um_toolbar.um_toolbar_export_then_search .um_search_wrap {
+  flex: 0 1 auto;
+  min-width: min(100%, 12rem);
+  max-width: 22em;
+}
+
+.deal_inv_table_panel .um_toolbar_actions .um_btn_toolbar:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .deal_inv_filters_heading {
@@ -218,6 +243,20 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--portal-text-muted);
+}
+
+/* Legacy: kept for any embeds still using filter-row search */
+.deal_inv_filters_search .um_search_input {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 2.75em;
+  padding-right: 1em;
+  font-size: 0.9375em;
+  line-height: 1.25;
+  box-sizing: border-box;
 }
 
 /* Responsive filter grid — no horizontal scroll strip */

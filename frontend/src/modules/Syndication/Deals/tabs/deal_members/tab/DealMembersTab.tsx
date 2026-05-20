@@ -95,6 +95,7 @@ interface DealMembersTabProps {
    * When true, “Copy offering link” is enabled (Offering Details → visibility “Only visible with link”).
    */
   offeringLinkAvailable: boolean
+  offeringLinkBlockedBecauseDraft?: boolean
   /** When false, session add-member draft (if any) is merged into the table below. */
   addInvestmentOpen: boolean
   /** From DealInvestorsTab: true while Add or Edit modal is open — suppresses duplicate session draft row. */
@@ -118,6 +119,7 @@ interface DealMembersTabProps {
 export function DealMembersTab({
   dealId,
   offeringLinkAvailable,
+  offeringLinkBlockedBecauseDraft = false,
   addInvestmentOpen,
   sharedInvestmentModalOpen = false,
   onAddMember,
@@ -654,6 +656,7 @@ export function DealMembersTab({
               draftRow={r.id === ADD_MEMBER_DRAFT_ROW_ID}
               invitationMailSent={r.invitationMailSent === true}
               offeringLinkAvailable={offeringLinkAvailable}
+              offeringLinkBlockedBecauseDraft={offeringLinkBlockedBecauseDraft}
               onView={handleViewMember}
               onEdit={onEditMember}
               onCopyLink={onCopyMemberOfferingLink}
@@ -926,18 +929,7 @@ export function DealMembersTab({
           </p>
         ) : (
           <>
-            <div className="um_toolbar deal_inv_table_um_toolbar">
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search deal members…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search deal members"
-                />
-              </div>
+            <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
               <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
                 <button
                   type="button"
@@ -954,8 +946,19 @@ export function DealMembersTab({
                   onClick={() => setExportModalOpen(true)}
                 >
                   <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export all deal members</span>
+                  <span>Export All</span>
                 </button>
+              </div>
+              <div className="um_search_wrap">
+                <Search className="um_search_icon" size={18} aria-hidden />
+                <input
+                  type="search"
+                  className="um_search_input"
+                  placeholder="Search deal members…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Search deal members"
+                />
               </div>
             </div>
 

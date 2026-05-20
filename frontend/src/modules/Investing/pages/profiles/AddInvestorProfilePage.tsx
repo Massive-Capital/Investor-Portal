@@ -8,7 +8,10 @@ import {
   postInvestorProfile,
 } from "./investingProfileBookApi"
 import { AddInvestorProfileModal } from "./AddInvestorProfileModal"
-import type { NewInvestorProfilePayload } from "./investor-profiles.types"
+import type {
+  InvestorProfileListRow,
+  NewInvestorProfilePayload,
+} from "./investor-profiles.types"
 import type { SavedAddress } from "./address.types"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deals-list.css"
@@ -25,6 +28,9 @@ export function AddInvestorProfilePage() {
   const [savedBeneficiaries, setSavedBeneficiaries] = useState<
     ProfileBookSnapshot["beneficiaries"]
   >([])
+  const [existingProfiles, setExistingProfiles] = useState<InvestorProfileListRow[]>(
+    [],
+  )
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -36,11 +42,13 @@ export function AddInvestorProfilePage() {
         if (!cancelled) {
           setSavedAddresses(book.addresses)
           setSavedBeneficiaries(book.beneficiaries)
+          setExistingProfiles(book.profiles)
         }
       } catch {
         if (!cancelled) {
           setSavedAddresses([])
           setSavedBeneficiaries([])
+          setExistingProfiles([])
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -92,6 +100,9 @@ export function AddInvestorProfilePage() {
       onClose={goBack}
       savedAddresses={savedAddresses}
       savedBeneficiaries={savedBeneficiaries}
+      existingProfiles={existingProfiles}
+      onAddressAdded={(row) => setSavedAddresses((prev) => [row, ...prev])}
+      onBeneficiaryAdded={(row) => setSavedBeneficiaries((prev) => [row, ...prev])}
       onProfileCreated={onProfileCreated}
     />
   )

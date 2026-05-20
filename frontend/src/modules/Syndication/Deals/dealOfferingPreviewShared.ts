@@ -18,6 +18,8 @@ export function isDealUuidForOfferingPreview(id: string | undefined): boolean {
   return Boolean(id?.trim() && DEAL_OFFERING_PREVIEW_UUID_RE.test(id.trim()))
 }
 
+export { dealWorkspacePath } from "./utils/dealWorkspacePath"
+
 export function dealIdFromOfferingPortfolioPathname(
   pathname: string,
 ): string | undefined {
@@ -80,6 +82,35 @@ export function previewFundedDisplay(payload: DealInvestorsPayload): string {
   const kpi = payload.kpis.totalFunded?.trim()
   if (kpi && kpi !== "—") return kpi
   return "—"
+}
+
+export type OfferingMetricChip = { label: string; value: string }
+
+/** KPI chips for the offering bento metrics row (investor / preview). */
+export function buildOfferingMetricChips(
+  detail: DealDetailApi,
+  classes: DealInvestorClass[],
+  payload: DealInvestorsPayload,
+): OfferingMetricChip[] {
+  const chips: OfferingMetricChip[] = []
+  const target = previewTargetDisplay(detail, classes)
+  if (target !== "—") chips.push({ label: "Offering target", value: target })
+
+  const funded = previewFundedDisplay(payload)
+  if (funded !== "—") chips.push({ label: "Total funded", value: funded })
+
+  const inv = detail.listRow.investors?.trim()
+  if (inv && inv !== "—") chips.push({ label: "Investors", value: inv })
+
+  if (detail.dealType?.trim())
+    chips.push({ label: "Deal type", value: detail.dealType.trim() })
+  if (detail.secType?.trim())
+    chips.push({ label: "Security type", value: detail.secType.trim() })
+
+  const close = formatDateDdMmmYyyy(detail.closeDate?.trim())
+  if (close !== "—") chips.push({ label: "Target close", value: close })
+
+  return chips
 }
 
 export function buildSummaryBits(

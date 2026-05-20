@@ -949,18 +949,7 @@ export function DealsListPage({
           className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading ? " deals_list_table_panel_loading" : ""}`}
           aria-busy={loading}
         >
-          <div className="um_toolbar deal_inv_table_um_toolbar">
-            <div className="um_search_wrap">
-              <Search className="um_search_icon" size={18} aria-hidden />
-              <input
-                type="search"
-                className="um_search_input"
-                placeholder="Search deals…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search deals"
-              />
-            </div>
+          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
             <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
               {dealsListContext === "syndicating" && activeTab === "deals" ? (
                 <button
@@ -978,8 +967,19 @@ export function DealsListPage({
                 onClick={handleOpenExportModal}
               >
                 <Download size={18} strokeWidth={2} aria-hidden />
-                <span>Export all deals</span>
+                <span>Export All</span>
               </button>
+            </div>
+            <div className="um_search_wrap">
+              <Search className="um_search_icon" size={18} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search deals…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search deals"
+              />
             </div>
           </div>
           <DataTable

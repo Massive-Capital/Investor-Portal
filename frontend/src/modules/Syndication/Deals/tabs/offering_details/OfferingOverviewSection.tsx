@@ -16,10 +16,15 @@ import {
   blurFormatNumberOfUnitsInput,
 } from "../../utils/offeringMoneyFormat"
 import {
-  DEFAULT_OFFERING_STATUS,
+  isInvestmentFlowOpeningTransition,
+  validateOfferingStatusChange,
+} from "../../constants/deal-lifecycle"
+import {
   DEFAULT_OFFERING_VISIBILITY,
+  isOfferingStatusFieldEditable,
   mapLegacyOfferingVisibility,
-  OFFERING_STATUS_OPTIONS,
+  normalizeOfferingStatusForStage,
+  offeringStatusOptionsForDealStage,
   OFFERING_VISIBILITY_OPTIONS,
   type OfferingStatusValue,
   type OfferingVisibilityValue,
@@ -46,10 +51,11 @@ type OverviewDraft = {
   classPricePerUnit: string
 }
 
-function normalizeStatus(v: string | undefined): OfferingStatusValue {
-  const raw = String(v ?? "").trim()
-  const ok = OFFERING_STATUS_OPTIONS.some((o) => o.value === raw)
-  return ok ? (raw as OfferingStatusValue) : DEFAULT_OFFERING_STATUS
+function normalizeStatus(
+  dealStage: string | undefined,
+  v: string | undefined,
+): OfferingStatusValue {
+  return normalizeOfferingStatusForStage(dealStage, v)
 }
 
 function normalizeVisibility(v: string | undefined): OfferingVisibilityValue {
@@ -60,7 +66,7 @@ function normalizeVisibility(v: string | undefined): OfferingVisibilityValue {
 
 function stateFromDetail(d: DealDetailApi): OverviewDraft {
   return {
-    offeringStatus: normalizeStatus(d.offeringStatus),
+    offeringStatus: normalizeStatus(d.dealStage, d.offeringStatus),
     offeringVisibility: normalizeVisibility(d.offeringVisibility),
     dealName: d.dealName?.trim() || "",
     dealType: (d.dealType ?? "").trim(),
@@ -179,6 +185,7 @@ export function OfferingOverviewSection({
     setSavedSnapshot((s) => mergeOverviewDraftWithClasses(base, s, classes))
   }, [
     detail.id,
+    detail.dealStage,
     detail.offeringStatus,
     detail.offeringVisibility,
     detail.dealName,
@@ -274,6 +281,17 @@ export function OfferingOverviewSection({
       let dealOut: DealDetailApi | null = null
 
       if (!overviewBitsEqual) {
+        if (draft.offeringStatus !== savedSnapshot.offeringStatus) {
+          const statusCheck = validateOfferingStatusChange({
+            dealStage: detail.dealStage,
+            previousOfferingStatus: savedSnapshot.offeringStatus,
+            nextOfferingStatus: draft.offeringStatus,
+          })
+          if (!statusCheck.ok) {
+            toast.error(statusCheck.message)
+            return
+          }
+        }
         const res = await patchDealOfferingOverview(detail.id, {
           offeringStatus: draft.offeringStatus,
           offeringVisibility: draft.offeringVisibility,
@@ -283,8 +301,9 @@ export function OfferingOverviewSection({
         })
         if (!res.ok) {
           const nameErr = res.fieldErrors?.deal_name
+          const statusErr = res.fieldErrors?.offering_status
           if (nameErr) setDealNameError(nameErr)
-          toast.error(nameErr ?? res.message)
+          toast.error(statusErr ?? nameErr ?? res.message)
           return
         }
         dealOut = res.deal
@@ -338,6 +357,20 @@ export function OfferingOverviewSection({
         }
       }
 
+      if (
+        !overviewBitsEqual &&
+        isInvestmentFlowOpeningTransition(
+          savedSnapshot.offeringStatus,
+          draft.offeringStatus,
+        )
+      ) {
+        toast.success(
+          "Investment is now fully open",
+          "Existing investors will be notified to complete their investment.",
+          8000,
+        )
+      }
+
       onSaved?.(dealOut)
       const list = await fetchDealInvestorClasses(detail.id)
       setClasses(list)
@@ -354,6 +387,29 @@ export function OfferingOverviewSection({
       setSaving(false)
     }
   }, [assetRows, classes, detail.id, draft, onSaved, savedSnapshot, saving])
+
+  const statusOptions = useMemo(
+    () =>
+      offeringStatusOptionsForDealStage(detail.dealStage, draft.offeringStatus),
+    [detail.dealStage, draft.offeringStatus],
+  )
+
+  const statusFieldEditable = isOfferingStatusFieldEditable(detail.dealStage)
+
+  const statusFieldLockedHint = useMemo(() => {
+    if (statusFieldEditable) return undefined
+    const stage = String(detail.dealStage ?? "").trim().toLowerCase()
+    if (stage === "draft") {
+      return "Fundraising status is fixed while the deal is in Draft. Move the deal to Capital Raising to manage fundraising statuses."
+    }
+    if (stage === "asset_managing" || stage === "managing_asset") {
+      return "Fundraising status is locked while the deal is Managing Asset (Closed only)."
+    }
+    if (stage === "liquidated") {
+      return "Fundraising status is locked while the deal is Liquidated (Past only)."
+    }
+    return "Fundraising status can only be changed while the deal is in Capital Raising."
+  }, [detail.dealStage, statusFieldEditable])
 
   const visibilityOptionHint = useMemo(() => {
     const opt = OFFERING_VISIBILITY_OPTIONS.find(
@@ -406,25 +462,35 @@ export function OfferingOverviewSection({
                   </span>
                 </span>
               </div>
-              <div className="deal_kh_td" role="cell">
+              <div className="deal_kh_td deal_kh_td_stack" role="cell">
                 <select
                   id={`deal-ov-status-${id}`}
                   className="deal_kh_select"
                   value={draft.offeringStatus}
                   aria-required
+                  disabled={!statusFieldEditable}
+                  aria-disabled={!statusFieldEditable}
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
-                      offeringStatus: normalizeStatus(e.target.value),
+                      offeringStatus: normalizeStatus(
+                        detail.dealStage,
+                        e.target.value,
+                      ),
                     }))
                   }
                 >
-                  {OFFERING_STATUS_OPTIONS.map((o) => (
+                  {statusOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
                   ))}
                 </select>
+                {statusFieldLockedHint ? (
+                  <p className="deal_offering_visibility_hint" role="note">
+                    {statusFieldLockedHint}
+                  </p>
+                ) : null}
               </div>
             </div>
 

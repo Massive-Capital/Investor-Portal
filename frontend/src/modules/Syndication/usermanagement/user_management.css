@@ -119,6 +119,54 @@
   flex-shrink: 0;
 }
 
+/* Table toolbars: action buttons (incl. Export all) then search field. */
+.um_toolbar.um_toolbar_export_then_search {
+  justify-content: flex-start;
+  gap: 0.65em 1em;
+}
+
+.um_toolbar.um_toolbar_export_then_search .um_toolbar_actions {
+  order: 1;
+  flex-shrink: 0;
+}
+
+.um_toolbar.um_toolbar_export_then_search .um_search_wrap {
+  order: 2;
+  flex: 1 1 200px;
+  min-width: min(100%, 12rem);
+  max-width: 22em;
+}
+
+/* Table cards: export, add, and search grouped on the right */
+.deal_inv_table_panel > .um_toolbar.um_toolbar_export_then_search,
+.deal_inv_table_panel .deal_inv_controls > .um_toolbar.um_toolbar_export_then_search {
+  justify-content: flex-end;
+}
+
+/* Deal Investors table toolbar density: pill search aligned with Export all */
+.um_toolbar.um_toolbar_export_then_search .um_search_wrap .um_search_input {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 2.75em;
+  padding-right: 1em;
+  font-size: 0.9375em;
+  line-height: 1.25;
+}
+
+.um_toolbar.um_toolbar_export_then_search .investments_page_totals {
+  order: 3;
+  margin-left: auto;
+}
+
+.um_toolbar.um_toolbar_export_then_search .cp_company_tab_toolbar_hint {
+  flex: 1 1 100%;
+  order: 0;
+  margin: 0;
+}
+
 .um_btn_toolbar {
   display: inline-flex;
   align-items: center;

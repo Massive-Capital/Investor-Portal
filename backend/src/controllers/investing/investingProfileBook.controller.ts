@@ -1,9 +1,13 @@
 import type { Request, Response } from "express";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
+  BeneficiaryDuplicateError,
+  BeneficiaryInvalidEmailError,
   BeneficiaryInvalidPhoneError,
+  InvestorProfileDuplicateError,
   createBeneficiaryForUser,
   createInvestorProfileForUser,
+  SavedAddressDuplicateError,
   createSavedAddressForUser,
   getProfileBookForUser,
   setBeneficiaryArchived,
@@ -95,6 +99,10 @@ export async function postMyProfileBookProfile(req: Request, res: Response): Pro
     }
     res.status(201).json({ profile: row });
   } catch (err) {
+    if (err instanceof InvestorProfileDuplicateError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
     console.error("postMyProfileBookProfile:", err);
     const msg = err instanceof Error && err.message === "form_snapshot_too_large"
       ? "Profile data is too large."
@@ -185,6 +193,10 @@ export async function putMyProfileBookProfile(
     }
     res.status(200).json({ profile: row });
   } catch (err) {
+    if (err instanceof InvestorProfileDuplicateError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
     console.error("putMyProfileBookProfile:", err);
     const msg = err instanceof Error && err.message === "form_snapshot_too_large"
       ? "Profile data is too large."
@@ -216,8 +228,15 @@ export async function postMyProfileBookBeneficiary(
     }
     res.status(201).json({ beneficiary: row });
   } catch (err) {
-    if (err instanceof BeneficiaryInvalidPhoneError) {
+    if (
+      err instanceof BeneficiaryInvalidPhoneError ||
+      err instanceof BeneficiaryInvalidEmailError
+    ) {
       res.status(400).json({ message: err.message });
+      return;
+    }
+    if (err instanceof BeneficiaryDuplicateError) {
+      res.status(409).json({ message: err.message });
       return;
     }
     console.error("postMyProfileBookBeneficiary:", err);
@@ -282,8 +301,15 @@ export async function putMyProfileBookBeneficiary(
     }
     res.status(200).json({ beneficiary: row });
   } catch (err) {
-    if (err instanceof BeneficiaryInvalidPhoneError) {
+    if (
+      err instanceof BeneficiaryInvalidPhoneError ||
+      err instanceof BeneficiaryInvalidEmailError
+    ) {
       res.status(400).json({ message: err.message });
+      return;
+    }
+    if (err instanceof BeneficiaryDuplicateError) {
+      res.status(409).json({ message: err.message });
       return;
     }
     console.error("putMyProfileBookBeneficiary:", err);
@@ -316,6 +342,10 @@ export async function postMyProfileBookAddress(req: Request, res: Response): Pro
     }
     res.status(201).json({ address: row });
   } catch (err) {
+    if (err instanceof SavedAddressDuplicateError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
     console.error("postMyProfileBookAddress:", err);
     res.status(500).json({ message: "Could not save address. Please try again." });
   }
@@ -383,6 +413,10 @@ export async function putMyProfileBookAddress(
     }
     res.status(200).json({ address: row });
   } catch (err) {
+    if (err instanceof SavedAddressDuplicateError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
     console.error("putMyProfileBookAddress:", err);
     res.status(500).json({ message: "Could not update address. Please try again." });
   }

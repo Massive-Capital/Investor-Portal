@@ -15,6 +15,9 @@ import {
 export const SYNDICATION_SIDEBAR_PATH_ROLES: Partial<
   Record<string, readonly string[]>
 > = {
+  /** Platform admin only — application-wide KPIs */
+  "/metrics": [PLATFORM_ADMIN],
+
   /** Platform admin only — customer companies directory */
   "/customers": [PLATFORM_ADMIN],
 

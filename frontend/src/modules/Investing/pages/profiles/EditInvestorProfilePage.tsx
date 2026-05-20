@@ -36,6 +36,9 @@ export function EditInvestorProfilePage() {
     ProfileBookSnapshot["beneficiaries"]
   >([])
   const [profile, setProfile] = useState<InvestorProfileListRow | null>(null)
+  const [existingProfiles, setExistingProfiles] = useState<InvestorProfileListRow[]>(
+    [],
+  )
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -55,6 +58,7 @@ export function EditInvestorProfilePage() {
         if (cancelled) return
         setSavedAddresses(book.addresses)
         setSavedBeneficiaries(book.beneficiaries)
+        setExistingProfiles(book.profiles)
         const row = book.profiles.find((p) => p.id === profileId) ?? null
         if (!row) {
           setLoadError("This profile was not found or is no longer available.")
@@ -139,6 +143,9 @@ export function EditInvestorProfilePage() {
       onClose={goBack}
       savedAddresses={savedAddresses}
       savedBeneficiaries={savedBeneficiaries}
+      existingProfiles={existingProfiles}
+      onAddressAdded={(row) => setSavedAddresses((prev) => [row, ...prev])}
+      onBeneficiaryAdded={(row) => setSavedBeneficiaries((prev) => [row, ...prev])}
       onProfileUpdated={onProfileUpdated}
     />
   )

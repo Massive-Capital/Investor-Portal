@@ -1,4 +1,4 @@
-import { Download, Eye, MoreHorizontal, RefreshCw, Upload } from "lucide-react"
+import { Download, Eye, MoreHorizontal, RefreshCw, Search, Upload } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -50,6 +50,7 @@ export default function CompanyDealsPage() {
   const [pageSize, setPageSize] = useState(10)
 
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [query, setQuery] = useState("")
   const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null)
   const [actionMenuRow, setActionMenuRow] = useState<DealListRow | null>(null)
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
@@ -183,16 +184,28 @@ export default function CompanyDealsPage() {
     toast.success("Deal exported", `Saved as ${filename}`)
   }
 
+  const filteredDeals = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return deals
+    return deals.filter((r) =>
+      (r.dealName ?? "").toLowerCase().includes(q),
+    )
+  }, [deals, query])
+
+  useEffect(() => {
+    setPage(1)
+  }, [query])
+
   const pagination = useMemo(
     () => ({
       page,
       pageSize,
-      totalItems: deals.length,
+      totalItems: filteredDeals.length,
       onPageChange: setPage,
       onPageSizeChange: setPageSize,
       ariaLabel: `Deals for ${titleCompany} table pagination`,
     }),
-    [page, pageSize, deals.length, titleCompany],
+    [page, pageSize, filteredDeals.length, titleCompany],
   )
 
   const columns: DataTableColumn<DealListRow>[] = useMemo(
@@ -347,7 +360,7 @@ export default function CompanyDealsPage() {
       aria-busy={loading}
     >
       <div className="cp_company_tab_panel_inner">
-        <div className="um_toolbar cp_company_tab_toolbar deal_inv_table_um_toolbar">
+        <div className="um_toolbar cp_company_tab_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
           <p className="cp_company_tab_toolbar_hint">
             Deals created for{" "}
             <strong className="cp_company_tab_toolbar_strong">
@@ -363,7 +376,7 @@ export default function CompanyDealsPage() {
               onClick={() => setExportModalOpen(true)}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
-              <span>Export all deals</span>
+              <span>Export All</span>
             </button>
             <button
               type="button"
@@ -374,6 +387,18 @@ export default function CompanyDealsPage() {
               <RefreshCw size={18} strokeWidth={2} aria-hidden />
               Refresh
             </button>
+          </div>
+          <div className="um_search_wrap">
+            <Search className="um_search_icon" size={18} aria-hidden />
+            <input
+              type="search"
+              className="um_search_input"
+              placeholder="Search deals…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label={`Search deals for ${titleCompany}`}
+              disabled={loading}
+            />
           </div>
         </div>
 
@@ -389,18 +414,20 @@ export default function CompanyDealsPage() {
             membersTableClassName="um_table_members deal_inv_table cp_company_deals_table"
             initialSort={{ columnId: "name", direction: "asc" }}
             columns={columns}
-            rows={loading ? [] : deals}
+            rows={loading ? [] : filteredDeals}
             getRowKey={(row, i) => row.id || `deal-${i}`}
             emptyLabel={
               loading
                 ? "Loading deals…"
                 : deals.length === 0
                   ? "No deals for this company yet."
-                  : "No rows."
+                  : query.trim()
+                    ? "No deals match your search."
+                    : "No rows."
             }
             emptyStateRole={loading ? "status" : undefined}
             pagination={
-              !loading && deals.length > 0 ? pagination : undefined
+              !loading && filteredDeals.length > 0 ? pagination : undefined
             }
           />
         </div>

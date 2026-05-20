@@ -1482,27 +1482,13 @@ export default function UserManagementPage({
 
       <div className="um_members_tab_content">
       <div
-        className="um_panel um_members_tab_panel"
+        className="um_panel um_members_tab_panel deal_inv_table_panel"
         id="um-members-panel-users"
         role="tabpanel"
         aria-labelledby="um-members-tab-users"
         hidden={membersTab !== "users"}
       >
-        <div className="um_toolbar">
-          <div className="um_search_wrap">
-            <Search className="um_search_icon" size={18} aria-hidden />
-            <input
-              type="search"
-              className="um_search_input"
-              placeholder="Search"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setToolbarNotice("");
-              }}
-              aria-label="Search members"
-            />
-          </div>
+        <div className="um_toolbar um_toolbar_export_then_search">
           <div className="um_toolbar_actions">
             <button
               type="button"
@@ -1527,8 +1513,22 @@ export default function UserManagementPage({
               onClick={() => setMembersExportOpen(true)}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
-              <span>Export all members</span>
+              <span>Export All</span>
             </button>
+          </div>
+          <div className="um_search_wrap">
+            <Search className="um_search_icon" size={18} aria-hidden />
+            <input
+              type="search"
+              className="um_search_input"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setToolbarNotice("");
+              }}
+              aria-label="Search members"
+            />
           </div>
         </div>
         {toolbarNotice ? (

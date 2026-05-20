@@ -3,6 +3,7 @@ import { getApiV1Base } from "@/common/utils/apiBaseUrl"
 import type { AddressFormDraft, SavedAddress } from "./address.types"
 import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
 import type {
+  InvestorProfileDistributionBank,
   InvestorProfileListRow,
   NewInvestorProfilePayload,
   UpdateInvestorProfilePayload,
@@ -44,6 +45,27 @@ function errMsg(data: Record<string, unknown>, res: Response): string {
   return `Request failed (${res.status})`
 }
 
+function strField(r: Record<string, unknown>, camel: string, snake: string): string {
+  const v = r[camel] ?? r[snake]
+  return typeof v === "string" ? v.trim() : ""
+}
+
+function normalizeDistributionBank(raw: unknown): InvestorProfileDistributionBank | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  const b = raw as Record<string, unknown>
+  return {
+    distributionMethod: strField(b, "distributionMethod", "distribution_method"),
+    achRoutingNumber: strField(b, "achRoutingNumber", "ach_routing_number"),
+    achAccountNumber: strField(b, "achAccountNumber", "ach_account_number"),
+    achBankAddress: strField(b, "achBankAddress", "ach_bank_address"),
+    achBankName: strField(b, "achBankName", "ach_bank_name"),
+    achBankAccountType: strField(b, "achBankAccountType", "ach_bank_account_type"),
+    bankAccountQuery: strField(b, "bankAccountQuery", "bank_account_query"),
+    checkPayeeName: strField(b, "checkPayeeName", "check_payee_name"),
+    checkMailingAddressId: strField(b, "checkMailingAddressId", "check_mailing_address_id"),
+  }
+}
+
 /** Coerce a profile row from JSON (snake or camel) into `InvestorProfileListRow` shape. */
 export function normalizeInvestorProfileListRow(
   raw: unknown,
@@ -82,6 +104,7 @@ export function normalizeInvestorProfileListRow(
         ? String(r.lastEditReason ?? r.last_edit_reason)
         : null,
     profileWizardState: r.profileWizardState ?? r.profile_wizard_state ?? r.form_snapshot,
+    distributionBank: normalizeDistributionBank(r.distributionBank ?? r.distribution_bank),
   }
 }
 

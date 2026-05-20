@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react"
 import { createPortal } from "react-dom"
 import {
   Eye,
@@ -16,14 +23,26 @@ import {
 import { UsPhoneInput } from "@/common/components/UsPhoneInput"
 import { toast } from "@/common/components/Toast"
 import {
-  isValidUsNanp10,
   national10ToE164,
   nationalDigitsFromStoredPhone,
   nationalTenDigitsFromRawInput,
 } from "@/common/phone/usPhoneNumber"
-import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
+import {
+  getEmailFieldError,
+  getUsPhoneFieldError,
+} from "./profileContactValidation"
+import { formatSavedAddressLabel, type AddressFormDraft, type SavedAddress } from "./address.types"
+import {
+  type BeneficiaryDuplicateRow,
+  BENEFICIARY_DUPLICATE_MESSAGE,
+  hasActiveBeneficiaryDuplicate,
+} from "./beneficiaryDuplicateCheck"
+import { AddAddressModal } from "./AddAddressModal"
 import { InvestingFormField } from "./InvestingFormField"
+import { postSavedAddress } from "./investingProfileBookApi"
+import { SavedAddressSelect } from "./SavedAddressSelect"
 import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
+import "@/modules/Syndication/Deals/tabs/deal_members/add-investment/add_deal_modal.css"
 import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
@@ -57,15 +76,10 @@ const RELATIONSHIP_OPTIONS = [
   "Other",
 ] as const
 
-/** Non-empty value must look like a normal email. */
-function getEmailError(raw: string): string | null {
-  const t = raw.trim()
-  if (!t) return null
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(t)) {
-    return "Enter a valid email address."
-  }
-  return null
-}
+const BEN_FIELD_PILL = "deals_add_inv_field_pill"
+const BEN_INPUT_CLASS = `deals_add_inv_input deals_add_inv_field_control ${BEN_FIELD_PILL}`
+const BEN_SELECT_CLASS = `um_field_select deals_add_inv_field_control ${BEN_FIELD_PILL}`
+const BEN_DROPDOWN_TRIGGER = `deals_add_inv_field_control ${BEN_FIELD_PILL}`
 
 interface AddBeneficiaryModalProps {
   open: boolean
@@ -76,6 +90,12 @@ interface AddBeneficiaryModalProps {
   variant?: "add" | "edit"
   /** Address tab rows — used for the address dropdown (active only). */
   savedAddresses?: SavedAddress[]
+  /** Called after a new address is saved from the address dropdown. */
+  onAddressAdded?: (address: SavedAddress) => void
+  /** Active beneficiaries used to block duplicate name + address on save. */
+  existingBeneficiaries?: BeneficiaryDuplicateRow[]
+  /** When editing, the row being updated (excluded from duplicate check). */
+  excludeBeneficiaryId?: string
 }
 
 function findAddressIdByLabel(
@@ -107,12 +127,16 @@ export function AddBeneficiaryModal({
   initial = null,
   variant = "add",
   savedAddresses = [],
+  onAddressAdded,
+  existingBeneficiaries = [],
+  excludeBeneficiaryId,
 }: AddBeneficiaryModalProps) {
   const [d, setD] = useState<BeneficiaryDraft>(empty)
   const [taxVisible, setTaxVisible] = useState(false)
   const [phoneNationalDigits, setPhoneNationalDigits] = useState("")
   const [phoneError, setPhoneError] = useState<string | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
+  const [addAddressOpen, setAddAddressOpen] = useState(false)
   const isEdit = variant === "edit"
   const activeSavedAddresses = useMemo(
     () => savedAddresses.filter((a) => !a.archived),
@@ -135,21 +159,48 @@ export function AddBeneficiaryModal({
     setTaxVisible(false)
     setPhoneError(null)
     setEmailError(null)
+    setAddAddressOpen(false)
   }, [open, initial])
 
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose()
+      if (e.key === "Escape") {
+        if (addAddressOpen) {
+          setAddAddressOpen(false)
+          return
+        }
+        onClose()
+      }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, onClose])
+  }, [open, onClose, addAddressOpen])
 
   const patch = useCallback((p: Partial<BeneficiaryDraft>) => {
     setD((prev) => ({ ...prev, ...p }))
     if (Object.prototype.hasOwnProperty.call(p, "email")) setEmailError(null)
   }, [])
+
+  const handleAddressSave = useCallback(
+    (draft: AddressFormDraft) => {
+      void (async () => {
+        try {
+          const row = await postSavedAddress(draft)
+          onAddressAdded?.(row)
+          patch({ addressQuery: formatSavedAddressLabel(row) })
+          toast.success("Address added", "Your address was saved.")
+          setAddAddressOpen(false)
+        } catch (e) {
+          toast.error(
+            "Could not save address",
+            e instanceof Error ? e.message : "Please try again.",
+          )
+        }
+      })()
+    },
+    [onAddressAdded, patch],
+  )
 
   function handleAdd() {
     if (!d.fullName.trim()) {
@@ -157,15 +208,8 @@ export function AddBeneficiaryModal({
       return
     }
     const pd = nationalTenDigitsFromRawInput(phoneNationalDigits)
-    let pErr: string | null = null
-    if (pd.length > 0) {
-      if (pd.length < 10) {
-        pErr = "Enter a complete 10-digit U.S. phone number."
-      } else if (!isValidUsNanp10(pd)) {
-        pErr = "That is not a valid U.S. area code or exchange."
-      }
-    }
-    const eErr = getEmailError(d.email)
+    const pErr = getUsPhoneFieldError(phoneNationalDigits) ?? null
+    const eErr = getEmailFieldError(d.email) ?? null
     setPhoneError(pErr)
     setEmailError(eErr)
     if (pErr || eErr) {
@@ -173,9 +217,22 @@ export function AddBeneficiaryModal({
       toast.error("Check contact details", first)
       return
     }
+    const fullName = d.fullName.trim()
+    const addressQuery = d.addressQuery.trim()
+    if (
+      hasActiveBeneficiaryDuplicate(
+        existingBeneficiaries,
+        fullName,
+        addressQuery,
+        excludeBeneficiaryId,
+      )
+    ) {
+      toast.error("Duplicate beneficiary", BENEFICIARY_DUPLICATE_MESSAGE)
+      return
+    }
     const phoneE164 =
       pd.length === 0 ? "" : national10ToE164(phoneNationalDigits) ?? ""
-    onSave({ ...d, fullName: d.fullName.trim(), phone: phoneE164 })
+    onSave({ ...d, fullName, addressQuery, phone: phoneE164 })
     onClose()
   }
 
@@ -187,6 +244,7 @@ export function AddBeneficiaryModal({
   if (!open) return null
 
   return createPortal(
+    <Fragment>
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay investing_ben_modal_overlay"
       role="presentation"
@@ -220,7 +278,11 @@ export function AddBeneficiaryModal({
           </button>
         </div>
 
-        <form className="deals_add_inv_modal_form" onSubmit={onFormSubmit} noValidate>
+        <form
+          className="deals_add_inv_modal_form investing_pill_modal_form"
+          onSubmit={onFormSubmit}
+          noValidate
+        >
           <div className="deals_add_inv_modal_scroll">
             <div
               className="add_contact_name_grid add_beneficiary_field_grid"
@@ -240,7 +302,7 @@ export function AddBeneficiaryModal({
             >
               <input
                 id="ben-fullname"
-                className="deals_add_inv_input deals_add_inv_field_control"
+                className={BEN_INPUT_CLASS}
                 value={d.fullName}
                 onChange={(e) => patch({ fullName: e.target.value })}
                 autoComplete="name"
@@ -256,7 +318,7 @@ export function AddBeneficiaryModal({
             >
               <select
                 id="ben-rel"
-                className="um_field_select deals_add_inv_field_control"
+                className={BEN_SELECT_CLASS}
                 value={d.relationship}
                 onChange={(e) => patch({ relationship: e.target.value })}
                 aria-label="Relationship to profile holder"
@@ -285,7 +347,7 @@ export function AddBeneficiaryModal({
                 <div className="add_profile_input_wrap">
                   <input
                     id="ben-tax"
-                    className="deals_add_inv_input deals_add_inv_field_control"
+                    className={BEN_INPUT_CLASS}
                     type={taxVisible ? "text" : "password"}
                     value={d.taxId}
                     onChange={(e) => patch({ taxId: e.target.value })}
@@ -319,7 +381,7 @@ export function AddBeneficiaryModal({
                   setPhoneNationalDigits(next)
                   setPhoneError(null)
                 }}
-                className="deals_add_inv_input deals_add_inv_field_control"
+                className={BEN_INPUT_CLASS}
                 autoComplete="tel"
                 aria-invalid={Boolean(phoneError)}
                 aria-describedby={phoneError ? "ben-phone-err" : undefined}
@@ -336,7 +398,7 @@ export function AddBeneficiaryModal({
             >
               <input
                 id="ben-email"
-                className="deals_add_inv_input deals_add_inv_field_control"
+                className={BEN_INPUT_CLASS}
                 type="email"
                 inputMode="email"
                 value={d.email}
@@ -350,12 +412,6 @@ export function AddBeneficiaryModal({
 
             <div className="add_beneficiary_field_grid__full">
               <InvestingFormField id="ben-addr" label="Address" Icon={MapPin}>
-                {activeSavedAddresses.length === 0 ? (
-                  <p className="add_profile_sub" style={{ marginBottom: "0.35em" }}>
-                    Add at least one address in the <strong>Address</strong> tab, then return
-                    here to select it, or continue without an address (leave the menu empty).
-                  </p>
-                ) : null}
                 {hasUnmatchedAddressQuery ? (
                   <p className="add_profile_sub" style={{ marginBottom: "0.35em" }} role="status">
                     Address on file does not match a saved row:{" "}
@@ -365,12 +421,10 @@ export function AddBeneficiaryModal({
                     Choose a saved address below to replace it.
                   </p>
                 ) : null}
-                <select
+                <SavedAddressSelect
                   id="ben-addr"
-                  className="um_field_select deals_add_inv_field_control"
                   value={selectedAddressId}
-                  onChange={(e) => {
-                    const id = e.target.value
+                  onChange={(id) => {
                     if (!id) {
                       patch({ addressQuery: "" })
                       return
@@ -378,19 +432,12 @@ export function AddBeneficiaryModal({
                     const row = activeSavedAddresses.find((a) => a.id === id)
                     patch({ addressQuery: row ? formatSavedAddressLabel(row) : "" })
                   }}
-                  aria-label="Mailing or legal address — choose a saved address"
-                >
-                  <option value="">
-                    {activeSavedAddresses.length
-                      ? "No address (optional)"
-                      : "No saved addresses — add in Address tab"}
-                  </option>
-                  {activeSavedAddresses.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {formatSavedAddressLabel(a)}
-                    </option>
-                  ))}
-                </select>
+                  savedAddresses={activeSavedAddresses}
+                  emptyLabel="No address (optional)"
+                  ariaLabel="Mailing or legal address — choose a saved address"
+                  triggerClassName={BEN_DROPDOWN_TRIGGER}
+                  onAddNew={() => setAddAddressOpen(true)}
+                />
               </InvestingFormField>
             </div>
             </div>
@@ -410,7 +457,15 @@ export function AddBeneficiaryModal({
           </div>
         </form>
       </div>
-    </div>,
+    </div>
+    <AddAddressModal
+      open={addAddressOpen}
+      onClose={() => setAddAddressOpen(false)}
+      onSave={handleAddressSave}
+      stackAboveParent
+      existingAddresses={savedAddresses}
+    />
+    </Fragment>,
     document.body,
   )
 }

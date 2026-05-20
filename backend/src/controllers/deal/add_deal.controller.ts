@@ -16,6 +16,8 @@ import {
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { sendOfferingPreviewShareEmails } from "../../services/deal/offeringPreviewShareEmail.service.js";
+import { canInvestorAccessOffering } from "../../constants/deal-lifecycle/index.js";
+import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
 import {
   getAddDealFormById,
   insertAddDealForm,
@@ -32,6 +34,7 @@ import {
   updateDealKeyHighlightsById,
   updateDealOfferingInvestorPreviewById,
   updateDealOfferingOverviewById,
+  type OfferingOverviewFieldErrors,
   updateDealOfferingGalleryPathsById,
   sanitizeOfferingOverviewPatch,
   normalizeOverviewAssetIdsFromBody,
@@ -173,6 +176,7 @@ function mapRowToJson(
       propertyName: row.propertyName,
       city: row.city,
       galleryCoverImageUrl: row.galleryCoverImageUrl ?? "",
+      offeringStatus: row.offeringStatus ?? "draft_hidden",
     },
   };
 }
@@ -511,15 +515,11 @@ export async function patchDealOfferingOverview(
       deal: await mapRowToJsonWithInvestmentCount(updated, scope),
     });
   } catch (err: unknown) {
-    if (
-      err instanceof Error &&
-      err.message === "VALIDATION" &&
-      "fieldErrors" in err
-    ) {
+    if (err instanceof Error && err.message === "VALIDATION" && "fieldErrors" in err) {
+      const fieldErrors = (err as Error & { fieldErrors: unknown }).fieldErrors;
       res.status(400).json({
         message: "Validation failed",
-        errors: (err as Error & { fieldErrors: DealFormFieldErrors })
-          .fieldErrors,
+        errors: fieldErrors as DealFormFieldErrors & OfferingOverviewFieldErrors,
       });
       return;
     }
@@ -880,6 +880,13 @@ export async function getOfferingPreviewToken(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
+    if (isDealStageDraft(visible.dealStage)) {
+      res.status(403).json({
+        message:
+          "Offering preview links are not available while the deal is in Draft.",
+      });
+      return;
+    }
     const token = encryptOfferingPreviewDealId(dealIdParam);
     res.status(200).json({ token, previewToken: token });
   } catch (err: unknown) {
@@ -925,6 +932,13 @@ export async function postOfferingPreviewShareEmail(
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    if (isDealStageDraft(visible.dealStage)) {
+      res.status(403).json({
+        message:
+          "Offering preview emails are not available while the deal is in Draft.",
+      });
       return;
     }
     const result = await sendOfferingPreviewShareEmails({ dealId, emails });
@@ -1010,6 +1024,12 @@ export async function getPublicOfferingPreview(
     const row = await getAddDealFormById(dealId);
     if (!row) {
       res.status(404).json({ message: "Offering not found." });
+      return;
+    }
+    if (!canInvestorAccessOffering(row.offeringStatus)) {
+      res.status(403).json({
+        message: "This offering is not available.",
+      });
       return;
     }
     const deal = await mapRowToJsonWithInvestmentCount(row, null);

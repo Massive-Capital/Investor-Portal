@@ -7,6 +7,7 @@ import {
   canAccessCompanyPage,
   isPlatformAdmin,
 } from "./common/auth/roleUtils";
+import PlatformMetricsPage from "./modules/Syndication/PlatformMetrics/PlatformMetricsPage";
 import SigninPage from "./modules/auth/pages/SigninPage";
 import SignupPage from "./modules/auth/pages/SignupPage";
 import DealInvitePage from "./modules/auth/pages/DealInvitePage";
@@ -89,6 +90,15 @@ function CustomersRoute() {
   return <CompanyPage variant="customers" />;
 }
 
+function MetricsRoute() {
+  const token = sessionStorage.getItem(SESSION_BEARER_KEY);
+  if (!token) return <Navigate to="/signin" replace />;
+  if (!isPlatformAdmin()) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <PlatformMetricsPage />;
+}
+
 /** Match React Router to Vite `base` (`import.meta.env.BASE_URL`) for subpath deploys. */
 function routerBasename(): string | undefined {
   const raw = import.meta.env.BASE_URL ?? "/";
@@ -106,6 +116,7 @@ function App() {
           <Route element={<RequireAuth />}>
             <Route element={<LpInvestorShellGuard />}>
             <Route element={<PageLayout />}>
+              <Route path="metrics" element={<MetricsRoute />} />
               <Route path="dashboard" element={<SponsorDashboardPage />} />
             <Route path="deals" element={<DealsLayout />}>
               <Route index element={<DealsListPage />} />

@@ -33,6 +33,7 @@ import {
   formatDealListDateDisplay,
 } from "./dealsListDisplay"
 import { filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope"
+import { getDealStatusRules } from "./constants/deal-lifecycle"
 import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import "./deals-list.css"
@@ -60,6 +61,11 @@ interface SyndicatingDealsSectionProps {
   onlyDealsWithViewerCommitment?: boolean
   /** Visible section title for the deals block (default: “Deals dashboard”). */
   dealsSectionTitle?: string
+  /**
+   * When true, hides deals whose offering status disallows dashboard visibility
+   * (e.g. draft hidden, closed, past) — for investor opportunity browsing.
+   */
+  filterOfferingDashboardVisibility?: boolean
 }
 
 export function SyndicatingDealsSection({
@@ -69,6 +75,7 @@ export function SyndicatingDealsSection({
   includeParticipantDeals = false,
   onlyDealsWithViewerCommitment = false,
   dealsSectionTitle = "Deals dashboard",
+  filterOfferingDashboardVisibility = false,
 }: SyndicatingDealsSectionProps) {
   const [query, setQuery] = useState("")
   const [view, setView] = useState<"grid" | "list">("grid")
@@ -89,6 +96,15 @@ export function SyndicatingDealsSection({
       )
       if (onlyDealsWithViewerCommitment && list.length > 0)
         list = await filterDealListToViewerInvested(list)
+      if (filterOfferingDashboardVisibility) {
+        list = list.filter((row) => {
+          const rules = getDealStatusRules(row.offeringStatus)
+          if (includeParticipantDeals) {
+            return rules.status !== "closed" && rules.status !== "past"
+          }
+          return rules.allowDashboardVisibility
+        })
+      }
       if (cancelled) return
       if (list.length === 0) {
         setDeals([])
@@ -120,7 +136,11 @@ export function SyndicatingDealsSection({
     return () => {
       cancelled = true
     }
-  }, [includeParticipantDeals, onlyDealsWithViewerCommitment])
+  }, [
+    includeParticipantDeals,
+    onlyDealsWithViewerCommitment,
+    filterOfferingDashboardVisibility,
+  ])
 
   useEffect(() => {
     function onDealsListRefetch() {
@@ -131,6 +151,15 @@ export function SyndicatingDealsSection({
         )
         if (onlyDealsWithViewerCommitment && list.length > 0)
           list = await filterDealListToViewerInvested(list)
+        if (filterOfferingDashboardVisibility) {
+          list = list.filter((row) => {
+            const rules = getDealStatusRules(row.offeringStatus)
+            if (includeParticipantDeals) {
+              return rules.status !== "closed" && rules.status !== "past"
+            }
+            return rules.allowDashboardVisibility
+          })
+        }
         if (list.length === 0) {
           setDeals([])
           setLoading(false)
@@ -161,7 +190,11 @@ export function SyndicatingDealsSection({
     window.addEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
     return () =>
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
-  }, [includeParticipantDeals, onlyDealsWithViewerCommitment])
+  }, [
+    includeParticipantDeals,
+    onlyDealsWithViewerCommitment,
+    filterOfferingDashboardVisibility,
+  ])
 
   useEffect(() => {
     if (deals.length === 0) {

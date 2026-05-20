@@ -1,17 +1,17 @@
+import { canInvestorInvest } from "../../constants/deal-lifecycle/index.js";
 import { getAddDealFormById } from "./dealForm.service.js";
-import { isDealStageCapitalRaising } from "../../utils/dealStageCapitalRaising.js";
 
 /**
- * Matches copy_code LP self-serve commitment guard (403 when not raising capital).
+ * LP self-serve commitment guard — driven by offering status rules.
  * Optional: call from `patchDealLpInvestorMyCommitment` after loading the deal row.
  */
 export async function assertDealAllowsLpInvestmentRecording(
   dealId: string,
 ): Promise<void> {
   const dealRow = await getAddDealFormById(dealId.trim());
-  if (!dealRow || !isDealStageCapitalRaising(dealRow.dealStage)) {
+  if (!dealRow || !canInvestorInvest(dealRow.offeringStatus)) {
     throw new Error(
-      "Investments can only be recorded while the deal is raising capital.",
+      "Investments are not open for this offering at this time.",
     );
   }
 }

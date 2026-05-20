@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   Send,
+  Trash2,
   X,
 } from "lucide-react"
 import {
@@ -16,6 +17,10 @@ import {
   useMemo,
   useState,
 } from "react"
+import { BulkDeleteReasonModal } from "../../../common/components/bulk-delete-reason-modal/BulkDeleteReasonModal"
+import "../../../common/components/bulk-delete-reason-modal/bulk-delete-reason-modal.css"
+import { toast } from "../../../common/components/Toast"
+import { useDataTableRowSelection } from "../../../common/hooks/useDataTableRowSelection"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import DOMPurify from "dompurify"
 import {
@@ -23,7 +28,6 @@ import {
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
-import { toast } from "../../../common/components/Toast"
 import { formatDateDdMmmYyyy } from "../../../common/utils/formatDateDisplay"
 import "../../../common/components/work_in_progress_page.css"
 import "../usermanagement/user_management.css"
@@ -33,6 +37,7 @@ import "./contacts.css"
 import { EmailTemplateRowActions } from "./components/EmailTemplateRowActions"
 import {
   attachmentToObjectUrl,
+  deleteEmailTemplate,
   loadEmailTemplates,
   updateEmailTemplate,
   type EmailTemplateRow,
@@ -67,6 +72,10 @@ function EmailTemplatesTemplatesTabContent() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [viewRow, setViewRow] = useState<EmailTemplateRow | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false)
+
+  const getRowId = useCallback((row: EmailTemplateRow) => row.id, [])
 
   const goNewTemplate = useCallback(() => {
     navigate("/contacts/email-templates/new")
@@ -134,15 +143,68 @@ function EmailTemplatesTemplatesTabContent() {
     templatesListTab,
   ])
 
+  const {
+    selectedIds,
+    selectedRows,
+    selectAllRef,
+    allSelected,
+    toggleSelect,
+    toggleSelectAllFiltered,
+    clearSelection,
+  } = useDataTableRowSelection({
+    filteredRows,
+    getRowId,
+  })
+
   useEffect(() => {
     setPage(1)
   }, [searchQuery, templatesListTab])
+
+  useEffect(() => {
+    clearSelection()
+  }, [templatesListTab, clearSelection])
 
   useEffect(() => {
     void (async () => {
       setRows(await loadEmailTemplates())
     })()
   }, [])
+
+  const confirmBulkDelete = useCallback(
+    async (_reason: string) => {
+      const ids = [...selectedIds]
+      if (ids.length === 0) return
+      setBulkDeleteBusy(true)
+      try {
+        const results = await Promise.all(ids.map((id) => deleteEmailTemplate(id)))
+        const failed = results.filter((ok) => !ok).length
+        const succeeded = ids.length - failed
+        if (succeeded > 0) {
+          setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)))
+          clearSelection()
+        }
+        if (failed > 0 && succeeded > 0) {
+          toast.error(
+            "Some templates could not be deleted",
+            `${succeeded} deleted, ${failed} failed.`,
+          )
+        } else if (failed > 0) {
+          toast.error("Could not delete templates", "Try again later.")
+        } else {
+          toast.success(
+            ids.length === 1 ? "Template deleted" : "Templates deleted",
+            ids.length === 1
+              ? selectedRows[0]?.name ?? ""
+              : `${ids.length} templates removed.`,
+          )
+        }
+        setBulkDeleteOpen(false)
+      } finally {
+        setBulkDeleteBusy(false)
+      }
+    },
+    [clearSelection, selectedIds, selectedRows],
+  )
 
   const toggleTemplateArchive = useCallback(async (row: EmailTemplateRow) => {
     const nextArchived = !row.archived
@@ -163,6 +225,33 @@ function EmailTemplatesTemplatesTabContent() {
 
   const columns = useMemo((): DataTableColumn<EmailTemplateRow>[] => {
     return [
+      {
+        id: "select",
+        header: (
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            className="um_table_header_select_cb"
+            checked={allSelected}
+            onChange={toggleSelectAllFiltered}
+            disabled={filteredRows.length === 0}
+            aria-label="Select all templates in this list"
+          />
+        ),
+        align: "center",
+        thClassName: "um_th_checkbox",
+        tdClassName: "um_td_checkbox",
+        cell: (row) => (
+          <input
+            type="checkbox"
+            className="um_table_row_select_cb"
+            checked={selectedIds.has(row.id)}
+            onChange={() => toggleSelect(row.id)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select template ${row.name}`}
+          />
+        ),
+      },
       {
         id: "name",
         header: "Template name",
@@ -226,10 +315,37 @@ function EmailTemplatesTemplatesTabContent() {
         ),
       },
     ]
-  }, [goEditTemplate, toggleTemplateArchive])
+  }, [
+    allSelected,
+    filteredRows.length,
+    goEditTemplate,
+    selectAllRef,
+    selectedIds,
+    toggleSelect,
+    toggleSelectAllFiltered,
+    toggleTemplateArchive,
+  ])
 
   return (
     <>
+      <BulkDeleteReasonModal
+        open={bulkDeleteOpen}
+        title={
+          selectedIds.size === 1
+            ? "Delete email template?"
+            : `Delete ${selectedIds.size} email templates?`
+        }
+        description={
+          selectedIds.size === 1
+            ? `Remove "${selectedRows[0]?.name ?? "this template"}" permanently? This cannot be undone.`
+            : `Remove ${selectedIds.size} selected templates permanently? This cannot be undone.`
+        }
+        reasonLabel="Reason for deletion"
+        reasonPlaceholder="e.g. Outdated content, created in error…"
+        busy={bulkDeleteBusy}
+        onClose={() => !bulkDeleteBusy && setBulkDeleteOpen(false)}
+        onConfirm={confirmBulkDelete}
+      />
       <div className="um_members_header_block contacts_inner_header">
         <div className="contacts_toolbar_filters_row">
           <div
@@ -294,7 +410,20 @@ function EmailTemplatesTemplatesTabContent() {
                 : "Active email templates"
             }
           >
-            <div className="um_toolbar deal_inv_table_um_toolbar">
+            <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+              <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
+                {selectedIds.size > 0 ? (
+                  <button
+                    type="button"
+                    className="contacts_table_icon_action_btn um_toolbar_delete_btn"
+                    onClick={() => setBulkDeleteOpen(true)}
+                    title={`Delete ${selectedIds.size} selected`}
+                    aria-label={`Delete ${selectedIds.size} selected template${selectedIds.size === 1 ? "" : "s"}`}
+                  >
+                    <Trash2 size={18} strokeWidth={2} aria-hidden />
+                  </button>
+                ) : null}
+              </div>
               <div className="um_search_wrap">
                 <Search className="um_search_icon" size={18} aria-hidden />
                 <input
@@ -481,13 +610,13 @@ export default function EmailTemplatesPage() {
     [setSearchParams],
   )
 
-  /** Helper copy for the selected Email Templates tab. */
+  /** Helper copy for Sent / Draft tabs (Templates tab has no intro line). */
   const panelHint =
-    tab === "templates"
-      ? "Create and manage reusable email templates for your contacts."
-      : tab === "sent"
-        ? "Sent messages will appear here."
-        : "Drafts you save will appear here."
+    tab === "sent"
+      ? "Sent messages will appear here."
+      : tab === "draft"
+        ? "Drafts you save will appear here."
+        : ""
 
   return (
     <section className="um_page contacts_page email_templates_page">
@@ -589,7 +718,9 @@ export default function EmailTemplatesPage() {
             : ""
         }`}
       >
-        <p className="email_templates_panel_hint">{panelHint}</p>
+        {panelHint ? (
+          <p className="email_templates_panel_hint">{panelHint}</p>
+        ) : null}
         {tab === "templates" ? (
           <EmailTemplatesTemplatesTabContent />
         ) : (

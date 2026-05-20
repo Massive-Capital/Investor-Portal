@@ -114,29 +114,26 @@ export function normalizeDealGallerySrc(raw: string | null | undefined): string 
   if (s.startsWith("blob:")) return s;
   if (s.startsWith("data:image/")) return s;
   if (/^https?:\/\//i.test(s)) {
-    /**
-     * Workspace settings sometimes store a full `http://localhost:5004/uploads/...` URL. In
-     * dev, the SPA should load `/uploads/...` via the Vite host so the `/uploads`→API proxy
-     * applies. Without this, the browser fetches the API port directly; statics may 404 (or
-     * you may hit a down host) while `/api` still works on the same process.
-     */
-    if (import.meta.env.DEV && typeof window !== "undefined") {
-      try {
-        const u = new URL(s);
-        if (
-          (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
-          u.pathname.startsWith("/uploads")
-        ) {
-          const pathAndQuery = `${u.pathname.replace(/^\/+/, "/")}${
-            u.search || ""
-          }`;
-          return `${window.location.origin.replace(/\/$/, "")}${
-            pathAndQuery.startsWith("/") ? pathAndQuery : `/${pathAndQuery}`
-          }`;
-        }
-      } catch {
-        /* keep original */
+    try {
+      const u = new URL(s);
+      if (u.protocol !== "http:" && u.protocol !== "https:") return s;
+      const lowerPath = u.pathname.toLowerCase();
+      const uploadsIdx = lowerPath.indexOf("/uploads/");
+      if (uploadsIdx >= 0 || lowerPath.startsWith("/uploads")) {
+        const pathAndQuery = `${u.pathname.slice(uploadsIdx >= 0 ? uploadsIdx : 0)}${
+          u.search || ""
+        }`;
+        const normalizedPath = pathAndQuery.startsWith("/")
+          ? pathAndQuery
+          : `/${pathAndQuery}`;
+        const root =
+          import.meta.env.DEV && typeof window !== "undefined"
+            ? window.location.origin.replace(/\/$/, "")
+            : getUploadsPublicOrigin();
+        if (root) return `${root}${normalizedPath}`;
       }
+    } catch {
+      /* keep original */
     }
     return s;
   }

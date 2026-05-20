@@ -246,6 +246,48 @@
       "when": 1892300000000,
       "tag": "0035_soc_auth_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1892350000000,
+      "tag": "0036_deal_investor_communication_mail",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1892400000000,
+      "tag": "0037_investor_communication_logs_deal_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1892450000000,
+      "tag": "0038_investor_communication_logs_recipient_users_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1892500000000,
+      "tag": "0039_investor_communication_logs_column_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1892550000000,
+      "tag": "0040_investor_communication_logs_timestamptz",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1892600000000,
+      "tag": "0041_user_investor_profile_distribution_bank",
+      "breakpoints": true
     }
   ]
 }

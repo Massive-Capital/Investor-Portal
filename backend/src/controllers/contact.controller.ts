@@ -15,6 +15,7 @@ import {
   updateContactFieldsForViewer,
 } from "../services/contact/contact.service.js";
 import {
+  deleteContactEmailTemplateForViewer,
   insertContactEmailTemplate,
   listContactEmailTemplatesForViewer,
   updateContactEmailTemplateForViewer,
@@ -630,5 +631,39 @@ export async function patchContactEmailTemplate(
   } catch (err) {
     console.error("patchContactEmailTemplate:", err);
     res.status(500).json({ message: "Could not update email template" });
+  }
+}
+
+/** DELETE /contacts/email-templates/:templateId */
+export async function deleteContactEmailTemplate(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const templateId = paramStr(req.params.templateId);
+  if (!templateId) {
+    res.status(400).json({ message: "Template id required" });
+    return;
+  }
+  try {
+    const ok = await deleteContactEmailTemplateForViewer({
+      viewerUserId: user.id,
+      viewerRole: user.userRole,
+      templateId,
+    });
+    if (!ok) {
+      res
+        .status(404)
+        .json({ message: "Email template not found or access denied" });
+      return;
+    }
+    res.status(200).json({ message: "Email template deleted" });
+  } catch (err) {
+    console.error("deleteContactEmailTemplate:", err);
+    res.status(500).json({ message: "Could not delete email template" });
   }
 }

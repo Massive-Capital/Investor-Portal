@@ -62,6 +62,26 @@
   margin-top: 0.5em;
 }
 
+.add_profile_same_as_tax {
+  display: flex !important;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0 0 0.5em;
+  font-size: 0.8125rem;
+  color: var(--portal-text-secondary, #64748b);
+  cursor: pointer;
+  user-select: none;
+    margin-left: 0.4em;
+}
+
+.add_profile_same_as_tax input {
+  width: 1em;
+  height: 1em;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 /* `um_field` / `mail_text_label` from user_management + add-investment modal */
 
 /* Info (i) control beside labels — uses native `title` tooltip. */
@@ -98,8 +118,28 @@
   padding-right: 2.5em;
 }
 
+/* Placeholders: smaller than typed values (modal + inline page). */
+.investing_add_profile_form_panel .deals_add_inv_modal_form input.deals_add_inv_field_control::placeholder,
+.investing_add_profile_form_panel .deals_add_inv_modal_form textarea.deals_add_inv_field_control::placeholder,
+.investing_add_profile_page_root .deals_add_inv_modal_form input.deals_add_inv_field_control::placeholder,
+.investing_add_profile_page_root .deals_add_inv_modal_form textarea.deals_add_inv_field_control::placeholder,
 .add_profile_input_wrap .deals_add_inv_input::placeholder,
 .add_profile_search::placeholder {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+}
+
+/* Searchable dropdowns: empty / placeholder label */
+.investing_add_profile_form_panel .portal_dropdown_select_trigger_label_placeholder,
+.investing_add_profile_page_root .portal_dropdown_select_trigger_label_placeholder {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+/* Native selects showing the empty first option */
+.investing_add_profile_form_panel select.um_field_select:has(option[value=""]:checked),
+.investing_add_profile_page_root select.um_field_select:has(option[value=""]:checked) {
+  font-size: 0.8125rem;
   color: #94a3b8;
 }
 

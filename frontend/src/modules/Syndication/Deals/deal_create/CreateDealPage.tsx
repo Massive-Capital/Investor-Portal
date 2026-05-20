@@ -16,6 +16,7 @@ import {
   getApiV1Base,
 } from "../../../../common/utils/apiBaseUrl"
 import { AssetStepForm } from "../components/AssetStepForm"
+import { DealStageChangeConfirmModal } from "../components/DealStageChangeConfirmModal"
 import { DealStepForm } from "../components/DealStepForm"
 import "../../contacts/contacts.css"
 import "../../usermanagement/user_management.css"
@@ -39,9 +40,16 @@ import {
   type CreateDealFormDraft,
 } from "../createDealFormDraftStorage"
 import {
+  canonicalDealStageToFormValue,
+  formDealStageToCanonical,
+  getDealStageModalContent,
+} from "../constants/deal-stage-modal-config"
+import type { DealStage } from "../constants/deal-lifecycle/deal-stage"
+import {
   emptyAssetStepDraft,
   emptyDealStepDraft,
   type AssetStepDraft,
+  type DealStageOption,
   type DealStepDraft,
 } from "../types/deals.types"
 import "../deals-create.css"
@@ -66,9 +74,15 @@ export function CreateDealPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const editDealId = searchParams.get("edit")?.trim() || null
+  const editFromDealDetail = searchParams.get("from") === "detail"
   const resumeDraft =
     searchParams.get("resume") === "1" ||
     searchParams.get("resume") === "true"
+  const postSavePath = useMemo(() => {
+    if (editFromDealDetail && editDealId)
+      return `/deals/${encodeURIComponent(editDealId)}`
+    return "/deals"
+  }, [editFromDealDetail, editDealId])
   const titleId = useId()
 
   const [step, setStep] = useState<0 | 1>(0)
@@ -89,6 +103,17 @@ export function CreateDealPage() {
     Partial<Record<keyof AssetStepDraft, string>>
   >({})
   const [saving, setSaving] = useState(false)
+  const [stageChangeModalOpen, setStageChangeModalOpen] = useState(false)
+  const [stageModalMode, setStageModalMode] = useState<"radio" | "save">("radio")
+  const [pendingStageFormValue, setPendingStageFormValue] = useState<
+    DealStageOption | ""
+  >("")
+  /** Stage the user confirmed via radio modal (avoids duplicate prompt on Save). */
+  const [stageConfirmedInSession, setStageConfirmedInSession] =
+    useState<DealStage | null>(null)
+  /** Canonical stage on server at load — autosave keeps this until Save succeeds. */
+  const [initialDealStageCanonical, setInitialDealStageCanonical] =
+    useState<DealStage | null>(null)
   const [loadingDeal, setLoadingDeal] = useState(Boolean(editDealId))
   const [backendDealId, setBackendDealId] = useState<string | null>(null)
   const createDealDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -188,10 +213,13 @@ export function CreateDealPage() {
         }
         setRetainedPropertyImagePaths(segs)
         setStep(mergedStep)
+        setInitialDealStageCanonical(formDealStageToCanonical(detail.dealStage))
+        setStageConfirmedInSession(null)
+        setPendingStageFormValue("")
       } catch {
         if (!cancelled) {
           toast.error("Could not load deal to edit.")
-          navigate("/deals", { replace: true })
+          navigate(postSavePath, { replace: true })
         }
       } finally {
         if (!cancelled) setLoadingDeal(false)
@@ -200,7 +228,7 @@ export function CreateDealPage() {
     return () => {
       cancelled = true
     }
-  }, [editDealId, navigate])
+  }, [editDealId, navigate, postSavePath])
 
   backendDealIdRef.current = backendDealId
   assetImagesRef.current = assetImages
@@ -219,6 +247,25 @@ export function CreateDealPage() {
     step,
     backendDealId,
   }
+
+  /** Edit flow: defer stage change on autosave until user confirms on Save. */
+  function dealDraftForBackendPersist(deal: DealStepDraft): DealStepDraft {
+    if (!editDealId || !initialDealStageCanonical) return deal
+    const nextCanon = formDealStageToCanonical(deal.dealStage)
+    if (nextCanon && nextCanon !== initialDealStageCanonical) {
+      return {
+        ...deal,
+        dealStage: canonicalDealStageToFormValue(initialDealStageCanonical),
+      }
+    }
+    return deal
+  }
+
+  const pendingStageModalContent = useMemo(() => {
+    const raw = pendingStageFormValue || dealDraft.dealStage
+    const target = formDealStageToCanonical(raw)
+    return target ? getDealStageModalContent(target) : null
+  }, [pendingStageFormValue, dealDraft.dealStage])
 
   /** Autosave create-deal wizard draft in sessionStorage (create flow only). */
   useEffect(() => {
@@ -286,7 +333,7 @@ export function CreateDealPage() {
         }
 
         const formData = buildCreateDealFormDataForAutosave(
-          deal,
+          dealDraftForBackendPersist(deal),
           asset,
           imgs,
           imageOpts,
@@ -346,11 +393,12 @@ export function CreateDealPage() {
     assetImages,
     step,
     retainedPropertyImagePaths,
+    initialDealStageCanonical,
   ])
 
   const goBackToDeals = useCallback(() => {
-    navigate("/deals")
-  }, [navigate])
+    navigate(postSavePath)
+  }, [navigate, postSavePath])
 
   function patchDeal(patch: Partial<DealStepDraft>) {
     setDealDraft((d: DealStepDraft) => ({ ...d, ...patch }))
@@ -360,6 +408,54 @@ export function CreateDealPage() {
         delete next[k]
       return next
     })
+  }
+
+  function handleDealStageSelect(next: DealStageOption | "") {
+    if (!editDealId || !initialDealStageCanonical) {
+      patchDeal({ dealStage: next })
+      return
+    }
+    const nextCanon = formDealStageToCanonical(next)
+    if (!nextCanon) {
+      patchDeal({ dealStage: next })
+      return
+    }
+    if (nextCanon === initialDealStageCanonical) {
+      patchDeal({ dealStage: next })
+      setStageConfirmedInSession(null)
+      return
+    }
+    if (stageConfirmedInSession === nextCanon) {
+      patchDeal({ dealStage: next })
+      return
+    }
+    setPendingStageFormValue(next)
+    setStageModalMode("radio")
+    setStageChangeModalOpen(true)
+  }
+
+  function handleDealChange(patch: Partial<DealStepDraft>) {
+    if (patch.dealStage !== undefined) {
+      handleDealStageSelect(patch.dealStage)
+      const { dealStage: _stage, ...rest } = patch
+      if (Object.keys(rest).length > 0) patchDeal(rest)
+      return
+    }
+    patchDeal(patch)
+  }
+
+  function confirmStageChangeModal() {
+    if (stageModalMode === "save") {
+      void performSaveDeal()
+      return
+    }
+    if (pendingStageFormValue) {
+      patchDeal({ dealStage: pendingStageFormValue })
+      const canon = formDealStageToCanonical(pendingStageFormValue)
+      if (canon) setStageConfirmedInSession(canon)
+    }
+    setStageChangeModalOpen(false)
+    setPendingStageFormValue("")
   }
 
   function patchAsset(patch: Partial<AssetStepDraft>) {
@@ -410,9 +506,7 @@ export function CreateDealPage() {
     void saveDeal()
   }
 
-  async function saveDeal() {
-    if (!validateAsset()) return
-    if (!validateDeal()) return
+  async function performSaveDeal() {
     setSaving(true)
     try {
       const formData = buildCreateDealFormData(
@@ -441,13 +535,19 @@ export function CreateDealPage() {
         )
         return
       }
+      const nextCanon = formDealStageToCanonical(dealDraft.dealStage)
+      if (nextCanon) setInitialDealStageCanonical(nextCanon)
+      setStageConfirmedInSession(null)
+      setPendingStageFormValue("")
+      setStageChangeModalOpen(false)
       toast.success(persistedId ? "Deal updated" : "Deal created")
       if (!editDealId) {
         clearCreateDealDraft()
         setBackendDealId(null)
         backendDealIdRef.current = null
       }
-      navigate("/deals")
+      notifyDealsListRefetch()
+      navigate(postSavePath)
     } catch (e) {
       toast.error(
         e instanceof Error ? e.message : "Could not save deal.",
@@ -455,6 +555,35 @@ export function CreateDealPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function saveDeal() {
+    if (!validateAsset()) return
+    if (!validateDeal()) return
+
+    const nextStageCanon = formDealStageToCanonical(dealDraft.dealStage)
+    if (
+      editDealId &&
+      initialDealStageCanonical &&
+      nextStageCanon &&
+      nextStageCanon !== initialDealStageCanonical &&
+      nextStageCanon !== stageConfirmedInSession
+    ) {
+      setPendingStageFormValue(
+        (dealDraft.dealStage || "") as DealStageOption | "",
+      )
+      setStageModalMode("save")
+      setStageChangeModalOpen(true)
+      return
+    }
+
+    await performSaveDeal()
+  }
+
+  function closeStageChangeModal() {
+    if (saving) return
+    setStageChangeModalOpen(false)
+    setPendingStageFormValue("")
   }
 
   const pageTitle = editDealId ? "Edit deal" : "Create deal"
@@ -493,7 +622,7 @@ export function CreateDealPage() {
               type="button"
               className="deals_list_back_circle"
               onClick={goBackToDeals}
-              aria-label="Back to deals"
+              aria-label={editFromDealDetail ? "Back to deal" : "Back to deals"}
             >
               <ArrowLeft size={20} strokeWidth={2} aria-hidden />
             </button>
@@ -557,7 +686,7 @@ export function CreateDealPage() {
               <DealStepForm
                 draft={dealDraft}
                 errors={dealErrors}
-                onChange={patchDeal}
+                onChange={handleDealChange}
               />
             ) : (
               <AssetStepForm
@@ -635,6 +764,16 @@ export function CreateDealPage() {
           </div>
         </form>
       </section>
+
+      {editDealId && pendingStageModalContent ? (
+        <DealStageChangeConfirmModal
+          open={stageChangeModalOpen}
+          content={pendingStageModalContent}
+          confirming={saving && stageModalMode === "save"}
+          onConfirm={confirmStageChangeModal}
+          onCancel={closeStageChangeModal}
+        />
+      ) : null}
     </div>
   )
 }

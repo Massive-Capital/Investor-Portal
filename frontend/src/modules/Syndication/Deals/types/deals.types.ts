@@ -32,6 +32,8 @@ export interface DealListRow {
   owningEntityName?: string
   propertyName?: string
   city?: string
+  /** From list API — investor offering workflow status (`offering_status`). */
+  offeringStatus?: string
   /** From enriched list API (investor class advanced JSON) */
   investmentType?: string
   /** First asset tag from investor class advanced JSON */

@@ -1,12 +1,9 @@
-import DOMPurify from "dompurify"
 import {
   ChevronLeft,
   ChevronRight,
   Compass,
   FileText,
   Map,
-  MapPin,
-  Megaphone,
   TrendingUp,
   X,
 } from "lucide-react"
@@ -23,6 +20,8 @@ import {
 import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
 import type { DealDetailApi } from "./api/dealsApi"
+import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
+import { writeInvestNowIntent } from "./utils/investNowIntent"
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import { readOfferingPreviewDocuments } from "./utils/offeringPreviewDocuments"
@@ -33,17 +32,20 @@ import {
   orderedGalleryUrlsForOffering,
 } from "./utils/offeringGalleryUrls"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
-import {
-  investorClassStatusLabel,
-  investorClassVisibilityLabel,
-} from "./utils/offeringDisplayLabels"
-import { formatMoneyFieldDisplay } from "./utils/offeringMoneyFormat"
+import type { DealStatusRules } from "./constants/deal-lifecycle"
+import { getDealStatusRules } from "./constants/deal-lifecycle"
 import { dealStageLabel } from "../dealsDashboardUtils"
 import {
+  buildOfferingMetricChips,
   buildSummaryBits,
   keyHighlightRowsFromJson,
   previewTargetDisplay,
 } from "./dealOfferingPreviewShared"
+import { DealOfferingGalleryImage } from "./components/DealOfferingGalleryImage"
+import { DealOfferingPreviewBentoLayout } from "./components/DealOfferingPreviewBentoLayout"
+import { DealOfferingPreviewBentoAdaptiveGrid } from "./components/DealOfferingPreviewBentoAdaptiveGrid"
+import { OfferingPreviewAssetBentoCard } from "./components/OfferingPreviewAssetBentoCard"
+import { OfferingPreviewClassBentoCard } from "./components/OfferingPreviewClassBentoCard"
 import "./tabs/deal_members/add-investment/add_deal_modal.css"
 import "./deal-offering-portfolio.css"
 import "./deals-list.css"
@@ -83,6 +85,10 @@ export type DealOfferingPreviewInnerProps = {
    * in-page anchor navigation — e.g. LP commitment modal on the investing deal page.
    */
   onInvestNow?: () => void
+  /** Public shared link: sign-in redirect preserves offering URL and opens Invest now after login. */
+  publicInvestNowSignInState?: { from: string; investNow: true }
+  /** When omitted, derived from `detail.offeringStatus`. */
+  offeringStatusRules?: DealStatusRules
   /**
    * When true, gallery URLs are API-only (matches anonymous shared links).
    * When false, the same sources as Offering details → Gallery are used (local asset previews in this browser).
@@ -98,8 +104,16 @@ export function DealOfferingPreviewInner({
   isPublicOfferingRoute,
   showInvestNowCta,
   onInvestNow,
-  galleryUsesPersistedSourcesOnly = true,
+  publicInvestNowSignInState,
+  galleryUsesPersistedSourcesOnly = false,
+  offeringStatusRules: offeringStatusRulesProp,
 }: DealOfferingPreviewInnerProps) {
+  const statusRules = useMemo(
+    () =>
+      offeringStatusRulesProp ??
+      getDealStatusRules(detail.offeringStatus),
+    [offeringStatusRulesProp, detail.offeringStatus],
+  )
   const galleryDialogTitleId = useId()
   const [galleryOpen, setGalleryOpen] = useState(false)
   const [galleryIndex, setGalleryIndex] = useState(0)
@@ -190,8 +204,6 @@ export function DealOfferingPreviewInner({
   const showInvestorPreviewFundingInstructions =
     !applyInvestorLinkVisibility ||
     investorPreviewVisibility.funding_instructions !== false
-  const showInvestorPreviewDealProfileSection =
-    showInvestorPreviewAnnouncement || showInvestorPreviewOverviewKv
   const galleryTouchXRef = useRef<number | null>(null)
   const galleryModalThumbsRef = useRef<HTMLDivElement>(null)
 
@@ -286,25 +298,102 @@ export function DealOfferingPreviewInner({
   const dealLocationLine =
     [detail.city, detail.country].filter((x) => x?.trim()).join(", ") || "—"
 
-  const summaryBits = buildSummaryBits(detail, classes, investorsPayload)
-  const classPreviewLines = useMemo(
-    () =>
-      classes.map((ic) => {
-        const name = ic.name?.trim() || "Untitled class"
-        const min = formatMoneyFieldDisplay(ic.minimumInvestment)
-        const visibility = investorClassVisibilityLabel(ic.visibility ?? "")
-        const status = investorClassStatusLabel(ic.status ?? "")
-        return `${name}: minimum ${min} · ${status} · ${visibility}`
-      }),
-    [classes],
+  const summaryBits = useMemo(
+    () => buildSummaryBits(detail, classes, investorsPayload),
+    [detail, classes, investorsPayload],
   )
-
+  const metricChips = useMemo(
+    () => buildOfferingMetricChips(detail, classes, investorsPayload),
+    [detail, classes, investorsPayload],
+  )
+  const keyHighlightPreviewRows = useMemo(
+    () => keyHighlightRowsFromJson(detail.keyHighlightsJson),
+    [detail.keyHighlightsJson],
+  )
+  const infoRow = useMemo(() => {
+    const aboutVisible =
+      !applyInvestorLinkVisibility ||
+      investorPreviewVisibility.summary !== false
+    const highlightsVisible =
+      keyHighlightPreviewRows.length > 0 &&
+      (!applyInvestorLinkVisibility ||
+        investorPreviewVisibility.key_highlights !== false)
+    if (!aboutVisible && !highlightsVisible) return null
+    return (
+      <>
+        {/* {aboutVisible ? (
+          <section
+            className="deal_offer_pf_about_offering_section deal_offer_pf_panel"
+            aria-labelledby="deal-pf-about-offering"
+          >
+            <h2
+              id="deal-pf-about-offering"
+              className="deal_offer_pf_assets_main_title"
+            >
+              About Offering
+            </h2>
+            {summaryHtml ? (
+              <div
+                className="deal_offer_pf_summary_prose deal_offer_pf_summary_prose--compact"
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(summaryHtml),
+                }}
+              />
+            ) : summaryBits.length > 0 ? (
+              <ul className="deal_offer_pf_bullets deal_offer_pf_bullets--compact">
+                {summaryBits.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
+                Add a summary in Offering details, or metrics will appear here
+                when available.
+              </p>
+            )}
+          </section>
+        ) : null} */}
+        {highlightsVisible ? (
+          <section
+            className="deal_offer_pf_panel"
+            aria-labelledby="deal-pf-kh"
+          >
+            <PanelHeader titleId="deal-pf-kh">Key highlights</PanelHeader>
+            <dl className="deal_offer_pf_kv_grid">
+              {keyHighlightPreviewRows.map((row, i) => (
+                <div
+                  className="deal_offer_pf_kv"
+                  key={`${row.metric}-${row.newClass}-${i}`}
+                >
+                  <dt>{row.metric}</dt>
+                  <dd>{row.newClass}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ) : null}
+      </>
+    )
+  }, [
+    applyInvestorLinkVisibility,
+    investorPreviewVisibility.summary,
+    investorPreviewVisibility.key_highlights,
+    summaryHtml,
+    summaryBits,
+    keyHighlightPreviewRows,
+  ])
+  const profileChips = useMemo(() => {
+    if (!showInvestorPreviewOverviewKv) return []
+    return [
+      { label: "Deal name", value: detail.dealName?.trim() || "—" },
+      { label: "Deal type", value: detail.dealType?.trim() || "—" },
+      { label: "Asking price", value: offeringSizeDisplay },
+      { label: "Security type", value: detail.secType?.trim() || "—" },
+      { label: "Owning entity", value: detail.owningEntityName?.trim() || "—" },
+    ]
+  }, [detail, offeringSizeDisplay, showInvestorPreviewOverviewKv])
   const announcementTitle = detail.dealAnnouncementTitle?.trim() ?? ""
   const announcementMessage = detail.dealAnnouncementMessage?.trim() ?? ""
-  const keyHighlightPreviewRows = keyHighlightRowsFromJson(
-    detail.keyHighlightsJson,
-  )
-
   const galleryLen = galleryUrls.length
   const gallerySafeIndex = galleryLen
     ? Math.min(galleryIndex, galleryLen - 1)
@@ -331,6 +420,15 @@ export function DealOfferingPreviewInner({
             ) : null}
           </div>
 
+          {statusRules.showClosedBanner ? (
+            <p
+              className="um_toolbar_notice deal_offer_pf_status_banner"
+              role="status"
+            >
+              This offering is closed. New investments are no longer accepted.
+            </p>
+          ) : null}
+
           {/*
           <nav
             className="deal_offer_pf_subnav"
@@ -345,10 +443,12 @@ export function DealOfferingPreviewInner({
           </nav>
           */}
 
-          <div className="deal_offer_pf_main_grid">
-            <div className="deal_offer_pf_col_media">
-              <div className="deal_offer_pf_col_media_stack">
-                <div className="deal_offer_pf_media_card">
+                    <DealOfferingPreviewBentoLayout
+            infoRow={infoRow}
+            profileChips={profileChips}
+            metricChips={metricChips}
+            gallery={
+<div className="deal_offer_pf_media_card">
                 {publicGallerySuppressed ? (
                       <div className="deal_offer_pf_hero deal_offer_pf_hero--clean">
                         <div className="deal_offer_pf_media_empty">
@@ -384,13 +484,12 @@ export function DealOfferingPreviewInner({
                             aria-haspopup="dialog"
                             aria-label="Open cover image in gallery viewer"
                           >
-                            <img
+                            <DealOfferingGalleryImage
                               src={galleryUrls[0]}
                               alt=""
                               className="deal_offer_pf_hero_img"
                               loading="eager"
                               fetchPriority="high"
-                              decoding="async"
                             />
                           </button>
                         </div>
@@ -419,12 +518,11 @@ export function DealOfferingPreviewInner({
                                       : `Open image ${index + 1} of ${galleryUrls.length} in gallery viewer`
                                   }
                                 >
-                            <img
+                            <DealOfferingGalleryImage
                               src={src}
                               alt=""
                               className="deal_offer_pf_media_thumb_img"
                               loading="eager"
-                              decoding="async"
                             />
                                   {hasMoreOverlay ? (
                                     <span
@@ -490,47 +588,145 @@ export function DealOfferingPreviewInner({
                       </>
                     ) : null}
                 </div>
-
-                {!applyInvestorLinkVisibility ||
-                investorPreviewVisibility.summary !== false ? (
-                  <section
-                    className="deal_offer_pf_about_offering_section deal_offer_pf_panel deal_offer_pf_panel--left"
-                    aria-labelledby="deal-pf-about-offering"
+            }
+            fundingColumn={
+              <>
+{statusRules.requireSponsorApproval ? (
+                <div className="deal_offer_pf_side_invest_cta_wrap">
+                  <p
+                    className="deal_offer_pf_waitlist_notice"
+                    role="status"
                   >
-                    <h2
-                      id="deal-pf-about-offering"
-                      className="deal_offer_pf_assets_main_title"
-                    >
-                      About Offering
-                    </h2>
-                    {summaryHtml ? (
-                      <div
-                        className="deal_offer_pf_summary_prose deal_offer_pf_summary_prose--compact"
-                        dangerouslySetInnerHTML={{
-                          __html: DOMPurify.sanitize(summaryHtml),
-                        }}
-                      />
-                    ) : summaryBits.length > 0 ? (
-                      <ul className="deal_offer_pf_bullets deal_offer_pf_bullets--compact">
-                        {summaryBits.map((b) => (
-                          <li key={b}>{b}</li>
-                        ))}
-                      </ul>
+                    This offering is on a waitlist. New investors need sponsor
+                    approval before investing.
+                  </p>
+                </div>
+              ) : null}
+
+              {showInvestNowCta ? (
+                <div className="deal_offer_pf_side_invest_cta_wrap">
+                  {isPublicOfferingRoute ? (
+                    onInvestNow ? (
+                      <button
+                        type="button"
+                        className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                        onClick={onInvestNow}
+                      >
+                        <span>Invest now</span>
+                        <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                      </button>
                     ) : (
-                      <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
-                        Add a summary in Offering details, or metrics will appear
-                        here when available.
-                      </p>
-                    )}
-                  </section>
-                ) : null}
+                      <Link
+                        to="/signin"
+                        state={
+                          publicInvestNowSignInState ?? {
+                            from: `${typeof window !== "undefined" ? window.location.pathname + window.location.search : "/offering_portfolio"}`,
+                            investNow: true as const,
+                          }
+                        }
+                        onClick={() => {
+                          const id = detail.id?.trim()
+                          if (id) writeInvestNowIntent(id)
+                        }}
+                        className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                      >
+                        <span>Invest now</span>
+                        <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                      </Link>
+                    )
+                  ) : onInvestNow ? (
+                    <button
+                      type="button"
+                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                      onClick={onInvestNow}
+                    >
+                      <span>Invest now</span>
+                      <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                    </button>
+                  ) : (
+                    <a
+                      href={
+                        applyInvestorLinkVisibility &&
+                        investorPreviewVisibility.assets === false
+                          ? "#deal-offer-pf-card"
+                          : "#deal-pf-assets"
+                      }
+                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                    >
+                      <span>Invest now</span>
+                      <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                    </a>
+                  )}
+                </div>
+              ) : null}
 
-                {!applyInvestorLinkVisibility ||
-                investorPreviewVisibility.documents !== false ? (
-                  <section
-                    className="deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_panel--left"
-                    aria-labelledby="deal-pf-documents"
+              {showInvestorPreviewAnnouncement ? (
+                <DealAnnouncementBanner
+                  title={announcementTitle}
+                  message={announcementMessage}
+                  variant="preview"
+                />
+              ) : null}
+
+              {showInvestorPreviewFundingInstructions ? (
+                <section
+                  className="deal_offer_pf_panel"
+                  aria-labelledby="deal-pf-funding-info"
+                >
+                  <PanelHeader titleId="deal-pf-funding-info">
+                    Funding info
+                  </PanelHeader>
+                  <dl className="deal_offer_pf_kv_grid">
+                    <div className="deal_offer_pf_kv">
+                      <dt>Funds required before GP signs</dt>
+                      <dd>{detail.fundsRequiredBeforeGpSign ? "Yes" : "No"}</dd>
+                    </div>
+                    <div className="deal_offer_pf_kv">
+                      <dt>Auto-send funding instructions</dt>
+                      <dd>{detail.autoSendFundingInstructions ? "Yes" : "No"}</dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : null}
+
+              </>
+            }
+            classesRow={
+              showInvestorPreviewOfferingInformation ? (
+                <>
+                  <h2
+                    id="deal-pf-offering-info"
+                    className="deal_offer_pf_assets_main_title deal_offer_pf_bento_classes_heading"
                   >
+                    Classes
+                  </h2>
+                  {classes.length > 0 ? (
+                    <DealOfferingPreviewBentoAdaptiveGrid
+                      className="deal_offer_pf_bento_class_grid"
+                      ariaLabel="Investor classes"
+                    >
+                      {classes.map((ic) => (
+                        <OfferingPreviewClassBentoCard
+                          key={ic.id}
+                          investorClass={ic}
+                        />
+                      ))}
+                    </DealOfferingPreviewBentoAdaptiveGrid>
+                  ) : (
+                    <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
+                      No classes are configured yet.
+                    </p>
+                  )}
+                </>
+              ) : null
+            }
+            documents={
+              !applyInvestorLinkVisibility ||
+              investorPreviewVisibility.documents !== false ? (
+                <section
+                  className="deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_bento_full"
+                  aria-labelledby="deal-pf-documents"
+                >
                     <h2
                       id="deal-pf-documents"
                       className="deal_offer_pf_assets_main_title"
@@ -596,281 +792,46 @@ export function DealOfferingPreviewInner({
                       </ul>
                     )}
                   </section>
-                ) : null}
-
-                {!applyInvestorLinkVisibility ||
-                investorPreviewVisibility.assets !== false ? (
-                  <section
-                    className="deal_offer_pf_assets_section deal_offer_pf_panel deal_offer_pf_panel--left deal_offer_pf_section_invest_anchor"
-                    aria-labelledby="deal-pf-assets"
-                  >
+              ) : null}
+            assets={
+              !applyInvestorLinkVisibility ||
+              investorPreviewVisibility.assets !== false ? (
+                <section
+                  className="deal_offer_pf_assets_section deal_offer_pf_panel deal_offer_pf_bento_full deal_offer_pf_section_invest_anchor"
+                  aria-labelledby="deal-pf-assets"
+                >
                     <h2 id="deal-pf-assets" className="deal_offer_pf_assets_main_title">
                       Assets
                     </h2>
-                    {previewAssetBlocks.map((block, blockIdx) => (
-                    (() => {
-                      const blockGalleryCount = block.galleryUrls.length
-                      const openAssetGallery = () => {
-                        if (blockGalleryCount === 0) return
-                        const first = block.galleryUrls[0]
-                        if (!first) return
-                        const idx = galleryUrls.findIndex((u) =>
-                          galleryUrlsReferToSameAsset(u, first),
+                    <DealOfferingPreviewBentoAdaptiveGrid
+                      className="deal_offer_pf_bento_asset_grid"
+                      ariaLabel="Deal assets"
+                    >
+                      {previewAssetBlocks.map((block) => {
+                        const blockGalleryCount = block.galleryUrls.length
+                        const openAssetGallery =
+                          blockGalleryCount > 0
+                            ? () => {
+                                const first = block.galleryUrls[0]
+                                if (!first) return
+                                const idx = galleryUrls.findIndex((u) =>
+                                  galleryUrlsReferToSameAsset(u, first),
+                                )
+                                openGalleryAt(idx >= 0 ? idx : 0)
+                              }
+                            : undefined
+                        return (
+                          <OfferingPreviewAssetBentoCard
+                            key={block.id}
+                            block={block}
+                            onViewImages={openAssetGallery}
+                          />
                         )
-                        openGalleryAt(idx >= 0 ? idx : 0)
-                      }
-                      return (
-                    <article
-                      key={block.id}
-                      className={`deal_offer_pf_asset_card${blockIdx > 0 ? " deal_offer_pf_asset_card--follow" : ""}`}
-                    >
-                      <div className="deal_offer_pf_asset_card_inner">
-                        <div className="deal_offer_pf_asset_pin_col" aria-hidden>
-                          <div className="deal_offer_pf_asset_pin">
-                            <MapPin size={16} strokeWidth={2} />
-                          </div>
-                          <div className="deal_offer_pf_asset_timeline" />
-                        </div>
-                        <div className="deal_offer_pf_asset_body">
-                          <h3 className="deal_offer_pf_asset_name">{block.name}</h3>
-                          <p className="deal_offer_pf_asset_address">{block.address}</p>
-                          {blockGalleryCount > 0 ? (
-                            <button
-                              type="button"
-                              className="deal_offer_pf_assets_view_images"
-                              onClick={openAssetGallery}
-                            >
-                              View {blockGalleryCount}{" "}
-                              {blockGalleryCount === 1 ? "image" : "images"}
-                            </button>
-                          ) : block.viewImagesCount > 0 ? (
-                            <p
-                              className="deal_offer_pf_assets_image_note"
-                              role="status"
-                            >
-                              {block.viewImagesCount}{" "}
-                              {block.viewImagesCount === 1 ? "image" : "images"}{" "}
-                              on file
-                            </p>
-                          ) : (
-                            <p className="deal_offer_pf_assets_image_note deal_offer_pf_muted">
-                              No images yet
-                            </p>
-                          )}
-                          <div className="deal_offer_pf_asset_metrics">
-                            <div className="deal_offer_pf_asset_metric_stack">
-                              <div className="deal_offer_pf_asset_metric">
-                                <span className="deal_offer_pf_asset_metric_label">
-                                  Asset type
-                                </span>
-                                <span className="deal_offer_pf_asset_metric_value">
-                                  {block.assetType}
-                                </span>
-                              </div>
-                              <div className="deal_offer_pf_asset_metric">
-                                <span className="deal_offer_pf_asset_metric_label">
-                                  Year built
-                                </span>
-                                <span className="deal_offer_pf_asset_metric_value">
-                                  {block.yearBuilt}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="deal_offer_pf_asset_metric">
-                              <span className="deal_offer_pf_asset_metric_label">
-                                Number of units
-                              </span>
-                              <span className="deal_offer_pf_asset_metric_value">
-                                {block.numberOfUnits}
-                              </span>
-                            </div>
-                            <div className="deal_offer_pf_asset_metric">
-                              <span className="deal_offer_pf_asset_metric_label">
-                                Acquisition price
-                              </span>
-                              <span className="deal_offer_pf_asset_metric_value">
-                                {block.acquisitionPrice}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </article>
-                      )
-                    })()
-                  ))}
-                  </section>
-                ) : null}
-              </div>
-            </div>
-
-            <aside
-              className="deal_offer_pf_col_side"
-              aria-label="Offering metrics and details"
-            >
-              {showInvestNowCta ? (
-                <div className="deal_offer_pf_side_invest_cta_wrap">
-                  {isPublicOfferingRoute ? (
-                    <Link
-                      to="/signin"
-                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
-                    >
-                      <span>Invest now</span>
-                      <TrendingUp size={18} strokeWidth={2} aria-hidden />
-                    </Link>
-                  ) : onInvestNow ? (
-                    <button
-                      type="button"
-                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
-                      onClick={onInvestNow}
-                    >
-                      <span>Invest now</span>
-                      <TrendingUp size={18} strokeWidth={2} aria-hidden />
-                    </button>
-                  ) : (
-                    <a
-                      href={
-                        applyInvestorLinkVisibility &&
-                        investorPreviewVisibility.assets === false
-                          ? "#deal-offer-pf-card"
-                          : "#deal-pf-assets"
-                      }
-                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
-                    >
-                      <span>Invest now</span>
-                      <TrendingUp size={18} strokeWidth={2} aria-hidden />
-                    </a>
-                  )}
-                </div>
-              ) : null}
-
-              {showInvestorPreviewDealProfileSection ? (
-                <section
-                  className="deal_offer_pf_panel"
-                  aria-labelledby="deal-pf-profile"
-                >
-                  <PanelHeader titleId="deal-pf-profile">Deal profile</PanelHeader>
-                  {showInvestorPreviewAnnouncement &&
-                  (announcementTitle || announcementMessage) ? (
-                    <div
-                      className="deal_offer_pf_preview_announcement"
-                      role="status"
-                    >
-                      <Megaphone
-                        size={15}
-                        strokeWidth={2}
-                        className="deal_offer_pf_preview_announcement_icon"
-                        aria-hidden
-                      />
-                      <div className="deal_offer_pf_preview_announcement_body">
-                        {announcementTitle ? (
-                          <p className="deal_offer_pf_preview_announcement_title">
-                            {announcementTitle}
-                          </p>
-                        ) : null}
-                        {announcementMessage ? (
-                          <p className="deal_offer_pf_preview_announcement_msg">
-                            {announcementMessage}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-                  {showInvestorPreviewOverviewKv ? (
-                    <dl className="deal_offer_pf_kv_grid">
-                      <div className="deal_offer_pf_kv">
-                        <dt>Deal name</dt>
-                        <dd>{detail.dealName?.trim() || "—"}</dd>
-                      </div>
-                      <div className="deal_offer_pf_kv">
-                        <dt>Deal type</dt>
-                        <dd>{detail.dealType?.trim() || "—"}</dd>
-                      </div>
-                      <div className="deal_offer_pf_kv">
-                        <dt>Asking price</dt>
-                        <dd>{offeringSizeDisplay}</dd>
-                      </div>
-                      <div className="deal_offer_pf_kv">
-                        <dt>Security type</dt>
-                        <dd>{detail.secType?.trim() || "—"}</dd>
-                      </div>
-                      <div className="deal_offer_pf_kv">
-                        <dt>Owning entity</dt>
-                        <dd>{detail.owningEntityName?.trim() || "—"}</dd>
-                      </div>
-                    </dl>
-                  ) : null}
+                      })}
+                    </DealOfferingPreviewBentoAdaptiveGrid>
                 </section>
               ) : null}
-
-              {showInvestorPreviewOfferingInformation ? (
-                <section
-                  className="deal_offer_pf_panel"
-                  aria-labelledby="deal-pf-offering-info"
-                >
-                  <PanelHeader titleId="deal-pf-offering-info">
-                    Classes
-                  </PanelHeader>
-                  {classPreviewLines.length > 0 ? (
-                    <ul className="deal_offer_pf_bullets deal_offer_pf_bullets--compact">
-                      {classPreviewLines.map((line, i) => (
-                        <li key={`${line}-${i}`}>{line}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
-                      No classes are configured yet.
-                    </p>
-                  )}
-                </section>
-              ) : null}
-
-              {showInvestorPreviewFundingInstructions ? (
-                <section
-                  className="deal_offer_pf_panel"
-                  aria-labelledby="deal-pf-funding-info"
-                >
-                  <PanelHeader titleId="deal-pf-funding-info">
-                    Funding info
-                  </PanelHeader>
-                  <dl className="deal_offer_pf_kv_grid">
-                    <div className="deal_offer_pf_kv">
-                      <dt>Funds required before GP signs</dt>
-                      <dd>{detail.fundsRequiredBeforeGpSign ? "Yes" : "No"}</dd>
-                    </div>
-                    <div className="deal_offer_pf_kv">
-                      <dt>Auto-send funding instructions</dt>
-                      <dd>{detail.autoSendFundingInstructions ? "Yes" : "No"}</dd>
-                    </div>
-                  </dl>
-                </section>
-              ) : null}
-
-              {keyHighlightPreviewRows.length > 0 &&
-              (!applyInvestorLinkVisibility ||
-                investorPreviewVisibility.key_highlights !== false) ? (
-                <section
-                  className="deal_offer_pf_panel"
-                  aria-labelledby="deal-pf-kh"
-                >
-                  <PanelHeader titleId="deal-pf-kh">
-                    Key highlights
-                  </PanelHeader>
-                  <dl className="deal_offer_pf_kv_grid">
-                    {keyHighlightPreviewRows.map((row, i) => (
-                      <div
-                        className="deal_offer_pf_kv"
-                        key={`${row.metric}-${row.newClass}-${i}`}
-                      >
-                        <dt>{row.metric}</dt>
-                        <dd>{row.newClass}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </section>
-              ) : null}
-            </aside>
-          </div>
+          />
         </div>
 
         {galleryOpen && galleryLen > 0
@@ -939,10 +900,11 @@ export function DealOfferingPreviewInner({
                           </button>
                         </>
                       ) : null}
-                      <img
+                      <DealOfferingGalleryImage
                         src={galleryUrls[gallerySafeIndex]}
                         alt=""
                         className="deal_offer_pf_gallery_slide_img"
+                        loading="eager"
                       />
                       <p
                         className="deal_offer_pf_gallery_counter"
@@ -970,12 +932,11 @@ export function DealOfferingPreviewInner({
                           className={`deal_offer_pf_gallery_modal_thumb_btn${i === gallerySafeIndex ? " deal_offer_pf_gallery_modal_thumb_btn_active" : ""}`}
                           onClick={() => setGalleryIndex(i)}
                         >
-                          <img
+                          <DealOfferingGalleryImage
                             src={src}
                             alt=""
                             className="deal_offer_pf_gallery_modal_thumb_img"
                             loading="eager"
-                            decoding="async"
                           />
                         </button>
                       ))}

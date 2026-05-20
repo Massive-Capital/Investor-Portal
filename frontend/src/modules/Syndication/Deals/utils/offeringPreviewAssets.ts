@@ -117,7 +117,7 @@ export function buildOfferingPreviewAssetBlocks(
     ]
   }
 
-  return ordered.map((row) => {
+  return ordered.map((row, index) => {
     const persisted = getDealAssetPersisted(detail.id, row.id)
     const attrs = persisted?.attrRows
     const address =
@@ -137,12 +137,13 @@ export function buildOfferingPreviewAssetBlocks(
     const yearRaw = attrDisplay(attrs, "attr-year-built")
     const unitsRaw = attrDisplay(attrs, "attr-num-units")
 
+    const dealGalleryFallback = dedupeNormalizedUrls(galleryUrls)
     const rowGalleryUrls = dedupeNormalizedUrls(persisted?.imagePreviewDataUrls)
     const effectiveGalleryUrls =
       rowGalleryUrls.length > 0
         ? rowGalleryUrls
-        : singleAssetDeal
-          ? dedupeNormalizedUrls(galleryUrls)
+        : singleAssetDeal || (index === 0 && dealGalleryFallback.length > 0)
+          ? dealGalleryFallback
           : []
 
     let viewImagesCount = Math.max(row.imageCount ?? 0, effectiveGalleryUrls.length)

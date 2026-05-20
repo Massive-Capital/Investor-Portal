@@ -1271,25 +1271,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
             }
             hidden={false}
           >
-            <div className="um_toolbar">
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setToolbarNotice("");
-                  }}
-                  aria-label={
-                    customersListTab === "archived"
-                      ? "Search archived companies"
-                      : "Search active companies"
-                  }
-                />
-              </div>
+            <div className="um_toolbar um_toolbar_export_then_search">
               <div className="um_toolbar_actions">
                 <button
                   type="button"
@@ -1312,12 +1294,26 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   disabled={customersTabRows.length === 0}
                 >
                   <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>
-                    {customersListTab === "archived"
-                      ? "Export archived"
-                      : "Export all companies"}
-                  </span>
+                  <span>Export All</span>
                 </button>
+              </div>
+              <div className="um_search_wrap">
+                <Search className="um_search_icon" size={18} aria-hidden />
+                <input
+                  type="search"
+                  className="um_search_input"
+                  placeholder="Search"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setToolbarNotice("");
+                  }}
+                  aria-label={
+                    customersListTab === "archived"
+                      ? "Search archived companies"
+                      : "Search active companies"
+                  }
+                />
               </div>
             </div>
             {toolbarNotice ? (

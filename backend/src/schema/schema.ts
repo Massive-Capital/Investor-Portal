@@ -44,6 +44,15 @@ export {
   type DealInvestorClassRow,
 } from "./deal.schema/deal-investor-class.schema.js";
 export {
+  investorCommunicationLogs,
+  dealInvestorCommunicationMail,
+  type InvestorCommunicationLogInsert,
+  type InvestorCommunicationLogRow,
+  type DealInvestorCommunicationMailInsert,
+  type DealInvestorCommunicationMailRow,
+  type DealInvestorCommunicationRecipient,
+} from "./deal.schema/deal-investor-communication-mail.schema.js";
+export {
   contact,
   contactEmailTemplate,
   type ContactInsert,

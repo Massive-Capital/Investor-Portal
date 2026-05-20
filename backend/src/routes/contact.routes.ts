@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  deleteContactEmailTemplate,
   getContactEmailTemplates,
   getContacts,
   getOrganizationContactLists,
@@ -24,5 +25,6 @@ router.post("/contacts/export-notify", postContactsExportNotify);
 router.patch("/contacts/:contactId/status", patchContactStatus);
 router.patch("/contacts/:contactId", patchContact);
 router.patch("/contacts/email-templates/:templateId", patchContactEmailTemplate);
+router.delete("/contacts/email-templates/:templateId", deleteContactEmailTemplate);
 
 export default router;

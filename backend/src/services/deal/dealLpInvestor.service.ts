@@ -422,6 +422,45 @@ export async function buildLpInvestorsFromMerged(
   return { investors, kpis };
 }
 
+type FullRosterInvestorApiRow = ReturnType<typeof mapRowToInvestorApi>;
+
+/**
+ * Full investor roster (`GET /deals/:id/investors`): patch invite email and
+ * `investorKind` for rows sourced from `deal_lp_investor` (same as LP tab path).
+ */
+export async function enrichFullInvestorApiFromLpRoster(
+  dealId: string,
+  mergedRows: DealInvestmentRow[],
+  investors: FullRosterInvestorApiRow[],
+): Promise<
+  Array<FullRosterInvestorApiRow & { investorKind?: "investment" | "lp_roster" }>
+> {
+  const lpRosterIds = await resolveLpRosterIdSet(dealId, mergedRows);
+  if (lpRosterIds.size === 0) return investors
+
+  const roster = await db
+    .select()
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, dealId))
+
+  const rosterEmailByLpId = new Map<string, string>()
+  for (const m of roster) {
+    const em = String(m.email ?? "").trim()
+    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em)
+  }
+
+  return investors.map((inv) => {
+    const id = String(inv.id ?? "").toLowerCase()
+    if (!lpRosterIds.has(id)) return inv
+    const storedEmail = rosterEmailByLpId.get(id)?.trim()
+    return {
+      ...inv,
+      ...(storedEmail ? { userEmail: storedEmail } : {}),
+      investorKind: "lp_roster" as const,
+    }
+  })
+}
+
 /**
  * GET /deals/:dealId/investors?lp=1 — when `viewerUserId` is a Co-sponsor on the deal,
  * investors/KPIs are restricted to rows they added.

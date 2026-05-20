@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, Download, MapPin, Plus, Search, UserCircle, Users } from "lucide-react"
+import { Archive, MapPin, Plus, UserCircle, Users } from "lucide-react"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "@/common/components/Toast"
 import {
@@ -46,8 +46,10 @@ import {
   mergeInvestorProfileRowsWithLinkedCounts,
 } from "./profileInvestmentCounts"
 import { InvestingProfilesRowActions } from "./InvestingProfilesRowActions"
+import { InvestingProfilesTableToolbar } from "./InvestingProfilesTableToolbar"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deals-list.css"
+import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import "@/modules/Syndication/contacts/contacts.css"
 import "./investing-profiles.css"
 
@@ -735,7 +737,7 @@ export default function InvestingProfilesPage() {
   )
 
   return (
-    <section className="um_page deals_list_page investing_profiles_page">
+    <section className="um_page contacts_page investing_profiles_page">
       <div className="um_members_header_block">
         <div className="um_header_row">
           <h2 className="um_title um_title_with_icon">
@@ -760,7 +762,7 @@ export default function InvestingProfilesPage() {
         </div>
       ) : null}
 
-      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
+      <div className="um_members_tabs_outer deals_tabs_outer contacts_main_tabs_outer um_segmented_tabs_outer">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
             className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
@@ -785,7 +787,6 @@ export default function InvestingProfilesPage() {
               <span className="deals_tabs_label um_segmented_tab_label">
                 My Profiles
               </span>
-              <span className="deals_tabs_count">({profiles.length})</span>
             </button>
             <button
               type="button"
@@ -805,7 +806,6 @@ export default function InvestingProfilesPage() {
               <span className="deals_tabs_label um_segmented_tab_label">
                 Beneficiaries
               </span>
-              <span className="deals_tabs_count">({beneficiaries.length})</span>
             </button>
             <button
               type="button"
@@ -825,27 +825,14 @@ export default function InvestingProfilesPage() {
               <span className="deals_tabs_label um_segmented_tab_label">
                 Address
               </span>
-              <span className="deals_tabs_count">({savedAddresses.length})</span>
             </button>
           </div>
         </TabsScrollStrip>
       </div>
 
-      <div
-        className="um_members_tab_content"
-        id="profiles-tab-panels"
-      >
-        {activeTab === "my-profiles" && (
-          <div
-            id="profiles-panel-my-profiles"
-            role="tabpanel"
-            aria-labelledby="profiles-tab-my-profiles"
-            className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel"
-          >
-            <div className="um_members_header_block contacts_inner_header">
-              <h2 className="investing_profiles_title investing_profiles_sr_only">
-                My profiles
-              </h2>
+      {activeTab === "my-profiles" && (
+        <>
+          <div className="um_members_header_block contacts_inner_header">
               <div className="contacts_toolbar_filters_row">
                 <div
                   className="contacts_filter_button_group"
@@ -889,30 +876,20 @@ export default function InvestingProfilesPage() {
                 </button>
               </div>
             </div>
-            <div className="um_toolbar deal_inv_table_um_toolbar">
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search profiles…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search profiles"
+
+          <div id="profiles-panel-my-profiles" role="tabpanel" aria-labelledby="profiles-tab-my-profiles" className="contacts_main_tab_panel_wrap">
+            <div className="um_members_tab_content contacts_main_tab_content_flush">
+              <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+                <InvestingProfilesTableToolbar
+                  onExport={() => setExportModalOpen(true)}
+                  exportDisabled={bookLoading}
+                  searchValue={query}
+                  onSearchChange={setQuery}
+                  searchPlaceholder="Search profiles…"
+                  searchAriaLabel={profilesStatusTab === "archived" ? "Search archived profiles" : "Search active profiles"}
+                  searchDisabled={bookLoading}
                 />
-              </div>
-              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-                <button
-                  type="button"
-                  className="um_toolbar_export_btn"
-                  onClick={() => setExportModalOpen(true)}
-                >
-                  <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export all profiles</span>
-                </button>
-              </div>
-            </div>
-            <DataTable<InvestorProfileListRow>
+                <DataTable<InvestorProfileListRow>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
               columns={profileColumns}
@@ -931,20 +908,15 @@ export default function InvestingProfilesPage() {
                 filteredProfiles.length > 0 ? profilesPagination : undefined
               }
             />
+              </div>
+            </div>
           </div>
+          </>
         )}
 
         {activeTab === "beneficiaries" && (
-          <div
-            id="profiles-panel-beneficiaries"
-            role="tabpanel"
-            aria-labelledby="profiles-tab-beneficiaries"
-            className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel"
-          >
+          <>
             <div className="um_members_header_block contacts_inner_header">
-              <h2 className="investing_profiles_title investing_profiles_sr_only">
-                Beneficiaries
-              </h2>
               <div className="contacts_toolbar_filters_row">
                 <div
                   className="contacts_filter_button_group"
@@ -991,30 +963,20 @@ export default function InvestingProfilesPage() {
                 </button>
               </div>
             </div>
-            <div className="um_toolbar deal_inv_table_um_toolbar">
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search beneficiaries…"
-                  value={beneQuery}
-                  onChange={(e) => setBeneQuery(e.target.value)}
-                  aria-label="Search beneficiaries"
+
+          <div id="profiles-panel-beneficiaries" role="tabpanel" aria-labelledby="profiles-tab-beneficiaries" className="contacts_main_tab_panel_wrap">
+            <div className="um_members_tab_content contacts_main_tab_content_flush">
+              <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+                <InvestingProfilesTableToolbar
+                  onExport={() => setExportBeneModalOpen(true)}
+                  exportDisabled={bookLoading}
+                  searchValue={beneQuery}
+                  onSearchChange={setBeneQuery}
+                  searchPlaceholder="Search beneficiaries…"
+                  searchAriaLabel={beneStatusTab === "archived" ? "Search archived beneficiaries" : "Search active beneficiaries"}
+                  searchDisabled={bookLoading}
                 />
-              </div>
-              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-                <button
-                  type="button"
-                  className="um_toolbar_export_btn"
-                  onClick={() => setExportBeneModalOpen(true)}
-                >
-                  <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export all beneficiaries</span>
-                </button>
-              </div>
-            </div>
-            <DataTable<BeneficiaryListRow>
+                <DataTable<BeneficiaryListRow>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
               columns={beneficiaryColumns}
@@ -1033,18 +995,15 @@ export default function InvestingProfilesPage() {
                 filteredBeneficiaries.length > 0 ? benePagination : undefined
               }
             />
+              </div>
+            </div>
           </div>
+          </>
         )}
 
         {activeTab === "addresses" && (
-          <div
-            id="profiles-panel-addresses"
-            role="tabpanel"
-            aria-labelledby="profiles-tab-addresses"
-            className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel"
-          >
+          <>
             <div className="um_members_header_block contacts_inner_header">
-              <h2 className="investing_profiles_title investing_profiles_sr_only">Address</h2>
               <div className="contacts_toolbar_filters_row">
                 <div
                   className="contacts_filter_button_group"
@@ -1091,30 +1050,20 @@ export default function InvestingProfilesPage() {
                 </button>
               </div>
             </div>
-            <div className="um_toolbar deal_inv_table_um_toolbar">
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search addresses…"
-                  value={addrQuery}
-                  onChange={(e) => setAddrQuery(e.target.value)}
-                  aria-label="Search saved addresses"
+
+          <div id="profiles-panel-addresses" role="tabpanel" aria-labelledby="profiles-tab-addresses" className="contacts_main_tab_panel_wrap">
+            <div className="um_members_tab_content contacts_main_tab_content_flush">
+              <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+                <InvestingProfilesTableToolbar
+                  onExport={() => setExportAddrModalOpen(true)}
+                  exportDisabled={bookLoading}
+                  searchValue={addrQuery}
+                  onSearchChange={setAddrQuery}
+                  searchPlaceholder="Search addresses…"
+                  searchAriaLabel={addrStatusTab === "archived" ? "Search archived addresses" : "Search active addresses"}
+                  searchDisabled={bookLoading}
                 />
-              </div>
-              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-                <button
-                  type="button"
-                  className="um_toolbar_export_btn"
-                  onClick={() => setExportAddrModalOpen(true)}
-                >
-                  <Download size={18} strokeWidth={2} aria-hidden />
-                  <span>Export all addresses</span>
-                </button>
-              </div>
-            </div>
-            <DataTable<SavedAddress>
+                <DataTable<SavedAddress>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
               columns={addressColumns}
@@ -1133,9 +1082,11 @@ export default function InvestingProfilesPage() {
                 filteredAddresses.length > 0 ? addressPagination : undefined
               }
             />
+              </div>
+            </div>
           </div>
+          </>
         )}
-      </div>
 
       {viewModalConfig ? (
         <InvestingEntityViewModal
@@ -1170,6 +1121,9 @@ export default function InvestingProfilesPage() {
         initial={benInitialDraft}
         variant={editBeneficiary ? "edit" : "add"}
         savedAddresses={savedAddresses}
+        existingBeneficiaries={beneficiaries}
+        excludeBeneficiaryId={editBeneficiary?.id}
+        onAddressAdded={(row) => setSavedAddresses((prev) => [row, ...prev])}
       />
       <AddAddressModal
         open={addAddressOpen}
@@ -1180,6 +1134,8 @@ export default function InvestingProfilesPage() {
         onSave={addAddress}
         initialDraft={addressInitialDraft}
         isEdit={Boolean(editingAddress)}
+        existingAddresses={savedAddresses}
+        excludeAddressId={editingAddress?.id}
       />
     </section>
   )

@@ -1,7 +1,14 @@
 import { ArrowLeft, Check, Copy, Eye, Loader2, Send, Share2, X } from "lucide-react"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom"
+import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys"
 import { FormTooltip } from "../../../common/components/form-tooltip/FormTooltip"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
@@ -18,10 +25,18 @@ import {
 } from "./api/dealsApi"
 import {
   dealIdFromOfferingPortfolioPathname,
+  dealWorkspacePath,
   EMPTY_INVESTORS_PAYLOAD,
   isDealUuidForOfferingPreview,
 } from "./dealOfferingPreviewShared"
 import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
+import {
+  canInvestorAccessOffering,
+  getDealStatusRules,
+  shouldShowInvestButton,
+} from "./constants/deal-lifecycle"
+import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
+import { writeInvestNowIntent } from "./utils/investNowIntent"
 import {
   OfferingPreviewShareEmailRecipientsAddon,
   type OfferingShareEmailTag,
@@ -39,11 +54,17 @@ import "../usermanagement/user_management.css"
 import "./deal-offering-portfolio.css"
 import "./deals-list.css"
 
+function readSessionAuthenticated(): boolean {
+  if (typeof sessionStorage === "undefined") return false
+  return Boolean(sessionStorage.getItem(SESSION_BEARER_KEY)?.trim())
+}
+
 export function DealOfferingPortfolioPage() {
-  const { mode } = usePortalMode()
+  const { mode, switchToInvesting } = usePortalMode()
   const { dealId: dealIdParam } = useParams<{ dealId: string }>()
   const [searchParams] = useSearchParams()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const dealIdFromRoute = useMemo(() => {
     const fromParams = dealIdParam?.trim()
@@ -154,6 +175,58 @@ export function DealOfferingPortfolioPage() {
 
   const [investorVisibilitySync, setInvestorVisibilitySync] = useState(0)
 
+  const isSessionAuthenticated = readSessionAuthenticated()
+
+  const offeringReturnPath = `${location.pathname}${location.search}`
+
+  const dealWorkspaceReturnPath = useMemo(
+    () =>
+      detail?.id?.trim()
+        ? dealWorkspacePath(detail.id)
+        : offeringReturnPath,
+    [detail?.id, offeringReturnPath],
+  )
+
+  const publicInvestNowSignInState = useMemo(
+    () =>
+      isPublicOfferingRoute && !isSessionAuthenticated
+        ? ({ from: dealWorkspaceReturnPath, investNow: true as const } satisfies {
+            from: string
+            investNow: true
+          })
+        : undefined,
+    [isPublicOfferingRoute, isSessionAuthenticated, dealWorkspaceReturnPath],
+  )
+
+  const isInvestorFacingView =
+    isPublicOfferingRoute || mode === "investing"
+
+  const offeringStatusRules = useMemo(
+    () => getDealStatusRules(detail?.offeringStatus),
+    [detail?.offeringStatus],
+  )
+
+  const investorOfferingBlocked =
+    isInvestorFacingView &&
+    Boolean(detail) &&
+    !canInvestorAccessOffering(detail?.offeringStatus)
+
+  const showInvestNowCta =
+    isInvestorFacingView &&
+    shouldShowInvestButton(detail?.offeringStatus) &&
+    (isPublicOfferingRoute || mode === "investing")
+
+  const canOpenInvestNowInWorkspace =
+    isSessionAuthenticated && showInvestNowCta
+
+  const openInvestNowInWorkspace = useCallback(() => {
+    const id = detail?.id?.trim()
+    if (!id) return
+    writeInvestNowIntent(id)
+    switchToInvesting()
+    navigate(dealWorkspacePath(id), { state: { investNow: true } })
+  }, [detail?.id, navigate, switchToInvesting])
+
   useEffect(() => {
     if (!detail?.id || isPublicOfferingRoute) return
     const key = offeringPreviewInvestorVisibilityStorageKey(detail.id)
@@ -177,7 +250,10 @@ export function DealOfferingPortfolioPage() {
     return OFFERING_DETAILS_SECTION_ORDER.some(({ id }) => v[id] !== false)
   }, [detail?.id, isPublicOfferingRoute, investorVisibilitySync])
 
+  const isDealDraft = isDealStageDraft(detail?.dealStage)
+
   const sharePreviewActionsDisabled =
+    isDealDraft ||
     !previewShareUrl ||
     shareLinkLoading ||
     (!isPublicOfferingRoute && !hasAnyInvestorVisibleSection)
@@ -225,7 +301,7 @@ export function DealOfferingPortfolioPage() {
 
   const submitShareByEmail = useCallback(() => {
     const dealId = dealIdFromRoute?.trim()
-    if (!dealId) return
+    if (!dealId || sharePreviewActionsDisabled) return
     const emails = shareEmailTags.map((t) => t.email)
     if (emails.length === 0) {
       setShareResultMessage(
@@ -259,7 +335,7 @@ export function DealOfferingPortfolioPage() {
         setShareSubmitting(false)
       }
     })()
-  }, [dealIdFromRoute, shareEmailTags])
+  }, [dealIdFromRoute, shareEmailTags, sharePreviewActionsDisabled])
 
   useEffect(() => {
     if (!effectiveDealId) {
@@ -317,6 +393,33 @@ export function DealOfferingPortfolioPage() {
     }
   }, [effectiveDealId, isPublicOfferingRoute])
 
+  /** After sign-in on the public link, land in deal workspace and open Invest now there. */
+  useEffect(() => {
+    if (
+      !isPublicOfferingRoute ||
+      !isSessionAuthenticated ||
+      loading ||
+      !detail?.id?.trim()
+    )
+      return
+    const st = location.state as { investNow?: boolean } | null
+    if (!st?.investNow) return
+    const workspace = dealWorkspacePath(detail.id)
+    if (location.pathname.replace(/\/+$/, "") === workspace.replace(/\/+$/, ""))
+      return
+    switchToInvesting()
+    navigate(workspace, { replace: true, state: { investNow: true } })
+  }, [
+    isPublicOfferingRoute,
+    isSessionAuthenticated,
+    loading,
+    detail?.id,
+    location.state,
+    location.pathname,
+    navigate,
+    switchToInvesting,
+  ])
+
   const title =
     detail?.dealName?.trim() ||
     detail?.propertyName?.trim() ||
@@ -362,6 +465,20 @@ export function DealOfferingPortfolioPage() {
     )
   }
 
+  if (investorOfferingBlocked) {
+    return (
+      <div className="deals_list_page deals_detail_page">
+        <p className="deals_list_not_found" role="status">
+          This offering is not available.{" "}
+          <Link to="/dashboard" className="deal_offer_pf_back">
+            <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+            Back to dashboard
+          </Link>
+        </p>
+      </div>
+    )
+  }
+
   if (notFound || !detail) {
     return (
       <div className="deals_list_page deals_detail_page">
@@ -391,9 +508,26 @@ export function DealOfferingPortfolioPage() {
           ) : (
             <div className="deal_offer_pf_public_top">
               <span className="deal_offer_pf_badge">Shared offering</span>
-              <Link to="/signin" className="deal_offer_pf_signin_link">
-                Sign in to the portal
-              </Link>
+              {isSessionAuthenticated && detail?.id ? (
+                <Link
+                  to={dealWorkspacePath(detail.id)}
+                  className="deal_offer_pf_signin_link"
+                >
+                  Open deal workspace
+                </Link>
+              ) : (
+                <Link
+                  to="/signin"
+                  state={publicInvestNowSignInState}
+                  onClick={() => {
+                    const id = detail?.id?.trim()
+                    if (id) writeInvestNowIntent(id)
+                  }}
+                  className="deal_offer_pf_signin_link"
+                >
+                  Sign in to the portal
+                </Link>
+              )}
             </div>
           )}
           <div className="deal_offer_pf_header_meta">
@@ -455,11 +589,15 @@ export function DealOfferingPortfolioPage() {
                   <div
                     className="um_toolbar deal_offer_pf_share_toolbar"
                     aria-label={
-                      previewShareUrl &&
-                      !shareLinkLoading &&
-                      !hasAnyInvestorVisibleSection
-                        ? `${previewShareUrlDisplayText}. Sharing is off until at least one section is visible to investors.`
-                        : `${previewShareUrlDisplayText}. Use Copy offering link or Share preview.`
+                      isDealDraft && previewShareUrl
+                        ? `${previewShareUrlDisplayText}. Sharing is unavailable while this deal is in Draft.`
+                        : previewShareUrl &&
+                            !shareLinkLoading &&
+                            !hasAnyInvestorVisibleSection
+                          ? `${previewShareUrlDisplayText}. Sharing is off until at least one section is visible to investors.`
+                          : previewShareUrl
+                            ? `${previewShareUrlDisplayText}. Use Copy offering link or Share preview.`
+                            : "Offering preview sharing"
                     }
                   >
                     {/*
@@ -493,15 +631,19 @@ export function DealOfferingPortfolioPage() {
                         {previewShareUrl && !shareLinkLoading ? (
                           <FormTooltip
                             label={
-                              hasAnyInvestorVisibleSection
-                                ? "More information: Copy offering link"
-                                : "Why Copy offering link and Share preview are unavailable"
+                              isDealDraft
+                                ? "Why Copy offering link is unavailable"
+                                : hasAnyInvestorVisibleSection
+                                  ? "More information: Copy offering link"
+                                  : "Why Copy offering link and Share preview are unavailable"
                             }
                             content={
                               <p className="deals_table_header_tooltip_p">
-                                {hasAnyInvestorVisibleSection
-                                  ? "Copy the link or send it by email — LP investors can open the same preview without signing in."
-                                  : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
+                                {isDealDraft
+                                  ? "Move this deal out of Draft before sharing an offering preview link with investors."
+                                  : hasAnyInvestorVisibleSection
+                                    ? "Copy the link or send it by email — LP investors can open the same preview without signing in."
+                                    : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
                               </p>
                             }
                             placement="top"
@@ -522,15 +664,19 @@ export function DealOfferingPortfolioPage() {
                         {previewShareUrl && !shareLinkLoading ? (
                           <FormTooltip
                             label={
-                              hasAnyInvestorVisibleSection
-                                ? "More information: Share preview"
-                                : "Why Copy offering link and Share preview are unavailable"
+                              isDealDraft
+                                ? "Why Share preview is unavailable"
+                                : hasAnyInvestorVisibleSection
+                                  ? "More information: Share preview"
+                                  : "Why Copy offering link and Share preview are unavailable"
                             }
                             content={
                               <p className="deals_table_header_tooltip_p">
-                                {hasAnyInvestorVisibleSection
-                                  ? "Opens a dialog to email the same offering preview link to your organization’s contacts, company members, or addresses you add. No login is required for recipients."
-                                  : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
+                                {isDealDraft
+                                  ? "Move this deal out of Draft before emailing an offering preview link to investors."
+                                  : hasAnyInvestorVisibleSection
+                                    ? "Opens a dialog to email the same offering preview link to your organization’s contacts, company members, or addresses you add. No login is required for recipients."
+                                    : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
                               </p>
                             }
                             placement="top"
@@ -540,9 +686,17 @@ export function DealOfferingPortfolioPage() {
                       </div>
                     </div>
                   </div>
-                  {previewShareUrl &&
-                  !shareLinkLoading &&
-                  !hasAnyInvestorVisibleSection ? (
+                  {isDealDraft ? (
+                    <p
+                      className="um_toolbar_notice deal_offer_pf_share_disabled_hint"
+                      role="status"
+                    >
+                      This deal is in <strong>Draft</strong>. Change the deal stage
+                      before copying or sharing the offering preview link.
+                    </p>
+                  ) : previewShareUrl &&
+                    !shareLinkLoading &&
+                    !hasAnyInvestorVisibleSection ? (
                     <p
                       className="um_toolbar_notice deal_offer_pf_share_disabled_hint"
                       role="status"
@@ -573,10 +727,13 @@ export function DealOfferingPortfolioPage() {
           investorsPayload={investorsPayload}
           applyInvestorLinkVisibility={true}
           isPublicOfferingRoute={isPublicOfferingRoute}
-          showInvestNowCta={
-            isPublicOfferingRoute || mode === "investing"
+          showInvestNowCta={showInvestNowCta}
+          offeringStatusRules={offeringStatusRules}
+          onInvestNow={
+            canOpenInvestNowInWorkspace ? openInvestNowInWorkspace : undefined
           }
-          galleryUsesPersistedSourcesOnly={true}
+          publicInvestNowSignInState={publicInvestNowSignInState}
+          galleryUsesPersistedSourcesOnly={isPublicOfferingRoute}
         />
 
         {!isPublicOfferingRoute && shareModalOpen

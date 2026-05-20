@@ -1,0 +1,149 @@
+/* Published deal announcement — deal detail header + offering preview */
+
+.deal_announcement_banner {
+  --deal-ann-accent: #d97706;
+  --deal-ann-accent-soft: #f59e0b;
+  --deal-ann-surface: color-mix(in srgb, #fffbeb 72%, var(--portal-surface, #fff));
+  --deal-ann-border: color-mix(in srgb, var(--deal-ann-accent) 32%, var(--portal-border, #e2e8f0));
+
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.875rem 1rem 0.9rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--deal-ann-border);
+  border-left: 4px solid var(--deal-ann-accent);
+  background: var(--deal-ann-surface);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
+}
+
+/* Deal detail: compact strip tucked under the app top nav */
+.deal_announcement_banner--page {
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem 0.5rem 0.75rem;
+  box-shadow: none;
+}
+
+.deal_announcement_banner--page .deal_announcement_banner_icon_wrap {
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-top: 0;
+  border-radius: 6px;
+}
+
+.deal_announcement_banner--page .deal_announcement_banner_eyebrow {
+  margin-bottom: 0.12rem;
+  font-size: 0.625rem;
+  letter-spacing: 0.07em;
+}
+
+.deal_announcement_banner--page .deal_announcement_banner_title {
+  margin-bottom: 0.15rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.deal_announcement_banner--page .deal_announcement_banner_message {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.deal_announcement_banner--preview {
+  gap: 0.55rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 0.65rem;
+  border-radius: 8px;
+}
+
+.deal_announcement_banner--preview .deal_announcement_banner_icon_wrap {
+  width: 1.875rem;
+  height: 1.875rem;
+}
+
+.deal_announcement_banner--preview .deal_announcement_banner_title {
+  font-size: 0.875rem;
+}
+
+.deal_announcement_banner--preview .deal_announcement_banner_message {
+  font-size: 0.8125rem;
+}
+
+.deal_announcement_banner_icon_wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-top: 0.05rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--deal-ann-accent-soft) 22%, transparent);
+  color: var(--deal-ann-accent);
+}
+
+.deal_announcement_banner_content {
+  min-width: 0;
+  flex: 1;
+}
+
+.deal_announcement_banner_eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--deal-ann-accent) 88%, #78350f);
+}
+
+.deal_announcement_banner_title {
+  margin: 0 0 0.35rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_announcement_banner_message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #475569);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.deal_announcement_banner_title:last-child,
+.deal_announcement_banner_eyebrow:last-child {
+  margin-bottom: 0;
+}
+
+:root[data-theme="dark"] .deal_announcement_banner {
+  --deal-ann-accent: #fbbf24;
+  --deal-ann-accent-soft: #f59e0b;
+  --deal-ann-surface: color-mix(
+    in srgb,
+    var(--deal-ann-accent-soft) 12%,
+    var(--portal-surface, #1e293b)
+  );
+  --deal-ann-border: color-mix(in srgb, var(--deal-ann-accent) 28%, rgba(255, 255, 255, 0.12));
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .deal_announcement_banner_eyebrow {
+  color: #fcd34d;
+}
+
+:root[data-theme="dark"] .deal_announcement_banner_title {
+  color: var(--portal-text, #f8fafc);
+}
+
+:root[data-theme="dark"] .deal_announcement_banner_message {
+  color: color-mix(in srgb, var(--portal-text, #f1f5f9) 82%, transparent);
+}
+
+:root[data-theme="dark"] .deal_announcement_banner_icon_wrap {
+  background: color-mix(in srgb, var(--deal-ann-accent-soft) 28%, transparent);
+  color: #fcd34d;
+}

@@ -14,6 +14,7 @@ import companyRoutes from "./routes/companyRoutes.routes.js";
 import dealFormRoutes from "./routes/dealForm.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
 import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js";
+import platformRoutes from "./routes/platformRoutes.routes.js";
 
 
 const PORT = process.env.BACKEND_PORT ?? 5004;
@@ -100,6 +101,7 @@ app.use("/api/v1", [
   dealFormRoutes,
   contactRoutes,
   investingProfileBookRoutes,
+  platformRoutes,
 ]);
 
 console.log("Starting server...");

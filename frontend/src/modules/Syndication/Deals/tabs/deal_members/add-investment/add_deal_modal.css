@@ -120,7 +120,8 @@
 }
 
 /* Pill-shaped controls (dropdown triggers + text/date inputs) */
-.deals_add_inv_modal_form input.deals_add_inv_field_pill {
+.deals_add_inv_modal_form input.deals_add_inv_field_pill,
+.deals_add_inv_input.deals_add_inv_field_control.deals_add_inv_field_pill {
   border-radius: 9999px;
 }
 
@@ -238,7 +239,7 @@
   box-sizing: border-box;
   min-height: var(--deals-add-inv-control-min-h);
   padding: 0.5rem 0.75rem;
-  border-radius: var(--deals-add-inv-control-radius);
+  border-radius: 9999px;
   font-family: var(--deals-add-inv-font-family);
   font-size: var(--deals-add-inv-control-font);
   font-weight: 400;

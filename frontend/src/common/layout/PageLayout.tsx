@@ -1,5 +1,6 @@
 import { type ComponentType, useEffect, useId, useState } from "react"
 import {
+  BarChart3,
   Briefcase,
   Building2,
   ChevronDown,
@@ -18,6 +19,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
 import {
   getStoredUserRole,
   isLpInvestorSessionUser,
+  isPlatformAdmin,
 } from "../auth/roleUtils"
 import { canAccessSyndicationSidebarPath } from "../config/sideNavAccess.config"
 import { TopNavBar } from "../components/TopNavBar/TopNavBar"
@@ -146,6 +148,10 @@ function SidebarNavGroup({
   )
 }
 
+const platformAdminNavItems: NavItemLink[] = [
+  { label: "Metrics", to: "/metrics", icon: BarChart3 },
+]
+
 const sharedSidebarItems: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   // { label: "Leads", to: "/leads", icon: UserPlus },
@@ -173,7 +179,7 @@ const syndicationPortalNavItems: NavItemLink[] = [
 /** Investing mode — flat nav (reference UI) */
 const investingNavItems: NavItemLink[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Company overview", to: "/investing/company", icon: Building2 },
+  // { label: "Company overview", to: "/investing/company", icon: Building2 },
   { label: "Investments", to: "/investing/investments", icon: TrendingUp },
   { label: "Documents", to: "/investing/documents", icon: FileText },
   { label: "Profiles", to: "/investing/profiles", icon: UserCircle },
@@ -223,7 +229,14 @@ function PageLayoutInner() {
       return canAccessSyndicationSidebarPath(path, getStoredUserRole())
     })
 
+  const platformMetricsNav = isPlatformAdmin()
+    ? platformAdminNavItems.filter((item) =>
+        canAccessSyndicationSidebarPath(item.to, getStoredUserRole()),
+      )
+    : []
+
   const sidebarItems: NavItem[] = [
+    ...platformMetricsNav,
     sharedSidebarItems[0],
     // [1] is Contacts group (sub: All contacts, Email Templates)
     sharedSidebarItems[1],
@@ -333,7 +346,7 @@ function PageLayoutInner() {
                     )
                   }
 
-                  const linkEnd = to === "/dashboard"
+                  const linkEnd = to === "/dashboard" || to === "/metrics"
                   return (
                     <NavLink
                       key={label}

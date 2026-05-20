@@ -49,6 +49,11 @@ import {
   postDealsExportNotify,
 } from "../controllers/exportNotify.controller.js";
 import { getDealOfferingShareRecipients } from "../controllers/deal/dealOfferingShareRecipients.addon.controller.js";
+import {
+  deleteDealInvestorCommunicationMailHandler,
+  getDealInvestorCommunicationMails,
+  postDealInvestorCommunicationMail,
+} from "../controllers/deal/dealInvestorCommunicationMail.controller.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -86,6 +91,18 @@ router.patch(
 router.patch(
   "/deals/:dealId/lp-investors/my-invest-now-commitment",
   patchDealLpInvestorMyInvestNowAddon,
+);
+router.get(
+  "/deals/:dealId/investor-communication/mails",
+  getDealInvestorCommunicationMails,
+);
+router.post(
+  "/deals/:dealId/investor-communication/mails",
+  postDealInvestorCommunicationMail,
+);
+router.delete(
+  "/deals/:dealId/investor-communication/mails/:mailId",
+  deleteDealInvestorCommunicationMailHandler,
 );
 router.get("/deals/:dealId/members", getDealMembers);
 router.post(

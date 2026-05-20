@@ -13,6 +13,13 @@ import { companies } from "../../schema/schema.js";
 import { sanitizeInvestorSummaryHtml } from "../../utils/sanitizeInvestorSummaryHtml.js";
 import { sanitizeKeyHighlightsJson } from "../../utils/sanitizeKeyHighlightsJson.js";
 import { encryptOfferingPreviewDealId } from "../../utils/offeringPreviewCrypto.js";
+import {
+  isDealStatus,
+  normalizeDealStageCanonical,
+  resolveOfferingStatusForStageChange,
+  validateDealStageAndStatus,
+  validateOfferingStatusChange,
+} from "../../constants/deal-lifecycle/index.js";
 import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
 
 const UPLOAD_SUBDIR = "deal-assets";
@@ -354,11 +361,26 @@ export async function insertAddDealForm(
       assetRelativePaths,
     ),
   };
+  const initialStageCanon = normalizeDealStageCanonical(
+    normalizedInput.dealStage,
+  );
+  const initialOfferingStatus =
+    initialStageCanon != null
+      ? resolveOfferingStatusForStageChange({
+          nextStage: initialStageCanon,
+          currentStatus: "draft_hidden",
+        })
+      : "draft_hidden";
+
   const candidates = dealStageCandidates(normalizedInput.dealStage);
   let lastErr: unknown = null;
   for (const stage of candidates) {
     try {
-      const row: AddDealFormInsert = { ...baseRow, dealStage: stage };
+      const row: AddDealFormInsert = {
+        ...baseRow,
+        dealStage: stage,
+        offeringStatus: initialOfferingStatus,
+      };
       const [created] = await db.insert(addDealForm).values(row).returning();
       if (!created) throw new Error("Insert failed");
       const token = encryptOfferingPreviewDealId(String(created.id));
@@ -583,14 +605,30 @@ export async function updateDealAnnouncementById(
   return updated;
 }
 
-const OFFERING_STATUS_WHITELIST = new Set([
-  "draft_hidden",
-  "coming_soon",
-  "open_soft_commitment",
-  "open_hard_commitment",
-  "open_investment",
-  "waitlist",
-]);
+export type OfferingOverviewFieldErrors = Partial<
+  Record<"offering_status", string>
+>;
+
+function throwOfferingOverviewValidation(
+  fieldErrors: OfferingOverviewFieldErrors,
+): never {
+  const err = new Error("VALIDATION") as Error & {
+    fieldErrors: OfferingOverviewFieldErrors;
+  };
+  err.fieldErrors = fieldErrors;
+  throw err;
+}
+
+function assertOfferingStatusChangeAllowed(params: {
+  dealStage: string;
+  previousOfferingStatus: string;
+  nextOfferingStatus: string;
+}): void {
+  const v = validateOfferingStatusChange(params);
+  if (!v.ok) {
+    throwOfferingOverviewValidation({ offering_status: v.message });
+  }
+}
 
 const OFFERING_VISIBILITY_WHITELIST = new Set([
   "show_on_dashboard",
@@ -778,7 +816,7 @@ export function sanitizeOfferingOverviewPatch(
   const out: OfferingOverviewPatchInput = {};
   if (patch.offeringStatus !== undefined) {
     const v = String(patch.offeringStatus ?? "").trim();
-    if (!OFFERING_STATUS_WHITELIST.has(v)) {
+    if (!isDealStatus(v)) {
       return { ok: false, message: "Invalid offering status." };
     }
     out.offeringStatus = v;
@@ -841,6 +879,13 @@ export async function updateDealOfferingOverviewById(
 ): Promise<AddDealFormRow | undefined> {
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
+  if (patch.offeringStatus !== undefined) {
+    assertOfferingStatusChangeAllowed({
+      dealStage: existing.dealStage,
+      previousOfferingStatus: existing.offeringStatus,
+      nextOfferingStatus: patch.offeringStatus,
+    });
+  }
   if (patch.dealName !== undefined) {
     await assertDealNameUnique({
       dealName: patch.dealName,
@@ -1043,6 +1088,20 @@ export async function updateAddDealFormById(
       ? { organizationId: options.organizationId }
       : {};
 
+  const prevStageCanon = normalizeDealStageCanonical(existing.dealStage);
+  const nextStageCanon = normalizeDealStageCanonical(normalizedInput.dealStage);
+  const stageChanged =
+    prevStageCanon != null &&
+    nextStageCanon != null &&
+    prevStageCanon !== nextStageCanon;
+  const offeringStatusOnStageChange =
+    stageChanged && nextStageCanon != null
+      ? resolveOfferingStatusForStageChange({
+          nextStage: nextStageCanon,
+          currentStatus: existing.offeringStatus,
+        })
+      : undefined;
+
   const baseSet = {
     ...backfillOrg,
     dealName: normalizedInput.dealName.trim(),
@@ -1061,6 +1120,9 @@ export async function updateAddDealFormById(
     zipCode: normalizedInput.zipCode || null,
     assetImagePath,
     offeringGalleryPaths,
+    ...(offeringStatusOnStageChange != null
+      ? { offeringStatus: offeringStatusOnStageChange }
+      : {}),
   };
   const candidates = dealStageCandidates(normalizedInput.dealStage);
   let lastErr: unknown = null;

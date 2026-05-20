@@ -120,6 +120,7 @@ export function InvestingDashboardPage() {
       <SyndicatingDealsSection
         dealsHeadingId="investing-deals-heading"
         includeParticipantDeals
+        filterOfferingDashboardVisibility
         dealsSectionTitle="Your deals"
       />
     </section>

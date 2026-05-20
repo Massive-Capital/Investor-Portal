@@ -278,6 +278,10 @@ function normalizeDealListRow(
       firstDefined(r, ["propertyName", "property_name"]) ?? raw.propertyName,
     ),
     city: str(firstDefined(r, ["city"]) ?? raw.city),
+    offeringStatus: (() => {
+      const rawStatus = firstDefined(r, ["offeringStatus", "offering_status"])
+      return rawStatus != null ? str(rawStatus) : undefined
+    })(),
     investmentType: str(
       firstDefined(r, ["investmentType", "investment_type"]) ??
         raw.investmentType,
@@ -1844,6 +1848,7 @@ function normalizeInvestorRowApi(
     investorKind: (() => {
       const ik = firstDefined(raw, ["investorKind", "investor_kind"])
       if (ik === "lp_roster" || ik === "investment") return ik
+      if (ik === "lp_investor") return "lp_roster"
       return undefined
     })(),
     ...(() => {

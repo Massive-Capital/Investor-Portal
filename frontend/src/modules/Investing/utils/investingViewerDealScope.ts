@@ -1,4 +1,5 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
+import { dealMemberRoleLabelIsLpInvestor } from "@/common/auth/roleUtils"
 import { fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
 import type {
   DealInvestorRow,
@@ -79,11 +80,9 @@ function adderInInvestorsListIsSponsor(
 }
 
 function rowHasLpInvestorRole(m: DealInvestorRow): boolean {
-  const role = String(m.investorRole ?? "").trim().toLowerCase()
-  if (role === "lp investor" || role === "lp investors") return true
+  if (dealMemberRoleLabelIsLpInvestor(m.investorRole ?? "")) return true
   for (const lab of m.memberRoleLabels ?? []) {
-    const label = String(lab ?? "").trim().toLowerCase()
-    if (label === "lp investor" || label === "lp investors") return true
+    if (dealMemberRoleLabelIsLpInvestor(lab ?? "")) return true
   }
   return false
 }

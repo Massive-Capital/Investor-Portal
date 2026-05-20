@@ -179,6 +179,24 @@ export async function updateEmailTemplate(row: EmailTemplateRow): Promise<boolea
   return true
 }
 
+export async function deleteEmailTemplate(id: string): Promise<boolean> {
+  const base = getApiV1Base()
+  if (!base || !id.trim()) return false
+  try {
+    const res = await fetch(
+      `${base}/contacts/email-templates/${encodeURIComponent(id.trim())}`,
+      {
+        method: "DELETE",
+        headers: { ...authHeaders() },
+        credentials: "omit",
+      },
+    )
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export function fileToStoredAttachment(
   file: File,
 ): Promise<

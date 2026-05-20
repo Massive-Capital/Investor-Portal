@@ -7,6 +7,13 @@ import {
   userSavedAddresses,
   users,
 } from "../../schema/schema.js";
+import {
+  distributionBankDbValues,
+  distributionBankForApi,
+  distributionBankFromFormSnapshot,
+  mergeDistributionBankIntoWizardState,
+  type InvestorProfileDistributionBankApi,
+} from "./investorProfileDistributionBank.js";
 
 function displayNameFromUser(row: {
   firstName: string;
@@ -30,12 +37,182 @@ export class BeneficiaryInvalidPhoneError extends Error {
   }
 }
 
+export class BeneficiaryInvalidEmailError extends Error {
+  constructor() {
+    super("Enter a valid email address.");
+    this.name = "BeneficiaryInvalidEmailError";
+  }
+}
+
+export class BeneficiaryDuplicateError extends Error {
+  constructor() {
+    super("A beneficiary with this name and address already exists.");
+    this.name = "BeneficiaryDuplicateError";
+  }
+}
+
+export class SavedAddressDuplicateError extends Error {
+  constructor() {
+    super("This address has already been saved.");
+    this.name = "SavedAddressDuplicateError";
+  }
+}
+
+export class InvestorProfileDuplicateError extends Error {
+  constructor() {
+    super("A profile with this name and type already exists.");
+    this.name = "InvestorProfileDuplicateError";
+  }
+}
+
+function profileLabelKey(profileName: string, profileType: string): {
+  name: string;
+  type: string;
+} {
+  return {
+    name: (profileName ?? "").trim().toLowerCase() || "—",
+    type: (profileType ?? "").trim().toLowerCase() || "—",
+  };
+}
+
+function beneficiaryLabelKey(fullName: string, addressQuery: string): {
+  name: string;
+  address: string;
+} {
+  const norm = (s: string) =>
+    String(s ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  return {
+    name: norm(fullName),
+    address: norm(addressQuery),
+  };
+}
+
+function savedAddressLocationKey(input: {
+  country: string;
+  street1: string;
+  street2: string;
+  city: string;
+  state: string;
+  zip: string;
+}): string {
+  const norm = (s: string) =>
+    String(s ?? "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  const zipNorm = (z: string) => norm(z).replace(/\D/g, "").slice(0, 9);
+  return [
+    norm(input.country),
+    norm(input.street1),
+    norm(input.street2),
+    norm(input.city),
+    norm(input.state),
+    zipNorm(input.zip),
+  ].join("|");
+}
+
+async function activeSavedAddressDuplicateExists(
+  userId: string,
+  input: {
+    country: string;
+    street1: string;
+    street2: string;
+    city: string;
+    state: string;
+    zip: string;
+  },
+  excludeAddressId?: string,
+): Promise<boolean> {
+  const target = savedAddressLocationKey(input);
+  const rows = await db
+    .select({
+      id: userSavedAddresses.id,
+      country: userSavedAddresses.country,
+      street1: userSavedAddresses.street1,
+      street2: userSavedAddresses.street2,
+      city: userSavedAddresses.city,
+      state: userSavedAddresses.state,
+      zip: userSavedAddresses.zip,
+      archived: userSavedAddresses.archived,
+    })
+    .from(userSavedAddresses)
+    .where(eq(userSavedAddresses.userId, userId));
+
+  return rows.some((r) => {
+    if (r.archived) return false;
+    if (excludeAddressId && r.id === excludeAddressId) return false;
+    return savedAddressLocationKey(r) === target;
+  });
+}
+
+async function activeBeneficiaryDuplicateExists(
+  userId: string,
+  fullName: string,
+  addressQuery: string,
+  excludeBeneficiaryId?: string,
+): Promise<boolean> {
+  const target = beneficiaryLabelKey(fullName, addressQuery);
+  const rows = await db
+    .select({
+      id: userBeneficiaries.id,
+      fullName: userBeneficiaries.fullName,
+      addressQuery: userBeneficiaries.addressQuery,
+      archived: userBeneficiaries.archived,
+    })
+    .from(userBeneficiaries)
+    .where(eq(userBeneficiaries.userId, userId));
+
+  return rows.some((r) => {
+    if (r.archived) return false;
+    if (excludeBeneficiaryId && r.id === excludeBeneficiaryId) return false;
+    const key = beneficiaryLabelKey(r.fullName, r.addressQuery);
+    return key.name === target.name && key.address === target.address;
+  });
+}
+
+async function activeProfileDuplicateExists(
+  userId: string,
+  profileName: string,
+  profileType: string,
+  excludeProfileId?: string,
+): Promise<boolean> {
+  const target = profileLabelKey(profileName, profileType);
+  const rows = await db
+    .select({
+      id: userInvestorProfiles.id,
+      profileName: userInvestorProfiles.profileName,
+      profileType: userInvestorProfiles.profileType,
+      archived: userInvestorProfiles.archived,
+    })
+    .from(userInvestorProfiles)
+    .where(eq(userInvestorProfiles.userId, userId));
+
+  return rows.some((r) => {
+    if (r.archived) return false;
+    if (excludeProfileId && r.id === excludeProfileId) return false;
+    const key = profileLabelKey(r.profileName, r.profileType);
+    return key.name === target.name && key.type === target.type;
+  });
+}
+
 function normalizeBeneficiaryPhoneForWrite(raw: string): string {
   const t = String(raw ?? "").trim();
   if (!t) return "";
   const e164 = parseUsPhoneToE164(t);
   if (!e164) throw new BeneficiaryInvalidPhoneError();
   return e164;
+}
+
+function normalizeBeneficiaryEmailForWrite(raw: string): string {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(t)) {
+    throw new BeneficiaryInvalidEmailError();
+  }
+  return t;
 }
 
 /**
@@ -70,6 +247,8 @@ export type ProfileBookSnapshot = {
     lastEditReason: string | null;
     /** Add-profile wizard; maps to DB `form_snapshot` (jsonb). */
     profileWizardState: unknown | null;
+    /** Distribution / bank columns (also merged into `profileWizardState` on read). */
+    distributionBank: InvestorProfileDistributionBankApi;
   }>;
   beneficiaries: Array<{
     id: string;
@@ -160,16 +339,24 @@ export async function createInvestorProfileForUser(
     .limit(1);
   if (!u) return null;
 
+  const profileName = (input.profileName ?? "").trim() || "—";
+  const profileType = (input.profileType ?? "").trim() || "—";
+  if (await activeProfileDuplicateExists(userId, profileName, profileType)) {
+    throw new InvestorProfileDuplicateError();
+  }
+
   const addedBy = displayNameFromUser(u);
   const formSnapshot = formSnapshotFromRequestJson(input.profileWizardState);
+  const distributionBank = distributionBankFromFormSnapshot(formSnapshot);
   const [row] = await db
     .insert(userInvestorProfiles)
     .values({
       userId,
-      profileName: (input.profileName ?? "").trim() || "—",
-      profileType: (input.profileType ?? "").trim() || "—",
+      profileName,
+      profileType,
       addedBy,
       formSnapshot,
+      ...distributionBankDbValues(distributionBank),
     })
     .returning();
 
@@ -204,17 +391,23 @@ export async function createBeneficiaryForUser(
     addressQuery: string;
   },
 ): Promise<ProfileBookSnapshot["beneficiaries"][0] | null> {
+  const fullName = (input.fullName ?? "").trim();
+  const addressQuery = (input.addressQuery ?? "").trim();
+  if (await activeBeneficiaryDuplicateExists(userId, fullName, addressQuery)) {
+    throw new BeneficiaryDuplicateError();
+  }
   const phoneStored = normalizeBeneficiaryPhoneForWrite(input.phone);
+  const emailStored = normalizeBeneficiaryEmailForWrite(input.email);
   const [row] = await db
     .insert(userBeneficiaries)
     .values({
       userId,
-      fullName: input.fullName ?? "",
+      fullName,
       relationship: input.relationship ?? "",
       taxId: input.taxId ?? "",
       phone: phoneStored,
-      email: input.email ?? "",
-      addressQuery: input.addressQuery ?? "",
+      email: emailStored,
+      addressQuery,
     })
     .returning();
   if (!row) return null;
@@ -269,19 +462,25 @@ export async function createSavedAddressForUser(
     distributionNote: string;
   },
 ): Promise<ProfileBookSnapshot["addresses"][0] | null> {
+  const location = {
+    country: (input.country ?? "").trim(),
+    street1: (input.street1 ?? "").trim(),
+    street2: (input.street2 ?? "").trim(),
+    city: (input.city ?? "").trim(),
+    state: (input.state ?? "").trim(),
+    zip: (input.zip ?? "").trim(),
+  };
+  if (await activeSavedAddressDuplicateExists(userId, location)) {
+    throw new SavedAddressDuplicateError();
+  }
   const [row] = await db
     .insert(userSavedAddresses)
     .values({
       userId,
-      fullNameOrCompany: input.fullNameOrCompany ?? "",
-      country: input.country ?? "",
-      street1: input.street1 ?? "",
-      street2: input.street2 ?? "",
-      city: input.city ?? "",
-      state: input.state ?? "",
-      zip: input.zip ?? "",
-      checkMemo: input.checkMemo ?? "",
-      distributionNote: input.distributionNote ?? "",
+      fullNameOrCompany: (input.fullNameOrCompany ?? "").trim(),
+      ...location,
+      checkMemo: (input.checkMemo ?? "").trim(),
+      distributionNote: (input.distributionNote ?? "").trim(),
     })
     .returning();
   if (!row) return null;
@@ -342,7 +541,8 @@ function mapProfileRow(
     lastEditReason: row.lastEditReason != null && String(row.lastEditReason).trim()
       ? String(row.lastEditReason).trim()
       : null,
-    profileWizardState: row.formSnapshot,
+    profileWizardState: mergeDistributionBankIntoWizardState(row.formSnapshot, row),
+    distributionBank: distributionBankForApi(row),
   };
 }
 
@@ -388,24 +588,36 @@ export async function updateInvestorProfileForUser(
     profileWizardState?: string | null;
   },
 ): Promise<ProfileBookSnapshot["profiles"][0] | null> {
+  const profileName = (input.profileName ?? "").trim() || "—";
+  const profileType = (input.profileType ?? "").trim() || "—";
+  if (await activeProfileDuplicateExists(userId, profileName, profileType, profileId)) {
+    throw new InvestorProfileDuplicateError();
+  }
+
   const reason = (input.lastEditReason ?? "").trim();
+  const hasWizard = Object.prototype.hasOwnProperty.call(input, "profileWizardState");
+  const formSnapshot = hasWizard
+    ? formSnapshotFromRequestJson(
+        input.profileWizardState == null ? null : String(input.profileWizardState),
+      )
+    : null;
+  const distributionBank = hasWizard
+    ? distributionBankFromFormSnapshot(formSnapshot)
+    : null;
   const [row] = await db
     .update(userInvestorProfiles)
     .set(
-      Object.prototype.hasOwnProperty.call(input, "profileWizardState")
+      hasWizard
         ? {
-            profileName: (input.profileName ?? "").trim() || "—",
-            profileType: (input.profileType ?? "").trim() || "—",
+            profileName,
+            profileType,
             lastEditReason: reason || null,
-            formSnapshot: formSnapshotFromRequestJson(
-              input.profileWizardState == null
-                ? null
-                : String(input.profileWizardState),
-            ),
+            formSnapshot,
+            ...distributionBankDbValues(distributionBank!),
           }
         : {
-            profileName: (input.profileName ?? "").trim() || "—",
-            profileType: (input.profileType ?? "").trim() || "—",
+            profileName,
+            profileType,
             lastEditReason: reason || null,
           },
     )
@@ -429,16 +641,29 @@ export async function updateBeneficiaryForUser(
     addressQuery: string;
   },
 ): Promise<ProfileBookSnapshot["beneficiaries"][0] | null> {
+  const fullName = (input.fullName ?? "").trim();
+  const addressQuery = (input.addressQuery ?? "").trim();
+  if (
+    await activeBeneficiaryDuplicateExists(
+      userId,
+      fullName,
+      addressQuery,
+      beneficiaryId,
+    )
+  ) {
+    throw new BeneficiaryDuplicateError();
+  }
   const phoneStored = normalizeBeneficiaryPhoneForWrite(input.phone);
+  const emailStored = normalizeBeneficiaryEmailForWrite(input.email);
   const [row] = await db
     .update(userBeneficiaries)
     .set({
-      fullName: input.fullName ?? "",
+      fullName,
       relationship: input.relationship ?? "",
       taxId: input.taxId ?? "",
       phone: phoneStored,
-      email: input.email ?? "",
-      addressQuery: input.addressQuery ?? "",
+      email: emailStored,
+      addressQuery,
     })
     .where(
       and(eq(userBeneficiaries.id, beneficiaryId), eq(userBeneficiaries.userId, userId)),
@@ -463,18 +688,24 @@ export async function updateSavedAddressForUser(
     distributionNote: string;
   },
 ): Promise<ProfileBookSnapshot["addresses"][0] | null> {
+  const location = {
+    country: (input.country ?? "").trim(),
+    street1: (input.street1 ?? "").trim(),
+    street2: (input.street2 ?? "").trim(),
+    city: (input.city ?? "").trim(),
+    state: (input.state ?? "").trim(),
+    zip: (input.zip ?? "").trim(),
+  };
+  if (await activeSavedAddressDuplicateExists(userId, location, addressId)) {
+    throw new SavedAddressDuplicateError();
+  }
   const [row] = await db
     .update(userSavedAddresses)
     .set({
-      fullNameOrCompany: input.fullNameOrCompany ?? "",
-      country: input.country ?? "",
-      street1: input.street1 ?? "",
-      street2: input.street2 ?? "",
-      city: input.city ?? "",
-      state: input.state ?? "",
-      zip: input.zip ?? "",
-      checkMemo: input.checkMemo ?? "",
-      distributionNote: input.distributionNote ?? "",
+      fullNameOrCompany: (input.fullNameOrCompany ?? "").trim(),
+      ...location,
+      checkMemo: (input.checkMemo ?? "").trim(),
+      distributionNote: (input.distributionNote ?? "").trim(),
     })
     .where(
       and(eq(userSavedAddresses.id, addressId), eq(userSavedAddresses.userId, userId)),

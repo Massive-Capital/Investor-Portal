@@ -27,9 +27,14 @@ import {
   DEFAULT_ASSET_COUNTRY,
 } from "@/modules/Syndication/Deals/types/deals.types"
 import { normalizeZipCodeDigits, zipCodeFieldError } from "@/modules/Syndication/Deals/utils/dealZipCode"
-import type { AddressFormDraft } from "./address.types"
+import type { AddressFormDraft, SavedAddress } from "./address.types"
+import {
+  ADDRESS_DUPLICATE_MESSAGE,
+  hasActiveAddressDuplicate,
+} from "./addressDuplicateCheck"
 import { InvestingFormField } from "./InvestingFormField"
 import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
+import "@/modules/Syndication/Deals/tabs/deal_members/add-investment/add_deal_modal.css"
 import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
@@ -49,6 +54,10 @@ const empty: AddressFormDraft = {
 
 /** Match Add deal asset step: CountriesNow for US state/city when available, static JSON fallback. */
 const US_LOCATION_SOURCE: "static" | "countriesNow" = "countriesNow"
+
+const ADDR_FIELD_PILL = "deals_add_inv_field_pill"
+const ADDR_INPUT_CLASS = `deals_add_inv_input deals_add_inv_field_control ${ADDR_FIELD_PILL}`
+const ADDR_DROPDOWN_TRIGGER = `deals_add_inv_field_control ${ADDR_FIELD_PILL}`
 
 const TOTAL_STEPS = 2
 const STEPPER_LABELS = ["Address", "Check memo & distribution"] as const
@@ -79,6 +88,12 @@ interface AddAddressModalProps {
   /** Prefill (e.g. when editing a saved address). */
   initialDraft?: AddressFormDraft | null
   isEdit?: boolean
+  /** Raise above Add beneficiary when opened from that flow. */
+  stackAboveParent?: boolean
+  /** Active saved addresses used to block duplicate physical locations. */
+  existingAddresses?: SavedAddress[]
+  /** When editing, the row being updated (excluded from duplicate check). */
+  excludeAddressId?: string
 }
 
 export function AddAddressModal({
@@ -87,6 +102,9 @@ export function AddAddressModal({
   onSave,
   initialDraft = null,
   isEdit = false,
+  stackAboveParent = false,
+  existingAddresses = [],
+  excludeAddressId,
 }: AddAddressModalProps) {
   const [form, setForm] = useState<AddressFormDraft>(empty)
   const [step, setStep] = useState(1)
@@ -226,7 +244,7 @@ export function AddAddressModal({
       return
     }
 
-    onSave({
+    const draft: AddressFormDraft = {
       ...form,
       fullNameOrCompany: form.fullNameOrCompany.trim(),
       street1: form.street1.trim(),
@@ -236,7 +254,13 @@ export function AddAddressModal({
       zip: isUs ? normalizeZipCodeDigits(form.zip) : form.zip.trim(),
       checkMemo: form.checkMemo.trim(),
       distributionNote: form.distributionNote.trim(),
-    })
+    }
+    if (hasActiveAddressDuplicate(existingAddresses, draft, excludeAddressId)) {
+      toast.error("Duplicate address", ADDRESS_DUPLICATE_MESSAGE)
+      setStep(1)
+      return
+    }
+    onSave(draft)
     onClose()
   }
 
@@ -244,14 +268,18 @@ export function AddAddressModal({
 
   return createPortal(
     <div
-      className="um_modal_overlay deals_add_inv_modal_overlay investing_ben_modal_overlay"
+      className={
+        stackAboveParent
+          ? "um_modal_overlay deals_add_inv_modal_overlay investing_ben_modal_overlay investing_nested_modal_overlay"
+          : "um_modal_overlay deals_add_inv_modal_overlay investing_ben_modal_overlay"
+      }
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
       <div
-        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel investing_add_profile_form_panel investing_add_beneficiary_form_panel"
+        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel investing_add_profile_form_panel investing_add_address_form_panel investing_add_beneficiary_form_panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-address-title"
@@ -323,7 +351,7 @@ export function AddAddressModal({
         </div>
 
         <form
-          className="deals_add_inv_modal_form"
+          className="deals_add_inv_modal_form investing_pill_modal_form"
           onSubmit={(e) => {
             e.preventDefault()
             if (step === 1) {
@@ -352,7 +380,7 @@ export function AddAddressModal({
               >
                 <input
                   id="addr-name"
-                  className="deals_add_inv_input deals_add_inv_field_control"
+                  className={ADDR_INPUT_CLASS}
                   value={form.fullNameOrCompany}
                   onChange={(e) => patch({ fullNameOrCompany: e.target.value })}
                   placeholder="Enter full name or company name"
@@ -396,47 +424,10 @@ export function AddAddressModal({
                   searchPlaceholder="Search countries…"
                   searchAriaLabel="Filter country list"
                   searchShowOptionCountHint
-                  triggerClassName="deals_add_inv_field_control"
+                  triggerClassName={ADDR_DROPDOWN_TRIGGER}
                   placeholder="Select country"
                 />
               </InvestingFormField>
-
-              <div className="add_beneficiary_field_grid__full">
-                <InvestingFormField
-                  id="addr-line1"
-                  label={
-                    <>
-                      Street address line 1{" "}
-                      <span className="investing_form_req" aria-label="required">
-                        *
-                      </span>
-                    </>
-                  }
-                  Icon={MapPin}
-                >
-                  <input
-                    id="addr-line1"
-                    className="deals_add_inv_input deals_add_inv_field_control"
-                    value={form.street1}
-                    onChange={(e) => patch({ street1: e.target.value })}
-                    placeholder="Enter address line 1"
-                    autoComplete="address-line1"
-                  />
-                </InvestingFormField>
-              </div>
-
-              <div className="add_beneficiary_field_grid__full">
-                <InvestingFormField id="addr-line2" label="Street address line 2" Icon={MapPinned}>
-                  <input
-                    id="addr-line2"
-                    className="deals_add_inv_input deals_add_inv_field_control"
-                    value={form.street2}
-                    onChange={(e) => patch({ street2: e.target.value })}
-                    placeholder="Enter address line 2"
-                    autoComplete="address-line2"
-                  />
-                </InvestingFormField>
-              </div>
 
               {isUs ? (
                 <>
@@ -469,7 +460,7 @@ export function AddAddressModal({
                       searchPlaceholder="Search states…"
                       searchAriaLabel="Filter state list"
                       searchShowOptionCountHint
-                      triggerClassName="deals_add_inv_field_control"
+                      triggerClassName={ADDR_DROPDOWN_TRIGGER}
                     />
                     {US_LOCATION_SOURCE === "countriesNow" && countriesNow.statesError ? (
                       <p
@@ -525,7 +516,7 @@ export function AddAddressModal({
                       searchPlaceholder="Search cities…"
                       searchAriaLabel="Filter city list"
                       searchShowOptionCountHint
-                      triggerClassName="deals_add_inv_field_control"
+                      triggerClassName={ADDR_DROPDOWN_TRIGGER}
                     />
                     {US_LOCATION_SOURCE === "countriesNow" && usStateCode && countriesNow.citiesError ? (
                       <p
@@ -556,7 +547,7 @@ export function AddAddressModal({
                   >
                     <input
                       id="addr-state"
-                      className="deals_add_inv_input deals_add_inv_field_control"
+                      className={ADDR_INPUT_CLASS}
                       value={form.state}
                       onChange={(e) => patch({ state: e.target.value })}
                       placeholder="Enter state or region"
@@ -579,7 +570,7 @@ export function AddAddressModal({
                   >
                     <input
                       id="addr-city"
-                      className="deals_add_inv_input deals_add_inv_field_control"
+                      className={ADDR_INPUT_CLASS}
                       value={form.city}
                       onChange={(e) => patch({ city: e.target.value })}
                       placeholder="Enter city"
@@ -589,6 +580,42 @@ export function AddAddressModal({
                 </>
               )}
 
+              <div className="add_beneficiary_field_grid__full">
+                <InvestingFormField
+                  id="addr-line1"
+                  label={
+                    <>
+                      Street address line 1{" "}
+                      <span className="investing_form_req" aria-label="required">
+                        *
+                      </span>
+                    </>
+                  }
+                  Icon={MapPin}
+                >
+                  <input
+                    id="addr-line1"
+                    className={ADDR_INPUT_CLASS}
+                    value={form.street1}
+                    onChange={(e) => patch({ street1: e.target.value })}
+                    placeholder="Enter address line 1"
+                    autoComplete="address-line1"
+                  />
+                </InvestingFormField>
+              </div>
+
+              <div className="add_beneficiary_field_grid__full">
+                <InvestingFormField id="addr-line2" label="Street address line 2" Icon={MapPinned}>
+                  <input
+                    id="addr-line2"
+                    className={ADDR_INPUT_CLASS}
+                    value={form.street2}
+                    onChange={(e) => patch({ street2: e.target.value })}
+                    placeholder="Enter address line 2"
+                    autoComplete="address-line2"
+                  />
+                </InvestingFormField>
+              </div>
               <InvestingFormField
                 id="addr-zip"
                 label={
@@ -604,7 +631,7 @@ export function AddAddressModal({
               >
                 <input
                   id="addr-zip"
-                  className="deals_add_inv_input deals_add_inv_field_control"
+                  className={ADDR_INPUT_CLASS}
                   value={form.zip}
                   onChange={(e) =>
                     patch({
@@ -633,79 +660,50 @@ export function AddAddressModal({
               </p>
               <div className="add_contact_name_grid add_beneficiary_field_grid">
                 <div className="add_beneficiary_field_grid__full">
-                  <div className="um_field">
-                    <div
-                      className="um_field_label_row"
-                      style={{ alignItems: "flex-start" }}
-                    >
-                      <FileText className="um_field_label_icon" size={17} strokeWidth={1.75} aria-hidden />
-                      <div className="investing_form_label_stack">
-                        <span
-                          id="addr-check-memo-lbl"
-                          className="mail_text_label"
-                          style={{ display: "block" }}
-                        >
-                          Check memo
-                        </span>
-                        <p id="addr-check-memo-hint" className="investing_form_subline">
-                          To be printed on the check
-                        </p>
-                      </div>
-                      <AddrFieldHelp label="Check memo" tooltip="To be printed on the check" />
-                    </div>
+                  <InvestingFormField
+                    id="addr-check-memo"
+                    label="Check memo"
+                    Icon={FileText}
+                    labelSuffix={
+                      <AddrFieldHelp
+                        label="Check memo"
+                        tooltip="To be printed on the check"
+                      />
+                    }
+                  >
                     <input
                       id="addr-check-memo"
-                      className="deals_add_inv_input deals_add_inv_field_control"
+                      className={ADDR_INPUT_CLASS}
                       value={form.checkMemo}
                       onChange={(e) => patch({ checkMemo: e.target.value })}
                       placeholder="Enter check memo"
                       autoComplete="off"
-                      aria-labelledby="addr-check-memo-lbl"
-                      aria-describedby="addr-check-memo-hint"
                     />
-                  </div>
+                  </InvestingFormField>
                 </div>
 
                 <div className="add_beneficiary_field_grid__full">
-                  <div className="um_field">
-                    <div
-                      className="um_field_label_row"
-                      style={{ alignItems: "flex-start" }}
-                    >
-                      <MessageSquare
-                        className="um_field_label_icon"
-                        size={17}
-                        strokeWidth={1.75}
-                        aria-hidden
-                      />
-                      <div className="investing_form_label_stack">
-                        <span
-                          id="addr-dist-note-lbl"
-                          className="mail_text_label"
-                          style={{ display: "block" }}
-                        >
-                          Distribution note
-                        </span>
-                        <p id="addr-dist-note-hint" className="investing_form_subline">
-                          Additional notes for your sponsor
-                        </p>
-                      </div>
+                  <InvestingFormField
+                    id="addr-dist-note"
+                    label="Distribution note"
+                    Icon={MessageSquare}
+                    labelSuffix={
                       <AddrFieldHelp
                         label="Distribution note"
                         tooltip="Additional notes for your sponsor"
                       />
-                    </div>
-                    <input
+                    }
+                  >
+                    <textarea
                       id="addr-dist-note"
-                      className="deals_add_inv_input deals_add_inv_field_control"
+                      className={`${ADDR_INPUT_CLASS} investing_note_textarea`}
                       value={form.distributionNote}
                       onChange={(e) => patch({ distributionNote: e.target.value })}
                       placeholder="Enter note"
+                      rows={4}
                       autoComplete="off"
-                      aria-labelledby="addr-dist-note-lbl"
-                      aria-describedby="addr-dist-note-hint"
                     />
-                  </div>
+                  </InvestingFormField>
                 </div>
               </div>
             </div>

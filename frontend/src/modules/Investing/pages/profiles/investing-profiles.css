@@ -1,9 +1,6 @@
 /* /investing/profiles — aligns with `um_page` + deals list + investments */
 
-.investing_profiles_page .um_members_tab_content .um_members_tab_panel {
-  padding: 1.25em 1.5em 1.5em;
-  box-sizing: border-box;
-}
+/* Table panel padding/spacing comes from contacts_table_panel + deal_inv_table_panel */
 
 .investing_profiles_title {
   margin: 0;
@@ -88,6 +85,10 @@
 }
 
 /* Filter + Add row uses `contacts_toolbar_filters_row` + `contacts_filter_*` (see Contacts page). */
+.deal_inv_table_panel.contacts_table_panel
+  > .um_toolbar.um_toolbar_export_then_search {
+  margin-bottom: 0.75em;
+}
 
 /* View popups: profile / beneficiary / address — same field grid as Contact details, centered title */
 .investing_entity_view_head {

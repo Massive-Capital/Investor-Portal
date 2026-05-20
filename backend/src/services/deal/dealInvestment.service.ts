@@ -443,7 +443,7 @@ function formatUsdKpiFundedTile(n: number): string {
  * Dollars counted toward total funded: full commitment when `fund_approved`;
  * when LP added after approval (pending re-approval), only `fund_approved_commitment_snapshot`.
  */
-function fundedNumericForInvestorKpiRow(r: DealInvestmentRow): number {
+export function fundedNumericForInvestorKpiRow(r: DealInvestmentRow): number {
   const total = rowCommittedNumeric(r);
   if (!Number.isFinite(total) || total < 0) return 0;
   if (Boolean(r.fundApproved)) return total;

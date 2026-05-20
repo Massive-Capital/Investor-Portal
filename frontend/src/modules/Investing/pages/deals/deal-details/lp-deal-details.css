@@ -6,7 +6,7 @@
   --lpdd-text: var(--portal-text, #0f172a);
   --lpdd-muted: var(--portal-text-muted, #64748b);
   --lpdd-accent: var(--portal-primary, #0f3d2e);
-  background: color-mix(in srgb, var(--lpdd-text) 2.5%, var(--lpdd-surface));
+  /* background: color-mix(in srgb, var(--lpdd-text) 2.5%, var(--lpdd-surface)); */
   min-height: 100%;
   padding-bottom: 4.5rem;
   box-sizing: border-box;

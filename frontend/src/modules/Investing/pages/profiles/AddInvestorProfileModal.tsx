@@ -1,5 +1,6 @@
 import {
   Fragment,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -33,27 +34,45 @@ import {
 import { UsPhoneInput } from "@/common/components/UsPhoneInput"
 import { toast } from "@/common/components/Toast"
 import {
-  isValidUsNanp10,
   national10ToE164,
   nationalDigitsFromStoredPhone,
   nationalTenDigitsFromRawInput,
 } from "@/common/phone/usPhoneNumber"
+import { AddAddressModal } from "./AddAddressModal"
 import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
-import type { ProfileBookSnapshot } from "./investingProfileBookApi"
+import { AddBeneficiaryModal } from "./AddBeneficiaryModal"
+import {
+  type ProfileBookSnapshot,
+  postBeneficiary,
+  postSavedAddress,
+} from "./investingProfileBookApi"
+import type { AddressFormDraft } from "./address.types"
+import {
+  getEmailFieldError,
+  getUsPhoneFieldError,
+} from "./profileContactValidation"
 import { BENEFICIARY_LEGAL_DISCLAIMER } from "./beneficiary-legal"
+import { formatSsnItinInput, ssnItinFieldError } from "@/common/tax/usSsnItin"
 import { InvestingFormField } from "./InvestingFormField"
-import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
+import { SavedAddressSelect } from "./SavedAddressSelect"
+import { DealsCreateDropdownSelect } from "@/modules/Syndication/Deals/components/DealsCreateDropdownSelect"
+import type { SavedAddress } from "./address.types"
 import type {
   InvestorProfileListRow,
   NewInvestorProfilePayload,
   UpdateInvestorProfilePayload,
 } from "./investor-profiles.types"
+import {
+  hasActiveProfileDuplicate,
+  PROFILE_DUPLICATE_MESSAGE,
+} from "./profileDuplicateCheck"
 import "@/modules/Syndication/Deals/tabs/deal_members/add-investment/add_deal_modal.css"
 import "@/modules/Syndication/Deals/deals-create.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
+import "./investing-profiles-form-modals.css"
 import "./investing-profiles-form-modals.css"
 
 const PROFILE_TYPE_INDIVIDUAL = "Individual"
@@ -106,6 +125,11 @@ const FEDERAL_TAX_CLASSIFICATION_OPTIONS: { value: string; label: string }[] = [
 
 type DistributionMethod = "ach" | "check" | "other"
 
+const ACH_BANK_ACCOUNT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "checking", label: "Checking" },
+  { value: "savings", label: "Savings" },
+]
+
 const initialState = {
   profileType: "",
   firstName: "",
@@ -121,12 +145,18 @@ const initialState = {
   spouseSsn: "",
   distributionMethod: "ach" as DistributionMethod,
   bankAccountQuery: "",
+  /** ACH distribution bank account (required when `distributionMethod` is `ach`). */
+  achRoutingNumber: "",
+  achAccountNumber: "",
+  achBankAddress: "",
+  achBankName: "",
+  achBankAccountType: "",
   /** When method is check: payee name + saved mailing address (separate from ACH/other free text). */
   checkPayeeName: "",
   checkMailingAddressId: "",
   taxAddressId: "",
   mailingAddressId: "",
-  /** Joint: "add_new" = pick a saved row (can match tax); "same_as_tax" = mailing follows tax, id cleared. */
+  /** "add_new" = separate mailing row; "same_as_tax" = mailingAddressId mirrors taxAddressId. */
   mailingAddressMode: "add_new" as "add_new" | "same_as_tax",
   /** Entity / retirement: subtype (e.g. llc, ira) and display name. */
   entitySubType: "",
@@ -239,7 +269,13 @@ type AddProfileFieldErrorKey =
   | "email2"
   | "phone2"
   | "ssn"
+  | "spouseSsn"
   | "bankAccountQuery"
+  | "achRoutingNumber"
+  | "achAccountNumber"
+  | "achBankAddress"
+  | "achBankName"
+  | "achBankAccountType"
   | "checkPayeeName"
   | "checkMailingAddressId"
   | "taxAddressId"
@@ -252,7 +288,76 @@ function invClass(base: string, hasError: boolean) {
   return hasError ? `${base} um_field_input_invalid` : base
 }
 
-/** Required distribution fields: check uses payee + saved address; ACH/other use search text. */
+function achRoutingNumberError(raw: string): string | undefined {
+  const digits = raw.replace(/\D/g, "")
+  if (!digits) return REQUIRED_MSG
+  if (digits.length !== 9) return "Enter a valid 9-digit routing number."
+  return undefined
+}
+
+function achAccountNumberError(raw: string): string | undefined {
+  const trimmed = raw.trim()
+  if (!trimmed) return REQUIRED_MSG
+  if (trimmed.replace(/\D/g, "").length < 4) {
+    return "Enter a valid account number (at least 4 digits)."
+  }
+  return undefined
+}
+
+function hasDistributionFieldErrors(err: AddProfileFieldErrors): boolean {
+  return Boolean(
+    err.bankAccountQuery ||
+      err.achRoutingNumber ||
+      err.achAccountNumber ||
+      err.achBankAddress ||
+      err.achBankName ||
+      err.achBankAccountType ||
+      err.checkPayeeName ||
+      err.checkMailingAddressId,
+  )
+}
+
+/** Required distribution fields: check uses payee + saved address; ACH uses bank fields; other uses free text. */
+function applyRequiredSsnItinFieldError(
+  raw: string,
+  into: AddProfileFieldErrors,
+  key: "ssn" = "ssn",
+) {
+  const msg = ssnItinFieldError(raw, {
+    required: true,
+    requiredMessage: REQUIRED_MSG,
+  })
+  if (msg) into[key] = msg
+}
+
+function applyOptionalSsnItinFieldError(
+  raw: string,
+  into: AddProfileFieldErrors,
+  key: "spouseSsn",
+) {
+  if (!raw.trim()) return
+  const msg = ssnItinFieldError(raw, { required: false })
+  if (msg) into[key] = msg
+}
+
+function applyRequiredEmailFieldError(
+  raw: string,
+  into: AddProfileFieldErrors,
+  key: "email1" | "email2",
+) {
+  const msg = getEmailFieldError(raw, { required: true })
+  if (msg) into[key] = msg
+}
+
+function applyOptionalUsPhoneFieldError(
+  raw: string,
+  into: AddProfileFieldErrors,
+  key: "phone2",
+) {
+  const msg = getUsPhoneFieldError(raw, { required: false })
+  if (msg) into[key] = msg
+}
+
 function addDistributionValidationErrors(
   f: FormState,
   into: AddProfileFieldErrors,
@@ -263,9 +368,17 @@ function addDistributionValidationErrors(
       into.checkMailingAddressId =
         "Select a check mailing address from your saved addresses, or add one in the Address tab first."
     }
+  } else if (f.distributionMethod === "ach") {
+    const routingErr = achRoutingNumberError(f.achRoutingNumber)
+    if (routingErr) into.achRoutingNumber = routingErr
+    const accountErr = achAccountNumberError(f.achAccountNumber)
+    if (accountErr) into.achAccountNumber = accountErr
+    if (!f.achBankAddress.trim()) into.achBankAddress = REQUIRED_MSG
+    if (!f.achBankName.trim()) into.achBankName = REQUIRED_MSG
+    if (!f.achBankAccountType.trim()) into.achBankAccountType = REQUIRED_MSG
   } else if (!f.bankAccountQuery.trim()) {
     into.bankAccountQuery =
-      "Enter or search distribution details for your method (ACH, check, or other)."
+      "Enter distribution instructions for your selected method."
   }
 }
 
@@ -311,6 +424,177 @@ function distributionDetailsInputAria(m: DistributionMethod): string {
 
 const EDIT_WIZARD_REASON_LABEL = "Reason for change" as const
 
+type AchDistributionBankFieldsProps = {
+  form: FormState
+  fieldError: AddProfileFieldErrors
+  patch: (
+    partial: Partial<FormState>,
+    clearFieldErrors?: AddProfileFieldErrorKey | AddProfileFieldErrorKey[],
+  ) => void
+  invClass: (base: string, hasError: boolean) => string
+}
+
+function AchDistributionBankFields({
+  form,
+  fieldError,
+  patch,
+  invClass,
+}: AchDistributionBankFieldsProps) {
+  return (
+    <>
+      <p className="add_contact_section_eyebrow" style={{ marginTop: 0 }}>
+        {distributionDetailsLabel("ach")}{" "}
+        <span className="contacts_required" aria-hidden>*</span>
+      </p>
+      <InvestingFormField
+        id="ap-ach-bank"
+        label={
+          <>
+            Bank <span className="contacts_required" aria-hidden>*</span>
+          </>
+        }
+        Icon={Building2}
+        error={fieldError.achBankName}
+      >
+        <input
+          id="ap-ach-bank"
+          className={invClass(
+            "deals_add_inv_input deals_add_inv_field_control",
+            Boolean(fieldError.achBankName),
+          )}
+          value={form.achBankName}
+          onChange={(e) => patch({ achBankName: e.target.value }, "achBankName")}
+          autoComplete="organization"
+          placeholder="Bank name"
+          aria-invalid={Boolean(fieldError.achBankName)}
+          aria-describedby={fieldError.achBankName ? "ap-ach-bank-err" : undefined}
+        />
+      </InvestingFormField>
+      <InvestingFormField
+        id="ap-ach-type"
+        label={
+          <>
+            Type of bank account <span className="contacts_required" aria-hidden>*</span>
+          </>
+        }
+        Icon={CircleDollarSign}
+        error={fieldError.achBankAccountType}
+      >
+        <select
+          id="ap-ach-type"
+          className={invClass(
+            "um_field_select deals_add_inv_field_control",
+            Boolean(fieldError.achBankAccountType),
+          )}
+          value={form.achBankAccountType}
+          onChange={(e) =>
+            patch({ achBankAccountType: e.target.value }, "achBankAccountType")
+          }
+          aria-invalid={Boolean(fieldError.achBankAccountType)}
+          aria-describedby={
+            fieldError.achBankAccountType ? "ap-ach-type-err" : undefined
+          }
+        >
+          <option value="">Select account type</option>
+          {ACH_BANK_ACCOUNT_TYPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </InvestingFormField>
+      <InvestingFormField
+        id="ap-ach-routing"
+        label={
+          <>
+            Routing number <span className="contacts_required" aria-hidden>*</span>
+          </>
+        }
+        Icon={Fingerprint}
+        error={fieldError.achRoutingNumber}
+      >
+        <input
+          id="ap-ach-routing"
+          className={invClass(
+            "deals_add_inv_input deals_add_inv_field_control",
+            Boolean(fieldError.achRoutingNumber),
+          )}
+          value={form.achRoutingNumber}
+          onChange={(e) =>
+            patch(
+              {
+                achRoutingNumber: e.target.value.replace(/\D/g, "").slice(0, 9),
+              },
+              "achRoutingNumber",
+            )
+          }
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="9-digit routing number"
+          aria-invalid={Boolean(fieldError.achRoutingNumber)}
+          aria-describedby={
+            fieldError.achRoutingNumber ? "ap-ach-routing-err" : undefined
+          }
+        />
+      </InvestingFormField>
+      <InvestingFormField
+        id="ap-ach-account"
+        label={
+          <>
+            Account number <span className="contacts_required" aria-hidden>*</span>
+          </>
+        }
+        Icon={IdCard}
+        error={fieldError.achAccountNumber}
+      >
+        <input
+          id="ap-ach-account"
+          className={invClass(
+            "deals_add_inv_input deals_add_inv_field_control",
+            Boolean(fieldError.achAccountNumber),
+          )}
+          value={form.achAccountNumber}
+          onChange={(e) => patch({ achAccountNumber: e.target.value }, "achAccountNumber")}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="Account number"
+          aria-invalid={Boolean(fieldError.achAccountNumber)}
+          aria-describedby={
+            fieldError.achAccountNumber ? "ap-ach-account-err" : undefined
+          }
+        />
+      </InvestingFormField>
+      <InvestingFormField
+        id="ap-ach-address"
+        label={
+          <>
+            Bank address <span className="contacts_required" aria-hidden>*</span>
+          </>
+        }
+        Icon={MapPin}
+        error={fieldError.achBankAddress}
+      >
+        <textarea
+          id="ap-ach-address"
+          className={invClass(
+            "deals_add_inv_input deals_add_inv_field_control",
+            Boolean(fieldError.achBankAddress),
+          )}
+          value={form.achBankAddress}
+          onChange={(e) => patch({ achBankAddress: e.target.value }, "achBankAddress")}
+          rows={3}
+          autoComplete="street-address"
+          placeholder="Street, city, state, ZIP"
+          aria-invalid={Boolean(fieldError.achBankAddress)}
+          aria-describedby={
+            fieldError.achBankAddress ? "ap-ach-address-err" : undefined
+          }
+        />
+      </InvestingFormField>
+    </>
+  )
+}
+
 interface AddInvestorProfileModalProps {
   open: boolean
   onClose: () => void
@@ -318,6 +602,12 @@ interface AddInvestorProfileModalProps {
   savedAddresses?: SavedAddress[]
   /** Saved beneficiaries; only the Individual path shows the beneficiary step (a dropdown, no inline add). */
   savedBeneficiaries?: ProfileBookSnapshot["beneficiaries"]
+  /** Active profile list used to block duplicate name + type on save. */
+  existingProfiles?: InvestorProfileListRow[]
+  /** Called after a new address is saved from the profile wizard dropdown. */
+  onAddressAdded?: (address: SavedAddress) => void
+  /** Called after a new beneficiary is saved from the profile wizard dropdown. */
+  onBeneficiaryAdded?: (row: ProfileBookSnapshot["beneficiaries"][number]) => void
   /**
    * `add` (default): 4 or 5 content steps (5 only for Individual, includes optional Beneficiary), then save. `edit`: same, then a final step for the audit reason, then `onProfileUpdated`.
    */
@@ -359,60 +649,87 @@ function FieldHelp({
   )
 }
 
-function SavedAddressSelect({
-  id,
-  value,
-  onChange,
+function MailingAddressFields({
+  idPrefix,
+  label,
+  taxAddressId,
+  mailingAddressId,
+  mailingAddressMode,
+  mailingError,
   savedAddresses,
+  onPatch,
+  onOpenAddMailing,
   emptyLabel,
-  ariaLabel,
-  disabled,
-  /** When the list is empty, e.g. a filtered list; defaults to a generic hint. */
-  emptyListHint,
-  invalid,
 }: {
-  id: string
-  value: string
-  onChange: (v: string) => void
+  idPrefix: string
+  label: ReactNode
+  taxAddressId: string
+  mailingAddressId: string
+  mailingAddressMode: FormState["mailingAddressMode"]
+  mailingError?: string
   savedAddresses: SavedAddress[]
+  onPatch: (
+    partial: Partial<FormState>,
+    clearFieldErrors?: AddProfileFieldErrorKey | AddProfileFieldErrorKey[],
+  ) => void
+  onOpenAddMailing: () => void
   emptyLabel: string
-  ariaLabel: string
-  disabled?: boolean
-  emptyListHint?: string
-  /** Validation error outline (Add contact). */
-  invalid?: boolean
 }) {
-  const noAddresses = savedAddresses.length === 0
+  const sameAsTax = mailingAddressMode === "same_as_tax"
+  const displayMailingId = sameAsTax ? taxAddressId : mailingAddressId
+
   return (
-    <>
-      {noAddresses ? (
-        <p className="add_profile_sub" style={{ marginBottom: "0.35em" }}>
-          {emptyListHint || (
-            <>
-              Add at least one address in the <strong>Address</strong> tab, then return
-              here to select it.
-            </>
-          )}
-        </p>
-      ) : null}
-      <select
-        id={id}
-        className={invClass("um_field_select deals_add_inv_field_control", Boolean(invalid))}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={ariaLabel}
-        disabled={disabled || noAddresses}
-        aria-invalid={Boolean(invalid)}
-        aria-describedby={invalid ? `${id}-err` : undefined}
-      >
-        <option value="">{emptyLabel}</option>
-        {savedAddresses.map((a) => (
-          <option key={a.id} value={a.id}>
-            {formatSavedAddressLabel(a)}
-          </option>
-        ))}
-      </select>
-    </>
+    <InvestingFormField
+      id={`${idPrefix}-mail`}
+      label={label}
+      Icon={MapPin}
+      error={mailingError}
+    >
+      <label className="add_profile_same_as_tax" htmlFor={`${idPrefix}-mail-same`}>
+        <input
+          id={`${idPrefix}-mail-same`}
+          type="checkbox"
+          checked={sameAsTax}
+          onChange={(e) => {
+            if (e.target.checked) {
+              onPatch(
+                {
+                  mailingAddressMode: "same_as_tax",
+                  mailingAddressId: taxAddressId,
+                },
+                "mailingAddressId",
+              )
+            } else {
+              onPatch({ mailingAddressMode: "add_new" }, "mailingAddressId")
+            }
+          }}
+        />
+        <span>Same as tax address</span>
+      </label>
+      <div className={sameAsTax ? undefined : "add_profile_mailing_search"}>
+        <SavedAddressSelect
+          id={`${idPrefix}-mail-addr`}
+          value={displayMailingId}
+          onChange={(v) => {
+            if (!sameAsTax) onPatch({ mailingAddressId: v }, "mailingAddressId")
+          }}
+          savedAddresses={savedAddresses}
+          emptyLabel={
+            sameAsTax && !taxAddressId.trim()
+              ? "Select tax address first"
+              : emptyLabel
+          }
+          ariaLabel={
+            sameAsTax
+              ? "Mailing address — same as tax address"
+              : "Mailing address — select a saved address"
+          }
+          disabled={sameAsTax}
+          invalid={Boolean(mailingError)}
+          onAddNew={sameAsTax ? undefined : onOpenAddMailing}
+        />
+      </div>
+    </InvestingFormField>
   )
 }
 
@@ -444,6 +761,7 @@ function SavedBeneficiarySelect({
   rows,
   emptyLabel,
   ariaLabel,
+  onAddNew,
 }: {
   id: string
   value: string
@@ -451,31 +769,44 @@ function SavedBeneficiarySelect({
   rows: (BeneficiaryDraft & { id: string })[]
   emptyLabel: string
   ariaLabel: string
+  onAddNew?: () => void
 }) {
   const noRows = rows.length === 0
+  const canAddFromDropdown = Boolean(onAddNew)
+  const options = useMemo(
+    () => [
+      { value: "", label: emptyLabel },
+      ...rows.map((r) => ({
+        value: r.id,
+        label: formatSavedBeneficiaryLabel(r),
+      })),
+    ],
+    [rows, emptyLabel],
+  )
   return (
     <>
-      {noRows ? (
+      {noRows && !canAddFromDropdown ? (
         <p className="add_profile_sub" style={{ marginBottom: "0.35em" }}>
           Add at least one beneficiary in the <strong>Beneficiaries</strong> tab, then return
           here to select one. You can also continue without a beneficiary.
         </p>
       ) : null}
-      <select
+      <DealsCreateDropdownSelect
         id={id}
-        className="um_field_select deals_add_inv_field_control"
+        options={options}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={ariaLabel}
-        disabled={noRows}
-      >
-        <option value="">{emptyLabel}</option>
-        {rows.map((r) => (
-          <option key={r.id} value={r.id}>
-            {formatSavedBeneficiaryLabel(r)}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        placeholder={emptyLabel}
+        ariaLabel={ariaLabel}
+        disabled={noRows && !canAddFromDropdown}
+        triggerClassName="deals_add_inv_field_control"
+        panelClassName="deals_create_dropdown_panel"
+        header={
+          canAddFromDropdown
+            ? { label: "+ Add Beneficiary", onClick: onAddNew! }
+            : undefined
+        }
+      />
     </>
   )
 }
@@ -564,11 +895,16 @@ function seedFormFromListRow(row: { profileName: string; profileType: string }):
   return out
 }
 
+type AddressPickField = "taxAddressId" | "mailingAddressId" | "checkMailingAddressId"
+
 export function AddInvestorProfileModal({
   open,
   onClose,
   savedAddresses = [],
   savedBeneficiaries = [] as ProfileBookSnapshot["beneficiaries"],
+  existingProfiles = [],
+  onAddressAdded,
+  onBeneficiaryAdded,
   mode = "add",
   editTarget = null,
   onProfileCreated,
@@ -581,8 +917,6 @@ export function AddInvestorProfileModal({
   const isEdit = mode === "edit"
   const [form, setForm] = useState<FormState>(initialState)
   const [fieldError, setFieldError] = useState<AddProfileFieldErrors>({})
-  const [ssnVisible, setSsnVisible] = useState(false)
-  const [spouseSsnVisible, setSpouseSsnVisible] = useState(false)
   const [step, setStep] = useState(1)
   const [lastEditReason, setLastEditReason] = useState("")
   const [lastEditReasonError, setLastEditReasonError] = useState<string | null>(null)
@@ -591,6 +925,32 @@ export function AddInvestorProfileModal({
     () => savedBeneficiaries.filter((b) => !b.archived),
     [savedBeneficiaries],
   )
+  const activeSavedAddresses = useMemo(
+    () => savedAddresses.filter((a) => !a.archived),
+    [savedAddresses],
+  )
+
+  const [addAddressOpen, setAddAddressOpen] = useState(false)
+  const [addBeneficiaryOpen, setAddBeneficiaryOpen] = useState(false)
+  const [ssnVisible, setSsnVisible] = useState(false)
+  const [spouseSsnVisible, setSpouseSsnVisible] = useState(false)
+  const [addressPickField, setAddressPickField] = useState<AddressPickField | null>(
+    null,
+  )
+
+  const openAddAddressModal = useCallback((field: AddressPickField) => {
+    setAddressPickField(field)
+    setAddAddressOpen(true)
+  }, [])
+
+  const closeAddAddressModal = useCallback(() => {
+    setAddAddressOpen(false)
+    setAddressPickField(null)
+  }, [])
+
+  const closeAddBeneficiaryModal = useCallback(() => {
+    setAddBeneficiaryOpen(false)
+  }, [])
 
   const addProfilePageTitleId = useId()
   const isIndividual = form.profileType === PROFILE_TYPE_INDIVIDUAL
@@ -686,6 +1046,18 @@ export function AddInvestorProfileModal({
     if (!isIndividual && !isJointTenancy && !isEntity && step > 1) setStep(1)
   }, [isIndividual, isJointTenancy, isEntity, step])
 
+  /** Keep mailing id aligned when “same as tax” (incl. profiles saved before id was mirrored). */
+  useEffect(() => {
+    if (
+      form.mailingAddressMode !== "same_as_tax" ||
+      !form.taxAddressId.trim() ||
+      form.mailingAddressId === form.taxAddressId
+    ) {
+      return
+    }
+    setForm((prev) => ({ ...prev, mailingAddressId: prev.taxAddressId }))
+  }, [form.mailingAddressMode, form.taxAddressId, form.mailingAddressId])
+
   useEffect(() => {
     setStep((s) => (s > totalSteps ? totalSteps : s))
   }, [totalSteps])
@@ -729,6 +1101,71 @@ export function AddInvestorProfileModal({
       }
     },
     [],
+  )
+
+  const handleProfileBookAddressSave = useCallback(
+    (draft: AddressFormDraft) => {
+      const field = addressPickField
+      void (async () => {
+        try {
+          const row = await postSavedAddress(draft)
+          onAddressAdded?.(row)
+          if (field) {
+            patch({ [field]: row.id }, field)
+          }
+          toast.success("Address added", "Your address was saved.")
+          closeAddAddressModal()
+        } catch (e) {
+          toast.error(
+            "Could not save address",
+            e instanceof Error ? e.message : "Please try again.",
+          )
+        }
+      })()
+    },
+    [addressPickField, closeAddAddressModal, onAddressAdded, patch],
+  )
+
+  const handleProfileBookBeneficiarySave = useCallback(
+    (draft: BeneficiaryDraft) => {
+      void (async () => {
+        try {
+          const row = await postBeneficiary(draft)
+          onBeneficiaryAdded?.(row)
+          patch({
+            beneficiary: beneficiaryToDraft(row),
+            beneficiaryPickId: row.id,
+          })
+          toast.success("Beneficiary added", "Your beneficiary was saved.")
+          closeAddBeneficiaryModal()
+        } catch (e) {
+          toast.error(
+            "Could not save beneficiary",
+            e instanceof Error ? e.message : "Please try again.",
+          )
+        }
+      })()
+    },
+    [closeAddBeneficiaryModal, onBeneficiaryAdded, patch],
+  )
+
+  const profileBookModals = (
+    <>
+      <AddAddressModal
+        open={addAddressOpen}
+        onClose={closeAddAddressModal}
+        onSave={handleProfileBookAddressSave}
+        existingAddresses={activeSavedAddresses}
+      />
+      <AddBeneficiaryModal
+        open={addBeneficiaryOpen}
+        onClose={closeAddBeneficiaryModal}
+        onSave={handleProfileBookBeneficiarySave}
+        savedAddresses={activeSavedAddresses}
+        existingBeneficiaries={savedBeneficiaries}
+        onAddressAdded={onAddressAdded}
+      />
+    </>
   )
 
   const validateStep = useCallback((): boolean => {
@@ -777,16 +1214,13 @@ export function AddInvestorProfileModal({
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
-      if (!form.email1.trim()) err.email1 = REQUIRED_MSG
+      applyRequiredEmailFieldError(form.email1, err, "email1")
       if (!form.firstName2.trim()) err.firstName2 = REQUIRED_MSG
       if (!form.lastName2.trim()) err.lastName2 = REQUIRED_MSG
-      if (!form.email2.trim()) err.email2 = REQUIRED_MSG
-      const p2 = nationalTenDigitsFromRawInput(form.phone2)
-      if (p2.length > 0 && (p2.length < 10 || !isValidUsNanp10(p2))) {
-        err.phone2 =
-          "Enter a valid 10-digit U.S. phone number, or leave phone 2 blank."
-      }
-      if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
+      applyRequiredEmailFieldError(form.email2, err, "email2")
+      applyOptionalUsPhoneFieldError(form.phone2, err, "phone2")
+      applyRequiredSsnItinFieldError(form.ssn, err)
+      applyOptionalSsnItinFieldError(form.spouseSsn, err, "spouseSsn")
       setFieldError(err)
       return Object.keys(err).length === 0
     }
@@ -794,7 +1228,7 @@ export function AddInvestorProfileModal({
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
-      if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
+      applyRequiredSsnItinFieldError(form.ssn, err)
       setFieldError(err)
       return Object.keys(err).length === 0
     }
@@ -822,7 +1256,7 @@ export function AddInvestorProfileModal({
       }
       if (form.mailingAddressMode === "add_new" && !form.mailingAddressId.trim()) {
         err.mailingAddressId =
-          "Select a saved mailing address (it may be the same as tax), or choose “Same as tax address” above."
+          "Select a saved mailing address, or check Same as tax address."
       }
       setFieldError(err)
       return Object.keys(err).length === 0
@@ -900,23 +1334,20 @@ export function AddInvestorProfileModal({
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
-      if (!form.email1.trim()) err.email1 = REQUIRED_MSG
+      applyRequiredEmailFieldError(form.email1, err, "email1")
       if (!form.firstName2.trim()) err.firstName2 = REQUIRED_MSG
       if (!form.lastName2.trim()) err.lastName2 = REQUIRED_MSG
-      if (!form.email2.trim()) err.email2 = REQUIRED_MSG
-      const p2Full = nationalTenDigitsFromRawInput(form.phone2)
-      if (p2Full.length > 0 && (p2Full.length < 10 || !isValidUsNanp10(p2Full))) {
-        err.phone2 =
-          "Enter a valid 10-digit U.S. phone number, or leave phone 2 blank."
-      }
-      if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
+      applyRequiredEmailFieldError(form.email2, err, "email2")
+      applyOptionalUsPhoneFieldError(form.phone2, err, "phone2")
+      applyRequiredSsnItinFieldError(form.ssn, err)
+      applyOptionalSsnItinFieldError(form.spouseSsn, err, "spouseSsn")
       addDistributionValidationErrors(form, err)
       if (!form.taxAddressId.trim()) {
         err.taxAddressId = "Select a tax address, or add one in the Address tab first."
       }
       if (form.mailingAddressMode === "add_new" && !form.mailingAddressId.trim()) {
         err.mailingAddressId =
-          "Select a saved mailing address (it may be the same as tax), or choose “Same as tax address” above."
+          "Select a saved mailing address, or check Same as tax address."
       }
       setFieldError(err)
       if (Object.keys(err).length > 0) {
@@ -928,10 +1359,11 @@ export function AddInvestorProfileModal({
           err.lastName2 ||
           err.email2 ||
           err.phone2 ||
-          err.ssn
+          err.ssn ||
+          err.spouseSsn
         ) {
           setStep(2)
-        } else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) {
+        } else if (hasDistributionFieldErrors(err)) {
           setStep(3)
         } else if (err.taxAddressId || err.mailingAddressId) {
           setStep(4)
@@ -944,7 +1376,7 @@ export function AddInvestorProfileModal({
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
-      if (!form.ssn.trim()) err.ssn = REQUIRED_MSG
+      applyRequiredSsnItinFieldError(form.ssn, err)
       addDistributionValidationErrors(form, err)
       if (!form.taxAddressId.trim()) {
         err.taxAddressId = "Select a tax address, or add one in the Address tab first."
@@ -952,7 +1384,7 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       if (Object.keys(err).length > 0) {
         if (err.firstName || err.lastName || err.ssn) setStep(2)
-        else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) setStep(3)
+        else if (hasDistributionFieldErrors(err)) setStep(3)
         else if (err.taxAddressId) setStep(4)
         return false
       }
@@ -1003,7 +1435,7 @@ export function AddInvestorProfileModal({
           err.entityEin
         ) {
           setStep(2)
-        } else if (err.bankAccountQuery || err.checkPayeeName || err.checkMailingAddressId) {
+        } else if (hasDistributionFieldErrors(err)) {
           setStep(3)
         } else if (err.taxAddressId) {
           setStep(4)
@@ -1018,13 +1450,32 @@ export function AddInvestorProfileModal({
     return false
   }
 
+  function rejectDuplicateProfile(profileName: string, profileType: string): boolean {
+    if (
+      hasActiveProfileDuplicate(
+        existingProfiles,
+        profileName,
+        profileType,
+        isEdit && editTarget ? editTarget.id : undefined,
+      )
+    ) {
+      toast.error("Duplicate profile", PROFILE_DUPLICATE_MESSAGE)
+      setStep(1)
+      return true
+    }
+    return false
+  }
+
   function handleSubmit() {
     if (isEdit) return
     if (step !== addFlowLastContentStep) return
     if (!runFullFormValidationForSave()) return
+    const profileName = buildDisplayProfileName(form)
+    const profileType = form.profileType
+    if (rejectDuplicateProfile(profileName, profileType)) return
     const payload: NewInvestorProfilePayload = {
-      profileName: buildDisplayProfileName(form),
-      profileType: form.profileType,
+      profileName,
+      profileType,
       profileWizardState: formToJsonSnapshot(normalizeFormPhonesForPersist(form)),
     }
     if (onProfileCreated) {
@@ -1060,9 +1511,12 @@ export function AddInvestorProfileModal({
     if (!runFullFormValidationForSave()) {
       return
     }
+    const profileName = buildDisplayProfileName(form)
+    const profileType = form.profileType
+    if (rejectDuplicateProfile(profileName, profileType)) return
     const payload: UpdateInvestorProfilePayload = {
-      profileName: buildDisplayProfileName(form),
-      profileType: form.profileType,
+      profileName,
+      profileType,
       lastEditReason: lastEditReason.trim(),
       profileWizardState: formToJsonSnapshot(normalizeFormPhonesForPersist(form)),
     }
@@ -1206,6 +1660,12 @@ export function AddInvestorProfileModal({
                   </>
                 }
                 Icon={HelpCircle}
+                labelSuffix={
+                  <FieldHelp
+                    label="Is this a custodian based IRA or 401(k)?"
+                    tooltip='Choose "yes" if a custodian needs to sign, and "no" if only the investor needs to sign. Choose "no" if this is not an IRA or 401(k).'
+                  />
+                }
                 error={fieldError.custodianIra}
               >
                 <select
@@ -1289,22 +1749,6 @@ export function AddInvestorProfileModal({
                   <option value="no">No</option>
                 </select>
               </InvestingFormField>
-              {form.custodianIra ? (
-                <p className="add_profile_sub" style={{ marginTop: "0.25em" }}>
-                  Choose &quot;yes&quot; if a custodian needs to sign, and &quot;no&quot; if
-                  only the investor needs to sign. Choose &quot;no&quot; if this is not an
-                  IRA or 401(k).{" "}
-                  <a
-                    href="https://www.irs.gov/retirement-plans"
-                    className="add_profile_inline_link"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Learn more
-                  </a>
-                  .
-                </p>
-              ) : null}
 
               {form.custodianIra === "yes" ? (
                 <>
@@ -1388,19 +1832,13 @@ export function AddInvestorProfileModal({
                     id="ap-ent-ira-partner-ein"
                     label="IRA partner EIN"
                     Icon={Fingerprint}
+                    labelSuffix={
+                      <FieldHelp
+                        label="IRA partner EIN"
+                        tooltip="Unique EIN of your IRA account. Needed to issue your Schedule K-1."
+                      />
+                    }
                   >
-                    <p className="add_profile_sub" style={{ marginBottom: "0.5em" }}>
-                      Unique EIN of your IRA account. Needed to issue your Schedule K-1.{" "}
-                      <a
-                        href="https://www.irs.gov"
-                        className="add_profile_inline_link"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        Learn more
-                      </a>
-                      .
-                    </p>
                     <div className="add_profile_input_wrap">
                       <input
                         id="ap-ent-ira-partner-ein"
@@ -1447,13 +1885,6 @@ export function AddInvestorProfileModal({
                     }
                     error={fieldError.iraCustodianEin}
                   >
-                    <p
-                      id="ap-ent-ira-cust-ein-hint"
-                      className="add_profile_sub"
-                      style={{ marginBottom: "0.5em" }}
-                    >
-                      Usually this is the custodian or entity EIN for your IRA, not your SSN.
-                    </p>
                     <div className="add_profile_input_wrap">
                       <input
                         id="ap-ent-ira-cust-ein"
@@ -1469,14 +1900,9 @@ export function AddInvestorProfileModal({
                         autoComplete="off"
                         placeholder="EIN"
                         aria-invalid={Boolean(fieldError.iraCustodianEin)}
-                        aria-describedby={[
-                          "ap-ent-ira-cust-ein-hint",
-                          fieldError.iraCustodianEin
-                            ? "ap-ent-ira-cust-ein-err"
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                        aria-describedby={
+                          fieldError.iraCustodianEin ? "ap-ent-ira-cust-ein-err" : undefined
+                        }
                         aria-label="IRA custodian EIN"
                       />
                       <button
@@ -2030,9 +2456,13 @@ export function AddInvestorProfileModal({
                       Boolean(fieldError.ssn),
                     )}
                     type={ssnVisible ? "text" : "password"}
+                    inputMode="numeric"
                     autoComplete="off"
+                    maxLength={11}
                     value={form.ssn}
-                    onChange={(e) => patch({ ssn: e.target.value }, "ssn")}
+                    onChange={(e) =>
+                      patch({ ssn: formatSsnItinInput(e.target.value) }, "ssn")
+                    }
                     placeholder="___-__-____"
                     aria-invalid={Boolean(fieldError.ssn)}
                     aria-describedby={
@@ -2045,7 +2475,7 @@ export function AddInvestorProfileModal({
                     onClick={() => setSsnVisible((v) => !v)}
                     aria-label={ssnVisible ? "Hide SSN" : "Show SSN"}
                   >
-                    {ssnVisible ? <Eye size={18} /> : <EyeOff size={18} />}
+                    {ssnVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                 </div>
               </InvestingFormField>
@@ -2053,24 +2483,41 @@ export function AddInvestorProfileModal({
                 id="ap-jt-spouse-ssn"
                 label="Spouse SSN"
                 Icon={Fingerprint}
+                error={fieldError.spouseSsn}
               >
                 <div className="add_profile_input_wrap">
                   <input
                     id="ap-jt-spouse-ssn"
-                    className="deals_add_inv_input deals_add_inv_field_control"
+                    className={invClass(
+                      "deals_add_inv_input deals_add_inv_field_control",
+                      Boolean(fieldError.spouseSsn),
+                    )}
                     type={spouseSsnVisible ? "text" : "password"}
+                    inputMode="numeric"
                     autoComplete="off"
+                    maxLength={11}
                     value={form.spouseSsn}
-                    onChange={(e) => patch({ spouseSsn: e.target.value })}
+                    onChange={(e) =>
+                      patch(
+                        { spouseSsn: formatSsnItinInput(e.target.value) },
+                        "spouseSsn",
+                      )
+                    }
                     placeholder="___-__-____"
+                    aria-invalid={Boolean(fieldError.spouseSsn)}
+                    aria-describedby={
+                      fieldError.spouseSsn ? "ap-jt-spouse-ssn-err" : undefined
+                    }
                   />
                   <button
                     type="button"
                     className="add_profile_ssn_toggle"
                     onClick={() => setSpouseSsnVisible((v) => !v)}
-                    aria-label={spouseSsnVisible ? "Hide spouse SSN" : "Show spouse SSN"}
+                    aria-label={
+                      spouseSsnVisible ? "Hide spouse SSN" : "Show spouse SSN"
+                    }
                   >
-                    {spouseSsnVisible ? <Eye size={18} /> : <EyeOff size={18} />}
+                    {spouseSsnVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                 </div>
               </InvestingFormField>
@@ -2091,68 +2538,32 @@ export function AddInvestorProfileModal({
                 <SavedAddressSelect
                   id="ap-jt-tax"
                   value={form.taxAddressId}
-                  onChange={(v) => patch({ taxAddressId: v }, "taxAddressId")}
-                  savedAddresses={savedAddresses}
+                  onChange={(v) => {
+                    const partial: Partial<FormState> = { taxAddressId: v }
+                    if (form.mailingAddressMode === "same_as_tax") {
+                      partial.mailingAddressId = v
+                    }
+                    patch(partial, "taxAddressId")
+                  }}
+                  savedAddresses={activeSavedAddresses}
                   emptyLabel="Select a saved address"
                   ariaLabel="Tax address — select a saved address"
                   invalid={Boolean(fieldError.taxAddressId)}
+                  onAddNew={() => openAddAddressModal("taxAddressId")}
                 />
               </InvestingFormField>
-              <div className="um_field">
-                <div className="um_field_label_row" style={{ alignItems: "center" }}>
-                  <LandPlot
-                    className="um_field_label_icon"
-                    size={17}
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                  <label className="mail_text_label" htmlFor="ap-jt-mailing-mode">
-                    Mailing address
-                  </label>
-                </div>
-                <select
-                  id="ap-jt-mailing-mode"
-                  className="um_field_select deals_add_inv_field_control"
-                  value={form.mailingAddressMode}
-                  onChange={(e) => {
-                    const v = e.target.value as "add_new" | "same_as_tax"
-                    setForm((prev) => ({
-                      ...prev,
-                      mailingAddressMode: v,
-                      mailingAddressId: v === "same_as_tax" ? "" : prev.mailingAddressId,
-                    }))
-                    if (v === "same_as_tax")
-                      setFieldError((f) =>
-                        f.mailingAddressId ? { ...f, mailingAddressId: undefined } : f,
-                      )
-                  }}
-                >
-                  <option value="add_new">Select a saved mailing address</option>
-                  <option value="same_as_tax">Same as tax address</option>
-                </select>
-                {form.mailingAddressMode === "add_new" ? (
-                  <div className="add_profile_mailing_search">
-                    <SavedAddressSelect
-                      id="ap-jt-mailing-addr"
-                      value={form.mailingAddressId}
-                      onChange={(v) => patch({ mailingAddressId: v }, "mailingAddressId")}
-                      savedAddresses={savedAddresses}
-                      emptyLabel="Select a saved mailing address"
-                      ariaLabel="Mailing address — select a saved address"
-                      invalid={Boolean(fieldError.mailingAddressId)}
-                    />
-                    {fieldError.mailingAddressId ? (
-                      <p
-                        id="ap-jt-mailing-addr-err"
-                        className="um_field_hint um_field_hint_error"
-                        role="alert"
-                      >
-                        {fieldError.mailingAddressId}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              <MailingAddressFields
+                idPrefix="ap-jt"
+                label="Mailing address"
+                taxAddressId={form.taxAddressId}
+                mailingAddressId={form.mailingAddressId}
+                mailingAddressMode={form.mailingAddressMode}
+                mailingError={fieldError.mailingAddressId}
+                savedAddresses={activeSavedAddresses}
+                onPatch={patch}
+                onOpenAddMailing={() => openAddAddressModal("mailingAddressId")}
+                emptyLabel="Select a saved mailing address"
+              />
             </div>
           )}
 
@@ -2229,12 +2640,18 @@ export function AddInvestorProfileModal({
                       Boolean(fieldError.ssn),
                     )}
                     type={ssnVisible ? "text" : "password"}
+                    inputMode="numeric"
                     autoComplete="off"
+                    maxLength={11}
                     value={form.ssn}
-                    onChange={(e) => patch({ ssn: e.target.value }, "ssn")}
+                    onChange={(e) =>
+                      patch({ ssn: formatSsnItinInput(e.target.value) }, "ssn")
+                    }
                     placeholder="___-__-____"
                     aria-invalid={Boolean(fieldError.ssn)}
-                    aria-describedby={fieldError.ssn ? "ap-ssn-err" : undefined}
+                    aria-describedby={
+                      fieldError.ssn ? "ap-ssn-err" : undefined
+                    }
                   />
                   <button
                     type="button"
@@ -2242,7 +2659,7 @@ export function AddInvestorProfileModal({
                     onClick={() => setSsnVisible((v) => !v)}
                     aria-label={ssnVisible ? "Hide SSN or ITIN" : "Show SSN or ITIN"}
                   >
-                    {ssnVisible ? <Eye size={18} /> : <EyeOff size={18} />}
+                    {ssnVisible ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
                 </div>
               </InvestingFormField>
@@ -2259,6 +2676,15 @@ export function AddInvestorProfileModal({
                 id="ap-dm"
                 label={<>Distribution method <span className="contacts_required" aria-hidden>*</span></>}
                 Icon={CircleDollarSign}
+                labelSuffix={
+                  <FieldHelp
+                    label="Distribution method"
+                    tooltip={
+                      distributionDetailsHint(form.distributionMethod) ||
+                      "Select how you want to receive distributions."
+                    }
+                  />
+                }
               >
                 <select
                   id="ap-dm"
@@ -2266,16 +2692,50 @@ export function AddInvestorProfileModal({
                   value={form.distributionMethod}
                   onChange={(e) => {
                     const v = e.target.value as DistributionMethod
+                    const clearedAch = {
+                      achRoutingNumber: "",
+                      achAccountNumber: "",
+                      achBankAddress: "",
+                      achBankName: "",
+                      achBankAccountType: "",
+                    }
                     patch(
                       {
                         distributionMethod: v,
                         ...(v === "check"
-                          ? { bankAccountQuery: "" }
-                          : { checkPayeeName: "", checkMailingAddressId: "" }),
+                          ? { bankAccountQuery: "", ...clearedAch }
+                          : v === "ach"
+                            ? {
+                                bankAccountQuery: "",
+                                checkPayeeName: "",
+                                checkMailingAddressId: "",
+                              }
+                            : {
+                                ...clearedAch,
+                                checkPayeeName: "",
+                                checkMailingAddressId: "",
+                              }),
                       },
                       v === "check"
-                        ? "bankAccountQuery"
-                        : (["checkPayeeName", "checkMailingAddressId"] as const),
+                        ? ([
+                            "bankAccountQuery",
+                            "achRoutingNumber",
+                            "achAccountNumber",
+                            "achBankAddress",
+                            "achBankName",
+                            "achBankAccountType",
+                          ] as const)
+                        : v === "ach"
+                          ? (["checkPayeeName", "checkMailingAddressId", "bankAccountQuery"] as const)
+                          : ([
+                              "checkPayeeName",
+                              "checkMailingAddressId",
+                              "achRoutingNumber",
+                              "achAccountNumber",
+                              "achBankAddress",
+                              "achBankName",
+                              "achBankAccountType",
+                            ] as const),
                     )
                   }}
                 >
@@ -2286,9 +2746,6 @@ export function AddInvestorProfileModal({
               </InvestingFormField>
               {form.distributionMethod === "check" ? (
                 <>
-                  <p className="add_profile_sub" style={{ marginBottom: "0.5em" }}>
-                    {distributionDetailsHint("check")}
-                  </p>
                   <InvestingFormField
                     id="ap-check-payee"
                     label={<>Payee name <span className="contacts_required" aria-hidden>*</span></>}
@@ -2327,13 +2784,21 @@ export function AddInvestorProfileModal({
                       onChange={(v) =>
                         patch({ checkMailingAddressId: v }, "checkMailingAddressId")
                       }
-                      savedAddresses={savedAddresses}
+                      savedAddresses={activeSavedAddresses}
                       emptyLabel="Select a saved address for check mailing"
                       ariaLabel="Check mailing address — select a saved address"
                       invalid={Boolean(fieldError.checkMailingAddressId)}
+                      onAddNew={() => openAddAddressModal("checkMailingAddressId")}
                     />
                   </InvestingFormField>
                 </>
+              ) : form.distributionMethod === "ach" ? (
+                <AchDistributionBankFields
+                  form={form}
+                  fieldError={fieldError}
+                  patch={patch}
+                  invClass={invClass}
+                />
               ) : (
                 <InvestingFormField
                   id="ap-bank"
@@ -2346,9 +2811,6 @@ export function AddInvestorProfileModal({
                   Icon={Search}
                   error={fieldError.bankAccountQuery}
                 >
-                  <span className="add_profile_sub">
-                    {distributionDetailsHint(form.distributionMethod)}
-                  </span>
                   <div className="add_profile_search_wrap">
                     <input
                       id="ap-bank"
@@ -2390,23 +2852,31 @@ export function AddInvestorProfileModal({
                 <SavedAddressSelect
                   id="ap-tax-addr"
                   value={form.taxAddressId}
-                  onChange={(v) => patch({ taxAddressId: v }, "taxAddressId")}
-                  savedAddresses={savedAddresses}
+                  onChange={(v) => {
+                    const partial: Partial<FormState> = { taxAddressId: v }
+                    if (form.mailingAddressMode === "same_as_tax") {
+                      partial.mailingAddressId = v
+                    }
+                    patch(partial, "taxAddressId")
+                  }}
+                  savedAddresses={activeSavedAddresses}
                   emptyLabel="Select a saved address"
                   ariaLabel="Tax address — select a saved address"
                   invalid={Boolean(fieldError.taxAddressId)}
+                  onAddNew={() => openAddAddressModal("taxAddressId")}
                 />
               </InvestingFormField>
-              <InvestingFormField id="ap-mail-addr" label="Mailing address" Icon={MapPin}>
-                <SavedAddressSelect
-                  id="ap-mail-addr"
-                  value={form.mailingAddressId}
-                  onChange={(v) => patch({ mailingAddressId: v })}
-                  savedAddresses={savedAddresses}
-                  emptyLabel="Optional — select a saved address"
-                  ariaLabel="Mailing address — select a saved address (optional)"
-                />
-              </InvestingFormField>
+              <MailingAddressFields
+                idPrefix="ap"
+                label="Mailing address"
+                taxAddressId={form.taxAddressId}
+                mailingAddressId={form.mailingAddressId}
+                mailingAddressMode={form.mailingAddressMode}
+                savedAddresses={activeSavedAddresses}
+                onPatch={patch}
+                onOpenAddMailing={() => openAddAddressModal("mailingAddressId")}
+                emptyLabel="Optional — select a saved address"
+              />
             </div>
           )}
 
@@ -2416,8 +2886,8 @@ export function AddInvestorProfileModal({
                 Beneficiary info
               </p>
               <p className="add_profile_sub add_profile_ben_lead">
-                Choose a saved beneficiary, or continue without one. If the list is empty, add
-                one under the <strong>Beneficiaries</strong> tab, then return to this step.
+                Choose a saved beneficiary from the list, add a new one from the dropdown, or
+                continue without one.
               </p>
               <div className="um_field">
                 <div className="um_field_label_row" style={{ alignItems: "center" }}>
@@ -2454,6 +2924,7 @@ export function AddInvestorProfileModal({
                   rows={activeSavedBeneficiaries}
                   emptyLabel="No beneficiary (optional)"
                   ariaLabel="Designated beneficiary — choose a saved beneficiary"
+                  onAddNew={() => setAddBeneficiaryOpen(true)}
                 />
                 {form.beneficiary ? (
                   <p
@@ -2665,6 +3136,7 @@ export function AddInvestorProfileModal({
             {renderFormPanel()}
           </section>
         </div>
+        {profileBookModals}
       </>
     )
   }
@@ -2690,6 +3162,7 @@ export function AddInvestorProfileModal({
     </div>,
     document.body,
   )}
+  {profileBookModals}
   </>
   )
 }

@@ -1,5 +1,5 @@
 import {
-  assetImagePathsToUrls,
+  assetImagePathToUrl,
   getUploadsPublicOrigin,
   normalizeDealGallerySrc,
 } from "../../../../common/utils/apiBaseUrl"
@@ -161,6 +161,27 @@ export function dedupeGalleryUrlsPreserveOrder(urls: readonly string[]): string[
   return out
 }
 
+/** One persisted gallery path segment → browser-ready `src`. */
+function galleryPathSegmentToUrl(seg: string): string {
+  const t = seg.trim()
+  if (!t) return ""
+  if (
+    t.startsWith("data:image/") ||
+    /^https?:\/\//i.test(t) ||
+    t.startsWith("/uploads/")
+  ) {
+    return normalizeDealGallerySrc(t)
+  }
+  return assetImagePathToUrl(t)
+}
+
+/** Ordered unique URLs from persisted gallery path segments. */
+function galleryPathSegmentsToUrls(segments: readonly string[]): string[] {
+  return dedupeGalleryUrlsPreserveOrder(
+    segments.map(galleryPathSegmentToUrl).filter(Boolean),
+  )
+}
+
 /** Ordered unique upload-relative segments: persisted gallery first, then `assetImagePath`. */
 function mergeOfferingGalleryPathSegments(
   persisted: string[] | undefined,
@@ -308,9 +329,7 @@ export function collectDealGalleryUrls(
     detail.offeringGalleryPaths,
     detail.assetImagePath,
   )
-  let fromApi = assetImagePathsToUrls(
-    merged.length ? merged.join(";") : null,
-  )
+  let fromApi = galleryPathSegmentsToUrls(merged)
   if (!persistedOnly) {
     /** Sponsor browser: once assets store image lists, uploads in the gallery must match them. */
     let hasLocalAssetMap = false
@@ -325,10 +344,14 @@ export function collectDealGalleryUrls(
       const allowed = new Set(allowedRels)
       const explicitLists = mapHasExplicitImagePreviewLists(detail.id)
       if (allowed.size > 0) {
-        fromApi = fromApi.filter((url) => {
+        const filtered = fromApi.filter((url) => {
           const rels = uploadRelativePathsFromGalleryUrls([url])
           return rels.some((p) => allowed.has(p))
         })
+        /** Stale local asset ids must not hide server-persisted gallery paths. */
+        if (filtered.length > 0 || fromApi.length === 0) {
+          fromApi = filtered
+        }
       } else if (explicitLists) {
         /** All upload refs removed from assets; do not keep orphan server paths. */
         fromApi = []
