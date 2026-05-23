@@ -13,8 +13,10 @@ import userRoutes from "./routes/userRoutes.routes.js";
 import companyRoutes from "./routes/companyRoutes.routes.js";
 import dealFormRoutes from "./routes/dealForm.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
+import esignTemplateRoutes from "./routes/esignTemplate.routes.js";
 import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js";
 import platformRoutes from "./routes/platformRoutes.routes.js";
+import { postDropboxSignWebhook } from "./controllers/deal/dealDropboxSignWebhook.controller.js";
 
 
 const PORT = process.env.BACKEND_PORT ?? 5004;
@@ -77,6 +79,9 @@ app.post(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
+/** Dropbox Sign webhooks (no JWT). */
+app.post("/webhooks/dropbox-sign", postDropboxSignWebhook);
+
 app.use("/api/v1", socHttpAuditMiddleware);
 
 // Preflight: respond to OPTIONS for any /api/v1 path with 204 (CORS headers set by cors() above)
@@ -100,6 +105,7 @@ app.use("/api/v1", [
   companyRoutes,
   dealFormRoutes,
   contactRoutes,
+  esignTemplateRoutes,
   investingProfileBookRoutes,
   platformRoutes,
 ]);

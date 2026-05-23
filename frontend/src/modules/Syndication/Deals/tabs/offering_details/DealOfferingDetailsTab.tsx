@@ -1,6 +1,6 @@
-import { ChevronDown, Eye, Plus } from "lucide-react"
+import { ChevronDown, Eye } from "lucide-react"
 import { useEffect, useId, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import type { DealDetailApi } from "../../api/dealsApi"
 import {
   OFFERING_DETAILS_ACCORDION_SECTION_ORDER,
@@ -10,6 +10,11 @@ import {
   type OfferingDetailsSectionId,
 } from "../../utils/offeringPreviewInvestorVisibility"
 import { scheduleOfferingInvestorPreviewServerSync } from "../../utils/offeringPreviewServerState"
+import {
+  clearOverviewExcludedAssetIds,
+  dispatchOverviewAssetsMergeEvent,
+  markOverviewAssetsMergePending,
+} from "../../utils/offeringOverviewAssetSync"
 import { InvestorSummarySection } from "./InvestorSummarySection"
 import { OfferingGallerySection } from "./OfferingGallerySection"
 import "../../deal-offering-details.css"
@@ -45,9 +50,14 @@ export function DealOfferingDetailsTab({
   const [investorPreviewVisibility, setInvestorPreviewVisibility] = useState(
     () => readOfferingPreviewInvestorVisibility(detail.id),
   )
+  const prevAssetsInvestorVisibleRef = useRef(
+    readOfferingPreviewInvestorVisibility(detail.id).assets,
+  )
 
   useEffect(() => {
     setInvestorPreviewVisibility(readOfferingPreviewInvestorVisibility(detail.id))
+    prevAssetsInvestorVisibleRef.current =
+      readOfferingPreviewInvestorVisibility(detail.id).assets
   }, [detail.id])
 
   useEffect(() => {
@@ -56,6 +66,16 @@ export function DealOfferingDetailsTab({
       onSuccess: (d) => onDealUpdatedRef.current?.(d),
     })
   }, [detail.id, investorPreviewVisibility])
+
+  useEffect(() => {
+    const nowVisible = investorPreviewVisibility.assets
+    const wasVisible = prevAssetsInvestorVisibleRef.current
+    prevAssetsInvestorVisibleRef.current = nowVisible
+    if (!nowVisible || wasVisible) return
+    clearOverviewExcludedAssetIds(detail.id)
+    markOverviewAssetsMergePending(detail.id)
+    dispatchOverviewAssetsMergeEvent(detail.id)
+  }, [detail.id, investorPreviewVisibility.assets])
 
   function sectionBody(id: OfferingDetailsSectionId) {
     switch (id) {
@@ -104,8 +124,6 @@ export function DealOfferingDetailsTab({
         )
       case "funding_instructions":
         return <FundingInfoSection />
-      case "documents":
-        return null
       default:
         return null
     }
@@ -118,11 +136,12 @@ export function DealOfferingDetailsTab({
           <div className="deal_offering_intro_block">
             <p className="deal_offering_intro">
               Configure sections below, then open the investor-facing preview to
-              see how this offering reads end-to-end. Offering documents are
-              managed in the <strong>Documents</strong> tab. Each row’s{" "}
+              see how this offering reads end-to-end. Upload deal files on the{" "}
+              <strong>Documents</strong> tab (workspace sections control what
+              investors see on the offering link and LP portal). Each section’s{" "}
               <strong>Make it visible to Investors</strong> control sets what
               appears in <strong>Preview offering</strong> and on the{" "}
-              <strong>shared investor link</strong> (same sections in both).
+              <strong>shared investor link</strong>.
             </p>
           </div>
           <button
@@ -201,101 +220,46 @@ export function DealOfferingDetailsTab({
               className={`deal_offering_section${expanded ? " deal_offering_section_expanded" : ""}`}
               role="listitem"
             >
-              {id === "offering_information" ? (
-                <div className="deal_offering_trigger_row">
-                  <button
-                    type="button"
-                    id={`${panelId}-trigger`}
-                    className="deal_offering_trigger_toggle"
-                    aria-expanded={expanded}
-                    aria-controls={panelId}
-                    onClick={() =>
-                      setOpenSections((prev) => ({
-                        ...prev,
-                        [id]: !prev[id],
-                      }))
-                    }
-                  >
-                    <span className="deal_offering_trigger_label">
-                      {label}
-                    </span>
-                  </button>
-                  {investorToggle}
-                  <Link
-                    to={`/deals/${encodeURIComponent(detail.id)}/investor-classes/new`}
-                    className="um_btn_primary deal_offering_add_ic_btn deal_offering_add_ic_header"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Plus size={18} strokeWidth={2} aria-hidden />
-                    Add Investor Class
-                  </Link>
-                  <button
-                    type="button"
-                    className="deal_offering_trigger_chevron_btn"
-                    aria-expanded={expanded}
-                    aria-controls={panelId}
-                    aria-label={
-                      expanded
-                        ? `Collapse ${label}`
-                        : `Expand ${label}`
-                    }
-                    onClick={() =>
-                      setOpenSections((prev) => ({
-                        ...prev,
-                        [id]: !prev[id],
-                      }))
-                    }
-                  >
-                    <ChevronDown
-                      size={20}
-                      strokeWidth={2}
-                      aria-hidden
-                      className={`deal_offering_chevron${expanded ? " deal_offering_chevron_open" : ""}`}
-                    />
-                  </button>
-                </div>
-              ) : (
-                <div className="deal_offering_trigger_row">
-                  <button
-                    type="button"
-                    id={`${panelId}-trigger`}
-                    className="deal_offering_trigger_toggle"
-                    aria-expanded={expanded}
-                    aria-controls={panelId}
-                    onClick={() =>
-                      setOpenSections((prev) => ({
-                        ...prev,
-                        [id]: !prev[id],
-                      }))
-                    }
-                  >
-                    <span className="deal_offering_trigger_label">{label}</span>
-                  </button>
-                  {investorToggle}
-                  <button
-                    type="button"
-                    className="deal_offering_trigger_chevron_btn"
-                    aria-expanded={expanded}
-                    aria-controls={panelId}
-                    aria-label={
-                      expanded ? `Collapse ${label}` : `Expand ${label}`
-                    }
-                    onClick={() =>
-                      setOpenSections((prev) => ({
-                        ...prev,
-                        [id]: !prev[id],
-                      }))
-                    }
-                  >
-                    <ChevronDown
-                      size={20}
-                      strokeWidth={2}
-                      aria-hidden
-                      className={`deal_offering_chevron${expanded ? " deal_offering_chevron_open" : ""}`}
-                    />
-                  </button>
-                </div>
-              )}
+              <div className="deal_offering_trigger_row">
+                <button
+                  type="button"
+                  id={`${panelId}-trigger`}
+                  className="deal_offering_trigger_toggle"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() =>
+                    setOpenSections((prev) => ({
+                      ...prev,
+                      [id]: !prev[id],
+                    }))
+                  }
+                >
+                  <span className="deal_offering_trigger_label">{label}</span>
+                </button>
+                {investorToggle}
+                <button
+                  type="button"
+                  className="deal_offering_trigger_chevron_btn"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  aria-label={
+                    expanded ? `Collapse ${label}` : `Expand ${label}`
+                  }
+                  onClick={() =>
+                    setOpenSections((prev) => ({
+                      ...prev,
+                      [id]: !prev[id],
+                    }))
+                  }
+                >
+                  <ChevronDown
+                    size={20}
+                    strokeWidth={2}
+                    aria-hidden
+                    className={`deal_offering_chevron${expanded ? " deal_offering_chevron_open" : ""}`}
+                  />
+                </button>
+              </div>
               <div
                 id={panelId}
                 role="region"

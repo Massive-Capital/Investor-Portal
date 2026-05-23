@@ -1,6 +1,22 @@
 import { MapPin } from "lucide-react"
-import type { OfferingPreviewAssetBlock } from "../utils/offeringPreviewAssets"
+import {
+  isFilledPreviewAssetValue,
+  type OfferingPreviewAssetBlock,
+} from "../utils/offeringPreviewAssets"
 import { DealOfferingGalleryImage } from "./DealOfferingGalleryImage"
+
+const ASSET_METRIC_LABELS: {
+  key: keyof Pick<
+    OfferingPreviewAssetBlock,
+    "assetType" | "yearBuilt" | "numberOfUnits" | "acquisitionPrice"
+  >
+  label: string
+}[] = [
+  { key: "assetType", label: "Asset type" },
+  { key: "yearBuilt", label: "Year built" },
+  { key: "numberOfUnits", label: "Number of units" },
+  { key: "acquisitionPrice", label: "Acquisition price" },
+]
 
 export interface OfferingPreviewAssetBentoCardProps {
   block: OfferingPreviewAssetBlock
@@ -13,6 +29,9 @@ export function OfferingPreviewAssetBentoCard({
 }: OfferingPreviewAssetBentoCardProps) {
   const blockGalleryCount = block.galleryUrls.length
   const thumbSrc = block.galleryUrls[0]
+  const filledMetrics = ASSET_METRIC_LABELS.filter((m) =>
+    isFilledPreviewAssetValue(block[m.key]),
+  )
 
   return (
     <article className="deal_offer_pf_bento_asset_card">
@@ -64,24 +83,16 @@ export function OfferingPreviewAssetBentoCard({
           </p>
         )}
 
-        <dl className="deal_offer_pf_bento_asset_metrics">
-          <div className="deal_offer_pf_bento_asset_metric">
-            <dt>Asset type</dt>
-            <dd>{block.assetType}</dd>
-          </div>
-          <div className="deal_offer_pf_bento_asset_metric">
-            <dt>Year built</dt>
-            <dd>{block.yearBuilt}</dd>
-          </div>
-          <div className="deal_offer_pf_bento_asset_metric">
-            <dt>Number of units</dt>
-            <dd>{block.numberOfUnits}</dd>
-          </div>
-          <div className="deal_offer_pf_bento_asset_metric">
-            <dt>Acquisition price</dt>
-            <dd>{block.acquisitionPrice}</dd>
-          </div>
-        </dl>
+        {filledMetrics.length > 0 ? (
+          <dl className="deal_offer_pf_bento_asset_metrics">
+            {filledMetrics.map((m) => (
+              <div key={m.key} className="deal_offer_pf_bento_asset_metric">
+                <dt>{m.label}</dt>
+                <dd>{block[m.key]}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
       </div>
     </article>
   )

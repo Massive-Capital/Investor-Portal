@@ -21,11 +21,19 @@ import {
   patchMyProfile,
   postChangePassword,
 } from "../controllers/auth/account.controller.js";
+import {
+  postActivityLogout,
+  postActivityPageView,
+  postEnsureActivitySession,
+} from "../controllers/auth/userActivity.controller.js";
 
 const userRoutes = Router();
 
 userRoutes
 .post("/auth/signin", postSignin)
+.post("/auth/activity/session", postEnsureActivitySession)
+.post("/auth/activity/logout", postActivityLogout)
+.post("/auth/activity/page-view", postActivityPageView)
 .post("/auth/change-password", postChangePassword)
 .get("/auth/me", getMyProfile)
 .patch("/auth/me", patchMyProfile)

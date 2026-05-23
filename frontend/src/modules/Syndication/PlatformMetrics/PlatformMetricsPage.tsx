@@ -16,11 +16,14 @@ import { DonutChart, type DonutSegment } from "./components/DonutChart"
 import { MetricKpiCard } from "./components/MetricKpiCard"
 import { FundPerformanceChart } from "./components/FundPerformanceChart"
 import { ProgressRing } from "./components/ProgressRing"
+import { UserActivityTable } from "./components/UserActivityTable"
 import {
   fetchPlatformMetrics,
+  fetchPlatformUserActivity,
   formatPlatformUsd,
   formatRoleLabel,
   type PlatformMetrics,
+  type UserActivityRow,
 } from "./platformMetricsApi"
 import "../usermanagement/user_management.css"
 import "./platform-metrics.css"
@@ -48,20 +51,34 @@ export default function PlatformMetricsPage() {
   const [metrics, setMetrics] = useState<PlatformMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [userActivity, setUserActivity] = useState<UserActivityRow[]>([])
+  const [activityLoading, setActivityLoading] = useState(true)
+  const [activityError, setActivityError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const result = await fetchPlatformMetrics()
+      const [metricsResult, activityResult] = await Promise.all([
+        fetchPlatformMetrics(),
+        fetchPlatformUserActivity(),
+      ])
       if (cancelled) return
-      if (result.ok) {
-        setMetrics(result.metrics)
+      if (metricsResult.ok) {
+        setMetrics(metricsResult.metrics)
         setError(null)
       } else {
         setMetrics(null)
-        setError(result.message)
+        setError(metricsResult.message)
+      }
+      if (activityResult.ok) {
+        setUserActivity(activityResult.userActivity)
+        setActivityError(null)
+      } else {
+        setUserActivity([])
+        setActivityError(activityResult.message)
       }
       setLoading(false)
+      setActivityLoading(false)
     })()
     return () => {
       cancelled = true
@@ -220,6 +237,15 @@ export default function PlatformMetricsPage() {
           />
         </section>
       ) : null}
+
+      <section className="pm_section" aria-label="User activity">
+        <h2 className="pm_section_title">User activity</h2>
+        <UserActivityTable
+          rows={userActivity}
+          loading={activityLoading}
+          error={activityError}
+        />
+      </section>
     </section>
   )
 }

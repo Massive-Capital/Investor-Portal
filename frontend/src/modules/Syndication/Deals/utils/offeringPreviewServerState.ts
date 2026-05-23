@@ -28,6 +28,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 export function applyOfferingInvestorPreviewJsonFromServer(
   dealId: string,
   json: string | null | undefined,
+  opts?: { notify?: boolean },
 ): void {
   const id = dealId.trim()
   if (!id || typeof window === "undefined") return
@@ -41,7 +42,7 @@ export function applyOfferingInvestorPreviewJsonFromServer(
   if (!isRecord(parsed)) return
   const secsRaw = parsed.sections
   const sections = parseOfferingPreviewSectionsJson(secsRaw)
-  writeOfferingPreviewSections(id, sections)
+  writeOfferingPreviewSections(id, sections, opts)
   const visRaw = parsed.visibility
   if (isRecord(visRaw)) {
     const base = readOfferingPreviewInvestorVisibility(id)
@@ -52,6 +53,15 @@ export function applyOfferingInvestorPreviewJsonFromServer(
     }
     writeOfferingPreviewInvestorVisibility(id, next)
   }
+}
+
+export function cancelOfferingInvestorPreviewServerSync(dealId: string): void {
+  const id = dealId.trim()
+  if (!id || typeof window === "undefined") return
+  const prev = syncTimers.get(id)
+  if (prev) window.clearTimeout(prev)
+  syncTimers.delete(id)
+  pendingOnSuccess.delete(id)
 }
 
 export async function persistOfferingInvestorPreviewToServer(

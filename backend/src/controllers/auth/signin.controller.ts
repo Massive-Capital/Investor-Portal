@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { signInWithPassword } from "../../services/auth/auth.service.js";
+import { startUserPortalSession } from "../../services/platform/userActivity.service.js";
 
 type SigninBody = {
   emailOrUsername?: unknown;
@@ -32,10 +33,23 @@ export async function postSignin(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  let activitySessionId: string | undefined;
+  try {
+    const userId = String(
+      (result.userDetails[0] as { id?: string } | undefined)?.id ?? "",
+    ).trim();
+    if (userId) {
+      activitySessionId = await startUserPortalSession(userId);
+    }
+  } catch (err) {
+    console.error("startUserPortalSession after signin:", err);
+  }
+
   res.status(200).json({
     message: result.message,
     token: result.token,
     userDetails: result.userDetails,
+    ...(activitySessionId ? { activitySessionId } : {}),
   });
 }
 

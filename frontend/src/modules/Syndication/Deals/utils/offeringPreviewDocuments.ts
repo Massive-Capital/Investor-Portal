@@ -15,9 +15,8 @@ export type OfferingPreviewDocument = {
   /** Optional; shown in sponsor workspace table */
   dateAdded?: string
   /**
-   * `offering_page` (default): Preview offering, shared preview link, and portal LPs.
-   * `lp_investor`: deal workspace / LP portal only — omitted from Preview offering
-   * and the no-login shared link.
+   * `offering_page` (default): Preview offering, shared offering link, and portal LPs.
+   * `lp_investor`: LP portal only — omitted from Preview offering and the offering link.
    */
   sharedWithScope?: OfferingPreviewDocSharedWithScope
 }

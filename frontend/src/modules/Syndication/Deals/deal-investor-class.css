@@ -1252,6 +1252,15 @@ label.deal_inv_ic_dist_label_flex {
   align-content: start;
 }
 
+.deal_inv_ic_adv_field_assets {
+  grid-column: 1 / -1;
+}
+
+.deal_inv_ic_assets_ms {
+  width: 100%;
+  max-width: 100%;
+}
+
 .deal_inv_ic_advanced_um_grid .um_field.add_contact_field_tight {
   margin-bottom: 0;
   min-width: 0;

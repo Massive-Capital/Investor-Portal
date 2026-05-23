@@ -563,3 +563,86 @@
 :root[data-theme="dark"] .pm_period_tab_active {
   background: rgb(59 130 246 / 15%);
 }
+
+.pm_user_activity_panel {
+  margin-top: 0;
+}
+
+.pm_user_activity_table_wrap {
+  margin-top: 0.5rem;
+  overflow-x: auto;
+}
+
+.pm_user_activity_table {
+  width: 100%;
+  min-width: 720px;
+}
+
+.pm_user_activity_table th,
+.pm_user_activity_table td {
+  vertical-align: top;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.pm_user_activity_table thead th {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+  border-bottom: 1px solid var(--portal-border, #e5e7eb);
+}
+
+.pm_user_activity_loading,
+.pm_user_activity_empty {
+  text-align: center;
+  color: var(--portal-text-muted, #64748b);
+  padding: 1.5rem !important;
+}
+
+.pm_ua_name {
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  white-space: nowrap;
+}
+
+.pm_ua_email {
+  color: var(--portal-text-muted, #64748b);
+}
+
+.pm_ua_active {
+  font-weight: 600;
+  color: #16a34a;
+}
+
+.pm_ua_muted {
+  color: var(--portal-text-muted, #64748b);
+}
+
+.pm_ua_pages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pm_ua_pages li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pm_ua_page_label {
+  color: var(--portal-text, #0f172a);
+}
+
+.pm_ua_page_count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--portal-text-muted, #64748b);
+  flex-shrink: 0;
+}

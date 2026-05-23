@@ -288,6 +288,41 @@
       "when": 1892600000000,
       "tag": "0041_user_investor_profile_distribution_bank",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1892650000000,
+      "tag": "0042_user_portal_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1892700000000,
+      "tag": "0043_deal_esign_templates_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1892750000000,
+      "tag": "0044_deal_lp_investor_doc_signed_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1892800000000,
+      "tag": "0045_deal_investor_esign_status_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1892850000000,
+      "tag": "0046_esign_reusable_template",
+      "breakpoints": true
     }
   ]
 }

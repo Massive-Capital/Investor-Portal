@@ -13,7 +13,7 @@ export default function DealsLayout() {
   if (mode === "investing") {
     const path = (location.pathname || "/").replace(/\/+$/, "") || "/"
     if (!INVESTING_DEAL_DETAIL_PATH.test(path)) {
-      return <Navigate to="/investing/opportunities" replace />
+      return <Navigate to="/dashboard" replace />
     }
   }
 

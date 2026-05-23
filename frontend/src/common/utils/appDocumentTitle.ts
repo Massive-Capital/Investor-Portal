@@ -51,10 +51,12 @@ const PAGE_TITLES: Record<string, string> = {
   "/investing/documents": "Documents",
   "/investing/profiles": "Profiles",
   "/investing/profiles/add": "Add profile",
-  "/investing/deals": "Deals",
   "/investing/company": "Company overview",
   "/investing/cashflows": "Cashflows",
-  "/investing/settings": "Settings",
+  "/investing/settings": "My account",
+  "/account/company": "My account",
+  "/account/personal": "My account",
+  "/account/password": "My account",
   "/investing/review": "Leave a review",
 
   "/account": "My account",
@@ -70,6 +72,11 @@ export function pageTitleForAppPathname(
 
   // Simple exact match
   if (PAGE_TITLES[path]) {
+    if (path === "/investing/investments") {
+      const tab = new URLSearchParams(search).get("tab");
+      if (tab === "deals") return "Deals";
+      if (tab === "archives") return "Archives";
+    }
     return PAGE_TITLES[path];
   }
 

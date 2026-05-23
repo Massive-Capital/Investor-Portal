@@ -39,6 +39,8 @@ export const dealInvestment = pgTable("deal_investment", {
   status: text("status").notNull().default(""),
   investorClass: text("investor_class").notNull().default(""),
   docSignedDate: text("doc_signed_date"),
+  /** JSON: sent / viewed / signed / completed timestamps + document list. */
+  esignStatusJson: text("esign_status_json"),
   commitmentAmount: text("commitment_amount").notNull().default(""),
   extraContributionAmounts: jsonb("extra_contribution_amounts")
     .$type<string[]>()

@@ -49,16 +49,29 @@ function attrDisplay(
   return s.trim()
 }
 
+/** True when a preview asset metric should render (not blank / em dash). */
+export function isFilledPreviewAssetValue(value: string | undefined): boolean {
+  const t = String(value ?? "").trim()
+  return Boolean(t) && t !== "—"
+}
+
+function filledPreviewText(raw: string | undefined): string {
+  const t = String(raw ?? "").trim()
+  if (!t || t === "—") return ""
+  return t
+}
+
 function acquisitionPriceDisplay(
   rows: AssetAttributeRow[] | undefined,
 ): string {
   const raw = attrDisplay(rows, "attr-acq-price")
-  if (!raw) return "—"
+  if (!raw) return ""
   const formatted = formatMoneyFieldDisplay(raw)
   return formatted !== "—" ? formatted : raw
 }
 
-function addressFromDeal(detail: DealDetailApi): string {
+/** Full deal address for offering preview “Location” section. */
+export function formatOfferingPreviewDealAddress(detail: DealDetailApi): string {
   const street = [detail.addressLine1, detail.addressLine2]
     .map((x) => (x ?? "").trim())
     .filter(Boolean)
@@ -102,15 +115,18 @@ export function buildOfferingPreviewAssetBlocks(
   const galleryUrlCount = galleryUrls.length
   const singleAssetDeal = ordered.length <= 1
   if (ordered.length === 0) {
+    const fallbackAddress = filledPreviewText(
+      formatOfferingPreviewDealAddress(detail),
+    )
     return [
       {
         id: `fallback-${detail.id}`,
-        name: detail.propertyName?.trim() || "—",
-        address: addressFromDeal(detail),
-        assetType: "—",
-        yearBuilt: "—",
-        numberOfUnits: "—",
-        acquisitionPrice: "—",
+        name: filledPreviewText(detail.propertyName) || "Offering asset",
+        address: fallbackAddress,
+        assetType: "",
+        yearBuilt: "",
+        numberOfUnits: "",
+        acquisitionPrice: "",
         viewImagesCount: Math.max(0, galleryUrlCount),
         galleryUrls: dedupeNormalizedUrls(galleryUrls),
       },
@@ -124,18 +140,19 @@ export function buildOfferingPreviewAssetBlocks(
       persisted?.draft != null
         ? formatAddressFromAssetDraft(persisted.draft).trim() ||
           row.address?.trim() ||
-          addressFromDeal(detail)
-        : row.address?.trim() || addressFromDeal(detail)
+          formatOfferingPreviewDealAddress(detail)
+        : row.address?.trim() || formatOfferingPreviewDealAddress(detail)
 
-    const assetType =
+    const assetTypeRaw =
       row.assetType && row.assetType !== "—"
         ? row.assetType.trim()
         : attrs
           ? assetTypeFromAttributes(attrs)
-          : "—"
+          : ""
+    const assetType = filledPreviewText(assetTypeRaw)
 
-    const yearRaw = attrDisplay(attrs, "attr-year-built")
-    const unitsRaw = attrDisplay(attrs, "attr-num-units")
+    const yearBuilt = filledPreviewText(attrDisplay(attrs, "attr-year-built"))
+    const numberOfUnits = filledPreviewText(attrDisplay(attrs, "attr-num-units"))
 
     const dealGalleryFallback = dedupeNormalizedUrls(galleryUrls)
     const rowGalleryUrls = dedupeNormalizedUrls(persisted?.imagePreviewDataUrls)
@@ -151,11 +168,14 @@ export function buildOfferingPreviewAssetBlocks(
 
     return {
       id: row.id,
-      name: row.name?.trim() || detail.propertyName?.trim() || "—",
-      address: address || "—",
-      assetType: assetType && assetType !== "—" ? assetType : "—",
-      yearBuilt: yearRaw || "—",
-      numberOfUnits: unitsRaw || "—",
+      name:
+        filledPreviewText(row.name) ||
+        filledPreviewText(detail.propertyName) ||
+        "Offering asset",
+      address: filledPreviewText(address),
+      assetType,
+      yearBuilt,
+      numberOfUnits,
       acquisitionPrice: acquisitionPriceDisplay(attrs),
       viewImagesCount,
       galleryUrls: effectiveGalleryUrls,

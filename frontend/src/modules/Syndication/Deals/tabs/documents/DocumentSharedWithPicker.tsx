@@ -13,6 +13,11 @@ import { toast } from "../../../../../common/components/Toast"
 import { postDealDocumentSharedNotification } from "../../api/dealsApi"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
+import {
+  lpInvestorsAddedBySponsorUserId,
+  SPONSOR_USER_INVESTORS_MENU_LABEL,
+  type SponsorPickerOption,
+} from "../../utils/offeringPreviewDocumentAudience"
 
 type SharedNotificationRecipient = {
   to_email: string
@@ -27,15 +32,33 @@ export function toggleIdInList(list: string[], id: string, on: boolean): string[
 function formatDocumentSharedWithSummary(args: {
   classIds: string[]
   investorIds: string[]
+  sponsorUserIds: string[]
   allInvestors: boolean
   classes: DealInvestorClass[]
   investors: DealInvestorRow[]
+  sponsorUserOptions: SponsorPickerOption[]
 }): string {
-  const { classIds, investorIds, allInvestors, classes, investors } = args
+  const {
+    classIds,
+    investorIds,
+    sponsorUserIds,
+    allInvestors,
+    classes,
+    investors,
+    sponsorUserOptions,
+  } = args
   const bits: string[] = []
   for (const id of classIds) {
     const c = classes.find((x) => x.id === id)
     bits.push(c?.name?.trim() || id)
+  }
+  for (const uid of sponsorUserIds) {
+    const o = sponsorUserOptions.find((x) => x.id === uid)
+    bits.push(
+      o
+        ? `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${o.label}`
+        : `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${uid}`,
+    )
   }
   if (allInvestors) bits.push("All Investors")
   else {
@@ -69,11 +92,19 @@ function investorRowMatchesDealClass(
 function resolveSharedWithRecipients(args: {
   allInvestors: boolean
   investorIds: string[]
+  sponsorUserIds: string[]
   classIds: string[]
   investors: DealInvestorRow[]
   dealClasses: DealInvestorClass[]
 }): SharedNotificationRecipient[] {
-  const { allInvestors, investorIds, classIds, investors, dealClasses } = args
+  const {
+    allInvestors,
+    investorIds,
+    sponsorUserIds,
+    classIds,
+    investors,
+    dealClasses,
+  } = args
   const byEmail = new Map<string, SharedNotificationRecipient>()
 
   function addRow(row: DealInvestorRow) {
@@ -98,6 +129,11 @@ function resolveSharedWithRecipients(args: {
     for (const classId of classIds) {
       for (const row of investors) {
         if (investorRowMatchesDealClass(row, classId, dealClasses)) addRow(row)
+      }
+    }
+    for (const sponsorUid of sponsorUserIds) {
+      for (const row of lpInvestorsAddedBySponsorUserId(sponsorUid, investors)) {
+        addRow(row)
       }
     }
   }
@@ -135,26 +171,34 @@ export function DocumentSharedWithPicker(args: {
   idPrefix: string
   classIds: string[]
   investorIds: string[]
+  sponsorUserIds: string[]
   allInvestors: boolean
   dealClasses: DealInvestorClass[]
+  /** Investors on this deal (Investors tab / LP rows only). */
   investors: DealInvestorRow[]
+  /** Sponsor users (deal roster); selecting one shares with all LPs they added. */
+  sponsorUserOptions: SponsorPickerOption[]
   docName: string
   onClassChange: (classId: string, checked: boolean) => void
   onAllInvestorsChange: (checked: boolean) => void
   onInvestorChange: (investorRowId: string, checked: boolean) => void
+  onSponsorUserChange: (sponsorUserId: string, checked: boolean) => void
 }) {
   const {
     dealId,
     idPrefix,
     classIds,
     investorIds,
+    sponsorUserIds,
     allInvestors,
     dealClasses,
     investors,
+    sponsorUserOptions,
     docName,
     onClassChange,
     onAllInvestorsChange,
     onInvestorChange,
+    onSponsorUserChange,
   } = args
   const triggerId = useId()
   const confirmModalTitleId = useId()
@@ -174,31 +218,37 @@ export function DocumentSharedWithPicker(args: {
   const summary = formatDocumentSharedWithSummary({
     classIds,
     investorIds,
+    sponsorUserIds,
     allInvestors,
     classes: dealClasses,
     investors,
+    sponsorUserOptions,
   })
 
   const hasAudienceSelection =
-    allInvestors || investorIds.length > 0 || classIds.length > 0
+    allInvestors ||
+    investorIds.length > 0 ||
+    classIds.length > 0 ||
+    sponsorUserIds.length > 0
 
   const notifyRecipients = useMemo(
     () =>
       resolveSharedWithRecipients({
         allInvestors,
         investorIds,
+        sponsorUserIds,
         classIds,
         investors,
         dealClasses,
       }),
-    [allInvestors, investorIds, classIds, investors, dealClasses],
+    [allInvestors, investorIds, sponsorUserIds, classIds, investors, dealClasses],
   )
 
   const openNotifyConfirm = useCallback(() => {
     if (!hasAudienceSelection) {
       toast.error(
         "No one selected",
-        "Select at least one deal class or investor in Shared With first.",
+        "Select at least one deal class, sponsor user investors, or investor in Shared With first.",
       )
       return
     }
@@ -361,9 +411,55 @@ export function DocumentSharedWithPicker(args: {
         )}
       </div>
       <div className="deal_docs_shared_with_menu_section">
+        <p className="deal_docs_shared_with_menu_heading">
+          {SPONSOR_USER_INVESTORS_MENU_LABEL}
+        </p>
+        {/* <p className="deal_docs_shared_with_menu_sub">
+          Choose a sponsor on this deal. Every investor they added can view this
+          file (and receives notification email when you use the mail icon).
+        </p> */}
+        {sponsorUserOptions.length === 0 ? (
+          <p className="deal_docs_shared_with_menu_empty">
+            No sponsor users on this deal yet.
+          </p>
+        ) : (
+          <ul className="deal_docs_shared_with_menu_list">
+            {sponsorUserOptions.map((s) => {
+              const sid = s.id.trim()
+              const checked = sponsorUserIds.includes(sid)
+              const oid = `${idPrefix}-sponsor-user-${sid}`
+              const lpCount = lpInvestorsAddedBySponsorUserId(sid, investors).length
+              return (
+                <li key={sid}>
+                  <label className="deal_docs_shared_with_menu_row" htmlFor={oid}>
+                    <input
+                      id={oid}
+                      type="checkbox"
+                      checked={checked}
+                      disabled={allInvestors}
+                      onChange={(e) => onSponsorUserChange(sid, e.target.checked)}
+                    />
+                    <span className="deal_docs_shared_with_menu_inv_label">
+                      <span className="deal_docs_shared_with_menu_inv_name">
+                        {s.label}
+                      </span>
+                      {lpCount > 0 ? (
+                        <span className="deal_docs_shared_with_menu_inv_email">
+                          {lpCount} investor{lpCount === 1 ? "" : "s"} on this deal
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="deal_docs_shared_with_menu_section">
         <p className="deal_docs_shared_with_menu_heading">Investors</p>
         <p className="deal_docs_shared_with_menu_sub">
-          Deal members and other contacts on this deal are shown here as investors.
+          Individual LPs on this deal (Investors tab only).
         </p>
         <ul className="deal_docs_shared_with_menu_list">
           <li key={`${idPrefix}-all-investors`}>

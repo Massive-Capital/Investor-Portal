@@ -12,6 +12,7 @@ import {
   Pencil,
   Percent,
   Plus,
+  Search,
   Save,
   Tag,
   Trash2,
@@ -27,17 +28,24 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { InfoIconPanel } from "./FieldInfoHeading"
 import {
   createDealInvestorClass,
   deleteDealInvestorClass,
+  fetchDealById,
   fetchDealInvestorClasses,
   updateDealInvestorClass,
+  type DealDetailApi,
 } from "../../api/dealsApi"
+import {
+  computeDealAssetRowsFromClientStorage,
+  DEAL_ASSETS_STORAGE_CHANGED_EVENT,
+  type DealAssetRow,
+} from "../../types/deal-asset.types"
+import { InvestorClassAssetsMultiSelect } from "./InvestorClassAssetsMultiSelect"
 import type {
   DealInvestorClass,
   DealInvestorClassFormValues,
@@ -49,6 +57,11 @@ import {
   investorClassVisibilityLabel,
 } from "../../utils/offeringDisplayLabels"
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
+import {
+  hasInvestorClassNumberOfUnits,
+  hasInvestorClassPricePerUnit,
+  isLpInvestorClass,
+} from "../../utils/investorClassOverviewFields"
 import {
   blurFormatNumberOfUnitsInput,
   blurFormatMoneyInput,
@@ -206,14 +219,14 @@ const LP_HURDLE_ADV_YES_NO: { value: string; label: string }[] = [
 ]
 
 const LP_HURDLE_DAY_COUNT_OPTIONS: { value: string; label: string }[] = [
-  { value: "actual_365", label: "Actual/365 (most common)" },
+  { value: "actual_365", label: "Actual/365" },
   { value: "actual_360", label: "Actual/360" },
   { value: "thirty_360", label: "30/360" },
   { value: "actual_actual", label: "Actual/Actual" },
 ]
 
 const LP_HURDLE_COMPOUNDING_OPTIONS: { value: string; label: string }[] = [
-  { value: "none", label: "None (most common)" },
+  { value: "none", label: "None" },
   { value: "monthly", label: "Monthly" },
   { value: "quarterly", label: "Quarterly" },
   { value: "semi_annual", label: "Semi-annual" },
@@ -393,7 +406,7 @@ const ADV_INVESTMENT_TYPE_OPTIONS: { value: string; label: string }[] = [
 ]
 
 const ADV_WAITLIST_OPTIONS: { value: string; label: string }[] = [
-  { value: "off", label: "Off (most common)" },
+  { value: "off", label: "Off" },
   { value: "on", label: "On" },
   { value: "auto", label: "Auto" },
 ]
@@ -463,30 +476,40 @@ function parseAdvancedJson(raw: string | undefined | null): InvestorClassAdvance
   }
 }
 
-function IcAssetsChipRow({
-  items,
-  onRemove,
-}: {
-  items: string[]
-  onRemove: (index: number) => void
-}) {
-  if (items.length === 0) return null
-  return (
-    <div className="contacts_chip_row" role="list" aria-label="Selected assets">
-      {items.map((t, i) => (
-        <span key={`${t}-${i}`} className="contacts_chip" role="listitem">
-          <span className="contacts_chip_label">{t}</span>
-          <button
-            type="button"
-            className="contacts_chip_remove"
-            onClick={() => onRemove(i)}
-            aria-label={`Remove ${t}`}
-          >
-            <X size={14} strokeWidth={2} aria-hidden />
-          </button>
-        </span>
-      ))}
-    </div>
+function useDealAssetsForInvestorClass(dealId: string): DealAssetRow[] {
+  const [detail, setDetail] = useState<DealDetailApi | null>(null)
+
+  const reload = useCallback(async () => {
+    try {
+      setDetail(await fetchDealById(dealId))
+    } catch {
+      setDetail(null)
+    }
+  }, [dealId])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  useEffect(() => {
+    function onAssetsChanged(e: Event) {
+      const id = (e as CustomEvent<{ dealId?: string }>).detail?.dealId
+      if (id === dealId) void reload()
+    }
+    window.addEventListener(DEAL_ASSETS_STORAGE_CHANGED_EVENT, onAssetsChanged)
+    return () =>
+      window.removeEventListener(
+        DEAL_ASSETS_STORAGE_CHANGED_EVENT,
+        onAssetsChanged,
+      )
+  }, [dealId, reload])
+
+  return useMemo(
+    () =>
+      detail
+        ? computeDealAssetRowsFromClientStorage(detail).filter((r) => !r.archived)
+        : [],
+    [detail],
   )
 }
 
@@ -1125,6 +1148,7 @@ function InvestorClassModalFormBody({
   onAddHurdleClick,
   includeHurdleStep = false,
   showNewClassTitleAboveType = false,
+  dealAssetRows = [],
   /** Add-class page pipeline: step 1 = core fields; step 2 = advanced + hurdles; omit = single screen (modal). */
   formStep,
 }: {
@@ -1137,9 +1161,9 @@ function InvestorClassModalFormBody({
   includeHurdleStep?: boolean
   /** Add-class page: show “New Class” / equity name above Class type. */
   showNewClassTitleAboveType?: boolean
+  dealAssetRows?: DealAssetRow[]
   formStep?: 1 | 2 | 3
 }) {
-  const [assetTagInput, setAssetTagInput] = useState("")
   const typeLbl = `${idPrefix}-class-type-lbl`
   const equityNameLbl = `${idPrefix}-equity-name-lbl`
   const isLpLayout = form.subscriptionType === "lp"
@@ -1220,19 +1244,6 @@ function InvestorClassModalFormBody({
         })),
       },
     })
-  }
-
-  function handleAssetKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter") return
-    e.preventDefault()
-    const t = assetTagInput.trim()
-    if (!t) return
-    if (form.advanced.assetTags.includes(t)) {
-      setAssetTagInput("")
-      return
-    }
-    patchAdvanced({ assetTags: [...form.advanced.assetTags, t] })
-    setAssetTagInput("")
   }
 
   const showPipelineStep1 = formStep === 1
@@ -2333,10 +2344,10 @@ function InvestorClassModalFormBody({
                 </p>
               </div>
               <div className="deal_inv_ic_adv_group_grid">
-                <div className="um_field add_contact_field_tight deal_inv_ic_adv_field">
+                <div className="um_field add_contact_field_tight deal_inv_ic_adv_field deal_inv_ic_adv_field_assets">
               <label
                 className="um_field_label_row"
-                htmlFor={`${idPrefix}-adv-assets`}
+                htmlFor={`${idPrefix}-adv-assets-ms-input`}
               >
                 <Layers
                   className="um_field_label_icon"
@@ -2345,23 +2356,18 @@ function InvestorClassModalFormBody({
                 />
                 <span>Assets</span>
               </label>
-              <IcAssetsChipRow
-                items={form.advanced.assetTags}
-                onRemove={(i) =>
-                  patchAdvanced({
-                    assetTags: form.advanced.assetTags.filter((_, j) => j !== i),
-                  })
-                }
-              />
-              <input
-                id={`${idPrefix}-adv-assets`}
-                type="text"
-                className="deals_add_inv_field_control deals_add_inv_input add_contact_chip_input"
-                placeholder="Add asset"
-                value={assetTagInput}
+              <InvestorClassAssetsMultiSelect
+                controlId={`${idPrefix}-adv-assets`}
+                assetRows={dealAssetRows}
+                selectedTags={form.advanced.assetTags}
                 disabled={disabled}
-                onChange={(e) => setAssetTagInput(e.target.value)}
-                onKeyDown={handleAssetKeyDown}
+                onSelectedTagsChange={(assetTags) => {
+                  onClearError?.()
+                  patchAdvanced({
+                    assetTags:
+                      assetTags.length > 0 ? assetTags : ["All"],
+                  })
+                }}
               />
                 </div>
 
@@ -2458,6 +2464,10 @@ function ReadOnlyInvestorClassCard({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const showUnits =
+    isLpInvestorClass(row) && hasInvestorClassNumberOfUnits(row.numberOfUnits)
+  const showPrice =
+    isLpInvestorClass(row) && hasInvestorClassPricePerUnit(row.pricePerUnit)
   return (
     <div className="deal_inv_class_card" id={`deal-inv-class-${row.id}`}>
       <div className="deal_inv_class_card_head">
@@ -2507,20 +2517,26 @@ function ReadOnlyInvestorClassCard({
               {formatMoneyFieldDisplay(row.minimumInvestment)}
             </span>
           </div>
-          <div className="deal_inv_class_metric_h">
-            <span className="deal_inv_class_metric_h_label">
-              Number of units
-            </span>
-            <span className="deal_inv_class_metric_h_value">
-              {row.numberOfUnits?.trim() ? row.numberOfUnits.trim() : "—"}
-            </span>
-          </div>
-          <div className="deal_inv_class_metric_h">
-            <span className="deal_inv_class_metric_h_label">Price per unit</span>
-            <span className="deal_inv_class_metric_h_value">
-              {formatMoneyFieldDisplay(row.pricePerUnit)}
-            </span>
-          </div>
+          {showUnits ? (
+            <div className="deal_inv_class_metric_h">
+              <span className="deal_inv_class_metric_h_label">
+                Number of units
+              </span>
+              <span className="deal_inv_class_metric_h_value">
+                {blurFormatNumberOfUnitsInput(row.numberOfUnits ?? "")}
+              </span>
+            </div>
+          ) : null}
+          {showPrice ? (
+            <div className="deal_inv_class_metric_h">
+              <span className="deal_inv_class_metric_h_label">
+                Price per unit
+              </span>
+              <span className="deal_inv_class_metric_h_value">
+                {formatMoneyFieldDisplay(row.pricePerUnit)}
+              </span>
+            </div>
+          ) : null}
           <div className="deal_inv_class_metric_h">
             <span className="deal_inv_class_metric_h_label">Status</span>
             <span className="deal_inv_class_metric_h_value">
@@ -2603,6 +2619,7 @@ export function AddInvestorClassPanel({
   const patch = useCallback((p: Partial<DealInvestorClassFormValues>) => {
     setForm((prev) => ({ ...prev, ...p }))
   }, [])
+  const dealAssetRows = useDealAssetsForInvestorClass(dealId)
 
   useEffect(() => {
     if (!visible) return
@@ -2781,6 +2798,7 @@ export function AddInvestorClassPanel({
             onAddHurdleClick={onAddHurdleClick}
             includeHurdleStep={includeHurdleStep}
             showNewClassTitleAboveType={asPage}
+            dealAssetRows={dealAssetRows}
             formStep={asPage ? pipelineStep : undefined}
           />
         </div>
@@ -2880,6 +2898,7 @@ export function EditInvestorClassPanel({
   const patch = useCallback((p: Partial<DealInvestorClassFormValues>) => {
     setForm((prev) => ({ ...prev, ...p }))
   }, [])
+  const dealAssetRows = useDealAssetsForInvestorClass(dealId)
 
   useEffect(() => {
     setForm(rowToForm(row))
@@ -3006,6 +3025,7 @@ export function EditInvestorClassPanel({
             onAddHurdleClick={onAddHurdleClick}
             includeHurdleStep={includeHurdleStep}
             showNewClassTitleAboveType
+            dealAssetRows={dealAssetRows}
             formStep={pipelineStep}
           />
         </div>
@@ -3206,6 +3226,25 @@ function InvestorClassMessageModal({
   )
 }
 
+function investorClassSearchBlob(row: DealInvestorClass): string {
+  return [
+    row.name,
+    classTypeOptionLabel(row.subscriptionType),
+    row.entityName,
+    formatDateDdMmmYyyy(row.startDate),
+    row.offeringSize,
+    row.raiseAmountDistributions,
+    row.billingRaiseQuota,
+    row.minimumInvestment,
+    row.numberOfUnits,
+    row.pricePerUnit,
+    investorClassStatusLabel(row.status),
+    investorClassVisibilityLabel(row.visibility),
+  ]
+    .join(" ")
+    .toLowerCase()
+}
+
 export function OfferingInformationSection({
   dealId,
 }: {
@@ -3213,6 +3252,7 @@ export function OfferingInformationSection({
 }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState<DealInvestorClass[]>([])
+  const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<DealInvestorClass | null>(
     null,
@@ -3230,6 +3270,22 @@ export function OfferingInformationSection({
   useEffect(() => {
     void load()
   }, [load])
+
+  const filteredRows = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter((r) => investorClassSearchBlob(r).includes(q))
+  }, [rows, query])
+
+  const addInvestorClassHref = `/deals/${encodeURIComponent(dealId)}/investor-classes/new`
+
+  const emptyLabel = loading
+    ? ""
+    : rows.length === 0
+      ? "No investor classes yet. Add an investor class to see it here."
+      : query.trim()
+        ? "No investor classes match your search."
+        : "No investor classes to display."
 
   async function confirmDeleteInvestorClass() {
     const r = deleteTarget
@@ -3251,34 +3307,53 @@ export function OfferingInformationSection({
 
   return (
     <div className="deal_offering_info">
-      {!loading && rows.length === 0 ? (
-        <div className="deal_offering_info_toolbar">
-          <p className="deal_offering_toolbar_hint">
-            No investor classes yet. Use &quot;Add Investor Class&quot; next to the
-            section arrow to create one.
-          </p>
+      <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_offering_info_panel">
+        <div className="um_toolbar">
+          <div className="um_search_wrap">
+            <Search className="um_search_icon" size={18} aria-hidden />
+            <input
+              type="search"
+              className="um_search_input"
+              placeholder="Search classes…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search investor classes"
+              autoComplete="off"
+            />
+          </div>
+          <div className="um_toolbar_actions">
+            <Link
+              to={addInvestorClassHref}
+              className="um_btn_primary deals_list_add_link"
+            >
+              <Plus size={18} aria-hidden />
+              Add Investor Class
+            </Link>
+          </div>
         </div>
-      ) : null}
 
-      {loading ? (
-        <p className="deal_offering_muted" role="status">
-          Loading investor classes…
-        </p>
-      ) : null}
-
-      <div className="deal_inv_class_cards">
-        {rows.map((r) => (
-          <ReadOnlyInvestorClassCard
-            key={r.id}
-            row={r}
-            onEdit={() =>
-              navigate(
-                `/deals/${encodeURIComponent(dealId)}/investor-classes/${encodeURIComponent(r.id)}/edit`,
-              )
-            }
-            onDelete={() => setDeleteTarget(r)}
-          />
-        ))}
+        {loading ? (
+          <p className="deal_offering_muted" role="status">
+            Loading investor classes…
+          </p>
+        ) : filteredRows.length === 0 ? (
+          <p className="deal_offering_muted">{emptyLabel}</p>
+        ) : (
+          <div className="deal_inv_class_cards">
+            {filteredRows.map((r) => (
+              <ReadOnlyInvestorClassCard
+                key={r.id}
+                row={r}
+                onEdit={() =>
+                  navigate(
+                    `/deals/${encodeURIComponent(dealId)}/investor-classes/${encodeURIComponent(r.id)}/edit`,
+                  )
+                }
+                onDelete={() => setDeleteTarget(r)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <InvestorClassConfirmDeleteModal

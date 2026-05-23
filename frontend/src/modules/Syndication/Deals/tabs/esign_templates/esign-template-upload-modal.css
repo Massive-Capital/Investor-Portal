@@ -1,0 +1,77 @@
+.deal_esign_upload_overlay {
+  z-index: 1200;
+}
+
+.deal_esign_upload_modal {
+  width: min(520px, calc(100vw - 2rem));
+  max-height: min(85vh, 640px);
+  display: flex;
+  flex-direction: column;
+}
+
+.deal_esign_upload_modal_desc {
+  margin: 0 1.25rem 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_upload_modal_category {
+  margin: 0 1.25rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--portal-text, #334155);
+}
+
+.deal_esign_upload_apply_all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1.25rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--portal-text, #334155);
+  cursor: pointer;
+}
+
+.deal_esign_upload_modal_list {
+  list-style: none;
+  margin: 0 1.25rem;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.deal_esign_upload_row {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--portal-surface-muted, #f8fafc);
+}
+
+.deal_esign_upload_row_file {
+  margin: 0 0 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal_esign_upload_questionnaire {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--portal-text, #334155);
+  cursor: pointer;
+}
+
+.deal_esign_upload_modal_actions {
+  margin-top: 1rem;
+}

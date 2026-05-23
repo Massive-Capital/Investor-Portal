@@ -125,6 +125,24 @@ const CO_SPONSOR_HIDDEN_TABS = new Set([
   "distributions",
 ])
 
+/** eSign Templates tab: document upload is limited to the deal’s lead sponsor. */
+export function viewerCanUploadDealEsignTemplates(
+  role: ViewerDealMemberRole,
+): boolean {
+  return role === "lead_sponsor"
+}
+
+/** Investors tab: send eSign to an investor — lead, admin, or co-sponsor on the deal. */
+export function viewerCanSendDealEsignTemplates(
+  role: ViewerDealMemberRole,
+): boolean {
+  return (
+    role === "lead_sponsor" ||
+    role === "admin_sponsor" ||
+    role === "co_sponsor"
+  )
+}
+
 /** Which deal detail tab ids the viewer may open, based on roster role. */
 export function visibleDealDetailTabIds(
   role: ViewerDealMemberRole,

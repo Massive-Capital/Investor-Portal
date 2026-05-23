@@ -1,10 +1,8 @@
-import { DealsListPage } from "@/modules/Syndication/Deals/DealsListPage"
+import { Navigate } from "react-router-dom"
 
 /**
- * Investing shell route (`/investing/deals`): deal roster with participant-inclusive API,
- * read-only row actions, and investing-specific columns. Implementation is shared with
- * {@link DealsListPage} via `dealsListContext="investing"`.
+ * Legacy route (`/investing/deals`) — deals list lives on Investments → Deals tab.
  */
 export function InvestingDealsListPage() {
-  return <DealsListPage dealsListContext="investing" />
+  return <Navigate to="/investing/investments?tab=deals" replace />
 }

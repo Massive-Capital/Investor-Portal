@@ -66,6 +66,11 @@ export const addDealForm = pgTable("add_deal_form", {
    * (documents layout + “Make it visible to Investors” toggles). Shared with public preview link.
    */
   offeringInvestorPreviewJson: text("offering_investor_preview_json"),
+  /**
+   * JSON: `{ "v": 1, "files": [{ id, categoryId, relativePath, originalName, uploadedAt }] }`
+   * for eSign Templates tab uploads (`e-signed/<category>/` under deal-assets).
+   */
+  esignTemplatesJson: text("esign_templates_json"),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

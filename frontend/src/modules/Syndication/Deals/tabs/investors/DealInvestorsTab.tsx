@@ -47,6 +47,9 @@ import { DealMemberUserCell } from "./DealMemberUserCell";
 import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCell";
 import { DealInvestorRoleCell } from "./DealInvestorRoleBadge";
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal";
+import { DealInvestorSignedCell } from "./DealInvestorSignedCell";
+import { InvestorEsignStatusModal } from "./InvestorEsignStatusModal";
+import { SendEsignDocumentsModal } from "./SendEsignDocumentsModal";
 import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay";
 import { DealMemberRowActions } from "../deal_members/components/DealMemberRowActions";
 import { AddLpInvestorModal } from "./AddLpInvestorModal";
@@ -173,6 +176,14 @@ interface DealInvestorsTabProps {
   onInvestorsChanged?: () => void;
   /** Send investor invitation email from the Investors table row menu. */
   onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>;
+  /** Send eSign after sponsor picks documents in the modal. */
+  onSendEsignConfirm?: (
+    row: DealInvestorRow,
+    fileIds: string[],
+  ) => void | Promise<void>;
+  /** When true, Send E-sign is visible but disabled (e.g. no templates uploaded). */
+  sendEsignDisabled?: boolean;
+  sendEsignDisabledTitle?: string;
   /** Copy offering link (same as Deal Members). */
   onCopyOfferingLink?: (row: DealInvestorRow) => void;
   /**
@@ -405,6 +416,9 @@ function DealInvestorsPopulated({
   onAddInvestor,
   onContinueDraftEdit,
   onSendInvitationMail,
+  onSendEsignRequest,
+  sendEsignDisabled = false,
+  sendEsignDisabledTitle,
   onCopyOfferingLink,
   onDeleteMember,
   offeringLinkAvailable,
@@ -419,6 +433,9 @@ function DealInvestorsPopulated({
   onAddInvestor: () => void;
   onContinueDraftEdit?: () => void;
   onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>;
+  onSendEsignRequest?: (row: DealInvestorRow) => void;
+  sendEsignDisabled?: boolean;
+  sendEsignDisabledTitle?: string;
   onCopyOfferingLink?: (row: DealInvestorRow) => void;
   onDeleteMember?: (row: DealInvestorRow) => void | Promise<void>;
   offeringLinkAvailable: boolean;
@@ -428,6 +445,9 @@ function DealInvestorsPopulated({
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [esignStatusRow, setEsignStatusRow] = useState<DealInvestorRow | null>(
+    null,
+  );
   const [rows, setRows] = useState<DealInvestorRow[]>(initialPayload.investors);
   const [approveFundBusyId, setApproveFundBusyId] = useState<string | null>(
     null,
@@ -534,7 +554,7 @@ function DealInvestorsPopulated({
     const dataRows = rows.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID);
     const signedCount = dataRows.filter((r) => {
       const s = String(r.signedDate ?? "").trim();
-      return s && s !== "—";
+      return s && s !== "—" && s.toLowerCase() !== "pending";
     }).length;
     return dataRows.length > 0 ? `${signedCount} of ${dataRows.length}` : "—";
   }, [rows]);
@@ -690,6 +710,14 @@ function DealInvestorsPopulated({
   const closeSendMailModal = useCallback(() => {
     setSendMailModalOpen(false);
     setSendMailEmailPreview(null);
+  }, []);
+
+  const openEsignStatusModal = useCallback((row: DealInvestorRow) => {
+    setEsignStatusRow(row);
+  }, []);
+
+  const closeEsignStatusModal = useCallback(() => {
+    setEsignStatusRow(null);
   }, []);
 
   const goNewTemplateFromSendMail = useCallback(() => {
@@ -946,7 +974,12 @@ function DealInvestorsPopulated({
         header: "Signed",
         sortValue: (row) => row.signedDate ?? "",
         tdClassName: "deal_inv_td_ellipsis",
-        cell: (row) => <DealInvEllipsisText text={row.signedDate ?? "—"} />,
+        cell: (row) => (
+          <DealInvestorSignedCell
+            row={row}
+            onOpenEsignStatus={openEsignStatusModal}
+          />
+        ),
       },
       {
         id: "funded",
@@ -1006,6 +1039,9 @@ function DealInvestorsPopulated({
                 onEditInvestor(r);
               }}
               onCopyLink={(r) => onCopyOfferingLink?.(r)}
+              onSendEsign={onSendEsignRequest}
+              sendEsignDisabled={sendEsignDisabled}
+              sendEsignDisabledTitle={sendEsignDisabledTitle}
               onSendInvite={(r) => {
                 void onSendInvitationMail?.(r);
               }}
@@ -1047,11 +1083,15 @@ function DealInvestorsPopulated({
       onAddInvestor,
       onContinueDraftEdit,
       onSendInvitationMail,
+      onSendEsignRequest,
+      sendEsignDisabled,
+      sendEsignDisabledTitle,
       onCopyOfferingLink,
       onDeleteMember,
       offeringLinkAvailable,
       handleApproveFund,
       approveFundBusyId,
+      openEsignStatusModal,
     ],
   );
 
@@ -1166,6 +1206,13 @@ function DealInvestorsPopulated({
         listAriaLabel="Deal investors to export"
         rows={exportModalRows}
         onExportExcel={handleExportInvestors}
+      />
+      <InvestorEsignStatusModal
+        open={esignStatusRow != null}
+        dealId={dealId}
+        row={esignStatusRow}
+        onClose={closeEsignStatusModal}
+        onStatusSynced={onRefreshInvestors}
       />
       {sendMailModalOpen ? (
         <div
@@ -1565,6 +1612,9 @@ export const DealInvestorsTab = forwardRef<
     restoreAddMemberSessionDraft = true,
     onInvestorsChanged,
     onSendInvitationMail,
+    onSendEsignConfirm,
+    sendEsignDisabled = false,
+    sendEsignDisabledTitle,
     onCopyOfferingLink,
     onDeleteMember,
     onSharedInvestmentModalOpenChange,
@@ -1589,6 +1639,8 @@ export const DealInvestorsTab = forwardRef<
   const [editRow, setEditRow] = useState<DealInvestorRow | null>(null);
   const [editLpRow, setEditLpRow] = useState<DealInvestorRow | null>(null);
   const [viewInvestorRow, setViewInvestorRow] =
+    useState<DealInvestorRow | null>(null);
+  const [sendEsignModalRow, setSendEsignModalRow] =
     useState<DealInvestorRow | null>(null);
   const [addMemberDraftTick, setAddMemberDraftTick] = useState(0);
 
@@ -1909,6 +1961,17 @@ export const DealInvestorsTab = forwardRef<
     onInvestorsChanged?.();
   }, [dealId, dealDetail, onInvestorsChanged]);
 
+  const refreshInvestorsListOnly = useCallback(async () => {
+    const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true });
+    setPayload(data);
+    const full = await fetchDealInvestors(dealId, { lpInvestorsOnly: false });
+    upsertRuntimeForViewerFromInvestorsPayload(
+      dealId,
+      full,
+      dealDetail ?? null,
+    );
+  }, [dealId, dealDetail]);
+
   const modal = (
     <AddInvestmentModal
       dealId={dealId}
@@ -1969,22 +2032,13 @@ export const DealInvestorsTab = forwardRef<
         setEditLpRow(null);
         setLpResumeAddMemberDraft(false);
       }}
+      onListRefresh={refreshInvestorsListOnly}
       onSaved={async () => {
-        setLocalAddedInvestors([]);
+        setAddLpInvestorOpen(false);
         setEditLpRow(null);
-        const data = await fetchDealInvestors(dealId, {
-          lpInvestorsOnly: true,
-        });
-        setPayload(data);
-        const full = await fetchDealInvestors(dealId, {
-          lpInvestorsOnly: false,
-        });
-        upsertRuntimeForViewerFromInvestorsPayload(
-          dealId,
-          full,
-          dealDetail ?? null,
-        );
-        onInvestorsChanged?.();
+        setLpResumeAddMemberDraft(false);
+        setLocalAddedInvestors([]);
+        await refreshInvestorsFromApi();
       }}
     />
   );
@@ -2034,6 +2088,11 @@ export const DealInvestorsTab = forwardRef<
         }}
         onContinueDraftEdit={handleContinueDraftInvestor}
         onSendInvitationMail={onSendInvitationMail}
+        onSendEsignRequest={
+          onSendEsignConfirm ? (row) => setSendEsignModalRow(row) : undefined
+        }
+        sendEsignDisabled={sendEsignDisabled}
+        sendEsignDisabledTitle={sendEsignDisabledTitle}
         onCopyOfferingLink={onCopyOfferingLink}
         onDeleteMember={onDeleteMember}
         offeringLinkAvailable={offeringLinkAvailable}
@@ -2047,6 +2106,15 @@ export const DealInvestorsTab = forwardRef<
         dealAllClassNamesLine={dealClassNamesLineForView}
         onEdit={handleEditInvestor}
       />
+      {onSendEsignConfirm ? (
+        <SendEsignDocumentsModal
+          open={sendEsignModalRow != null}
+          dealId={dealId}
+          row={sendEsignModalRow}
+          onClose={() => setSendEsignModalRow(null)}
+          onConfirm={onSendEsignConfirm}
+        />
+      ) : null}
     </>
   );
 });

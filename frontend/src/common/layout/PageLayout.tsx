@@ -5,7 +5,7 @@ import {
   Building2,
   ChevronDown,
   ContactRound,
-  FileText,
+  FileSignature,
   Files,
   LayoutDashboard,
   Mails,
@@ -33,6 +33,7 @@ import {
   setAppDocumentTitle,
 } from "../utils/appDocumentTitle"
 import { useAppShellBranding } from "../hooks/useAppShellBranding"
+import { useUserActivityTracking } from "../hooks/useUserActivityTracking"
 // import { SX_LOGO_SRC } from "@/assets/branding"
 import { SX_SIDENAV_LOGO } from "@/assets/branding"
 import "./page_layout.css"
@@ -172,6 +173,7 @@ const sharedSidebarItems: NavItem[] = [
 /** Syndicating — unique `to` per item so only one NavLink is active */
 const syndicationPortalNavItems: NavItemLink[] = [
   { label: "Deals", to: "/deals", icon: Briefcase },
+  { label: "E-Sign Templates", to: "/templates", icon: FileSignature },
   // { label: "Investor emails", to: "/deals/investor-emails", icon: Mail },
   { label: "Reporting", to: "/deals/reporting", icon: Files },
 ]
@@ -181,10 +183,10 @@ const investingNavItems: NavItemLink[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   // { label: "Company overview", to: "/investing/company", icon: Building2 },
   { label: "Investments", to: "/investing/investments", icon: TrendingUp },
-  { label: "Documents", to: "/investing/documents", icon: FileText },
+  // { label: "Deals", to: "/investing/investments?tab=deals", icon: Briefcase },
+  // { label: "Documents", to: "/investing/documents", icon: FileText },
   { label: "Profiles", to: "/investing/profiles", icon: UserCircle },
-  { label: "Deals", to: "/investing/deals", icon: Briefcase },
-  { label: "Settings", to: "/investing/settings", icon: Settings },
+  { label: "Settings", to: "/account", icon: Settings },
   // { label: "Leave a review", to: "/investing/review", icon: Star },
   { label: "FeedBack", to: "/investing/feedback", icon: Star },
 ]
@@ -200,6 +202,7 @@ const investingNavItems: NavItemLink[] = [
 
 function PageLayoutInner() {
   const location = useLocation()
+  useUserActivityTracking()
   const { mode, portalSwitchOverlay } = usePortalMode()
   const lpInvestor = isLpInvestorSessionUser()
   const { sidebarLogoSrc: workspaceSidebarLogoSrc } = useAppShellBranding()
@@ -244,7 +247,12 @@ function PageLayoutInner() {
     ...sharedSidebarTail,
   ]
 
-  const showInvestingSidebar = lpInvestor || mode === "investing"
+  const onInvestingModulePath =
+    location.pathname === "/account" ||
+    location.pathname.startsWith("/account/") ||
+    location.pathname.startsWith("/investing")
+  const showInvestingSidebar =
+    lpInvestor || mode === "investing" || onInvestingModulePath
   const modeLabel = lpInvestor
     ? "Investing"
     : mode === "syndicating"
@@ -291,6 +299,22 @@ function PageLayoutInner() {
                         to={item.to}
                         className={`app_sidebar_link${profilesActive ? " app_sidebar_link_active" : ""}`}
                         aria-current={profilesActive ? "page" : undefined}
+                      >
+                        <Icon size={18} />
+                        <span>{item.label}</span>
+                      </Link>
+                    )
+                  }
+                  if (item.label === "Settings") {
+                    const settingsActive =
+                      location.pathname === "/account" ||
+                      location.pathname.startsWith("/account/")
+                    return (
+                      <Link
+                        key={item.label}
+                        to={item.to}
+                        className={`app_sidebar_link${settingsActive ? " app_sidebar_link_active" : ""}`}
+                        aria-current={settingsActive ? "page" : undefined}
                       >
                         <Icon size={18} />
                         <span>{item.label}</span>

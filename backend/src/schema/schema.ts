@@ -80,3 +80,16 @@ export {
   type SocAuthAuditLogInsert,
   type SocAuthAuditLogRow,
 } from "./socAuthAudit.schema.js";
+export {
+  userPortalSessions,
+  userPageNavigations,
+  type UserPortalSessionRow,
+  type UserPageNavigationRow,
+} from "./userActivity.schema.js";
+export {
+  esignReusableTemplate,
+  type EsignReusableTemplateRow,
+  type EsignReusableTemplateInsert,
+  type EsignTemplateSignerRole,
+  type EsignReusableTemplateStatus,
+} from "./esign.schema.js";

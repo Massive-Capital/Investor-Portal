@@ -2,9 +2,15 @@ import { GripVertical, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-rea
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "../../../../../common/components/Toast"
 import {
+  fetchDealInvestorClasses,
   patchDealKeyHighlights,
   type DealDetailApi,
 } from "../../api/dealsApi"
+import {
+  firstCreatedInvestorClassName,
+  OFFERING_KEY_HIGHLIGHT_PRESET_METRICS,
+} from "../../dealOfferingPreviewShared"
+import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 
 interface KeyMetricRow {
   id: string
@@ -13,16 +19,8 @@ interface KeyMetricRow {
   isPreset?: boolean
 }
 
-const PRESET_METRICS = [
-  "Annualized return",
-  "Average cash-on-cash",
-  "Equity multiple",
-  "IRR",
-  "Holding period",
-] as const
-
 function initialRows(): KeyMetricRow[] {
-  return PRESET_METRICS.map((metric, i) => ({
+  return OFFERING_KEY_HIGHLIGHT_PRESET_METRICS.map((metric, i) => ({
     id: `preset-${i}`,
     metric,
     newClass: "",
@@ -108,7 +106,24 @@ export function KeyHighlightsSection({
     cloneRows(rowsFromStoredJson(initialStoredJson)),
   )
   const [saving, setSaving] = useState(false)
+  const [investorClasses, setInvestorClasses] = useState<DealInvestorClass[]>([])
   const dragFromRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const list = await fetchDealInvestorClasses(dealId)
+      if (!cancelled) setInvestorClasses(list)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [dealId])
+
+  const classColumnLabel = useMemo(
+    () => firstCreatedInvestorClassName(investorClasses),
+    [investorClasses],
+  )
 
   useEffect(() => {
     const next = rowsFromStoredJson(initialStoredJson)
@@ -201,6 +216,12 @@ export function KeyHighlightsSection({
 
   return (
     <div className="deal_kh">
+      {investorClasses.length === 0 ? (
+        <p className="deal_offering_muted deal_kh_class_hint" role="status">
+          Add an investor class in Offering information — its name labels the
+          values column below.
+        </p>
+      ) : null}
       <div className="deal_kh_toolbar">
         <button
           type="button"
@@ -220,7 +241,7 @@ export function KeyHighlightsSection({
               Metric
             </div>
             <div className="deal_kh_th" role="columnheader">
-              New class
+              {classColumnLabel}
             </div>
             <div className="deal_kh_th deal_kh_th_actions" role="columnheader">
               Actions
@@ -276,7 +297,7 @@ export function KeyHighlightsSection({
                   onChange={(e) =>
                     updateRow(row.id, { newClass: e.target.value })
                   }
-                  aria-label={`New class for ${row.metric || "metric"}`}
+                  aria-label={`${classColumnLabel} value for ${row.metric || "metric"}`}
                 />
               </div>
               <div

@@ -2,7 +2,11 @@ import { ArrowRight, Building2, CircleAlert, Loader2, Mail } from "lucide-react"
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AuthLayout from "../../../common/layout/AuthLayout";
-import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys";
+import {
+  AUTH_RETURN_NEXT_KEY,
+  SESSION_BEARER_KEY,
+} from "../../../common/auth/sessionKeys";
+import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import "../components/signup_form.css";
 import "./deal-invite.css";
@@ -19,6 +23,8 @@ export default function DealInvitePage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token")?.trim() ?? "";
+  const nextPath = parseSafeNextPath(searchParams.get("next"));
+  const isEsignNext = Boolean(nextPath?.includes("/esign"));
   const api = getApiV1Base();
 
   const [phase, setPhase] = useState<"loading" | "invalid" | "ready">(
@@ -85,9 +91,11 @@ export default function DealInvitePage() {
     if (phase !== "ready" || !ctx) return;
     const session = sessionStorage.getItem(SESSION_BEARER_KEY);
     if (session) {
-      navigate(`/deals/${encodeURIComponent(ctx.dealId)}`, { replace: true });
+      const dest =
+        nextPath ?? `/deals/${encodeURIComponent(ctx.dealId)}`;
+      navigate(dest, { replace: true });
     }
-  }, [phase, ctx, navigate]);
+  }, [phase, ctx, navigate, nextPath]);
 
   if (phase === "loading") {
     return (
@@ -117,7 +125,14 @@ export default function DealInvitePage() {
           />
           <h1 className="deal_invite_title">Invitation unavailable</h1>
           <p className="deal_invite_body">{message}</p>
-          <Link to="/signin" className="deal_invite_btn_primary">
+          <Link
+            to={
+              nextPath
+                ? `/signin?next=${encodeURIComponent(nextPath)}`
+                : "/signin"
+            }
+            className="deal_invite_btn_primary"
+          >
             Sign in <ArrowRight size={18} aria-hidden />
           </Link>
         </div>
@@ -128,25 +143,46 @@ export default function DealInvitePage() {
   if (!ctx) return null;
 
   const signupHref = `/signup/${encodeURIComponent(token)}`;
-  const signinState = { from: `/deals/${encodeURIComponent(ctx.dealId)}` };
+  const afterAuthPath =
+    nextPath ?? `/deals/${encodeURIComponent(ctx.dealId)}`;
+  const signinTo =
+    nextPath != null
+      ? `/signin?next=${encodeURIComponent(nextPath)}`
+      : "/signin";
+  const signinState = { from: afterAuthPath };
+  if (nextPath) {
+    sessionStorage.setItem(AUTH_RETURN_NEXT_KEY, nextPath);
+  }
   const accountExists = Boolean(ctx.accountExists);
 
   return (
     <AuthLayout
       title="Investor Portal | Invitation"
-      caption="Complete access to your deal"
+      caption={
+        isEsignNext ? "Sign your deal documents" : "Complete access to your deal"
+      }
     >
       <div className="deal_invite_shell deal_invite_panel">
-        <p className="deal_invite_kicker">Deal invitation</p>
+        <p className="deal_invite_kicker">
+          {isEsignNext ? "eSign documents" : "Deal invitation"}
+        </p>
         <h1 className="deal_invite_title">
-          {accountExists
-            ? "Your account is already on this deal"
-            : "You need an account to open this deal"}
+          {isEsignNext
+            ? accountExists
+              ? "Sign in to complete your documents"
+              : "Create an account to sign your documents"
+            : accountExists
+              ? "Your account is already on this deal"
+              : "You need an account to open this deal"}
         </h1>
         <p className="deal_invite_body">
-          {accountExists
-            ? "An account already exists for this invitation email. Sign in to open the deal."
-            : "No account was found for this invitation. Create one with the email below, or sign in if you already use the portal."}
+          {isEsignNext
+            ? accountExists
+              ? "Your eSign documents are ready. Sign in with the email below, then you can review and sign in the portal."
+              : "Your eSign documents are ready. Create an account with the email below (or sign in if you already have one), then complete signing in the portal."
+            : accountExists
+              ? "An account already exists for this invitation email. Sign in to open the deal."
+              : "No account was found for this invitation. Create one with the email below, or sign in if you already use the portal."}
         </p>
 
         <div className="deal_invite_summary">
@@ -167,11 +203,11 @@ export default function DealInvitePage() {
             </Link>
           ) : null}
           <Link
-            to="/signin"
+            to={signinTo}
             state={signinState}
             className={accountExists ? "deal_invite_btn_primary" : "deal_invite_btn_secondary"}
           >
-            Sign in
+            {isEsignNext ? "Sign in to sign" : "Sign in"}
           </Link>
         </div>
       </div>

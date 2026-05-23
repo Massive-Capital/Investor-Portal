@@ -1,96 +1,94 @@
 import type { ReactNode } from "react"
-import type { OfferingMetricChip } from "../dealOfferingPreviewShared"
-import { DealOfferingPreviewBentoAdaptiveGrid } from "./DealOfferingPreviewBentoAdaptiveGrid"
+import type { OfferingSidebarSummaryRow } from "../dealOfferingPreviewShared"
 
-function BentoChip({ label, value }: { label: string; value: string }) {
+function SidebarSummaryRow({ label, value }: OfferingSidebarSummaryRow) {
   return (
-    <div className="deal_offer_pf_bento_chip">
-      <p className="deal_offer_pf_bento_chip_label">{label}</p>
-      <p className="deal_offer_pf_bento_chip_value">{value}</p>
+    <div className="deal_offer_pf_sidebar_row">
+      <dt className="deal_offer_pf_sidebar_label">{label}</dt>
+      <dd className="deal_offer_pf_sidebar_value">{value}</dd>
     </div>
   )
 }
 
 export interface DealOfferingPreviewBentoLayoutProps {
-  profileChips: { label: string; value: string }[]
-  metricChips: OfferingMetricChip[]
   gallery: ReactNode
-  fundingColumn: ReactNode
-  /** About offering, key highlights, etc. (1–2 tiles). */
-  infoRow: ReactNode | null
-  /** Full-width investor class bento (1–3 tiles). */
-  classesRow: ReactNode | null
+  /** Sticky right column: summary, invest CTA, announcement, funding. */
+  sidebar: ReactNode
+  summaryRows: OfferingSidebarSummaryRow[]
+  keyHighlights: ReactNode | null
+  summary: ReactNode | null
   documents: ReactNode | null
   assets: ReactNode | null
+  location: ReactNode | null
+  /** Full-width sections below the main stack (e.g. classes). */
+  classesRow: ReactNode | null
 }
 
-/** Wireframe bento: profile chips → gallery + funding (metrics + info under funding) → classes → documents → assets. */
+/**
+ * Wireframe portfolio: gallery + sidebar grid, then key highlights → summary →
+ * documents → assets → location.
+ */
 export function DealOfferingPreviewBentoLayout({
-  profileChips,
-  metricChips,
   gallery,
-  fundingColumn,
-  infoRow,
-  classesRow,
+  sidebar,
+  summaryRows,
+  keyHighlights,
+  summary,
   documents,
   assets,
+  location,
+  classesRow,
 }: DealOfferingPreviewBentoLayoutProps) {
   return (
-    <div className="deal_offer_pf_bento">
-      {profileChips.length > 0 ? (
-        <div
-          className="deal_offer_pf_bento_chips"
-          role="list"
-          aria-label="Deal profile"
+    <div className="deal_offer_pf_wireframe">
+      <div className="deal_offer_pf_wireframe_layout">
+        <div className="deal_offer_pf_wireframe_primary">
+          <section
+            className="deal_offer_pf_wireframe_block deal_offer_pf_wireframe_block--gallery"
+            aria-label="Photo gallery"
+          >
+            {gallery}
+          </section>
+
+          {keyHighlights}
+
+          {summary}
+        </div>
+
+        <aside
+          className="deal_offer_pf_wireframe_sidebar"
+          aria-label="Offering summary"
         >
-          {profileChips.map((chip) => (
-            <BentoChip key={chip.label} label={chip.label} value={chip.value} />
-          ))}
-        </div>
-      ) : null}
-
-      <div className="deal_offer_pf_bento_media_row">
-        <div className="deal_offer_pf_bento_tile deal_offer_pf_bento_tile--gallery">
-          {gallery}
-        </div>
-        <div className="deal_offer_pf_bento_tile deal_offer_pf_bento_tile--funding">
-          <div className="deal_offer_pf_bento_funding_stack">
-            {fundingColumn}
-
-            {metricChips.length > 0 ? (
-              <div
-                className="deal_offer_pf_bento_chips deal_offer_pf_bento_chips--metrics"
-                role="list"
-                aria-label="Offering metrics"
-              >
-                {metricChips.map((chip) => (
-                  <BentoChip
-                    key={chip.label}
-                    label={chip.label}
-                    value={chip.value}
-                  />
-                ))}
+          <div className="deal_offer_pf_sidebar_sticky">
+            {summaryRows.length > 0 ? (
+              <div className="deal_offer_pf_sidebar_card">
+                <dl className="deal_offer_pf_sidebar_list">
+                  {summaryRows.map((row) => (
+                    <SidebarSummaryRow
+                      key={row.label}
+                      label={row.label}
+                      value={row.value}
+                    />
+                  ))}
+                </dl>
               </div>
             ) : null}
-
-            {infoRow ? (
-              <DealOfferingPreviewBentoAdaptiveGrid
-                className="deal_offer_pf_bento_info_row deal_offer_pf_bento_info_row--under_funding"
-                ariaLabel="Offering summary"
-              >
-                {infoRow}
-              </DealOfferingPreviewBentoAdaptiveGrid>
-            ) : null}
+            {sidebar}
           </div>
+        </aside>
+
+        <div className="deal_offer_pf_wireframe_secondary">
+          <div className="deal_offer_pf_wireframe_stack">
+            {documents}
+            {assets}
+            {location}
+          </div>
+
+          {classesRow ? (
+            <div className="deal_offer_pf_wireframe_below">{classesRow}</div>
+          ) : null}
         </div>
       </div>
-
-      {classesRow ? (
-        <div className="deal_offer_pf_bento_classes_row">{classesRow}</div>
-      ) : null}
-
-      {documents}
-      {assets}
     </div>
   )
 }

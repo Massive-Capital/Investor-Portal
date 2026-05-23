@@ -57,6 +57,9 @@ export function readDealAssetsFullMap(
   }
 }
 
+export const DEAL_ASSETS_STORAGE_CHANGED_EVENT =
+  "ip-deal-assets-storage-changed"
+
 export function writeDealAssetsFullMap(
   dealId: string,
   map: Record<string, DealAssetPersisted>,
@@ -67,6 +70,13 @@ export function writeDealAssetsFullMap(
       dealAssetsFullStorageKey(dealId),
       JSON.stringify(map),
     )
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(DEAL_ASSETS_STORAGE_CHANGED_EVENT, {
+          detail: { dealId: dealId.trim() },
+        }),
+      )
+    }
   } catch {
     /* quota / private mode */
   }

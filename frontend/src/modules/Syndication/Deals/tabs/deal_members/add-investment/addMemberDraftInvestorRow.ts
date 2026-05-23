@@ -1,4 +1,4 @@
-import { formatDateDdMmmYyyy } from "../../../../../../common/utils/formatDateDisplay"
+import { formatInvestorSignedColumn } from "../../../../../../common/utils/formatDateDisplay"
 import { formatMemberUsername } from "../../../../usermanagement/memberAdminShared"
 import { DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER } from "../../../api/dealsApi"
 import type { DealInvestorClass } from "../../../types/deal-investor-class.types"
@@ -44,7 +44,7 @@ function userFromContactId(contactId: string): {
 }
 
 function formatSignedDateDisplay(iso: string): string {
-  return formatDateDdMmmYyyy(iso)
+  return formatInvestorSignedColumn(iso)
 }
 
 function formatCommittedFromForm(v: AddInvestmentFormValues): string {

@@ -1,6 +1,7 @@
 import {
   Banknote,
   Eye,
+  FileSignature,
   Link2,
   Mail,
   MoreHorizontal,
@@ -28,6 +29,11 @@ export interface DealMemberRowActionsProps {
   onView?: (row: DealInvestorRow) => void | Promise<void>
   onEdit: (row: DealInvestorRow) => void
   onCopyLink: (row: DealInvestorRow) => void
+  /** Investors tab only: send eSign packet to this row’s email. */
+  onSendEsign?: (row: DealInvestorRow) => void | Promise<void>
+  /** When true, Send E-sign is shown but not clickable (e.g. no templates uploaded yet). */
+  sendEsignDisabled?: boolean
+  sendEsignDisabledTitle?: string
   onSendInvite: (row: DealInvestorRow) => void
   /** Return a promise so the confirm dialog can show a loading state until the API finishes. */
   onDelete: (row: DealInvestorRow) => void | Promise<void>
@@ -56,6 +62,9 @@ export function DealMemberRowActions({
   onView,
   onEdit,
   onCopyLink,
+  onSendEsign,
+  sendEsignDisabled = false,
+  sendEsignDisabledTitle,
   onSendInvite,
   onDelete,
   confirmBeforeDelete = true,
@@ -360,6 +369,39 @@ export function DealMemberRowActions({
                     Copy offering link
                   </button>
                 </li>
+                {onSendEsign ? (
+                  <li role="none">
+                    <button
+                      type="button"
+                      className={`um_kebab_menuitem${
+                        draftRow || sendEsignDisabled
+                          ? " um_kebab_menuitem_disabled"
+                          : ""
+                      }`}
+                      role="menuitem"
+                      disabled={draftRow || sendEsignDisabled}
+                      title={
+                        draftRow
+                          ? "Available after the investor is saved"
+                          : sendEsignDisabled
+                            ? sendEsignDisabledTitle
+                            : "Send eSign documents to this investor"
+                      }
+                      onClick={() => {
+                        if (draftRow || sendEsignDisabled) return
+                        runMenuAction(() => void onSendEsign(row))
+                      }}
+                    >
+                      <FileSignature
+                        className="um_kebab_menuitem_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      Send E-sign
+                    </button>
+                  </li>
+                ) : null}
                 <li role="none">
                   <button
                     type="button"

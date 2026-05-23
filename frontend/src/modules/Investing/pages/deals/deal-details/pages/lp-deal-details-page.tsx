@@ -42,6 +42,7 @@ export function LpDealDetailsPage({
           investorsPayload={investorsPayload}
           applyInvestorLinkVisibility
           isPublicOfferingRoute={false}
+          isLpDealWorkspace
           showInvestNowCta
           onInvestNow={onInvestNow}
           galleryUsesPersistedSourcesOnly={false}

@@ -14,6 +14,23 @@ import {
   listDealMembersMappedToInvestorApi,
 } from "../../services/deal/dealMember.service.js";
 import { sendDealMemberInvitationEmail } from "../../services/deal/dealMemberInvitationEmail.service.js";
+import { isPortalUserSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
+import {
+  dealHasEsignTemplateDocuments,
+  getDealEsignTemplatesState,
+  parseSendEsignFileIds,
+  resolveEsignFilesByIds,
+} from "../../services/deal/dealEsignTemplates.service.js";
+import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
+import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
+import { markDealInvestorEsignPending } from "../../services/deal/dealMemberEsignStatus.service.js";
+import {
+  createInvestorSignatureRequest,
+  esignDocumentsFromSelectedFiles,
+  esignTemplateDisplayNameForFile,
+} from "../../services/deal/dealMemberSendEsignDropbox.service.js";
+import { sendDealMemberSendEsignEmail } from "../../services/deal/dealMemberSendEsign.service.js";
+import { getInvestorEsignStatusWithDropboxSync } from "../../services/deal/dealMemberEsignCompletion.service.js";
 
 /**
  * GET /deals/:dealId/members — roster from `deal_member`, merged with investment
@@ -147,6 +164,238 @@ export async function postDealMemberInvitationEmail(
   } catch (err) {
     console.error("postDealMemberInvitationEmail:", err);
     res.status(500).json({ message: "Could not send invitation email" });
+  }
+}
+
+/**
+ * POST /deals/:dealId/members/send-esign
+ * Body: { to_email: string, member_display_name?: string, roster_id?: string, file_ids?: string[] }
+ * Lead, admin, or co-sponsor on this deal only. Sends eSign notification email to the investor.
+ */
+export async function postDealMemberSendEsign(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+
+  const b = req.body as Record<string, unknown>;
+  const toEmail = bodyString(b.to_email ?? b.toEmail);
+  const memberDisplayName = bodyString(b.member_display_name ?? b.memberDisplayName);
+  const rosterId = bodyString(b.roster_id ?? b.rosterId);
+
+  if (!toEmail.trim() || !toEmail.includes("@")) {
+    res.status(400).json({ message: "Valid to_email is required" });
+    return;
+  }
+
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+
+    const isSponsor = await isPortalUserSponsorOnDeal(dealId, user.id);
+    if (!isSponsor) {
+      res.status(403).json({
+        message:
+          "Only a lead sponsor, admin sponsor, or co-sponsor on this deal can send eSign documents",
+      });
+      return;
+    }
+
+    const esignState = await getDealEsignTemplatesState(dealId);
+    if (!dealHasEsignTemplateDocuments(esignState)) {
+      res.status(400).json({
+        message:
+          "Upload at least one document on the eSign Templates tab before sending",
+      });
+      return;
+    }
+
+    const fileIds = parseSendEsignFileIds(b.file_ids ?? b.fileIds);
+    if (fileIds.length === 0) {
+      res.status(400).json({
+        message: "Select at least one document to send",
+      });
+      return;
+    }
+
+    const selectedFiles = resolveEsignFilesByIds(esignState, fileIds);
+    if (selectedFiles.length !== fileIds.length) {
+      res.status(400).json({
+        message: "One or more selected documents are invalid for this deal",
+      });
+      return;
+    }
+
+    const notReady = selectedFiles.filter(
+      (f) => f.dropboxSignStatus !== "ready",
+    );
+    if (notReady.length > 0) {
+      res.status(400).json({
+        message:
+          "Each selected document must have a saved Dropbox Sign template before sending",
+      });
+      return;
+    }
+
+    if (!getDropboxSignConfig()) {
+      res.status(503).json({
+        message:
+          "Dropbox Sign is not configured. Set DROPBOX_SIGN_API_KEY and DROPBOX_SIGN_CLIENT_ID to send eSign.",
+      });
+      return;
+    }
+
+    const deal = await getAddDealFormById(dealId);
+    const dealName = deal?.dealName?.trim() || "Deal";
+    const resolvedRosterId = rosterId.trim();
+    if (!resolvedRosterId) {
+      res.status(400).json({ message: "roster_id is required for eSign" });
+      return;
+    }
+
+    let signatureRequestId: string | undefined;
+    let signatureId: string | undefined;
+    try {
+      const sig = await createInvestorSignatureRequest({
+        dealId,
+        rosterId: resolvedRosterId,
+        toEmail: toEmail.trim(),
+        memberDisplayName: memberDisplayName.trim() || undefined,
+        dealName,
+        selectedFiles,
+      });
+      if (!sig) {
+        res.status(502).json({
+          message: "Could not create Dropbox Sign signature request",
+        });
+        return;
+      }
+      signatureRequestId = sig.signatureRequestId;
+      signatureId = sig.signatureId;
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Could not create Dropbox Sign signature request";
+      res.status(502).json({ message: msg });
+      return;
+    }
+
+    await markDealInvestorEsignPending(dealId, {
+      rosterId: resolvedRosterId,
+      toEmail: toEmail.trim(),
+      documents: esignDocumentsFromSelectedFiles(selectedFiles),
+      signatureRequestId,
+      signatureId,
+    });
+
+    const result = await sendDealMemberSendEsignEmail({
+      dealId,
+      toEmail: toEmail.trim(),
+      memberDisplayName: memberDisplayName.trim() || undefined,
+      documentNames: selectedFiles.map((f) => esignTemplateDisplayNameForFile(f)),
+    });
+
+    if (!result.ok) {
+      const msg =
+        result.error instanceof Error
+          ? result.error.message
+          : "Could not send eSign email";
+      res.status(502).json({
+        message: `${msg} The signing request was created and is pending for this investor; resend the email when ready.`,
+      });
+      return;
+    }
+
+    res.status(200).json({ message: "E-sign email sent" });
+  } catch (err) {
+    console.error("postDealMemberSendEsign:", err);
+    res.status(500).json({ message: "Could not send eSign email" });
+  }
+}
+
+/**
+ * GET /deals/:dealId/members/:rowId/esign-status
+ * Syncs viewed / signed / completed timestamps from Dropbox Sign for the status popup.
+ */
+export async function getDealMemberEsignStatus(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  const rowId =
+    typeof req.params.rowId === "string"
+      ? req.params.rowId
+      : req.params.rowId?.[0];
+  if (!dealId?.trim() || !rowId?.trim()) {
+    res.status(400).json({ message: "Missing deal id or row id" });
+    return;
+  }
+
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+
+    const isSponsor = await isPortalUserSponsorOnDeal(dealId, user.id);
+    if (!isSponsor) {
+      res.status(403).json({
+        message:
+          "Only a lead sponsor, admin sponsor, or co-sponsor on this deal can view eSign status",
+      });
+      return;
+    }
+
+    const result = await getInvestorEsignStatusWithDropboxSync(
+      dealId.trim(),
+      rowId.trim(),
+    );
+    if (!result.status?.sentAt) {
+      res.status(404).json({ message: "No eSign request found for this investor" });
+      return;
+    }
+
+    res.status(200).json({
+      status: {
+        sentAt: result.status.sentAt,
+        viewedAt: result.status.viewedAt,
+        signedAt: result.status.signedAt,
+        completedAt: result.status.completedAt,
+        signatureRequestId: result.status.signatureRequestId,
+        documents: result.status.documents,
+      },
+      dropbox: result.dropbox,
+      syncedAt: result.syncedAt,
+    });
+  } catch (err) {
+    console.error("getDealMemberEsignStatus:", err);
+    res.status(500).json({ message: "Could not load eSign status from Dropbox Sign" });
   }
 }
 

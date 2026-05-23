@@ -32,10 +32,28 @@ import {
 } from "../controllers/deal/dealLpInvestor.controller.js";
 import { patchDealLpInvestorMyInvestNowAddon } from "../controllers/deal/dealLpInvestorMyInvestNow.addon.controller.js";
 import {
+  deleteDealEsignTemplate,
+  getDealEsignTemplateView,
+  getDealEsignTemplateViewUrl,
+  getDealEsignTemplates,
+  postDealEsignTemplateUploads,
+} from "../controllers/deal/dealEsignTemplates.controller.js";
+import {
+  getDealEsignDropboxSignConfig,
+  postDealEsignCompleteEmbeddedTemplate,
+  postDealEsignEmbeddedDraft,
+} from "../controllers/deal/dealEsignDropboxSign.controller.js";
+import {
   deleteDealMember,
+  getDealMemberEsignStatus,
   getDealMembers,
   postDealMemberInvitationEmail,
+  postDealMemberSendEsign,
 } from "../controllers/deal/dealMember.controller.js";
+import {
+  getDealMyEsignDocuments,
+  getDealMyEsignSignSessionHandler,
+} from "../controllers/deal/dealInvestorEsignDocuments.controller.js";
 import { postDealDocumentSharedNotification } from "../controllers/deal/dealDocumentNotification.controller.js";
 import {
   deleteDealInvestorClass,
@@ -113,6 +131,43 @@ router.delete("/deals/:dealId/members/:rowId", deleteDealMember);
 router.post(
   "/deals/:dealId/members/send-invitation-email",
   postDealMemberInvitationEmail,
+);
+router.post(
+  "/deals/:dealId/members/send-esign",
+  postDealMemberSendEsign,
+);
+router.get(
+  "/deals/:dealId/members/:rowId/esign-status",
+  getDealMemberEsignStatus,
+);
+router.get("/deals/:dealId/my-esign-documents", getDealMyEsignDocuments);
+router.get("/deals/:dealId/my-esign-sign-session", getDealMyEsignSignSessionHandler);
+router.get("/deals/esign-templates/dropbox-sign-config", getDealEsignDropboxSignConfig);
+router.get("/deals/:dealId/esign-templates", getDealEsignTemplates);
+router.get(
+  "/deals/:dealId/esign-templates/:fileId/view-url",
+  getDealEsignTemplateViewUrl,
+);
+router.get(
+  "/deals/:dealId/esign-templates/:fileId/view",
+  getDealEsignTemplateView,
+);
+router.post(
+  "/deals/:dealId/esign-template-uploads",
+  upload.array("esignFiles"),
+  postDealEsignTemplateUploads,
+);
+router.post(
+  "/deals/:dealId/esign-templates/:fileId/embedded-draft",
+  postDealEsignEmbeddedDraft,
+);
+router.post(
+  "/deals/:dealId/esign-templates/:fileId/complete-embedded-template",
+  postDealEsignCompleteEmbeddedTemplate,
+);
+router.delete(
+  "/deals/:dealId/esign-templates/:fileId",
+  deleteDealEsignTemplate,
 );
 router.post(
   "/deals/:dealId/documents/send-shared-notification",

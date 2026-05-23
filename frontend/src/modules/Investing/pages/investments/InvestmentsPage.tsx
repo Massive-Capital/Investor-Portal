@@ -1,11 +1,14 @@
-import { Archive, Briefcase, Download, Search, TrendingUp } from "lucide-react"
+import { Archive, Briefcase, CircleDot, Download, Search, TrendingUp } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   DataTable,
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
+import { DealsListPage } from "@/modules/Syndication/Deals/DealsListPage"
+import { dealStageLabel } from "@/modules/Syndication/dealsDashboardUtils"
+import { dealStageChipCompactClassName } from "@/modules/Syndication/Deals/utils/dealStageChip"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import "@/modules/Syndication/Deals/deals-list.css"
@@ -16,6 +19,35 @@ import type { InvestmentListRow } from "./investments.types"
 import "./investments-page.css"
 
 export type { InvestmentListRow } from "./investments.types"
+
+const INVESTMENTS_TAB_PARAM = "tab"
+const ARCHIVES_SUB_TAB_PARAM = "archive"
+
+type InvestmentsPageTab = "deals" | "investments" | "archives"
+type ArchivesSubTab = "deals" | "investments"
+
+const TAB_IDS: Record<InvestmentsPageTab, string> = {
+  deals: "investments-tab-deals",
+  investments: "investments-tab-active",
+  archives: "investments-tab-archives",
+}
+
+const ARCHIVES_TAB_IDS: Record<ArchivesSubTab, string> = {
+  deals: "investments-archives-tab-deals",
+  investments: "investments-archives-tab-investments",
+}
+
+function parseInvestmentsTab(value: string | null): InvestmentsPageTab {
+  if (value === "deals" || value === "investments" || value === "archives") {
+    return value
+  }
+  return "investments"
+}
+
+function parseArchivesSubTab(value: string | null): ArchivesSubTab {
+  if (value === "deals") return "deals"
+  return "investments"
+}
 
 function formatUsd(n: number): string {
   const abs = Math.abs(n)
@@ -28,7 +60,88 @@ function formatUsd(n: number): string {
   return n < 0 ? `(${formatted})` : formatted
 }
 
-type InvestmentsTab = "investments" | "archives"
+type InvestmentsTablePanelProps = {
+  loading: boolean
+  totalRows: number
+  query: string
+  onQueryChange: (value: string) => void
+  onExport: () => void
+  searchAriaLabel: string
+  columns: DataTableColumn<InvestmentListRow>[]
+  filtered: InvestmentListRow[]
+  emptyMessage: string
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    onPageChange: (nextPage: number) => void
+    onPageSizeChange: (nextSize: number) => void
+    ariaLabel: string
+  }
+}
+
+/** Same table shell as {@link DealsListPage} investing list (`deal_inv_table_panel`). */
+function InvestmentsTablePanel({
+  loading,
+  totalRows,
+  query,
+  onQueryChange,
+  onExport,
+  searchAriaLabel,
+  columns,
+  filtered,
+  emptyMessage,
+  pagination,
+}: InvestmentsTablePanelProps) {
+  return (
+    <div
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading && totalRows === 0 ? " deals_list_table_panel_loading" : ""}`}
+      aria-busy={loading}
+    >
+      <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+        <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+          <button
+            type="button"
+            className="um_toolbar_export_btn"
+            onClick={onExport}
+          >
+            <Download size={18} strokeWidth={2} aria-hidden />
+            <span>Export All</span>
+          </button>
+        </div>
+        <div className="um_search_wrap">
+          <Search className="um_search_icon" size={18} aria-hidden />
+          <input
+            type="search"
+            className="um_search_input"
+            placeholder="Search investments…"
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            aria-label={searchAriaLabel}
+          />
+        </div>
+      </div>
+      <DataTable<InvestmentListRow>
+        visualVariant="members"
+        membersTableClassName="um_table_members deal_inv_table"
+        columns={columns}
+        rows={filtered}
+        getRowKey={(r, i) =>
+          (r.dealId && r.dealId.trim()) || r.id || `inv-row-${i}`
+        }
+        emptyLabel={
+          loading && totalRows === 0
+            ? "Loading…"
+            : query.trim()
+              ? "No investments match your search."
+              : emptyMessage
+        }
+        initialSort={{ columnId: "investmentName", direction: "asc" }}
+        pagination={filtered.length > 0 ? pagination : undefined}
+      />
+    </div>
+  )
+}
 
 function useMergedInvestmentRows() {
   const [rows, setRows] = useState<InvestmentListRow[]>([])
@@ -60,12 +173,59 @@ function useMergedInvestmentRows() {
 }
 
 export default function InvestmentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = parseInvestmentsTab(searchParams.get(INVESTMENTS_TAB_PARAM))
+  const archivesSubTab = parseArchivesSubTab(
+    searchParams.get(ARCHIVES_SUB_TAB_PARAM),
+  )
   const { rows, loading } = useMergedInvestmentRows()
   const [query, setQuery] = useState("")
-  const [activeTab, setActiveTab] = useState<InvestmentsTab>("investments")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+
+  const setActiveTab = useCallback(
+    (tab: InvestmentsPageTab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (tab === "investments") {
+            next.delete(INVESTMENTS_TAB_PARAM)
+            next.delete(ARCHIVES_SUB_TAB_PARAM)
+          } else {
+            next.set(INVESTMENTS_TAB_PARAM, tab)
+            if (tab !== "archives") {
+              next.delete(ARCHIVES_SUB_TAB_PARAM)
+            }
+          }
+          return next
+        },
+        { replace: true },
+      )
+      setQuery("")
+    },
+    [setSearchParams],
+  )
+
+  const setArchivesSubTab = useCallback(
+    (subTab: ArchivesSubTab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set(INVESTMENTS_TAB_PARAM, "archives")
+          if (subTab === "investments") {
+            next.delete(ARCHIVES_SUB_TAB_PARAM)
+          } else {
+            next.set(ARCHIVES_SUB_TAB_PARAM, subTab)
+          }
+          return next
+        },
+        { replace: true },
+      )
+      setQuery("")
+    },
+    [setSearchParams],
+  )
 
   const { activeCount, archivedCount } = useMemo(() => {
     let active = 0
@@ -98,19 +258,7 @@ export default function InvestmentsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [activeTab, query])
-
-  const totals = useMemo(() => {
-    let invested = 0
-    let distributed = 0
-    for (const r of filtered) {
-      invested += Number.isFinite(r.investedAmount) ? r.investedAmount : 0
-      distributed += Number.isFinite(r.distributedAmount)
-        ? r.distributedAmount
-        : 0
-    }
-    return { invested, distributed }
-  }, [filtered])
+  }, [activeTab, archivesSubTab, query])
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -154,13 +302,6 @@ export default function InvestmentsPage() {
         sortValue: (r) => (r.offeringName ?? "").toLowerCase(),
         cell: (r) => r.offeringName || "—",
       },
-      /* "Invested as" hidden: one row per deal in the list; per-profile lines live on the investment detail view. */
-      // {
-      //   id: "investmentProfile",
-      //   header: "Invested as",
-      //   sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
-      //   cell: (r) => r.investmentProfile || "—",
-      // },
       {
         id: "investedAmount",
         header: "Invested",
@@ -194,8 +335,24 @@ export default function InvestmentsPage() {
       {
         id: "status",
         header: "Status",
-        sortValue: (r) => (r.status ?? "").toLowerCase(),
-        cell: (r) => r.status || "—",
+        sortValue: (r) => dealStageLabel(r.status ?? "").toLowerCase(),
+        cell: (r) => {
+          const label = dealStageLabel(r.status ?? "").trim() || "—"
+          if (label === "—") {
+            return <span className="um_status_muted">—</span>
+          }
+          return (
+            <span
+              className={dealStageChipCompactClassName(r.status)}
+              title={`Status: ${label}`}
+            >
+              <span className="deals_list_stage_badge_icon" aria-hidden>
+                <CircleDot size={12} strokeWidth={2} />
+              </span>
+              <span>{label}</span>
+            </span>
+          )
+        },
       },
       {
         id: "actionRequired",
@@ -207,10 +364,30 @@ export default function InvestmentsPage() {
     [],
   )
 
-  const emptyMessage =
+  const investmentsEmptyMessage =
     activeTab === "archives"
       ? "No archived investments here yet."
       : "No committed investments to show."
+
+  const investmentsTablePanelProps = {
+    loading,
+    totalRows: rows.length,
+    query,
+    onQueryChange: setQuery,
+    onExport: () => setExportModalOpen(true),
+    columns,
+    filtered,
+    emptyMessage: investmentsEmptyMessage,
+    pagination,
+  } as const
+
+  // const pageLead =
+  //   activeTab === "deals"
+  //     ? "Deals in your investing scope — organization deals and deals where you are on the roster."
+  //     : activeTab === "archives"
+  //       ? "Archived investments and deals."
+  //       : "Your commitments by deal. Select a row to see property details, cash flow, and debt information."
+  const pageLead = ""
 
   return (
     <section
@@ -229,10 +406,9 @@ export default function InvestmentsPage() {
             Investments
           </h2>
         </div>
-        <p className="investments_page_lead">
-          Your commitments by deal. Select a row to see property details, cash flow, and
-          debt information.
-        </p>
+        {pageLead ? (
+          <p className="investments_page_lead">{pageLead}</p>
+        ) : null}
       </div>
 
       <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
@@ -244,7 +420,24 @@ export default function InvestmentsPage() {
           >
             <button
               type="button"
-              id="investments-tab-active"
+              id={TAB_IDS.deals}
+              role="tab"
+              aria-selected={activeTab === "deals"}
+              aria-controls="investments-list-tabpanel"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "deals" ? " um_members_tab_active" : ""}`}
+              onClick={() => setActiveTab("deals")}
+            >
+              <Briefcase
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">Deals</span>
+            </button>
+            <button
+              type="button"
+              id={TAB_IDS.investments}
               role="tab"
               aria-selected={activeTab === "investments"}
               aria-controls="investments-list-tabpanel"
@@ -264,7 +457,7 @@ export default function InvestmentsPage() {
             </button>
             <button
               type="button"
-              id="investments-tab-archives"
+              id={TAB_IDS.archives}
               role="tab"
               aria-selected={activeTab === "archives"}
               aria-controls="investments-list-tabpanel"
@@ -290,84 +483,97 @@ export default function InvestmentsPage() {
         <div
           id="investments-list-tabpanel"
           role="tabpanel"
-          aria-labelledby={
-            activeTab === "investments"
-              ? "investments-tab-active"
-              : "investments-tab-archives"
-          }
-          className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading ? " deals_list_table_panel_loading" : ""}`}
-          aria-busy={loading}
+          aria-labelledby={TAB_IDS[activeTab]}
         >
-          <div
-            className="um_toolbar deal_inv_table_um_toolbar investments_page_table_toolbar um_toolbar_export_then_search"
-            aria-label="Table tools"
-          >
-            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-              <button
-                type="button"
-                className="um_toolbar_export_btn"
-                onClick={() => setExportModalOpen(true)}
-                title="Export all rows in this view (CSV) or pick rows in the dialog"
-                aria-label="Export All"
+          {activeTab === "deals" ? (
+            <DealsListPage dealsListContext="investing" embedded />
+          ) : activeTab === "archives" ? (
+            <>
+              <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer investments_archives_subtabs">
+                <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+                  <div
+                    className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
+                    role="tablist"
+                    aria-label="Archive views"
+                  >
+                    <button
+                      type="button"
+                      id={ARCHIVES_TAB_IDS.deals}
+                      role="tab"
+                      aria-selected={archivesSubTab === "deals"}
+                      aria-controls="investments-archives-tabpanel"
+                      className={`um_members_tab deals_tabs_tab um_segmented_tab${archivesSubTab === "deals" ? " um_members_tab_active" : ""}`}
+                      onClick={() => setArchivesSubTab("deals")}
+                    >
+                      <Briefcase
+                        className="deals_tabs_icon um_segmented_tab_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span className="deals_tabs_label um_segmented_tab_label">
+                        Deals
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      id={ARCHIVES_TAB_IDS.investments}
+                      role="tab"
+                      aria-selected={archivesSubTab === "investments"}
+                      aria-controls="investments-archives-tabpanel"
+                      className={`um_members_tab deals_tabs_tab um_segmented_tab${archivesSubTab === "investments" ? " um_members_tab_active" : ""}`}
+                      onClick={() => setArchivesSubTab("investments")}
+                    >
+                      <TrendingUp
+                        className="deals_tabs_icon um_segmented_tab_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span className="deals_tabs_label um_segmented_tab_label">
+                        Investments
+                      </span>
+                      <span className="deals_tabs_count">({archivedCount})</span>
+                    </button>
+                  </div>
+                </TabsScrollStrip>
+              </div>
+              <div
+                id="investments-archives-tabpanel"
+                role="tabpanel"
+                aria-labelledby={ARCHIVES_TAB_IDS[archivesSubTab]}
+                className="investments_archives_tabpanel"
               >
-                <Download size={18} strokeWidth={2} aria-hidden />
-                <span>Export All</span>
-              </button>
-            </div>
-            <div className="um_search_wrap deal_inv_toolbar_search">
-              <Search className="um_search_icon" size={18} aria-hidden />
-              <input
-                type="search"
-                className="um_search_input"
-                placeholder="Search by name, offering, or profile…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Filter investments"
-              />
-            </div>
-            {filtered.length > 0 ? (
-              <p className="investments_page_totals" aria-live="polite">
-                <span className="investments_page_totals_count">
-                  {filtered.length}
-                  {filtered.length === 1 ? " result" : " results"}
-                </span>
-                <span className="investments_page_totals_sep" aria-hidden>
-                  ·
-                </span>
-                <span>Invested {formatUsd(totals.invested)}</span>
-                <span className="investments_page_totals_sep" aria-hidden>
-                  ·
-                </span>
-                <span>Distributed {formatUsd(totals.distributed)}</span>
-              </p>
-            ) : null}
-          </div>
-          <DataTable<InvestmentListRow>
-            visualVariant="members"
-            columns={columns}
-            rows={filtered}
-            isLoading={loading && rows.length === 0}
-            getRowKey={(r, i) =>
-              (r.dealId && r.dealId.trim()) || r.id || `inv-row-${i}`
-            }
-            emptyLabel={
-              loading && rows.length === 0
-                ? "Loading…"
-                : query.trim()
-                  ? "No investments match this filter. Try a different search."
-                  : emptyMessage
-            }
-            initialSort={{ columnId: "investmentName", direction: "asc" }}
-            pagination={filtered.length > 0 ? pagination : undefined}
-          />
+                {archivesSubTab === "deals" ? (
+                  <DealsListPage
+                    dealsListContext="investing"
+                    embedded
+                    investingArchiveView="archived"
+                  />
+                ) : (
+                  <InvestmentsTablePanel
+                    {...investmentsTablePanelProps}
+                    searchAriaLabel="Search archived investments"
+                  />
+                )}
+              </div>
+            </>
+          ) : (
+            <InvestmentsTablePanel
+              {...investmentsTablePanelProps}
+              searchAriaLabel="Search investments"
+            />
+          )}
         </div>
       </div>
 
-      <ExportInvestmentsModal
-        open={exportModalOpen}
-        onClose={() => setExportModalOpen(false)}
-        investments={rowsForTab}
-      />
+      {activeTab !== "deals" ? (
+        <ExportInvestmentsModal
+          open={exportModalOpen}
+          onClose={() => setExportModalOpen(false)}
+          investments={rowsForTab}
+        />
+      ) : null}
     </section>
   )
 }

@@ -17,6 +17,11 @@ import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema
 import { dealMember } from "../../schema/deal.schema/deal-member.schema.js";
 import { listInvestorClassesByDealId } from "./dealInvestorClass.service.js";
 import { isPortalUserSponsorOnDeal } from "./dealMemberScope.service.js";
+import {
+  isDocSignedEsignCompleted,
+  isDocSignedEsignPending,
+} from "../../constants/deal-doc-signed.js";
+import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 
 const UPLOAD_SUBDIR = "deal-investments";
@@ -361,6 +366,8 @@ function userForContact(contactId: string): {
 function formatSignedDate(iso: string | null | undefined): string {
   const s = iso?.trim();
   if (!s) return "—";
+  if (isDocSignedEsignPending(s)) return "Pending";
+  if (isDocSignedEsignCompleted(s)) return "Completed";
   return formatDdMmmYyyy(s);
 }
 
@@ -582,6 +589,7 @@ export function mapRowToInvestorApi(
         row.extraContributionAmounts as string[] | null,
       ),
       signedDate: formatSignedDate(row.docSignedDate),
+      esignStatus: parseEsignStatusJson(row.esignStatusJson),
       fundedDate: "—",
       selfAccredited: "—",
       verifiedAccLabel: "Not Started",
@@ -631,6 +639,7 @@ export function mapRowToInvestorApi(
       row.extraContributionAmounts as string[] | null,
     ),
     signedDate: formatSignedDate(row.docSignedDate),
+    esignStatus: parseEsignStatusJson(row.esignStatusJson),
     fundedDate: "—",
     selfAccredited: "—",
     verifiedAccLabel: "Not Started",

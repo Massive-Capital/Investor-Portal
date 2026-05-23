@@ -78,7 +78,7 @@ export function upsertRuntimeFromViewerAddInvestmentForm(input: {
     distributedAmount: 0,
     currentValuation: deal?.offeringSize?.trim() || "—",
     dealCloseDate: formatDealCloseDateForInvestments(deal?.closeDate),
-    status: "Active",
+    status: (deal?.dealStage || deal?.listRow?.dealStage || "").trim() || "—",
     actionRequired: "None",
   })
 }
@@ -128,7 +128,7 @@ export function upsertRuntimeForViewerFromInvestorsPayload(
     distributedAmount: 0,
     currentValuation: deal?.offeringSize?.trim() || "—",
     dealCloseDate: (listRow?.closeDateDisplay || "—").trim() || "—",
-    status: (listRow?.dealStage || "Active").trim() || "Active",
+    status: (listRow?.dealStage || deal?.dealStage || "").trim() || "—",
     actionRequired: "None",
   })
 }

@@ -1,5 +1,9 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { dealMemberRoleLabelIsLpInvestor } from "@/common/auth/roleUtils"
+import {
+  INVESTOR_ROLE_SELECT_OPTIONS,
+  LP_INVESTORS_ROLE_LABEL,
+} from "@/modules/Syndication/Deals/constants/investor-profile"
 import { fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
 import type {
   DealInvestorRow,
@@ -40,22 +44,47 @@ export function dealIsInViewerInvestingScope(
   return committedAmountForViewerEmail(payload, em) > 0
 }
 
-function dealMemberRowHasSponsorRole(m: DealInvestorRow): boolean {
-  const role = String(m.investorRole ?? "").trim().toLowerCase()
-  if (role === "lead sponsor" || role === "admin sponsor") return true
-  if (role === "co-sponsor" || role === "co sponsor") return true
-  for (const lab of m.memberRoleLabels ?? []) {
-    const r = String(lab ?? "").trim().toLowerCase()
-    if (
-      r === "lead sponsor" ||
-      r === "admin sponsor" ||
-      r === "co-sponsor" ||
-      r === "co sponsor"
-    ) {
-      return true
-    }
+const SPONSOR_ROLE_DISPLAY_ORDER = [
+  "Lead Sponsor",
+  "Admin Sponsor",
+  "Co-Sponsor",
+] as const
+
+function sponsorRoleDisplayLabel(stored: string | undefined): string | null {
+  const t = String(stored ?? "").trim()
+  if (!t || t === "—") return null
+  const byVal = INVESTOR_ROLE_SELECT_OPTIONS.find((o) => o.value === t)
+  if (byVal?.label) {
+    if (byVal.label === "Admin sponsor") return "Admin Sponsor"
+    if (byVal.label === "Co-sponsor") return "Co-Sponsor"
+    return byVal.label
   }
-  return false
+  const byLabel = INVESTOR_ROLE_SELECT_OPTIONS.find((o) => o.label === t)
+  if (byLabel?.label) {
+    if (byLabel.label === "Admin sponsor") return "Admin Sponsor"
+    if (byLabel.label === "Co-sponsor") return "Co-Sponsor"
+    return byLabel.label
+  }
+  const lower = t.toLowerCase()
+  if (lower === "lead sponsor") return "Lead Sponsor"
+  if (lower === "admin sponsor") return "Admin Sponsor"
+  if (lower === "co-sponsor" || lower === "co sponsor") return "Co-Sponsor"
+  return null
+}
+
+function sponsorRoleLabelsFromRow(m: DealInvestorRow): string[] {
+  const out = new Set<string>()
+  const roleLabel = sponsorRoleDisplayLabel(m.investorRole)
+  if (roleLabel) out.add(roleLabel)
+  for (const lab of m.memberRoleLabels ?? []) {
+    const l = sponsorRoleDisplayLabel(lab)
+    if (l) out.add(l)
+  }
+  return [...out]
+}
+
+function dealMemberRowHasSponsorRole(m: DealInvestorRow): boolean {
+  return sponsorRoleLabelsFromRow(m).length > 0
 }
 
 /**
@@ -169,6 +198,59 @@ export async function filterDealListToViewerInvested(
  * {@link applyLpSessionDealIdScope} so a sponsor is not pre-excluded (LP deal id
  * lists are investor-scoped, not syndication-scoped).
  */
+export type ViewerInvestingDealRoles = {
+  /** Lead Sponsor, Admin Sponsor, and/or Co-Sponsor when applicable. */
+  sponsorRoleLabels: string[]
+  isInvestor: boolean
+}
+
+/**
+ * Sponsor vs LP investor on a deal for the investing deals table (not mutually exclusive).
+ */
+export function resolveViewerInvestingDealRoles(
+  members: DealInvestorRow[],
+  investors: DealInvestorRow[],
+  viewerEmailNorm: string,
+  investorPayload?: DealInvestorsPayload,
+): ViewerInvestingDealRoles {
+  const sponsorLabels = new Set<string>()
+  let isInvestor = false
+  if (!viewerEmailNorm) return { sponsorRoleLabels: [], isInvestor }
+
+  for (const list of [members, investors]) {
+    for (const m of list) {
+      const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
+      if (rowEmail !== viewerEmailNorm) continue
+      for (const lab of sponsorRoleLabelsFromRow(m)) sponsorLabels.add(lab)
+      if (rowHasLpInvestorRole(m)) isInvestor = true
+    }
+  }
+
+  if (investorPayload) {
+    if (committedAmountForViewerEmail(investorPayload, viewerEmailNorm) > 0) {
+      isInvestor = true
+    }
+    if (viewerOnDealAsInvitedInvestor(investorPayload, viewerEmailNorm)) {
+      isInvestor = true
+    }
+  }
+
+  const sponsorRoleLabels = SPONSOR_ROLE_DISPLAY_ORDER.filter((l) =>
+    sponsorLabels.has(l),
+  )
+  return { sponsorRoleLabels, isInvestor }
+}
+
+/** Display label for investing → Deals tab “Your role” column. */
+export function formatViewerInvestingDealRolesLabel(
+  roles: ViewerInvestingDealRoles,
+): string {
+  const parts: string[] = [...roles.sponsorRoleLabels]
+  if (roles.isInvestor) parts.push(LP_INVESTORS_ROLE_LABEL)
+  if (parts.length === 0) return "—"
+  return parts.join(", ")
+}
+
 export async function filterDealListToInvestingDealsPage(
   rows: DealListRow[],
 ): Promise<DealListRow[]> {

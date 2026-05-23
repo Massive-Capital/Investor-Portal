@@ -65,6 +65,17 @@ export function formatDateDdMmmYyyy(
   return s
 }
 
+/** Investors tab Signed column: calendar date or **Pending** after eSign is sent. */
+export function formatInvestorSignedColumn(
+  raw: string | null | undefined,
+): string {
+  const s = String(raw ?? "").trim()
+  if (!s || s === "—") return "—"
+  if (s.toLowerCase() === "pending") return "Pending"
+  if (s.toLowerCase() === "completed") return "Completed"
+  return formatDateDdMmmYyyy(s)
+}
+
 /** Numeric sort key for values passed through {@link formatDateDdMmmYyyy}. */
 export function dateSortValue(raw: string | undefined): number {
   if (raw == null) return 0

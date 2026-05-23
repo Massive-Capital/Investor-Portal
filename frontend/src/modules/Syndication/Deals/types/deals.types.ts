@@ -77,7 +77,7 @@ export interface DealFormTypeOption {
 }
 
 export const DEAL_FORM_TYPE_OPTIONS: DealFormTypeOption[] = [
-  { value: "direct_syndication", label: "Direct syndication (most common)" },
+  { value: "direct_syndication", label: "Direct syndication" },
   { value: "fund", label: "Fund" },
   // {
   //   value: "flexible_fund",
@@ -123,12 +123,12 @@ export const DEAL_STAGE_CHOICES: DealStageChoice[] = [
   },
   {
     value: "capital_raising",
-    label: "Capital Raising",
+    label: "Capital",
     hint: "Actively raising equity.",
   },
   {
     value: "managing_asset",
-    label: "Managing Asset",
+    label: "Asset managing",
     hint: "Fully funded and closed the deal. Currently managing the asset.",
   },
   {

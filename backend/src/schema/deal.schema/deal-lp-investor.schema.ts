@@ -29,6 +29,9 @@ export const dealLpInvestor = pgTable(
     investorClass: text("investor_class").notNull().default(""),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),
     committed_amount: text("committed_amount").notNull().default(""),
+    /** Calendar date when signed, or `pending` after eSign is sent. */
+    docSignedDate: text("doc_signed_date"),
+    esignStatusJson: text("esign_status_json"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

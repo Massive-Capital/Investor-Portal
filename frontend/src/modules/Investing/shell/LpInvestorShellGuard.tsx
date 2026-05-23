@@ -56,5 +56,5 @@ export function LpInvestorShellGuard() {
   const { pathname } = useLocation()
   if (!isLpInvestorSessionUser()) return <Outlet />
   if (isPathAllowedForLpInvestor(pathname)) return <Outlet />
-  return <Navigate to="/investing/deals" replace />
+  return <Navigate to="/investing/investments?tab=deals" replace />
 }

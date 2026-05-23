@@ -51,6 +51,11 @@ export interface DealInvestorRow {
   fundApprovedByDisplayName?: string
   committed: string
   signedDate: string
+  /**
+   * eSign workflow timestamps after Send E-sign (sent → viewed → signed → completed).
+   * When present, the Signed column is clickable to open the status popup.
+   */
+  esignStatus?: DealInvestorEsignStatus
   fundedDate: string
   selfAccredited: string
   verifiedAccLabel: string
@@ -88,6 +93,23 @@ export interface DealInvestorRow {
   invitationMailSent?: boolean
   /** `lp_roster` = row from `deal_lp_investor` only (no `deal_investment`). */
   investorKind?: "investment" | "lp_roster"
+}
+
+export interface DealInvestorEsignDocumentRef {
+  fileId: string
+  name: string
+  /** eSign template profile (individual, llc, …). */
+  categoryId?: string
+  /** Set on all sent docs when signing is complete (combined signed PDF). */
+  signedRelativePath?: string
+}
+
+export interface DealInvestorEsignStatus {
+  sentAt: string | null
+  viewedAt: string | null
+  signedAt: string | null
+  completedAt: string | null
+  documents: DealInvestorEsignDocumentRef[]
 }
 
 export interface DealInvestorsPayload {

@@ -94,6 +94,34 @@ const SPONSOR_ROLES_IN =
  * True when this portal user appears on `deal_member` for the deal in a Lead / Admin /
  * Co-sponsor role (id or contact email match).
  */
+/** True when the portal user is Lead Sponsor on this deal (id or contact email match). */
+export async function isPortalUserLeadSponsorOnDeal(
+  dealId: string,
+  userId: string,
+): Promise<boolean> {
+  const d = String(dealId ?? "").trim();
+  const s = String(userId ?? "").trim();
+  if (!d || !s) return false;
+  const res = await pool.query<{ ok: number }>(
+    `SELECT 1 AS ok
+     FROM deal_member dm
+     INNER JOIN users u ON u.id = $2::uuid
+     WHERE dm.deal_id = $1::uuid
+       AND lower(trim(dm.deal_member_role)) = 'lead sponsor'
+       AND (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+     LIMIT 1`,
+    [d, s],
+  );
+  return res.rows.length > 0;
+}
+
 export async function isPortalUserSponsorOnDeal(
   dealId: string,
   sponsorUserId: string,

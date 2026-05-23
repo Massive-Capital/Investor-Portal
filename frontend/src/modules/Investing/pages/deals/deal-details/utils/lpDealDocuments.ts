@@ -1,7 +1,10 @@
 import { readOfferingPreviewDocuments } from "@/modules/Syndication/Deals/utils/offeringPreviewDocuments"
 import {
+  effectiveDocumentSharedWithScope,
   readOfferingPreviewSections,
   sectionDisplayLabel,
+  sectionSharedWithDisplay,
+  sectionVisibleOnOfferingPreview,
 } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 
 export interface LpDealDocumentRow {
@@ -21,27 +24,38 @@ export function listDocumentsForLpDealPage(dealId: string): LpDealDocumentRow[] 
   if (!id) return []
   const sections = readOfferingPreviewSections(id)
   const out: LpDealDocumentRow[] = []
+  const lpPortalCtx = {
+    isPublicAnonymousOffering: false,
+    isLpDealWorkspace: true,
+  }
   for (const sec of sections) {
     const sl = sectionDisplayLabel(sec)
     for (const d of sec.nestedDocuments) {
+      const scope = effectiveDocumentSharedWithScope(d, sec)
+      if (!sectionVisibleOnOfferingPreview(scope, lpPortalCtx)) continue
       out.push({
         id: d.id,
         name: d.name,
         url: d.url,
         sectionLabel: sl,
-        sharedWithLabel: sec.visibility,
+        sharedWithLabel: sectionSharedWithDisplay(
+          effectiveDocumentSharedWithScope(d, sec),
+        ),
       })
     }
   }
   if (out.length > 0) return out
   for (const d of readOfferingPreviewDocuments(id)) {
+    const scope =
+      d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
+    if (!sectionVisibleOnOfferingPreview(scope, lpPortalCtx)) continue
     out.push({
       id: d.id,
       name: d.name,
       url: d.url,
       sectionLabel: "Documents",
       sharedWithLabel:
-        d.sharedWithScope === "lp_investor" ? "LP Investor" : "Offering page",
+        d.sharedWithScope === "lp_investor" ? "LP portal only" : "Offering link",
     })
   }
   return out

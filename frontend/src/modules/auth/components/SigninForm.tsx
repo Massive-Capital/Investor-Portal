@@ -14,6 +14,8 @@ import {
 import { useState } from "react";
 import Input from "../../../common/components/Input";
 import {
+  AUTH_RETURN_NEXT_KEY,
+  SESSION_ACTIVITY_SESSION_ID_KEY,
   SESSION_BEARER_KEY,
   SESSION_USER_DETAILS_KEY,
 } from "../../../common/auth/sessionKeys";
@@ -21,6 +23,7 @@ import { isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePath";
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
+import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import "./signin_form.css";
 
 const SigninForm = () => {
@@ -58,6 +61,7 @@ const SigninForm = () => {
         message?: string;
         token?: string;
         userDetails?: unknown;
+        activitySessionId?: string;
       };
       if (!response.ok) {
         if (response.status === 403) {
@@ -81,21 +85,29 @@ const SigninForm = () => {
       } else {
         sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
       }
+      if (typeof data.activitySessionId === "string" && data.activitySessionId.trim()) {
+        sessionStorage.setItem(
+          SESSION_ACTIVITY_SESSION_ID_KEY,
+          data.activitySessionId.trim(),
+        );
+      } else {
+        sessionStorage.removeItem(SESSION_ACTIVITY_SESSION_ID_KEY);
+      }
       const state = location.state as
         | { from?: string; investNow?: boolean }
         | undefined;
       const storedIntent = consumeInvestNowIntent();
-      const from = state?.from;
-      let redirectTo =
-        typeof from === "string" &&
-        from.startsWith("/") &&
-        !from.startsWith("//") &&
-        from !== "/signin"
-          ? from
-          : isPlatformAdmin()
-            ? "/metrics"
-            : "/dashboard";
-      if (storedIntent?.dealId) {
+      const from =
+        parseSafeNextPath(state?.from) ??
+        parseSafeNextPath(new URLSearchParams(location.search).get("next")) ??
+        parseSafeNextPath(sessionStorage.getItem(AUTH_RETURN_NEXT_KEY));
+      sessionStorage.removeItem(AUTH_RETURN_NEXT_KEY);
+      let redirectTo = from
+        ? from
+        : isPlatformAdmin()
+          ? "/metrics"
+          : "/dashboard";
+      if (!from && storedIntent?.dealId) {
         redirectTo = dealWorkspacePath(storedIntent.dealId);
       }
       if (redirectTo === "/") {
@@ -117,8 +129,19 @@ const SigninForm = () => {
   const isDisabledBtn =
     !emailOrUsername.trim() || !password.trim() || isLoading;
 
+  const pendingEsignReturn =
+    parseSafeNextPath(new URLSearchParams(location.search).get("next"))?.includes(
+      "/esign",
+    ) ?? false;
+
   return (
     <>
+      {pendingEsignReturn ? (
+        <p className="authMessage" role="status">
+          Sign in with the email that received the eSign request. After sign-in you
+          will be taken to the document signing page.
+        </p>
+      ) : null}
       <form autoComplete="off" onSubmit={handleSubmit}>
         <div className="emailData">
           <Input

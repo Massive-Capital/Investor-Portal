@@ -1,5 +1,11 @@
 import { HelpCircle, Info, Loader2, RotateCcw, Save } from "lucide-react"
-import { useCallback, useEffect, useId, useMemo, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react"
 import { toast } from "../../../../../common/components/Toast"
 import {
   fetchDealById,
@@ -8,8 +14,13 @@ import {
   updateDealInvestorClass,
   type DealDetailApi,
 } from "../../api/dealsApi"
-import { computeDealAssetRowsFromClientStorage } from "../../types/deal-asset.types"
+import {
+  computeDealAssetRowsFromClientStorage,
+  DEAL_ASSETS_STORAGE_CHANGED_EVENT,
+} from "../../types/deal-asset.types"
 import { DEAL_FORM_TYPE_OPTIONS } from "../../types/deals.types"
+import { SEC_TYPE_OPTIONS } from "../../constants/sec-type-options"
+import { isLpInvestorClass } from "../../utils/investorClassOverviewFields"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import {
   blurFormatMoneyInput,
@@ -32,6 +43,17 @@ import {
 import { investorClassRowToFormValues } from "./OfferingInformationSection"
 import { OfferingOverviewAssetsMultiSelect } from "./OfferingOverviewAssetsMultiSelect"
 import { OfferingOverviewLocationMap } from "./OfferingOverviewLocationMap"
+import {
+  computeMergedOverviewAssetSelection,
+  consumeOverviewAssetsMergePending,
+  OFFERING_OVERVIEW_ASSETS_MERGE_EVENT,
+  offeringOverviewAssetsMergeStorageKey,
+  persistOverviewExcludedFromSave,
+} from "../../utils/offeringOverviewAssetSync"
+import {
+  OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+  readOfferingPreviewInvestorVisibility,
+} from "../../utils/offeringPreviewInvestorVisibility"
 
 type OfferingOverviewSectionProps = {
   detail: DealDetailApi
@@ -49,6 +71,40 @@ type OverviewDraft = {
   classMinimumInvestment: string
   classNumberOfUnits: string
   classPricePerUnit: string
+  classInvestmentType: string
+}
+
+const OVERVIEW_INVESTMENT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "equity", label: "Equity" },
+  { value: "debt", label: "Debt" },
+  { value: "convertible", label: "Convertible" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "other", label: "Other" },
+]
+
+function investmentTypeFromClassRow(
+  row: DealInvestorClass | undefined,
+): string {
+  if (!row?.advancedOptionsJson?.trim()) return "equity"
+  try {
+    const o = JSON.parse(row.advancedOptionsJson) as { investmentType?: string }
+    const raw = typeof o.investmentType === "string" ? o.investmentType.trim() : ""
+    return raw || "equity"
+  } catch {
+    return "equity"
+  }
+}
+
+function closeDateForDateInput(raw: string | null | undefined): string {
+  const t = String(raw ?? "").trim()
+  if (!t) return ""
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return ""
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
 }
 
 function normalizeStatus(
@@ -76,6 +132,7 @@ function stateFromDetail(d: DealDetailApi): OverviewDraft {
     classMinimumInvestment: "",
     classNumberOfUnits: "",
     classPricePerUnit: "",
+    classInvestmentType: "equity",
   }
 }
 
@@ -93,6 +150,7 @@ function mergeOverviewDraftWithClasses(
       classMinimumInvestment: "",
       classNumberOfUnits: "",
       classPricePerUnit: "",
+      classInvestmentType: "equity",
     }
   }
   const pick =
@@ -108,6 +166,7 @@ function mergeOverviewDraftWithClasses(
       classMinimumInvestment: "",
       classNumberOfUnits: "",
       classPricePerUnit: "",
+      classInvestmentType: "equity",
     }
   }
   return {
@@ -121,6 +180,7 @@ function mergeOverviewDraftWithClasses(
       row.numberOfUnits ?? "",
     ),
     classPricePerUnit: blurFormatMoneyInput(row.pricePerUnit ?? ""),
+    classInvestmentType: investmentTypeFromClassRow(row),
   }
 }
 
@@ -134,10 +194,6 @@ function isMoneyFieldEmpty(raw: string): boolean {
     .trim() === ""
 }
 
-function isNumberOfUnitsFieldEmpty(raw: string): boolean {
-  return String(raw ?? "").trim() === ""
-}
-
 function draftEqual(a: OverviewDraft, b: OverviewDraft): boolean {
   return (
     a.offeringStatus === b.offeringStatus &&
@@ -149,7 +205,8 @@ function draftEqual(a: OverviewDraft, b: OverviewDraft): boolean {
     a.classOfferingSize === b.classOfferingSize &&
     a.classMinimumInvestment === b.classMinimumInvestment &&
     a.classNumberOfUnits === b.classNumberOfUnits &&
-    a.classPricePerUnit === b.classPricePerUnit
+    a.classPricePerUnit === b.classPricePerUnit &&
+    a.classInvestmentType === b.classInvestmentType
   )
 }
 
@@ -168,6 +225,11 @@ export function OfferingOverviewSection({
   )
   const [saving, setSaving] = useState(false)
   const [dealNameError, setDealNameError] = useState<string | undefined>()
+
+  const selectedClassRow = useMemo(
+    () => classes.find((c) => c.id === draft.selectedClassId),
+    [classes, draft.selectedClassId],
+  )
 
   const reloadClasses = useCallback(async () => {
     const list = await fetchDealInvestorClasses(detail.id)
@@ -190,6 +252,8 @@ export function OfferingOverviewSection({
     detail.offeringVisibility,
     detail.dealName,
     detail.dealType,
+    detail.secType,
+    detail.closeDate,
     sortedIdsKey(detail.offeringOverviewAssetIds ?? []),
     classes,
   ])
@@ -207,6 +271,96 @@ export function OfferingOverviewSection({
     [detail],
   )
 
+  const assetRowIdsKey = useMemo(
+    () => sortedIdsKey(assetRows.map((r) => r.id)),
+    [assetRows],
+  )
+
+  const applyOverviewAssetMerge = useCallback(
+    (options: { mergeAllActive?: boolean; mergeNewOnly?: boolean }) => {
+      setDraft((d) => {
+        const merged = computeMergedOverviewAssetSelection({
+          dealId: detail.id,
+          detail,
+          selectedIds: d.selectedAssetIds,
+          savedSelectedIds: savedSnapshot.selectedAssetIds,
+          options,
+        })
+        if (!merged) return d
+        return { ...d, selectedAssetIds: merged }
+      })
+    },
+    [detail, savedSnapshot.selectedAssetIds],
+  )
+
+  useEffect(() => {
+    function onMergeEvent(e: Event) {
+      const dealId = (e as CustomEvent<{ dealId?: string }>).detail?.dealId
+      if (dealId !== detail.id) return
+      if (!readOfferingPreviewInvestorVisibility(detail.id).assets) return
+      applyOverviewAssetMerge({ mergeAllActive: true })
+    }
+
+    function onVisibilityEvent(e: Event) {
+      const dealId = (e as CustomEvent<{ dealId?: string }>).detail?.dealId
+      if (dealId !== detail.id) return
+      if (consumeOverviewAssetsMergePending(detail.id)) {
+        applyOverviewAssetMerge({ mergeAllActive: true })
+      }
+    }
+
+    function onAssetsStorageChanged(e: Event) {
+      const dealId = (e as CustomEvent<{ dealId?: string }>).detail?.dealId
+      if (dealId !== detail.id) return
+      if (!readOfferingPreviewInvestorVisibility(detail.id).assets) return
+      applyOverviewAssetMerge({ mergeNewOnly: true })
+    }
+
+    function onStorage(e: StorageEvent) {
+      if (e.key !== offeringOverviewAssetsMergeStorageKey(detail.id)) return
+      if (!readOfferingPreviewInvestorVisibility(detail.id).assets) return
+      applyOverviewAssetMerge({ mergeNewOnly: true })
+    }
+
+    window.addEventListener(OFFERING_OVERVIEW_ASSETS_MERGE_EVENT, onMergeEvent)
+    window.addEventListener(
+      OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+      onVisibilityEvent,
+    )
+    window.addEventListener(
+      DEAL_ASSETS_STORAGE_CHANGED_EVENT,
+      onAssetsStorageChanged,
+    )
+    window.addEventListener("storage", onStorage)
+
+    if (consumeOverviewAssetsMergePending(detail.id)) {
+      applyOverviewAssetMerge({ mergeAllActive: true })
+    } else if (readOfferingPreviewInvestorVisibility(detail.id).assets) {
+      applyOverviewAssetMerge({ mergeNewOnly: true })
+    }
+
+    return () => {
+      window.removeEventListener(
+        OFFERING_OVERVIEW_ASSETS_MERGE_EVENT,
+        onMergeEvent,
+      )
+      window.removeEventListener(
+        OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+        onVisibilityEvent,
+      )
+      window.removeEventListener(
+        DEAL_ASSETS_STORAGE_CHANGED_EVENT,
+        onAssetsStorageChanged,
+      )
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [applyOverviewAssetMerge, detail.id])
+
+  useEffect(() => {
+    if (!readOfferingPreviewInvestorVisibility(detail.id).assets) return
+    applyOverviewAssetMerge({ mergeNewOnly: true })
+  }, [assetRowIdsKey, applyOverviewAssetMerge, detail.id])
+
   const handleReset = useCallback(() => {
     setDraft({ ...savedSnapshot })
   }, [savedSnapshot])
@@ -218,10 +372,6 @@ export function OfferingOverviewSection({
       toast.error("Offering name is required.")
       return
     }
-    if (!draft.dealType.trim()) {
-      toast.error("Deal type is required.")
-      return
-    }
     if (assetRows.length > 0 && draft.selectedAssetIds.length === 0) {
       toast.error("Select at least one asset.")
       return
@@ -231,20 +381,8 @@ export function OfferingOverviewSection({
         toast.error("Select an investor class.")
         return
       }
-      if (isMoneyFieldEmpty(draft.classMinimumInvestment)) {
-        toast.error("Minimum investment is required.")
-        return
-      }
       if (isMoneyFieldEmpty(draft.classOfferingSize)) {
         toast.error("Offering size is required.")
-        return
-      }
-      if (isNumberOfUnitsFieldEmpty(draft.classNumberOfUnits)) {
-        toast.error("Number of units is required.")
-        return
-      }
-      if (isMoneyFieldEmpty(draft.classPricePerUnit)) {
-        toast.error("Price per unit is required.")
         return
       }
     }
@@ -262,7 +400,8 @@ export function OfferingOverviewSection({
       draft.classOfferingSize === savedSnapshot.classOfferingSize &&
       draft.classMinimumInvestment === savedSnapshot.classMinimumInvestment &&
       draft.classNumberOfUnits === savedSnapshot.classNumberOfUnits &&
-      draft.classPricePerUnit === savedSnapshot.classPricePerUnit
+      draft.classPricePerUnit === savedSnapshot.classPricePerUnit &&
+      draft.classInvestmentType === savedSnapshot.classInvestmentType
 
     if (overviewBitsEqual && classBitsEqual) return
 
@@ -284,7 +423,7 @@ export function OfferingOverviewSection({
         if (draft.offeringStatus !== savedSnapshot.offeringStatus) {
           const statusCheck = validateOfferingStatusChange({
             dealStage: detail.dealStage,
-            previousOfferingStatus: savedSnapshot.offeringStatus,
+            previousOfferingStatus: detail.offeringStatus,
             nextOfferingStatus: draft.offeringStatus,
           })
           if (!statusCheck.ok) {
@@ -320,6 +459,7 @@ export function OfferingOverviewSection({
         form.minimumInvestment = draft.classMinimumInvestment
         form.numberOfUnits = draft.classNumberOfUnits
         form.pricePerUnit = draft.classPricePerUnit
+        form.advanced.investmentType = draft.classInvestmentType.trim() || "equity"
         try {
           await updateDealInvestorClass(
             detail.id,
@@ -378,6 +518,11 @@ export function OfferingOverviewSection({
       const merged = mergeOverviewDraftWithClasses(base, draft, list)
       setDraft(merged)
       setSavedSnapshot({ ...merged })
+      persistOverviewExcludedFromSave({
+        dealId: detail.id,
+        detail: dealOut,
+        savedSelectedIds: merged.selectedAssetIds,
+      })
       toast.success("Offering overview saved.")
     } catch (e) {
       toast.error(
@@ -422,6 +567,17 @@ export function OfferingOverviewSection({
 
   const id = detail.id
   const classFieldsDisabled = classes.length === 0
+
+  const closeDateInputValue = useMemo(
+    () => closeDateForDateInput(detail.closeDate),
+    [detail.closeDate],
+  )
+
+  const isSelectedLpClass = isLpInvestorClass(selectedClassRow)
+
+  const showNumberOfUnitsRow = isSelectedLpClass
+
+  const showPricePerUnitRow = isSelectedLpClass
 
   return (
     <div className="deal_offering_overview">
@@ -610,12 +766,9 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   <span>Deal type</span>
-                  <span className="deal_offering_ov_req" aria-hidden>
-                    *
-                  </span>
                   <span
                     className="deal_offering_ov_help"
-                    title="Syndication structure (same as create-deal wizard)."
+                    title="Syndication structure (from create-deal wizard)."
                   >
                     <HelpCircle size={14} strokeWidth={2} aria-hidden />
                   </span>
@@ -626,14 +779,115 @@ export function OfferingOverviewSection({
                   id={`deal-ov-dtype-${id}`}
                   className="deal_kh_select"
                   value={draft.dealType}
-                  required
-                  aria-required
+                  aria-label="Deal type"
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, dealType: e.target.value }))
                   }
                 >
                   <option value="">Select deal type</option>
                   {DEAL_FORM_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div
+              className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
+              role="row"
+            >
+              <div className="deal_kh_td" role="cell">
+                <span className="deal_kh_metric_label deal_offering_ov_label_line">
+                  <span>SEC type</span>
+                  <span
+                    className="deal_offering_ov_help"
+                    title="From the main deal profile. Edit on the deal form if needed."
+                  >
+                    <HelpCircle size={14} strokeWidth={2} aria-hidden />
+                  </span>
+                </span>
+              </div>
+              <div className="deal_kh_td" role="cell">
+                <select
+                  id={`deal-ov-sec-${id}`}
+                  className="deal_kh_select"
+                  value={detail.secType?.trim() ?? ""}
+                  disabled
+                  aria-disabled
+                  aria-label="SEC type"
+                  title="Edit on the main deal profile."
+                >
+                  {SEC_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value || "empty"} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div
+              className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
+              role="row"
+            >
+              <div className="deal_kh_td" role="cell">
+                <span className="deal_kh_metric_label deal_offering_ov_label_line">
+                  <span>Close date</span>
+                  <span
+                    className="deal_offering_ov_help"
+                    title="Target close date from the main deal profile."
+                  >
+                    <HelpCircle size={14} strokeWidth={2} aria-hidden />
+                  </span>
+                </span>
+              </div>
+              <div className="deal_kh_td" role="cell">
+                <input
+                  id={`deal-ov-close-${id}`}
+                  type="date"
+                  className="deal_kh_input"
+                  value={closeDateInputValue}
+                  disabled
+                  aria-disabled
+                  aria-label="Close date"
+                  title="Edit on the main deal profile."
+                />
+              </div>
+            </div>
+
+            <div
+              className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
+              role="row"
+            >
+              <div className="deal_kh_td" role="cell">
+                <span className="deal_kh_metric_label deal_offering_ov_label_line">
+                  <span>Investment type</span>
+                  <span
+                    className="deal_offering_ov_help"
+                    title="Applies to the selected investor class; saved with overview."
+                  >
+                    <HelpCircle size={14} strokeWidth={2} aria-hidden />
+                  </span>
+                </span>
+              </div>
+              <div className="deal_kh_td" role="cell">
+                <select
+                  id={`deal-ov-invtype-${id}`}
+                  className="deal_kh_select"
+                  value={draft.classInvestmentType}
+                  disabled={classFieldsDisabled}
+                  aria-disabled={classFieldsDisabled}
+                  aria-label="Investment type"
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      classInvestmentType: e.target.value,
+                    }))
+                  }
+                >
+                  {OVERVIEW_INVESTMENT_TYPE_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
@@ -656,7 +910,7 @@ export function OfferingOverviewSection({
                   ) : null}
                   <span
                     className="deal_offering_ov_help"
-                    title="Link one or more assets from this deal’s Assets list (saved with the offering)."
+                    title="When Assets is set to “Make it visible to Investors”, assets from the Assets section are added here (any count). Remove any you do not want on the offering, then Save."
                   >
                     <HelpCircle size={14} strokeWidth={2} aria-hidden />
                   </span>
@@ -727,6 +981,8 @@ export function OfferingOverviewSection({
                             classPricePerUnit: blurFormatMoneyInput(
                               row.pricePerUnit ?? "",
                             ),
+                            classInvestmentType:
+                              investmentTypeFromClassRow(row),
                           }
                         : { ...d, selectedClassId: cid },
                     )
@@ -751,11 +1007,6 @@ export function OfferingOverviewSection({
               <div className="deal_kh_td" role="cell">
                 <span className="deal_kh_metric_label deal_offering_ov_label_line">
                   Minimum investment
-                  {!classFieldsDisabled ? (
-                    <span className="deal_offering_ov_req" aria-hidden>
-                      *
-                    </span>
-                  ) : null}
                 </span>
               </div>
               <div className="deal_kh_td" role="cell">
@@ -765,8 +1016,7 @@ export function OfferingOverviewSection({
                   className="deal_kh_input"
                   inputMode="decimal"
                   disabled={classFieldsDisabled}
-                  required={!classFieldsDisabled}
-                  aria-required={!classFieldsDisabled}
+                  aria-disabled={classFieldsDisabled}
                   value={draft.classMinimumInvestment}
                   onChange={(e) =>
                     setDraft((d) => ({
@@ -830,91 +1080,83 @@ export function OfferingOverviewSection({
               </div>
             </div>
 
-            <div
-              className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
-              role="row"
-            >
-              <div className="deal_kh_td" role="cell">
-                <span className="deal_kh_metric_label deal_offering_ov_label_line">
-                  Number of units
-                  {!classFieldsDisabled ? (
-                    <span className="deal_offering_ov_req" aria-hidden>
-                      *
-                    </span>
-                  ) : null}
-                </span>
+            {showNumberOfUnitsRow ? (
+              <div
+                className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
+                role="row"
+              >
+                <div className="deal_kh_td" role="cell">
+                  <span className="deal_kh_metric_label deal_offering_ov_label_line">
+                    Number of units
+                  </span>
+                </div>
+                <div className="deal_kh_td" role="cell">
+                  <input
+                    id={`deal-ov-nunits-${id}`}
+                    type="text"
+                    className="deal_kh_input"
+                    inputMode="decimal"
+                    disabled={classFieldsDisabled}
+                    aria-disabled={classFieldsDisabled}
+                    value={draft.classNumberOfUnits}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        classNumberOfUnits: e.target.value,
+                      }))
+                    }
+                    onBlur={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        classNumberOfUnits: blurFormatNumberOfUnitsInput(
+                          e.target.value,
+                        ),
+                      }))
+                    }
+                    autoComplete="off"
+                    aria-label="Number of units"
+                  />
+                </div>
               </div>
-              <div className="deal_kh_td" role="cell">
-                <input
-                  id={`deal-ov-nunits-${id}`}
-                  type="text"
-                  className="deal_kh_input"
-                  inputMode="decimal"
-                  disabled={classFieldsDisabled}
-                  required={!classFieldsDisabled}
-                  aria-required={!classFieldsDisabled}
-                  value={draft.classNumberOfUnits}
-                  onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      classNumberOfUnits: e.target.value,
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      classNumberOfUnits: blurFormatNumberOfUnitsInput(
-                        e.target.value,
-                      ),
-                    }))
-                  }
-                  autoComplete="off"
-                  aria-label="Number of units"
-                />
-              </div>
-            </div>
+            ) : null}
 
-            <div
-              className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
-              role="row"
-            >
-              <div className="deal_kh_td" role="cell">
-                <span className="deal_kh_metric_label deal_offering_ov_label_line">
-                  Price per unit
-                  {!classFieldsDisabled ? (
-                    <span className="deal_offering_ov_req" aria-hidden>
-                      *
-                    </span>
-                  ) : null}
-                </span>
+            {showPricePerUnitRow ? (
+              <div
+                className="deal_kh_tr deal_kh_tr_body deal_kh_tr_body_ov"
+                role="row"
+              >
+                <div className="deal_kh_td" role="cell">
+                  <span className="deal_kh_metric_label deal_offering_ov_label_line">
+                    Price per unit
+                  </span>
+                </div>
+                <div className="deal_kh_td" role="cell">
+                  <input
+                    id={`deal-ov-ppu-${id}`}
+                    type="text"
+                    className="deal_kh_input"
+                    inputMode="decimal"
+                    disabled={classFieldsDisabled}
+                    aria-disabled={classFieldsDisabled}
+                    value={draft.classPricePerUnit}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        classPricePerUnit: e.target.value,
+                      }))
+                    }
+                    onBlur={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        classPricePerUnit: blurFormatMoneyInput(e.target.value),
+                      }))
+                    }
+                    autoComplete="off"
+                    aria-label="Price per unit"
+                  />
+                </div>
               </div>
-              <div className="deal_kh_td" role="cell">
-                <input
-                  id={`deal-ov-ppu-${id}`}
-                  type="text"
-                  className="deal_kh_input"
-                  inputMode="decimal"
-                  disabled={classFieldsDisabled}
-                  required={!classFieldsDisabled}
-                  aria-required={!classFieldsDisabled}
-                  value={draft.classPricePerUnit}
-                  onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      classPricePerUnit: e.target.value,
-                    }))
-                  }
-                  onBlur={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      classPricePerUnit: blurFormatMoneyInput(e.target.value),
-                    }))
-                  }
-                  autoComplete="off"
-                  aria-label="Price per unit"
-                />
-              </div>
-            </div>
+            ) : null}
           </div>
         </div>
 

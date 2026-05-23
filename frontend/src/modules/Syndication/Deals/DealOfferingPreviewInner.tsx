@@ -14,9 +14,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
   type TouchEvent,
 } from "react"
+import DOMPurify from "dompurify"
 import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
 import type { DealDetailApi } from "./api/dealsApi"
@@ -24,47 +24,43 @@ import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
 import { writeInvestNowIntent } from "./utils/investNowIntent"
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
-import { readOfferingPreviewDocuments } from "./utils/offeringPreviewDocuments"
-import { readOfferingPreviewInvestorVisibility } from "./utils/offeringPreviewInvestorVisibility"
+import {
+  listWorkspaceDocumentsForOfferingPreview,
+  OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
+  offeringPreviewSectionsStorageKey,
+} from "./utils/offeringPreviewDocSections"
+import {
+  OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+  offeringPreviewInvestorVisibilityStorageKey,
+  readInvestorVisibilityForOfferingPreview,
+} from "./utils/offeringPreviewInvestorVisibility"
 import { buildOfferingPreviewAssetBlocks } from "./utils/offeringPreviewAssets"
 import {
   galleryUrlsReferToSameAsset,
   orderedGalleryUrlsForOffering,
 } from "./utils/offeringGalleryUrls"
-import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import type { DealStatusRules } from "./constants/deal-lifecycle"
 import { getDealStatusRules } from "./constants/deal-lifecycle"
-import { dealStageLabel } from "../dealsDashboardUtils"
 import {
-  buildOfferingMetricChips,
-  buildSummaryBits,
-  keyHighlightRowsFromJson,
-  previewTargetDisplay,
+  buildOfferingSidebarSummaryRows,
+  firstCreatedInvestorClassName,
+  hasMeaningfulInvestorSummaryHtml,
+  formatOfferingPortfolioLocationLine,
+  keyHighlightRowsForOfferingPreview,
 } from "./dealOfferingPreviewShared"
+import { OfferingPreviewKeyHighlightsTable } from "./components/OfferingPreviewKeyHighlightsTable"
+import {
+  buildDealLocationQuery,
+  OfferingOverviewLocationMap,
+} from "./tabs/offering_details/OfferingOverviewLocationMap"
 import { DealOfferingGalleryImage } from "./components/DealOfferingGalleryImage"
 import { DealOfferingPreviewBentoLayout } from "./components/DealOfferingPreviewBentoLayout"
 import { DealOfferingPreviewBentoAdaptiveGrid } from "./components/DealOfferingPreviewBentoAdaptiveGrid"
 import { OfferingPreviewAssetBentoCard } from "./components/OfferingPreviewAssetBentoCard"
-import { OfferingPreviewClassBentoCard } from "./components/OfferingPreviewClassBentoCard"
 import "./tabs/deal_members/add-investment/add_deal_modal.css"
 import "./deal-offering-portfolio.css"
+import "./deal-offering-details.css"
 import "./deals-list.css"
-
-function PanelHeader({
-  titleId,
-  children,
-}: {
-  titleId: string
-  children: ReactNode
-}) {
-  return (
-    <div className="deal_offer_pf_panel_head">
-      <h2 id={titleId} className="deal_offer_pf_panel_title_text">
-        {children}
-      </h2>
-    </div>
-  )
-}
 
 function safeDownloadFilename(name: string): string {
   const base = name.trim() || "document"
@@ -78,6 +74,8 @@ export type DealOfferingPreviewInnerProps = {
   /** When true, gallery / summary / documents / assets / etc. follow “Make it visible to Investors” (localStorage). */
   applyInvestorLinkVisibility: boolean
   isPublicOfferingRoute: boolean
+  /** Logged-in LP on the deal workspace (investing deal page). */
+  isLpDealWorkspace?: boolean
   /** False on syndicated “Preview offering” — show only on shared link + investing deal view. */
   showInvestNowCta: boolean
   /**
@@ -102,6 +100,7 @@ export function DealOfferingPreviewInner({
   investorsPayload,
   applyInvestorLinkVisibility,
   isPublicOfferingRoute,
+  isLpDealWorkspace = false,
   showInvestNowCta,
   onInvestNow,
   publicInvestNowSignInState,
@@ -126,7 +125,71 @@ export function DealOfferingPreviewInner({
     detail.propertyName?.trim() ||
     "Offering"
 
+  /** Offering details → Summary (rich text saved as `investor_summary_html`). */
   const summaryHtml = detail.investorSummaryHtml?.trim() ?? ""
+  const hasSummaryContent = hasMeaningfulInvestorSummaryHtml(summaryHtml)
+
+  const [investorVisibilityRevision, setInvestorVisibilityRevision] =
+    useState(0)
+  const [workspaceDocumentsRevision, setWorkspaceDocumentsRevision] =
+    useState(0)
+
+  useEffect(() => {
+    const dealId = detail.id?.trim()
+    if (!dealId) return
+    const sectionsStorageKey = offeringPreviewSectionsStorageKey(dealId)
+    const bump = () => setWorkspaceDocumentsRevision((n) => n + 1)
+    const onCustom = (e: Event) => {
+      const d = (e as CustomEvent<{ dealId?: string }>).detail
+      if (d?.dealId === dealId) bump()
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === sectionsStorageKey) bump()
+    }
+    window.addEventListener(
+      OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
+      onCustom,
+    )
+    window.addEventListener("storage", onStorage)
+    window.addEventListener("focus", bump)
+    return () => {
+      window.removeEventListener(
+        OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
+        onCustom,
+      )
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener("focus", bump)
+    }
+  }, [detail.id])
+
+  useEffect(() => {
+    if (!applyInvestorLinkVisibility) return
+    const dealId = detail.id?.trim()
+    if (!dealId) return
+    const storageKey = offeringPreviewInvestorVisibilityStorageKey(dealId)
+    const bump = () => setInvestorVisibilityRevision((n) => n + 1)
+    const onCustom = (e: Event) => {
+      const d = (e as CustomEvent<{ dealId?: string }>).detail
+      if (d?.dealId === dealId) bump()
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === storageKey) bump()
+    }
+    window.addEventListener(
+      OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+      onCustom,
+    )
+    window.addEventListener("storage", onStorage)
+    window.addEventListener("focus", bump)
+    return () => {
+      window.removeEventListener(
+        OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+        onCustom,
+      )
+      window.removeEventListener("storage", onStorage)
+      window.removeEventListener("focus", bump)
+    }
+  }, [applyInvestorLinkVisibility, detail.id])
 
   const openGalleryAt = useCallback((index: number) => {
     setGalleryIndex(index)
@@ -145,8 +208,18 @@ export function DealOfferingPreviewInner({
     [detail, galleryUsesPersistedSourcesOnly],
   )
   const investorPreviewVisibility = useMemo(
-    () => readOfferingPreviewInvestorVisibility(detail.id ?? ""),
-    [detail.id],
+    () =>
+      readInvestorVisibilityForOfferingPreview(
+        detail.id ?? "",
+        detail.offeringInvestorPreviewJson,
+        { preferServerOnly: isPublicOfferingRoute },
+      ),
+    [
+      detail.id,
+      detail.offeringInvestorPreviewJson,
+      isPublicOfferingRoute,
+      investorVisibilityRevision,
+    ],
   )
   const galleryUrls = useMemo(() => {
     if (!applyInvestorLinkVisibility) return galleryUrlsAll
@@ -162,31 +235,23 @@ export function DealOfferingPreviewInner({
     [detail, galleryUrls],
   )
   const previewDocuments = useMemo(() => {
-    const docs = readOfferingPreviewDocuments(detail.id)
     if (
       applyInvestorLinkVisibility &&
       investorPreviewVisibility.documents === false
     ) {
       return []
     }
-    /*
-      Shared-with scope (from Documents tab, per section):
-      - offering_page: show on Preview offering, the shared link, and portal LPs.
-      - lp_investor: portal (deal workspace / LP views) only — hidden on Preview
-        offering and on the no-login preview link.
-      Legacy rows without sharedWithScope behave like offering_page.
-    */
-    const hideLpInvestorOnlyDocs =
-      isPublicOfferingRoute || applyInvestorLinkVisibility
-    if (hideLpInvestorOnlyDocs) {
-      return docs.filter((d) => d.sharedWithScope !== "lp_investor")
-    }
-    return docs
+    return listWorkspaceDocumentsForOfferingPreview(detail.id ?? "", {
+      isPublicAnonymousOffering: isPublicOfferingRoute,
+      isLpDealWorkspace: Boolean(isLpDealWorkspace),
+    })
   }, [
     detail.id,
     applyInvestorLinkVisibility,
     investorPreviewVisibility.documents,
     isPublicOfferingRoute,
+    isLpDealWorkspace,
+    workspaceDocumentsRevision,
   ])
   const publicGallerySuppressed =
     applyInvestorLinkVisibility &&
@@ -198,12 +263,6 @@ export function DealOfferingPreviewInner({
   const showInvestorPreviewOverviewKv =
     !applyInvestorLinkVisibility ||
     investorPreviewVisibility.overview !== false
-  const showInvestorPreviewOfferingInformation =
-    !applyInvestorLinkVisibility ||
-    investorPreviewVisibility.offering_information !== false
-  const showInvestorPreviewFundingInstructions =
-    !applyInvestorLinkVisibility ||
-    investorPreviewVisibility.funding_instructions !== false
   const galleryTouchXRef = useRef<number | null>(null)
   const galleryModalThumbsRef = useRef<HTMLDivElement>(null)
 
@@ -293,105 +352,127 @@ export function DealOfferingPreviewInner({
     [galleryUrls.length],
   )
 
-  const offeringSizeDisplay = previewTargetDisplay(detail, classes)
+  const dealLocationLine = formatOfferingPortfolioLocationLine(detail)
+  const dealMapQuery = useMemo(() => buildDealLocationQuery(detail), [detail])
 
-  const dealLocationLine =
-    [detail.city, detail.country].filter((x) => x?.trim()).join(", ") || "—"
-
-  const summaryBits = useMemo(
-    () => buildSummaryBits(detail, classes, investorsPayload),
-    [detail, classes, investorsPayload],
-  )
-  const metricChips = useMemo(
-    () => buildOfferingMetricChips(detail, classes, investorsPayload),
-    [detail, classes, investorsPayload],
-  )
+  const sidebarSummaryRows = useMemo(() => {
+    if (
+      applyInvestorLinkVisibility &&
+      investorPreviewVisibility.overview === false
+    ) {
+      return []
+    }
+    return buildOfferingSidebarSummaryRows(detail, classes, investorsPayload)
+  }, [
+    applyInvestorLinkVisibility,
+    investorPreviewVisibility.overview,
+    detail,
+    classes,
+    investorsPayload,
+  ])
   const keyHighlightPreviewRows = useMemo(
-    () => keyHighlightRowsFromJson(detail.keyHighlightsJson),
-    [detail.keyHighlightsJson],
+    () =>
+      keyHighlightRowsForOfferingPreview(detail.keyHighlightsJson, {
+        includeEmptyClassValues: !applyInvestorLinkVisibility,
+      }),
+    [detail.keyHighlightsJson, applyInvestorLinkVisibility],
   )
-  const infoRow = useMemo(() => {
-    const aboutVisible =
+  const keyHighlightsClassColumnHeader = useMemo(
+    () => firstCreatedInvestorClassName(classes),
+    [classes],
+  )
+  const summarySection = useMemo(() => {
+    const summaryVisible =
       !applyInvestorLinkVisibility ||
       investorPreviewVisibility.summary !== false
-    const highlightsVisible =
-      keyHighlightPreviewRows.length > 0 &&
-      (!applyInvestorLinkVisibility ||
-        investorPreviewVisibility.key_highlights !== false)
-    if (!aboutVisible && !highlightsVisible) return null
+    if (!summaryVisible) return null
+    if (!hasSummaryContent && applyInvestorLinkVisibility) return null
     return (
-      <>
-        {/* {aboutVisible ? (
-          <section
-            className="deal_offer_pf_about_offering_section deal_offer_pf_panel"
-            aria-labelledby="deal-pf-about-offering"
-          >
-            <h2
-              id="deal-pf-about-offering"
-              className="deal_offer_pf_assets_main_title"
-            >
-              About Offering
-            </h2>
-            {summaryHtml ? (
-              <div
-                className="deal_offer_pf_summary_prose deal_offer_pf_summary_prose--compact"
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(summaryHtml),
-                }}
-              />
-            ) : summaryBits.length > 0 ? (
-              <ul className="deal_offer_pf_bullets deal_offer_pf_bullets--compact">
-                {summaryBits.map((b) => (
-                  <li key={b}>{b}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
-                Add a summary in Offering details, or metrics will appear here
-                when available.
-              </p>
-            )}
-          </section>
-        ) : null} */}
-        {highlightsVisible ? (
-          <section
-            className="deal_offer_pf_panel"
-            aria-labelledby="deal-pf-kh"
-          >
-            <PanelHeader titleId="deal-pf-kh">Key highlights</PanelHeader>
-            <dl className="deal_offer_pf_kv_grid">
-              {keyHighlightPreviewRows.map((row, i) => (
-                <div
-                  className="deal_offer_pf_kv"
-                  key={`${row.metric}-${row.newClass}-${i}`}
-                >
-                  <dt>{row.metric}</dt>
-                  <dd>{row.newClass}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : null}
-      </>
+      <section
+        className="deal_offer_pf_wireframe_block deal_offer_pf_panel deal_offer_pf_summary_section"
+        aria-labelledby="deal-pf-summary"
+      >
+        <h2 id="deal-pf-summary" className="deal_offer_pf_section_heading">
+          Summary
+        </h2>
+        {hasSummaryContent ? (
+          <div
+            className="deal_offer_pf_summary_prose deal_offer_pf_summary_prose--compact"
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(summaryHtml),
+            }}
+          />
+        ) : (
+          <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
+            Add a summary in Offering details → Summary.
+          </p>
+        )}
+      </section>
     )
   }, [
     applyInvestorLinkVisibility,
     investorPreviewVisibility.summary,
-    investorPreviewVisibility.key_highlights,
+    hasSummaryContent,
     summaryHtml,
-    summaryBits,
-    keyHighlightPreviewRows,
   ])
-  const profileChips = useMemo(() => {
-    if (!showInvestorPreviewOverviewKv) return []
-    return [
-      { label: "Deal name", value: detail.dealName?.trim() || "—" },
-      { label: "Deal type", value: detail.dealType?.trim() || "—" },
-      { label: "Asking price", value: offeringSizeDisplay },
-      { label: "Security type", value: detail.secType?.trim() || "—" },
-      { label: "Owning entity", value: detail.owningEntityName?.trim() || "—" },
-    ]
-  }, [detail, offeringSizeDisplay, showInvestorPreviewOverviewKv])
+
+  const keyHighlightsSection = useMemo(() => {
+    const highlightsVisible =
+      !applyInvestorLinkVisibility ||
+      investorPreviewVisibility.key_highlights !== false
+    if (!highlightsVisible) return null
+    const hasRows = keyHighlightPreviewRows.length > 0
+    if (!hasRows && applyInvestorLinkVisibility) return null
+    return (
+      <section
+        className="deal_offer_pf_wireframe_block deal_offer_pf_panel deal_offer_pf_key_highlights_section"
+        aria-labelledby="deal-pf-key-highlights"
+      >
+        <h2
+          id="deal-pf-key-highlights"
+          className="deal_offer_pf_section_heading"
+        >
+          Key highlights
+        </h2>
+        {hasRows ? (
+          <OfferingPreviewKeyHighlightsTable
+            rows={keyHighlightPreviewRows}
+            classColumnHeader={keyHighlightsClassColumnHeader}
+          />
+        ) : (
+          <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
+            Add key highlights in Offering details → Key Highlights.
+          </p>
+        )}
+      </section>
+    )
+  }, [
+    applyInvestorLinkVisibility,
+    investorPreviewVisibility.key_highlights,
+    keyHighlightPreviewRows,
+    keyHighlightsClassColumnHeader,
+  ])
+
+  const locationSection = useMemo(() => {
+    if (!showInvestorPreviewOverviewKv) return null
+    const hasCityState = dealLocationLine && dealLocationLine !== "—"
+    const hasMap = Boolean(dealMapQuery.trim())
+    if (!hasCityState && !hasMap) return null
+    return (
+      <section
+        className="deal_offer_pf_wireframe_block deal_offer_pf_panel deal_offer_pf_location_section"
+        aria-labelledby="deal-pf-location"
+      >
+        <h2 id="deal-pf-location" className="deal_offer_pf_section_heading">
+          Location
+        </h2>
+        {hasCityState ? (
+          <p className="deal_offer_pf_location_city_state">{dealLocationLine}</p>
+        ) : null}
+        <OfferingOverviewLocationMap detail={detail} compact />
+      </section>
+    )
+  }, [showInvestorPreviewOverviewKv, dealLocationLine, dealMapQuery, detail])
   const announcementTitle = detail.dealAnnouncementTitle?.trim() ?? ""
   const announcementMessage = detail.dealAnnouncementMessage?.trim() ?? ""
   const galleryLen = galleryUrls.length
@@ -405,19 +486,15 @@ export function DealOfferingPreviewInner({
           <div className="deal_offer_pf_titlebar">
             <div className="deal_offer_pf_titlebar_main">
               <h1 className="deal_offer_pf_page_title">{title}</h1>
-              <p className="deal_offer_pf_property_line">
-                {[detail.propertyName, dealLocationLine]
-                  .filter(Boolean)
-                  .join(" · ") || "—"}
-              </p>
+              <p className="deal_offer_pf_property_line">{dealLocationLine}</p>
             </div>
-            {detail.dealStage?.trim() ? (
+            {/* {detail.dealStage?.trim() ? (
               <span
                 className={`deal_offer_pf_stage_badge ${dealStageChipCompactClassName(detail.dealStage)}`}
               >
                 {dealStageLabel(detail.dealStage)}
               </span>
-            ) : null}
+            ) : null} */}
           </div>
 
           {statusRules.showClosedBanner ? (
@@ -443,12 +520,14 @@ export function DealOfferingPreviewInner({
           </nav>
           */}
 
-                    <DealOfferingPreviewBentoLayout
-            infoRow={infoRow}
-            profileChips={profileChips}
-            metricChips={metricChips}
+          <DealOfferingPreviewBentoLayout
+            summaryRows={sidebarSummaryRows}
+            keyHighlights={keyHighlightsSection}
+            summary={summarySection}
+            location={locationSection}
+            classesRow={null}
             gallery={
-<div className="deal_offer_pf_media_card">
+              <div className="deal_offer_pf_media_card deal_offer_pf_media_card--wireframe">
                 {publicGallerySuppressed ? (
                       <div className="deal_offer_pf_hero deal_offer_pf_hero--clean">
                         <div className="deal_offer_pf_media_empty">
@@ -589,9 +668,9 @@ export function DealOfferingPreviewInner({
                     ) : null}
                 </div>
             }
-            fundingColumn={
+            sidebar={
               <>
-{statusRules.requireSponsorApproval ? (
+                {statusRules.requireSponsorApproval ? (
                 <div className="deal_offer_pf_side_invest_cta_wrap">
                   <p
                     className="deal_offer_pf_waitlist_notice"
@@ -668,7 +747,7 @@ export function DealOfferingPreviewInner({
                 />
               ) : null}
 
-              {showInvestorPreviewFundingInstructions ? (
+              {/* {showInvestorPreviewFundingInstructions ? (
                 <section
                   className="deal_offer_pf_panel"
                   aria-labelledby="deal-pf-funding-info"
@@ -687,49 +766,48 @@ export function DealOfferingPreviewInner({
                     </div>
                   </dl>
                 </section>
-              ) : null}
-
+              ) : null} */}
               </>
             }
-            classesRow={
-              showInvestorPreviewOfferingInformation ? (
-                <>
-                  <h2
-                    id="deal-pf-offering-info"
-                    className="deal_offer_pf_assets_main_title deal_offer_pf_bento_classes_heading"
-                  >
-                    Classes
-                  </h2>
-                  {classes.length > 0 ? (
-                    <DealOfferingPreviewBentoAdaptiveGrid
-                      className="deal_offer_pf_bento_class_grid"
-                      ariaLabel="Investor classes"
-                    >
-                      {classes.map((ic) => (
-                        <OfferingPreviewClassBentoCard
-                          key={ic.id}
-                          investorClass={ic}
-                        />
-                      ))}
-                    </DealOfferingPreviewBentoAdaptiveGrid>
-                  ) : (
-                    <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
-                      No classes are configured yet.
-                    </p>
-                  )}
-                </>
-              ) : null
-            }
+            // classesRow={
+            //   showInvestorPreviewOfferingInformation ? (
+            //     <>
+            //       <h2
+            //         id="deal-pf-offering-info"
+            //         className="deal_offer_pf_section_heading deal_offer_pf_bento_classes_heading"
+            //       >
+            //         Classes
+            //       </h2>
+            //       {classes.length > 0 ? (
+            //         <DealOfferingPreviewBentoAdaptiveGrid
+            //           className="deal_offer_pf_bento_class_grid"
+            //           ariaLabel="Investor classes"
+            //         >
+            //           {classes.map((ic) => (
+            //             <OfferingPreviewClassBentoCard
+            //               key={ic.id}
+            //               investorClass={ic}
+            //             />
+            //           ))}
+            //         </DealOfferingPreviewBentoAdaptiveGrid>
+            //       ) : (
+            //         <p className="deal_offer_pf_muted deal_offer_pf_muted--compact">
+            //           No classes are configured yet.
+            //         </p>
+            //       )}
+            //     </>
+            //   ) : null
+            // }
             documents={
               !applyInvestorLinkVisibility ||
               investorPreviewVisibility.documents !== false ? (
                 <section
-                  className="deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_bento_full"
+                  className="deal_offer_pf_wireframe_block deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_bento_full"
                   aria-labelledby="deal-pf-documents"
                 >
                     <h2
                       id="deal-pf-documents"
-                      className="deal_offer_pf_assets_main_title"
+                      className="deal_offer_pf_section_heading"
                     >
                       Documents
                     </h2>
@@ -797,10 +875,10 @@ export function DealOfferingPreviewInner({
               !applyInvestorLinkVisibility ||
               investorPreviewVisibility.assets !== false ? (
                 <section
-                  className="deal_offer_pf_assets_section deal_offer_pf_panel deal_offer_pf_bento_full deal_offer_pf_section_invest_anchor"
+                  className="deal_offer_pf_wireframe_block deal_offer_pf_assets_section deal_offer_pf_panel deal_offer_pf_section_invest_anchor"
                   aria-labelledby="deal-pf-assets"
                 >
-                    <h2 id="deal-pf-assets" className="deal_offer_pf_assets_main_title">
+                    <h2 id="deal-pf-assets" className="deal_offer_pf_section_heading">
                       Assets
                     </h2>
                     <DealOfferingPreviewBentoAdaptiveGrid

@@ -9,6 +9,7 @@ import {
   getPlatformFundingSeries,
   parseFundingPeriod,
 } from "../../services/platform/platformFunding.service.js";
+import { getUserActivityMetrics } from "../../services/platform/userActivity.service.js";
 
 function actorRoleFromRow(
   actor: { role: string | null },
@@ -92,5 +93,43 @@ export async function getPlatformFundingHandler(
   } catch (err) {
     console.error("getPlatformFundingHandler:", err);
     res.status(500).json({ message: "Could not load funding series" });
+  }
+}
+
+/**
+ * GET /platform/metrics/user-activity — per-user login/logout and page navigation counts.
+ */
+export async function getPlatformUserActivityHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const [actor] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, jwtUser.id))
+    .limit(1);
+  if (!actor) {
+    res.status(401).json({ message: "User not found" });
+    return;
+  }
+
+  const role = actorRoleFromRow(actor, jwtUser);
+  if (!isPlatformAdminRole(role)) {
+    res.status(403).json({ message: "Not allowed" });
+    return;
+  }
+
+  try {
+    const userActivity = await getUserActivityMetrics();
+    res.status(200).json({ userActivity });
+  } catch (err) {
+    console.error("getPlatformUserActivityHandler:", err);
+    res.status(500).json({ message: "Could not load user activity" });
   }
 }

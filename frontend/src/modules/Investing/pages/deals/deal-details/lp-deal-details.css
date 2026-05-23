@@ -544,6 +544,52 @@
   align-items: center;
 }
 
+.lpd_doc_action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--lpdd-accent);
+  text-decoration: none;
+}
+
+button.lpd_doc_action,
+button.lpd_link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lpd_doc_action:hover,
+button.lpd_link:hover {
+  text-decoration: underline;
+}
+
+.lpd_link_button {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lpd_doc_item_esign {
+  border-color: color-mix(in srgb, var(--lpdd-accent) 28%, var(--lpdd-border));
+  background: color-mix(in srgb, var(--lpdd-accent) 4%, var(--lpdd-surface));
+}
+
+.lpd_doc_action_sign {
+  color: var(--lpdd-accent);
+}
+
+.investment_detail_esign_pending_hint {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--lpdd-accent) 25%, var(--lpdd-border));
+  background: color-mix(in srgb, var(--lpdd-accent) 6%, var(--lpdd-surface));
+}
+
 .lpd_link {
   display: inline-flex;
   align-items: center;

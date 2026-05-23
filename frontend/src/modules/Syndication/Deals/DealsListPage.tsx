@@ -12,7 +12,11 @@ import {
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
-import { filterDealListToInvestingDealsPage } from "@/modules/Investing/utils/investingViewerDealScope"
+import {
+  filterDealListToInvestingDealsPage,
+  formatViewerInvestingDealRolesLabel,
+  resolveViewerInvestingDealRoles,
+} from "@/modules/Investing/utils/investingViewerDealScope"
 import {
   DataTable,
   type DataTableColumn,
@@ -54,9 +58,9 @@ import {
   dealTypeDisplayLabel,
   formatCommittedCurrency,
   formatDealListDateDisplay,
+  secTypeDisplayLabel,
 } from "./dealsListDisplay"
 // import { DealInvestorRoleBadge } from "./tabs/investors/DealInvestorRoleBadge"
-import { resolveViewerDealMemberMatch } from "./utils/dealDetailTabVisibility"
 import "../usermanagement/user_management.css"
 import "./tabs/deal_members/add-investment/add_deal_modal.css"
 import "./deal-investors-tab.css"
@@ -230,16 +234,27 @@ function DealsSuspendAllConfirmModal({
 
 export type DealsListPageContext = "syndicating" | "investing"
 
+export type InvestingDealsArchiveView = "active" | "archived"
+
 export type DealsListPageProps = {
   /**
    * `investing`: same table as syndicating, loads org + participant deals; hides
    * add-deal / suspend-all / draft row / destructive row actions.
    */
   dealsListContext?: DealsListPageContext
+  /** When true, omits page title and outer chrome (for Investing → Investments tabs). */
+  embedded?: boolean
+  /**
+   * Investing list only: which archived state to show when embedded in Investments.
+   * Defaults to active (non-archived) deals.
+   */
+  investingArchiveView?: InvestingDealsArchiveView
 }
 
 export function DealsListPage({
   dealsListContext = "syndicating",
+  embedded = false,
+  investingArchiveView = "active",
 }: DealsListPageProps = {}) {
   const { mode } = usePortalMode()
   const location = useLocation()
@@ -270,11 +285,8 @@ export function DealsListPage({
         remainingRaw: string
         investorCount: number
         investorClassesLine: string
-        /** Signed-in user’s deal roster row: match deal members first (sponsor/lead), else investors. */
-        viewerRoleMatch: {
-          investorRole?: string
-          memberRoleLabels?: string[]
-        } | null
+        /** Investing deals tab: Sponsor / LP Investor / both. */
+        viewerRolesLabel: string
       }
     >
   >({})
@@ -349,12 +361,15 @@ export function DealsListPage({
 
   const rowsForTab = useMemo(() => {
     if (dealsListContext === "investing") {
-      return rows.filter((r) => !r.archived)
+      const showArchived = investingArchiveView === "archived"
+      return rows.filter((r) =>
+        showArchived ? Boolean(r.archived) : !r.archived,
+      )
     }
     return rows.filter((r) =>
       activeTab === "archives" ? Boolean(r.archived) : !r.archived,
     )
-  }, [rows, activeTab, dealsListContext])
+  }, [rows, activeTab, dealsListContext, investingArchiveView])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -399,11 +414,18 @@ export function DealsListPage({
               .map((c) => String(c.name ?? "").trim())
               .filter(Boolean)
               .join(", ")
-            const viewerRoleMatch =
-              em && em.includes("@")
-                ? resolveViewerDealMemberMatch(membersRoster, sessionEmail) ??
-                  resolveViewerDealMemberMatch(investors, sessionEmail)
-                : null
+            const investorPayload = { kpis, investors }
+            const viewerRolesLabel =
+              dealsListContext === "investing" && em && em.includes("@")
+                ? formatViewerInvestingDealRolesLabel(
+                    resolveViewerInvestingDealRoles(
+                      membersRoster,
+                      investors,
+                      em,
+                      investorPayload,
+                    ),
+                  )
+                : "—"
             return [
               id,
               {
@@ -412,7 +434,7 @@ export function DealsListPage({
                 remainingRaw: kpis.remaining,
                 investorCount: investors.length,
                 investorClassesLine,
-                viewerRoleMatch: viewerRoleMatch ?? null,
+                viewerRolesLabel,
               },
             ] as const
           } catch {
@@ -424,7 +446,7 @@ export function DealsListPage({
                 remainingRaw: "—",
                 investorCount: 0,
                 investorClassesLine: "",
-                viewerRoleMatch: null,
+                viewerRolesLabel: "—",
               },
             ] as const
           }
@@ -620,7 +642,27 @@ export function DealsListPage({
       cell: (row) => formatDealListDateDisplay(row.closeDateDisplay),
     }
 
+    const investingYourRoleColumn: DataTableColumn<DealListRow> = {
+      id: "yourRole",
+      header: (
+        <DealTableColumnHeader
+          label="Your role"
+          hint="Your relationship to this deal: Lead Sponsor, Admin Sponsor, Co-Sponsor, LP Investor, or a combination."
+        />
+      ),
+      sortValue: (row) =>
+        (investorMetricsByDealId[row.id]?.viewerRolesLabel ?? "").toLowerCase(),
+      cell: (row) => {
+        const label = investorMetricsByDealId[row.id]?.viewerRolesLabel ?? "—"
+        if (!label || label === "—") {
+          return <span className="um_status_muted">—</span>
+        }
+        return <span className="deals_list_viewer_role_label">{label}</span>
+      },
+    }
+
     const investingPreviewColumns: DataTableColumn<DealListRow>[] = [
+      investingYourRoleColumn,
       {
         id: "dealType",
         header: (
@@ -640,11 +682,9 @@ export function DealsListPage({
             hint="Regulatory classification shown in Deal details preview."
           />
         ),
-        sortValue: (row) => (row.secType ?? "").toLowerCase(),
-        cell: (row) => {
-          const t = String(row.secType ?? "").trim()
-          return t || "—"
-        },
+        sortValue: (row) =>
+          secTypeDisplayLabel(row.secType ?? "").toLowerCase(),
+        cell: (row) => secTypeDisplayLabel(row.secType ?? ""),
       },
       {
         id: "propertyName",
@@ -845,10 +885,120 @@ export function DealsListPage({
 
   const emptyMessage =
     dealsListContext === "investing"
-      ? "No deal to display."
+      ? investingArchiveView === "archived"
+        ? "No archived deals."
+        : "No deal to display."
       : activeTab === "archives"
         ? "No archived deals."
         : "No deal to display."
+
+  const dealsListTablePanel = (
+    <div
+      id={embedded ? undefined : "deals-list-tabpanel"}
+      role={dealsListContext === "investing" ? "region" : "tabpanel"}
+      aria-label={
+        dealsListContext === "investing"
+          ? investingArchiveView === "archived"
+            ? "Archived deals list"
+            : "My deals list"
+          : undefined
+      }
+      aria-labelledby={
+        dealsListContext === "investing"
+          ? undefined
+          : activeTab === "deals"
+            ? "deals-tab-deals"
+            : "deals-tab-archives"
+      }
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading && rows.length === 0 ? " deals_list_table_panel_loading" : ""}`}
+      aria-busy={loading}
+    >
+      <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+        <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+          {dealsListContext === "syndicating" && activeTab === "deals" ? (
+            <button
+              type="button"
+              className="deals_suspend_all_btn"
+              onClick={handleSuspendAllClick}
+            >
+              <Ban size={18} strokeWidth={2} aria-hidden />
+              <span>Suspend All</span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="um_toolbar_export_btn"
+            onClick={handleOpenExportModal}
+          >
+            <Download size={18} strokeWidth={2} aria-hidden />
+            <span>Export All</span>
+          </button>
+        </div>
+        <div className="um_search_wrap">
+          <Search className="um_search_icon" size={18} aria-hidden />
+          <input
+            type="search"
+            className="um_search_input"
+            placeholder="Search deals…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search deals"
+          />
+        </div>
+      </div>
+      <DataTable
+        visualVariant="members"
+        membersTableClassName="um_table_members deal_inv_table"
+        columns={columns}
+        rows={displayRows}
+        getRowKey={(row, rowIndex) => row.id || `deal-row-${rowIndex}`}
+        getRowClassName={(row) =>
+          row.id === CREATE_DEAL_DRAFT_ROW_ID ||
+          isDealListRowIncomplete(row)
+            ? "deals_list_row_draft"
+            : undefined
+        }
+        emptyLabel={
+          loading && rows.length === 0
+            ? "Loading deals…"
+            : query.trim()
+              ? "No deals match your search."
+              : emptyMessage
+        }
+        pagination={displayRows.length > 0 ? dealsPagination : undefined}
+      />
+    </div>
+  )
+
+  const tablePanel = (
+    <div
+      className={
+        dealsListContext === "investing"
+          ? "um_members_tab_content deals_list_investing_no_tabs"
+          : "um_members_tab_content"
+      }
+    >
+      {dealsListTablePanel}
+    </div>
+  )
+
+  if (embedded) {
+    return (
+      <>
+        {dealsListTablePanel}
+        <ExportDealsModal
+          open={exportModalOpen}
+          onClose={() => setExportModalOpen(false)}
+          deals={rows}
+        />
+        <DealPreviewModal
+          dealId={previewDealId}
+          listContext={dealsListContext}
+          onClose={() => setPreviewDealId(null)}
+        />
+      </>
+    )
+  }
 
   return (
     <section className="um_page deals_list_page">
@@ -872,7 +1022,7 @@ export function DealsListPage({
         </div>
       </div>
 
-      {/* Deals / Archives tabs — syndicating only (hidden for investing `/investing/deals`). */}
+      {/* Deals / Archives tabs — syndicating only. */}
       {dealsListContext === "syndicating" ? (
         <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
           <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
@@ -926,87 +1076,7 @@ export function DealsListPage({
         </div>
       ) : null}
 
-      <div
-        className={
-          dealsListContext === "investing"
-            ? "um_members_tab_content deals_list_investing_no_tabs"
-            : "um_members_tab_content"
-        }
-      >
-        <div
-          id="deals-list-tabpanel"
-          role={dealsListContext === "investing" ? "region" : "tabpanel"}
-          aria-label={
-            dealsListContext === "investing" ? "My deals list" : undefined
-          }
-          aria-labelledby={
-            dealsListContext === "investing"
-              ? undefined
-              : activeTab === "deals"
-                ? "deals-tab-deals"
-                : "deals-tab-archives"
-          }
-          className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading ? " deals_list_table_panel_loading" : ""}`}
-          aria-busy={loading}
-        >
-          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
-            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-              {dealsListContext === "syndicating" && activeTab === "deals" ? (
-                <button
-                  type="button"
-                  className="deals_suspend_all_btn"
-                  onClick={handleSuspendAllClick}
-                >
-                  <Ban size={18} strokeWidth={2} aria-hidden />
-                  <span>Suspend All</span>
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="um_toolbar_export_btn"
-                onClick={handleOpenExportModal}
-              >
-                <Download size={18} strokeWidth={2} aria-hidden />
-                <span>Export All</span>
-              </button>
-            </div>
-            <div className="um_search_wrap">
-              <Search className="um_search_icon" size={18} aria-hidden />
-              <input
-                type="search"
-                className="um_search_input"
-                placeholder="Search deals…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search deals"
-              />
-            </div>
-          </div>
-          <DataTable
-            visualVariant="members"
-            membersTableClassName="um_table_members deal_inv_table"
-            columns={columns}
-            rows={displayRows}
-            getRowKey={(row, rowIndex) => row.id || `deal-row-${rowIndex}`}
-            getRowClassName={(row) =>
-              row.id === CREATE_DEAL_DRAFT_ROW_ID ||
-              isDealListRowIncomplete(row)
-                ? "deals_list_row_draft"
-                : undefined
-            }
-            emptyLabel={
-              loading && rows.length === 0
-                ? "Loading deals…"
-                : query.trim()
-                  ? "No deals match your search."
-                  : emptyMessage
-            }
-            pagination={
-              displayRows.length > 0 ? dealsPagination : undefined
-            }
-          />
-        </div>
-      </div>
+      {tablePanel}
 
       <ExportDealsModal
         open={exportModalOpen}

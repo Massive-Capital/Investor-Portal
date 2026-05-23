@@ -5,6 +5,7 @@ import { LpInvestorShellGuard } from "@/modules/Investing";
 import { RequireAuth } from "./common/auth/RequireAuth";
 import {
   canAccessCompanyPage,
+  isLpInvestorSessionUser,
   isPlatformAdmin,
 } from "./common/auth/roleUtils";
 import PlatformMetricsPage from "./modules/Syndication/PlatformMetrics/PlatformMetricsPage";
@@ -26,10 +27,10 @@ import { EditDealInvestorClassPage } from "./modules/Syndication/Deals/EditDealI
 import { DealDetailPage } from "./modules/Syndication/Deals/DealDetailPage";
 import { DealOfferingPortfolioPage } from "./modules/Syndication/Deals/DealOfferingPortfolioPage";
 import { DealsListPage } from "./modules/Syndication/Deals/DealsListPage";
-import { InvestingDealsListPage } from "@/modules/Investing/pages/deals/deals_investing";
 import Opportunities from "@/modules/Investing/pages/opportunities/Opportunities";
 import InvestmentsPage from "@/modules/Investing/pages/investments/InvestmentsPage";
 import InvestmentDetailPage from "@/modules/Investing/pages/investments/InvestmentDetailPage";
+import InvestmentEsignSignGate from "@/modules/Investing/pages/investments/InvestmentEsignSignGate";
 import InvestingProfilesPage from "@/modules/Investing/pages/profiles/InvestingProfilesPage";
 import { AddInvestorProfilePage } from "@/modules/Investing/pages/profiles/AddInvestorProfilePage";
 import { EditInvestorProfilePage } from "@/modules/Investing/pages/profiles/EditInvestorProfilePage";
@@ -45,6 +46,9 @@ import UserManagementPage from "./modules/Syndication/usermanagement/UserManagem
 import ContactsPage from "./modules/Syndication/contacts/ContactsPage";
 import EmailTemplatesPage from "./modules/Syndication/contacts/EmailTemplatesPage";
 import EmailTemplateNewPage from "./modules/Syndication/contacts/EmailTemplateNewPage";
+import ReusableTemplatesPage from "./modules/Syndication/Templates/ReusableTemplatesPage";
+import CreateReusableTemplatePage from "./modules/Syndication/Templates/CreateReusableTemplatePage";
+import { usePortalMode } from "./modules/Investing/context/PortalModeContext";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
 import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
 import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
@@ -67,6 +71,18 @@ const PlaceholderPage = ({ title }: PlaceholderPageProps) => {
 function CompanyRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
+  if (!canAccessCompanyPage()) return <Navigate to="/dashboard" replace />;
+  return <CompanyPage />;
+}
+
+/** Syndication workspace settings; investing portal opens My account instead. */
+function SettingsRoute() {
+  const token = sessionStorage.getItem(SESSION_BEARER_KEY);
+  if (!token) return <Navigate to="/signin" replace />;
+  const { mode } = usePortalMode();
+  if (mode === "investing" || isLpInvestorSessionUser()) {
+    return <Navigate to="/account" replace />;
+  }
   if (!canAccessCompanyPage()) return <Navigate to="/dashboard" replace />;
   return <CompanyPage />;
 }
@@ -113,6 +129,10 @@ function App() {
       <BrowserRouter basename={routerBasename()}>
         <Routes>
           <Route path="/" element={<Landing_Page />} />
+          <Route
+            path="/investing/investments/:investmentId/esign"
+            element={<InvestmentEsignSignGate />}
+          />
           <Route element={<RequireAuth />}>
             <Route element={<LpInvestorShellGuard />}>
             <Route element={<PageLayout />}>
@@ -186,16 +206,13 @@ function App() {
               element={<EditInvestorProfilePage />}
             />
             <Route path="investing/profiles" element={<InvestingProfilesPage />} />
-            <Route path="investing/deals" element={<InvestingDealsListPage />} />
+            <Route
+              path="investing/deals"
+              element={<Navigate to="/investing/investments?tab=deals" replace />}
+            />
             <Route
               path="investing/settings"
-              element={
-                <WorkInProgressPage
-                  title="Settings"
-                  backTo="/dashboard"
-                  backLabel="Dashboard"
-                />
-              }
+              element={<Navigate to="/account" replace />}
             />
             <Route
               path="investing/feedback"
@@ -212,8 +229,8 @@ function App() {
               element={
                 <WorkInProgressPage
                   title="Cashflows"
-                  backTo="/investing/deals"
-                  backLabel="Deals"
+                  backTo="/investing/investments?tab=deals"
+                  backLabel="Investments"
                 />
               }
             />
@@ -228,7 +245,7 @@ function App() {
               element={<PlaceholderPage title="Refer a friend" />}
             />
             <Route path="support" element={<PlaceholderPage title="Support" />} />
-            <Route path="settings" element={<CompanyRoute />} />
+            <Route path="settings" element={<SettingsRoute />} />
             <Route path="company" element={<CompanyRoute />} />
     
                         {/* <Route path="company" element={<CompanyOverviewRoute />} /> */}
@@ -255,6 +272,8 @@ function App() {
             />
             <Route path="contacts/email-templates" element={<EmailTemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
+            <Route path="templates/new" element={<CreateReusableTemplatePage />} />
+            <Route path="templates" element={<ReusableTemplatesPage />} />
             </Route>
             </Route>
           </Route>

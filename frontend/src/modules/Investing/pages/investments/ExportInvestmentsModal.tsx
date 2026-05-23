@@ -1,6 +1,7 @@
 import { Download, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
+import { dealStageLabel } from "@/modules/Syndication/dealsDashboardUtils"
 import type { InvestmentListRow } from "./investments.types"
 import "@/modules/Syndication/Deals/components/export-deals-modal.css"
 
@@ -41,7 +42,7 @@ function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
         esc(String(r.distributedAmount)),
         esc(r.currentValuation),
         esc(r.dealCloseDate),
-        esc(r.status),
+        esc(dealStageLabel(r.status)),
         esc(r.actionRequired),
       ].join(","),
     )

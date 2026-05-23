@@ -34,9 +34,15 @@ import "../../deals-list.css"
 import {
   fetchDealInvestorClasses,
   fetchDealInvestors,
+  fetchDealMembers,
   postDealOfferingDocumentUploads,
   type DealDetailApi,
 } from "../../api/dealsApi"
+import {
+  buildSponsorUserPickerOptions,
+  filterLpInvestorsForDocumentSharedWith,
+  sponsorAudienceSearchBlob,
+} from "../../utils/offeringPreviewDocumentAudience"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
 import {
@@ -45,6 +51,7 @@ import {
   toggleIdInList,
 } from "./DocumentSharedWithPicker"
 import {
+  effectiveDocumentSharedWithScope,
   readOfferingPreviewSections,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
@@ -59,6 +66,27 @@ interface DocumentsSectionProps {
   dealId: string
   investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
+}
+
+function DocumentsTableDocName({ name }: { name: string }) {
+  const display = name.trim() || "—"
+  if (display === "—")
+    return <span className="deal_docs_ui_doc_name_text">{display}</span>
+
+  return (
+    <div className="deal_docs_ui_doc_name_wrap">
+      <FormTooltip
+        className="deal_docs_ui_doc_name_tooltip"
+        label={display}
+        content={<p className="deal_docs_ui_doc_name_tooltip_p">{display}</p>}
+        placement="top"
+        panelAlign="start"
+        triggerMode="inline"
+      >
+        <span className="deal_docs_ui_doc_name_text">{display}</span>
+      </FormTooltip>
+    </div>
+  )
 }
 
 function DocumentsTableColumnHeader({
@@ -175,6 +203,7 @@ export function DocumentsSection({
   const [documentUploadBusy, setDocumentUploadBusy] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
+  const [sponsorRosterRows, setSponsorRosterRows] = useState<DealInvestorRow[]>([])
   const onSyncedRef = useRef(onOfferingPreviewSynced)
   onSyncedRef.current = onOfferingPreviewSynced
 
@@ -189,17 +218,20 @@ export function DocumentsSection({
     if (!id) {
       setDealClasses([])
       setInvestorRows([])
+      setSponsorRosterRows([])
       return
     }
     let cancelled = false
     void (async () => {
-      const [classes, payload] = await Promise.all([
+      const [classes, payload, roster] = await Promise.all([
         fetchDealInvestorClasses(id),
-        fetchDealInvestors(id),
+        fetchDealInvestors(id, { lpInvestorsOnly: true }),
+        fetchDealMembers(id),
       ])
       if (cancelled) return
       setDealClasses(classes)
       setInvestorRows(payload.investors)
+      setSponsorRosterRows(roster)
     })()
     return () => {
       cancelled = true
@@ -318,6 +350,7 @@ export function DocumentsSection({
                 sharedDealClassIds: [],
                 sharedInvestorIds: [],
                 sharedWithAllInvestors: false,
+                sharedSponsorUserIds: [],
               }
             })
           } catch (err) {
@@ -420,6 +453,7 @@ export function DocumentsSection({
               sharedDealClassIds: [],
               sharedInvestorIds: [],
               sharedWithAllInvestors: false,
+              sharedSponsorUserIds: [],
             }
           })
         } catch (err) {
@@ -490,6 +524,8 @@ export function DocumentsSection({
         sharedDealClassIds: [...doc.sharedDealClassIds],
         sharedInvestorIds: [...doc.sharedInvestorIds],
         sharedWithAllInvestors: doc.sharedWithAllInvestors,
+        sharedSponsorUserIds: [...(doc.sharedSponsorUserIds ?? [])],
+        ...(doc.sharedWithScope ? { sharedWithScope: doc.sharedWithScope } : {}),
       }
       setSections((prev) =>
         prev.map((s) =>
@@ -500,6 +536,16 @@ export function DocumentsSection({
       )
     },
     [],
+  )
+
+  const lpInvestorRows = useMemo(
+    () => filterLpInvestorsForDocumentSharedWith(investorRows),
+    [investorRows],
+  )
+
+  const sponsorUserOptions = useMemo(
+    () => buildSponsorUserPickerOptions(sponsorRosterRows, lpInvestorRows),
+    [sponsorRosterRows, lpInvestorRows],
   )
 
   const filteredSections = useMemo(() => {
@@ -518,13 +564,20 @@ export function DocumentsSection({
           return [
             d.name,
             sectionDisplayLabel(ref),
-            sharedAudienceSearchBlob(
-              d.sharedDealClassIds,
-              d.sharedInvestorIds,
-              d.sharedWithAllInvestors,
-              dealClasses,
-              investorRows,
-            ),
+            sectionSharedWithDisplay(effectiveDocumentSharedWithScope(d, s)),
+            [
+              sharedAudienceSearchBlob(
+                d.sharedDealClassIds,
+                d.sharedInvestorIds,
+                d.sharedWithAllInvestors,
+                dealClasses,
+                lpInvestorRows,
+              ),
+              sponsorAudienceSearchBlob(
+                d.sharedSponsorUserIds ?? [],
+                sponsorUserOptions,
+              ),
+            ].join(" "),
           ]
         }),
       ]
@@ -532,7 +585,7 @@ export function DocumentsSection({
         .toLowerCase()
       return blob.includes(q)
     })
-  }, [sections, query, dealClasses, investorRows])
+  }, [sections, query, dealClasses, lpInvestorRows, sponsorUserOptions])
 
   const emptyLabel =
     sections.length === 0
@@ -680,11 +733,13 @@ export function DocumentsSection({
                                   label="Shared With"
                                   hint={
                                     <p className="deals_table_header_tooltip_p">
-                                      Pick deal classes, <strong>All Investors</strong>, and/or
-                                      individual investors (deal members appear in this list as
-                                      investors). Leave everything unchecked to use the section&apos;s
-                                      visibility only. Use the mail icon to notify recipients by
-                                      email.
+                                      Pick deal classes, <strong>Sponsor user investors</strong>{" "}
+                                      (all LPs that sponsor added), individual investors, or{" "}
+                                      <strong>All Investors</strong>.
+                                      Selected audiences only see the file in the LP portal and
+                                      shared link when signed in. Leave everything unchecked for all
+                                      viewers allowed by the section&apos;s visibility. Use the mail
+                                      icon to email those investors.
                                     </p>
                                   }
                                 />
@@ -693,21 +748,13 @@ export function DocumentsSection({
                                 <DocumentsTableColumnHeader
                                   label="Visibility"
                                   hint={
-                                    <>
-                                      <p className="deals_table_header_tooltip_p">
-                                        Offering page: documents appear on Preview
-                                        offering, the shared preview link, and for deal LP
-                                        investors in the portal. LP Investor: deal workspace
-                                        / portal only for LPs — not on Preview offering or
-                                        the no-login shared link.
-                                      </p>
-                                      <p className="deals_table_header_tooltip_p">
-                                        Fund of funds: when the deal is any type of fund of
-                                        funds, you can share a document with one of the deal
-                                        classes; investors who invested in that class can
-                                        access the document.
-                                      </p>
-                                    </>
+                                    <p className="deals_table_header_tooltip_p">
+                                      <strong>Offering link</strong>: file appears on
+                                      Preview offering and the no-login shared investor
+                                      link (and for signed-in LPs). <strong>LP portal
+                                      only</strong>: signed-in LPs only — not on the
+                                      public offering link or preview.
+                                    </p>
                                   }
                                 />
                               </th>
@@ -748,9 +795,7 @@ export function DocumentsSection({
                                   </td>
                                   <td className="deal_docs_ui_td deal_docs_ui_td_doc">
                                     <div className="deal_docs_ui_doc_cell">
-                                      <span className="deal_docs_ui_doc_name" title={d.name}>
-                                        {d.name}
-                                      </span>
+                                      <DocumentsTableDocName name={d.name} />
                                       <div className="deal_docs_ui_doc_quick">
                                         <button
                                           type="button"
@@ -812,9 +857,11 @@ export function DocumentsSection({
                                       idPrefix={`${section.id}-${d.id}`}
                                       classIds={d.sharedDealClassIds}
                                       investorIds={d.sharedInvestorIds}
+                                      sponsorUserIds={d.sharedSponsorUserIds ?? []}
                                       allInvestors={d.sharedWithAllInvestors}
                                       dealClasses={dealClasses}
-                                      investors={investorRows}
+                                      investors={lpInvestorRows}
+                                      sponsorUserOptions={sponsorUserOptions}
                                       docName={d.name}
                                       onClassChange={(classId, checked) => {
                                         setSections((prev) =>
@@ -834,29 +881,6 @@ export function DocumentsSection({
                                                               classId,
                                                               checked,
                                                             ),
-                                                          },
-                                                  ),
-                                                },
-                                          ),
-                                        )
-                                      }}
-                                      onAllInvestorsChange={(checked) => {
-                                        setSections((prev) =>
-                                          prev.map((s) =>
-                                            s.id !== section.id
-                                              ? s
-                                              : {
-                                                  ...s,
-                                                  nestedDocuments: s.nestedDocuments.map(
-                                                    (n) =>
-                                                      n.id !== d.id
-                                                        ? n
-                                                        : {
-                                                            ...n,
-                                                            sharedWithAllInvestors: checked,
-                                                            sharedInvestorIds: checked
-                                                              ? []
-                                                              : n.sharedInvestorIds,
                                                           },
                                                   ),
                                                 },
@@ -888,6 +912,57 @@ export function DocumentsSection({
                                           ),
                                         )
                                       }}
+                                      onAllInvestorsChange={(checked) => {
+                                        setSections((prev) =>
+                                          prev.map((s) =>
+                                            s.id !== section.id
+                                              ? s
+                                              : {
+                                                  ...s,
+                                                  nestedDocuments: s.nestedDocuments.map(
+                                                    (n) =>
+                                                      n.id !== d.id
+                                                        ? n
+                                                        : {
+                                                            ...n,
+                                                            sharedWithAllInvestors: checked,
+                                                            sharedInvestorIds: checked
+                                                              ? []
+                                                              : n.sharedInvestorIds,
+                                                            sharedSponsorUserIds: checked
+                                                              ? []
+                                                              : (n.sharedSponsorUserIds ?? []),
+                                                          },
+                                                  ),
+                                                },
+                                          ),
+                                        )
+                                      }}
+                                      onSponsorUserChange={(sponsorUserId, checked) => {
+                                        setSections((prev) =>
+                                          prev.map((s) =>
+                                            s.id !== section.id
+                                              ? s
+                                              : {
+                                                  ...s,
+                                                  nestedDocuments: s.nestedDocuments.map(
+                                                    (n) =>
+                                                      n.id !== d.id
+                                                        ? n
+                                                        : {
+                                                            ...n,
+                                                            sharedWithAllInvestors: false,
+                                                            sharedSponsorUserIds: toggleIdInList(
+                                                              n.sharedSponsorUserIds ?? [],
+                                                              sponsorUserId,
+                                                              checked,
+                                                            ),
+                                                          },
+                                                  ),
+                                                },
+                                          ),
+                                        )
+                                      }}
                                     />
                                   </td>
                                   <td className="deal_docs_ui_td deal_docs_ui_td_shared">
@@ -895,28 +970,40 @@ export function DocumentsSection({
                                       <div className="deal_docs_ui_shared_body">
                                         <select
                                           className="deal_docs_ui_pill_select deal_docs_ui_shared_select"
-                                          aria-label={`Visibility for ${section.sectionLabel}`}
-                                          value={section.sharedWithScope}
+                                          aria-label={`Visibility for ${d.name}`}
+                                          value={effectiveDocumentSharedWithScope(
+                                            d,
+                                            section,
+                                          )}
                                           onChange={(e) => {
-                                            const v = e.target.value as SectionSharedWithScope
+                                            const v =
+                                              e.target.value as SectionSharedWithScope
                                             setSections((prev) =>
                                               prev.map((s) =>
                                                 s.id !== section.id
                                                   ? s
                                                   : {
                                                       ...s,
-                                                      sharedWithScope: v,
-                                                      visibility:
-                                                        sectionSharedWithDisplay(v),
+                                                      nestedDocuments:
+                                                        s.nestedDocuments.map((n) =>
+                                                          n.id !== d.id
+                                                            ? n
+                                                            : {
+                                                                ...n,
+                                                                sharedWithScope: v,
+                                                              },
+                                                        ),
                                                     },
                                               ),
                                             )
                                           }}
                                         >
                                           <option value="offering_page">
-                                            Offering page
+                                            Offering link
                                           </option>
-                                          <option value="lp_investor">LP Investor</option>
+                                          <option value="lp_investor">
+                                            LP portal only
+                                          </option>
                                         </select>
                                       </div>
                                     </div>

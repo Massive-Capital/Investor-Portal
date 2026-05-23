@@ -1,8 +1,17 @@
 import { SESSION_BEARER_KEY } from "../../../../common/auth/sessionKeys"
 import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
-import { formatDateDdMmmYyyy } from "../../../../common/utils/formatDateDisplay"
+import {
+  formatDateDdMmmYyyy,
+  formatInvestorSignedColumn,
+} from "../../../../common/utils/formatDateDisplay"
+import {
+  parseDropboxDetailFromApi,
+  parseEsignStatusFromApi,
+  type DealEsignDropboxDetail,
+} from "../utils/investorEsignStatus"
 import type { AddInvestmentFormValues } from "../tabs/deal_members/add-investment/add_deal_member_types"
 import type {
+  DealInvestorEsignStatus,
   DealInvestorRow,
   DealInvestorsKpis,
   DealInvestorsPayload,
@@ -816,7 +825,11 @@ export async function patchDealInvestorSummary(
 
 export async function patchDealOfferingInvestorPreview(
   dealId: string,
-  body: { visibility: Record<string, boolean>; sections: unknown[] },
+  body: {
+    visibility: Record<string, boolean>
+    sections: unknown[]
+    offeringDocuments?: unknown[]
+  },
 ): Promise<DealDetailApi> {
   const base = getApiV1Base()
   if (!base) throw new Error("VITE_BASE_URL is not configured.")
@@ -1757,7 +1770,7 @@ function normalizeInvestorRowApi(
       ]),
     ),
     committed: committedDisplay,
-    signedDate: formatDateDdMmmYyyy(
+    signedDate: formatInvestorSignedColumn(
       str(
         firstDefined(raw, [
           "signedDate",
@@ -1767,6 +1780,9 @@ function normalizeInvestorRowApi(
           "doc_signed_date",
         ]),
       ),
+    ),
+    esignStatus: parseEsignStatusFromApi(
+      raw.esignStatus ?? raw.esign_status,
     ),
     fundedDate: formatDateDdMmmYyyy(
       str(firstDefined(raw, ["fundedDate", "funded_date", "funded"])),
@@ -2160,6 +2176,709 @@ export async function postDealMemberInvitationEmail(
       return { ok: false, message: msg || "Could not send email" }
     }
     return { ok: true }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export const DEAL_ESIGN_TEMPLATES_CHANGED_EVENT = "deal-esign-templates-changed"
+
+export type DropboxSignTemplateStatus = "none" | "draft" | "ready"
+
+export type DealEsignTemplateFileRecord = {
+  id: string
+  categoryId: string
+  relativePath: string
+  originalName: string
+  uploadedAt: string
+  templateName?: string
+  includeQuestionnaire?: boolean
+  dropboxSignTemplateId?: string
+  dropboxSignStatus?: DropboxSignTemplateStatus
+  dropboxSignTitle?: string
+  dropboxSignSavedAt?: string
+  /** PDF includes appendix W-9 form after the uploaded document. */
+  includesW9Appendix?: boolean
+}
+
+export type EsignTemplateUploadMetaInput = {
+  templateName: string
+  includeQuestionnaire: boolean
+}
+
+export type FetchDealEsignDropboxSignConfigResult =
+  | { ok: true; configured: boolean; clientId: string | null; testMode: boolean }
+  | { ok: false; message: string }
+
+/** Dropbox Sign public config (client id only — API key stays on server). */
+export async function fetchDealEsignDropboxSignConfig(): Promise<FetchDealEsignDropboxSignConfigResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(`${base}/deals/esign-templates/dropbox-sign-config`, {
+      headers: { ...authHeaders() },
+      credentials: "include",
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      configured?: unknown
+      clientId?: unknown
+      testMode?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not load Dropbox Sign config",
+      }
+    }
+    return {
+      ok: true,
+      configured: Boolean(data.configured),
+      clientId: typeof data.clientId === "string" ? data.clientId : null,
+      testMode: Boolean(data.testMode),
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type PostDealEsignEmbeddedDraftResult =
+  | {
+      ok: true
+      editUrl: string
+      templateId: string
+      expiresAt: number
+      clientId: string
+      testMode: boolean
+      hasDocuments: boolean
+      filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
+    }
+  | { ok: false; message: string }
+
+/**
+ * Starts Dropbox Sign embedded template draft (server: create_embedded_draft).
+ * Returns edit_url for hellosign-embedded modal.
+ */
+export async function postDealEsignEmbeddedDraft(
+  dealId: string,
+  fileId: string,
+  options?: { title?: string },
+): Promise<PostDealEsignEmbeddedDraftResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}/embedded-draft`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ title: options?.title?.trim() ?? "" }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      editUrl?: unknown
+      templateId?: unknown
+      expiresAt?: unknown
+      clientId?: unknown
+      testMode?: unknown
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not open template editor",
+      }
+    }
+    const editUrl = typeof data.editUrl === "string" ? data.editUrl : ""
+    const templateId = typeof data.templateId === "string" ? data.templateId : ""
+    const clientId = typeof data.clientId === "string" ? data.clientId : ""
+    if (!editUrl || !templateId || !clientId) {
+      return { ok: false, message: "Invalid embedded draft response" }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      editUrl,
+      templateId,
+      expiresAt: typeof data.expiresAt === "number" ? data.expiresAt : 0,
+      clientId,
+      testMode: Boolean(data.testMode),
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type PostDealEsignCompleteEmbeddedTemplateResult =
+  | {
+      ok: true
+      hasDocuments: boolean
+      filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
+    }
+  | { ok: false; message: string }
+
+/** Persists template_id after sponsor saves in embedded editor. */
+export async function postDealEsignCompleteEmbeddedTemplate(
+  dealId: string,
+  fileId: string,
+  input: { dropboxSignTemplateId: string; title?: string },
+): Promise<PostDealEsignCompleteEmbeddedTemplateResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}/complete-embedded-template`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          dropboxSignTemplateId: input.dropboxSignTemplateId.trim(),
+          title: input.title?.trim() ?? "",
+        }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not save template",
+      }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type FetchDealEsignTemplatesResult =
+  | {
+      ok: true
+      hasDocuments: boolean
+      filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
+    }
+  | { ok: false; message: string }
+
+/**
+ * Read-only preview URL for an eSign template (W-9 merged on server when needed).
+ */
+export async function fetchDealEsignTemplateViewUrl(
+  dealId: string,
+  fileId: string,
+): Promise<
+  | {
+      ok: true
+      viewUrl: string
+      displayName: string
+      isPdf: boolean
+    }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}/view-url`,
+      { headers: { ...authHeaders() }, credentials: "include" },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      viewUrl?: unknown
+      displayName?: unknown
+      isPdf?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not open document",
+      }
+    }
+    const viewUrl = typeof data.viewUrl === "string" ? data.viewUrl.trim() : ""
+    if (!viewUrl) {
+      return { ok: false, message: "Preview URL is not available" }
+    }
+    return {
+      ok: true,
+      viewUrl,
+      displayName:
+        typeof data.displayName === "string" && data.displayName.trim()
+          ? data.displayName.trim()
+          : "Document",
+      isPdf: Boolean(data.isPdf),
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export async function fetchDealEsignTemplates(
+  dealId: string,
+): Promise<FetchDealEsignTemplatesResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates`,
+      { headers: { ...authHeaders() }, credentials: "include" },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not load eSign templates",
+      }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type PostDealEsignTemplateUploadsResult =
+  | {
+      ok: true
+      hasDocuments: boolean
+      filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
+    }
+  | { ok: false; message: string }
+
+export async function postDealEsignTemplateUploads(
+  dealId: string,
+  categoryId: string,
+  uploads: Array<{ file: File; meta: EsignTemplateUploadMetaInput }>,
+): Promise<PostDealEsignTemplateUploadsResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  if (uploads.length === 0) {
+    return { ok: false, message: "No documents to upload." }
+  }
+  const fd = new FormData()
+  fd.append("categoryId", categoryId)
+  for (const u of uploads) fd.append("esignFiles", u.file)
+  fd.append(
+    "templateMeta",
+    JSON.stringify(
+      uploads.map((u) => ({
+        templateName: u.meta.templateName,
+        includeQuestionnaire: u.meta.includeQuestionnaire,
+      })),
+    ),
+  )
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-template-uploads`,
+      {
+        method: "POST",
+        headers: { ...authHeaders() },
+        body: fd,
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not upload eSign templates",
+      }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export async function deleteDealEsignTemplateFile(
+  dealId: string,
+  fileId: string,
+): Promise<FetchDealEsignTemplatesResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}`,
+      {
+        method: "DELETE",
+        headers: { ...authHeaders() },
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null ? String(data.message) : "Could not remove file",
+      }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export function notifyDealEsignTemplatesChanged(dealId: string): void {
+  window.dispatchEvent(
+    new CustomEvent(DEAL_ESIGN_TEMPLATES_CHANGED_EVENT, {
+      detail: { dealId },
+    }),
+  )
+}
+
+export type PostDealInvestorSendEsignResult =
+  | { ok: true }
+  | { ok: false; message: string }
+
+
+export type DealMyEsignDocument = {
+  fileId: string
+  name: string
+  url: string | null
+  status: "pending" | "signed"
+  categoryId?: string
+  signatureRequestId?: string
+}
+
+export type DealMyEsignDocumentsResult = {
+  documents: DealMyEsignDocument[]
+  esignCompleted: boolean
+  esignPending: boolean
+  completedAt?: string | null
+  sentAt?: string | null
+  loadError?: string | null
+}
+
+export type DealMyEsignSignSessionResult =
+  | {
+      ok: true
+      alreadyCompleted: boolean
+      signUrl: string | null
+      clientId: string | null
+      testMode: boolean
+      configured: boolean
+    }
+  | { ok: false; message: string }
+
+/** GET `/deals/:dealId/my-esign-sign-session` — fresh embedded sign URL for portal signing. */
+export async function fetchDealMyEsignSignSession(
+  dealId: string,
+  signatureRequestId?: string,
+): Promise<DealMyEsignSignSessionResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  const sig = signatureRequestId?.trim()
+  const query = sig
+    ? `?signatureRequestId=${encodeURIComponent(sig)}`
+    : ""
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/my-esign-sign-session${query}`,
+      {
+        headers: authHeaders(),
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: unknown
+      alreadyCompleted?: boolean
+      signUrl?: string | null
+      clientId?: string | null
+      testMode?: boolean
+      configured?: boolean
+    }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return { ok: false, message: msg || "Could not load signing session" }
+    }
+    return {
+      ok: true,
+      alreadyCompleted: Boolean(data.alreadyCompleted),
+      signUrl: data.signUrl ?? null,
+      clientId: data.clientId ?? null,
+      testMode: Boolean(data.testMode),
+      configured: Boolean(data.configured),
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+/** GET `/deals/:dealId/my-esign-documents` — signed PDFs after investor completes eSign. */
+export async function fetchDealMyEsignDocuments(
+  dealId: string,
+): Promise<DealMyEsignDocumentsResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return {
+      documents: [],
+      esignCompleted: false,
+      esignPending: false,
+      loadError: "API base URL is not configured",
+    }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/my-esign-documents`,
+      {
+        headers: authHeaders(),
+        credentials: "include",
+      },
+    )
+    const data = (await res.json()) as {
+      message?: unknown
+      documents?: Array<{
+        fileId?: string
+        name?: string
+        url?: string | null
+        status?: string
+        categoryId?: string
+        signatureRequestId?: string
+      }>
+      esignCompleted?: boolean
+      esignPending?: boolean
+      completedAt?: string | null
+      sentAt?: string | null
+    }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return {
+        documents: [],
+        esignCompleted: false,
+        esignPending: false,
+        loadError: msg || "Could not load e-sign documents",
+      }
+    }
+    const documents = Array.isArray(data.documents)
+      ? data.documents
+          .map((d) => {
+            const fileId = String(d.fileId ?? "").trim()
+            const name = String(d.name ?? "").trim()
+            const rawUrl = d.url != null ? String(d.url).trim() : ""
+            const statusRaw = String(d.status ?? "").trim().toLowerCase()
+            const status: DealMyEsignDocument["status"] =
+              statusRaw === "signed" ? "signed" : "pending"
+            const categoryId = String(d.categoryId ?? "").trim()
+            const signatureRequestId = String(d.signatureRequestId ?? "").trim()
+            return {
+              fileId,
+              name,
+              url: rawUrl || null,
+              status,
+              ...(categoryId ? { categoryId } : {}),
+              ...(signatureRequestId ? { signatureRequestId } : {}),
+            }
+          })
+          .filter((d) => d.fileId && d.name)
+      : []
+    return {
+      documents,
+      esignCompleted: Boolean(data.esignCompleted),
+      esignPending: Boolean(data.esignPending),
+      completedAt: data.completedAt ?? null,
+      sentAt: data.sentAt ?? null,
+      loadError: null,
+    }
+  } catch {
+    return {
+      documents: [],
+      esignCompleted: false,
+      esignPending: false,
+      loadError: "Network error loading e-sign documents",
+    }
+  }
+}
+
+/**
+ * POST `/deals/:dealId/members/send-esign` — sends eSign documents to an investor
+ * from the **Investors** tab row actions menu.
+ */
+export async function postDealInvestorSendEsign(
+  dealId: string,
+  input: {
+    to_email: string
+    member_display_name?: string
+    roster_id?: string
+    file_ids?: string[]
+  },
+): Promise<PostDealInvestorSendEsignResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/members/send-esign`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          to_email: input.to_email.trim(),
+          member_display_name: input.member_display_name?.trim() ?? "",
+          roster_id: input.roster_id?.trim() ?? "",
+          file_ids: input.file_ids ?? [],
+        }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: unknown
+    }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return { ok: false, message: msg || "Could not send eSign" }
+    }
+    return { ok: true }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type FetchDealMemberEsignStatusResult =
+  | {
+      ok: true
+      status: DealInvestorEsignStatus
+      dropbox: DealEsignDropboxDetail | null
+      syncedAt: string
+    }
+  | { ok: false; message: string }
+
+/** GET `/deals/:dealId/members/:rowId/esign-status` — sync + Dropbox Sign timestamps. */
+export async function fetchDealMemberEsignStatus(
+  dealId: string,
+  rowId: string,
+): Promise<FetchDealMemberEsignStatusResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/members/${encodeURIComponent(rowId)}/esign-status`,
+      {
+        headers: authHeaders(),
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: unknown
+      status?: unknown
+      dropbox?: unknown
+      syncedAt?: string
+    }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return { ok: false, message: msg || "Could not load eSign status" }
+    }
+    const status = parseEsignStatusFromApi(data.status)
+    if (!status?.sentAt) {
+      return { ok: false, message: "No eSign status returned" }
+    }
+    return {
+      ok: true,
+      status,
+      dropbox: parseDropboxDetailFromApi(data.dropbox),
+      syncedAt: String(data.syncedAt ?? "").trim() || new Date().toISOString(),
+    }
   } catch {
     return { ok: false, message: "Network error" }
   }

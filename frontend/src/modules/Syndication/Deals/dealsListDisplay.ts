@@ -12,13 +12,19 @@ export {
   dateSortValue,
 } from "../../../common/utils/formatDateDisplay"
 
+/** Strip “(most common)” suffix from option labels shown in the UI. */
+export function stripMostCommonFromLabel(label: string): string {
+  return label.replace(/\s*\(most common\)\s*/gi, "").trim() || label
+}
+
 /** Human-readable deal type for tables (wizard codes + legacy option keys). */
 export function dealTypeDisplayLabel(code: string): string {
   if (!code || code === "—") return "—"
   const fromForm = DEAL_FORM_TYPE_OPTIONS.find((o) => o.value === code)
-  if (fromForm) return fromForm.label
+  if (fromForm) return stripMostCommonFromLabel(fromForm.label)
   const k = code as DealTypeOption
-  return DEAL_TYPE_LABELS[k] ?? code
+  const mapped = DEAL_TYPE_LABELS[k]
+  return mapped ? stripMostCommonFromLabel(mapped) : code
 }
 
 /** SEC type dropdown value → label (deals list / dashboard cards). */
@@ -26,7 +32,8 @@ export function secTypeDisplayLabel(code: string): string {
   const t = String(code ?? "").trim()
   if (!t || t === "—") return "—"
   const hit = SEC_TYPE_OPTIONS.find((o) => o.value === t)
-  return hit?.label ?? t
+  const label = hit?.label ?? t
+  return stripMostCommonFromLabel(label)
 }
 
 const moneyFmt = new Intl.NumberFormat("en-US", {

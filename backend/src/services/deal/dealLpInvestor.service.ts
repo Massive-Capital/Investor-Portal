@@ -9,6 +9,7 @@ import {
   dealInvestment,
   type DealInvestmentRow,
 } from "../../schema/deal.schema/deal-investment.schema.js";
+import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
 import {
   applyTotalCommittedToDealInvestmentRow,
   buildInvestorKpisFromRows,
@@ -179,7 +180,8 @@ export function syntheticInvestmentFromDealLpInvestor(
     fundApprovedCommitmentSnapshot: "",
     status: "",
     investorClass: m.investorClass,
-    docSignedDate: null,
+    docSignedDate: m.docSignedDate?.trim() ?? null,
+    esignStatusJson: m.esignStatusJson?.trim() ?? null,
     commitmentAmount: m.committed_amount,
     extraContributionAmounts: [],
     documentStoragePath: null,
@@ -237,12 +239,40 @@ export async function mergeDealLpRosterIntoFullInvestorRows(
   );
 }
 
+/** Prefer the row that actually has an active eSign send (latest `sentAt`). */
+function mergeLpRosterEsignFields(
+  syn: Pick<DealInvestmentRow, "docSignedDate" | "esignStatusJson">,
+  inv: Pick<DealInvestmentRow, "docSignedDate" | "esignStatusJson">,
+): Pick<DealInvestmentRow, "docSignedDate" | "esignStatusJson"> {
+  const lpSt = parseEsignStatusJson(syn.esignStatusJson);
+  const invSt = parseEsignStatusJson(inv.esignStatusJson);
+  const lpMs = lpSt?.sentAt ? new Date(lpSt.sentAt).getTime() : -1;
+  const invMs = invSt?.sentAt ? new Date(invSt.sentAt).getTime() : -1;
+  if (lpMs >= invMs && lpSt?.sentAt) {
+    return {
+      docSignedDate: syn.docSignedDate ?? inv.docSignedDate,
+      esignStatusJson: syn.esignStatusJson,
+    };
+  }
+  if (invSt?.sentAt) {
+    return {
+      docSignedDate: inv.docSignedDate ?? syn.docSignedDate,
+      esignStatusJson: inv.esignStatusJson,
+    };
+  }
+  return {
+    docSignedDate: syn.docSignedDate ?? inv.docSignedDate,
+    esignStatusJson: syn.esignStatusJson ?? inv.esignStatusJson,
+  };
+}
+
 /** LP investor row id + labels; financials from latest investment for this deal/contact (any role). */
 function syntheticLpRosterWithInvestmentFinancials(
   m: DealLpInvestorRow,
   inv: DealInvestmentRow,
 ): DealInvestmentRow {
   const syn = syntheticInvestmentFromDealLpInvestor(m);
+  const esignFields = mergeLpRosterEsignFields(syn, inv);
   const extras = Array.isArray(inv.extraContributionAmounts)
     ? inv.extraContributionAmounts
     : [];
@@ -255,7 +285,8 @@ function syntheticLpRosterWithInvestmentFinancials(
       ? inv.investorClass
       : syn.investorClass,
     status: inv.status?.trim() ? inv.status : syn.status,
-    docSignedDate: inv.docSignedDate ?? syn.docSignedDate,
+    docSignedDate: esignFields.docSignedDate,
+    esignStatusJson: esignFields.esignStatusJson,
     contactDisplayName: inv.contactDisplayName?.trim()
       ? inv.contactDisplayName
       : syn.contactDisplayName,

@@ -129,6 +129,72 @@ export async function fetchPlatformFunding(
   }
 }
 
+export type UserActivityPageCount = {
+  pagePath: string
+  pageLabel: string
+  count: number
+}
+
+export type UserActivityRow = {
+  userId: string
+  userName: string
+  email: string
+  loginAt: string
+  logoutAt: string | null
+  isActive: boolean
+  pageNavigations: UserActivityPageCount[]
+}
+
+export async function fetchPlatformUserActivity(): Promise<
+  | { ok: true; userActivity: UserActivityRow[] }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base) return { ok: false, message: "API base URL is not configured." }
+  const token =
+    typeof sessionStorage !== "undefined"
+      ? sessionStorage.getItem(SESSION_BEARER_KEY)
+      : null
+  if (!token) return { ok: false, message: "Not signed in." }
+
+  try {
+    const res = await fetch(`${base}/platform/metrics/user-activity`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      userActivity?: UserActivityRow[]
+      message?: string
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          typeof data.message === "string"
+            ? data.message
+            : `Could not load user activity (${res.status})`,
+      }
+    }
+    if (!Array.isArray(data.userActivity)) {
+      return { ok: false, message: "Invalid user activity response." }
+    }
+    return { ok: true, userActivity: data.userActivity }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Network error"
+    return { ok: false, message: msg }
+  }
+}
+
+export function formatActivityDateTime(iso: string | null | undefined): string {
+  if (!iso?.trim()) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(d)
+}
+
 export function formatRoleLabel(role: string): string {
   return role
     .split("_")

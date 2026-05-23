@@ -22,6 +22,7 @@ import {
   investorCommitmentTypeFromInv,
   profileNameForInvestmentBreakdown,
 } from "./investedAsDisplay"
+import { syncInvestmentDealDocumentPreview } from "./utils/syncInvestmentDealDocumentPreview"
 import { investmentRuntimeIdForDeal, readRuntimeInvestmentRowById } from "./investmentsRuntimeStore"
 import type {
   InvestmentBreakdownLine,
@@ -270,6 +271,7 @@ export async function loadInvestmentDetailFromDeal(
   } catch {
     return undefined
   }
+  syncInvestmentDealDocumentPreview(did, deal.offeringInvestorPreviewJson ?? null)
   const committed = committedAmountForViewerEmail(payload, emn)
   if (committed <= 0) return undefined
   const myCommitments = positiveViewerCommitments(payload.investors, emn)

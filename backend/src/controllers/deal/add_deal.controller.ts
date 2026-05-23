@@ -16,7 +16,7 @@ import {
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { sendOfferingPreviewShareEmails } from "../../services/deal/offeringPreviewShareEmail.service.js";
-import { canInvestorAccessOffering } from "../../constants/deal-lifecycle/index.js";
+import { canInvestorAccessPublicOffering } from "../../constants/deal-lifecycle/index.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
 import {
   getAddDealFormById,
@@ -1026,7 +1026,9 @@ export async function getPublicOfferingPreview(
       res.status(404).json({ message: "Offering not found." });
       return;
     }
-    if (!canInvestorAccessOffering(row.offeringStatus)) {
+    if (
+      !canInvestorAccessPublicOffering(row.dealStage, row.offeringStatus)
+    ) {
       res.status(403).json({
         message: "This offering is not available.",
       });

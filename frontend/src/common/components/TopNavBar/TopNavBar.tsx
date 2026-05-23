@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { isLpInvestorSessionUser } from "../../auth/roleUtils"
 import { clearPortalSessionStorage } from "../../auth/sessionKeys"
+import { recordActivityLogout } from "../../auth/userActivityApi"
 import { getSessionUserDisplayName } from "../../auth/sessionUserDisplayName"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import "./top_navbar.css"
@@ -112,7 +113,7 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
 
   function handleMyAccount() {
     closeMenu()
-    navigate("/account/company")
+    navigate("/account")
   }
 
   function handleRefer() {
@@ -120,15 +121,16 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
     navigate("/refer-a-friend")
   }
 
-  function handleLogout() {
+  async function handleLogout() {
     closeMenu()
+    await recordActivityLogout()
     clearPortalSessionStorage()
     navigate("/signin")
   }
 
   function handleSwitchToInvesting() {
     closeMenu()
-    // Navigate before switching mode: `DealsLayout` redirects to `/investing/opportunities`
+    // Navigate before switching mode: `DealsLayout` redirects to `/dashboard`
     // if mode becomes investing while still on `/deals` (not a deal detail UUID).
     navigate("/dashboard", { replace: true })
     switchToInvesting()

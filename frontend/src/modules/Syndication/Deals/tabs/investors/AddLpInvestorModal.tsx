@@ -121,8 +121,10 @@ export interface AddLpInvestorModalProps {
   dealId: string
   open: boolean
   onClose: () => void
-  /** After a successful API save (refetch list). */
+  /** After explicit Save (closes modal via parent). */
   onSaved: () => void
+  /** Debounced autosave only — refresh list without closing the modal. */
+  onListRefresh?: () => void | Promise<void>
   /** Same chrome as add — edit an existing `deal_lp_investor` row from the Investors table. */
   mode?: "add" | "edit"
   editRow?: DealInvestorRow | null
@@ -156,6 +158,7 @@ export function AddLpInvestorModal({
   open,
   onClose,
   onSaved,
+  onListRefresh,
   mode = "add",
   editRow = null,
   dealBlocksInvitationEmails = false,
@@ -469,7 +472,7 @@ export function AddLpInvestorModal({
                 saveLpRosterId(dealId, result.lpInvestorId)
               }
             }
-            if (result.ok && result.mode === "api") onSaved()
+            if (result.ok && result.mode === "api") void onListRefresh?.()
           } finally {
             lpAutosaveInFlightRef.current = false
           }
@@ -488,7 +491,7 @@ export function AddLpInvestorModal({
             setBackendLpRosterId(result.lpInvestorId)
             saveLpRosterId(dealId, result.lpInvestorId)
           }
-          if (result.ok && result.mode === "api") onSaved()
+          if (result.ok && result.mode === "api") void onListRefresh?.()
         } finally {
           lpPostInFlightRef.current = false
           lpAutosaveInFlightRef.current = false
@@ -509,7 +512,7 @@ export function AddLpInvestorModal({
     contactDisplayName,
     contactEmail,
     sendInvitationMail,
-    onSaved,
+    onListRefresh,
     investorClassIdForPayload,
     isEditMode,
     dealBlocksInvitationEmails,

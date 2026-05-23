@@ -16,7 +16,10 @@ import {
 import { useEffect } from "react"
 import { createPortal } from "react-dom"
 import { ViewReadonlyField } from "../../../../../common/components/ViewReadonlyField"
-import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
+import {
+  formatDateDdMmmYyyy,
+  formatInvestorSignedColumn,
+} from "../../../../../common/utils/formatDateDisplay"
 import { investorRoleLabel } from "../../constants/investor-profile"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
@@ -158,7 +161,7 @@ export function DealInvestorViewModal({
             <ViewReadonlyField
               Icon={Calendar}
               label="Signed"
-              value={formatDateDdMmmYyyy(investorRow.signedDate)}
+              value={formatInvestorSignedColumn(investorRow.signedDate)}
             />
             <ViewReadonlyField
               Icon={Calendar}

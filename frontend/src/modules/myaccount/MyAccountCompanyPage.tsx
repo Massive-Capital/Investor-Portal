@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { Building2, CircleUser, Shield } from "lucide-react"
-import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { primaryRoleLabelFromRow } from "../Syndication/usermanagement/memberAdminShared"
 import { fetchMyProfile } from "./accountApi"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
@@ -10,12 +9,14 @@ function str(u: Record<string, unknown>, key: string): string {
   return String(u[key] ?? "").trim()
 }
 
+/** My account (investing Settings) always shows the investing portal profile role. */
+const INVESTING_PROFILE_ROLE_LABEL = "Investor"
+
 export function MyAccountCompanyPage() {
   const location = useLocation()
-  const { mode } = usePortalMode()
   const [companyName, setCompanyName] = useState("")
   const [role, setRole] = useState("")
-  const portalRoleLabel = mode === "investing" ? "Investor" : "Sponsor"
+  const portalRoleLabel = INVESTING_PROFILE_ROLE_LABEL
 
   const loadFromSession = useCallback(() => {
     const u = readSessionUser()

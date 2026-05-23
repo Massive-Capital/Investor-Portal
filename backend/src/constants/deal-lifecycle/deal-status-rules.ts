@@ -111,6 +111,28 @@ export function canInvestorAccessOffering(
   return getDealStatusRules(rawStatus).canAccessOffering;
 }
 
+export function effectiveOfferingStatusForAccess(
+  dealStage: string | null | undefined,
+  offeringStatus: string | null | undefined,
+): DealStatus | null {
+  const stage = normalizeDealStageCanonical(dealStage);
+  const status = normalizeDealStatus(offeringStatus);
+  if (!stage) return status;
+  if (status && isStatusAllowedForStage(stage, status)) return status;
+  return defaultStatusForStage(stage);
+}
+
+export function canInvestorAccessPublicOffering(
+  dealStage: string | null | undefined,
+  offeringStatus: string | null | undefined,
+): boolean {
+  const stage = normalizeDealStageCanonical(dealStage);
+  if (stage === "draft") return false;
+  const effective = effectiveOfferingStatusForAccess(dealStage, offeringStatus);
+  if (!effective) return false;
+  return getDealStatusRules(effective).canAccessOffering;
+}
+
 export function canInvestorInvest(
   rawStatus: string | null | undefined,
 ): boolean {
@@ -166,6 +188,17 @@ function fundraisingStatusIndex(status: DealStatus): number {
   return CAPITAL_RAISING_FUNDRAISING_STATUSES.indexOf(status);
 }
 
+/** Legacy `draft_hidden` + capital raising — treat as `coming_soon` for progression. */
+function statusForFundraisingProgression(
+  rawStage: string | null | undefined,
+  status: DealStatus,
+): DealStatus {
+  const stage = normalizeDealStageCanonical(rawStage);
+  if (stage !== "capital_raising") return status;
+  if (fundraisingStatusIndex(status) >= 0) return status;
+  return defaultStatusForStage("capital_raising");
+}
+
 /**
  * Validates an offering status change for PATCH / offering overview.
  * Blocks invalid stage+status pairs and changes outside capital_raising.
@@ -196,8 +229,10 @@ export function validateOfferingStatusChange(params: {
     };
   }
 
-  const prevIdx = fundraisingStatusIndex(prev);
-  const nextIdx = fundraisingStatusIndex(next);
+  const prevForProgress = statusForFundraisingProgression(params.dealStage, prev);
+  const nextForProgress = statusForFundraisingProgression(params.dealStage, next);
+  const prevIdx = fundraisingStatusIndex(prevForProgress);
+  const nextIdx = fundraisingStatusIndex(nextForProgress);
   if (prevIdx < 0 || nextIdx < 0) {
     return { ok: false, message: "Invalid fundraising status." };
   }

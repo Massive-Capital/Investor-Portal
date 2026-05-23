@@ -9,6 +9,14 @@ import {
 } from "./dealsDashboardMoney"
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
+import {
+  dealTypeDisplayLabel,
+  secTypeDisplayLabel,
+} from "./dealsListDisplay"
+import {
+  formatMoneyFieldDisplay,
+  parseMoneyDigits,
+} from "./utils/offeringMoneyFormat"
 
 /** Matches backend `offeringPreviewCrypto` UUID check for legacy `preview=` links. */
 export const DEAL_OFFERING_PREVIEW_UUID_RE =
@@ -86,6 +94,126 @@ export function previewFundedDisplay(payload: DealInvestorsPayload): string {
 
 export type OfferingMetricChip = { label: string; value: string }
 
+export type OfferingSidebarSummaryRow = { label: string; value: string }
+
+const INVESTMENT_TYPE_LABELS: Record<string, string> = {
+  equity: "Equity",
+  debt: "Debt",
+  convertible: "Convertible",
+  hybrid: "Hybrid",
+  other: "Other",
+}
+
+/** City and state for the portfolio header (wireframe). */
+export function formatOfferingPortfolioLocationLine(
+  detail: DealDetailApi,
+): string {
+  const city = detail.city?.trim()
+  const state = detail.state?.trim()
+  const parts = [city, state].filter(Boolean)
+  if (parts.length) return parts.join(", ")
+  const country = detail.country?.trim()
+  if (city && country) return `${city}, ${country}`
+  return country || city || "—"
+}
+
+function investmentTypeFromClassJson(ic: DealInvestorClass): string | undefined {
+  const raw = ic.advancedOptionsJson?.trim()
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw) as { investmentType?: unknown }
+    const t =
+      typeof parsed.investmentType === "string"
+        ? parsed.investmentType.trim()
+        : ""
+    return t || undefined
+  } catch {
+    return undefined
+  }
+}
+
+function investmentTypeDisplay(detail: DealDetailApi, classes: DealInvestorClass[]): string {
+  const fromList = detail.listRow?.investmentType?.trim()
+  if (fromList && fromList !== "—") {
+    return INVESTMENT_TYPE_LABELS[fromList.toLowerCase()] ?? fromList
+  }
+  for (const ic of classes) {
+    const raw = investmentTypeFromClassJson(ic)
+    if (!raw) continue
+    return INVESTMENT_TYPE_LABELS[raw.toLowerCase()] ?? raw
+  }
+  return "—"
+}
+
+/** Offering overview — investment type for selected class, else deal-level fallback. */
+export function investmentTypeLabelForOverview(
+  detail: DealDetailApi,
+  classRow: DealInvestorClass | undefined,
+  allClasses: DealInvestorClass[],
+): string {
+  if (classRow) {
+    const raw = investmentTypeFromClassJson(classRow)
+    if (raw) return INVESTMENT_TYPE_LABELS[raw.toLowerCase()] ?? raw
+  }
+  return investmentTypeDisplay(detail, allClasses)
+}
+
+/** Lowest class minimum for the sticky summary column. */
+export function previewMinimumInvestmentDisplay(
+  classes: DealInvestorClass[],
+): string {
+  let best: number | null = null
+  let fallback = ""
+  for (const ic of classes) {
+    const raw = ic.minimumInvestment?.trim()
+    if (!raw) continue
+    const n = parseMoneyDigits(raw)
+    if (Number.isFinite(n) && n >= 0) {
+      if (best === null || n < best) best = n
+    } else if (!fallback) fallback = raw
+  }
+  if (best !== null) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(best)
+  }
+  if (fallback) return formatMoneyFieldDisplay(fallback)
+  return "—"
+}
+
+/** Sticky sidebar rows (wireframe Section 2). */
+export function buildOfferingSidebarSummaryRows(
+  detail: DealDetailApi,
+  classes: DealInvestorClass[],
+  _investorsPayload: DealInvestorsPayload,
+): OfferingSidebarSummaryRow[] {
+  const offeringSize = previewTargetDisplay(detail, classes)
+  const close = formatDateDdMmmYyyy(detail.closeDate?.trim())
+  return [
+    {
+      label: "Minimum investment",
+      value: previewMinimumInvestmentDisplay(classes),
+    },
+    { label: "Offering size", value: offeringSize },
+    {
+      label: "Deal type",
+      value: dealTypeDisplayLabel(detail.dealType?.trim() ?? ""),
+    },
+    {
+      label: "SEC type",
+      value: secTypeDisplayLabel(detail.secType?.trim() ?? ""),
+    },
+    {
+      label: "Investment type",
+      value: investmentTypeDisplay(detail, classes),
+    },
+    { label: "Close date", value: close },
+  ]
+}
+
 /** KPI chips for the offering bento metrics row (investor / preview). */
 export function buildOfferingMetricChips(
   detail: DealDetailApi,
@@ -102,15 +230,36 @@ export function buildOfferingMetricChips(
   const inv = detail.listRow.investors?.trim()
   if (inv && inv !== "—") chips.push({ label: "Investors", value: inv })
 
-  if (detail.dealType?.trim())
-    chips.push({ label: "Deal type", value: detail.dealType.trim() })
-  if (detail.secType?.trim())
-    chips.push({ label: "Security type", value: detail.secType.trim() })
+  if (detail.dealType?.trim()) {
+    const dealType = dealTypeDisplayLabel(detail.dealType.trim())
+    if (dealType !== "—") chips.push({ label: "Deal type", value: dealType })
+  }
+  if (detail.secType?.trim()) {
+    const sec = secTypeDisplayLabel(detail.secType.trim())
+    if (sec !== "—") chips.push({ label: "Security type", value: sec })
+  }
 
   const close = formatDateDdMmmYyyy(detail.closeDate?.trim())
   if (close !== "—") chips.push({ label: "Target close", value: close })
 
   return chips
+}
+
+/** True when Offering details → Summary has saved rich text (not empty Quill HTML). */
+export function hasMeaningfulInvestorSummaryHtml(
+  html: string | null | undefined,
+): boolean {
+  const raw = String(html ?? "").trim()
+  if (!raw) return false
+  const text = raw
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  return text.length > 0
 }
 
 export function buildSummaryBits(
@@ -131,16 +280,36 @@ export function buildSummaryBits(
   const inv = detail.listRow.investors?.trim()
   if (inv && inv !== "—") bits.push(`Investors: ${inv}`)
 
-  if (detail.dealType?.trim())
-    bits.push(`Deal type: ${detail.dealType.trim()}`)
-  if (detail.secType?.trim())
-    bits.push(`Security type: ${detail.secType.trim()}`)
+  if (detail.dealType?.trim()) {
+    const dealType = dealTypeDisplayLabel(detail.dealType.trim())
+    if (dealType !== "—") bits.push(`Deal type: ${dealType}`)
+  }
+  if (detail.secType?.trim()) {
+    const sec = secTypeDisplayLabel(detail.secType.trim())
+    if (sec !== "—") bits.push(`Security type: ${sec}`)
+  }
   const close = formatDateDdMmmYyyy(detail.closeDate?.trim())
   if (close !== "—") bits.push(`Target close: ${close}`)
   return bits
 }
 
 export type KeyHighlightPreviewRow = { metric: string; newClass: string }
+
+/** Same preset metrics as Offering details → Key Highlights (`KeyHighlightsSection`). */
+export const OFFERING_KEY_HIGHLIGHT_PRESET_METRICS = [
+  "Annualized return",
+  "Average cash-on-cash",
+  "Equity multiple",
+  "IRR",
+  "Holding period",
+] as const
+
+export function defaultKeyHighlightPreviewRows(): KeyHighlightPreviewRow[] {
+  return OFFERING_KEY_HIGHLIGHT_PRESET_METRICS.map((metric) => ({
+    metric,
+    newClass: "—",
+  }))
+}
 
 export function keyHighlightRowsFromJson(
   raw: string | null | undefined,
@@ -163,4 +332,50 @@ export function keyHighlightRowsFromJson(
   } catch {
     return []
   }
+}
+
+/**
+ * Investor class name for the Key Highlights value column (Offering details + preview).
+ * Uses the earliest `createdAt`; if dates are missing, uses the first class from the API list.
+ */
+export function firstCreatedInvestorClassName(
+  classes: DealInvestorClass[],
+): string {
+  if (!classes.length) return "Class"
+  const dated = classes
+    .map((c, index) => ({
+      c,
+      index,
+      t: Date.parse(c.createdAt ?? ""),
+    }))
+    .filter((x) => Number.isFinite(x.t))
+  if (dated.length > 0) {
+    dated.sort((a, b) => a.t - b.t || a.index - b.index)
+    const name = dated[0]?.c.name?.trim()
+    if (name) return name
+  }
+  const firstName = classes[0]?.name?.trim()
+  return firstName || "Class"
+}
+
+export interface KeyHighlightPreviewOptions {
+  /** Sponsor preview: show all metrics from Offering details, including empty values. */
+  includeEmptyClassValues?: boolean
+}
+
+/**
+ * Key Highlights for portfolio preview — mirrors Offering details data.
+ * Uses saved `keyHighlightsJson`, or default preset metrics when nothing saved yet.
+ */
+export function keyHighlightRowsForOfferingPreview(
+  raw: string | null | undefined,
+  options?: KeyHighlightPreviewOptions,
+): KeyHighlightPreviewRow[] {
+  const fromJson = keyHighlightRowsFromJson(raw)
+  const rows =
+    fromJson.length > 0 ? fromJson : defaultKeyHighlightPreviewRows()
+  if (options?.includeEmptyClassValues) return rows
+  return rows.filter(
+    (row) => row.newClass.trim() && row.newClass !== "—",
+  )
 }

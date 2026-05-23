@@ -26,6 +26,9 @@ import {
   fetchDealInvestors,
   fetchDealMembers,
   isDealDetailFormIncomplete,
+  DEAL_ESIGN_TEMPLATES_CHANGED_EVENT,
+  fetchDealEsignTemplates,
+  postDealInvestorSendEsign,
   postDealMemberInvitationEmail,
   type DealDetailApi,
 } from "./api/dealsApi"
@@ -57,6 +60,8 @@ import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import {
   resolveViewerDealInvestorRoleRaw,
   resolveViewerDealMemberRole,
+  viewerCanSendDealEsignTemplates,
+  viewerCanUploadDealEsignTemplates,
   visibleDealDetailTabIds,
 } from "./utils/dealDetailTabVisibility"
 import { toast } from "../../../common/components/Toast"
@@ -221,13 +226,58 @@ export function DealDetailPage() {
 
   const sessionEmail = getSessionUserEmail()
 
-  const viewerDealTabIds = useMemo(() => {
-    const role = resolveViewerDealMemberRole(
-      memberRosterForTabs,
-      sessionEmail,
+  const viewerDealMemberRole = useMemo(
+    () => resolveViewerDealMemberRole(memberRosterForTabs, sessionEmail),
+    [memberRosterForTabs, sessionEmail],
+  )
+
+  const viewerDealTabIds = useMemo(
+    () => visibleDealDetailTabIds(viewerDealMemberRole),
+    [viewerDealMemberRole],
+  )
+
+  const canUploadEsignTemplates = useMemo(
+    () => viewerCanUploadDealEsignTemplates(viewerDealMemberRole),
+    [viewerDealMemberRole],
+  )
+
+  const canSendEsignTemplates = useMemo(
+    () => viewerCanSendDealEsignTemplates(viewerDealMemberRole),
+    [viewerDealMemberRole],
+  )
+
+  const [dealHasEsignDocuments, setDealHasEsignDocuments] = useState(false)
+
+  const refreshDealEsignDocumentAvailability = useCallback(async () => {
+    if (!dealId?.trim()) {
+      setDealHasEsignDocuments(false)
+      return
+    }
+    const result = await fetchDealEsignTemplates(dealId.trim())
+    if (result.ok) setDealHasEsignDocuments(result.hasDocuments)
+  }, [dealId])
+
+  useEffect(() => {
+    void refreshDealEsignDocumentAvailability()
+  }, [refreshDealEsignDocumentAvailability])
+
+  useEffect(() => {
+    if (!dealId?.trim()) return
+    const onTemplatesChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ dealId?: string }>).detail
+      if (detail?.dealId && detail.dealId !== dealId.trim()) return
+      void refreshDealEsignDocumentAvailability()
+    }
+    window.addEventListener(
+      DEAL_ESIGN_TEMPLATES_CHANGED_EVENT,
+      onTemplatesChanged,
     )
-    return visibleDealDetailTabIds(role)
-  }, [memberRosterForTabs, sessionEmail])
+    return () =>
+      window.removeEventListener(
+        DEAL_ESIGN_TEMPLATES_CHANGED_EVENT,
+        onTemplatesChanged,
+      )
+  }, [dealId, refreshDealEsignDocumentAvailability])
 
   const viewerDealInvestorRoleRaw = useMemo(
     () =>
@@ -235,7 +285,8 @@ export function DealDetailPage() {
     [memberRosterForTabs, sessionEmail],
   )
 
-  const dealsListBackPath = mode === "investing" ? "/investing/deals" : "/deals"
+  const dealsListBackPath =
+    mode === "investing" ? "/investing/investments?tab=deals" : "/deals"
 
   const dealDetailTabsVisible = useMemo(
     () => DEAL_DETAIL_TABS.filter((t) => viewerDealTabIds.has(t.id)),
@@ -410,6 +461,39 @@ export function DealDetailPage() {
       }
     },
     [dealId, dealDetailApi, isDealDraftStage],
+  )
+
+  /** **Investors** tab: send eSign documents to this row’s email. */
+  const handleSendInvestorEsign = useCallback(
+    async (row: DealInvestorRow, fileIds: string[]) => {
+      const email = row.userEmail?.trim()
+      if (!email || email === "—") {
+        toast.error("No email address", "This row has no email to send to.")
+        return
+      }
+      if (!fileIds.length) {
+        toast.error("No documents selected", "Choose at least one document to send.")
+        return
+      }
+      if (!dealId) return
+      const name = row.displayName?.trim()
+      const result = await postDealInvestorSendEsign(dealId, {
+        to_email: email,
+        member_display_name: name && name !== "—" ? name : undefined,
+        roster_id: row.id?.trim(),
+        file_ids: fileIds,
+      })
+      if (result.ok) {
+        toast.success(
+          "E-sign sent",
+          "The eSign request was sent to this investor.",
+        )
+        void dealInvestorsTabRef.current?.refetchInvestors()
+      } else {
+        toast.error("Could not send E-sign", result.message)
+      }
+    },
+    [dealId],
   )
 
   /** **Investors** tab: email framed as an investor invite. */
@@ -730,6 +814,13 @@ export function DealDetailPage() {
                 setDealMembersRefreshKey((k) => k + 1)
               }
               onSendInvitationMail={handleSendInvestorInvitationMail}
+              onSendEsignConfirm={
+                canSendEsignTemplates ? handleSendInvestorEsign : undefined
+              }
+              sendEsignDisabled={
+                canSendEsignTemplates && !dealHasEsignDocuments
+              }
+              sendEsignDisabledTitle="Upload at least one document on the eSign Templates tab before sending."
               onCopyOfferingLink={handleCopyMemberOfferingLink}
               onDeleteMember={handleDeleteMember}
               offeringLinkAvailable={offeringLinkAvailable}
@@ -749,7 +840,10 @@ export function DealDetailPage() {
             onOfferingPreviewSynced={handleDealPersisted}
           />
         ) : activeTab === "esign_templates" ? (
-          <DealEsignTemplatesTab dealId={dealId} />
+          <DealEsignTemplatesTab
+            dealId={dealId}
+            canUploadDocuments={canUploadEsignTemplates}
+          />
         ) : activeTab === "investor_communication" && dealId?.trim() ? (
           <InvestorCommunicationTab dealId={dealId.trim()} />
         ) : (

@@ -21,6 +21,17 @@ function clipStr(s: string, max: number): string {
   return s.slice(0, max);
 }
 
+function parseIdListField(raw: unknown, maxItems = 200): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string" || !x.trim()) continue;
+    out.push(clipStr(x.trim(), 120));
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
 function normalizeNested(
   raw: unknown,
   parentSectionId: string,
@@ -51,7 +62,31 @@ function normalizeNested(
     typeof refRaw === "string" && refRaw.trim()
       ? clipStr(refRaw.trim(), 120)
       : parentSectionId;
-  return { id, name, url, dateAdded, lpDisplaySectionId };
+  const sw = raw.sharedWithScope;
+  const sharedWithScope =
+    sw === "lp_investor"
+      ? "lp_investor"
+      : sw === "offering_page"
+        ? "offering_page"
+        : undefined;
+  const sharedWithAllInvestors = Boolean(raw.sharedWithAllInvestors);
+  const sharedDealClassIds = parseIdListField(raw.sharedDealClassIds);
+  const sharedInvestorIds = sharedWithAllInvestors
+    ? []
+    : parseIdListField(raw.sharedInvestorIds);
+  const sharedSponsorUserIds = parseIdListField(raw.sharedSponsorUserIds);
+  return {
+    id,
+    name,
+    url,
+    dateAdded,
+    lpDisplaySectionId,
+    ...(sharedWithScope ? { sharedWithScope } : {}),
+    sharedDealClassIds,
+    sharedInvestorIds,
+    sharedWithAllInvestors,
+    sharedSponsorUserIds,
+  };
 }
 
 function normalizeSection(raw: unknown): Record<string, unknown> | null {
@@ -84,7 +119,7 @@ function normalizeSection(raw: unknown): Record<string, unknown> | null {
           ? "lp_investor"
           : "offering_page";
   const visibility =
-    sharedWithScope === "lp_investor" ? "LP Investor" : "Offering page";
+    sharedWithScope === "lp_investor" ? "LP portal only" : "Offering link";
   const requireLpReview = Boolean(raw.requireLpReview);
   const dateAdded =
     typeof raw.dateAdded === "string" && raw.dateAdded.trim()

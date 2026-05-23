@@ -1,6 +1,19 @@
-import { ArrowLeft, Building2, Calendar, Search, UserCircle } from "lucide-react"
+import {
+  ArrowLeft,
+  Building2,
+  Calendar,
+  DollarSign,
+  FileText,
+  Home,
+  MapPin,
+  Percent,
+  Search,
+  UserCircle,
+  type LucideIcon,
+} from "lucide-react"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
+import { ViewReadonlyField } from "@/common/components/ViewReadonlyField"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   DataTable,
@@ -24,6 +37,8 @@ import type {
   InvestmentBreakdownLine,
   InvestmentDetailRecord,
 } from "./investments.types"
+import { InvestmentDetailDocumentsTab } from "./InvestmentDetailDocumentsTab"
+import { resolveInvestmentDealId } from "./utils/resolveInvestmentDealId"
 import "./investment-detail.css"
 
 function formatInvDetailUsd(n: number): string {
@@ -60,15 +75,6 @@ type DebtInfoFields = {
   lender: string
   interestRatePct: string
 }
-
-const PROPERTY_TYPES = [
-  "Multifamily",
-  "Industrial",
-  "Office",
-  "Retail",
-  "Mixed-use",
-  "Other",
-] as const
 
 const PROPERTY_STATUSES = [
   "Stabilized",
@@ -178,246 +184,133 @@ function formatMoneyDigits(raw: string): string {
   }).format(n)
 }
 
-function FieldText({
+function displayOrDash(v: string): string {
+  const t = String(v ?? "").trim()
+  return t || "—"
+}
+
+function displayPct(v: string): string {
+  const t = String(v ?? "").trim()
+  if (!t) return "—"
+  return t.endsWith("%") ? t : `${t}%`
+}
+
+function DetailReadonly({
+  Icon,
   label,
   value,
-  required,
-  readOnly = true,
-  onChange,
-  multiline,
-  inputClassName,
-  fieldClassName,
+  spanFull,
+}: {
+  Icon: LucideIcon
+  label: string
+  value: string
+  spanFull?: boolean
+}) {
+  return (
+    <ViewReadonlyField
+      Icon={Icon}
+      label={label}
+      value={displayOrDash(value)}
+      fieldClassName={spanFull ? "um_view_field_span_full" : undefined}
+    />
+  )
+}
+
+function DetailReadonlyCurrency({
+  label,
+  value,
 }: {
   label: string
   value: string
-  required?: boolean
-  readOnly?: boolean
-  onChange?: (next: string) => void
-  multiline?: boolean
-  inputClassName?: string
-  fieldClassName?: string
 }) {
-  const controlClass = `investment_detail_input${
-    readOnly ? "" : " investment_detail_input--editable"
-  }${inputClassName ? ` ${inputClassName}` : ""}`
+  const t = String(value ?? "").trim()
+  const display = t ? formatMoneyDigits(t) : "—"
+  return (
+    <ViewReadonlyField Icon={DollarSign} label={label} value={display} />
+  )
+}
 
+function DetailReadonlyPct({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <ViewReadonlyField
+      Icon={Percent}
+      label={label}
+      value={displayPct(value)}
+    />
+  )
+}
+
+function DetailEditableText({
+  label,
+  value,
+  onChange,
+  multiline,
+  spanFull,
+  inputMode,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (next: string) => void
+  multiline?: boolean
+  spanFull?: boolean
+  inputMode?: "decimal" | "text" | "numeric"
+  placeholder?: string
+}) {
+  const controlId = useId()
   return (
     <div
-      className={`investment_detail_field${
-        !readOnly ? " investment_detail_field--editable" : ""
-      }${fieldClassName ? ` ${fieldClassName}` : ""}`}
+      className={`um_field${spanFull ? " um_view_field_span_full" : ""}`.trim()}
     >
-      <label className="investment_detail_label">
-        {label}
-        {required ? (
-          <span className="investment_detail_req" aria-hidden>
-            *
-          </span>
-        ) : null}
-      </label>
+      <label htmlFor={controlId}>{label}</label>
       {multiline ? (
         <textarea
-          className={controlClass}
-          readOnly={readOnly}
+          id={controlId}
+          className="um_field_textarea"
           value={value}
-          onChange={readOnly ? undefined : (e) => onChange?.(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           rows={4}
-          aria-required={required}
         />
       ) : (
         <input
+          id={controlId}
           type="text"
-          className={controlClass}
-          readOnly={readOnly}
           value={value}
-          onChange={readOnly ? undefined : (e) => onChange?.(e.target.value)}
-          aria-required={required}
+          onChange={(e) => onChange(e.target.value)}
+          inputMode={inputMode}
+          placeholder={placeholder}
         />
       )}
     </div>
   )
 }
 
-function FieldCurrency({
-  label,
-  value,
-  readOnly = true,
-  onChange,
-}: {
-  label: string
-  value: string
-  readOnly?: boolean
-  onChange?: (next: string) => void
-}) {
-  const display = value ? formatMoneyDigits(value) : "—"
-  if (readOnly) {
-    return (
-      <div className="investment_detail_field">
-        <label className="investment_detail_label">{label}</label>
-        <input
-          type="text"
-          className="investment_detail_input"
-          readOnly
-          value={display}
-        />
-      </div>
-    )
-  }
-  return (
-    <div className="investment_detail_field investment_detail_field--editable">
-      <label className="investment_detail_label">{label}</label>
-      <input
-        type="text"
-        className="investment_detail_input investment_detail_input--editable"
-        value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        inputMode="decimal"
-        aria-label={label}
-      />
-    </div>
-  )
-}
-
-function FieldPct({
-  label,
-  value,
-  notEditable,
-  readOnly = true,
-  onChange,
-}: {
-  label: string
-  value: string
-  /**
-   * When set (e.g. General → Ownership %), the control is read-only and styled as fixed / not user-editable.
-   * Other % fields (e.g. Occupancy) are read-only but not necessarily “locked” the same way.
-   */
-  notEditable?: boolean
-  readOnly?: boolean
-  onChange?: (next: string) => void
-}) {
-  const isLocked = Boolean(notEditable)
-  const isReadOnly = isLocked || readOnly
-  return (
-    <div
-      className={
-        isLocked
-          ? "investment_detail_field investment_detail_field--read-only-locked"
-          : !isReadOnly
-            ? "investment_detail_field investment_detail_field--editable"
-            : "investment_detail_field"
-      }
-    >
-      <label className="investment_detail_label">{label}</label>
-      <div className="investment_detail_input_wrap">
-        <input
-          type="text"
-          className={
-            isReadOnly
-              ? "investment_detail_input investment_detail_input--pct"
-              : "investment_detail_input investment_detail_input--pct investment_detail_input--editable"
-          }
-          readOnly={isReadOnly}
-          tabIndex={isLocked ? -1 : undefined}
-          value={value}
-          onChange={isReadOnly ? undefined : (e) => onChange?.(e.target.value)}
-          inputMode="decimal"
-          aria-readonly={isReadOnly ? true : undefined}
-          aria-label={label}
-        />
-        <span className="investment_detail_suffix" aria-hidden>
-          %
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function FieldDate({
-  label,
-  value,
-  readOnly = true,
-  onChange,
-}: {
-  label: string
-  value: string
-  readOnly?: boolean
-  onChange?: (next: string) => void
-}) {
-  return (
-    <div
-      className={
-        readOnly
-          ? "investment_detail_field"
-          : "investment_detail_field investment_detail_field--editable"
-      }
-    >
-      <label className="investment_detail_label">{label}</label>
-      <div className="investment_detail_input_wrap">
-        <input
-          type="text"
-          className={
-            readOnly
-              ? "investment_detail_input"
-              : "investment_detail_input investment_detail_input--editable"
-          }
-          readOnly={readOnly}
-          value={value}
-          onChange={readOnly ? undefined : (e) => onChange?.(e.target.value)}
-          placeholder={readOnly ? undefined : "e.g. 12/31/2030 or description"}
-          aria-label={label}
-        />
-        <Calendar
-          className="investment_detail_date_icon"
-          size={18}
-          strokeWidth={1.75}
-          aria-hidden
-        />
-      </div>
-    </div>
-  )
-}
-
-function FieldSelect({
+function DetailEditableSelect({
   label,
   value,
   options,
-  /** When `true` (default), the native select is disabled. Use `isLocked={false}` for Property → Status, Debt, etc. */
-  isLocked = true,
   onChange,
 }: {
   label: string
   value: string
   options: readonly string[]
-  isLocked?: boolean
-  onChange?: (next: string) => void
+  onChange: (next: string) => void
 }) {
   const selectId = useId()
-  const isInteractive = !isLocked
   return (
-    <div
-      className={
-        isLocked
-          ? "investment_detail_field"
-          : "investment_detail_field investment_detail_field--editable"
-      }
-    >
-      <label className="investment_detail_label" htmlFor={selectId}>
-        {label}
-      </label>
+    <div className="um_field">
+      <label htmlFor={selectId}>{label}</label>
       <select
         id={selectId}
-        className={
-          isLocked
-            ? "investment_detail_select"
-            : "investment_detail_select investment_detail_select--editable"
-        }
-        disabled={!isInteractive}
+        className="um_field_select"
         value={value}
-        onChange={
-          isInteractive
-            ? (e) => onChange?.(e.target.value)
-            : undefined
-        }
+        onChange={(e) => onChange(e.target.value)}
         aria-label={label}
       >
         {options.map((o) => (
@@ -426,6 +319,36 @@ function FieldSelect({
           </option>
         ))}
       </select>
+    </div>
+  )
+}
+
+function DetailEditablePct({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (next: string) => void
+}) {
+  const inputId = useId()
+  return (
+    <div className="um_field">
+      <label htmlFor={inputId}>{label}</label>
+      <div className="investment_detail_pct_wrap">
+        <input
+          id={inputId}
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          inputMode="decimal"
+          aria-label={label}
+        />
+        <span className="investment_detail_pct_suffix" aria-hidden>
+          %
+        </span>
+      </div>
     </div>
   )
 }
@@ -594,20 +517,26 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
   )
 
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab: "details" | "profile" =
-    searchParams.get("tab") === "profile" ? "profile" : "details"
-  const setActiveTab = (tab: "details" | "profile") => {
+  const tabParam = searchParams.get("tab")
+  const activeTab: "details" | "profile" | "documents" =
+    tabParam === "profile"
+      ? "profile"
+      : tabParam === "documents"
+        ? "documents"
+        : "details"
+  const setActiveTab = (tab: "details" | "profile" | "documents") => {
     setSearchParams(
       (prev) => {
         const p = new URLSearchParams(prev)
-        if (tab === "profile") p.set("tab", "profile")
-        else p.delete("tab")
+        if (tab === "details") p.delete("tab")
+        else p.set("tab", tab)
         return p
       },
       { replace: true },
     )
   }
   const profileLineCount = d.investedAsBreakdown?.length ?? 0
+  const dealId = resolveInvestmentDealId(d)
 
   return (
     <>
@@ -663,6 +592,27 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                 <span className="deals_tabs_count">({profileLineCount})</span>
               ) : null}
             </button>
+            <button
+              type="button"
+              id="inv-detail-tab-documents"
+              role="tab"
+              aria-selected={activeTab === "documents"}
+              aria-controls="inv-detail-panel-documents"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                activeTab === "documents" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setActiveTab("documents")}
+            >
+              <FileText
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Documents
+              </span>
+            </button>
           </div>
         </TabsScrollStrip>
       </div>
@@ -678,172 +628,151 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
             aria-labelledby="inv-detail-tab-details"
             className="investment_detail_tab_panel"
           >
-            <section
-              className="investment_detail_section"
-              aria-labelledby="inv-sec-property"
-            >
-              <h2
-                id="inv-sec-property"
-                className="investment_detail_section_title"
-              >
-                Property information
-              </h2>
-              <div className="investment_detail_grid">
-                <FieldText label="Name" value={d.propertyName} required />
-                <FieldSelect
-                  label="Property type"
-                  value={d.propertyType}
-                  options={PROPERTY_TYPES}
-                />
-                <FieldSelect
-                  label="Status"
-                  value={propertyStatus}
-                  options={PROPERTY_STATUSES}
-                  isLocked={false}
-                  onChange={onPropertyStatusChange}
-                />
-                <FieldText label="City" value={d.city} />
-                <FieldText label="State" value={d.state} />
-                <FieldText label="Number of units" value={d.numberOfUnits} />
-                <FieldPct label="Occupancy" value={d.occupancyPct} />
-                <FieldDate label="Owned since" value={d.ownedSince} />
-                <FieldText label="Year built" value={d.yearBuilt} />
-              </div>
-            </section>
-
-            <section
-              className="investment_detail_section"
-              aria-labelledby="inv-sec-general"
-            >
-              <h2
-                id="inv-sec-general"
-                className="investment_detail_section_title"
-              >
-                General
-              </h2>
-              <div className="investment_detail_grid">
-                <div className="investment_detail_field">
-                  <label className="investment_detail_label">Invested amount</label>
-                  <input
-                    type="text"
-                    className="investment_detail_input"
-                    readOnly
-                    value={investedDisplay}
+            <div className="um_panel um_members_tab_panel deals_list_card_surface investment_detail_details_card">
+              <section aria-labelledby="inv-sec-property">
+                <h2 id="inv-sec-property" className="um_section_title">
+                  Property information
+                </h2>
+                <div className="um_view_grid investment_detail_form_grid">
+                  <DetailReadonly
+                    Icon={Home}
+                    label="Name"
+                    value={d.propertyName}
+                  />
+                  <DetailReadonly
+                    Icon={Building2}
+                    label="Property type"
+                    value={d.propertyType}
+                  />
+                  <DetailEditableSelect
+                    label="Status"
+                    value={propertyStatus}
+                    options={PROPERTY_STATUSES}
+                    onChange={onPropertyStatusChange}
+                  />
+                  <DetailReadonly Icon={MapPin} label="City" value={d.city} />
+                  <DetailReadonly Icon={MapPin} label="State" value={d.state} />
+                  <DetailReadonly
+                    Icon={Building2}
+                    label="Number of units"
+                    value={d.numberOfUnits}
+                  />
+                  <DetailReadonlyPct
+                    label="Occupancy"
+                    value={d.occupancyPct}
+                  />
+                  <DetailReadonly
+                    Icon={Calendar}
+                    label="Owned since"
+                    value={d.ownedSince}
+                  />
+                  <DetailReadonly
+                    Icon={Calendar}
+                    label="Year built"
+                    value={d.yearBuilt}
                   />
                 </div>
-                {!hasRoleBreakdownTable && (
-                  <div className="investment_detail_field">
-                    <label
-                      className="investment_detail_label"
-                      htmlFor="inv-detail-invested-as"
-                    >
-                      Invested as
-                    </label>
-                    <input
-                      id="inv-detail-invested-as"
-                      type="text"
-                      className="investment_detail_input"
-                      readOnly
-                      value={investedAsLine}
+              </section>
+
+              <section aria-labelledby="inv-sec-general">
+                <h2 id="inv-sec-general" className="um_section_title">
+                  General
+                </h2>
+                <div className="um_view_grid investment_detail_form_grid">
+                  <ViewReadonlyField
+                    Icon={DollarSign}
+                    label="Invested amount"
+                    value={investedDisplay}
+                  />
+                  {!hasRoleBreakdownTable ? (
+                    <ViewReadonlyField
+                      Icon={UserCircle}
+                      label="Invested as"
+                      value={displayOrDash(investedAsLine)}
                     />
-                  </div>
-                )}
-                <FieldPct
-                  label="Ownership percentage"
-                  value={d.ownershipPct}
-                  notEditable
-                />
-                <FieldText
-                  label="General comments"
-                  value={generalComments}
-                  readOnly={false}
-                  onChange={onGeneralCommentsChange}
-                  multiline
-                  fieldClassName="investment_detail_field--full"
-                  inputClassName="investment_detail_input--multiline"
-                />
-              </div>
-            </section>
+                  ) : null}
+                  <DetailReadonlyPct
+                    label="Ownership percentage"
+                    value={d.ownershipPct}
+                  />
+                  <DetailEditableText
+                    label="General comments"
+                    value={generalComments}
+                    onChange={onGeneralCommentsChange}
+                    multiline
+                    spanFull
+                  />
+                </div>
+              </section>
 
-            <section
-              className="investment_detail_section"
-              aria-labelledby="inv-sec-cashflow"
-            >
-              <h2
-                id="inv-sec-cashflow"
-                className="investment_detail_section_title"
-              >
-                Cash flow and valuation
-              </h2>
-              <div className="investment_detail_grid">
-                <FieldCurrency
-                  label="Overall asset value"
-                  value={d.overallAssetValue}
-                />
-                <FieldCurrency
-                  label="Net operating income"
-                  value={d.netOperatingIncome}
-                />
-              </div>
-            </section>
+              <section aria-labelledby="inv-sec-cashflow">
+                <h2 id="inv-sec-cashflow" className="um_section_title">
+                  Cash flow and valuation
+                </h2>
+                <div className="um_view_grid investment_detail_form_grid">
+                  <DetailReadonlyCurrency
+                    label="Overall asset value"
+                    value={d.overallAssetValue}
+                  />
+                  <DetailReadonlyCurrency
+                    label="Net operating income"
+                    value={d.netOperatingIncome}
+                  />
+                </div>
+              </section>
 
-            <section
-              className="investment_detail_section"
-              aria-labelledby="inv-sec-debt"
-            >
-              <h2
-                id="inv-sec-debt"
-                className="investment_detail_section_title"
-              >
-                Debt info
-              </h2>
-              <div className="investment_detail_grid">
-                <FieldCurrency
-                  label="Outstanding loans"
-                  value={debt.outstandingLoans}
-                  readOnly={false}
-                  onChange={(next) => patchDebt({ outstandingLoans: next })}
-                />
-                <FieldCurrency
-                  label="Debt service"
-                  value={debt.debtService}
-                  readOnly={false}
-                  onChange={(next) => patchDebt({ debtService: next })}
-                />
-                <FieldSelect
-                  label="Loan type"
-                  value={debt.loanType}
-                  options={LOAN_TYPES}
-                  isLocked={false}
-                  onChange={(next) => patchDebt({ loanType: next })}
-                />
-                <FieldSelect
-                  label="IO or Amortizing"
-                  value={debt.ioOrAmortizing}
-                  options={IO_AMORT}
-                  isLocked={false}
-                  onChange={(next) => patchDebt({ ioOrAmortizing: next })}
-                />
-                <FieldDate
-                  label="Maturity date"
-                  value={debt.maturityDate}
-                  readOnly={false}
-                  onChange={(next) => patchDebt({ maturityDate: next })}
-                />
-                <FieldText
-                  label="Lender"
-                  value={debt.lender}
-                  readOnly={false}
-                  onChange={(next) => patchDebt({ lender: next })}
-                />
-                <FieldPct
-                  label="Interest rate"
-                  value={debt.interestRatePct}
-                  readOnly={false}
-                  onChange={(next) => patchDebt({ interestRatePct: next })}
-                />
-              </div>
-            </section>
+              <section aria-labelledby="inv-sec-debt">
+                <h2 id="inv-sec-debt" className="um_section_title">
+                  Debt info
+                </h2>
+                <div className="um_view_grid investment_detail_form_grid">
+                  <DetailEditableText
+                    label="Outstanding loans"
+                    value={debt.outstandingLoans}
+                    onChange={(next) =>
+                      patchDebt({ outstandingLoans: next })
+                    }
+                    inputMode="decimal"
+                  />
+                  <DetailEditableText
+                    label="Debt service"
+                    value={debt.debtService}
+                    onChange={(next) => patchDebt({ debtService: next })}
+                    inputMode="decimal"
+                  />
+                  <DetailEditableSelect
+                    label="Loan type"
+                    value={debt.loanType}
+                    options={LOAN_TYPES}
+                    onChange={(next) => patchDebt({ loanType: next })}
+                  />
+                  <DetailEditableSelect
+                    label="IO or Amortizing"
+                    value={debt.ioOrAmortizing}
+                    options={IO_AMORT}
+                    onChange={(next) => patchDebt({ ioOrAmortizing: next })}
+                  />
+                  <DetailEditableText
+                    label="Maturity date"
+                    value={debt.maturityDate}
+                    onChange={(next) => patchDebt({ maturityDate: next })}
+                    placeholder="e.g. 12/31/2030 or description"
+                  />
+                  <DetailEditableText
+                    label="Lender"
+                    value={debt.lender}
+                    onChange={(next) => patchDebt({ lender: next })}
+                  />
+                  <DetailEditablePct
+                    label="Interest rate"
+                    value={debt.interestRatePct}
+                    onChange={(next) =>
+                      patchDebt({ interestRatePct: next })
+                    }
+                  />
+                </div>
+              </section>
+            </div>
           </div>
         ) : null}
 
@@ -914,6 +843,23 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               )}
             </div>
           </div>
+        ) : null}
+
+        {activeTab === "documents" ? (
+          dealId ? (
+            <InvestmentDetailDocumentsTab dealId={dealId} />
+          ) : (
+            <div
+              id="inv-detail-panel-documents"
+              role="tabpanel"
+              aria-labelledby="inv-detail-tab-documents"
+              className="investment_detail_tab_panel"
+            >
+              <p className="investment_detail_lead">
+                Documents are not available for this investment record.
+              </p>
+            </div>
+          )
         ) : null}
       </div>
     </>

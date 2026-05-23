@@ -31,9 +31,9 @@ import {
 } from "./dealOfferingPreviewShared"
 import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
 import {
-  canInvestorAccessOffering,
+  canInvestorAccessPublicOffering,
+  effectiveOfferingStatusForAccess,
   getDealStatusRules,
-  shouldShowInvestButton,
 } from "./constants/deal-lifecycle"
 import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
 import { writeInvestNowIntent } from "./utils/investNowIntent"
@@ -201,19 +201,25 @@ export function DealOfferingPortfolioPage() {
   const isInvestorFacingView =
     isPublicOfferingRoute || mode === "investing"
 
-  const offeringStatusRules = useMemo(
-    () => getDealStatusRules(detail?.offeringStatus),
-    [detail?.offeringStatus],
-  )
+  const offeringStatusRules = useMemo(() => {
+    const effective = effectiveOfferingStatusForAccess(
+      detail?.dealStage,
+      detail?.offeringStatus,
+    )
+    return getDealStatusRules(effective ?? detail?.offeringStatus)
+  }, [detail?.dealStage, detail?.offeringStatus])
 
   const investorOfferingBlocked =
     isInvestorFacingView &&
     Boolean(detail) &&
-    !canInvestorAccessOffering(detail?.offeringStatus)
+    !canInvestorAccessPublicOffering(
+      detail?.dealStage,
+      detail?.offeringStatus,
+    )
 
   const showInvestNowCta =
     isInvestorFacingView &&
-    shouldShowInvestButton(detail?.offeringStatus) &&
+    offeringStatusRules.showInvestNowButton &&
     (isPublicOfferingRoute || mode === "investing")
 
   const canOpenInvestNowInWorkspace =
@@ -494,7 +500,9 @@ export function DealOfferingPortfolioPage() {
   }
 
   return (
-    <div className="deals_list_page deals_detail_page deal_offer_pf_page">
+    <div
+      className={`deals_list_page deals_detail_page deal_offer_pf_page${isPublicOfferingRoute ? " deal_offer_pf_page--public" : ""}`}
+    >
       <div className="deal_offer_pf">
         <header className="deal_offer_pf_header">
           {!isPublicOfferingRoute ? (
@@ -727,6 +735,7 @@ export function DealOfferingPortfolioPage() {
           investorsPayload={investorsPayload}
           applyInvestorLinkVisibility={true}
           isPublicOfferingRoute={isPublicOfferingRoute}
+          isLpDealWorkspace={mode === "investing" && !isPublicOfferingRoute}
           showInvestNowCta={showInvestNowCta}
           offeringStatusRules={offeringStatusRules}
           onInvestNow={

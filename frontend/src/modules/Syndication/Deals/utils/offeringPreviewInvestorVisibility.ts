@@ -7,6 +7,10 @@
 
 const STORAGE_PREFIX = "ip_offering_investor_preview_visibility:v1:"
 
+/** Fired after `writeOfferingPreviewInvestorVisibility` (same tab + other tabs via storage). */
+export const OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT =
+  "ip-offering-preview-visibility-changed"
+
 export type OfferingDetailsSectionId =
   | "make_announcement"
   | "overview"
@@ -65,6 +69,43 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v)
 }
 
+/** Parse `offering_investor_preview_json.visibility` from the API (shared link + sponsor save). */
+export function parseVisibilityFromOfferingInvestorPreviewJson(
+  json: string | null | undefined,
+): Record<OfferingDetailsSectionId, boolean> | null {
+  if (!json?.trim()) return null
+  try {
+    const parsed = JSON.parse(json) as unknown
+    if (!isRecord(parsed)) return null
+    const visRaw = parsed.visibility
+    if (!isRecord(visRaw)) return null
+    const out = allTrue()
+    for (const k of OFFERING_DETAILS_SECTION_ORDER) {
+      const v = visRaw[k.id]
+      if (typeof v === "boolean") out[k.id] = v
+    }
+    return out
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Visibility for preview / shared URL. Public investors always use server JSON;
+ * sponsor preview merges server + localStorage (local wins after sync).
+ */
+export function readInvestorVisibilityForOfferingPreview(
+  dealId: string,
+  serverJson?: string | null,
+  opts?: { preferServerOnly?: boolean },
+): Record<OfferingDetailsSectionId, boolean> {
+  const fromServer = parseVisibilityFromOfferingInvestorPreviewJson(serverJson)
+  if (opts?.preferServerOnly && fromServer) return fromServer
+  const fromStorage = readOfferingPreviewInvestorVisibility(dealId)
+  if (!fromServer) return fromStorage
+  return { ...fromStorage, ...fromServer }
+}
+
 export function readOfferingPreviewInvestorVisibility(
   dealId: string,
 ): Record<OfferingDetailsSectionId, boolean> {
@@ -103,6 +144,11 @@ export function writeOfferingPreviewInvestorVisibility(
     window.localStorage.setItem(
       storageKey(id),
       JSON.stringify({ v: 1, sections }),
+    )
+    window.dispatchEvent(
+      new CustomEvent(OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT, {
+        detail: { dealId: id },
+      }),
     )
   } catch {
     /* quota / private mode */

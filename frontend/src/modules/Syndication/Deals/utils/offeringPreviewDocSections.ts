@@ -15,11 +15,77 @@ import {
 
 const SECTIONS_STORAGE_PREFIX = "ip_offering_preview_sections:v1:"
 
+/** Fired after `writeOfferingPreviewSections` (same tab + other tabs via storage). */
+export const OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT =
+  "ip-offering-preview-sections-changed"
+
+export function offeringPreviewSectionsStorageKey(dealId: string): string {
+  return `${SECTIONS_STORAGE_PREFIX}${dealId.trim()}`
+}
+
+export type OfferingPreviewDisplayDocument = {
+  id: string
+  name: string
+  url: string | null
+}
+
+/**
+ * Which document scopes appear on a given surface.
+ * - Offering link + Preview offering: `offering_page` only.
+ * - LP portal (signed-in LP on the deal): `offering_page` and `lp_investor`.
+ */
+export function sectionVisibleOnOfferingPreview(
+  scope: SectionSharedWithScope,
+  ctx: { isPublicAnonymousOffering: boolean; isLpDealWorkspace: boolean },
+): boolean {
+  if (ctx.isLpDealWorkspace) {
+    return scope === "offering_page" || scope === "lp_investor"
+  }
+  return scope === "offering_page"
+}
+
+/**
+ * Documents from the deal Documents tab (workspace sections) for offering preview.
+ * Replaces the removed Offering details → Documents section.
+ */
+export function listWorkspaceDocumentsForOfferingPreview(
+  dealId: string,
+  ctx: { isPublicAnonymousOffering: boolean; isLpDealWorkspace: boolean },
+): OfferingPreviewDisplayDocument[] {
+  const id = dealId.trim()
+  if (!id) return []
+  const out: OfferingPreviewDisplayDocument[] = []
+  for (const sec of readOfferingPreviewSections(id)) {
+    for (const d of sec.nestedDocuments) {
+      const scope = effectiveDocumentSharedWithScope(d, sec)
+      if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
+      out.push({ id: d.id, name: d.name, url: d.url })
+    }
+  }
+  if (out.length > 0) return out
+  const flat = readOfferingPreviewDocuments(id)
+  for (const d of flat) {
+    const scope: SectionSharedWithScope =
+      d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
+    if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
+    out.push({ id: d.id, name: d.name, url: d.url })
+  }
+  return out
+}
+
 /** Who can see documents in this section (documents table + preview context). */
 export type SectionSharedWithScope = OfferingPreviewDocSharedWithScope
 
 export function sectionSharedWithDisplay(scope: SectionSharedWithScope): string {
-  return scope === "lp_investor" ? "LP Investor" : "Offering page"
+  return scope === "lp_investor" ? "LP portal only" : "Offering link"
+}
+
+/** Per-document scope when set; otherwise the section default. */
+export function effectiveDocumentSharedWithScope(
+  doc: NestedPreviewDocument,
+  section: OfferingPreviewSection,
+): SectionSharedWithScope {
+  return doc.sharedWithScope ?? section.sharedWithScope
 }
 
 function parseSharedWithScope(
@@ -30,7 +96,15 @@ function parseSharedWithScope(
   if (rawScope === "offering_page") return "offering_page"
   const vis = legacyVisibility.trim().toLowerCase()
   if (vis.includes("lp") && vis.includes("investor")) return "lp_investor"
+  if (vis.includes("offering") && (vis.includes("link") || vis.includes("page")))
+    return "offering_page"
   return "offering_page"
+}
+
+function parseDocumentSharedWithScope(raw: unknown): SectionSharedWithScope | undefined {
+  if (raw === "lp_investor") return "lp_investor"
+  if (raw === "offering_page") return "offering_page"
+  return undefined
 }
 
 export type NestedPreviewDocument = {
@@ -56,6 +130,14 @@ export type NestedPreviewDocument = {
    * contacts from the Investors list). Individual `sharedInvestorIds` are ignored.
    */
   sharedWithAllInvestors: boolean
+  /** Sponsor team members (deal members) who may access this file in the workspace. */
+  sharedSponsorUserIds: string[]
+  /**
+   * Overrides the section scope for this file when set.
+   * `offering_page`: offering link + preview (+ LPs when signed in).
+   * `lp_investor`: LP portal only.
+   */
+  sharedWithScope?: SectionSharedWithScope
 }
 
 export type OfferingPreviewSection = {
@@ -78,7 +160,7 @@ export function sectionDisplayLabel(s: OfferingPreviewSection): string {
 }
 
 function sectionsStorageKey(dealId: string): string {
-  return `${SECTIONS_STORAGE_PREFIX}${dealId.trim()}`
+  return offeringPreviewSectionsStorageKey(dealId)
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -124,6 +206,8 @@ function normalizeNested(
   const sharedInvestorIds = sharedWithAllInvestors
     ? []
     : parseIdListField(raw.sharedInvestorIds)
+  const sharedSponsorUserIds = parseIdListField(raw.sharedSponsorUserIds)
+  const sharedWithScope = parseDocumentSharedWithScope(raw.sharedWithScope)
   return {
     id,
     name,
@@ -133,6 +217,8 @@ function normalizeNested(
     sharedDealClassIds,
     sharedInvestorIds,
     sharedWithAllInvestors,
+    sharedSponsorUserIds,
+    ...(sharedWithScope ? { sharedWithScope } : {}),
   }
 }
 
@@ -203,6 +289,7 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
       visibility: sectionSharedWithDisplay(sharedWithScope),
       nestedDocuments: s.nestedDocuments.map((d) => {
         const sharedWithAllInvestors = Boolean(d.sharedWithAllInvestors)
+        const docScope = parseDocumentSharedWithScope(d.sharedWithScope)
         return {
           ...d,
           lpDisplaySectionId: ids.has(d.lpDisplaySectionId) ? d.lpDisplaySectionId : s.id,
@@ -211,6 +298,8 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
             ? []
             : parseIdListField(d.sharedInvestorIds),
           sharedWithAllInvestors,
+          sharedSponsorUserIds: parseIdListField(d.sharedSponsorUserIds),
+          ...(docScope ? { sharedWithScope: docScope } : {}),
         }
       }),
     }
@@ -242,6 +331,7 @@ function migrateFlatToSections(flat: OfferingPreviewDocument[]): OfferingPreview
     sharedDealClassIds: [],
     sharedInvestorIds: [],
     sharedWithAllInvestors: false,
+    sharedSponsorUserIds: [],
   }))
   const datePool = nestedDocuments.map((d) => d.dateAdded).filter((d) => d !== "—")
   const dateAdded =
@@ -282,7 +372,7 @@ export function flattenSectionsToPreviewDocs(
         id: d.id,
         name: previewDocDisplayName(sections, s, d),
         url: d.url,
-        sharedWithScope: s.sharedWithScope,
+        sharedWithScope: effectiveDocumentSharedWithScope(d, s),
         ...(d.dateAdded && d.dateAdded !== "—" ? { dateAdded: d.dateAdded } : {}),
       })
     }
@@ -317,12 +407,20 @@ export function readOfferingPreviewSections(dealId: string): OfferingPreviewSect
 export function writeOfferingPreviewSections(
   dealId: string,
   sections: OfferingPreviewSection[],
+  opts?: { notify?: boolean },
 ): void {
   const id = dealId.trim()
   if (!id || typeof window === "undefined") return
   const sanitized = sanitizeSections(sections)
   try {
     window.localStorage.setItem(sectionsStorageKey(id), JSON.stringify(sanitized))
+    if (opts?.notify !== false) {
+      window.dispatchEvent(
+        new CustomEvent(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, {
+          detail: { dealId: id },
+        }),
+      )
+    }
   } catch {
     /* quota */
   }

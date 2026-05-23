@@ -1,13 +1,13 @@
 import {
   Archive,
   ContactRound,
-  FilePenLine,
+  // FilePenLine,
   LayoutTemplate,
   Mail,
   Paperclip,
   Plus,
   Search,
-  Send,
+  // Send,
   Trash2,
   X,
 } from "lucide-react"
@@ -21,13 +21,13 @@ import { BulkDeleteReasonModal } from "../../../common/components/bulk-delete-re
 import "../../../common/components/bulk-delete-reason-modal/bulk-delete-reason-modal.css"
 import { toast } from "../../../common/components/Toast"
 import { useDataTableRowSelection } from "../../../common/hooks/useDataTableRowSelection"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import DOMPurify from "dompurify"
 import {
   DataTable,
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
-import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
+// import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { formatDateDdMmmYyyy } from "../../../common/utils/formatDateDisplay"
 import "../../../common/components/work_in_progress_page.css"
 import "../usermanagement/user_management.css"
@@ -54,14 +54,14 @@ function emailTemplateBodyPlainSearch(html: string): string {
 
 export type { EmailTemplateRow }
 
-type EmailTemplatesTab = "templates" | "sent" | "draft"
+// type EmailTemplatesTab = "templates" | "sent" | "draft"
 
 type TemplatesListTab = "active" | "archived"
 
-function parseEmailTemplatesTab(raw: string | null): EmailTemplatesTab {
-  if (raw === "sent" || raw === "draft") return raw
-  return "templates"
-}
+// function parseEmailTemplatesTab(_raw: string | null): EmailTemplatesTab {
+//   if (raw === "sent" || raw === "draft") return raw
+//   return "templates"
+// }
 
 function EmailTemplatesTemplatesTabContent() {
   const navigate = useNavigate()
@@ -588,36 +588,6 @@ function EmailTemplatesTemplatesTabContent() {
 }
 
 export default function EmailTemplatesPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-
-  const tab = useMemo(
-    () => parseEmailTemplatesTab(searchParams.get("tab")),
-    [searchParams],
-  )
-
-  const setTab = useCallback(
-    (next: EmailTemplatesTab) => {
-      setSearchParams(
-        (prev) => {
-          const p = new URLSearchParams(prev)
-          if (next === "templates") p.delete("tab")
-          else p.set("tab", next)
-          return p
-        },
-        { replace: true },
-      )
-    },
-    [setSearchParams],
-  )
-
-  /** Helper copy for Sent / Draft tabs (Templates tab has no intro line). */
-  const panelHint =
-    tab === "sent"
-      ? "Sent messages will appear here."
-      : tab === "draft"
-        ? "Drafts you save will appear here."
-        : ""
-
   return (
     <section className="um_page contacts_page email_templates_page">
       <div className="um_members_header_block">
@@ -634,12 +604,13 @@ export default function EmailTemplatesPage() {
         </div>
       </div>
 
+      {/* Templates / Sent / Draft tabs — restore when sub-views are ready
       <div className="um_members_tabs_outer deals_tabs_outer contacts_main_tabs_outer um_segmented_tabs_outer">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
             className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
             role="tablist"
-            aria-label="Templates, sent messages, and drafts"
+            aria-label="Email templates"
           >
             <button
               type="button"
@@ -662,72 +633,18 @@ export default function EmailTemplatesPage() {
                 Templates
               </span>
             </button>
-            <button
-              type="button"
-              id="email-templates-tab-sent"
-              role="tab"
-              aria-selected={tab === "sent"}
-              aria-controls="email-templates-panel"
-              className={`um_members_tab deals_tabs_tab um_segmented_tab${
-                tab === "sent" ? " um_members_tab_active" : ""
-              }`}
-              onClick={() => setTab("sent")}
-            >
-              <Send
-                className="deals_tabs_icon um_segmented_tab_icon"
-                size={16}
-                strokeWidth={2}
-                aria-hidden
-              />
-              <span className="deals_tabs_label um_segmented_tab_label">
-                Sent
-              </span>
-            </button>
-            <button
-              type="button"
-              id="email-templates-tab-draft"
-              role="tab"
-              aria-selected={tab === "draft"}
-              aria-controls="email-templates-panel"
-              className={`um_members_tab deals_tabs_tab um_segmented_tab${
-                tab === "draft" ? " um_members_tab_active" : ""
-              }`}
-              onClick={() => setTab("draft")}
-            >
-              <FilePenLine
-                className="deals_tabs_icon um_segmented_tab_icon"
-                size={16}
-                strokeWidth={2}
-                aria-hidden
-              />
-              <span className="deals_tabs_label um_segmented_tab_label">
-                Draft
-              </span>
-            </button>
+            <button ... Sent ... />
+            <button ... Draft ... />
           </div>
         </TabsScrollStrip>
       </div>
+      */}
 
       <div
         id="email-templates-panel"
-        role="tabpanel"
-        aria-labelledby={`email-templates-tab-${tab}`}
-        className={`email_templates_tab_panel${
-          tab === "templates"
-            ? " email_templates_tab_panel_templates"
-            : ""
-        }`}
+        className="email_templates_tab_panel email_templates_tab_panel_templates"
       >
-        {panelHint ? (
-          <p className="email_templates_panel_hint">{panelHint}</p>
-        ) : null}
-        {tab === "templates" ? (
-          <EmailTemplatesTemplatesTabContent />
-        ) : (
-          <p className="wip_message" role="status">
-            Work in progress
-          </p>
-        )}
+        <EmailTemplatesTemplatesTabContent />
       </div>
     </section>
   )

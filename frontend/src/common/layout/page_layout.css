@@ -89,9 +89,64 @@
   color: var(--sidebar-text-color);
 }
 
+.app_sidebar_brand.app_sidebar_brand_static {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 0 0.85em;
+  overflow: visible;
+}
+
+/** SyndicationX default — original sidebar logo size (8em wide, natural height). */
+.app_sidebar_brand.app_sidebar_brand_static--default {
+  --app-sidebar-brand-slot-height: auto;
+  min-height: 2.25rem;
+  height: auto;
+  padding: 0.15em 0.25em 0.15em 0;
+}
+
+/** Uploaded company logo — fixed slot so nav alignment stays consistent. */
+.app_sidebar_brand.app_sidebar_brand_static--tenant {
+  --app-sidebar-brand-slot-height: 4.5rem;
+  min-height: var(--app-sidebar-brand-slot-height);
+  height: var(--app-sidebar-brand-slot-height);
+  padding: 0;
+  overflow: hidden;
+}
+
 .app_sidebar_brand_static {
   cursor: default;
   position: relative;
+}
+
+.app_sidebar_brand_link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border-radius: var(--ui-border-radius, 8px);
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.15s ease;
+}
+
+.app_sidebar_brand_static--tenant .app_sidebar_brand_link {
+  height: 100%;
+  min-height: var(--app-sidebar-brand-slot-height, 4.5rem);
+}
+
+.app_sidebar_brand_link:hover {
+  background: color-mix(
+    in srgb,
+    var(--sidebar-text-color) 6%,
+    var(--sidebar-bg-color)
+  );
+}
+
+.app_sidebar_brand_link:focus-visible {
+  outline: 2px solid var(--sidebar-text-color);
+  outline-offset: 3px;
 }
 
 .app_sidebar_title_sr_only {
@@ -121,22 +176,82 @@
 .app_sidebar_brand_mark {
   display: flex;
   align-items: center;
-  /* margin: 0 0 0.75em; */
-  min-height: 2.25rem;
+  width: 100%;
   max-width: 100%;
 }
 
-.app_sidebar_brand_logo {
-  /* width: 100%; */
-  /* max-width: 100%; */
-  width: 8em;
-  margin: 0 auto;
-  height: auto;
-  /* max-height: 4.5rem; */
-  /* min-height: 2.25rem; */
-  object-fit: contain;
-  object-position:center;
+.app_sidebar_brand_static--default .app_sidebar_brand_mark {
+  min-height: 2.25rem;
+}
+
+.app_sidebar_brand_static--tenant .app_sidebar_brand_mark {
+  justify-content: center;
+  height: 100%;
+  min-height: var(--app-sidebar-brand-slot-height, 4.5rem);
+}
+
+.app_sidebar_brand_mark--loading {
+  pointer-events: none;
+}
+
+.app_sidebar_brand_logo_slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.app_sidebar_brand_static--tenant .app_sidebar_brand_logo_slot {
+  height: var(--app-sidebar-brand-slot-height, 4.5rem);
+  min-height: var(--app-sidebar-brand-slot-height, 4.5rem);
+  max-height: var(--app-sidebar-brand-slot-height, 4.5rem);
+}
+
+.app_sidebar_brand_logo_skeleton {
   display: block;
+  width: min(8.5rem, 72%);
+  height: min(2.5rem, var(--app-sidebar-brand-slot-height, 4.5rem));
+  border-radius: 6px;
+  background: color-mix(
+    in srgb,
+    var(--sidebar-text-color) 14%,
+    var(--sidebar-bg-color)
+  );
+  animation: app_sidebar_brand_logo_pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes app_sidebar_brand_logo_pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.app_sidebar_brand_logo {
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: center;
+}
+
+/** Original SyndicationX sidenav lockup — unchanged from before branding work. */
+.app_sidebar_brand_logo--default {
+  width: 8em;
+  max-width: 100%;
+  height: auto;
+}
+
+/** Company-uploaded logo — flexible width, capped height inside fixed slot. */
+.app_sidebar_brand_logo--tenant {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: var(--app-sidebar-brand-slot-height, 4.5rem);
 }
 
 .app_sidebar_title {
