@@ -72,25 +72,6 @@ export type CreateEmbeddedTemplateDraftParams = {
   usePreexistingFields?: boolean;
 };
 
-/** Standard questionnaire fields placed on the template for the Investor role. */
-export const INVESTOR_QUESTIONNAIRE_CUSTOM_FIELDS: DropboxSignCustomField[] = [
-  { name: "Full legal name", type: "text", signerIndex: 0, required: true },
-  { name: "Date of birth", type: "text", signerIndex: 0, required: false },
-  { name: "Residential address", type: "text", signerIndex: 0, required: false },
-  {
-    name: "Accredited investor (yes/no)",
-    type: "text",
-    signerIndex: 0,
-    required: false,
-  },
-  {
-    name: "Entity name (if applicable)",
-    type: "text",
-    signerIndex: 0,
-    required: false,
-  },
-];
-
 export type EmbeddedTemplateDraftResult = {
   templateId: string;
   editUrl: string;
@@ -313,6 +294,14 @@ async function createEmbeddedTemplateDraftViaEmbeddedApi(
       `custom_fields[${index}][required]`,
       field.required ? "1" : "0",
     );
+  });
+
+  const formFields = params.formFieldsPerDocument ?? [];
+  if (params.usePreexistingFields) {
+    form.append("use_preexisting_fields", "1");
+  }
+  formFields.forEach((field, index) => {
+    appendFormFieldPerDocument(form, index, field);
   });
 
   const blob = new Blob([new Uint8Array(params.fileBuffer)], {

@@ -24,6 +24,7 @@ import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePath";
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
+import { toast } from "../../../common/components/Toast";
 import "./signin_form.css";
 
 const SigninForm = () => {
@@ -64,6 +65,8 @@ const SigninForm = () => {
         activitySessionId?: string;
       };
       if (!response.ok) {
+        const msg =
+          data.message?.trim() || "Sign in failed. Please try again.";
         if (response.status === 403) {
           setError(
             data.message ||
@@ -71,7 +74,13 @@ const SigninForm = () => {
           );
           return;
         }
-        setError(data.message || "Sign in failed. Please try again.");
+        setError(msg);
+        if (/user not found/i.test(msg)) {
+          toast.error(
+            "User not found",
+            "No account matches that email or username. Check your details or sign up.",
+          );
+        }
         return;
       }
       if (data.token) {

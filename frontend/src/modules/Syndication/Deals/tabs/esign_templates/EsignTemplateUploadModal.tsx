@@ -167,7 +167,7 @@ export function EsignTemplateUploadModal({
                     })
                   }
                 />
-                <span>Include investor questionnaire fields</span>
+                <span>Include investor questionnaire signature page</span>
               </label>
             </li>
           ))}

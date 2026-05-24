@@ -65,12 +65,16 @@ function strOrNull(v: unknown): string | null {
   return s || null
 }
 
+export function investorEsignWasSent(row: DealInvestorRow): boolean {
+  if (row.esignStatus?.sentAt?.trim()) return true
+  const s = String(row.signedDate ?? "").trim().toLowerCase()
+  return s === "pending" || s === "completed"
+}
+
 export function investorRowShowsEsignStatusLink(
   row: DealInvestorRow,
 ): boolean {
-  if (row.esignStatus?.sentAt) return true
-  const s = String(row.signedDate ?? "").trim().toLowerCase()
-  return s === "pending" || s === "completed"
+  return investorEsignWasSent(row)
 }
 
 export interface DealEsignDropboxSignerDetail {

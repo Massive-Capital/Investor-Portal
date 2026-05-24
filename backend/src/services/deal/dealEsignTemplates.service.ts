@@ -4,20 +4,30 @@ import * as path from "node:path";
 import { eq } from "drizzle-orm";
 import type { DealInvestorEsignDocumentRef } from "../../constants/deal-investor-esign-status.js";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
+import {
+  DEAL_ASSETS_UPLOAD_SUBDIR,
+  DEAL_ESIGN_TEMPLATES_FOLDER,
+  dealAssetsAbsoluteDir,
+  dealAssetsRelativePath,
+  resolveDealStorageFolderName,
+} from "./dealStoragePaths.service.js";
 import { db } from "../../database/db.js";
 import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
+import { PDFDocument } from "pdf-lib";
 import {
   appendW9ToPdfBuffer,
+  ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION,
   isPdfFileName,
   isPdfUploadFile,
+  prependInvestorQuestionnaireSignaturePage,
 } from "./esignPdfMerge.service.js";
 import {
   buildStoredAssetName,
   type DealMemoryUploadFile,
 } from "./dealForm.service.js";
 
-const UPLOAD_SUBDIR = "deal-assets";
-const ESIGN_FOLDER = "e-signed";
+const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
+const ESIGN_FOLDER = DEAL_ESIGN_TEMPLATES_FOLDER;
 
 /** Dropbox Sign template lifecycle stored alongside the uploaded file metadata. */
 export type DropboxSignTemplateStatus = "none" | "draft" | "ready";
@@ -30,8 +40,12 @@ export type EsignTemplateFileRecord = {
   uploadedAt: string;
   /** Sponsor-defined display name for this template. */
   templateName?: string;
-  /** When true, embedded draft includes standard investor questionnaire fields. */
+  /** When true, prepends investor questionnaire signature page (text only) as page 1. */
   includeQuestionnaire?: boolean;
+  /** True when page 1 is the investor questionnaire signature page. */
+  includesQuestionnairePage?: boolean;
+  /** Questionnaire page 1 PDF layout revision (see ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION). */
+  questionnairePageLayoutVersion?: number;
   /** True when the stored PDF includes the appendix W-9 form. */
   includesW9Appendix?: boolean;
   /** Dropbox Sign template id after embedded draft is created or saved. */
@@ -50,16 +64,6 @@ export type EsignTemplatesJson = {
   v: 1;
   files: EsignTemplateFileRecord[];
 };
-
-function safeDealFolderSegment(rawDealId: string): string {
-  const t = rawDealId
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
-  return t || "deal";
-}
 
 function safeCategorySegment(raw: string): string {
   const t = raw
@@ -160,6 +164,63 @@ export async function enrichEsignDocumentsWithCategories(
 }
 
 /**
+ * Ensures page 1 is the investor questionnaire signature page (top-aligned image).
+ */
+export async function ensureEsignTemplatePdfIncludesQuestionnaire(
+  dealId: string,
+  file: EsignTemplateFileRecord,
+  state?: EsignTemplatesJson,
+): Promise<{ file: EsignTemplateFileRecord; absolutePath: string }> {
+  const absPath = resolveEsignTemplateAbsolutePath(file.relativePath);
+  if (!isPdfEsignFile(file) || !file.includeQuestionnaire) {
+    return { file, absolutePath: absPath };
+  }
+
+  const layoutVersion = file.questionnairePageLayoutVersion ?? 0;
+  const layoutCurrent =
+    layoutVersion >= ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION &&
+    Boolean(file.includesQuestionnairePage);
+  if (layoutCurrent) {
+    return { file, absolutePath: absPath };
+  }
+
+  const currentState = state ?? (await getDealEsignTemplatesState(dealId));
+  const fileBuffer = await readFile(absPath);
+  const doc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true });
+  const pageCount = doc.getPageCount();
+
+  let tailPdf: Buffer;
+  if (pageCount > 1) {
+    const tail = await PDFDocument.create();
+    const tailPages = await tail.copyPages(
+      doc,
+      doc.getPageIndices().slice(1),
+    );
+    for (const page of tailPages) tail.addPage(page);
+    tailPdf = Buffer.from(await tail.save());
+  } else if (file.includesQuestionnairePage) {
+    const empty = await PDFDocument.create();
+    tailPdf = Buffer.from(await empty.save());
+  } else {
+    tailPdf = fileBuffer;
+  }
+
+  const merged = await prependInvestorQuestionnaireSignaturePage(tailPdf);
+  if (merged.prepended) {
+    await writeFile(absPath, merged.buffer);
+    file.includesQuestionnairePage = true;
+    file.questionnairePageLayoutVersion = ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION;
+    if (file.dropboxSignTemplateId) {
+      delete file.dropboxSignTemplateId;
+      delete file.dropboxSignStatus;
+      delete file.dropboxSignSavedAt;
+    }
+    await persistEsignTemplatesJson(dealId, currentState);
+  }
+  return { file, absolutePath: absPath };
+}
+
+/**
  * Ensures the on-disk PDF includes the appendix W-9 when missing. Updates metadata when merged.
  */
 export async function ensureEsignTemplatePdfIncludesW9(
@@ -181,6 +242,25 @@ export async function ensureEsignTemplatePdfIncludesW9(
     await persistEsignTemplatesJson(dealId, currentState);
   }
   return { file, absolutePath: absPath };
+}
+
+/** Questionnaire page 1 (when enabled), main document, then W-9 appendix when applicable. */
+export async function ensureEsignTemplatePdfPrepared(
+  dealId: string,
+  file: EsignTemplateFileRecord,
+  state?: EsignTemplatesJson,
+): Promise<{ file: EsignTemplateFileRecord; absolutePath: string }> {
+  const currentState = state ?? (await getDealEsignTemplatesState(dealId));
+  const withQuestionnaire = await ensureEsignTemplatePdfIncludesQuestionnaire(
+    dealId,
+    file,
+    currentState,
+  );
+  return ensureEsignTemplatePdfIncludesW9(
+    dealId,
+    withQuestionnaire.file,
+    currentState,
+  );
 }
 
 async function persistEsignTemplatesJson(
@@ -232,11 +312,9 @@ export async function saveDealEsignTemplateFiles(params: {
   meta?: EsignTemplateUploadMeta[];
 }): Promise<EsignTemplateFileRecord[]> {
   if (!params.files.length) return [];
-  const dealFolder = safeDealFolderSegment(params.dealId);
+  const dealFolder = await resolveDealStorageFolderName(params.dealId);
   const categoryFolder = safeCategorySegment(params.categoryId);
-  const uploadRoot = path.join(
-    getUploadsPhysicalRoot(),
-    UPLOAD_SUBDIR,
+  const uploadRoot = dealAssetsAbsoluteDir(
     dealFolder,
     ESIGN_FOLDER,
     categoryFolder,
@@ -253,16 +331,29 @@ export async function saveDealEsignTemplateFiles(params: {
       randomUUID(),
     );
     const abs = path.join(uploadRoot, storedName);
+    const uploadMeta = params.meta?.[i] ?? {};
     let bytes = file.buffer;
     let includesW9Appendix = false;
+    let includesQuestionnairePage = false;
     if (isPdfUploadFile(file)) {
+      if (uploadMeta.includeQuestionnaire) {
+        const questionnaire = await prependInvestorQuestionnaireSignaturePage(
+          bytes,
+        );
+        bytes = questionnaire.buffer;
+        includesQuestionnairePage = questionnaire.prepended;
+      }
       const merged = await appendW9ToPdfBuffer(bytes);
       bytes = merged.buffer;
       includesW9Appendix = merged.w9Appended;
     }
     await writeFile(abs, bytes);
-    const relativePath = `${UPLOAD_SUBDIR}/${dealFolder}/${ESIGN_FOLDER}/${categoryFolder}/${storedName}`;
-    const uploadMeta = params.meta?.[i] ?? {};
+    const relativePath = dealAssetsRelativePath(
+      dealFolder,
+      ESIGN_FOLDER,
+      categoryFolder,
+      storedName,
+    );
     const templateName =
       uploadMeta.templateName?.trim() ||
       (file.originalname.trim() || storedName).replace(/\.[^.]+$/i, "").trim();
@@ -274,6 +365,10 @@ export async function saveDealEsignTemplateFiles(params: {
       uploadedAt: new Date().toISOString(),
       templateName: templateName || undefined,
       includeQuestionnaire: Boolean(uploadMeta.includeQuestionnaire),
+      includesQuestionnairePage: includesQuestionnairePage || undefined,
+      questionnairePageLayoutVersion: includesQuestionnairePage
+        ? ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION
+        : undefined,
       includesW9Appendix: includesW9Appendix || undefined,
       dropboxSignTitle: templateName || undefined,
     });

@@ -2,12 +2,12 @@ import { readFile } from "node:fs/promises";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
 import {
   createEmbeddedTemplateDraft,
-  INVESTOR_QUESTIONNAIRE_CUSTOM_FIELDS,
   tryGetEmbeddedTemplateEditUrl,
   waitForEmbeddedTemplateEditUrl,
 } from "../esign/dropboxSign.service.js";
+import { getInvestorQuestionnaireSignatureFormFields } from "./esignPdfMerge.service.js";
 import {
-  ensureEsignTemplatePdfIncludesW9,
+  ensureEsignTemplatePdfPrepared,
   findEsignTemplateFile,
   getDealEsignTemplatesState,
   isPdfEsignFile,
@@ -63,7 +63,7 @@ export async function startDealEsignEmbeddedTemplateDraft(params: {
     );
   }
 
-  const { absolutePath: absPath } = await ensureEsignTemplatePdfIncludesW9(
+  const { absolutePath: absPath } = await ensureEsignTemplatePdfPrepared(
     params.dealId,
     file,
     state,
@@ -115,8 +115,9 @@ export async function startDealEsignEmbeddedTemplateDraft(params: {
     fileName: file.originalName,
     subject: "Please review and sign",
     message: "Documents for your investment",
-    customFields: file.includeQuestionnaire
-      ? INVESTOR_QUESTIONNAIRE_CUSTOM_FIELDS
+    /** Fields sit on printed signature lines on questionnaire page 1 (when enabled). */
+    formFieldsPerDocument: file.includeQuestionnaire
+      ? getInvestorQuestionnaireSignatureFormFields()
       : undefined,
   });
 

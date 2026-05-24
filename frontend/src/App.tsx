@@ -46,7 +46,6 @@ import UserManagementPage from "./modules/Syndication/usermanagement/UserManagem
 import ContactsPage from "./modules/Syndication/contacts/ContactsPage";
 import EmailTemplatesPage from "./modules/Syndication/contacts/EmailTemplatesPage";
 import EmailTemplateNewPage from "./modules/Syndication/contacts/EmailTemplateNewPage";
-import ReusableTemplatesPage from "./modules/Syndication/Templates/ReusableTemplatesPage";
 import CreateReusableTemplatePage from "./modules/Syndication/Templates/CreateReusableTemplatePage";
 import { usePortalMode } from "./modules/Investing/context/PortalModeContext";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
@@ -273,7 +272,7 @@ function App() {
             <Route path="contacts/email-templates" element={<EmailTemplatesPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="templates/new" element={<CreateReusableTemplatePage />} />
-            <Route path="templates" element={<ReusableTemplatesPage />} />
+            {/* <Route path="templates" element={<ReusableTemplatesPage />} /> */}
             </Route>
             </Route>
           </Route>

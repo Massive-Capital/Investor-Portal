@@ -74,7 +74,7 @@ import {
 } from "../../services/deal/dealInvestment.service.js";
 import { countDealLpInvestorsByDealIdsForViewer } from "../../services/deal/dealLpInvestor.service.js";
 import {
-  listLpInvestorDealIdsForUserEmail,
+  listInvestingParticipantDealIdsForUser,
   mapLpInvestorRoleDisplayByDealIdForUserEmail,
 } from "../../services/investing/lpInvestorAccess.service.js";
 import {
@@ -248,13 +248,16 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
         includeParticipantViewerEmailNorm = String(uRow?.email ?? "")
           .trim()
           .toLowerCase();
-        const lpDealIds = includeParticipantViewerEmailNorm
-          ? await listLpInvestorDealIdsForUserEmail(
-              includeParticipantViewerEmailNorm,
-            )
+        const participantDealIds = includeParticipantViewerEmailNorm
+          ? await listInvestingParticipantDealIdsForUser({
+              userId: user.id,
+              emailNorm: includeParticipantViewerEmailNorm,
+            })
           : [];
         rows =
-          lpDealIds.length > 0 ? await listAddDealFormsByIds(lpDealIds) : [];
+          participantDealIds.length > 0
+            ? await listAddDealFormsByIds(participantDealIds)
+            : [];
       } else {
         rows = await listAddDealFormsForViewer(scope);
       }

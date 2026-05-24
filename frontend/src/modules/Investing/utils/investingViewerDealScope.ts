@@ -4,7 +4,10 @@ import {
   INVESTOR_ROLE_SELECT_OPTIONS,
   LP_INVESTORS_ROLE_LABEL,
 } from "@/modules/Syndication/Deals/constants/investor-profile"
-import { fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
+import {
+  fetchDealInvestors,
+  fetchDealMembers,
+} from "@/modules/Syndication/Deals/api/dealsApi"
 import type {
   DealInvestorRow,
   DealInvestorsPayload,
@@ -143,16 +146,24 @@ function viewerOnDealAsInvitedInvestor(
 }
 
 /**
- * `/investing/deals` table: only deals where the viewer is invested (positive
- * committed amount) or invited / linked as an LP investor on the roster.
+ * `/investing/deals` table: deals where the viewer is invested, invited as LP,
+ * or on the roster as Lead / Admin / Co-sponsor.
  */
 export function dealIsInViewerInvestingDealsPageScope(
   payload: DealInvestorsPayload,
+  members: DealInvestorRow[] = [],
 ): boolean {
   const em = getSessionUserEmail().trim().toLowerCase()
   if (!em) return false
   if (committedAmountForViewerEmail(payload, em) > 0) return true
-  return viewerOnDealAsInvitedInvestor(payload, em)
+  if (viewerOnDealAsInvitedInvestor(payload, em)) return true
+  const roles = resolveViewerInvestingDealRoles(
+    members,
+    payload.investors,
+    em,
+    payload,
+  )
+  return roles.sponsorRoleLabels.length > 0
 }
 
 function investingViewerEmailNorm(): string {
@@ -194,9 +205,8 @@ export async function filterDealListToViewerInvested(
 }
 
 /**
- * Investing deals route: sponsor or committed. Does not use
- * {@link applyLpSessionDealIdScope} so a sponsor is not pre-excluded (LP deal id
- * lists are investor-scoped, not syndication-scoped).
+ * Investing deals route: sponsor, committed, invited LP, or roster assignee.
+ * Does not use {@link applyLpSessionDealIdScope} so sponsors are not pre-excluded.
  */
 export type ViewerInvestingDealRoles = {
   /** Lead Sponsor, Admin Sponsor, and/or Co-Sponsor when applicable. */
@@ -258,13 +268,16 @@ export async function filterDealListToInvestingDealsPage(
   if (!viewerEmailNorm) return []
   const withPayload = await Promise.all(
     rows.map(async (row) => {
-      const payload = await fetchDealInvestors(row.id, {
-        lpInvestorsOnly: false,
-      })
-      return { row, payload }
+      const [payload, members] = await Promise.all([
+        fetchDealInvestors(row.id, { lpInvestorsOnly: false }),
+        fetchDealMembers(row.id),
+      ])
+      return { row, payload, members }
     }),
   )
   return withPayload
-    .filter(({ payload }) => dealIsInViewerInvestingDealsPageScope(payload))
+    .filter(({ payload, members }) =>
+      dealIsInViewerInvestingDealsPageScope(payload, members),
+    )
     .map(({ row }) => row)
 }

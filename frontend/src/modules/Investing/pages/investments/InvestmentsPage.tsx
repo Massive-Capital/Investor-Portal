@@ -183,6 +183,10 @@ export default function InvestmentsPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [dealsTabCounts, setDealsTabCounts] = useState({
+    active: 0,
+    archived: 0,
+  })
 
   const setActiveTab = useCallback(
     (tab: InvestmentsPageTab) => {
@@ -434,6 +438,7 @@ export default function InvestmentsPage() {
                 aria-hidden
               />
               <span className="deals_tabs_label um_segmented_tab_label">Deals</span>
+              <span className="deals_tabs_count">({dealsTabCounts.active})</span>
             </button>
             <button
               type="button"
@@ -485,9 +490,22 @@ export default function InvestmentsPage() {
           role="tabpanel"
           aria-labelledby={TAB_IDS[activeTab]}
         >
-          {activeTab === "deals" ? (
-            <DealsListPage dealsListContext="investing" embedded />
-          ) : activeTab === "archives" ? (
+          <div
+            className={
+              activeTab === "deals"
+                ? undefined
+                : "investments_deals_list_preload"
+            }
+            hidden={activeTab !== "deals"}
+            aria-hidden={activeTab !== "deals"}
+          >
+            <DealsListPage
+              dealsListContext="investing"
+              embedded
+              onTabCountsChange={setDealsTabCounts}
+            />
+          </div>
+          {activeTab === "archives" ? (
             <>
               <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer investments_archives_subtabs">
                 <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
@@ -513,6 +531,9 @@ export default function InvestmentsPage() {
                       />
                       <span className="deals_tabs_label um_segmented_tab_label">
                         Deals
+                      </span>
+                      <span className="deals_tabs_count">
+                        ({dealsTabCounts.archived})
                       </span>
                     </button>
                     <button
@@ -549,6 +570,7 @@ export default function InvestmentsPage() {
                     dealsListContext="investing"
                     embedded
                     investingArchiveView="archived"
+                    onTabCountsChange={setDealsTabCounts}
                   />
                 ) : (
                   <InvestmentsTablePanel
@@ -558,12 +580,12 @@ export default function InvestmentsPage() {
                 )}
               </div>
             </>
-          ) : (
+          ) : activeTab === "investments" ? (
             <InvestmentsTablePanel
               {...investmentsTablePanelProps}
               searchAriaLabel="Search investments"
             />
-          )}
+          ) : null}
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import {
 import { db, pool } from "../../database/db.js";
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
 import { contact } from "../../schema/schema.js";
+import { listDealIdsAssignedToUser } from "../deal/assigningDealUser.service.js";
 
 /** Stored `deal_lp_investor.role` values treated as LP Investor for nav + deal scope. */
 export function isLpInvestorRoleInLpTable(role: string | null | undefined): boolean {
@@ -176,6 +177,62 @@ export async function listLpInvestorDealIdsForUserEmail(
   emailNorm: string,
 ): Promise<string[]> {
   return listDealIdsFromLpInvestorTableForEmail(emailNorm);
+}
+
+/**
+ * Distinct deal ids where this email appears on `deal_member` as Lead / Admin / Co-sponsor.
+ */
+export async function listDealIdsFromSponsorDealMemberForEmail(
+  emailNorm: string,
+): Promise<string[]> {
+  const e = String(emailNorm ?? "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return [];
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT dm.deal_id::text AS deal_id
+     FROM deal_member dm
+     INNER JOIN users u ON lower(trim(u.email)) = $1
+     WHERE lower(trim(dm.deal_member_role)) IN (
+       'lead sponsor', 'admin sponsor', 'co-sponsor', 'co sponsor'
+     )
+       AND (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = $1
+         )
+       )`,
+    [e],
+  );
+  return [
+    ...new Set(
+      res.rows
+        .map((r) => String(r.deal_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/**
+ * Investing → Deals tab: deals the viewer participates in as LP, investor, roster
+ * assignee, or sponsor (Lead / Admin / Co-sponsor on `deal_member`).
+ */
+export async function listInvestingParticipantDealIdsForUser(params: {
+  userId: string;
+  emailNorm: string;
+}): Promise<string[]> {
+  const emailNorm = String(params.emailNorm ?? "").trim().toLowerCase();
+  const userId = String(params.userId ?? "").trim();
+  if (!emailNorm || !userId) return [];
+
+  const [lp, sponsor, assigned, investment] = await Promise.all([
+    listDealIdsFromLpInvestorTableForEmail(emailNorm),
+    listDealIdsFromSponsorDealMemberForEmail(emailNorm),
+    listDealIdsAssignedToUser(userId),
+    listDealIdsFromDealInvestmentForEmail(emailNorm),
+  ]);
+
+  return [...new Set([...lp, ...sponsor, ...assigned, ...investment])];
 }
 
 /**

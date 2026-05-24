@@ -3,6 +3,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
+import {
+  DEAL_ASSETS_UPLOAD_SUBDIR,
+  DEAL_INVESTMENTS_FOLDER,
+  dealAssetsRelativePath,
+  resolveDealStorageFolderName,
+} from "./dealStoragePaths.service.js";
 import { db, pool } from "../../database/db.js";
 import { users } from "../../schema/auth.schema/signin.js";
 import { companies } from "../../schema/schema.js";
@@ -24,7 +30,7 @@ import {
 import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 
-const UPLOAD_SUBDIR = "deal-investments";
+const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
 /** Canonical `investor_role` for LP investors (Investors tab add + list filter). */
 export const LP_INVESTOR_ROLE_STORED = "lp_investors";
@@ -1309,17 +1315,17 @@ export async function saveSubscriptionDocument(params: {
   dealId: string;
   file: DealMemoryUploadFile;
 }): Promise<string> {
+  const dealFolder = await resolveDealStorageFolderName(params.dealId);
   const uploadRoot = path.join(
     getUploadsPhysicalRoot(),
-    UPLOAD_SUBDIR,
-    params.dealId,
+    dealAssetsRelativePath(dealFolder, DEAL_INVESTMENTS_FOLDER),
   );
   await mkdir(uploadRoot, { recursive: true });
   const ts = Date.now();
   const name = `${sanitizeStem(params.file.originalname)}_${randomUUID()}_${ts}${safeExt(params.file.originalname)}`;
   const dest = path.join(uploadRoot, name);
   await writeFile(dest, params.file.buffer);
-  return path.join(UPLOAD_SUBDIR, params.dealId, name).replace(/\\/g, "/");
+  return dealAssetsRelativePath(dealFolder, DEAL_INVESTMENTS_FOLDER, name);
 }
 
 export async function insertDealInvestment(params: {

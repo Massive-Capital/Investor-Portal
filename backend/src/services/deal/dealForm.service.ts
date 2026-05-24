@@ -3,6 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
+import {
+  DEAL_ASSETS_UPLOAD_SUBDIR,
+  dealAssetsRelativePath,
+  resolveDealStorageFolderName,
+} from "./dealStoragePaths.service.js";
 import { db } from "../../database/db.js";
 import {
   addDealForm,
@@ -22,7 +27,7 @@ import {
 } from "../../constants/deal-lifecycle/index.js";
 import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
 
-const UPLOAD_SUBDIR = "deal-assets";
+const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
 /** Autosave placeholders — multiple in-progress drafts may share these titles. */
 const DEAL_NAME_UNIQUENESS_EXEMPT = new Set(["untitled deal", "pending"]);
@@ -274,29 +279,16 @@ export interface DealMemoryUploadFile {
   originalname: string;
 }
 
-/** Safe folder segment used under `deal-assets/` for per-deal file isolation. */
-function safeDealFolderSegment(rawDealId: string): string {
-  const t = rawDealId
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
-  return t || "deal";
-}
-
 export async function saveDealAssetFiles(params: {
   files: DealMemoryUploadFile[];
-  /** Optional deal id to isolate stored files under `deal-assets/<dealId>/...`. */
+  /** Optional deal id — files stored under `deal-assets/<dealName-dealId>/`. */
   dealId?: string;
 }): Promise<string[]> {
   if (!params.files.length) return [];
-  const dealFolder =
-    typeof params.dealId === "string" && params.dealId.trim()
-      ? safeDealFolderSegment(params.dealId)
-      : "";
+  const dealId = params.dealId?.trim() ?? "";
+  const dealFolder = dealId ? await resolveDealStorageFolderName(dealId) : "";
   const uploadRoot = dealFolder
-    ? path.join(getUploadsPhysicalRoot(), UPLOAD_SUBDIR, dealFolder)
+    ? path.join(getUploadsPhysicalRoot(), dealAssetsRelativePath(dealFolder))
     : path.join(getUploadsPhysicalRoot(), UPLOAD_SUBDIR);
   await mkdir(uploadRoot, { recursive: true });
   const relativePaths: string[] = [];
@@ -312,7 +304,7 @@ export async function saveDealAssetFiles(params: {
     await writeFile(abs, file.buffer);
     relativePaths.push(
       dealFolder
-        ? `${UPLOAD_SUBDIR}/${dealFolder}/${name}`
+        ? dealAssetsRelativePath(dealFolder, name)
         : `${UPLOAD_SUBDIR}/${name}`,
     );
   }

@@ -9,7 +9,7 @@ import type { DealMemoryUploadFile } from "../../services/deal/dealForm.service.
 import { isPortalUserLeadSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
   dealHasEsignTemplateDocuments,
-  ensureEsignTemplatePdfIncludesW9,
+  ensureEsignTemplatePdfPrepared,
   findEsignTemplateFile,
   getDealEsignTemplatesState,
   groupEsignFilesByCategory,
@@ -130,7 +130,7 @@ export async function getDealEsignTemplateViewUrl(
       return;
     }
 
-    const { file: updated } = await ensureEsignTemplatePdfIncludesW9(
+    const { file: updated } = await ensureEsignTemplatePdfPrepared(
       dealId,
       file,
       state,
@@ -205,7 +205,7 @@ export async function getDealEsignTemplateView(
       return;
     }
 
-    const { absolutePath } = await ensureEsignTemplatePdfIncludesW9(
+    const { absolutePath } = await ensureEsignTemplatePdfPrepared(
       dealId,
       file,
       state,

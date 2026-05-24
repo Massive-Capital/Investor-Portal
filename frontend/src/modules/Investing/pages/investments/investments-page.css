@@ -16,6 +16,10 @@
   margin-bottom: 0.85rem;
 }
 
+.investments_deals_list_preload {
+  display: none;
+}
+
 .investments_archives_tabpanel {
   min-width: 0;
 }

@@ -20,6 +20,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import type { DealInvestorRow } from "../../../types/deal-investors.types"
+import { investorEsignWasSent } from "../../../utils/investorEsignStatus"
 import "../../../../usermanagement/user_management.css"
 import "./deal-member-row-actions.css"
 
@@ -76,6 +77,7 @@ export function DealMemberRowActions({
   approveFundDisabled = false,
   approveFundDisabledTitle,
 }: DealMemberRowActionsProps) {
+  const esignWasSent = investorEsignWasSent(row)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -385,7 +387,9 @@ export function DealMemberRowActions({
                           ? "Available after the investor is saved"
                           : sendEsignDisabled
                             ? sendEsignDisabledTitle
-                            : "Send eSign documents to this investor"
+                            : esignWasSent
+                              ? "Re-send eSign documents to this investor"
+                              : "Send eSign documents to this investor"
                       }
                       onClick={() => {
                         if (draftRow || sendEsignDisabled) return
@@ -398,7 +402,7 @@ export function DealMemberRowActions({
                         strokeWidth={2}
                         aria-hidden
                       />
-                      Send E-sign
+                      {esignWasSent ? "Re-send E-sign" : "Send E-sign"}
                     </button>
                   </li>
                 ) : null}

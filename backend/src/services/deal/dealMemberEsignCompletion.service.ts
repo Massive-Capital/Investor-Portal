@@ -3,6 +3,12 @@ import * as path from "node:path";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
 import {
+  DEAL_ESIGN_COMPLETED_FOLDER,
+  dealAssetsRelativePath,
+  resolveDealStorageFolderName,
+  sanitizeStoragePathSegment,
+} from "./dealStoragePaths.service.js";
+import {
   aggregateEsignStatusFromBundle,
   esignBundleHasPending,
   esignBundleIsAllCompleted,
@@ -44,27 +50,10 @@ function uploadPublicUrl(relativePath: string): string {
   return rel ? `/uploads/${rel}` : "";
 }
 
-const UPLOAD_SUBDIR = "deal-assets";
-const ESIGN_SIGNED_FOLDER = "e-signed-completed";
-
-function safeDealFolderSegment(rawDealId: string): string {
-  const t = rawDealId
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
-  return t || "deal";
-}
+const ESIGN_SIGNED_FOLDER = DEAL_ESIGN_COMPLETED_FOLDER;
 
 function safeRosterSegment(raw: string): string {
-  const t = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
-  return t || "investor";
+  return sanitizeStoragePathSegment(raw, 64) || "investor";
 }
 
 async function persistSignedPdf(params: {
@@ -75,12 +64,15 @@ async function persistSignedPdf(params: {
   const pdf = await downloadSignatureRequestPdfBuffer(
     params.signatureRequestId,
   );
-  const dealFolder = safeDealFolderSegment(params.dealId);
+  const dealFolder = await resolveDealStorageFolderName(params.dealId);
   const rosterFolder = safeRosterSegment(params.rosterId);
   const fileName = `signed-${Date.now()}.pdf`;
-  const relativePath = path
-    .join(UPLOAD_SUBDIR, dealFolder, ESIGN_SIGNED_FOLDER, rosterFolder, fileName)
-    .replace(/\\/g, "/");
+  const relativePath = dealAssetsRelativePath(
+    dealFolder,
+    ESIGN_SIGNED_FOLDER,
+    rosterFolder,
+    fileName,
+  );
 
   const abs = path.join(getUploadsPhysicalRoot(), relativePath);
   await mkdir(path.dirname(abs), { recursive: true });

@@ -68,7 +68,7 @@ export const addDealForm = pgTable("add_deal_form", {
   offeringInvestorPreviewJson: text("offering_investor_preview_json"),
   /**
    * JSON: `{ "v": 1, "files": [{ id, categoryId, relativePath, originalName, uploadedAt }] }`
-   * for eSign Templates tab uploads (`e-signed/<category>/` under deal-assets).
+   * for eSign Templates tab uploads (`deal-assets/<dealName-dealId>/e-signed/<category>/`).
    */
   esignTemplatesJson: text("esign_templates_json"),
 });

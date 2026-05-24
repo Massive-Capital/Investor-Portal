@@ -45,7 +45,7 @@ export const dealInvestment = pgTable("deal_investment", {
   extraContributionAmounts: jsonb("extra_contribution_amounts")
     .$type<string[]>()
     .notNull(),
-  /** Relative path under uploads root, e.g. deal-investments/... */
+  /** Relative path under uploads root, e.g. deal-assets/<dealName-dealId>/investments/... */
   documentStoragePath: text("document_storage_path"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()

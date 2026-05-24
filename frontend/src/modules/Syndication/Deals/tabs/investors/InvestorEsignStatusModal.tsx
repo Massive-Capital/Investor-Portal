@@ -14,8 +14,6 @@ import {
   esignSignedPdfDownloadFilename,
   esignWorkflowSteps,
   fallbackEsignStatusForRow,
-  formatDropboxSignerStatusCode,
-  formatEsignStepTimestamp,
   investorEsignIsCompleted,
   mergeEsignStatusWithDropbox,
   resolveEsignSignedPdfUrlForDocument,
@@ -75,8 +73,6 @@ function ProfileTabPanel({
   completed: boolean
   downloadName: string
 }) {
-  const primarySigner = dropbox?.signers[0]
-
   return (
     <div
       role="tabpanel"
@@ -87,7 +83,7 @@ function ProfileTabPanel({
       <div className="deal_esign_panel deal_esign_panel--muted">
         <p className="deal_esign_panel_title">Signing progress</p>
         <EsignHorizontalProgress steps={steps} />
-        {primarySigner ? (
+        {/* {primarySigner ? (
           <p className="deal_esign_dropbox_inline">
             Dropbox Sign:{" "}
             {formatDropboxSignerStatusCode(primarySigner.statusCode)}
@@ -98,7 +94,7 @@ function ProfileTabPanel({
               ? ` · signed ${formatEsignStepTimestamp(primarySigner.signedAt)}`
               : ""}
           </p>
-        ) : null}
+        ) : null} */}
         {dropbox?.isDeclined ? (
           <p className="deal_esign_notice deal_esign_notice--error">
             Declined in Dropbox Sign.

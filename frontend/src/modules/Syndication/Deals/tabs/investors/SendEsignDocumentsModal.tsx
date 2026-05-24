@@ -12,6 +12,7 @@ import {
   resolveInvestorEsignCategoryId,
 } from "../../utils/esignTemplateCategories"
 import { esignTemplateDisplayName } from "../../utils/esignTemplateDisplay"
+import { investorEsignWasSent } from "../../utils/investorEsignStatus"
 import "./send-esign-documents-modal.css"
 
 function rowRecipientLabel(row: DealInvestorRow): string {
@@ -48,6 +49,8 @@ export function SendEsignDocumentsModal({
     Record<string, DealEsignTemplateFileRecord[]>
   >({})
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+
+  const esignWasSent = row ? investorEsignWasSent(row) : false
 
   useEffect(() => {
     if (!open || !dealId.trim()) return
@@ -189,7 +192,7 @@ export function SendEsignDocumentsModal({
             className="um_modal_title um_title_with_icon"
           >
             <FileSignature size={22} strokeWidth={2} aria-hidden />
-            <span>Send E-sign</span>
+            <span>{esignWasSent ? "Re-send E-sign" : "Send E-sign"}</span>
           </h3>
           <button
             type="button"
@@ -367,8 +370,10 @@ export function SendEsignDocumentsModal({
               {sending ? (
                 <>
                   <Loader2 className="deal_esign_spin" size={16} aria-hidden />
-                  Sending…
+                  {esignWasSent ? "Re-sending…" : "Sending…"}
                 </>
+              ) : esignWasSent ? (
+                "Re-send E-sign"
               ) : (
                 "Send E-sign"
               )}

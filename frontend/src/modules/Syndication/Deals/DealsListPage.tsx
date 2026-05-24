@@ -249,12 +249,18 @@ export type DealsListPageProps = {
    * Defaults to active (non-archived) deals.
    */
   investingArchiveView?: InvestingDealsArchiveView
+  /** Embedded investing list: report active/archived totals for parent tab badges. */
+  onTabCountsChange?: (counts: {
+    active: number
+    archived: number
+  }) => void
 }
 
 export function DealsListPage({
   dealsListContext = "syndicating",
   embedded = false,
   investingArchiveView = "active",
+  onTabCountsChange,
 }: DealsListPageProps = {}) {
   const { mode } = usePortalMode()
   const location = useLocation()
@@ -358,6 +364,19 @@ export function DealsListPage({
     }
     return { activeDealsCount: active, archivedDealsCount: archived }
   }, [rows])
+
+  useEffect(() => {
+    if (!embedded || !onTabCountsChange) return
+    onTabCountsChange({
+      active: activeDealsCount,
+      archived: archivedDealsCount,
+    })
+  }, [
+    embedded,
+    onTabCountsChange,
+    activeDealsCount,
+    archivedDealsCount,
+  ])
 
   const rowsForTab = useMemo(() => {
     if (dealsListContext === "investing") {

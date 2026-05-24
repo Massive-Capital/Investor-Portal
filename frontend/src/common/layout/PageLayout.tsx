@@ -5,7 +5,6 @@ import {
   Building2,
   ChevronDown,
   ContactRound,
-  FileSignature,
   Files,
   LayoutDashboard,
   Mails,
@@ -173,7 +172,7 @@ const sharedSidebarItems: NavItem[] = [
 /** Syndicating — unique `to` per item so only one NavLink is active */
 const syndicationPortalNavItems: NavItemLink[] = [
   { label: "Deals", to: "/deals", icon: Briefcase },
-  { label: "E-Sign Templates", to: "/templates", icon: FileSignature },
+  // { label: "E-Sign Templates", to: "/templates", icon: FileSignature },
   // { label: "Investor emails", to: "/deals/investor-emails", icon: Mail },
   { label: "Reporting", to: "/deals/reporting", icon: Files },
 ]

@@ -42,6 +42,7 @@ import {
 
 } from "@/modules/Syndication/Deals/api/dealsApi"
 
+import { EsignTemplateDeleteConfirmModal } from "./EsignTemplateDeleteConfirmModal"
 import { EsignTemplateFileRow } from "./EsignTemplateFileRow"
 import {
   EsignTemplateUploadModal,
@@ -431,7 +432,10 @@ export function DealEsignTemplatesTab({
 
   const [uploadModalFiles, setUploadModalFiles] = useState<File[]>([])
 
-
+  const [deletePending, setDeletePending] = useState<{
+    fileId: string
+    displayName: string
+  } | null>(null)
 
   const reload = useCallback(async () => {
 
@@ -583,45 +587,43 @@ export function DealEsignTemplatesTab({
 
 
 
-  const onRemoveFile = useCallback(
-
+  const onRequestRemoveFile = useCallback(
     (_categoryId: string, fileId: string) => {
-
       if (!canUploadDocuments) return
-
-      void (async () => {
-
-        setUploading(true)
-
-        try {
-
-          const result = await deleteDealEsignTemplateFile(dealId, fileId)
-
-          if (result.ok) {
-
-            setFilesByCategory(result.filesByCategory)
-
-            notifyDealEsignTemplatesChanged(dealId)
-
-          } else {
-
-            toast.error("Could not remove file", result.message)
-
-          }
-
-        } finally {
-
-          setUploading(false)
-
-        }
-
-      })()
-
+      const file = Object.values(filesByCategory)
+        .flat()
+        .find((f) => f.id === fileId)
+      if (!file) return
+      setDeletePending({
+        fileId,
+        displayName: esignTemplateDisplayName(file),
+      })
     },
-
-    [canUploadDocuments, dealId],
-
+    [canUploadDocuments, filesByCategory],
   )
+
+  const onConfirmRemoveFile = useCallback(() => {
+    if (!deletePending) return
+    void (async () => {
+      setUploading(true)
+      try {
+        const result = await deleteDealEsignTemplateFile(
+          dealId,
+          deletePending.fileId,
+        )
+        if (result.ok) {
+          setFilesByCategory(result.filesByCategory)
+          notifyDealEsignTemplatesChanged(dealId)
+          setDeletePending(null)
+          toast.success("Template removed")
+        } else {
+          toast.error("Could not remove file", result.message)
+        }
+      } finally {
+        setUploading(false)
+      }
+    })()
+  }, [dealId, deletePending])
 
 
 
@@ -783,7 +785,7 @@ export function DealEsignTemplatesTab({
 
             onFilesSelected={onFilesSelected}
 
-            onRemoveFile={onRemoveFile}
+            onRemoveFile={onRequestRemoveFile}
 
             onSaveTemplate={onSaveTemplate}
 
@@ -810,6 +812,16 @@ export function DealEsignTemplatesTab({
         uploading={uploading}
         onClose={closeUploadModal}
         onConfirm={onConfirmUpload}
+      />
+
+      <EsignTemplateDeleteConfirmModal
+        open={deletePending != null}
+        displayName={deletePending?.displayName ?? ""}
+        busy={uploading}
+        onCancel={() => {
+          if (!uploading) setDeletePending(null)
+        }}
+        onConfirm={onConfirmRemoveFile}
       />
 
       {embeddedSession ? (
