@@ -10,6 +10,7 @@ import {
   Save,
   Search,
   Trash2,
+  Upload,
   X,
 } from "lucide-react"
 import {
@@ -20,7 +21,9 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
@@ -35,6 +38,7 @@ import {
   fetchDealInvestorClasses,
   fetchDealInvestors,
   fetchDealMembers,
+  isDealOfferingDocumentPdfFile,
   postDealOfferingDocumentUploads,
   type DealDetailApi,
 } from "../../api/dealsApi"
@@ -51,7 +55,11 @@ import {
   toggleIdInList,
 } from "./DocumentSharedWithPicker"
 import {
+  DEFAULT_DOCUMENT_SECTION_ID,
   effectiveDocumentSharedWithScope,
+  ensureDefaultDocumentSectionInList,
+  isDefaultDocumentSection,
+  orderDocumentSectionsWithDefaultFirst,
   readOfferingPreviewSections,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
@@ -60,10 +68,15 @@ import {
   type OfferingPreviewSection,
   type SectionSharedWithScope,
 } from "../../utils/offeringPreviewDocSections"
-import { scheduleOfferingInvestorPreviewServerSync } from "../../utils/offeringPreviewServerState"
+import {
+  applyOfferingInvestorPreviewJsonFromServer,
+  scheduleOfferingInvestorPreviewServerSync,
+} from "../../utils/offeringPreviewServerState"
+import { isOfferingPreviewHydrated } from "../../utils/offeringPreviewRuntimeStore"
 
 interface DocumentsSectionProps {
   dealId: string
+  offeringInvestorPreviewJson?: string | null
   investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
 }
@@ -158,6 +171,118 @@ function safeDownloadFilename(name: string): string {
   return base.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 200)
 }
 
+function appendPdfFilesFromPicker(
+  prev: File[],
+  input: FileList | null,
+): { next: File[]; rejectedNames: string[] } {
+  const picked = input ? Array.from(input) : []
+  if (picked.length === 0) return { next: prev, rejectedNames: [] }
+  const rejectedNames: string[] = []
+  const accepted: File[] = []
+  for (const file of picked) {
+    if (isDealOfferingDocumentPdfFile(file)) accepted.push(file)
+    else rejectedNames.push(file.name)
+  }
+  return { next: [...prev, ...accepted], rejectedNames }
+}
+
+function ModalPendingDocumentFilesList({
+  files,
+  disabled,
+  onRemove,
+}: {
+  files: File[]
+  disabled?: boolean
+  onRemove: (index: number) => void
+}) {
+  const previewUrlsRef = useRef(new Map<string, string>())
+
+  useEffect(() => {
+    return () => {
+      for (const url of previewUrlsRef.current.values()) {
+        try {
+          URL.revokeObjectURL(url)
+        } catch {
+          /* ignore */
+        }
+      }
+      previewUrlsRef.current.clear()
+    }
+  }, [])
+
+  function filePreviewKey(file: File, index: number): string {
+    return `${index}::${file.name}::${file.size}::${file.lastModified}`
+  }
+
+  function revokePreviewForKey(key: string): void {
+    const url = previewUrlsRef.current.get(key)
+    if (!url) return
+    try {
+      URL.revokeObjectURL(url)
+    } catch {
+      /* ignore */
+    }
+    previewUrlsRef.current.delete(key)
+  }
+
+  function viewFile(file: File, index: number): void {
+    const key = filePreviewKey(file, index)
+    let url = previewUrlsRef.current.get(key)
+    if (!url) {
+      url = URL.createObjectURL(file)
+      previewUrlsRef.current.set(key, url)
+    }
+    window.open(url, "_blank", "noopener,noreferrer")
+  }
+
+  function removeFile(index: number): void {
+    const file = files[index]
+    if (file) revokePreviewForKey(filePreviewKey(file, index))
+    onRemove(index)
+  }
+
+  if (files.length === 0) return null
+
+  return (
+    <ul className="deal_docs_modal_file_list" aria-label="Selected documents">
+      {files.map((file, index) => (
+        <li
+          key={filePreviewKey(file, index)}
+          className="deal_docs_modal_file_row"
+        >
+          <span className="deal_docs_modal_file_name" title={file.name}>
+            {file.name}
+          </span>
+          <div
+            className="deal_docs_modal_file_actions"
+            role="group"
+            aria-label={`${file.name} actions`}
+          >
+            <button
+              type="button"
+              className="deal_docs_modal_file_btn"
+              disabled={disabled}
+              aria-label={`View ${file.name}`}
+              onClick={() => viewFile(file, index)}
+            >
+              <Eye size={16} strokeWidth={2} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="deal_docs_modal_file_btn deal_docs_modal_file_btn_danger"
+              disabled={disabled}
+              aria-label={`Remove ${file.name}`}
+              onClick={() => removeFile(index)}
+            >
+              <Trash2 size={16} strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function revokeBlobUrlIfOrphaned(
   removedUrl: string | null | undefined,
   sectionsAfter: OfferingPreviewSection[],
@@ -177,14 +302,15 @@ function revokeBlobUrlIfOrphaned(
 
 export function DocumentsSection({
   dealId,
+  offeringInvestorPreviewJson,
   investorsListRefreshKey = 0,
   onOfferingPreviewSynced,
 }: DocumentsSectionProps) {
   const addSectionTitleId = useId()
   const uploadDocsTitleId = useId()
-  const [sections, setSections] = useState<OfferingPreviewSection[]>(() =>
-    readOfferingPreviewSections(dealId),
-  )
+  const quickUploadInputRef = useRef<HTMLInputElement>(null)
+  const [previewHydrated, setPreviewHydrated] = useState(false)
+  const [sections, setSections] = useState<OfferingPreviewSection[]>([])
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
     {},
   )
@@ -200,6 +326,8 @@ export function DocumentsSection({
   const [uploadTargetLabel, setUploadTargetLabel] = useState("")
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [uploadDocsError, setUploadDocsError] = useState<string | null>(null)
+  const [quickUploadError, setQuickUploadError] = useState<string | null>(null)
+  const [quickUploadDropFocus, setQuickUploadDropFocus] = useState(false)
   const [documentUploadBusy, setDocumentUploadBusy] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
@@ -208,10 +336,20 @@ export function DocumentsSection({
   onSyncedRef.current = onOfferingPreviewSynced
 
   useEffect(() => {
-    setSections(readOfferingPreviewSections(dealId))
+    const id = dealId.trim()
+    if (!id) {
+      setPreviewHydrated(false)
+      setSections([])
+      return
+    }
+    applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson)
+    setSections(
+      orderDocumentSectionsWithDefaultFirst(readOfferingPreviewSections(id)),
+    )
+    setPreviewHydrated(isOfferingPreviewHydrated(id))
     setExpandedSections({})
     setCheckedDocsBySection({})
-  }, [dealId])
+  }, [dealId, offeringInvestorPreviewJson])
 
   useEffect(() => {
     const id = dealId.trim()
@@ -273,12 +411,19 @@ export function DocumentsSection({
   }, [])
 
   useEffect(() => {
-    if (!dealId.trim()) return
+    if (!previewHydrated || !dealId.trim()) return
     writeOfferingPreviewSections(dealId, sections)
     scheduleOfferingInvestorPreviewServerSync(dealId, {
-      onSuccess: (d) => onSyncedRef.current?.(d),
+      onSuccess: (d) => {
+        applyOfferingInvestorPreviewJsonFromServer(
+          d.id,
+          d.offeringInvestorPreviewJson,
+          { notify: false },
+        )
+        onSyncedRef.current?.(d)
+      },
     })
-  }, [dealId, sections])
+  }, [dealId, sections, previewHydrated])
 
   const onAddSection = useCallback(() => {
     setSectionName("")
@@ -295,12 +440,29 @@ export function DocumentsSection({
 
   const onSectionFilesChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
-      const files = e.currentTarget.files
-      setSectionFiles(files ? Array.from(files) : [])
-      setAddSectionError(null)
+      const { next, rejectedNames } = appendPdfFilesFromPicker(
+        sectionFiles,
+        e.currentTarget.files,
+      )
+      e.currentTarget.value = ""
+      setSectionFiles(next)
+      if (rejectedNames.length > 0) {
+        setAddSectionError(
+          rejectedNames.length === 1
+            ? `"${rejectedNames[0]!}" is not a PDF. Only PDF files can be uploaded.`
+            : `Only PDF files can be uploaded. Skipped: ${rejectedNames.join(", ")}.`,
+        )
+      } else {
+        setAddSectionError(null)
+      }
     },
-    [],
+    [sectionFiles],
   )
+
+  const removeSectionFileAt = useCallback((index: number) => {
+    setSectionFiles((prev) => prev.filter((_, i) => i !== index))
+    setAddSectionError(null)
+  }, [])
 
   const onSubmitAddSection = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -363,19 +525,21 @@ export function DocumentsSection({
           }
         }
 
-        setSections((prev) => [
-          ...prev,
-          {
-            id: newSectionId,
-            sectionLabel: name,
-            documentLabel: name,
-            visibility: sectionSharedWithDisplay("offering_page"),
-            sharedWithScope: "offering_page",
-            requireLpReview: false,
-            dateAdded: formatDateAdded(),
-            nestedDocuments,
-          },
-        ])
+        setSections((prev) =>
+          orderDocumentSectionsWithDefaultFirst([
+            ...prev,
+            {
+              id: newSectionId,
+              sectionLabel: name,
+              documentLabel: name,
+              visibility: sectionSharedWithDisplay("offering_page"),
+              sharedWithScope: "offering_page",
+              requireLpReview: false,
+              dateAdded: formatDateAdded(),
+              nestedDocuments,
+            },
+          ]),
+        )
         setShowAddSectionModal(false)
         setSectionName("")
         setSectionFiles([])
@@ -383,6 +547,132 @@ export function DocumentsSection({
       })()
     },
     [dealId, sectionFiles, sectionName],
+  )
+
+  const appendUploadedFilesToSection = useCallback(
+    async (
+      targetSectionId: string,
+      files: File[],
+    ): Promise<string | null> => {
+      if (files.length === 0) return "Select at least one PDF to upload."
+      const nonPdf = files.filter((f) => !isDealOfferingDocumentPdfFile(f))
+      if (nonPdf.length > 0) {
+        return nonPdf.length === 1
+          ? `"${nonPdf[0]!.name}" is not a PDF. Only PDF files can be uploaded.`
+          : `Only PDF files can be uploaded. Remove: ${nonPdf.map((f) => f.name).join(", ")}.`
+      }
+
+      const idTrim = dealId.trim()
+      if (!idTrim) return "Save the deal before uploading documents."
+
+      const createdAt = Date.now()
+      setDocumentUploadBusy(true)
+      try {
+        const up = await postDealOfferingDocumentUploads(idTrim, files)
+        if (!up.ok) return up.message
+        if (up.newPaths.length !== files.length) {
+          return "Upload did not return a path for each selected file."
+        }
+
+        const newNestedBase = files.map((file, i) => {
+          const stored = dealAssetRelativePathToUploadsUrl(up.newPaths[i]!)
+          return {
+            id: `upload-${createdAt}-${i}`,
+            name: file.name,
+            url: stored || null,
+            dateAdded: formatDateAdded(),
+            lpDisplaySectionId: targetSectionId,
+            sharedDealClassIds: [] as string[],
+            sharedInvestorIds: [] as string[],
+            sharedWithAllInvestors: false,
+            sharedSponsorUserIds: [] as string[],
+          }
+        })
+
+        let resolvedSectionId = targetSectionId
+        setSections((prev) => {
+          let list = prev
+          if (targetSectionId === DEFAULT_DOCUMENT_SECTION_ID) {
+            const ensured = ensureDefaultDocumentSectionInList(list)
+            list = ensured.sections
+            resolvedSectionId = ensured.defaultSection.id
+          } else if (!list.some((s) => s.id === targetSectionId)) {
+            return prev
+          }
+          const newNested = newNestedBase.map((row) => ({
+            ...row,
+            lpDisplaySectionId: resolvedSectionId,
+          }))
+          return orderDocumentSectionsWithDefaultFirst(
+            list.map((s) =>
+              s.id !== resolvedSectionId
+                ? s
+                : {
+                    ...s,
+                    nestedDocuments: [...s.nestedDocuments, ...newNested],
+                    dateAdded: formatDateAdded(),
+                  },
+            ),
+          )
+        })
+
+        setExpandedSections((prev) => ({
+          ...prev,
+          [resolvedSectionId]: true,
+        }))
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : "Document upload failed."
+      } finally {
+        setDocumentUploadBusy(false)
+      }
+    },
+    [dealId],
+  )
+
+  const uploadFilesToDefaultSection = useCallback(
+    async (files: File[]) => {
+      setQuickUploadError(null)
+      const err = await appendUploadedFilesToSection(
+        DEFAULT_DOCUMENT_SECTION_ID,
+        files,
+      )
+      if (err) setQuickUploadError(err)
+    },
+    [appendUploadedFilesToSection],
+  )
+
+  const onQuickUploadInputChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const picked = e.currentTarget.files
+        ? Array.from(e.currentTarget.files)
+        : []
+      e.currentTarget.value = ""
+      if (picked.length > 0) void uploadFilesToDefaultSection(picked)
+    },
+    [uploadFilesToDefaultSection],
+  )
+
+  const onQuickUploadDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setQuickUploadDropFocus(false)
+      const dropped = e.dataTransfer.files
+        ? Array.from(e.dataTransfer.files)
+        : []
+      if (dropped.length > 0) void uploadFilesToDefaultSection(dropped)
+    },
+    [uploadFilesToDefaultSection],
+  )
+
+  const onQuickUploadKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "Enter" && e.key !== " ") return
+      e.preventDefault()
+      quickUploadInputRef.current?.click()
+    },
+    [],
   )
 
   const openUploadDocumentsModal = useCallback((row: OfferingPreviewSection) => {
@@ -404,12 +694,29 @@ export function DocumentsSection({
 
   const onUploadFilesChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
-      const files = e.currentTarget.files
-      setUploadFiles(files ? Array.from(files) : [])
-      setUploadDocsError(null)
+      const { next, rejectedNames } = appendPdfFilesFromPicker(
+        uploadFiles,
+        e.currentTarget.files,
+      )
+      e.currentTarget.value = ""
+      setUploadFiles(next)
+      if (rejectedNames.length > 0) {
+        setUploadDocsError(
+          rejectedNames.length === 1
+            ? `"${rejectedNames[0]!}" is not a PDF. Only PDF files can be uploaded.`
+            : `Only PDF files can be uploaded. Skipped: ${rejectedNames.join(", ")}.`,
+        )
+      } else {
+        setUploadDocsError(null)
+      }
     },
-    [],
+    [uploadFiles],
   )
+
+  const removeUploadFileAt = useCallback((index: number) => {
+    setUploadFiles((prev) => prev.filter((_, i) => i !== index))
+    setUploadDocsError(null)
+  }, [])
 
   const onSubmitUploadDocuments = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -419,72 +726,24 @@ export function DocumentsSection({
           setUploadDocsError("Upload at least one document.")
           return
         }
-        const idTrim = dealId.trim()
-        if (!idTrim) {
-          setUploadDocsError("Save the deal before uploading documents.")
-          return
-        }
         const label = uploadTargetLabel.trim() || "Section"
-        const createdAt = Date.now()
-
-        setDocumentUploadBusy(true)
-        setUploadDocsError(null)
-        let newNested: NestedPreviewDocument[] = []
-        try {
-          const up = await postDealOfferingDocumentUploads(idTrim, uploadFiles)
-          if (!up.ok) {
-            setUploadDocsError(up.message)
-            return
-          }
-          if (up.newPaths.length !== uploadFiles.length) {
-            setUploadDocsError(
-              "Upload did not return a path for each selected file.",
-            )
-            return
-          }
-          newNested = uploadFiles.map((file, i) => {
-            const stored = dealAssetRelativePathToUploadsUrl(up.newPaths[i]!)
-            return {
-              id: `upload-${createdAt}-${i}`,
-              name: file.name,
-              url: stored || null,
-              dateAdded: formatDateAdded(),
-              lpDisplaySectionId: "",
-              sharedDealClassIds: [],
-              sharedInvestorIds: [],
-              sharedWithAllInvestors: false,
-              sharedSponsorUserIds: [],
-            }
-          })
-        } catch (err) {
-          setUploadDocsError(
-            err instanceof Error ? err.message : "Document upload failed.",
-          )
+        const target = sections.find((s) => sectionMatchesLabel(s, label))
+        if (!target) {
+          setUploadDocsError("Section not found.")
           return
-        } finally {
-          setDocumentUploadBusy(false)
         }
-
-        setSections((prev) =>
-          prev.map((s) => {
-            if (!sectionMatchesLabel(s, label)) return s
-            const withIds = newNested.map((row) => ({
-              ...row,
-              lpDisplaySectionId: s.id,
-            }))
-            return {
-              ...s,
-              nestedDocuments: [...s.nestedDocuments, ...withIds],
-              dateAdded: formatDateAdded(),
-            }
-          }),
-        )
+        setUploadDocsError(null)
+        const err = await appendUploadedFilesToSection(target.id, uploadFiles)
+        if (err) {
+          setUploadDocsError(err)
+          return
+        }
         setShowUploadDocsModal(false)
         setUploadFiles([])
         setUploadDocsError(null)
       })()
     },
-    [dealId, uploadFiles, uploadTargetLabel],
+    [appendUploadedFilesToSection, sections, uploadFiles, uploadTargetLabel],
   )
 
   const removeNestedDocument = useCallback((sectionId: string, docId: string) => {
@@ -587,12 +846,70 @@ export function DocumentsSection({
     })
   }, [sections, query, dealClasses, lpInvestorRows, sponsorUserOptions])
 
-  const emptyLabel =
-    sections.length === 0
-      ? "No documents yet. Use Add section to upload documents."
-      : query.trim()
-        ? "No sections match your search."
-        : "No sections to display."
+  const emptySearchLabel = query.trim() ? "No sections match your search." : null
+
+  const renderQuickUploadDropzone = (variant: "toolbar" | "panel") => (
+    <div
+      className={[
+        variant === "panel" ? "deal_docs_empty_dropzone" : "",
+        variant === "panel" && quickUploadDropFocus
+          ? "deal_docs_empty_dropzone--focus"
+          : "",
+        variant === "panel" && documentUploadBusy
+          ? "deal_docs_empty_dropzone--busy"
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      role="button"
+      tabIndex={0}
+      aria-label="Upload PDF documents to the General section"
+      aria-busy={documentUploadBusy}
+      onClick={() => {
+        if (!documentUploadBusy) quickUploadInputRef.current?.click()
+      }}
+      onKeyDown={onQuickUploadKeyDown}
+      onDragEnter={(e) => {
+        e.preventDefault()
+        setQuickUploadDropFocus(true)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setQuickUploadDropFocus(true)
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault()
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setQuickUploadDropFocus(false)
+        }
+      }}
+      onDrop={onQuickUploadDrop}
+    >
+      {documentUploadBusy ? (
+        <Loader2
+          size={variant === "panel" ? 22 : 16}
+          strokeWidth={2}
+          className="deals_deal_view_spinner"
+          aria-hidden
+        />
+      ) : (
+        <Upload
+          size={variant === "panel" ? 22 : 16}
+          strokeWidth={2}
+          aria-hidden
+        />
+      )}
+      {variant === "panel" ? (
+        <>
+          {/* <span className="deal_docs_empty_dropzone_title">Drop PDFs here</span> */}
+          <span className="deal_docs_empty_dropzone_title">Click or drag PDFs</span>
+          {/* <span className="deal_docs_empty_dropzone_hint">
+            Files are saved in the <strong>General</strong> section below
+          </span> */}
+        </>
+      ) : null}
+    </div>
+  )
 
   return (
     <div className="deal_docs">
@@ -610,7 +927,63 @@ export function DocumentsSection({
               autoComplete="off"
             />
           </div>
-          <div className="um_toolbar_actions">
+          <div className="um_toolbar_actions deal_docs_toolbar_actions">
+            <input
+              ref={quickUploadInputRef}
+              type="file"
+              className="deal_docs_file_input"
+              multiple
+              accept="application/pdf,.pdf"
+              onChange={onQuickUploadInputChange}
+              aria-hidden
+              tabIndex={-1}
+            />
+            {/* <div
+              className={[
+                "deal_docs_toolbar_dropzone",
+                quickUploadDropFocus ? "deal_docs_toolbar_dropzone--focus" : "",
+                documentUploadBusy ? "deal_docs_toolbar_dropzone--busy" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              role="button"
+              tabIndex={0}
+              aria-label="Upload PDF documents to the General section"
+              aria-busy={documentUploadBusy}
+              onClick={() => {
+                if (!documentUploadBusy) quickUploadInputRef.current?.click()
+              }}
+              onKeyDown={onQuickUploadKeyDown}
+              onDragEnter={(e) => {
+                e.preventDefault()
+                setQuickUploadDropFocus(true)
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setQuickUploadDropFocus(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setQuickUploadDropFocus(false)
+                }
+              }}
+              onDrop={onQuickUploadDrop}
+            >
+              {documentUploadBusy ? (
+                <Loader2
+                  size={16}
+                  strokeWidth={2}
+                  className="deals_deal_view_spinner"
+                  aria-hidden
+                />
+              ) : (
+                <Upload size={16} strokeWidth={2} aria-hidden />
+              )}
+              <span className="deal_docs_toolbar_dropzone_label">
+                Click or drag PDFs
+              </span>
+            </div> */}
             <button
               type="button"
               className="deal_docs_toolbar_btn"
@@ -621,15 +994,24 @@ export function DocumentsSection({
             </button>
           </div>
         </div>
+        {quickUploadError ? (
+          <p className="deals_create_error deal_docs_quick_upload_error" role="alert">
+            {quickUploadError}
+          </p>
+        ) : null}
 
         <div className="deal_docs_ui_root">
-          {filteredSections.length === 0 ? (
-            <p className="deal_docs_ui_empty">{emptyLabel}</p>
-          ) : (
-            filteredSections.map((section) => {
+          <div className="deal_docs_ui_empty_zone">
+            {renderQuickUploadDropzone("panel")}
+          </div>
+          {emptySearchLabel ? (
+            <p className="deal_docs_ui_empty">{emptySearchLabel}</p>
+          ) : null}
+          {filteredSections.map((section) => {
               const isOpen = expandedSections[section.id] ?? true
               const n = section.nestedDocuments.length
               const panelId = `${section.id}-docs-panel`
+              const isDefaultSection = isDefaultDocumentSection(section)
               return (
                 <div key={section.id} className="deal_docs_ui_bundle">
                   <div className="deal_docs_ui_banner" role="region" aria-label={section.sectionLabel}>
@@ -673,31 +1055,35 @@ export function DocumentsSection({
                       >
                         <Plus size={18} strokeWidth={2} aria-hidden />
                       </button>
-                      <button
-                        type="button"
-                        className="deal_docs_ui_banner_icon_btn deal_docs_ui_banner_icon_btn_danger"
-                        aria-label={`Delete section ${section.sectionLabel}`}
-                        onClick={() => {
-                          setSections((prev) => {
-                            const victim = prev.find((s) => s.id === section.id)
-                            const next = prev.filter((s) => s.id !== section.id)
-                            if (victim) {
-                              for (const d of victim.nestedDocuments) {
-                                revokeBlobUrlIfOrphaned(d.url, next)
+                      {!isDefaultSection ? (
+                        <button
+                          type="button"
+                          className="deal_docs_ui_banner_icon_btn deal_docs_ui_banner_icon_btn_danger"
+                          aria-label={`Delete section ${section.sectionLabel}`}
+                          onClick={() => {
+                            setSections((prev) => {
+                              const victim = prev.find((s) => s.id === section.id)
+                              const next = orderDocumentSectionsWithDefaultFirst(
+                                prev.filter((s) => s.id !== section.id),
+                              )
+                              if (victim) {
+                                for (const d of victim.nestedDocuments) {
+                                  revokeBlobUrlIfOrphaned(d.url, next)
+                                }
                               }
-                            }
-                            return next
-                          })
-                          setCheckedDocsBySection((c) => {
-                            if (!c[section.id]) return c
-                            const next = { ...c }
-                            delete next[section.id]
-                            return next
-                          })
-                        }}
-                      >
-                        <Trash2 size={18} strokeWidth={2} aria-hidden />
-                      </button>
+                              return next
+                            })
+                            setCheckedDocsBySection((c) => {
+                              if (!c[section.id]) return c
+                              const next = { ...c }
+                              delete next[section.id]
+                              return next
+                            })
+                          }}
+                        >
+                          <Trash2 size={18} strokeWidth={2} aria-hidden />
+                        </button>
+                      ) : null}
                       <span className="deal_docs_ui_banner_count" aria-live="polite">
                         {n} document{n === 1 ? "" : "s"}
                       </span>
@@ -1103,8 +1489,7 @@ export function DocumentsSection({
                   </div>
                 </div>
               )
-            })
-          )}
+            })}
         </div>
       </div>
       {showAddSectionModal
@@ -1158,15 +1543,21 @@ export function DocumentsSection({
                         type="file"
                         className="deals_create_input"
                         multiple
+                        accept="application/pdf,.pdf"
                         onChange={onSectionFilesChange}
                         aria-invalid={false}
                       />
                     </label>
+                    <ModalPendingDocumentFilesList
+                      files={sectionFiles}
+                      disabled={documentUploadBusy}
+                      onRemove={removeSectionFileAt}
+                    />
                     {sectionFiles.length > 0 ? (
                       <p className="deal_offering_muted">
                         {sectionFiles.length}{" "}
-                        {sectionFiles.length === 1 ? "file selected" : "files selected"}{" "}
-                        — files are added to this section’s document list.
+                        {sectionFiles.length === 1 ? "file" : "files"} will be
+                        added to this section when you save.
                       </p>
                     ) : null}
                     {addSectionError ? (
@@ -1257,15 +1648,21 @@ export function DocumentsSection({
                         type="file"
                         className="deals_create_input"
                         multiple
+                        accept="application/pdf,.pdf"
                         onChange={onUploadFilesChange}
-                        required
                         aria-invalid={uploadFiles.length === 0 && uploadDocsError != null}
                       />
                     </label>
+                    <ModalPendingDocumentFilesList
+                      files={uploadFiles}
+                      disabled={documentUploadBusy}
+                      onRemove={removeUploadFileAt}
+                    />
                     {uploadFiles.length > 0 ? (
                       <p className="deal_offering_muted">
                         {uploadFiles.length}{" "}
-                        {uploadFiles.length === 1 ? "file selected" : "files selected"}
+                        {uploadFiles.length === 1 ? "file" : "files"} will be
+                        uploaded to this section.
                       </p>
                     ) : null}
                     {uploadDocsError ? (

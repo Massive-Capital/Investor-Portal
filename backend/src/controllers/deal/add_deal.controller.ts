@@ -12,9 +12,11 @@ import type { AddDealFormRow } from "../../schema/deal.schema/add-deal-form.sche
 import {
   getAddDealFormForViewer,
   getAddDealFormForViewerOrAssignedParticipant,
+  getAddDealFormForViewerWithDraftCreatorRepair,
   resolveDealViewerScope,
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { assignCreatorToDeal } from "../../services/deal/assigningDealUser.service.js";
 import { sendOfferingPreviewShareEmails } from "../../services/deal/offeringPreviewShareEmail.service.js";
 import { canInvestorAccessPublicOffering } from "../../constants/deal-lifecycle/index.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
@@ -1070,7 +1072,7 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
   }
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    const row = await getAddDealFormForViewerOrAssignedParticipant(
+    const row = await getAddDealFormForViewerWithDraftCreatorRepair(
       dealId,
       scope,
     );
@@ -1135,6 +1137,7 @@ export async function postDeal(req: Request, res: Response): Promise<void> {
 
     const assetPaths = await saveDealAssetFiles({ files: fileList });
     const created = await insertAddDealForm(input, assetPaths, organizationId);
+    await assignCreatorToDeal(String(created.id), user.id);
     res.status(201).json({
       message: "Deal created",
       deal: mapRowToJson(created, { investmentRowCount: 0 }),
@@ -1198,7 +1201,10 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    const visible = await getAddDealFormForViewer(dealId, scope);
+    const visible = await getAddDealFormForViewerWithDraftCreatorRepair(
+      dealId,
+      scope,
+    );
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
       return;

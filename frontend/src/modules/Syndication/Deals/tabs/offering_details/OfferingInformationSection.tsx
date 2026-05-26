@@ -1040,6 +1040,23 @@ function isRequiredMoneyMissing(raw: string): boolean {
   return stripMoneyInput(raw) === ""
 }
 
+/** Raise quota (billing) is hidden in the UI; API still expects a value. */
+function billingRaiseQuotaForSave(form: DealInvestorClassFormValues): string {
+  if (!isRequiredMoneyMissing(form.billingRaiseQuota)) {
+    return blurFormatMoneyInput(form.billingRaiseQuota)
+  }
+  if (!isRequiredMoneyMissing(form.offeringSize)) {
+    return blurFormatMoneyInput(form.offeringSize)
+  }
+  return "$0"
+}
+
+function investorClassFormForSave(
+  form: DealInvestorClassFormValues,
+): DealInvestorClassFormValues {
+  return { ...form, billingRaiseQuota: billingRaiseQuotaForSave(form) }
+}
+
 function stripPctOrNumber(raw: string): string {
   return raw.replace(/%/g, "").replace(/[$,\s]/g, "").trim()
 }
@@ -1717,6 +1734,8 @@ function InvestorClassModalFormBody({
               )}
             </p>
           </div>
+          {/* Raise quota (for billing) — hidden; billingRaiseQuotaForSave() still sends a value on save */}
+          {/*
           <div className="deal_inv_class_field">
             <label
               className="deal_inv_ic_dist_label_flex"
@@ -1758,6 +1777,7 @@ function InvestorClassModalFormBody({
               disabled={disabled}
             />
           </div>
+          */}
           <div className="deal_inv_class_field">
             <label
               className="deal_inv_class_field_label"
@@ -2501,6 +2521,8 @@ function ReadOnlyInvestorClassCard({
               {formatMoneyFieldDisplay(row.raiseAmountDistributions)}
             </span>
           </div>
+          {/* Raise quota (billing) — hidden in class summary; value still stored on the class */}
+          {/*
           <div className="deal_inv_class_metric_h">
             <span className="deal_inv_class_metric_h_label">
               Raise quota (billing)
@@ -2509,6 +2531,7 @@ function ReadOnlyInvestorClassCard({
               {formatMoneyFieldDisplay(row.billingRaiseQuota)}
             </span>
           </div>
+          */}
           <div className="deal_inv_class_metric_h">
             <span className="deal_inv_class_metric_h_label">
               Minimum investment
@@ -2728,7 +2751,7 @@ export function AddInvestorClassPanel({
     setErr(null)
     setSubmitting(true)
     try {
-      await createDealInvestorClass(dealId, form)
+      await createDealInvestorClass(dealId, investorClassFormForSave(form))
       onCreated()
       if (!asPage) onClose()
     } catch (e) {
@@ -2991,7 +3014,7 @@ export function EditInvestorClassPanel({
     setErr(null)
     setSubmitting(true)
     try {
-      await updateDealInvestorClass(dealId, row.id, form)
+      await updateDealInvestorClass(dealId, row.id, investorClassFormForSave(form))
       onSaved()
       onClose()
     } catch (e) {

@@ -9,6 +9,11 @@ import {
   getEsignQuestionnaireSignaturePdfPath,
 } from "../../config/esignQuestionnaire.config.js";
 import { esignW9PdfExists, getEsignW9PdfPath } from "../../config/esignW9.config.js";
+import {
+  buildFilledW9PdfBuffer,
+  getEsignW9PageCount,
+  type InvestorW9FormData,
+} from "./investorW9Form.service.js";
 
 const LETTER_WIDTH = 612;
 const LETTER_HEIGHT = 792;
@@ -140,14 +145,24 @@ function drawQuestionnaireSignatureBlock(
 }
 
 /** Dropbox fields aligned to printed lines (top-left coordinate system). */
-export function getInvestorQuestionnaireSignatureFormFields(): DropboxSignFormFieldPerDocument[] {
-  if (cachedQuestionnaireSignatureFormFields) {
+export function getInvestorQuestionnaireSignatureFormFields(
+  pageOffset = 0,
+): DropboxSignFormFieldPerDocument[] {
+  const lines = wrapQuestionnaireBodyLines((text, size) => text.length * (size * 0.48));
+  const placements = buildQuestionnaireSignaturePlacements(
+    questionnaireBodyEndTop(lines.length),
+  );
+  const fields = placementsToDropboxFormFields(placements);
+  if (pageOffset <= 0) {
+    if (!cachedQuestionnaireSignatureFormFields) {
+      cachedQuestionnaireSignatureFormFields = fields;
+    }
     return cachedQuestionnaireSignatureFormFields;
   }
-  const lines = wrapQuestionnaireBodyLines((text, size) => text.length * (size * 0.48));
-  return placementsToDropboxFormFields(
-    buildQuestionnaireSignaturePlacements(questionnaireBodyEndTop(lines.length)),
-  );
+  return fields.map((f) => ({
+    ...f,
+    page: f.page + pageOffset,
+  }));
 }
 
 function placementsToDropboxFormFields(
@@ -332,6 +347,40 @@ export async function loadInvestorQuestionnaireSignaturePagePdf(): Promise<Buffe
  * Prepends the investor questionnaire signature page as page 1.
  * Main document pages follow; W-9 (if any) should still be appended afterward.
  */
+/** Prefix PDF(s) in order before `mainPdf`. */
+export async function prependPdfBuffers(
+  mainPdf: Buffer,
+  prefixBuffers: Buffer[],
+): Promise<{ buffer: Buffer; prepended: boolean }> {
+  const prefixes = prefixBuffers.filter((b) => b?.length);
+  if (!prefixes.length) {
+    return { buffer: mainPdf, prepended: false };
+  }
+
+  try {
+    const merged = await PDFDocument.create();
+    for (const prefix of prefixes) {
+      const prefixDoc = await PDFDocument.load(prefix, {
+        ignoreEncryption: true,
+      });
+      const pages = await merged.copyPages(
+        prefixDoc,
+        prefixDoc.getPageIndices(),
+      );
+      for (const page of pages) merged.addPage(page);
+    }
+
+    const mainDoc = await PDFDocument.load(mainPdf, { ignoreEncryption: true });
+    const mainPages = await merged.copyPages(mainDoc, mainDoc.getPageIndices());
+    for (const page of mainPages) merged.addPage(page);
+
+    return { buffer: Buffer.from(await merged.save()), prepended: true };
+  } catch (err) {
+    console.error("[esign] Failed to prepend PDF buffers:", err);
+    return { buffer: mainPdf, prepended: false };
+  }
+}
+
 export async function prependInvestorQuestionnaireSignaturePage(
   mainPdf: Buffer,
 ): Promise<{ buffer: Buffer; prepended: boolean }> {
@@ -343,32 +392,26 @@ export async function prependInvestorQuestionnaireSignaturePage(
     return { buffer: mainPdf, prepended: false };
   }
 
-  try {
-    const merged = await PDFDocument.create();
-    const signatureDoc = await PDFDocument.load(signaturePage, {
-      ignoreEncryption: true,
-    });
-    const mainDoc = await PDFDocument.load(mainPdf, { ignoreEncryption: true });
+  return prependPdfBuffers(mainPdf, [signaturePage]);
+}
 
-    const signaturePages = await merged.copyPages(
-      signatureDoc,
-      signatureDoc.getPageIndices(),
-    );
-    for (const page of signaturePages) merged.addPage(page);
-
-    const mainPages = await merged.copyPages(mainDoc, mainDoc.getPageIndices());
-    for (const page of mainPages) merged.addPage(page);
-
-    const out = Buffer.from(await merged.save());
-    return { buffer: out, prepended: true };
-  } catch (err) {
-    console.error("[esign] Failed to prepend questionnaire signature page:", err);
-    return { buffer: mainPdf, prepended: false };
+async function loadW9AppendixBytes(
+  w9FormData?: InvestorW9FormData | null,
+): Promise<Buffer | null> {
+  if (!esignW9PdfExists()) return null;
+  if (w9FormData) {
+    try {
+      return await buildFilledW9PdfBuffer(w9FormData);
+    } catch (err) {
+      console.error("[esign] Failed to build filled W-9 PDF:", err);
+    }
   }
+  return readFile(getEsignW9PdfPath());
 }
 
 export async function appendW9ToPdfBuffer(
   mainPdf: Buffer,
+  w9FormData?: InvestorW9FormData | null,
 ): Promise<{ buffer: Buffer; w9Appended: boolean }> {
   if (!esignW9PdfExists()) {
     console.warn(
@@ -380,7 +423,9 @@ export async function appendW9ToPdfBuffer(
   }
 
   try {
-    const w9Bytes = await readFile(getEsignW9PdfPath());
+    const w9Bytes = await loadW9AppendixBytes(w9FormData);
+    if (!w9Bytes) return { buffer: mainPdf, w9Appended: false };
+
     const merged = await PDFDocument.create();
     const mainDoc = await PDFDocument.load(mainPdf, { ignoreEncryption: true });
     const w9Doc = await PDFDocument.load(w9Bytes, { ignoreEncryption: true });
@@ -396,5 +441,42 @@ export async function appendW9ToPdfBuffer(
   } catch (err) {
     console.error("[esign] Failed to append W-9 PDF:", err);
     return { buffer: mainPdf, w9Appended: false };
+  }
+}
+
+/**
+ * Swaps the trailing W-9 appendix pages on a merged template PDF with a filled copy.
+ */
+export async function replaceW9AppendixWithFilled(
+  mergedPdf: Buffer,
+  w9FormData: InvestorW9FormData,
+): Promise<Buffer> {
+  const w9PageCount = await getEsignW9PageCount();
+  if (w9PageCount <= 0) return mergedPdf;
+
+  try {
+    const filledW9 = await buildFilledW9PdfBuffer(w9FormData);
+    const doc = await PDFDocument.load(mergedPdf, { ignoreEncryption: true });
+    const total = doc.getPageCount();
+    if (total < w9PageCount) {
+      return (await appendW9ToPdfBuffer(mergedPdf, w9FormData)).buffer;
+    }
+
+    const mainEnd = total - w9PageCount;
+    const out = await PDFDocument.create();
+    const mainPages = await out.copyPages(
+      doc,
+      Array.from({ length: mainEnd }, (_, i) => i),
+    );
+    for (const page of mainPages) out.addPage(page);
+
+    const w9Doc = await PDFDocument.load(filledW9, { ignoreEncryption: true });
+    const w9Pages = await out.copyPages(w9Doc, w9Doc.getPageIndices());
+    for (const page of w9Pages) out.addPage(page);
+
+    return Buffer.from(await out.save());
+  } catch (err) {
+    console.error("[esign] replaceW9AppendixWithFilled failed:", err);
+    return mergedPdf;
   }
 }

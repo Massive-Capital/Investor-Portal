@@ -15,6 +15,9 @@ const LP_DEAL_OFFERING_PORTFOLIO = /^\/deals\/[^/]+\/offering-portfolio$/i
 /** Read-only deal workspace: `/deals/:dealId` (offering overview + Invest now), not list/create/tools. */
 const LP_DEAL_DETAIL = /^\/deals\/[^/]+$/i
 
+/** LP invest-now wizard: `/deals/:dealId/invest`. */
+const LP_DEAL_INVEST = /^\/deals\/[^/]+\/invest$/i
+
 const LP_DEAL_PATH_EXCLUDED_SEGMENTS = new Set([
   "create",
   "investor-emails",
@@ -26,8 +29,14 @@ export function isLpDealOfferingPortfolioPath(pathname: string): boolean {
   return LP_DEAL_OFFERING_PORTFOLIO.test(p)
 }
 
+export function isLpDealInvestPath(pathname: string): boolean {
+  const p = pathname.replace(/\/+$/, "") || "/"
+  return LP_DEAL_INVEST.test(p)
+}
+
 export function isLpDealDetailPath(pathname: string): boolean {
   const p = pathname.replace(/\/+$/, "") || "/"
+  if (isLpDealInvestPath(p)) return true
   if (!LP_DEAL_DETAIL.test(p)) return false
   const seg = p.split("/").filter(Boolean)[1] ?? ""
   if (!seg || LP_DEAL_PATH_EXCLUDED_SEGMENTS.has(seg.toLowerCase()))
@@ -56,5 +65,5 @@ export function LpInvestorShellGuard() {
   const { pathname } = useLocation()
   if (!isLpInvestorSessionUser()) return <Outlet />
   if (isPathAllowedForLpInvestor(pathname)) return <Outlet />
-  return <Navigate to="/investing/investments?tab=deals" replace />
+  return <Navigate to="/investing/investments" replace />
 }

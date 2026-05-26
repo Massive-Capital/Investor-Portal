@@ -13,6 +13,9 @@ export const DEAL_ESIGN_TEMPLATES_FOLDER = "e-signed";
 /** Completed investor signatures: `deal-assets/<deal-folder>/e-signed-completed/`. */
 export const DEAL_ESIGN_COMPLETED_FOLDER = "e-signed-completed";
 
+/** Investor preview PDFs (questionnaire + template) while eSign is pending. */
+export const DEAL_ESIGN_PREVIEW_FOLDER = "e-signed-preview";
+
 /** Investment subscription uploads: `deal-assets/<deal-folder>/investments/`. */
 export const DEAL_INVESTMENTS_FOLDER = "investments";
 

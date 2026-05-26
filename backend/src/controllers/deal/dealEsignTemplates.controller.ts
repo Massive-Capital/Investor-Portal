@@ -16,8 +16,13 @@ import {
   isPdfEsignFile,
   removeDealEsignTemplateFile,
   parseEsignTemplateUploadMeta,
+  EsignTemplateUploadLimitError,
   saveDealEsignTemplateFiles,
 } from "../../services/deal/dealEsignTemplates.service.js";
+import {
+  findLatestInvestorFilledDocumentForTemplate,
+  groupEsignFilesByCategoryWithInvestorFilled,
+} from "../../services/deal/dealEsignTemplateInvestorFilled.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -63,9 +68,13 @@ export async function getDealEsignTemplates(
       return;
     }
     const state = await getDealEsignTemplatesState(dealId);
+    const filesByCategory = await groupEsignFilesByCategoryWithInvestorFilled(
+      dealId,
+      state.files,
+    );
     res.status(200).json({
       hasDocuments: dealHasEsignTemplateDocuments(state),
-      filesByCategory: groupEsignFilesByCategory(state),
+      filesByCategory,
     });
   } catch (err) {
     console.error("getDealEsignTemplates:", err);
@@ -119,13 +128,42 @@ export async function getDealEsignTemplateViewUrl(
       return;
     }
 
+    const investorFilled = await findLatestInvestorFilledDocumentForTemplate(
+      dealId,
+      file,
+    );
+
     if (!isPdfEsignFile(file)) {
-      const rel = file.relativePath?.replace(/^\/+/, "").replace(/^uploads\//i, "");
+      const rel =
+        investorFilled?.relativePath
+          ?.replace(/^\/+/, "")
+          .replace(/^uploads\//i, "") ||
+        file.relativePath?.replace(/^\/+/, "").replace(/^uploads\//i, "");
       res.status(200).json({
         viewUrl: rel ? `/uploads/${rel}` : "",
         displayName:
           file.templateName?.trim() || file.originalName?.trim() || "Document",
         isPdf: false,
+        investorFilled: Boolean(investorFilled),
+        investorFilledSource: investorFilled?.source ?? null,
+      });
+      return;
+    }
+
+    if (investorFilled) {
+      const rel = investorFilled.relativePath
+        .replace(/^\/+/, "")
+        .replace(/^uploads\//i, "");
+      res.status(200).json({
+        viewUrl: `/uploads/${rel}`,
+        displayName:
+          file.templateName?.trim() ||
+          file.originalName?.trim() ||
+          "Document",
+        isPdf: true,
+        includesW9Appendix: Boolean(file.includesW9Appendix),
+        investorFilled: true,
+        investorFilledSource: investorFilled.source,
       });
       return;
     }
@@ -151,6 +189,8 @@ export async function getDealEsignTemplateViewUrl(
         "Document",
       isPdf: true,
       includesW9Appendix: Boolean(updated.includesW9Appendix),
+      investorFilled: false,
+      investorFilledSource: null,
     });
   } catch (err) {
     console.error("getDealEsignTemplateViewUrl:", err);
@@ -274,6 +314,12 @@ export async function postDealEsignTemplateUploads(
     res.status(400).json({ message: "No files uploaded." });
     return;
   }
+  if (fileList.length > 1) {
+    res.status(400).json({
+      message: "Only one file can be uploaded per profile type.",
+    });
+    return;
+  }
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
@@ -307,6 +353,10 @@ export async function postDealEsignTemplateUploads(
       filesByCategory: groupEsignFilesByCategory(state),
     });
   } catch (err) {
+    if (err instanceof EsignTemplateUploadLimitError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
     console.error("postDealEsignTemplateUploads:", err);
     res.status(500).json({ message: "Could not upload eSign templates" });
   }

@@ -27,7 +27,11 @@ import {
   isDocSignedEsignCompleted,
   isDocSignedEsignPending,
 } from "../../constants/deal-doc-signed.js";
-import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
+import {
+  esignCategoryFromCommitmentProfileId,
+  esignSignedColumnLabelFromApi,
+  parseEsignStatusJson,
+} from "../../constants/deal-investor-esign-status.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
@@ -369,10 +373,20 @@ function userForContact(contactId: string): {
   );
 }
 
-function formatSignedDate(iso: string | null | undefined): string {
+function formatSignedDate(
+  iso: string | null | undefined,
+  esignStatusJson?: string | null,
+  commitmentProfileId?: string | null,
+): string {
+  const categoryId = esignCategoryFromCommitmentProfileId(commitmentProfileId);
+  const fromEsign = esignSignedColumnLabelFromApi(
+    parseEsignStatusJson(esignStatusJson, categoryId),
+  );
+  if (fromEsign) return fromEsign;
+
   const s = iso?.trim();
   if (!s) return "—";
-  if (isDocSignedEsignPending(s)) return "Pending";
+  if (isDocSignedEsignPending(s)) return "Sent";
   if (isDocSignedEsignCompleted(s)) return "Completed";
   return formatDdMmmYyyy(s);
 }
@@ -594,8 +608,16 @@ export function mapRowToInvestorApi(
         row.commitmentAmount,
         row.extraContributionAmounts as string[] | null,
       ),
-      signedDate: formatSignedDate(row.docSignedDate),
-      esignStatus: parseEsignStatusJson(row.esignStatusJson),
+      signedDate: formatSignedDate(
+        row.docSignedDate,
+        row.esignStatusJson,
+        row.profileId,
+      ),
+      esignStatus: parseEsignStatusJson(
+        row.esignStatusJson,
+        esignCategoryFromCommitmentProfileId(row.profileId),
+      ),
+      esignStatusBundleJson: row.esignStatusJson?.trim() || null,
       fundedDate: "—",
       selfAccredited: "—",
       verifiedAccLabel: "Not Started",
@@ -644,8 +666,16 @@ export function mapRowToInvestorApi(
       row.commitmentAmount,
       row.extraContributionAmounts as string[] | null,
     ),
-    signedDate: formatSignedDate(row.docSignedDate),
-    esignStatus: parseEsignStatusJson(row.esignStatusJson),
+    signedDate: formatSignedDate(
+      row.docSignedDate,
+      row.esignStatusJson,
+      row.profileId,
+    ),
+    esignStatus: parseEsignStatusJson(
+      row.esignStatusJson,
+      esignCategoryFromCommitmentProfileId(row.profileId),
+    ),
+    esignStatusBundleJson: row.esignStatusJson?.trim() || null,
     fundedDate: "—",
     selfAccredited: "—",
     verifiedAccLabel: "Not Started",

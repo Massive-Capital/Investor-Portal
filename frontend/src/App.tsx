@@ -31,6 +31,7 @@ import Opportunities from "@/modules/Investing/pages/opportunities/Opportunities
 import InvestmentsPage from "@/modules/Investing/pages/investments/InvestmentsPage";
 import InvestmentDetailPage from "@/modules/Investing/pages/investments/InvestmentDetailPage";
 import InvestmentEsignSignGate from "@/modules/Investing/pages/investments/InvestmentEsignSignGate";
+import DealInvestNowPage from "@/modules/Investing/pages/invest/DealInvestNowPage";
 import InvestingProfilesPage from "@/modules/Investing/pages/profiles/InvestingProfilesPage";
 import { AddInvestorProfilePage } from "@/modules/Investing/pages/profiles/AddInvestorProfilePage";
 import { EditInvestorProfilePage } from "@/modules/Investing/pages/profiles/EditInvestorProfilePage";
@@ -70,7 +71,7 @@ const PlaceholderPage = ({ title }: PlaceholderPageProps) => {
 function CompanyRoute() {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
-  if (!canAccessCompanyPage()) return <Navigate to="/dashboard" replace />;
+  if (!canAccessCompanyPage()) return <Navigate to="/account" replace />;
   return <CompanyPage />;
 }
 
@@ -82,7 +83,7 @@ function SettingsRoute() {
   if (mode === "investing" || isLpInvestorSessionUser()) {
     return <Navigate to="/account" replace />;
   }
-  if (!canAccessCompanyPage()) return <Navigate to="/dashboard" replace />;
+  if (!canAccessCompanyPage()) return <Navigate to="/account" replace />;
   return <CompanyPage />;
 }
 
@@ -163,6 +164,7 @@ function App() {
                 path=":dealId/assets/new"
                 element={<AddDealAssetPage />}
               />
+              <Route path=":dealId/invest" element={<DealInvestNowPage />} />
               <Route path=":dealId" element={<DealDetailPage />} />
             </Route>
             <Route
@@ -207,7 +209,7 @@ function App() {
             <Route path="investing/profiles" element={<InvestingProfilesPage />} />
             <Route
               path="investing/deals"
-              element={<Navigate to="/investing/investments?tab=deals" replace />}
+              element={<Navigate to="/investing/investments" replace />}
             />
             <Route
               path="investing/settings"
@@ -228,7 +230,7 @@ function App() {
               element={
                 <WorkInProgressPage
                   title="Cashflows"
-                  backTo="/investing/investments?tab=deals"
+                  backTo="/investing/investments"
                   backLabel="Investments"
                 />
               }

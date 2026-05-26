@@ -1,68 +1,81 @@
 import type { Request, Response } from "express";
+import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
+import { verifyDropboxSignEventHash } from "../../services/esign/dropboxSignWebhookVerify.service.js";
+import { parseDropboxSignWebhookBody } from "../../services/esign/dropboxSignWebhookParse.service.js";
+import { applyInvestmentSignatureWebhookEvent } from "../../services/investment/investmentSignature.service.js";
 import { handleDealInvestorEsignWebhook } from "../../services/deal/dealMemberEsignCompletion.service.js";
 
-function parseWebhookPayload(req: Request): {
-  eventType: string;
-  signatureRequestId: string;
-  dealId: string;
-  rosterId: string;
-} | null {
-  let raw: unknown = req.body;
-  if (raw && typeof raw === "object" && "json" in raw) {
-    const j = (raw as { json?: unknown }).json;
-    if (typeof j === "string") {
-      try {
-        raw = JSON.parse(j) as unknown;
-      } catch {
-        return null;
-      }
-    }
-  }
-
-  const root = raw as {
-    event?: { event_type?: string };
-    signature_request?: {
-      signature_request_id?: string;
-      metadata?: Record<string, string>;
-    };
-  };
-
-  const eventType = String(root.event?.event_type ?? "").trim();
-  const signatureRequestId = String(
-    root.signature_request?.signature_request_id ?? "",
-  ).trim();
-  const metadata = root.signature_request?.metadata ?? {};
-  const dealId = String(metadata.deal_id ?? metadata.dealId ?? "").trim();
-  const rosterId = String(metadata.roster_id ?? metadata.rosterId ?? "").trim();
-
-  if (!eventType || !signatureRequestId || !dealId) return null;
-  return { eventType, signatureRequestId, dealId, rosterId };
-}
+const DROPBOX_WEBHOOK_ACK = "Hello API Event Received";
 
 /**
- * POST /webhooks/dropbox-sign — Dropbox Sign event callback (no JWT).
- * Configure this URL in the Dropbox Sign API app settings.
+ * POST /webhooks/dropbox-sign
+ * POST /api/webhooks/dropbox-sign
+ *
+ * Dropbox Sign event callback (no JWT). Verifies `event_hash`, updates
+ * `investment_signatures`, then syncs legacy `esign_status_json` rows.
  */
 export async function postDropboxSignWebhook(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const parsed = parseWebhookPayload(req);
+  const parsed = parseDropboxSignWebhookBody(req.body);
   if (!parsed) {
-    res.status(200).send("Hello API Event Received");
+    console.warn("[dropbox-sign webhook] unparseable payload");
+    res.status(200).send(DROPBOX_WEBHOOK_ACK);
     return;
   }
 
-  try {
-    await handleDealInvestorEsignWebhook({
-      dealId: parsed.dealId,
-      rosterId: parsed.rosterId || undefined,
-      signatureRequestId: parsed.signatureRequestId,
+  const cfg = getDropboxSignConfig();
+  if (cfg && parsed.eventHash) {
+    const valid = verifyDropboxSignEventHash({
+      apiKey: cfg.apiKey,
+      eventTime: parsed.eventTime,
       eventType: parsed.eventType,
+      eventHash: parsed.eventHash,
     });
-  } catch (err) {
-    console.error("postDropboxSignWebhook:", err);
+    if (!valid) {
+      console.error(
+        "[dropbox-sign webhook] event_hash verification failed",
+        parsed.eventType,
+        parsed.signatureRequestId,
+      );
+      res.status(200).send(DROPBOX_WEBHOOK_ACK);
+      return;
+    }
+  } else if (cfg && !parsed.eventHash) {
+    console.warn(
+      "[dropbox-sign webhook] missing event_hash — processing anyway (configure test events with hash)",
+      parsed.eventType,
+    );
   }
 
-  res.status(200).send("Hello API Event Received");
+  try {
+    const sigResult = await applyInvestmentSignatureWebhookEvent({
+      signatureRequestId: parsed.signatureRequestId,
+      eventType: parsed.eventType,
+      webhookPayload: parsed.raw,
+      eventTime: parsed.eventTime,
+    });
+
+    if (!sigResult.updated) {
+      console.info(
+        "[dropbox-sign webhook] no investment_signatures row",
+        parsed.signatureRequestId,
+        parsed.eventType,
+      );
+    }
+
+    if (parsed.dealId) {
+      await handleDealInvestorEsignWebhook({
+        dealId: parsed.dealId,
+        rosterId: parsed.rosterId || undefined,
+        signatureRequestId: parsed.signatureRequestId,
+        eventType: parsed.eventType,
+      });
+    }
+  } catch (err) {
+    console.error("[dropbox-sign webhook] handler error:", err);
+  }
+
+  res.status(200).send(DROPBOX_WEBHOOK_ACK);
 }

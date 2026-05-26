@@ -2,7 +2,9 @@ import type { Request, Response } from "express";
 import {
   esignBundleHasPending,
   esignBundleIsAllCompleted,
+  esignSignedColumnLabelFromApi,
   parseEsignStatusBundle,
+  parseEsignStatusJson,
 } from "../../constants/deal-investor-esign-status.js";
 import { getJwtUser } from "../../middleware/jwtUser.js";
 import {
@@ -11,10 +13,15 @@ import {
 } from "../../services/deal/dealAccess.service.js";
 import {
   listMyEsignDocumentsForInvestor,
+  syncDealInvestorEsignAfterEmbeddedSign,
   syncDealInvestorEsignByTarget,
+  syncDealInvestorEsignSignProgress,
 } from "../../services/deal/dealMemberEsignCompletion.service.js";
 import {
+  findInvestorEsignTargetForInvestNowCommitment,
   findInvestorEsignTargetForPortalUser,
+  investorEsignTargetHasPositiveCommitment,
+  markDealInvestorEsignViewed,
   readInvestorEsignStatusJson,
 } from "../../services/deal/dealMemberEsignStatus.service.js";
 import { getDealMyEsignSignSession } from "../../services/deal/dealMemberEsignSignSession.service.js";
@@ -56,11 +63,26 @@ export async function getDealMyEsignDocuments(
       return;
     }
 
-    const target = await findInvestorEsignTargetForPortalUser(dealId, {
+    let target = await findInvestorEsignTargetForPortalUser(dealId, {
       email,
       userId: user.id,
     });
     if (!target) {
+      target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
+        email,
+        userId: user.id,
+      });
+    }
+    if (!target) {
+      res.status(200).json({
+        documents: [],
+        esignCompleted: false,
+        esignPending: false,
+      });
+      return;
+    }
+
+    if (!(await investorEsignTargetHasPositiveCommitment(dealId, target))) {
       res.status(200).json({
         documents: [],
         esignCompleted: false,
@@ -74,19 +96,17 @@ export async function getDealMyEsignDocuments(
     const raw = await readInvestorEsignStatusJson(dealId, target);
     const bundle = parseEsignStatusBundle(raw);
     const documents = await listMyEsignDocumentsForInvestor(dealId, raw);
+    const esignStatus = parseEsignStatusJson(raw);
+    const workflowLabel = esignSignedColumnLabelFromApi(esignStatus) ?? "Sent";
 
     res.status(200).json({
       documents,
       esignCompleted: bundle ? esignBundleIsAllCompleted(bundle) : false,
       esignPending: bundle ? esignBundleHasPending(bundle) : false,
-      completedAt: bundle?.sends.every((s) => s.completedAt)
-        ? bundle.sends
-            .map((s) => s.completedAt?.trim())
-            .filter(Boolean)
-            .sort()
-            .at(-1) ?? null
-        : null,
-      sentAt: bundle?.sends[0]?.sentAt ?? null,
+      esignStatus,
+      workflowLabel,
+      completedAt: esignStatus?.completedAt ?? null,
+      sentAt: esignStatus?.sentAt ?? null,
     });
   } catch (err) {
     console.error("getDealMyEsignDocuments:", err);
@@ -165,5 +185,190 @@ export async function getDealMyEsignSignSessionHandler(
   } catch (err) {
     console.error("getDealMyEsignSignSessionHandler:", err);
     res.status(500).json({ message: "Could not load eSign signing session" });
+  }
+}
+
+/**
+ * POST /deals/:dealId/my-esign-sync
+ * Pull latest Dropbox Sign state after embedded signing (Invest Now / portal).
+ */
+export async function postDealMyEsignSync(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  if (!dealId?.trim()) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+
+  const email = String(user.email ?? "").trim().toLowerCase();
+  if (!email.includes("@")) {
+    res.status(400).json({ message: "Your account has no email on file" });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown> | undefined;
+    const signatureRequestId = String(
+      body?.signatureRequestId ??
+        body?.signature_request_id ??
+        "",
+    ).trim();
+    const phase = String(body?.phase ?? body?.event ?? "finish")
+      .trim()
+      .toLowerCase();
+
+    try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+
+    let target = await findInvestorEsignTargetForPortalUser(dealId, {
+      email,
+      userId: user.id,
+    });
+    if (!target) {
+      target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
+        email,
+        userId: user.id,
+      });
+    }
+    if (!target) {
+      res.status(200).json({
+        esignStatus: null,
+        esignCompleted: false,
+        esignPending: false,
+      });
+      return;
+    }
+
+    if (!(await investorEsignTargetHasPositiveCommitment(dealId, target))) {
+      res.status(200).json({
+        esignStatus: null,
+        esignCompleted: false,
+        esignPending: false,
+      });
+      return;
+    }
+
+    if (phase === "sign") {
+      await syncDealInvestorEsignSignProgress(
+        dealId,
+        target,
+        signatureRequestId || undefined,
+      );
+    } else {
+      await syncDealInvestorEsignAfterEmbeddedSign(
+        dealId,
+        target,
+        signatureRequestId || undefined,
+      );
+    }
+
+    const raw = await readInvestorEsignStatusJson(dealId, target);
+    const bundle = parseEsignStatusBundle(raw);
+    const esignStatus = parseEsignStatusJson(raw);
+
+    res.status(200).json({
+      esignStatus,
+      workflowLabel: esignSignedColumnLabelFromApi(esignStatus) ?? "Sent",
+      esignCompleted: bundle ? esignBundleIsAllCompleted(bundle) : false,
+      esignPending: bundle ? esignBundleHasPending(bundle) : false,
+    });
+  } catch (err) {
+    console.error("postDealMyEsignSync:", err);
+    res.status(500).json({ message: "Could not sync eSign status" });
+  }
+}
+
+async function resolveMyEsignTargetForUser(
+  dealId: string,
+  userId: string,
+  email: string,
+) {
+  let target = await findInvestorEsignTargetForPortalUser(dealId, {
+    email,
+    userId,
+  });
+  if (!target) {
+    target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
+      email,
+      userId,
+    });
+  }
+  return target;
+}
+
+/**
+ * POST /deals/:dealId/my-esign-mark-viewed
+ * Invest Now: investor opened preview or signing UI (Dropbox Document History → Viewed).
+ */
+export async function postDealMyEsignMarkViewed(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  if (!dealId?.trim()) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+
+  const email = String(user.email ?? "").trim().toLowerCase();
+  if (!email.includes("@")) {
+    res.status(400).json({ message: "Your account has no email on file" });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown> | undefined;
+  const signatureRequestId = String(
+    body?.signatureRequestId ?? body?.signature_request_id ?? "",
+  ).trim();
+
+  try {
+    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+
+    const target = await resolveMyEsignTargetForUser(dealId, user.id, email);
+    if (!target || !signatureRequestId) {
+      res.status(200).json({ ok: false });
+      return;
+    }
+
+    await markDealInvestorEsignViewed(dealId, target, signatureRequestId);
+
+    const raw = await readInvestorEsignStatusJson(dealId, target);
+    const esignStatus = parseEsignStatusJson(raw);
+
+    res.status(200).json({
+      ok: true,
+      workflowLabel: esignSignedColumnLabelFromApi(esignStatus) ?? "Sent",
+      esignStatus,
+    });
+  } catch (err) {
+    console.error("postDealMyEsignMarkViewed:", err);
+    res.status(500).json({ message: "Could not record viewed status" });
   }
 }

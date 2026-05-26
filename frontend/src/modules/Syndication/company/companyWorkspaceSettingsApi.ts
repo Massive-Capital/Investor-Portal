@@ -134,18 +134,56 @@ function defaultBrandingUploadFilename(file: File): string {
   return toSafeBrandingFileNameForMultipart("", "upload.png")
 }
 
-/**
- * Edge/Chrome and some pickers can supply a `File` with an empty `name` / empty `type` (Multer
- * + sniff on the server still handle bytes). A stable 7-bit name + `File` wrapper makes FormData
- * and multipart `filename=` consistent with Firefox. Use two-arg `form.append` so the
- * part filename comes from `File#name` only.
- */
-function normalizeBrandingFileForUpload(file: File): File {
+/** Infer image MIME from extension when Chromium leaves `File.type` empty. */
+function mimeFromBrandingFilename(name: string): string | null {
+  const m = /\.([a-z0-9]+)$/i.exec(name.trim())
+  const ext = m?.[1]?.toLowerCase() ?? ""
+  switch (ext) {
+    case "png":
+      return "image/png"
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg"
+    case "webp":
+      return "image/webp"
+    case "gif":
+      return "image/gif"
+    case "svg":
+      return "image/svg+xml"
+    case "ico":
+      return "image/x-icon"
+    case "avif":
+      return "image/avif"
+    case "bmp":
+      return "image/bmp"
+    default:
+      return null
+  }
+}
+
+function brandingFileMeta(file: File): { name: string; type: string } {
   const name = defaultBrandingUploadFilename(file)
-  const type =
-    file.type && file.type.length > 0
-      ? file.type
-      : "application/octet-stream"
+  const fromFile = file.type && file.type.length > 0 ? file.type : ""
+  const type = fromFile || mimeFromBrandingFilename(name) || "application/octet-stream"
+  return { name, type }
+}
+
+/**
+ * Copy picker bytes into a new `File` (stable name + MIME). Chromium can upload **0 bytes**
+ * when `new File([otherFile])` is used after the input was reset; `arrayBuffer()` avoids that.
+ */
+export async function materializeBrandingFile(file: File): Promise<File> {
+  const { name, type } = brandingFileMeta(file)
+  const buf = await file.arrayBuffer()
+  if (!buf.byteLength) {
+    throw new Error("The selected file is empty.")
+  }
+  return new File([buf], name, { type, lastModified: file.lastModified })
+}
+
+/** @deprecated Prefer {@link materializeBrandingFile} for upload/preview. */
+export function normalizeBrandingFileForPicker(file: File): File {
+  const { name, type } = brandingFileMeta(file)
   try {
     if (typeof File === "function") {
       return new File([file], name, { type, lastModified: file.lastModified })
@@ -177,22 +215,24 @@ export async function postCompanySettingsBranding(
   if (!file || (typeof file.size === "number" && file.size <= 0)) {
     return { ok: false, message: "Choose a non-empty image file." }
   }
-  const toSend = normalizeBrandingFileForUpload(file)
+  let toSend: File
+  try {
+    toSend = await materializeBrandingFile(file)
+  } catch (e) {
+    const message =
+      e instanceof Error && e.message ? e.message : "Could not read the selected file."
+    return { ok: false, message }
+  }
   const form = new FormData()
-  form.append("file", toSend)
+  form.append("file", toSend, toSend.name)
   try {
     const res = await fetch(
       `${base}/companies/${encodeURIComponent(companyId)}/settings/branding/${assetType}`,
       {
         method: "POST",
-        headers: {
-          ...authHeaders(),
-          Accept: "application/json",
-        },
+        headers: { ...authHeaders() },
         body: form,
         credentials: "include",
-        mode: "cors",
-        cache: "no-store",
       },
     )
     const data = (await res.json().catch(() => ({}))) as {

@@ -13,12 +13,15 @@ import type {
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
-import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import {
+  investorCommittedVisibleToViewer,
+  investorEsignWasSent,
+  investorRowCommittedNumeric,
+  investorRowMatchesViewerEmail,
+} from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 
 /**
- * Committed (USD) across investor rows for the given login email. Matches
- * the investing dashboard "your amount" when rows are the API subset for LP
- * or full roster for company users.
+ * Committed (USD) visible to the signed-in investor (hidden until eSign completes).
  */
 export function committedAmountForViewerEmail(
   payload: DealInvestorsPayload,
@@ -27,24 +30,38 @@ export function committedAmountForViewerEmail(
   if (!viewerEmailNorm) return 0
   let sum = 0
   for (const inv of payload.investors) {
-    const em = String(inv.userEmail ?? "").trim().toLowerCase()
-    if (!em || em === "—" || em !== viewerEmailNorm) continue
-    const n = parseMoneyDigits(String(inv.committed ?? ""))
-    if (Number.isFinite(n)) sum += n
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
+    if (!investorCommittedVisibleToViewer(inv)) continue
+    sum += investorRowCommittedNumeric(inv)
   }
   return sum
 }
 
 /**
- * Investor-only surfaces (e.g. dashboard “Your deals”, investment rows): you
- * have a positive committed amount. Does not include sponsor-only deals.
+ * Investor participates on this deal (committed and/or eSign in progress).
+ */
+export function viewerHasDealParticipation(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): boolean {
+  if (!viewerEmailNorm) return false
+  for (const inv of payload.investors) {
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
+    if (investorRowCommittedNumeric(inv) > 0) return true
+    if (investorEsignWasSent(inv)) return true
+  }
+  return false
+}
+
+/**
+ * Investor-only surfaces (e.g. dashboard “Your deals”, investment rows).
  */
 export function dealIsInViewerInvestingScope(
   payload: DealInvestorsPayload,
 ): boolean {
   const em = getSessionUserEmail().trim().toLowerCase()
   if (!em) return false
-  return committedAmountForViewerEmail(payload, em) > 0
+  return viewerHasDealParticipation(payload, em)
 }
 
 const SPONSOR_ROLE_DISPLAY_ORDER = [
@@ -261,9 +278,16 @@ export function formatViewerInvestingDealRolesLabel(
   return parts.join(", ")
 }
 
-export async function filterDealListToInvestingDealsPage(
+export type InvestingDealsPageScopeEntry = {
+  row: DealListRow
+  payload: DealInvestorsPayload
+  members: DealInvestorRow[]
+}
+
+/** Deals visible on `/investing/investments` (same scope as the former Deals tab). */
+export async function mapInvestingDealsPageScope(
   rows: DealListRow[],
-): Promise<DealListRow[]> {
+): Promise<InvestingDealsPageScopeEntry[]> {
   const viewerEmailNorm = investingViewerEmailNorm()
   if (!viewerEmailNorm) return []
   const withPayload = await Promise.all(
@@ -275,9 +299,14 @@ export async function filterDealListToInvestingDealsPage(
       return { row, payload, members }
     }),
   )
-  return withPayload
-    .filter(({ payload, members }) =>
-      dealIsInViewerInvestingDealsPageScope(payload, members),
-    )
-    .map(({ row }) => row)
+  return withPayload.filter(({ payload, members }) =>
+    dealIsInViewerInvestingDealsPageScope(payload, members),
+  )
+}
+
+export async function filterDealListToInvestingDealsPage(
+  rows: DealListRow[],
+): Promise<DealListRow[]> {
+  const scoped = await mapInvestingDealsPageScope(rows)
+  return scoped.map(({ row }) => row)
 }

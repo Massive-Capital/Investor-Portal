@@ -20,7 +20,10 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import type { DealInvestorRow } from "../../../types/deal-investors.types"
-import { investorEsignWasSent } from "../../../utils/investorEsignStatus"
+import {
+  investorEsignIsFullyCompletedForRow,
+  investorEsignWasSent,
+} from "../../../utils/investorEsignStatus"
 import "../../../../usermanagement/user_management.css"
 import "./deal-member-row-actions.css"
 
@@ -78,6 +81,7 @@ export function DealMemberRowActions({
   approveFundDisabledTitle,
 }: DealMemberRowActionsProps) {
   const esignWasSent = investorEsignWasSent(row)
+  const esignCompleted = investorEsignIsFullyCompletedForRow(row)
   const [menuOpen, setMenuOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -371,7 +375,7 @@ export function DealMemberRowActions({
                     Copy offering link
                   </button>
                 </li>
-                {onSendEsign ? (
+                {onSendEsign && !esignCompleted ? (
                   <li role="none">
                     <button
                       type="button"

@@ -24,6 +24,11 @@ export {
   type DealInvestmentRow,
 } from "./deal.schema/deal-investment.schema.js";
 export {
+  investmentSignatures,
+  type InvestmentSignatureInsert,
+  type InvestmentSignatureRow,
+} from "./deal.schema/investment-signatures.schema.js";
+export {
   dealMember,
   type DealMemberInsert,
   type DealMemberRow,

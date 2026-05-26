@@ -48,6 +48,11 @@ import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCe
 import { DealInvestorRoleCell } from "./DealInvestorRoleBadge";
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal";
 import { DealInvestorSignedCell } from "./DealInvestorSignedCell";
+import { logInvestorsDataTableDebug } from "./investorsTabDebug";
+import {
+  investorEsignIsFullyCompletedForRow,
+  resolveInvestorRowEsignStatus,
+} from "../../utils/investorEsignStatus";
 import { InvestorEsignStatusModal } from "./InvestorEsignStatusModal";
 import { SendEsignDocumentsModal } from "./SendEsignDocumentsModal";
 import { InvestorClassPillsDisplay } from "./InvestorClassPillsDisplay";
@@ -553,8 +558,9 @@ function DealInvestorsPopulated({
   const documentSignedKpi = useMemo(() => {
     const dataRows = rows.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID);
     const signedCount = dataRows.filter((r) => {
-      const s = String(r.signedDate ?? "").trim();
-      return s && s !== "—" && s.toLowerCase() !== "pending";
+      const s = String(r.signedDate ?? "").trim().toLowerCase();
+      const inProgress = new Set(["sent", "pending", "viewed", "signed"]);
+      return s && s !== "—" && !inProgress.has(s);
     }).length;
     return dataRows.length > 0 ? `${signedCount} of ${dataRows.length}` : "—";
   }, [rows]);
@@ -621,6 +627,35 @@ function DealInvestorsPopulated({
     filterAccreditation,
     dealAllClassNamesLine,
   ]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      logInvestorsDataTableDebug({
+        context: "DataTable rows (DealInvestorsPopulated filtered)",
+        dealId,
+        rows: filtered,
+        extra: {
+          totalRows: rows.length,
+          hasOpenEsignStatusModal: true,
+        },
+      });
+    }
+  }, [dealId, filtered, rows.length]);
+
+  /** Poll Dropbox while any row has an in-flight eSign (Send e-sign actions menu). */
+  useEffect(() => {
+    if (!onRefreshInvestors) return;
+    const hasInFlight = rows.some((r) => {
+      if (investorEsignIsFullyCompletedForRow(r)) return false;
+      const st = resolveInvestorRowEsignStatus(r);
+      return Boolean(st?.sentAt?.trim()) && !st?.completedAt?.trim();
+    });
+    if (!hasInFlight) return;
+    const timer = window.setInterval(() => {
+      void onRefreshInvestors();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [rows, onRefreshInvestors]);
 
   const allFilteredInvestorsSelected = useMemo(
     () =>
@@ -718,7 +753,8 @@ function DealInvestorsPopulated({
 
   const closeEsignStatusModal = useCallback(() => {
     setEsignStatusRow(null);
-  }, []);
+    void onRefreshInvestors?.();
+  }, [onRefreshInvestors]);
 
   const goNewTemplateFromSendMail = useCallback(() => {
     navigate("/contacts/email-templates/new");
@@ -972,7 +1008,13 @@ function DealInvestorsPopulated({
       {
         id: "signed",
         header: "Signed",
-        sortValue: (row) => row.signedDate ?? "",
+        sortValue: (row) =>
+          row.esignStatus?.completedAt ??
+          row.esignStatus?.signedAt ??
+          row.esignStatus?.viewedAt ??
+          row.esignStatus?.sentAt ??
+          row.signedDate ??
+          "",
         tdClassName: "deal_inv_td_ellipsis",
         cell: (row) => (
           <DealInvestorSignedCell
@@ -1212,7 +1254,6 @@ function DealInvestorsPopulated({
         dealId={dealId}
         row={esignStatusRow}
         onClose={closeEsignStatusModal}
-        onStatusSynced={onRefreshInvestors}
       />
       {sendMailModalOpen ? (
         <div
@@ -2089,7 +2130,18 @@ export const DealInvestorsTab = forwardRef<
         onContinueDraftEdit={handleContinueDraftInvestor}
         onSendInvitationMail={onSendInvitationMail}
         onSendEsignRequest={
-          onSendEsignConfirm ? (row) => setSendEsignModalRow(row) : undefined
+          onSendEsignConfirm
+            ? (row) => {
+                if (investorEsignIsFullyCompletedForRow(row)) {
+                  toast.success(
+                    "E-sign completed",
+                    "This investor has already completed signing. Use the Signed column for details.",
+                  );
+                  return;
+                }
+                setSendEsignModalRow(row);
+              }
+            : undefined
         }
         sendEsignDisabled={sendEsignDisabled}
         sendEsignDisabledTitle={sendEsignDisabledTitle}

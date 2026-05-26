@@ -5,10 +5,7 @@ import {
   fetchDealById,
   fetchDealMyEsignDocuments,
 } from "@/modules/Syndication/Deals/api/dealsApi"
-import {
-  OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
-  offeringPreviewSectionsStorageKey,
-} from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
+import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 import {
   buildEsignProfileStatusTabs,
   esignCategoryLabel,
@@ -163,23 +160,17 @@ export function InvestmentDetailDocumentsTab({
   useEffect(() => {
     const id = dealId.trim()
     if (!id) return
-    const sectionsStorageKey = offeringPreviewSectionsStorageKey(id)
     const bumpSections = () => setSectionsRevision((n) => n + 1)
     const onCustom = (e: Event) => {
       const d = (e as CustomEvent<{ dealId?: string }>).detail
       if (d?.dealId === id) bumpSections()
     }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === sectionsStorageKey) bumpSections()
-    }
     window.addEventListener(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, onCustom)
-    window.addEventListener("storage", onStorage)
     return () => {
       window.removeEventListener(
         OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
         onCustom,
       )
-      window.removeEventListener("storage", onStorage)
     }
   }, [dealId])
 

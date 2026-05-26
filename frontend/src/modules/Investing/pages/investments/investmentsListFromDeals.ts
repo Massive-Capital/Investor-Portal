@@ -6,10 +6,16 @@ import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import {
   applyLpSessionDealIdScope,
   committedAmountForViewerEmail,
+  formatViewerInvestingDealRolesLabel,
+  mapInvestingDealsPageScope,
+  resolveViewerInvestingDealRoles,
+  viewerHasDealParticipation,
 } from "@/modules/Investing/utils/investingViewerDealScope"
+import { investorCommittedVisibleToViewer } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import {
   fetchDealById,
   fetchDealInvestors,
+  fetchDealMembers,
   fetchDealsList,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
@@ -87,6 +93,7 @@ function buildProfileBreakdownForDeal(
 ): InvestmentBreakdownLine[] {
   const out: InvestmentBreakdownLine[] = []
   for (const inv of myCommitments) {
+    if (!investorCommittedVisibleToViewer(inv)) continue
     const amt = parseMoneyDigits(String(inv.committed ?? "")) || 0
     if (amt <= 0) continue
     out.push({
@@ -126,6 +133,7 @@ function listRowFromDealAndInvestors(
   inv: DealInvestorRow | undefined,
   committed: number,
   nameByUserProfileId: ReadonlyMap<string, string> | undefined,
+  viewerRolesLabel: string,
 ): InvestmentListRow {
   const dealId = listRow.id
   const profileId = inv ? String(inv.profileId ?? "").trim() : ""
@@ -135,12 +143,13 @@ function listRowFromDealAndInvestors(
   const userInvProfName = inv
     ? String(inv.userInvestorProfileName ?? "").trim()
     : ""
+  const dealName = listRow.dealName?.trim() || "—"
   return {
     id: investmentRuntimeIdForDeal(dealId),
     dealId,
-    investmentName: listRow.dealName?.trim() || "—",
+    investmentName: dealName,
     /** Deal/offering title — not investor class (Class A, etc.). */
-    offeringName: listRow.dealName?.trim() || "—",
+    offeringName: dealName,
     investmentProfile: formatInvestedAsFromInv(inv, nameByUserProfileId),
     commitmentProfileId: profileId || undefined,
     userInvestorProfileId: userInvProfId || undefined,
@@ -151,7 +160,13 @@ function listRowFromDealAndInvestors(
     dealCloseDate: (listRow.closeDateDisplay || "—").trim() || "—",
     status: (listRow.dealStage || "—").trim() || "—",
     actionRequired: "None",
-    archived: false,
+    archived: Boolean(listRow.archived),
+    dealType: listRow.dealType,
+    secType: listRow.secType,
+    propertyName: listRow.propertyName,
+    owningEntityName: listRow.owningEntityName,
+    startDateDisplay: listRow.startDateDisplay ?? listRow.createdDateDisplay,
+    viewerRolesLabel,
   }
 }
 
@@ -169,19 +184,33 @@ export async function loadInvestmentListRowsFromDeals(
   const list = applyLpSessionDealIdScope(
     await fetchDealsList({ includeParticipantDeals: true }),
   )
-  const active = list.filter((r) => !r.archived)
-  if (active.length === 0) return []
+  const scoped = await mapInvestingDealsPageScope(list)
+  if (scoped.length === 0) return []
 
   const nameMap =
     nameByUserProfileIdFromBook ??
     (await fetchUserInvestorProfileNameMap())
   const out: InvestmentListRow[] = []
-  for (const row of active) {
-    const payload = await fetchDealInvestors(row.id, { lpInvestorsOnly: false })
+  for (const { row, payload, members } of scoped) {
     const committed = committedAmountForViewerEmail(payload, emn)
-    if (committed <= 0) continue
     const inv = primaryViewerRow(payload.investors, emn)
-    out.push(listRowFromDealAndInvestors(row, inv, committed, nameMap))
+    const viewerRolesLabel = formatViewerInvestingDealRolesLabel(
+      resolveViewerInvestingDealRoles(
+        members,
+        payload.investors,
+        emn,
+        payload,
+      ),
+    )
+    out.push(
+      listRowFromDealAndInvestors(
+        row,
+        inv,
+        committed,
+        nameMap,
+        viewerRolesLabel,
+      ),
+    )
   }
   return out
 }
@@ -263,25 +292,31 @@ export async function loadInvestmentDetailFromDeal(
   const emn = normEmail(em)
   let deal: DealDetailApi
   let payload: Awaited<ReturnType<typeof fetchDealInvestors>>
+  let members: DealInvestorRow[]
   try {
-    ;[deal, payload] = await Promise.all([
+    ;[deal, payload, members] = await Promise.all([
       fetchDealById(did),
       fetchDealInvestors(did, { lpInvestorsOnly: false }),
+      fetchDealMembers(did),
     ])
   } catch {
     return undefined
   }
   syncInvestmentDealDocumentPreview(did, deal.offeringInvestorPreviewJson ?? null)
+  if (!viewerHasDealParticipation(payload, emn)) return undefined
   const committed = committedAmountForViewerEmail(payload, emn)
-  if (committed <= 0) return undefined
   const myCommitments = positiveViewerCommitments(payload.investors, emn)
   const inv = myCommitments[0]
   const nameMap = await fetchUserInvestorProfileNameMap()
+  const viewerRolesLabel = formatViewerInvestingDealRolesLabel(
+    resolveViewerInvestingDealRoles(members, payload.investors, emn, payload),
+  )
   const list = listRowFromDealAndInvestors(
     deal.listRow,
     inv,
     committed,
     nameMap,
+    viewerRolesLabel,
   )
   const investedAsBreakdown = buildProfileBreakdownForDeal(
     myCommitments,

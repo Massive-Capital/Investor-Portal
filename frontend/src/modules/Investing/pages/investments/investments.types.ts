@@ -27,6 +27,13 @@ export type InvestmentListRow = {
   actionRequired: string
   /** When true, row appears under Archives tab (same pattern as deals list). */
   archived?: boolean
+  /** Former Deals tab columns (from `DealListRow`). */
+  dealType?: string
+  secType?: string
+  propertyName?: string
+  owningEntityName?: string
+  startDateDisplay?: string
+  viewerRolesLabel?: string
 }
 
 /** One line on the investment detail: a My Profile (or an unbooked commitment), type(s), and amount. */

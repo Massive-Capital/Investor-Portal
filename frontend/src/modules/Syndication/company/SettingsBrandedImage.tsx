@@ -124,6 +124,29 @@ export type SettingsBrandedImageProps = {
 
  */
 
+/**
+ * Local file preview (`data:` from materialized bytes) — plain `<img>` without Cloudinary/url-gen.
+ */
+export function BrandingLocalPreviewImg({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading="eager"
+      decoding="async"
+    />
+  );
+}
+
 export function SettingsBrandedImage({
 
   publicId,

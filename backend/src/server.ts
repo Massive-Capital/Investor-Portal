@@ -17,6 +17,8 @@ import esignTemplateRoutes from "./routes/esignTemplate.routes.js";
 import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js";
 import platformRoutes from "./routes/platformRoutes.routes.js";
 import { postDropboxSignWebhook } from "./controllers/deal/dealDropboxSignWebhook.controller.js";
+import { dropboxSignWebhookUpload } from "./middleware/dropboxSignWebhook.middleware.js";
+import investmentSignatureRoutes from "./routes/investmentSignature.routes.js";
 
 
 const PORT = process.env.BACKEND_PORT ?? 5004;
@@ -79,8 +81,17 @@ app.post(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-/** Dropbox Sign webhooks (no JWT). */
-app.post("/webhooks/dropbox-sign", postDropboxSignWebhook);
+/** Dropbox Sign webhooks (no JWT; multipart `json` field). */
+app.post(
+  "/webhooks/dropbox-sign",
+  dropboxSignWebhookUpload,
+  postDropboxSignWebhook,
+);
+app.post(
+  "/api/webhooks/dropbox-sign",
+  dropboxSignWebhookUpload,
+  postDropboxSignWebhook,
+);
 
 app.use("/api/v1", socHttpAuditMiddleware);
 
@@ -107,6 +118,7 @@ app.use("/api/v1", [
   contactRoutes,
   esignTemplateRoutes,
   investingProfileBookRoutes,
+  investmentSignatureRoutes,
   platformRoutes,
 ]);
 
@@ -114,9 +126,16 @@ console.log("Starting server...");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+async function ensureInvestorQuestionnaireColumn(): Promise<void> {
+  await pool.query(
+    `ALTER TABLE add_deal_form ADD COLUMN IF NOT EXISTS investor_questionnaire_json text`,
+  );
+}
+
 async function runMigrations(): Promise<void> {
   const migrationsFolder = path.resolve(__dirname, "..", "migrations");
   await migrate(db, { migrationsFolder });
+  await ensureInvestorQuestionnaireColumn();
   console.log("Database migrations applied.");
 }
 

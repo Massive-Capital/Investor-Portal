@@ -71,7 +71,7 @@
   line-height: 1.25;
 }
 
-.deal_esign_status_inv_badge {
+/* .deal_esign_status_inv_badge {
   display: inline-block;
   margin-left: 0.35rem;
   padding: 0.05rem 0.35rem;
@@ -83,7 +83,7 @@
   border-radius: 3px;
   color: #1d4ed8;
   background: color-mix(in srgb, #2563eb 12%, transparent);
-}
+} */
 
 .deal_esign_status_panel {
   display: flex;
@@ -147,4 +147,42 @@
 
 .deal_esign_status_doc_actions {
   margin: 0;
+}
+
+.deal_esign_stage_times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.deal_esign_stage_times_row {
+  display: contents;
+}
+
+.deal_esign_stage_times_label {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_stage_times_value {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--portal-text-muted, #94a3b8);
+}
+
+.deal_esign_stage_times_value--done {
+  color: var(--portal-text, #0f172a);
+  font-weight: 500;
+}
+
+@media (max-width: 520px) {
+  .deal_esign_stage_times {
+    grid-template-columns: 1fr;
+  }
 }

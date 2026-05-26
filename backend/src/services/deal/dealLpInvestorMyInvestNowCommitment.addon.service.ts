@@ -18,6 +18,14 @@ import {
 } from "../../schema/deal.schema/deal-investment.schema.js";
 import { committedNumericFromDealInvestmentRow, insertDealInvestment, isLpInvestorRole, LP_INVESTOR_ROLE_STORED, resolveFirstInvestorClassForDeal, resolveInvestorClassForDealInvestment, } from "./dealInvestment.service.js";
 import { upsertDealLpInvestor } from "./dealLpInvestor.service.js";
+import {
+  normalizeInvestorQuestionnaireAnswersInput,
+  serializeInvestorQuestionnaireAnswers,
+} from "./investorQuestionnaireAnswers.service.js";
+import {
+  normalizeInvestorW9FormInput,
+  serializeInvestorW9Form,
+} from "./investorW9Form.service.js";
 const LP_INVESTOR_TABLE_ROLE = "LP Investor";
 
 async function sumLpDealInvestmentCommittedForContact(
@@ -57,6 +65,12 @@ export type ApplyMyInvestNowCommitmentInput = {
   userInvestorProfileId?: string | null;
   status?: string;
   docSignedDate?: unknown;
+  /** When true, apply `questionnaireAnswers` to the commitment investment row. */
+  questionnaireAnswersInBody?: boolean;
+  questionnaireAnswers?: unknown;
+  /** When true, apply `w9Form` to the commitment investment row. */
+  w9FormInBody?: boolean;
+  w9Form?: unknown;
 };
 
 function normalizeCommittedAmountStored(raw: unknown) {
@@ -229,6 +243,29 @@ export async function applyMyInvestNowCommitmentAddon(
         };
     }
     const viewerUserId = String(params.viewerUserId ?? "").trim();
+    let questionnaireAnswersJson: string | null = null;
+    if (params.questionnaireAnswersInBody) {
+      try {
+        const normalized = normalizeInvestorQuestionnaireAnswersInput(
+          params.questionnaireAnswers,
+        );
+        questionnaireAnswersJson =
+          serializeInvestorQuestionnaireAnswers(normalized);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { ok: false, message: msg };
+      }
+    }
+    let w9FormJson: string | null = null;
+    if (params.w9FormInBody) {
+      try {
+        const normalized = normalizeInvestorW9FormInput(params.w9Form);
+        w9FormJson = serializeInvestorW9Form(normalized);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { ok: false, message: msg };
+      }
+    }
     const matchRows = await db
         .select()
         .from(dealLpInvestor)
@@ -333,7 +370,7 @@ export async function applyMyInvestNowCommitmentAddon(
                 ok: false,
                 message: classRes.message ?? "Could not resolve investor class.",
             };
-        await insertDealInvestment({
+        const createdInv = await insertDealInvestment({
             dealId: params.dealId,
             input: {
                 offeringId: "",
@@ -353,6 +390,19 @@ export async function applyMyInvestNowCommitmentAddon(
                 documentStoragePath: null,
             },
         });
+        if (params.questionnaireAnswersInBody || params.w9FormInBody) {
+            await db
+                .update(dealInvestment)
+                .set({
+                  ...(params.questionnaireAnswersInBody
+                    ? { investorQuestionnaireAnswersJson: questionnaireAnswersJson }
+                    : {}),
+                  ...(params.w9FormInBody
+                    ? { investorW9FormJson: w9FormJson }
+                    : {}),
+                })
+                .where(eq(dealInvestment.id, createdInv.id));
+        }
         if (!target) {
             if (!viewerUserId) {
                 return {
@@ -466,6 +516,10 @@ export async function applyMyInvestNowCommitmentAddon(
             commitmentAmount: incrementStr,
             extraContributionAmounts: [],
             documentStoragePath: null,
+            ...(params.questionnaireAnswersInBody
+              ? { investorQuestionnaireAnswersJson: questionnaireAnswersJson }
+              : {}),
+            ...(params.w9FormInBody ? { investorW9FormJson: w9FormJson } : {}),
         };
         try {
             await db.insert(dealInvestment).values(insertRow);
@@ -534,6 +588,14 @@ export async function applyMyInvestNowCommitmentAddon(
                 invPatch.docSignedDate = docNorm.value;
             if (!sUip.skip)
                 invPatch.userInvestorProfileId = sUip.value as string | null;
+            if (params.questionnaireAnswersInBody) {
+                (invPatch as { investorQuestionnaireAnswersJson?: string | null })
+                  .investorQuestionnaireAnswersJson = questionnaireAnswersJson;
+            }
+            if (params.w9FormInBody) {
+                (invPatch as { investorW9FormJson?: string | null }).investorW9FormJson =
+                  w9FormJson;
+            }
             await tx
                 .update(dealInvestment)
                 .set(invPatch)

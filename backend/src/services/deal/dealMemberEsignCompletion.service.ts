@@ -1,6 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import { and, eq } from "drizzle-orm";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
+import { db } from "../../database/db.js";
+import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
+import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
 import {
   DEAL_ESIGN_COMPLETED_FOLDER,
@@ -9,19 +13,76 @@ import {
   sanitizeStoragePathSegment,
 } from "./dealStoragePaths.service.js";
 import {
-  aggregateEsignStatusFromBundle,
-  esignBundleHasPending,
-  esignBundleIsAllCompleted,
+  esignBundleNeedsDropboxSync,
+  esignBundleToSendStatusList,
+  esignCategoryFromCommitmentProfileId,
   findEsignSendBySignatureRequestId,
   parseEsignStatusBundle,
   parseEsignStatusJson,
+  type DealInvestorEsignSendStatusApi,
   type StoredDealInvestorEsignSend,
 } from "../../constants/deal-investor-esign-status.js";
 import {
   downloadSignatureRequestPdfBuffer,
   getSignatureRequestDetail,
   type DropboxSignatureRequestDetail,
+  type DropboxSignatureSignerDetail,
 } from "../esign/dropboxSign.service.js";
+
+function latestWorkflowIso(
+  dates: Array<string | null | undefined>,
+): string | null {
+  let best: string | null = null;
+  let bestMs = -1;
+  for (const d of dates) {
+    const s = d?.trim();
+    if (!s) continue;
+    const ms = new Date(s).getTime();
+    if (!Number.isNaN(ms) && ms > bestMs) {
+      bestMs = ms;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/** Viewed / signed timestamps from Dropbox Sign (summary + per-signer). */
+function workflowTimestampsFromDropbox(
+  summary: DropboxSignatureRequestDetail,
+): { viewedAt: string | null; signedAt: string | null } {
+  const viewedCandidates: Array<string | null | undefined> = [
+    summary.lastViewedAt,
+  ];
+  const signedCandidates: Array<string | null | undefined> = [
+    summary.lastSignedAt,
+  ];
+
+  for (const signer of summary.signers) {
+    collectSignerWorkflowTimestamps(signer, viewedCandidates, signedCandidates);
+  }
+
+  return {
+    viewedAt: latestWorkflowIso(viewedCandidates),
+    signedAt: latestWorkflowIso(signedCandidates),
+  };
+}
+
+function collectSignerWorkflowTimestamps(
+  signer: DropboxSignatureSignerDetail,
+  viewedCandidates: Array<string | null | undefined>,
+  signedCandidates: Array<string | null | undefined>,
+): void {
+  if (signer.lastViewedAt?.trim()) viewedCandidates.push(signer.lastViewedAt);
+  if (signer.signedAt?.trim()) signedCandidates.push(signer.signedAt);
+
+  const code = String(signer.statusCode ?? "").trim().toLowerCase();
+  if (code === "signed") {
+    if (signer.signedAt?.trim()) signedCandidates.push(signer.signedAt);
+    if (signer.lastViewedAt?.trim()) viewedCandidates.push(signer.lastViewedAt);
+  } else if (code === "viewed" && signer.lastViewedAt?.trim()) {
+    viewedCandidates.push(signer.lastViewedAt);
+  }
+}
 import type { DealInvestorEsignStatusApi } from "../../constants/deal-investor-esign-status.js";
 import {
   enrichEsignDocumentsWithCategories,
@@ -29,12 +90,16 @@ import {
   getDealEsignTemplatesState,
 } from "./dealEsignTemplates.service.js";
 import {
-  findInvestorEsignTargetByMetadata,
   findInvestorEsignTargetBySignatureRequestId,
+  markDealInvestorEsignSignedOptimistic,
   readInvestorEsignStatusJson,
+  resolveEsignTargetForInvestorRowId,
   updateDealInvestorEsignSend,
   type InvestorEsignRowTarget,
 } from "./dealMemberEsignStatus.service.js";
+
+const EMBED_ESIGN_SYNC_ATTEMPTS = 12;
+const EMBED_ESIGN_SYNC_DELAY_MS = 1000;
 
 export type MyEsignDocumentListItem = {
   fileId: string;
@@ -103,35 +168,49 @@ async function applyProgressFromDropbox(
 
   if (shouldComplete && !alreadyComplete) {
     const rosterId = target.id;
-    const signedRelativePath = await persistSignedPdf({
-      dealId,
-      rosterId,
-      signatureRequestId: sigId,
-    });
     const completedAt =
       summary.completeAt ?? summary.lastSignedAt ?? new Date().toISOString();
+    let signedRelativePath: string | undefined;
+    try {
+      signedRelativePath = await persistSignedPdf({
+        dealId,
+        rosterId,
+        signatureRequestId: sigId,
+      });
+    } catch (err) {
+      console.warn("persistSignedPdf:", err);
+    }
 
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
-      viewedAt: current.viewedAt ?? summary.lastViewedAt,
-      signedAt: summary.lastSignedAt ?? completedAt,
+      viewedAt: current.viewedAt ?? summary.lastViewedAt ?? completedAt,
+      signedAt: summary.lastSignedAt ?? current.signedAt ?? completedAt,
       completedAt,
       signatureRequestId: sigId,
       documents: (current.documents ?? []).map((d) => ({
         ...d,
-        signedRelativePath,
+        ...(signedRelativePath ? { signedRelativePath } : {}),
       })),
     }));
     return true;
   }
 
-  if (summary.lastViewedAt || summary.lastSignedAt) {
+  if (shouldComplete && alreadyComplete) {
+    return true;
+  }
+
+  const dropboxProgress = workflowTimestampsFromDropbox(summary);
+  const progressViewed = dropboxProgress.viewedAt?.trim() || null;
+  const progressSigned = dropboxProgress.signedAt?.trim() || null;
+
+  if (progressViewed || progressSigned) {
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
-      viewedAt: current.viewedAt ?? summary.lastViewedAt,
-      signedAt: current.signedAt ?? summary.lastSignedAt,
+      viewedAt: current.viewedAt ?? progressViewed,
+      signedAt: current.signedAt ?? progressSigned,
       signatureRequestId: sigId,
     }));
+    return false;
   }
 
   return alreadyComplete;
@@ -170,6 +249,130 @@ async function ensureSignedPdfStoredForCompletedRequest(
   } catch (err) {
     console.warn("ensureSignedPdfStoredForCompletedRequest:", err);
     return false;
+  }
+}
+
+/**
+ * Refresh pending eSign rows from Dropbox before building the Investors tab list.
+ */
+export async function syncDealInvestorEsignStatusesForDeal(
+  dealId: string,
+): Promise<void> {
+  const id = dealId.trim();
+  if (!id) return;
+
+  const investments = await db
+    .select({
+      id: dealInvestment.id,
+      esignStatusJson: dealInvestment.esignStatusJson,
+    })
+    .from(dealInvestment)
+    .where(eq(dealInvestment.dealId, id));
+
+  for (const row of investments) {
+    const bundle = parseEsignStatusBundle(row.esignStatusJson);
+    if (!bundle || !esignBundleNeedsDropboxSync(bundle)) continue;
+    await syncDealInvestorEsignByTarget(id, {
+      table: "investment",
+      id: row.id,
+    });
+  }
+
+  const roster = await db
+    .select({
+      id: dealLpInvestor.id,
+      esignStatusJson: dealLpInvestor.esignStatusJson,
+    })
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, id));
+
+  for (const row of roster) {
+    const bundle = parseEsignStatusBundle(row.esignStatusJson);
+    if (!bundle || !esignBundleNeedsDropboxSync(bundle)) continue;
+    await syncDealInvestorEsignByTarget(id, { table: "lp", id: row.id });
+  }
+}
+
+function dropboxSignersAllSigned(
+  signers: DropboxSignatureRequestDetail["signers"],
+): boolean {
+  if (!signers.length) return false;
+  return signers.every((s) => {
+    const code = String(s.statusCode ?? "").trim().toLowerCase();
+    if (code === "signed") return true;
+    return Boolean(s.signedAt?.trim());
+  });
+}
+
+/**
+ * After embedded signing, poll Dropbox until the request is complete and persist
+ * `completedAt` so Invest Now / Investors tab show Signed (not stuck on Pending).
+ */
+/** After embedded `sign` event — persist Signed (and Viewed) without requiring full request complete. */
+export async function syncDealInvestorEsignSignProgress(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+  signatureRequestId?: string,
+): Promise<void> {
+  const id = dealId.trim();
+  const sigId = signatureRequestId?.trim();
+  if (!id) return;
+
+  if (sigId) {
+    await markDealInvestorEsignSignedOptimistic(id, target, sigId);
+  }
+  await syncDealInvestorEsignByTarget(id, target);
+}
+
+/**
+ * After embedded `finish` (Invest Now Sign tab) — poll Dropbox until Completed is stored.
+ */
+export async function syncDealInvestorEsignAfterEmbeddedSign(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+  signatureRequestId?: string,
+): Promise<void> {
+  const id = dealId.trim();
+  const sigId = signatureRequestId?.trim();
+  if (!id) return;
+
+  if (sigId) {
+    await markDealInvestorEsignSignedOptimistic(id, target, sigId);
+  }
+
+  for (let attempt = 0; attempt < EMBED_ESIGN_SYNC_ATTEMPTS; attempt++) {
+    await syncDealInvestorEsignByTarget(id, target);
+
+    if (!sigId) return;
+
+    const raw = await readInvestorEsignStatusJson(id, target);
+    const bundle = parseEsignStatusBundle(raw);
+    const send = bundle
+      ? findEsignSendBySignatureRequestId(bundle, sigId)
+      : null;
+    if (send?.completedAt?.trim()) return;
+
+    try {
+      const summary = await getSignatureRequestDetail(sigId);
+      if (summary.isComplete) {
+        await applyProgressFromDropbox(id, target, sigId, {
+          forceComplete: true,
+        });
+        return;
+      }
+      if (dropboxSignersAllSigned(summary.signers)) {
+        await applyProgressFromDropbox(id, target, sigId, {
+          forceComplete: true,
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn("syncDealInvestorEsignAfterEmbeddedSign:", err);
+    }
+
+    if (attempt < EMBED_ESIGN_SYNC_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, EMBED_ESIGN_SYNC_DELAY_MS));
+    }
   }
 }
 
@@ -215,7 +418,7 @@ export async function handleDealInvestorEsignWebhook(params: {
 
   let target =
     params.rosterId?.trim() ?
-      await findInvestorEsignTargetByMetadata(dealId, params.rosterId.trim())
+      await resolveEsignTargetForInvestorRowId(dealId, params.rosterId.trim())
     : null;
   if (!target) {
     target = await findInvestorEsignTargetBySignatureRequestId(
@@ -320,9 +523,38 @@ export async function listMyEsignDocumentsForInvestor(
 
 export type InvestorEsignStatusWithDropboxResult = {
   status: DealInvestorEsignStatusApi | null;
+  /** One entry per profile template send with sent/viewed/signed/completed timestamps. */
+  sends: DealInvestorEsignSendStatusApi[];
   dropbox: DropboxSignatureRequestDetail | null;
   syncedAt: string;
 };
+
+async function commitmentProfileIdForEsignTarget(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+): Promise<string | null> {
+  if (target.table === "investment") {
+    const [row] = await db
+      .select({ profileId: dealInvestment.profileId })
+      .from(dealInvestment)
+      .where(
+        and(
+          eq(dealInvestment.id, target.id),
+          eq(dealInvestment.dealId, dealId),
+        ),
+      )
+      .limit(1);
+    return row?.profileId?.trim() || null;
+  }
+  const [row] = await db
+    .select({ profileId: dealLpInvestor.profileId })
+    .from(dealLpInvestor)
+    .where(
+      and(eq(dealLpInvestor.id, target.id), eq(dealLpInvestor.dealId, dealId)),
+    )
+    .limit(1);
+  return row?.profileId?.trim() || null;
+}
 
 /** Sync from Dropbox Sign, persist timestamps, return status for sponsor status popup. */
 export async function getInvestorEsignStatusWithDropboxSync(
@@ -330,25 +562,52 @@ export async function getInvestorEsignStatusWithDropboxSync(
   rosterId: string,
 ): Promise<InvestorEsignStatusWithDropboxResult> {
   const syncedAt = new Date().toISOString();
-  const target = await findInvestorEsignTargetByMetadata(
-    dealId.trim(),
-    rosterId.trim(),
-  );
+  const id = dealId.trim();
+  const target = await resolveEsignTargetForInvestorRowId(id, rosterId.trim());
   if (!target) {
-    return { status: null, dropbox: null, syncedAt };
+    return { status: null, sends: [], dropbox: null, syncedAt };
   }
 
-  let status = parseEsignStatusJson(
-    await readInvestorEsignStatusJson(dealId, target),
+  const preferredCategoryId = esignCategoryFromCommitmentProfileId(
+    await commitmentProfileIdForEsignTarget(id, target),
   );
-  let dropbox: DropboxSignatureRequestDetail | null = null;
 
+  const rawInitial = await readInvestorEsignStatusJson(id, target);
+  const bundleInitial = parseEsignStatusBundle(rawInitial);
+  if (bundleInitial && esignBundleNeedsDropboxSync(bundleInitial) && getDropboxSignConfig()) {
+    await syncDealInvestorEsignByTarget(id, target);
+  }
+
+  const rawAfterSync = await readInvestorEsignStatusJson(id, target);
+  const bundleAfterSync = parseEsignStatusBundle(rawAfterSync);
+  let sends = bundleAfterSync
+    ? esignBundleToSendStatusList(bundleAfterSync)
+    : [];
+
+  if (sends.length > 0) {
+    sends = await Promise.all(
+      sends.map(async (send) => {
+        const documents = await enrichEsignDocumentsWithCategories(
+          id,
+          send.documents,
+        );
+        return { ...send, documents };
+      }),
+    );
+  }
+
+  let status = parseEsignStatusJson(rawAfterSync, preferredCategoryId);
+  if (status?.documents?.length) {
+    const documents = await enrichEsignDocumentsWithCategories(
+      id,
+      status.documents,
+    );
+    status = { ...status, documents };
+  }
+
+  let dropbox: DropboxSignatureRequestDetail | null = null;
   const requestId = status?.signatureRequestId?.trim();
   if (requestId && getDropboxSignConfig()) {
-    await syncDealInvestorEsignByTarget(dealId, target);
-    status = parseEsignStatusJson(
-      await readInvestorEsignStatusJson(dealId, target),
-    );
     try {
       dropbox = await getSignatureRequestDetail(requestId);
     } catch (err) {
@@ -356,13 +615,5 @@ export async function getInvestorEsignStatusWithDropboxSync(
     }
   }
 
-  if (status?.documents?.length) {
-    const documents = await enrichEsignDocumentsWithCategories(
-      dealId,
-      status.documents,
-    );
-    status = { ...status, documents };
-  }
-
-  return { status, dropbox, syncedAt };
+  return { status, sends, dropbox, syncedAt };
 }

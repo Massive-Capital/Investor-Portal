@@ -3,6 +3,7 @@ import {
   appendEsignSendToBundle,
   esignBundleHasPending,
   esignBundleIsAllCompleted,
+  latestEsignSentMsFromRawJson,
   parseEsignStatusBundle,
   parseEsignStatusJson,
   serializeEsignStatusBundle,
@@ -17,11 +18,262 @@ import { db } from "../../database/db.js";
 import { users } from "../../schema/auth.schema/signin.js";
 import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
+import { resolveEmailForContactMemberId } from "./dealMemberInvitationEmail.service.js";
+import { isLpInvestorRole } from "./dealInvestment.service.js";
 
-type InvestorEsignRowTarget = {
+export type InvestorEsignRowTarget = {
   table: "investment" | "lp";
   id: string;
 };
+
+type EsignTargetCandidate = {
+  target: InvestorEsignRowTarget;
+  sentMs: number;
+};
+
+function normEmail(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+function normContactKey(s: string | null | undefined): string {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function latestSentMsFromBundle(
+  raw: string | null | undefined,
+): number {
+  const bundle = parseEsignStatusBundle(raw);
+  if (!bundle?.sends.some((s) => s.sentAt?.trim())) return -1;
+  return bundle.sends.reduce((max, s) => {
+    const t = new Date(s.sentAt).getTime();
+    return t > max ? t : max;
+  }, -1);
+}
+
+function pickBestEsignTargetCandidate(
+  candidates: EsignTargetCandidate[],
+): InvestorEsignRowTarget | null {
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => {
+    if (b.sentMs !== a.sentMs) return b.sentMs - a.sentMs;
+    if (a.target.table === "investment" && b.target.table === "lp") return -1;
+    if (a.target.table === "lp" && b.target.table === "investment") return 1;
+    return 0;
+  });
+  return candidates[0]!.target;
+}
+
+/**
+ * Contact keys for a signed-in investor on this deal (`users.id`, `contact.id`,
+ * `deal_lp_investor.contact_member_id`, etc.) — Invest Now stores `deal_investment.contact_id`
+ * as the roster contact id, not always `users.id`.
+ */
+export async function resolvePortalUserContactKeysOnDeal(
+  dealId: string,
+  opts: { email: string; userId: string },
+): Promise<Set<string>> {
+  const keys = new Set<string>();
+  const uid = opts.userId.trim().toLowerCase();
+  const email = normEmail(opts.email);
+  if (uid) keys.add(uid);
+  if (email.includes("@")) keys.add(email);
+
+  if (email.includes("@")) {
+    const [portalUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(trim(${users.email})) = ${email}`)
+      .limit(1);
+    const portalUid = portalUser?.id
+      ? String(portalUser.id).trim().toLowerCase()
+      : "";
+    if (portalUid) keys.add(portalUid);
+  }
+
+  const roster = await db
+    .select({
+      contactMemberId: dealLpInvestor.contactMemberId,
+      email: dealLpInvestor.email,
+    })
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, dealId));
+
+  for (const row of roster) {
+    const cid = normContactKey(row.contactMemberId);
+    if (!cid) continue;
+    const rowEmail = normEmail(String(row.email ?? ""));
+    if (email && rowEmail === email) keys.add(cid);
+    if (uid && cid === uid) keys.add(cid);
+    if (email.includes("@")) {
+      const resolved = await resolveEmailForContactMemberId(cid);
+      if (resolved && normEmail(resolved) === email) keys.add(cid);
+    }
+  }
+
+  const investments = await db
+    .select({ contactId: dealInvestment.contactId })
+    .from(dealInvestment)
+    .where(eq(dealInvestment.dealId, dealId));
+
+  for (const inv of investments) {
+    const cid = normContactKey(inv.contactId);
+    if (!cid) continue;
+    if (keys.has(cid)) continue;
+    if (email.includes("@")) {
+      const resolved = await resolveEmailForContactMemberId(cid);
+      if (resolved && normEmail(resolved) === email) keys.add(cid);
+    }
+  }
+
+  return keys;
+}
+
+/**
+ * Investors tab row id (LP roster or `deal_investment`) → DB row that stores eSign JSON.
+ * Prefer the latest send; Invest Now writes on `deal_investment` while the table may show LP id.
+ */
+export async function resolveEsignTargetForInvestorRowId(
+  dealId: string,
+  rowId: string,
+): Promise<InvestorEsignRowTarget | null> {
+  const id = rowId.trim();
+  if (!id) return null;
+
+  const candidates: EsignTargetCandidate[] = [];
+  const contactKeys = new Set<string>();
+
+  const pushCandidate = (
+    target: InvestorEsignRowTarget,
+    esignStatusJson: string | null | undefined,
+  ) => {
+    const sentMs = latestSentMsFromBundle(esignStatusJson);
+    if (sentMs < 0) return;
+    const dup = candidates.find(
+      (c) =>
+        c.target.table === target.table && c.target.id === target.id,
+    );
+    if (dup) {
+      if (sentMs > dup.sentMs) dup.sentMs = sentMs;
+      return;
+    }
+    candidates.push({ target, sentMs });
+  };
+
+  const [inv] = await db
+    .select({
+      id: dealInvestment.id,
+      contactId: dealInvestment.contactId,
+      esignStatusJson: dealInvestment.esignStatusJson,
+    })
+    .from(dealInvestment)
+    .where(and(eq(dealInvestment.id, id), eq(dealInvestment.dealId, dealId)))
+    .limit(1);
+  if (inv) {
+    const ck = normContactKey(inv.contactId);
+    if (ck) contactKeys.add(ck);
+    pushCandidate({ table: "investment", id: inv.id }, inv.esignStatusJson);
+  }
+
+  const [lp] = await db
+    .select({
+      id: dealLpInvestor.id,
+      contactMemberId: dealLpInvestor.contactMemberId,
+      esignStatusJson: dealLpInvestor.esignStatusJson,
+    })
+    .from(dealLpInvestor)
+    .where(and(eq(dealLpInvestor.id, id), eq(dealLpInvestor.dealId, dealId)))
+    .limit(1);
+  if (lp) {
+    const ck = normContactKey(lp.contactMemberId);
+    if (ck) contactKeys.add(ck);
+    pushCandidate({ table: "lp", id: lp.id }, lp.esignStatusJson);
+  }
+
+  if (contactKeys.size > 0) {
+    const investments = await db
+      .select({
+        id: dealInvestment.id,
+        contactId: dealInvestment.contactId,
+        esignStatusJson: dealInvestment.esignStatusJson,
+      })
+      .from(dealInvestment)
+      .where(eq(dealInvestment.dealId, dealId));
+
+    for (const row of investments) {
+      const ck = normContactKey(row.contactId);
+      if (!ck || !contactKeys.has(ck)) continue;
+      pushCandidate({ table: "investment", id: row.id }, row.esignStatusJson);
+    }
+
+    const roster = await db
+      .select({
+        id: dealLpInvestor.id,
+        contactMemberId: dealLpInvestor.contactMemberId,
+        esignStatusJson: dealLpInvestor.esignStatusJson,
+      })
+      .from(dealLpInvestor)
+      .where(eq(dealLpInvestor.dealId, dealId));
+
+    for (const row of roster) {
+      const ck = normContactKey(row.contactMemberId);
+      if (!ck || !contactKeys.has(ck)) continue;
+      pushCandidate({ table: "lp", id: row.id }, row.esignStatusJson);
+    }
+  }
+
+  const best = pickBestEsignTargetCandidate(candidates);
+  if (best) return best;
+
+  if (inv) return { table: "investment", id: inv.id };
+  if (lp) return { table: "lp", id: lp.id };
+  return null;
+}
+
+function committedNumericFromAmountFields(
+  primary: string | null | undefined,
+  extras: string[] | null | undefined,
+): number {
+  const raw = [primary, ...(extras ?? []).map(String)];
+  const nums = raw
+    .map((s) => parseFloat(String(s).replace(/[^0-9.-]/g, "")))
+    .filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return 0;
+  return nums.reduce((a, b) => a + b, 0);
+}
+
+/** Investor must commit capital before portal eSign or sponsor send-esign. */
+export async function investorEsignTargetHasPositiveCommitment(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+): Promise<boolean> {
+  if (target.table === "investment") {
+    const [row] = await db
+      .select({
+        commitmentAmount: dealInvestment.commitmentAmount,
+        extraContributionAmounts: dealInvestment.extraContributionAmounts,
+      })
+      .from(dealInvestment)
+      .where(
+        and(eq(dealInvestment.id, target.id), eq(dealInvestment.dealId, dealId)),
+      )
+      .limit(1);
+    if (!row) return false;
+    return committedNumericFromAmountFields(
+      row.commitmentAmount,
+      row.extraContributionAmounts as string[] | null,
+    ) > 0;
+  }
+
+  const [row] = await db
+    .select({ committed_amount: dealLpInvestor.committed_amount })
+    .from(dealLpInvestor)
+    .where(
+      and(eq(dealLpInvestor.id, target.id), eq(dealLpInvestor.dealId, dealId)),
+    )
+    .limit(1);
+  if (!row) return false;
+  return committedNumericFromAmountFields(row.committed_amount, null) > 0;
+}
 
 async function resolveInvestorEsignTarget(
   dealId: string,
@@ -29,21 +281,8 @@ async function resolveInvestorEsignTarget(
 ): Promise<InvestorEsignRowTarget | null> {
   const id = opts.rosterId?.trim();
   if (id) {
-    const [inv] = await db
-      .select({ id: dealInvestment.id })
-      .from(dealInvestment)
-      .where(
-        and(eq(dealInvestment.id, id), eq(dealInvestment.dealId, dealId)),
-      )
-      .limit(1);
-    if (inv) return { table: "investment", id: inv.id };
-
-    const [lp] = await db
-      .select({ id: dealLpInvestor.id })
-      .from(dealLpInvestor)
-      .where(and(eq(dealLpInvestor.id, id), eq(dealLpInvestor.dealId, dealId)))
-      .limit(1);
-    if (lp) return { table: "lp", id: lp.id };
+    const resolved = await resolveEsignTargetForInvestorRowId(dealId, id);
+    if (resolved) return resolved;
   }
 
   const email = opts.toEmail?.trim().toLowerCase();
@@ -83,6 +322,7 @@ async function resolveInvestorEsignTarget(
 }
 
 async function applyInvestorEsignPatch(
+  dealId: string,
   target: InvestorEsignRowTarget,
   patch: {
     docSignedDate: string;
@@ -94,12 +334,43 @@ async function applyInvestorEsignPatch(
       .update(dealInvestment)
       .set(patch)
       .where(eq(dealInvestment.id, target.id));
+    await mirrorEsignPatchToLpRosterForInvestment(dealId, target.id, patch);
     return;
   }
   await db
     .update(dealLpInvestor)
     .set(patch)
     .where(eq(dealLpInvestor.id, target.id));
+}
+
+/** Keep LP roster row in sync when Invest Now writes eSign on `deal_investment`. */
+async function mirrorEsignPatchToLpRosterForInvestment(
+  dealId: string,
+  investmentId: string,
+  patch: { docSignedDate: string; esignStatusJson: string },
+): Promise<void> {
+  const [inv] = await db
+    .select({ contactId: dealInvestment.contactId })
+    .from(dealInvestment)
+    .where(
+      and(
+        eq(dealInvestment.id, investmentId),
+        eq(dealInvestment.dealId, dealId),
+      ),
+    )
+    .limit(1);
+  const contactKey = String(inv?.contactId ?? "").trim().toLowerCase();
+  if (!contactKey) return;
+
+  await db
+    .update(dealLpInvestor)
+    .set(patch)
+    .where(
+      and(
+        eq(dealLpInvestor.dealId, dealId),
+        sql`lower(trim(${dealLpInvestor.contactMemberId})) = ${contactKey}`,
+      ),
+    );
 }
 
 export async function readInvestorEsignStatusJson(
@@ -157,7 +428,7 @@ export async function markDealInvestorEsignPending(
     ? DOC_SIGNED_ESIGN_COMPLETED
     : DOC_SIGNED_ESIGN_PENDING;
 
-  await applyInvestorEsignPatch(target, {
+  await applyInvestorEsignPatch(dealId, target, {
     docSignedDate,
     esignStatusJson: serializeEsignStatusBundle(bundle),
   });
@@ -187,9 +458,50 @@ export async function updateDealInvestorEsignSend(
       ? DOC_SIGNED_ESIGN_PENDING
       : DOC_SIGNED_ESIGN_COMPLETED;
 
-  await applyInvestorEsignPatch(target, {
+  await applyInvestorEsignPatch(dealId, target, {
     docSignedDate,
     esignStatusJson: serializeEsignStatusBundle(bundle),
+  });
+}
+
+/** Investor opened embedded signing (Invest Now / portal) — sets Viewed on the active send. */
+export async function markDealInvestorEsignViewed(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+  signatureRequestId: string,
+): Promise<void> {
+  const sigId = signatureRequestId.trim();
+  if (!sigId) return;
+
+  await updateDealInvestorEsignSend(dealId, target, sigId, (current) => {
+    if (current.viewedAt?.trim() || current.completedAt?.trim()) return current;
+    return {
+      ...current,
+      viewedAt: new Date().toISOString(),
+    };
+  });
+}
+
+/**
+ * After embedded sign (before Dropbox webhook), record Signed so the Investors tab
+ * updates immediately; Dropbox sync may still promote to Completed later.
+ */
+export async function markDealInvestorEsignSignedOptimistic(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+  signatureRequestId: string,
+): Promise<void> {
+  const sigId = signatureRequestId.trim();
+  if (!sigId) return;
+
+  const now = new Date().toISOString();
+  await updateDealInvestorEsignSend(dealId, target, sigId, (current) => {
+    if (current.completedAt?.trim()) return current;
+    return {
+      ...current,
+      viewedAt: current.viewedAt ?? now,
+      signedAt: current.signedAt ?? now,
+    };
   });
 }
 
@@ -255,6 +567,8 @@ export async function findInvestorEsignTargetByMetadata(
   dealId: string,
   rosterId: string,
 ): Promise<InvestorEsignRowTarget | null> {
+  const fromRow = await resolveEsignTargetForInvestorRowId(dealId, rosterId);
+  if (fromRow) return fromRow;
   return resolveInvestorEsignTarget(dealId, { rosterId });
 }
 
@@ -267,6 +581,72 @@ export async function findInvestorEsignTargetForEmail(
 }
 
 /**
+ * Invest Now / portal signing: prefer `deal_investment` with positive commitment
+ * (same row as the commitment API), not an LP roster match by email alone.
+ */
+export async function findInvestorEsignTargetForInvestNowCommitment(
+  dealId: string,
+  opts: { email: string; userId: string },
+): Promise<InvestorEsignRowTarget | null> {
+  const contactKeys = await resolvePortalUserContactKeysOnDeal(dealId, opts);
+
+  const investments = await db
+    .select({
+      id: dealInvestment.id,
+      contactId: dealInvestment.contactId,
+      esignStatusJson: dealInvestment.esignStatusJson,
+      createdAt: dealInvestment.createdAt,
+      investor_role: dealInvestment.investor_role,
+    })
+    .from(dealInvestment)
+    .where(eq(dealInvestment.dealId, dealId));
+
+  let bestTarget: InvestorEsignRowTarget | null = null;
+  let bestEsignMs = -1;
+  let bestLpRole = false;
+  let bestCreatedMs = -1;
+
+  for (const inv of investments) {
+    const cid = normContactKey(inv.contactId);
+    if (!cid || !contactKeys.has(cid)) continue;
+    const target: InvestorEsignRowTarget = { table: "investment", id: inv.id };
+    if (!(await investorEsignTargetHasPositiveCommitment(dealId, target))) {
+      continue;
+    }
+    const esignMs = latestEsignSentMsFromRawJson(inv.esignStatusJson);
+    const createdMs = new Date(inv.createdAt).getTime();
+    const lpRole = isLpInvestorRole(inv.investor_role);
+    const better =
+      !bestTarget ||
+      esignMs > bestEsignMs ||
+      (esignMs === bestEsignMs &&
+        (lpRole && !bestLpRole
+          ? true
+          : lpRole === bestLpRole && createdMs > bestCreatedMs));
+    if (better) {
+      bestTarget = target;
+      bestEsignMs = esignMs;
+      bestLpRole = lpRole;
+      bestCreatedMs = Number.isFinite(createdMs) ? createdMs : -1;
+    }
+  }
+  if (bestTarget) return bestTarget;
+
+  const legacy = await findInvestorEsignTargetForEmail(
+    dealId,
+    normEmail(opts.email),
+  );
+  if (
+    legacy &&
+    (await investorEsignTargetHasPositiveCommitment(dealId, legacy))
+  ) {
+    return legacy;
+  }
+
+  return null;
+}
+
+/**
  * Active eSign row for the signed-in portal user — only rows with `sentAt`,
  * preferring the most recently sent request (avoids wrong LP match without eSign).
  */
@@ -275,11 +655,8 @@ export async function findInvestorEsignTargetForPortalUser(
   opts: { email: string; userId: string },
 ): Promise<InvestorEsignRowTarget | null> {
   const email = normEmail(opts.email);
-  const uid = opts.userId.trim().toLowerCase();
-  const candidates: Array<{
-    target: InvestorEsignRowTarget;
-    sentAt: string;
-  }> = [];
+  const contactKeys = await resolvePortalUserContactKeysOnDeal(dealId, opts);
+  const candidates: EsignTargetCandidate[] = [];
 
   const investments = await db
     .select({
@@ -290,47 +667,15 @@ export async function findInvestorEsignTargetForPortalUser(
     .from(dealInvestment)
     .where(eq(dealInvestment.dealId, dealId));
 
-  const pushInvestment = (inv: { id: string; esignStatusJson: string | null }) => {
-    const bundle = parseEsignStatusBundle(inv.esignStatusJson);
-    if (!bundle?.sends.some((s) => s.sentAt?.trim())) return;
-    const latestSentAt = bundle.sends.reduce((max, s) => {
-      const t = new Date(s.sentAt).getTime();
-      return t > max ? t : max;
-    }, 0);
-    if (!latestSentAt) return;
-    if (candidates.some((c) => c.target.table === "investment" && c.target.id === inv.id)) {
-      return;
-    }
+  for (const inv of investments) {
+    const cid = normContactKey(inv.contactId);
+    if (!cid || !contactKeys.has(cid)) continue;
+    const sentMs = latestSentMsFromBundle(inv.esignStatusJson);
+    if (sentMs < 0) continue;
     candidates.push({
       target: { table: "investment", id: inv.id },
-      sentAt: new Date(latestSentAt).toISOString(),
+      sentMs,
     });
-  };
-
-  if (uid) {
-    for (const inv of investments) {
-      if (String(inv.contactId ?? "").trim().toLowerCase() !== uid) continue;
-      pushInvestment(inv);
-    }
-  }
-
-  if (email) {
-    const [portalUser] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(sql`lower(trim(${users.email})) = ${email}`)
-      .limit(1);
-    const portalUid = portalUser?.id
-      ? String(portalUser.id).trim().toLowerCase()
-      : "";
-    if (portalUid) {
-      for (const inv of investments) {
-        if (String(inv.contactId ?? "").trim().toLowerCase() !== portalUid) {
-          continue;
-        }
-        pushInvestment(inv);
-      }
-    }
   }
 
   const lps = await db
@@ -338,35 +683,25 @@ export async function findInvestorEsignTargetForPortalUser(
       id: dealLpInvestor.id,
       esignStatusJson: dealLpInvestor.esignStatusJson,
       email: dealLpInvestor.email,
+      contactMemberId: dealLpInvestor.contactMemberId,
     })
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId));
 
   for (const lp of lps) {
-    const bundle = parseEsignStatusBundle(lp.esignStatusJson);
-    if (!bundle?.sends.some((s) => s.sentAt?.trim())) continue;
-    const st = bundle.sends.reduce((latest, s) =>
-      !latest || new Date(s.sentAt).getTime() > new Date(latest.sentAt).getTime()
-        ? s
-        : latest,
-    );
-    if (!email || normEmail(String(lp.email ?? "")) !== email) continue;
+    const sentMs = latestSentMsFromBundle(lp.esignStatusJson);
+    if (sentMs < 0) continue;
+    const cid = normContactKey(lp.contactMemberId);
+    const rowEmail = normEmail(String(lp.email ?? ""));
+    const matches =
+      (email && rowEmail === email) ||
+      (cid && contactKeys.has(cid));
+    if (!matches) continue;
     candidates.push({
       target: { table: "lp", id: lp.id },
-      sentAt: st.sentAt,
+      sentMs,
     });
   }
 
-  if (candidates.length === 0) return null;
-
-  candidates.sort(
-    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
-  );
-  return candidates[0]!.target;
+  return pickBestEsignTargetCandidate(candidates);
 }
-
-function normEmail(s: string): string {
-  return s.trim().toLowerCase();
-}
-
-export type { InvestorEsignRowTarget };

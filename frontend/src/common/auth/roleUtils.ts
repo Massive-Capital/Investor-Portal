@@ -72,6 +72,19 @@ export function canAccessCompanyPage(): boolean {
   );
 }
 
+/** Syndication workspace settings (`/settings` → org CompanyPage tabs). */
+export function canAccessSyndicationWorkspaceSettings(): boolean {
+  return canAccessCompanyPage();
+}
+
+/**
+ * Sidebar “Settings” target in Syndicating mode.
+ * Deal participants (e.g. Lead / Admin / Co-sponsor on a deal) use My account instead.
+ */
+export function resolveSyndicationSettingsNavPath(): "/settings" | "/account" {
+  return canAccessSyndicationWorkspaceSettings() ? "/settings" : "/account";
+}
+
 export function isCompanyAdmin(): boolean {
   return getStoredUserRole() === COMPANY_ADMIN;
 }

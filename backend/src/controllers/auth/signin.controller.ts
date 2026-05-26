@@ -3,18 +3,18 @@ import { signInWithPassword } from "../../services/auth/auth.service.js";
 import { startUserPortalSession } from "../../services/platform/userActivity.service.js";
 
 type SigninBody = {
-  emailOrUsername?: unknown;
+  email?: unknown;
+  // emailOrUsername?: unknown;
   password?: unknown;
 };
 
 export async function postSignin(req: Request, res: Response): Promise<void> {
   const body = req.body as SigninBody;
-  const emailOrUsername =
-    typeof body.emailOrUsername === "string" ? body.emailOrUsername : "";
+  const email = typeof body.email === "string" ? body.email : "";
   const password = typeof body.password === "string" ? body.password : "";
 
-  if (!emailOrUsername.trim()) {
-    res.status(401).json({ message: "Email or username is required" });
+  if (!email.trim()) {
+    res.status(401).json({ message: "Email is required" });
     return;
   }
   if (!password) {
@@ -22,7 +22,7 @@ export async function postSignin(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const result = await signInWithPassword(emailOrUsername, password);
+  const result = await signInWithPassword(email, password);
 
   if (!result.ok) {
     const status =

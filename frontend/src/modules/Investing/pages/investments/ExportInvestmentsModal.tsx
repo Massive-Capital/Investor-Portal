@@ -17,14 +17,19 @@ function downloadCsv(content: string, filename: string): void {
 
 function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
   const headers = [
-    "Investment name",
-    "Offering name",
+    "Deal name",
+    "Deal stage",
+    "Your role",
+    "Deal type",
+    "SEC type",
+    "Property name",
+    "Owning entity",
+    "Start date",
+    "Close date",
     "Invested as",
     "Invested amount",
     "Distributed amount",
     "Current valuation",
-    "Deal close date",
-    "Status",
     "Action required",
   ]
   const esc = (v: string) => {
@@ -36,13 +41,18 @@ function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
     lines.push(
       [
         esc(r.investmentName),
-        esc(r.offeringName),
+        esc(dealStageLabel(r.status)),
+        esc(r.viewerRolesLabel ?? ""),
+        esc(r.dealType ?? ""),
+        esc(r.secType ?? ""),
+        esc(r.propertyName ?? ""),
+        esc(r.owningEntityName ?? ""),
+        esc(r.startDateDisplay ?? ""),
+        esc(r.dealCloseDate),
         esc(r.investmentProfile),
         esc(String(r.investedAmount)),
         esc(String(r.distributedAmount)),
         esc(r.currentValuation),
-        esc(r.dealCloseDate),
-        esc(dealStageLabel(r.status)),
         esc(r.actionRequired),
       ].join(","),
     )

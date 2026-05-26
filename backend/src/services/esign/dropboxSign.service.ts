@@ -26,11 +26,25 @@ export type DropboxSignCustomField = {
   required?: boolean;
 };
 
+/** Pre-filled merge field value on signature_request/create_embedded. */
+export type DropboxSignPrefillCustomField = {
+  name: string;
+  value: string;
+};
+
 /** Field placement for POST /template/create (`form_fields_per_document`). */
 export type DropboxSignFormFieldPerDocument = {
   documentIndex: number;
   apiId: string;
-  type: "signature" | "text" | "date_signed" | "initials";
+  type:
+    | "signature"
+    | "text"
+    | "text-merge"
+    | "date_signed"
+    | "initials"
+    | "checkbox"
+    | "dropdown"
+    | "radio";
   signer: string;
   x: number;
   y: number;
@@ -138,6 +152,19 @@ function appendFormFieldPerDocument(
   form.append(`${p}[required]`, field.required !== false ? "1" : "0");
   if (field.name) form.append(`${p}[name]`, field.name);
   if (field.placeholder) form.append(`${p}[placeholder]`, field.placeholder);
+}
+
+function appendPrefillCustomFields(
+  form: FormData,
+  customFields: DropboxSignPrefillCustomField[],
+): void {
+  customFields.forEach((field, index) => {
+    const name = field.name.trim();
+    const value = field.value.trim();
+    if (!name || !value) return;
+    form.append(`custom_fields[${index}][name]`, name);
+    form.append(`custom_fields[${index}][value]`, value);
+  });
 }
 
 /** Starter fields so template/create succeeds; sponsor adjusts in embedded editor. */
@@ -442,6 +469,7 @@ export type CreateEmbeddedSignatureFromTemplatesParams = {
   subject?: string;
   message?: string;
   metadata?: Record<string, string>;
+  customFields?: DropboxSignPrefillCustomField[];
 };
 
 export type EmbeddedSignatureFromTemplatesResult = {
@@ -486,6 +514,8 @@ export async function createEmbeddedSignatureRequestWithTemplates(
     if (k && v) form.append(`metadata[${k}]`, v);
   }
 
+  appendPrefillCustomFields(form, params.customFields ?? []);
+
   const res = await fetch(
     `${DROPBOX_SIGN_API_BASE}/signature_request/create_embedded_with_template`,
     {
@@ -519,6 +549,98 @@ export async function createEmbeddedSignatureRequestWithTemplates(
   // @see https://developers.hellosign.com/api/embedded/sign-url — GET, not POST
   const { signUrl, expiresAt } = await getEmbeddedSignUrl(signatureId);
 
+  return { signatureRequestId, signatureId, signUrl, expiresAt };
+}
+
+export type CreateEmbeddedSignatureWithFilesParams = {
+  fileBuffer: Buffer;
+  fileName: string;
+  signerEmail: string;
+  signerName: string;
+  title: string;
+  subject?: string;
+  message?: string;
+  metadata?: Record<string, string>;
+  formFieldsPerDocument?: DropboxSignFormFieldPerDocument[];
+  /** Values for merge fields (name must match field `name` on text-merge fields). */
+  customFields?: DropboxSignPrefillCustomField[];
+  /** When true and no explicit fields, use fields already placed on the PDF. */
+  usePreexistingFields?: boolean;
+};
+
+/**
+ * Embedded signing from a merged PDF (investor questionnaire + template body).
+ *
+ * @see https://developers.hellosign.com/api/reference/create-embedded-signature-request
+ */
+export async function createEmbeddedSignatureRequestWithFile(
+  params: CreateEmbeddedSignatureWithFilesParams,
+): Promise<EmbeddedSignatureFromTemplatesResult> {
+  const { apiKey, clientId, testMode } = requireDropboxSignConfig();
+  const form = new FormData();
+  form.append("client_id", clientId);
+  form.append("test_mode", testMode ? "1" : "0");
+  form.append("title", params.title);
+  if (params.subject) form.append("subject", params.subject);
+  if (params.message) form.append("message", params.message);
+
+  const blob = new Blob([new Uint8Array(params.fileBuffer)], {
+    type: "application/pdf",
+  });
+  const name = params.fileName.trim() || "investment-documents.pdf";
+  form.append("file[0]", blob, name);
+
+  form.append("signers[0][email_address]", params.signerEmail.trim());
+  form.append("signers[0][name]", params.signerName.trim() || params.signerEmail.trim());
+
+  const fields = params.formFieldsPerDocument ?? [];
+  if (fields.length > 0) {
+    fields.forEach((field, index) => {
+      appendFormFieldPerDocument(form, index, field);
+    });
+  } else if (params.usePreexistingFields) {
+    form.append("use_preexisting_fields", "1");
+  }
+
+  appendPrefillCustomFields(form, params.customFields ?? []);
+
+  for (const [key, value] of Object.entries(params.metadata ?? {})) {
+    const k = key.trim();
+    const v = value.trim();
+    if (k && v) form.append(`metadata[${k}]`, v);
+  }
+
+  const res = await fetch(
+    `${DROPBOX_SIGN_API_BASE}/signature_request/create_embedded`,
+    {
+      method: "POST",
+      headers: { Authorization: authorizationHeader(apiKey) },
+      body: form,
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(await parseDropboxSignError(res));
+  }
+
+  const data = (await res.json()) as {
+    signature_request?: {
+      signature_request_id?: string;
+      signatures?: Array<{ signature_id?: string }>;
+    };
+  };
+
+  const signatureRequestId =
+    data.signature_request?.signature_request_id?.trim() ?? "";
+  const signatureId =
+    data.signature_request?.signatures?.[0]?.signature_id?.trim() ?? "";
+  if (!signatureRequestId || !signatureId) {
+    throw new Error(
+      "Dropbox Sign returned an incomplete embedded signature request",
+    );
+  }
+
+  const { signUrl, expiresAt } = await getEmbeddedSignUrl(signatureId);
   return { signatureRequestId, signatureId, signUrl, expiresAt };
 }
 
@@ -760,4 +882,187 @@ export async function downloadUrlToBuffer(url: string): Promise<Buffer> {
   }
   const ab = await res.arrayBuffer();
   return Buffer.from(ab);
+}
+
+const EMBEDDED_FILE_INVESTOR_SIGNER = "0";
+
+function mapTemplateFieldType(
+  raw: string,
+): DropboxSignFormFieldPerDocument["type"] | null {
+  const t = raw.trim().toLowerCase();
+  if (t === "signature") return "signature";
+  if (t === "text-merge" || t === "text_merge") return "text-merge";
+  if (t === "text" || t === "name") return "text";
+  if (t === "date_signed" || t === "date-signed" || t === "date") {
+    return "date_signed";
+  }
+  if (t === "initials" || t === "initial") return "initials";
+  if (t === "checkbox" || t === "checkbox-merge" || t === "checkbox_merge") {
+    return "checkbox";
+  }
+  if (t === "dropdown") return "dropdown";
+  if (t === "radio") return "radio";
+  return null;
+}
+
+function templateFieldSignerRaw(o: Record<string, unknown>): unknown {
+  return (
+    o.signer ??
+    o.signer_role ??
+    o.signerRole ??
+    o.role ??
+    o.signer_index ??
+    o.signerIndex
+  );
+}
+
+/** Map Dropbox template signer to embedded file API signer `0` (investor-only). */
+function mapTemplateSignerToEmbeddedFileSigner(raw: unknown): string | null {
+  if (raw == null) return EMBEDDED_FILE_INVESTOR_SIGNER;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    return mapTemplateSignerToEmbeddedFileSigner(
+      o.name ?? o.role ?? o.signer_role ?? o.signerRole,
+    );
+  }
+  if (typeof raw === "number") {
+    if (raw === 0) return EMBEDDED_FILE_INVESTOR_SIGNER;
+    return null;
+  }
+  const s = String(raw).trim().toLowerCase();
+  if (!s) return EMBEDDED_FILE_INVESTOR_SIGNER;
+  if (s === "0" || s === "investor" || s === "client") {
+    return EMBEDDED_FILE_INVESTOR_SIGNER;
+  }
+  if (s === "1" || s === "sponsor" || s === "sender" || s === "me") return null;
+  return EMBEDDED_FILE_INVESTOR_SIGNER;
+}
+
+function templateFieldApiId(o: Record<string, unknown>, page: number): string | null {
+  const direct = String(
+    o.api_id ?? o.apiId ?? o.original_api_id ?? o.originalApiId ?? "",
+  ).trim();
+  if (direct) return direct;
+  const name = String(o.name ?? "").trim();
+  if (!name) return null;
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return slug ? `${slug}_p${page}` : null;
+}
+
+function parseTemplateFormFieldRecord(
+  raw: unknown,
+  documentIndex: number,
+  pageOffset: number,
+): DropboxSignFormFieldPerDocument | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const page = Math.max(1, Math.floor(Number(o.page) || 1) + pageOffset);
+  const apiId = templateFieldApiId(o, page);
+  if (!apiId) return null;
+  const type = mapTemplateFieldType(String(o.type ?? ""));
+  if (!type) return null;
+  const signer = mapTemplateSignerToEmbeddedFileSigner(templateFieldSignerRaw(o));
+  if (!signer) return null;
+  const name = String(o.name ?? "").trim() || undefined;
+  return {
+    documentIndex,
+    apiId,
+    type,
+    signer,
+    x: Math.floor(Number(o.x) || 0),
+    y: Math.floor(Number(o.y) || 0),
+    width: Math.max(1, Math.floor(Number(o.width) || 100)),
+    height: Math.max(1, Math.floor(Number(o.height) || 20)),
+    page,
+    required: o.required !== false && o.required !== "0" && o.required !== 0,
+    name,
+    placeholder: String(o.placeholder ?? name ?? "").trim() || undefined,
+  };
+}
+
+/** Embedded file upload is a single merged PDF — all fields use document index 0. */
+export function normalizeEmbeddedFileFormFields(
+  fields: DropboxSignFormFieldPerDocument[],
+): DropboxSignFormFieldPerDocument[] {
+  return fields.map((field) => ({ ...field, documentIndex: 0 }));
+}
+
+/**
+ * Loads sponsor-placed fields from a Dropbox Sign template and shifts pages when
+ * questionnaire answer pages are prepended to the signing PDF.
+ */
+export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
+  templateId: string,
+  opts?: { pageOffset?: number },
+): Promise<DropboxSignFormFieldPerDocument[]> {
+  const id = templateId.trim();
+  if (!id) return [];
+
+  const { apiKey } = requireDropboxSignConfig();
+  const res = await fetch(`${DROPBOX_SIGN_API_BASE}/template/${encodeURIComponent(id)}`, {
+    headers: { Authorization: authorizationHeader(apiKey) },
+  });
+  if (!res.ok) {
+    throw new Error(await parseDropboxSignError(res));
+  }
+
+  const data = (await res.json()) as {
+    template?: {
+      documents?: Array<{
+        index?: number;
+        document_index?: number;
+        form_fields?: unknown[];
+        custom_fields?: unknown[];
+      }>;
+      custom_fields?: unknown[];
+    };
+  };
+
+  const pageOffset = Math.max(0, Math.floor(opts?.pageOffset ?? 0));
+  const out: DropboxSignFormFieldPerDocument[] = [];
+  const seenApiIds = new Set<string>();
+
+  const rootFields = data.template as { form_fields?: unknown[] } | undefined;
+  if (Array.isArray(rootFields?.form_fields)) {
+    for (const raw of rootFields.form_fields) {
+      const parsed = parseTemplateFormFieldRecord(raw, 0, pageOffset);
+      if (!parsed || seenApiIds.has(parsed.apiId)) continue;
+      seenApiIds.add(parsed.apiId);
+      out.push(parsed);
+    }
+  }
+
+  const documents = data.template?.documents ?? [];
+  for (const doc of documents) {
+    const docIndex = Math.max(
+      0,
+      Math.floor(Number(doc.index ?? doc.document_index) || 0),
+    );
+    const fieldLists = [
+      ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
+      ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
+    ];
+    for (const raw of fieldLists) {
+      const parsed = parseTemplateFormFieldRecord(raw, docIndex, pageOffset);
+      if (!parsed || seenApiIds.has(parsed.apiId)) continue;
+      seenApiIds.add(parsed.apiId);
+      out.push(parsed);
+    }
+  }
+
+  const templateCustom = data.template?.custom_fields ?? [];
+  if (Array.isArray(templateCustom)) {
+    for (const raw of templateCustom) {
+      const parsed = parseTemplateFormFieldRecord(raw, 0, pageOffset);
+      if (!parsed || seenApiIds.has(parsed.apiId)) continue;
+      seenApiIds.add(parsed.apiId);
+      out.push(parsed);
+    }
+  }
+
+  return normalizeEmbeddedFileFormFields(out);
 }

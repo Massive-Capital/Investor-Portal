@@ -2,11 +2,19 @@ import {
   dealAssetRelativePathToUploadsUrl,
   getUploadsPublicOrigin,
 } from "../../../../common/utils/apiBaseUrl"
-import { formatDateDdMmmYyyy } from "../../../../common/utils/formatDateDisplay"
+import {
+  formatDateDdMmmYyyy,
+  formatInvestorSignedColumn,
+} from "../../../../common/utils/formatDateDisplay"
+import { parseMoneyDigits } from "./offeringMoneyFormat"
 import type {
+  DealInvestorEsignDocumentRef,
+  DealInvestorEsignSendStatus,
   DealInvestorEsignStatus,
   DealInvestorRow,
 } from "../types/deal-investors.types"
+import type { EsignProfileStatusTab } from "./esignTemplateCategories"
+import { resolveInvestorEsignCategoryId } from "./esignTemplateCategories"
 
 export type EsignWorkflowStepKey = "sent" | "viewed" | "signed" | "completed"
 
@@ -18,39 +26,179 @@ export interface EsignWorkflowStep {
   atDisplay: string
 }
 
+function primaryCategoryForSendRecord(
+  send: Record<string, unknown>,
+): string {
+  const fromSend = String(send.categoryId ?? send.category_id ?? "").trim()
+  if (fromSend) return fromSend
+  const docs = Array.isArray(send.documents) ? send.documents : []
+  for (const d of docs) {
+    if (!d || typeof d !== "object" || Array.isArray(d)) continue
+    const doc = d as Record<string, unknown>
+    const cid = String(doc.categoryId ?? doc.category_id ?? "").trim()
+    if (cid) return cid
+  }
+  return ""
+}
+
+function pickWorkflowSendRecord(
+  sends: Record<string, unknown>[],
+  preferredCategoryId?: string | null,
+): Record<string, unknown> | null {
+  const sorted = [...sends]
+    .filter((s) => strOrNull(s.sentAt ?? s.sent_at))
+    .sort(
+      (a, b) =>
+        new Date(String(a.sentAt ?? a.sent_at ?? 0)).getTime() -
+        new Date(String(b.sentAt ?? b.sent_at ?? 0)).getTime(),
+    )
+  if (sorted.length === 0) return null
+
+  const cat = preferredCategoryId?.trim()
+  if (cat) {
+    const forCat = sorted.filter((s) => primaryCategoryForSendRecord(s) === cat)
+    if (forCat.length === 0) return null
+    const latestCat = forCat[forCat.length - 1]!
+    if (strOrNull(latestCat.completedAt ?? latestCat.completed_at)) {
+      return latestCat
+    }
+    const pendingInCat = forCat.filter(
+      (s) => !strOrNull(s.completedAt ?? s.completed_at),
+    )
+    return (
+      pendingInCat.find((s) =>
+        String(s.signatureRequestId ?? s.signature_request_id ?? "").trim(),
+      ) ??
+      pendingInCat[pendingInCat.length - 1] ??
+      latestCat
+    )
+  }
+
+  const completed = sorted.filter((s) =>
+    strOrNull(s.completedAt ?? s.completed_at),
+  )
+  if (completed.length > 0) return completed[completed.length - 1]!
+
+  const latest = sorted[sorted.length - 1]!
+  const pending = sorted
+    .filter((s) => !strOrNull(s.completedAt ?? s.completed_at))
+    .sort(
+      (a, b) =>
+        new Date(String(b.sentAt ?? b.sent_at ?? 0)).getTime() -
+        new Date(String(a.sentAt ?? a.sent_at ?? 0)).getTime(),
+    )
+  const activePending =
+    pending.find((s) =>
+      String(s.signatureRequestId ?? s.signature_request_id ?? "").trim(),
+    ) ?? pending[0]
+  return activePending ?? latest
+}
+
+/** Normalize API `esignStatus`, JSON string, or stored bundle v2 into a flat status object. */
+function coerceEsignStatusInput(
+  raw: unknown,
+  preferredCategoryId?: string | null,
+): Record<string, unknown> | null {
+  if (raw == null) return null
+
+  if (typeof raw === "string") {
+    const s = raw.trim()
+    if (!s) return null
+    try {
+      return coerceEsignStatusInput(JSON.parse(s) as unknown, preferredCategoryId)
+    } catch {
+      return null
+    }
+  }
+
+  if (typeof raw !== "object" || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+
+  if (o.version === 2 && Array.isArray(o.sends)) {
+    const sends = o.sends.filter(
+      (s): s is Record<string, unknown> =>
+        Boolean(s) && typeof s === "object" && !Array.isArray(s),
+    )
+    if (sends.length === 0) return null
+
+    const workflow = pickWorkflowSendRecord(sends, preferredCategoryId)
+    if (!workflow) return null
+    const workflowCompleted = strOrNull(
+      workflow.completedAt ?? workflow.completed_at,
+    )
+    const completedAt = workflowCompleted
+
+    const sorted = [...sends].sort(
+      (a, b) =>
+        new Date(String(a.sentAt ?? a.sent_at ?? 0)).getTime() -
+        new Date(String(b.sentAt ?? b.sent_at ?? 0)).getTime(),
+    )
+    const docs: unknown[] = []
+    for (const send of sorted) {
+      if (Array.isArray(send.documents)) docs.push(...send.documents)
+    }
+    return {
+      sentAt: workflow.sentAt ?? workflow.sent_at ?? sorted[0]?.sentAt ?? sorted[0]?.sent_at,
+      viewedAt: workflow.viewedAt ?? workflow.viewed_at,
+      signedAt: workflow.signedAt ?? workflow.signed_at,
+      completedAt,
+      signatureRequestId:
+        workflow.signatureRequestId ?? workflow.signature_request_id,
+      documents: docs,
+    }
+  }
+
+  return o
+}
+
 export function parseEsignStatusFromApi(
   raw: unknown,
+  preferredCategoryId?: string | null,
 ): DealInvestorEsignStatus | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
-  const o = raw as Record<string, unknown>
+  const o = coerceEsignStatusInput(raw, preferredCategoryId)
+  if (!o) return undefined
+
   const sentAt = strOrNull(o.sentAt ?? o.sent_at)
   if (!sentAt) return undefined
+
   const documents = Array.isArray(o.documents)
     ? o.documents
         .map((d) => {
           if (!d || typeof d !== "object" || Array.isArray(d)) return null
           const doc = d as Record<string, unknown>
           const fileId = String(doc.fileId ?? doc.file_id ?? "").trim()
-          const name = String(doc.name ?? "").trim()
+          if (!fileId) return null
+          const name =
+            String(doc.name ?? doc.file_name ?? "").trim() || fileId || "Document"
           const signedRelativePath = String(
             doc.signedRelativePath ?? doc.signed_relative_path ?? "",
           ).trim()
           const categoryId = String(
             doc.categoryId ?? doc.category_id ?? "",
           ).trim()
-          if (!fileId || !name) return null
+          const templateRelativePath = String(
+            doc.templateRelativePath ?? doc.template_relative_path ?? "",
+          ).trim()
           return {
             fileId,
             name,
             ...(categoryId ? { categoryId } : {}),
+            ...(templateRelativePath ? { templateRelativePath } : {}),
             ...(signedRelativePath ? { signedRelativePath } : {}),
           }
         })
         .filter(
-          (x): x is { fileId: string; name: string; signedRelativePath?: string } =>
-            x != null,
+          (
+            x,
+          ): x is {
+            fileId: string
+            name: string
+            templateRelativePath?: string
+            signedRelativePath?: string
+          } => x != null,
         )
     : []
+
   return {
     sentAt,
     viewedAt: strOrNull(o.viewedAt ?? o.viewed_at),
@@ -60,15 +208,172 @@ export function parseEsignStatusFromApi(
   }
 }
 
+function parseEsignSendStatusRecord(
+  raw: unknown,
+): DealInvestorEsignSendStatus | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const o = raw as Record<string, unknown>
+  const sentAt = strOrNull(o.sentAt ?? o.sent_at)
+  if (!sentAt) return null
+  const categoryId = String(o.categoryId ?? o.category_id ?? "").trim()
+  if (!categoryId) return null
+  const documents = Array.isArray(o.documents)
+    ? o.documents
+        .map((d) => {
+          if (!d || typeof d !== "object" || Array.isArray(d)) return null
+          const doc = d as Record<string, unknown>
+          const fileId = String(doc.fileId ?? doc.file_id ?? "").trim()
+          if (!fileId) return null
+          const name =
+            String(doc.name ?? doc.file_name ?? "").trim() || fileId || "Document"
+          const signedRelativePath = String(
+            doc.signedRelativePath ?? doc.signed_relative_path ?? "",
+          ).trim()
+          const docCategoryId = String(
+            doc.categoryId ?? doc.category_id ?? categoryId,
+          ).trim()
+          const templateRelativePath = String(
+            doc.templateRelativePath ?? doc.template_relative_path ?? "",
+          ).trim()
+          return {
+            fileId,
+            name,
+            ...(docCategoryId ? { categoryId: docCategoryId } : {}),
+            ...(templateRelativePath ? { templateRelativePath } : {}),
+            ...(signedRelativePath ? { signedRelativePath } : {}),
+          }
+        })
+        .filter((x): x is DealInvestorEsignDocumentRef => x != null)
+    : []
+  const completedAt = strOrNull(o.completedAt ?? o.completed_at)
+  const documentsForSend = completedAt
+    ? documents
+    : documents.map((d) => {
+        const { signedRelativePath: _signed, ...rest } = d
+        return rest
+      })
+
+  return {
+    categoryId,
+    sentAt,
+    viewedAt: strOrNull(o.viewedAt ?? o.viewed_at),
+    signedAt: strOrNull(o.signedAt ?? o.signed_at),
+    completedAt,
+    signatureRequestId: strOrNull(
+      o.signatureRequestId ?? o.signature_request_id,
+    ),
+    documents: documentsForSend,
+  }
+}
+
+/** All profile sends from API `sends` or stored bundle v2 JSON. */
+export function parseEsignSendsFromApi(
+  rawSends: unknown,
+  bundleJson?: string | null,
+): DealInvestorEsignSendStatus[] {
+  const fromSends = Array.isArray(rawSends)
+    ? rawSends
+        .map(parseEsignSendStatusRecord)
+        .filter((s): s is DealInvestorEsignSendStatus => s != null)
+    : []
+  if (fromSends.length > 0) return fromSends
+
+  const raw = String(bundleJson ?? "").trim()
+  if (!raw) return []
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>
+    if (o.version === 2 && Array.isArray(o.sends)) {
+      return o.sends
+        .map(parseEsignSendStatusRecord)
+        .filter((s): s is DealInvestorEsignSendStatus => s != null)
+    }
+  } catch {
+    return []
+  }
+  return []
+}
+
+export function findEsignSendForCategory(
+  sends: DealInvestorEsignSendStatus[],
+  categoryId: string,
+): DealInvestorEsignSendStatus | undefined {
+  const cat = categoryId.trim()
+  if (!cat) return undefined
+  return sends.find((s) => s.categoryId.trim() === cat)
+}
+
+export function esignStatusForProfileTab(
+  tab: EsignProfileStatusTab,
+  sends: DealInvestorEsignSendStatus[],
+): DealInvestorEsignStatus | null {
+  const send = findEsignSendForCategory(sends, tab.categoryId)
+  if (!send?.sentAt?.trim()) return null
+  return esignStatusFromSendRecord(send, tab.documents)
+}
+
+/** Resolved eSign status for table + modal (API object, parsed bundle, or signedDate fallback). */
+export function resolveInvestorRowEsignStatus(
+  row: DealInvestorRow,
+): DealInvestorEsignStatus | undefined {
+  const categoryId = resolveInvestorEsignCategoryId(row)
+  const fromApi =
+    parseEsignStatusFromApi(row.esignStatus, categoryId) ??
+    parseEsignStatusFromApi(row.esignStatusBundleJson, categoryId)
+  if (fromApi?.sentAt?.trim()) return fromApi
+
+  const fallback = fallbackEsignStatusForRow(row)
+  if (fallback?.sentAt?.trim()) return fallback
+
+  return undefined
+}
+
 function strOrNull(v: unknown): string | null {
   const s = String(v ?? "").trim()
   return s || null
 }
 
+const ESIGN_WORKFLOW_COLUMN_LABELS = new Set([
+  "sent",
+  "pending",
+  "viewed",
+  "signed",
+  "completed",
+])
+
 export function investorEsignWasSent(row: DealInvestorRow): boolean {
-  if (row.esignStatus?.sentAt?.trim()) return true
+  if (resolveInvestorRowEsignStatus(row)?.sentAt?.trim()) return true
   const s = String(row.signedDate ?? "").trim().toLowerCase()
-  return s === "pending" || s === "completed"
+  return ESIGN_WORKFLOW_COLUMN_LABELS.has(s)
+}
+
+/**
+ * Current eSign workflow step for the Investors tab Signed column:
+ * Sent → Viewed → Signed → Completed (or calendar date when not eSign).
+ */
+export function esignWorkflowColumnLabel(
+  esignStatus?: DealInvestorEsignStatus | null,
+  signedDateFallback?: string | null,
+): string {
+  if (esignStatus?.sentAt?.trim()) {
+    if (esignStatus.completedAt?.trim()) return "Completed"
+    if (esignStatus.signedAt?.trim()) return "Signed"
+    if (esignStatus.viewedAt?.trim()) return "Viewed"
+    return "Sent"
+  }
+  const fromApi = formatInvestorSignedColumn(signedDateFallback)
+  return fromApi || "—"
+}
+
+/** Signed column text: workflow labels from eSign JSON, else API `signedDate`. */
+export function investorSignedColumnDisplay(row: DealInvestorRow): string {
+  const resolved = resolveInvestorRowEsignStatus(row)
+  if (resolved) return esignWorkflowColumnLabel(resolved, null)
+
+  const docStored = String(row.docSignedDateIso ?? "").trim().toLowerCase()
+  if (docStored === "pending") return "Sent"
+  if (docStored === "completed") return "Completed"
+
+  return esignWorkflowColumnLabel(row.esignStatus, row.signedDate)
 }
 
 export function investorRowShowsEsignStatusLink(
@@ -134,33 +439,101 @@ export function parseDropboxDetailFromApi(
   }
 }
 
-/** Prefer stored timestamps; fill gaps from Dropbox Sign after sync. */
+/**
+ * Display-only: each stage timestamp is shown only when that stage (and prior stages) occurred.
+ * Clears orphan viewed/signed/completed values on sends that were only sent.
+ */
+export function sanitizeEsignStageTimestamps(
+  status: DealInvestorEsignStatus,
+): DealInvestorEsignStatus {
+  const sentAt = status.sentAt?.trim() || null
+  if (!sentAt) {
+    return {
+      ...status,
+      sentAt: null,
+      viewedAt: null,
+      signedAt: null,
+      completedAt: null,
+    }
+  }
+
+  const viewedAt = status.viewedAt?.trim() || null
+  if (!viewedAt) {
+    return {
+      ...status,
+      sentAt,
+      viewedAt: null,
+      signedAt: null,
+      completedAt: null,
+    }
+  }
+
+  const completedAt = status.completedAt?.trim() || null
+  const signedAt = status.signedAt?.trim() || null
+  if (!signedAt && !completedAt) {
+    return {
+      ...status,
+      sentAt,
+      viewedAt,
+      signedAt: null,
+      completedAt: null,
+    }
+  }
+
+  if (!completedAt) {
+    return {
+      ...status,
+      sentAt,
+      viewedAt,
+      signedAt,
+      completedAt: null,
+    }
+  }
+
+  return {
+    ...status,
+    sentAt,
+    viewedAt,
+    signedAt: signedAt || completedAt,
+    completedAt,
+  }
+}
+
+/** Prefer stored timestamps; fill gaps from Dropbox Sign only for the matching request. */
 export function mergeEsignStatusWithDropbox(
   status: DealInvestorEsignStatus,
   dropbox: DealEsignDropboxDetail | null | undefined,
+  options?: { signatureRequestId?: string | null },
 ): DealInvestorEsignStatus {
-  if (!dropbox) return status
+  const base = sanitizeEsignStageTimestamps(status)
+  if (!dropbox) return base
+
+  const expected = options?.signatureRequestId?.trim() ?? ""
+  const dropboxId = dropbox.signatureRequestId?.trim() ?? ""
+  if (!dropboxId || !expected || expected !== dropboxId) return base
+
   const primary = dropbox.signers[0]
   const viewedAt =
-    status.viewedAt?.trim() ||
+    base.viewedAt?.trim() ||
     dropbox.lastViewedAt?.trim() ||
     primary?.lastViewedAt?.trim() ||
     null
   const signedAt =
-    status.signedAt?.trim() ||
+    base.signedAt?.trim() ||
     dropbox.lastSignedAt?.trim() ||
     primary?.signedAt?.trim() ||
     null
   const completedAt =
-    status.completedAt?.trim() ||
+    base.completedAt?.trim() ||
     (dropbox.isComplete ? dropbox.completeAt?.trim() || signedAt : null) ||
     null
-  return {
-    ...status,
-    viewedAt,
-    signedAt,
-    completedAt,
-  }
+
+  return sanitizeEsignStageTimestamps({
+    ...base,
+    viewedAt: viewedAt || null,
+    signedAt: signedAt || null,
+    completedAt: completedAt || null,
+  })
 }
 
 export function formatDropboxSignerStatusCode(code: string | null | undefined): string {
@@ -181,27 +554,26 @@ export function formatDropboxSignerStatusCode(code: string | null | undefined): 
 export function esignWorkflowSteps(
   status: DealInvestorEsignStatus,
 ): EsignWorkflowStep[] {
-  const completedAt = status.completedAt?.trim() || null
+  const sentAt = status.sentAt?.trim() || null
   const viewedAt = status.viewedAt?.trim() || null
   const signedAt = status.signedAt?.trim() || null
+  const completedAt = status.completedAt?.trim() || null
+  const signedDone = Boolean(signedAt)
+  const signedAtForDisplay = signedAt
+
   const defs: Array<{
     key: EsignWorkflowStepKey
     label: string
-    at: string | null | undefined
+    at: string | null
     done: boolean
   }> = [
-    { key: "sent", label: "Sent", at: status.sentAt, done: Boolean(status.sentAt?.trim()) },
-    {
-      key: "viewed",
-      label: "Viewed",
-      at: viewedAt ?? (completedAt ? completedAt : null),
-      done: Boolean(viewedAt || completedAt),
-    },
+    { key: "sent", label: "Sent", at: sentAt, done: Boolean(sentAt) },
+    { key: "viewed", label: "Viewed", at: viewedAt, done: Boolean(viewedAt) },
     {
       key: "signed",
       label: "Signed",
-      at: signedAt ?? (completedAt ? completedAt : null),
-      done: Boolean(signedAt || completedAt),
+      at: signedAtForDisplay,
+      done: signedDone,
     },
     {
       key: "completed",
@@ -212,12 +584,13 @@ export function esignWorkflowSteps(
   ]
   return defs.map(({ key, label, at, done }) => {
     const atIso = at?.trim() || null
+    const showTimestamp = Boolean(done && atIso)
     return {
       key,
       label,
       done,
-      atIso,
-      atDisplay: done && atIso ? formatEsignStepTimestamp(atIso) : "Not yet",
+      atIso: showTimestamp ? atIso : null,
+      atDisplay: showTimestamp ? formatEsignStepTimestamp(atIso!) : "Not yet",
     }
   })
 }
@@ -234,16 +607,15 @@ export interface EsignDocumentStatusRow {
 export function esignDocumentStatusRows(
   status: DealInvestorEsignStatus,
 ): EsignDocumentStatusRow[] {
-  const sent = status.sentAt?.trim()
-  const sentDisplay = sent ? formatEsignStepTimestamp(sent) : "—"
-  const viewedAt = status.viewedAt?.trim()
-  const signedAt = status.signedAt?.trim()
-  const completedAt = status.completedAt?.trim()
-  const viewedDisplay = viewedAt ? formatEsignStepTimestamp(viewedAt) : "Not yet"
-  const signedDisplay = signedAt ? formatEsignStepTimestamp(signedAt) : "Not yet"
-  const completedDisplay = completedAt
-    ? formatEsignStepTimestamp(completedAt)
-    : "Not yet"
+  const steps = esignWorkflowSteps(status)
+  const sentDisplay =
+    steps.find((s) => s.key === "sent")?.atDisplay ?? "Not yet"
+  const viewedDisplay =
+    steps.find((s) => s.key === "viewed")?.atDisplay ?? "Not yet"
+  const signedDisplay =
+    steps.find((s) => s.key === "signed")?.atDisplay ?? "Not yet"
+  const completedDisplay =
+    steps.find((s) => s.key === "completed")?.atDisplay ?? "Not yet"
   const docs = status.documents?.length
     ? status.documents
     : [{ fileId: "—", name: "Documents" }]
@@ -327,6 +699,15 @@ export function resolveEsignSignedPdfUrlForDocument(
   return uploadsUrlFromRelativePath(rel)
 }
 
+/** Pending document preview (investor questionnaire + W-9 merged into template). */
+export function resolveEsignPendingDocumentViewUrl(doc: {
+  templateRelativePath?: string
+}): string | null {
+  const rel = doc.templateRelativePath?.trim()
+  if (!rel) return null
+  return uploadsUrlFromRelativePath(rel)
+}
+
 export function esignSignedPdfDownloadFilename(
   row: DealInvestorRow,
 ): string {
@@ -346,19 +727,117 @@ export function investorEsignIsCompleted(
   return String(row.signedDate ?? "").trim().toLowerCase() === "completed"
 }
 
-/** Minimal status when column is Pending but JSON was not stored (older sends). */
+/** True when this investor row’s eSign workflow is fully completed. */
+export function investorEsignIsFullyCompletedForRow(
+  row: DealInvestorRow,
+): boolean {
+  const resolved = resolveInvestorRowEsignStatus(row)
+  if (resolved) return investorEsignIsCompleted(resolved, row)
+  if (row.esignStatus) return investorEsignIsCompleted(row.esignStatus, row)
+  return String(row.signedDate ?? "").trim().toLowerCase() === "completed"
+}
+
+export function investorRowMatchesViewerEmail(
+  row: DealInvestorRow,
+  viewerEmailNorm: string,
+): boolean {
+  if (!viewerEmailNorm) return false
+  const em = String(row.userEmail ?? "").trim().toLowerCase()
+  return Boolean(em && em !== "—" && em === viewerEmailNorm)
+}
+
+/** Raw committed on the row (ignores eSign visibility rules). */
+export function investorRowCommittedNumeric(row: DealInvestorRow): number {
+  const n = parseMoneyDigits(String(row.committed ?? ""))
+  if (Number.isFinite(n) && n > 0) return n
+  const raw = String(row.commitmentAmountRaw ?? "").trim()
+  const extras = row.extraContributionAmounts ?? []
+  const nums = [raw, ...extras.map(String)]
+    .map((s) => parseMoneyDigits(s))
+    .filter((v) => Number.isFinite(v))
+  if (nums.length === 0) return 0
+  return nums.reduce((a, b) => a + b, 0)
+}
+
+/**
+ * Investing portal: show committed amount only after eSign is done (or when no eSign was sent).
+ */
+export function investorCommittedVisibleToViewer(row: DealInvestorRow): boolean {
+  if (investorRowCommittedNumeric(row) <= 0) return false
+  if (!investorEsignWasSent(row)) return true
+  return investorEsignIsFullyCompletedForRow(row)
+}
+
+function fallbackSentAtIso(row: DealInvestorRow): string {
+  const docIso = String(row.docSignedDateIso ?? "").trim()
+  if (docIso && !["pending", "completed", "sent"].includes(docIso.toLowerCase())) {
+    const d = new Date(docIso)
+    if (!Number.isNaN(d.getTime())) return d.toISOString()
+  }
+  const invested = String(row.investedAtIso ?? "").trim()
+  if (invested) {
+    const d = new Date(invested)
+    if (!Number.isNaN(d.getTime())) return d.toISOString()
+  }
+  return new Date().toISOString()
+}
+
+/** Rebuild status for modal when list has workflow label but `esignStatus` was not parsed. */
+/** True when this profile's eSign send is fully completed (not merely sent). */
+export function isProfileTabEsignCompleted(
+  send: Pick<DealInvestorEsignSendStatus, "completedAt"> | null | undefined,
+): boolean {
+  return Boolean(send?.completedAt?.trim())
+}
+
+/** Stored stage timestamps for one profile send (strict — no inferred stages). */
+export function esignStatusFromSendRecord(
+  send: DealInvestorEsignSendStatus,
+  documents?: DealInvestorEsignDocumentRef[],
+): DealInvestorEsignStatus {
+  return sanitizeEsignStageTimestamps({
+    sentAt: send.sentAt,
+    viewedAt: send.viewedAt?.trim() || null,
+    signedAt: send.signedAt?.trim() || null,
+    completedAt: send.completedAt?.trim() || null,
+    documents: documents ?? send.documents,
+  })
+}
+
 export function fallbackEsignStatusForRow(
   row: DealInvestorRow,
 ): DealInvestorEsignStatus | null {
-  if (row.esignStatus?.sentAt) return row.esignStatus
-  if (String(row.signedDate ?? "").trim().toLowerCase() !== "pending") {
-    return null
-  }
-  return {
-    sentAt: new Date().toISOString(),
+  const categoryId = resolveInvestorEsignCategoryId(row)
+  const parsed =
+    parseEsignStatusFromApi(row.esignStatus, categoryId) ??
+    parseEsignStatusFromApi(row.esignStatusBundleJson, categoryId)
+  if (parsed?.sentAt?.trim()) return parsed
+
+  const legacy = String(row.signedDate ?? "").trim().toLowerCase()
+  if (!ESIGN_WORKFLOW_COLUMN_LABELS.has(legacy)) return null
+
+  const sentAt = fallbackSentAtIso(row)
+  const base: DealInvestorEsignStatus = {
+    sentAt,
     viewedAt: null,
     signedAt: null,
     completedAt: null,
-    documents: [],
+    documents: row.esignStatus?.documents ?? [],
   }
+
+  if (legacy === "completed") {
+    return {
+      ...base,
+      viewedAt: sentAt,
+      signedAt: sentAt,
+      completedAt: sentAt,
+    }
+  }
+  if (legacy === "signed") {
+    return { ...base, viewedAt: sentAt, signedAt: sentAt }
+  }
+  if (legacy === "viewed") {
+    return { ...base, viewedAt: sentAt }
+  }
+  return base
 }

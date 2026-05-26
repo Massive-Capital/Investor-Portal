@@ -25,6 +25,26 @@ function contactIdAsUserUuid(raw: string): string | null {
  * `deal_investment`, `deal_member`, and `deal_lp_investor` for this deal. Only ids that exist in
  * `users` are stored (`contact_id` may be a CRM contact uuid or other non-portal id).
  */
+/** Links the deal creator in `assigning_deal_user` so `deal_participant` can read/update the draft. */
+export async function assignCreatorToDeal(
+  dealId: string,
+  creatorUserId: string,
+): Promise<void> {
+  const uid = normalizeUserUuidKey(creatorUserId);
+  const did = String(dealId ?? "").trim().toLowerCase();
+  if (!uid || !UUID_RE.test(did)) return;
+  await db
+    .insert(assigningDealUser)
+    .values({
+      dealId: did,
+      userId: uid,
+      userAddedDeal: uid,
+    })
+    .onConflictDoNothing({
+      target: [assigningDealUser.dealId, assigningDealUser.userId],
+    });
+}
+
 export async function reconcileAssigningDealUsersForDeal(
   dealId: string,
   actorUserId: string,

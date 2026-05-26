@@ -5,6 +5,7 @@ export interface InvestmentEsignActiveSession {
   signUrl: string
   clientId: string
   testMode: boolean
+  signatureRequestId: string | null
 }
 
 export type InvestmentEsignSignPhase =
@@ -79,6 +80,7 @@ export function useInvestmentEsignSigning(
       signUrl: result.signUrl.trim(),
       clientId: result.clientId.trim(),
       testMode: result.testMode,
+      signatureRequestId: result.signatureRequestId?.trim() || null,
     })
     setEmbedKey((k) => k + 1)
     setPhase("embed")

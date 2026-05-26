@@ -5,7 +5,10 @@
  * in preview): syndicating add/edit investment, or after the investors list refetch.
  */
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
-import { committedAmountForViewerEmail } from "@/modules/Investing/utils/investingViewerDealScope"
+import {
+  committedAmountForViewerEmail,
+  viewerHasDealParticipation,
+} from "@/modules/Investing/utils/investingViewerDealScope"
 import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
 import type { AddInvestmentFormValues } from "@/modules/Syndication/Deals/tabs/deal_members/add-investment/add_deal_member_types"
 import { formatInvestedAsFromInv } from "./investedAsDisplay"
@@ -97,8 +100,8 @@ export function upsertRuntimeForViewerFromInvestorsPayload(
   const em = getSessionUserEmail()
   if (!em?.trim()) return
   const emn = normEmail(em)
+  if (!viewerHasDealParticipation(payload, emn)) return
   const committed = committedAmountForViewerEmail(payload, emn)
-  if (committed <= 0) return
   const inv = pickPrimaryViewerRow(payload.investors, emn)
   const deal = dealDetail
   const listRow = deal?.listRow

@@ -9,18 +9,23 @@ import type {
   OfferingPreviewDocument,
 } from "./offeringPreviewDocuments"
 import {
+  parseOfferingPreviewDocumentsJson,
   readOfferingPreviewDocuments,
   writeOfferingPreviewDocuments,
 } from "./offeringPreviewDocuments"
-
-const SECTIONS_STORAGE_PREFIX = "ip_offering_preview_sections:v1:"
+import {
+  getRuntimeOfferingPreviewSections,
+  setRuntimeOfferingPreviewSections,
+} from "./offeringPreviewRuntimeStore"
+import { readLegacyOfferingPreviewDocumentsFromLocalStorage } from "./offeringPreviewLegacyLocalStorage"
 
 /** Fired after `writeOfferingPreviewSections` (same tab + other tabs via storage). */
 export const OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT =
   "ip-offering-preview-sections-changed"
 
+/** Stable id for cross-tab custom events (no longer a localStorage key). */
 export function offeringPreviewSectionsStorageKey(dealId: string): string {
-  return `${SECTIONS_STORAGE_PREFIX}${dealId.trim()}`
+  return `ip_offering_preview_sections:v1:${dealId.trim()}`
 }
 
 export type OfferingPreviewDisplayDocument = {
@@ -159,8 +164,58 @@ export function sectionDisplayLabel(s: OfferingPreviewSection): string {
   return b && b !== "—" ? b : "Section"
 }
 
-function sectionsStorageKey(dealId: string): string {
-  return offeringPreviewSectionsStorageKey(dealId)
+/** Stable id for quick uploads (click / drag) when no section is chosen. */
+export const DEFAULT_DOCUMENT_SECTION_ID = "default-documents-section"
+
+/** Label shown in the Documents tab for the default section. */
+export const DEFAULT_DOCUMENT_SECTION_LABEL = "General"
+
+export function isDefaultDocumentSection(s: OfferingPreviewSection): boolean {
+  if (s.id === DEFAULT_DOCUMENT_SECTION_ID) return true
+  return (
+    s.sectionLabel.trim().toLowerCase() ===
+    DEFAULT_DOCUMENT_SECTION_LABEL.toLowerCase()
+  )
+}
+
+export function findDefaultDocumentSection(
+  sections: OfferingPreviewSection[],
+): OfferingPreviewSection | undefined {
+  return sections.find(isDefaultDocumentSection)
+}
+
+/** Ensures the default section exists; returns updated list + that section row. */
+export function ensureDefaultDocumentSectionInList(
+  sections: OfferingPreviewSection[],
+): {
+  sections: OfferingPreviewSection[]
+  defaultSection: OfferingPreviewSection
+} {
+  const existing = findDefaultDocumentSection(sections)
+  if (existing) {
+    return { sections, defaultSection: existing }
+  }
+  const defaultSection: OfferingPreviewSection = {
+    id: DEFAULT_DOCUMENT_SECTION_ID,
+    sectionLabel: DEFAULT_DOCUMENT_SECTION_LABEL,
+    documentLabel: DEFAULT_DOCUMENT_SECTION_LABEL,
+    visibility: sectionSharedWithDisplay("offering_page"),
+    sharedWithScope: "offering_page",
+    requireLpReview: false,
+    dateAdded: formatDateDdMmmYyyy(new Date()),
+    nestedDocuments: [],
+  }
+  return { sections: [...sections, defaultSection], defaultSection }
+}
+
+/** Default **General** section first; all other sections follow. */
+export function orderDocumentSectionsWithDefaultFirst(
+  sections: OfferingPreviewSection[],
+): OfferingPreviewSection[] {
+  const { sections: withDefault, defaultSection } =
+    ensureDefaultDocumentSectionInList(sections)
+  const others = withDefault.filter((s) => s.id !== defaultSection.id)
+  return [defaultSection, ...others]
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -280,7 +335,7 @@ function normalizeSectionsArray(parsed: unknown): OfferingPreviewSection[] {
 /** Ensure each nested doc’s lpDisplaySectionId points at a real section on this deal. */
 function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSection[] {
   const ids = new Set(list.map((s) => s.id))
-  return list.map((s) => {
+  const mapped = list.map((s) => {
     const sharedWithScope: OfferingPreviewDocSharedWithScope =
       s.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
     return {
@@ -304,6 +359,7 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
       }),
     }
   })
+  return orderDocumentSectionsWithDefaultFirst(mapped)
 }
 
 function maxDateString(dates: string[]): string {
@@ -317,6 +373,12 @@ function maxDateString(dates: string[]): string {
     }
   }
   return bestStr
+}
+
+export function migrateFlatDocumentsToSections(
+  flat: OfferingPreviewDocument[],
+): OfferingPreviewSection[] {
+  return sanitizeSections(migrateFlatToSections(flat))
 }
 
 function migrateFlatToSections(flat: OfferingPreviewDocument[]): OfferingPreviewSection[] {
@@ -382,26 +444,15 @@ export function flattenSectionsToPreviewDocs(
 
 export function readOfferingPreviewSections(dealId: string): OfferingPreviewSection[] {
   const id = dealId.trim()
-  if (!id || typeof window === "undefined") return []
-  try {
-    const raw = window.localStorage.getItem(sectionsStorageKey(id))
-    if (raw != null) {
-      const parsed = JSON.parse(raw) as unknown
-      return sanitizeSections(normalizeSectionsArray(parsed))
-    }
-  } catch {
-    /* ignore */
-  }
+  if (!id) return []
+  const cached = getRuntimeOfferingPreviewSections(id)
+  if (cached) return sanitizeSections(cached)
   const flat = readOfferingPreviewDocuments(id)
-  if (flat.length === 0) return []
-  const migrated = migrateFlatToSections(flat)
-  const sanitized = sanitizeSections(migrated)
-  try {
-    window.localStorage.setItem(sectionsStorageKey(id), JSON.stringify(sanitized))
-  } catch {
-    /* quota */
-  }
-  return sanitized
+  if (flat.length === 0) return sanitizeSections([])
+  const migrated = sanitizeSections(migrateFlatToSections(flat))
+  setRuntimeOfferingPreviewSections(id, migrated)
+  writeOfferingPreviewDocuments(id, flattenSectionsToPreviewDocs(migrated))
+  return migrated
 }
 
 export function writeOfferingPreviewSections(
@@ -410,21 +461,26 @@ export function writeOfferingPreviewSections(
   opts?: { notify?: boolean },
 ): void {
   const id = dealId.trim()
-  if (!id || typeof window === "undefined") return
+  if (!id) return
   const sanitized = sanitizeSections(sections)
-  try {
-    window.localStorage.setItem(sectionsStorageKey(id), JSON.stringify(sanitized))
-    if (opts?.notify !== false) {
-      window.dispatchEvent(
-        new CustomEvent(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, {
-          detail: { dealId: id },
-        }),
-      )
-    }
-  } catch {
-    /* quota */
-  }
+  setRuntimeOfferingPreviewSections(id, sanitized)
   writeOfferingPreviewDocuments(id, flattenSectionsToPreviewDocs(sanitized))
+  if (typeof window !== "undefined" && opts?.notify !== false) {
+    window.dispatchEvent(
+      new CustomEvent(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, {
+        detail: { dealId: id },
+      }),
+    )
+  }
+}
+
+/** Parse flat docs from legacy localStorage for one-time migration to the database. */
+export function parseLegacyFlatDocumentsFromLocalStorage(
+  dealId: string,
+): OfferingPreviewDocument[] {
+  return parseOfferingPreviewDocumentsJson(
+    readLegacyOfferingPreviewDocumentsFromLocalStorage(dealId),
+  )
 }
 
 /** Parse `sections` JSON from the server (same shape as localStorage). */

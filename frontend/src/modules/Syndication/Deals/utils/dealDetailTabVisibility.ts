@@ -1,4 +1,7 @@
-import { LP_INVESTOR_ROLE_VALUE } from "../constants/investor-profile"
+import {
+  isLeadSponsorRole,
+  LP_INVESTOR_ROLE_VALUE,
+} from "../constants/investor-profile"
 import type { DealInvestorRow } from "../types/deal-investors.types"
 
 export type ViewerDealMemberRole =
@@ -19,6 +22,40 @@ function roleLikeStringsForMember(m: DealInvestorRow): string[] {
   return out
 }
 
+function roleStringIsLeadSponsor(raw: string): boolean {
+  if (isLeadSponsorRole(raw)) return true
+  return String(raw).trim().toLowerCase() === "lead sponsor"
+}
+
+function roleStringIsAdminSponsor(raw: string): boolean {
+  const t = String(raw).trim().toLowerCase()
+  return t === "admin sponsor"
+}
+
+function roleStringIsCoSponsor(raw: string): boolean {
+  const t = String(raw).trim().toLowerCase()
+  return t === "co-sponsor" || t === "co sponsor"
+}
+
+/** Match viewer to roster row by portal email and/or `contactId` (= user or CRM contact uuid). */
+export function dealMemberRowMatchesViewer(
+  m: DealInvestorRow,
+  sessionEmail: string,
+  sessionUserId: string,
+): boolean {
+  const em = sessionEmail.trim().toLowerCase()
+  if (em && em.includes("@")) {
+    const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
+    if (rowEmail && rowEmail !== "—" && rowEmail === em) return true
+  }
+  const uid = sessionUserId.trim().toLowerCase()
+  if (uid) {
+    const cid = String(m.contactId ?? "").trim().toLowerCase()
+    if (cid && cid === uid) return true
+  }
+  return false
+}
+
 /**
  * Match the signed-in user’s email to a deal roster row and classify sponsor / LP role.
  * Uses `memberRoleLabels` as well as `investorRole` (same row can rely on labels only).
@@ -27,24 +64,24 @@ function roleLikeStringsForMember(m: DealInvestorRow): string[] {
 export function resolveViewerDealMemberRole(
   members: DealInvestorRow[],
   sessionEmail: string,
+  sessionUserId = "",
 ): ViewerDealMemberRole {
   const em = sessionEmail.trim().toLowerCase()
-  if (!em || !em.includes("@")) return null
+  const uid = sessionUserId.trim().toLowerCase()
+  if ((!em || !em.includes("@")) && !uid) return null
   let hasLead = false
   let hasAdmin = false
   let hasCo = false
   let hasLp = false
   for (const m of members) {
-    const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
-    if (rowEmail !== em) continue
+    if (!dealMemberRowMatchesViewer(m, em, uid)) continue
     const roles = roleLikeStringsForMember(m)
     if (roles.length === 0) continue
     for (const raw of roles) {
+      if (roleStringIsLeadSponsor(raw)) hasLead = true
+      else if (roleStringIsAdminSponsor(raw)) hasAdmin = true
+      else if (roleStringIsCoSponsor(raw)) hasCo = true
       const role = String(raw).trim().toLowerCase()
-      if (!role) continue
-      if (role === "lead sponsor") hasLead = true
-      else if (role === "admin sponsor") hasAdmin = true
-      else if (role === "co-sponsor" || role === "co sponsor") hasCo = true
       if (
         role === LP_INVESTOR_ROLE_VALUE.toLowerCase() ||
         role === "lp investors" ||
@@ -69,12 +106,13 @@ export function resolveViewerDealMemberRole(
 export function resolveViewerDealMemberMatch(
   members: DealInvestorRow[],
   sessionEmail: string,
+  sessionUserId = "",
 ): { investorRole?: string; memberRoleLabels?: string[] } | null {
   const em = sessionEmail.trim().toLowerCase()
-  if (!em || !em.includes("@")) return null
+  const uid = sessionUserId.trim().toLowerCase()
+  if ((!em || !em.includes("@")) && !uid) return null
   for (const m of members) {
-    const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
-    if (rowEmail !== em) continue
+    if (!dealMemberRowMatchesViewer(m, em, uid)) continue
     return {
       investorRole: m.investorRole,
       memberRoleLabels: m.memberRoleLabels,
@@ -91,8 +129,13 @@ export function resolveViewerDealMemberMatch(
 export function resolveViewerDealInvestorRoleRaw(
   members: DealInvestorRow[],
   sessionEmail: string,
+  sessionUserId = "",
 ): string | null {
-  const match = resolveViewerDealMemberMatch(members, sessionEmail)
+  const match = resolveViewerDealMemberMatch(
+    members,
+    sessionEmail,
+    sessionUserId,
+  )
   if (!match) return null
   const raw = String(match.investorRole ?? "").trim()
   if (raw && raw !== "—") return raw
@@ -107,8 +150,13 @@ export function resolveViewerDealInvestorRoleRaw(
 export function resolveViewerSponsorInvestorRoleRaw(
   members: DealInvestorRow[],
   sessionEmail: string,
+  sessionUserId = "",
 ): string | null {
-  const kind = resolveViewerDealMemberRole(members, sessionEmail)
+  const kind = resolveViewerDealMemberRole(
+    members,
+    sessionEmail,
+    sessionUserId,
+  )
   if (
     kind !== "lead_sponsor" &&
     kind !== "admin_sponsor" &&
@@ -116,7 +164,11 @@ export function resolveViewerSponsorInvestorRoleRaw(
   ) {
     return null
   }
-  return resolveViewerDealInvestorRoleRaw(members, sessionEmail)
+  return resolveViewerDealInvestorRoleRaw(
+    members,
+    sessionEmail,
+    sessionUserId,
+  )
 }
 
 const CO_SPONSOR_HIDDEN_TABS = new Set([

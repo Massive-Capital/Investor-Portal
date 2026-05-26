@@ -60,7 +60,7 @@ export function InvestingDashboardPage() {
           </h2>
           <NavLink
             className="um_btn_secondary sponsor_dash_add_link"
-            to="/investing/investments?tab=deals"
+            to="/investing/investments"
           >
             All deals
           </NavLink>
@@ -76,7 +76,7 @@ export function InvestingDashboardPage() {
           organization deals plus deals where you are on the roster.
         </p>
         <div className="investing_dash_links">
-          <NavLink className="investing_dash_link" to="/investing/investments?tab=deals">
+          <NavLink className="investing_dash_link" to="/investing/investments">
             Deals table
           </NavLink>
           <NavLink className="investing_dash_link" to="/investing/opportunities">

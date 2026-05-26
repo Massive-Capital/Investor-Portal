@@ -123,9 +123,17 @@
   export function nationalTenDigitsFromRawInput(raw: string): string {
     const src = digitSourceForNationalParsing(raw)
     let d = src.replace(/\D/g, "")
-    if (d.length >= 11 && d.startsWith("1")) d = d.slice(-10)
-    if (d.length > NANP_LEN) d = d.slice(0, NANP_LEN)
+    if (d.length > NANP_LEN) {
+      // Prefer dropping a leading country-code 1 over keeping the first 10 digits.
+      if (d.startsWith("1")) d = d.slice(-NANP_LEN)
+      else d = d.slice(0, NANP_LEN)
+    }
     return d
+  }
+
+  /** Ten numeric digits — used where US display format is enough (e.g. questionnaires). */
+  export function isValidUsPhoneTenDigits(d: string): boolean {
+    return /^\d{10}$/.test(nationalTenDigitsFromRawInput(d))
   }
 
   export function isValidUsNanp10(d: string): boolean {
@@ -171,19 +179,33 @@
     return formatUsPhoneDisplayFromNational(nat)
   }
 
+  export type UsPhoneValidationMode = "nanp" | "tenDigits"
+
   export type UsPhoneInlineStatus = "ok" | "incomplete" | "invalid"
 
-  export function usPhoneInlineStatus(nationalDigits: string): UsPhoneInlineStatus {
+  function isPhoneCompleteForMode(
+    d: string,
+    mode: UsPhoneValidationMode,
+  ): boolean {
+    if (mode === "tenDigits") return isValidUsPhoneTenDigits(d)
+    return isValidUsNanp10(d)
+  }
+
+  export function usPhoneInlineStatus(
+    nationalDigits: string,
+    mode: UsPhoneValidationMode = "nanp",
+  ): UsPhoneInlineStatus {
     const d = nationalTenDigitsFromRawInput(nationalDigits)
     if (d.length === 0) return "ok"
     if (d.length < NANP_LEN) return "incomplete"
-    if (!isValidUsNanp10(d)) return "invalid"
+    if (!isPhoneCompleteForMode(d, mode)) return "invalid"
     return "ok"
   }
 
   export function usPhoneInlineMessage(
     nationalDigits: string,
     touched: boolean,
+    mode: UsPhoneValidationMode = "nanp",
   ): string | null {
     const d = nationalTenDigitsFromRawInput(nationalDigits)
     if (d.length === 0) return null
@@ -191,7 +213,7 @@
       if (!touched) return null
       return "Enter a complete 10-digit U.S. phone number."
     }
-    if (!isValidUsNanp10(d))
+    if (!isPhoneCompleteForMode(d, mode))
       return "That is not a valid U.S. area code or exchange."
     return null
   }

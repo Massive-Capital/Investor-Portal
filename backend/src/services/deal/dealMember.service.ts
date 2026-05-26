@@ -65,6 +65,8 @@ function syntheticInvestmentFromDealMember(m: DealMemberRow): DealInvestmentRow 
     investorClass: "",
     docSignedDate: null,
     esignStatusJson: null,
+    investorQuestionnaireAnswersJson: null,
+    investorW9FormJson: null,
     commitmentAmount: "",
     extraContributionAmounts: [],
     documentStoragePath: null,

@@ -305,6 +305,14 @@ export function parseEsignTemplateUploadMeta(
   });
 }
 
+/** Thrown when upload violates one-document-per-profile-type limit. */
+export class EsignTemplateUploadLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EsignTemplateUploadLimitError";
+  }
+}
+
 export async function saveDealEsignTemplateFiles(params: {
   dealId: string;
   categoryId: string;
@@ -312,6 +320,19 @@ export async function saveDealEsignTemplateFiles(params: {
   meta?: EsignTemplateUploadMeta[];
 }): Promise<EsignTemplateFileRecord[]> {
   if (!params.files.length) return [];
+  if (params.files.length > 1) {
+    throw new EsignTemplateUploadLimitError(
+      "Only one file can be uploaded per profile type.",
+    );
+  }
+  const existingState = await getDealEsignTemplatesState(params.dealId);
+  if (
+    existingState.files.some((f) => f.categoryId === params.categoryId)
+  ) {
+    throw new EsignTemplateUploadLimitError(
+      "This profile type already has a template. Remove the existing document before uploading another.",
+    );
+  }
   const dealFolder = await resolveDealStorageFolderName(params.dealId);
   const categoryFolder = safeCategorySegment(params.categoryId);
   const uploadRoot = dealAssetsAbsoluteDir(

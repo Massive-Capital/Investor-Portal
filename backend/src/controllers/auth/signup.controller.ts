@@ -17,7 +17,7 @@ function normalizedPrefillUserName(raw: unknown): string {
 }
 
 /**
- * Public: prefill first/last/phone/(username) for signup.
+ * Public: prefill first/last/phone for signup.
  * Priority by invited email:
  * 1) users table (always, regardless of signup completion)
  * 2) contacts table
@@ -61,7 +61,7 @@ export async function getSignupPrefill(req: Request, res: Response): Promise<voi
     }
 
     /** Backward-compatible fallback for deal-scoped roster/member rows. */
-    if (dealId && (!mergedFirstName || !mergedLastName || !mergedPhone || !mergedUserName)) {
+    if (dealId && (!mergedFirstName || !mergedLastName || !mergedPhone)) {
       const fromDeal = await findSignupPrefillForDealAndEmail(emailNorm, dealId);
       if (fromDeal) {
         if (!mergedFirstName) mergedFirstName = fromDeal.firstName;

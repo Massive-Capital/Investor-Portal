@@ -31,6 +31,7 @@ import {
   putDealLpInvestor,
 } from "../controllers/deal/dealLpInvestor.controller.js";
 import { patchDealLpInvestorMyInvestNowAddon } from "../controllers/deal/dealLpInvestorMyInvestNow.addon.controller.js";
+import { postDealLpInvestorMyInvestNowEsignSend } from "../controllers/deal/dealLpInvestorMyInvestNowEsignSend.controller.js";
 import {
   deleteDealEsignTemplate,
   getDealEsignTemplateView,
@@ -44,6 +45,10 @@ import {
   postDealEsignEmbeddedDraft,
 } from "../controllers/deal/dealEsignDropboxSign.controller.js";
 import {
+  getDealInvestorQuestionnaire,
+  putDealInvestorQuestionnaire,
+} from "../controllers/deal/dealInvestorQuestionnaire.controller.js";
+import {
   deleteDealMember,
   getDealMemberEsignStatus,
   getDealMembers,
@@ -53,6 +58,8 @@ import {
 import {
   getDealMyEsignDocuments,
   getDealMyEsignSignSessionHandler,
+  postDealMyEsignMarkViewed,
+  postDealMyEsignSync,
 } from "../controllers/deal/dealInvestorEsignDocuments.controller.js";
 import { postDealDocumentSharedNotification } from "../controllers/deal/dealDocumentNotification.controller.js";
 import {
@@ -110,6 +117,10 @@ router.patch(
   "/deals/:dealId/lp-investors/my-invest-now-commitment",
   patchDealLpInvestorMyInvestNowAddon,
 );
+router.post(
+  "/deals/:dealId/lp-investors/my-invest-now-esign-send",
+  postDealLpInvestorMyInvestNowEsignSend,
+);
 router.get(
   "/deals/:dealId/investor-communication/mails",
   getDealInvestorCommunicationMails,
@@ -141,6 +152,8 @@ router.get(
   getDealMemberEsignStatus,
 );
 router.get("/deals/:dealId/my-esign-documents", getDealMyEsignDocuments);
+router.post("/deals/:dealId/my-esign-sync", postDealMyEsignSync);
+router.post("/deals/:dealId/my-esign-mark-viewed", postDealMyEsignMarkViewed);
 router.get("/deals/:dealId/my-esign-sign-session", getDealMyEsignSignSessionHandler);
 router.get("/deals/esign-templates/dropbox-sign-config", getDealEsignDropboxSignConfig);
 router.get("/deals/:dealId/esign-templates", getDealEsignTemplates);
@@ -168,6 +181,14 @@ router.post(
 router.delete(
   "/deals/:dealId/esign-templates/:fileId",
   deleteDealEsignTemplate,
+);
+router.get(
+  "/deals/:dealId/investor-questionnaire",
+  getDealInvestorQuestionnaire,
+);
+router.put(
+  "/deals/:dealId/investor-questionnaire",
+  putDealInvestorQuestionnaire,
 );
 router.post(
   "/deals/:dealId/documents/send-shared-notification",

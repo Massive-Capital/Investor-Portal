@@ -21,7 +21,7 @@ import {
 } from "../../../common/auth/sessionKeys";
 import { isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
-import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePath";
+import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPath";
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import { toast } from "../../../common/components/Toast";
@@ -33,7 +33,7 @@ const SigninForm = () => {
   const resetSuccess = location.state?.resetSuccess;
   const apiV1 = getApiV1Base();
 
-  const [emailOrUsername, setEmailOrUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isVisible, setIsVisible] = useState(false);
   const [isError, setError] = useState("");
@@ -54,7 +54,7 @@ const SigninForm = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          emailOrUsername: emailOrUsername.trim(),
+          email: email.trim().toLowerCase(),
           password,
         }),
       });
@@ -78,7 +78,7 @@ const SigninForm = () => {
         if (/user not found/i.test(msg)) {
           toast.error(
             "User not found",
-            "No account matches that email or username. Check your details or sign up.",
+            "No account matches that email. Check your details or sign up.",
           );
         }
         return;
@@ -117,7 +117,7 @@ const SigninForm = () => {
           ? "/metrics"
           : "/dashboard";
       if (!from && storedIntent?.dealId) {
-        redirectTo = dealWorkspacePath(storedIntent.dealId);
+        redirectTo = dealInvestNowPath(storedIntent.dealId);
       }
       if (redirectTo === "/") {
         redirectTo = isPlatformAdmin() ? "/metrics" : "/dashboard";
@@ -135,8 +135,7 @@ const SigninForm = () => {
     }
   }
 
-  const isDisabledBtn =
-    !emailOrUsername.trim() || !password.trim() || isLoading;
+  const isDisabledBtn = !email.trim() || !password.trim() || isLoading;
 
   const pendingEsignReturn =
     parseSafeNextPath(new URLSearchParams(location.search).get("next"))?.includes(
@@ -154,14 +153,14 @@ const SigninForm = () => {
       <form autoComplete="off" onSubmit={handleSubmit}>
         <div className="emailData">
           <Input
-            labelName="Email or username"
+            labelName="Email"
             id="loginEmail"
             icon={<Mail width={20} strokeWidth={1.5} aria-hidden />}
-            type="text"
-            name="emailOrUsername"
-            value={emailOrUsername}
+            type="email"
+            name="email"
+            value={email}
             onChange={(e) => {
-              setEmailOrUsername(e.target.value);
+              setEmail(e.target.value);
               if (isError) setError("");
             }}
             aria-invalid={!!isError}

@@ -9,7 +9,11 @@ import {
   writeOfferingPreviewInvestorVisibility,
   type OfferingDetailsSectionId,
 } from "../../utils/offeringPreviewInvestorVisibility"
-import { scheduleOfferingInvestorPreviewServerSync } from "../../utils/offeringPreviewServerState"
+import {
+  applyOfferingInvestorPreviewJsonFromServer,
+  scheduleOfferingInvestorPreviewServerSync,
+} from "../../utils/offeringPreviewServerState"
+import { isOfferingPreviewHydrated } from "../../utils/offeringPreviewRuntimeStore"
 import {
   clearOverviewExcludedAssetIds,
   dispatchOverviewAssetsMergeEvent,
@@ -47,6 +51,7 @@ export function DealOfferingDetailsTab({
   const navigate = useNavigate()
   const baseId = useId()
   const [openSections, setOpenSections] = useState(initialSectionsOpen)
+  const [previewHydrated, setPreviewHydrated] = useState(false)
   const [investorPreviewVisibility, setInvestorPreviewVisibility] = useState(
     () => readOfferingPreviewInvestorVisibility(detail.id),
   )
@@ -55,17 +60,28 @@ export function DealOfferingDetailsTab({
   )
 
   useEffect(() => {
-    setInvestorPreviewVisibility(readOfferingPreviewInvestorVisibility(detail.id))
+    const id = detail.id.trim()
+    if (!id) {
+      setPreviewHydrated(false)
+      return
+    }
+    applyOfferingInvestorPreviewJsonFromServer(
+      id,
+      detail.offeringInvestorPreviewJson,
+    )
+    setInvestorPreviewVisibility(readOfferingPreviewInvestorVisibility(id))
     prevAssetsInvestorVisibleRef.current =
-      readOfferingPreviewInvestorVisibility(detail.id).assets
-  }, [detail.id])
+      readOfferingPreviewInvestorVisibility(id).assets
+    setPreviewHydrated(isOfferingPreviewHydrated(id))
+  }, [detail.id, detail.offeringInvestorPreviewJson])
 
   useEffect(() => {
+    if (!previewHydrated || !detail.id.trim()) return
     writeOfferingPreviewInvestorVisibility(detail.id, investorPreviewVisibility)
     scheduleOfferingInvestorPreviewServerSync(detail.id, {
       onSuccess: (d) => onDealUpdatedRef.current?.(d),
     })
-  }, [detail.id, investorPreviewVisibility])
+  }, [detail.id, investorPreviewVisibility, previewHydrated])
 
   useEffect(() => {
     const nowVisible = investorPreviewVisibility.assets

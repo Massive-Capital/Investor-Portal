@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { and, eq, ne, sql } from "drizzle-orm";
@@ -54,6 +55,50 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/** When signup omits username, derive a unique value for the NOT NULL DB column. */
+function deriveSignupUsername(emailNorm: string): string {
+  const local =
+    emailNorm
+      .split("@")[0]
+      ?.replace(/[^a-zA-Z0-9_]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "") ?? "";
+  const base = (local || "user").slice(0, 80);
+  return `${base}_${randomBytes(4).toString("hex")}`;
+}
+
+function resolveSignupUsername(
+  body: SignupBody,
+  emailNorm: string,
+): SignupResult | { userName: string; userProvided: boolean } {
+  const userNameRaw = str(body.userName);
+  if (!userNameRaw) {
+    return { userName: deriveSignupUsername(emailNorm), userProvided: false };
+  }
+  if (userNameRaw.length < 3 || userNameRaw.length > 80) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Username must be between 3 and 80 characters",
+    };
+  }
+  if (!/^[a-zA-Z0-9_]+$/.test(userNameRaw)) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Username may only contain letters, numbers, and underscores",
+    };
+  }
+  if (userNameRaw.toLowerCase().startsWith("invited_")) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Username is not available",
+    };
+  }
+  return { userName: userNameRaw, userProvided: true };
+}
+
 /** Same phone may not be shared by two members (including pending) in one organization. */
 async function assertPhoneUniqueInOrganization(params: {
   organizationId: string | undefined;
@@ -91,7 +136,7 @@ export async function registerUser(
   inviteToken: string | undefined,
   body: SignupBody,
 ): Promise<SignupResult> {
-  const userName = str(body.userName);
+  // const userName = str(body.userName);
   let companyName = str(body.companyName);
   const phoneRaw = str(body.phone);
   const firstName = str(body.firstName);
@@ -100,12 +145,11 @@ export async function registerUser(
   const confirmPassword =
     typeof body.confirmPassword === "string" ? body.confirmPassword : "";
 
-  if (!userName || !companyName || !phoneRaw || !firstName || !lastName) {
+  if (!phoneRaw || !firstName || !lastName) {
     return {
       ok: false,
       status: 400,
-      message:
-        "Company name, user name, phone, first name, and last name are required",
+      message: "Phone, first name, and last name are required",
     };
   }
 
@@ -235,8 +279,11 @@ export async function registerUser(
   }
 
   const emailNorm = email.toLowerCase();
-  /** Case-insensitive uniqueness only; stored username keeps user-provided casing. */
-  const userNameLower = userName.toLowerCase();
+  const usernameResolved = resolveSignupUsername(body, emailNorm);
+  if ("ok" in usernameResolved) {
+    return usernameResolved;
+  }
+  const { userName, userProvided } = usernameResolved;
 
   try {
     const [existingByEmail] = await db
@@ -267,25 +314,28 @@ export async function registerUser(
     }
 
     const pendingId = existingByEmail?.id;
-    const [existingUsername] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(
-        pendingId
-          ? and(
-              sql`lower(${users.username}) = ${userNameLower}`,
-              ne(users.id, pendingId),
-            )
-          : sql`lower(${users.username}) = ${userNameLower}`,
-      )
-      .limit(1);
+    if (userProvided) {
+      const userNameLower = userName.toLowerCase();
+      const [existingUsername] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          pendingId
+            ? and(
+                sql`lower(${users.username}) = ${userNameLower}`,
+                ne(users.id, pendingId),
+              )
+            : sql`lower(${users.username}) = ${userNameLower}`,
+        )
+        .limit(1);
 
-    if (existingUsername) {
-      return {
-        ok: false,
-        status: 409,
-        message: "This user name is already taken",
-      };
+      if (existingUsername) {
+        return {
+          ok: false,
+          status: 409,
+          message: "This user name is already taken",
+        };
+      }
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
@@ -299,7 +349,7 @@ export async function registerUser(
 
     if (isDealMemberInvite) {
       roleForUser = DEAL_PARTICIPANT;
-    } else if (!organizationId) {
+    } else if (!organizationId && companyName) {
       const companyResult = await ensureCompanyByName(companyName);
       if (!companyResult.ok) {
         return {
@@ -417,7 +467,7 @@ export async function registerUser(
         ok: false,
         status: 409,
         message:
-          "This email or user name is already registered. Use a different email or user name.",
+          "This email is already registered. Use a different email.",
       };
     }
     if (code === "42703") {

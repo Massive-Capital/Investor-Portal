@@ -1,19 +1,26 @@
+import { and, eq } from "drizzle-orm";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
 import {
   findEsignSendBySignatureRequestId,
   parseEsignStatusBundle,
   pickPendingEsignSend,
 } from "../../constants/deal-investor-esign-status.js";
+import { db } from "../../database/db.js";
+import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
 import { getDealEsignDropboxSignPublicConfig } from "./dealEsignDropboxSign.service.js";
 import {
   getEmbeddedSignUrl,
   getFirstSignatureIdFromRequest,
 } from "../esign/dropboxSign.service.js";
 import {
+  findInvestorEsignTargetForInvestNowCommitment,
   findInvestorEsignTargetForPortalUser,
+  investorEsignTargetHasPositiveCommitment,
+  markDealInvestorEsignViewed,
   readInvestorEsignStatusJson,
   type InvestorEsignRowTarget,
 } from "./dealMemberEsignStatus.service.js";
+import { sendMyInvestNowEsignIfNeeded } from "./dealLpInvestNowMyEsignSend.service.js";
 
 export type DealMyEsignSignSessionResult =
   | {
@@ -56,10 +63,20 @@ export async function getDealMyEsignSignSession(params: {
     };
   }
 
-  const target = await findInvestorEsignTargetForPortalUser(params.dealId, {
-    email: params.email.trim().toLowerCase(),
-    userId: params.userId,
-  });
+  const dealId = params.dealId.trim();
+  const email = params.email.trim().toLowerCase();
+  const userId = params.userId;
+
+  let target: InvestorEsignRowTarget | null =
+    await findInvestorEsignTargetForPortalUser(dealId, { email, userId });
+
+  const commitmentTarget = await findInvestorEsignTargetForInvestNowCommitment(
+    dealId,
+    { email, userId },
+  );
+
+  if (!target) target = commitmentTarget;
+
   if (!target) {
     return {
       ok: false,
@@ -68,8 +85,51 @@ export async function getDealMyEsignSignSession(params: {
     };
   }
 
-  const raw = await readInvestorEsignStatusJson(params.dealId, target);
-  const bundle = parseEsignStatusBundle(raw);
+  if (!(await investorEsignTargetHasPositiveCommitment(dealId, target))) {
+    return {
+      ok: false,
+      code: "not_found",
+      message:
+        "Commit an investment amount on this deal before signing eSign documents",
+    };
+  }
+
+  let raw = await readInvestorEsignStatusJson(dealId, target);
+  let bundle = parseEsignStatusBundle(raw);
+  if (!bundle?.sends.length && commitmentTarget) {
+    let profileId = "";
+    if (commitmentTarget.table === "investment") {
+      const [invProfile] = await db
+        .select({ profileId: dealInvestment.profileId })
+        .from(dealInvestment)
+        .where(
+          and(
+            eq(dealInvestment.id, commitmentTarget.id),
+            eq(dealInvestment.dealId, dealId),
+          ),
+        )
+        .limit(1);
+      profileId = String(invProfile?.profileId ?? "").trim();
+    }
+    if (profileId) {
+      const sent = await sendMyInvestNowEsignIfNeeded({
+        dealId,
+        viewerEmail: email,
+        viewerUserId: userId,
+        profileId,
+      });
+      if (sent.ok) {
+        target =
+          (await findInvestorEsignTargetForPortalUser(dealId, {
+            email,
+            userId,
+          })) ?? commitmentTarget;
+        raw = await readInvestorEsignStatusJson(dealId, target);
+        bundle = parseEsignStatusBundle(raw);
+      }
+    }
+  }
+
   if (!bundle?.sends.length) {
     return {
       ok: false,
@@ -116,6 +176,9 @@ export async function getDealMyEsignSignSession(params: {
 
   try {
     const { signUrl } = await getEmbeddedSignUrl(signatureId);
+    if (sigId) {
+      await markDealInvestorEsignViewed(params.dealId, target, sigId);
+    }
     return {
       ok: true,
       alreadyCompleted: false,

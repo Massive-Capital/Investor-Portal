@@ -8,9 +8,13 @@ import {
   type ReactNode,
 } from "react";
 import { normalizeDealGallerySrc } from "../../../common/utils/apiBaseUrl";
-import { SettingsBrandedImage } from "./SettingsBrandedImage";
+import {
+  BrandingLocalPreviewImg,
+  SettingsBrandedImage,
+} from "./SettingsBrandedImage";
 import {
   fetchWorkspaceTabSettings,
+  materializeBrandingFile,
   postCompanySettingsBranding,
   putWorkspaceTabSettings,
 } from "./companyWorkspaceSettingsApi";
@@ -42,21 +46,48 @@ import { CardRadioGroup } from "../../../common/components/CardRadioGroup/CardRa
 import { toast } from "../../../common/components/Toast";
 
 /**
- * Stable object URL for a `File` on the first paint (useEffect was one frame too late, so
- * `cp_media_preview_*` looked empty right after the user picked an image).
+ * Data-URL preview for a picked branding file. Uses materialized bytes (not `blob:`) so
+ * Edge/Chrome and React Strict Mode do not show a blank preview after revoke races.
  */
-function useObjectUrl(file: File | null): string | null {
-  const url = useMemo(
-    () => (file != null ? URL.createObjectURL(file) : null),
-    [file],
-  );
+function useBrandingFilePreviewUrl(file: File | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    if (url == null) return;
+    if (file == null) {
+      setUrl(null);
+      return;
+    }
+    let cancelled = false;
+    void materializeBrandingFile(file)
+      .then((solid) => {
+        if (cancelled) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (!cancelled && typeof reader.result === "string") {
+            setUrl(reader.result);
+          }
+        };
+        reader.onerror = () => {
+          if (!cancelled) setUrl(null);
+        };
+        reader.readAsDataURL(solid);
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(null);
+      });
     return () => {
-      URL.revokeObjectURL(url);
+      cancelled = true;
     };
-  }, [url]);
+  }, [file]);
   return url;
+}
+
+function isBrandingDraftPreview(
+  editing: boolean,
+  pendingRemoval: boolean,
+  draft: File | null,
+  objectUrl: string | null,
+): boolean {
+  return Boolean(editing && !pendingRemoval && draft && objectUrl);
 }
 
 function SettingsSectionHeading({
@@ -218,9 +249,9 @@ export function CompanySettingsTabPanel({
   const bgFileInputRef = useRef<HTMLInputElement>(null);
   const iconFileInputRef = useRef<HTMLInputElement>(null);
 
-  const logoDraftObjectUrl = useObjectUrl(logoDraft);
-  const bgDraftObjectUrl = useObjectUrl(bgDraft);
-  const iconDraftObjectUrl = useObjectUrl(iconDraft);
+  const logoDraftObjectUrl = useBrandingFilePreviewUrl(logoDraft);
+  const bgDraftObjectUrl = useBrandingFilePreviewUrl(bgDraft);
+  const iconDraftObjectUrl = useBrandingFilePreviewUrl(iconDraft);
 
   const logoPreviewSrc = useMemo(() => {
     if (editLogo) {
@@ -553,14 +584,22 @@ export function CompanySettingsTabPanel({
     setDraft: (file: File | null) => void,
   ) {
     const list = e.target.files;
-    e.target.value = "";
     const f = list?.length ? list.item(0) : null;
+    e.target.value = "";
     if (!f) return;
     if (!isLikelyImageFile(f)) {
       toast.error("Invalid file", "Please choose an image file (PNG, JPEG, SVG, ICO, etc.).");
       return;
     }
-    setDraft(f);
+    void materializeBrandingFile(f)
+      .then((solid) => setDraft(solid))
+      .catch((err) => {
+        const msg =
+          err instanceof Error && err.message
+            ? err.message
+            : "Could not read the selected file.";
+        toast.error("Invalid file", msg);
+      });
   }
 
   /** Only one of logo / background / icon may be in edit mode; each section holds at most one file. */
@@ -981,7 +1020,10 @@ export function CompanySettingsTabPanel({
                   onChange={(e) => {
                     applySingleImageFromInput(e, (file) => {
                       setLogoDraft(file);
-                      if (file) setLogoPendingRemoval(false);
+                      if (file) {
+                        setLogoPendingRemoval(false);
+                        setLogoPreviewLoadFailed(false);
+                      }
                     });
                   }}
                 />
@@ -1002,23 +1044,40 @@ export function CompanySettingsTabPanel({
                       />
                       <span>Loading preview…</span>
                     </div>
-                  ) : (logoImagePublicId || logoPreviewSrc) && !logoPreviewLoadFailed ? (
-                    <SettingsBrandedImage
-                      publicId={
-                        editLogo && !logoPendingRemoval && logoDraft
-                          ? null
-                          : logoImagePublicId
-                      }
-                      url={
-                        editLogo && !logoPendingRemoval && logoDraft && logoDraftObjectUrl
-                          ? logoDraftObjectUrl
-                          : (logoImageUrl ?? "")
-                      }
-                      alt="Company logo preview"
-                      className="cp_media_preview_img cp_media_preview_img_logo"
-                      onError={() => setLogoPreviewLoadFailed(true)}
-                      reactKey={logoImagePublicId ?? logoPreviewSrc ?? "logo"}
-                    />
+                  ) : (logoImagePublicId ||
+                    logoPreviewSrc ||
+                    (editLogo && logoDraft && !logoPendingRemoval)) &&
+                    !logoPreviewLoadFailed ? (
+                    isBrandingDraftPreview(
+                      editLogo,
+                      logoPendingRemoval,
+                      logoDraft,
+                      logoDraftObjectUrl,
+                    ) ? (
+                      logoDraftObjectUrl ? (
+                        <BrandingLocalPreviewImg
+                          src={logoDraftObjectUrl}
+                          alt="Company logo preview"
+                          className="cp_media_preview_img cp_media_preview_img_logo"
+                        />
+                      ) : (
+                        <Loader2
+                          className="cp_settings_branding_preview_spinner"
+                          size={28}
+                          strokeWidth={1.75}
+                          aria-label="Loading preview"
+                        />
+                      )
+                    ) : (
+                      <SettingsBrandedImage
+                        publicId={logoImagePublicId}
+                        url={logoImageUrl ?? ""}
+                        alt="Company logo preview"
+                        className="cp_media_preview_img cp_media_preview_img_logo"
+                        onError={() => setLogoPreviewLoadFailed(true)}
+                        reactKey={logoImagePublicId ?? logoPreviewSrc ?? "logo"}
+                      />
+                    )
                   ) : (
                     <>
                       <Building2 size={40} strokeWidth={1.5} />
@@ -1041,6 +1100,7 @@ export function CompanySettingsTabPanel({
                   exitOtherMediaEdits("logo");
                   setLogoPendingRemoval(false);
                   setLogoDraft(null);
+                  setLogoPreviewLoadFailed(false);
                   setEditLogo(true);
                 }}
                 onSave={async () => {
@@ -1167,7 +1227,10 @@ export function CompanySettingsTabPanel({
                   onChange={(e) => {
                     applySingleImageFromInput(e, (file) => {
                       setBgDraft(file);
-                      if (file) setBgPendingRemoval(false);
+                      if (file) {
+                        setBgPendingRemoval(false);
+                        setBgPreviewLoadFailed(false);
+                      }
                     });
                   }}
                 />
@@ -1202,23 +1265,40 @@ export function CompanySettingsTabPanel({
                       />
                       <span>Loading preview…</span>
                     </div>
-                  ) : (backgroundImagePublicId || bgPreviewSrc) && !bgPreviewLoadFailed ? (
-                    <SettingsBrandedImage
-                      publicId={
-                        editBg && !bgPendingRemoval && bgDraft
-                          ? null
-                          : backgroundImagePublicId
-                      }
-                      url={
-                        editBg && !bgPendingRemoval && bgDraft && bgDraftObjectUrl
-                          ? bgDraftObjectUrl
-                          : (backgroundImageUrl ?? "")
-                      }
-                      alt="Background image preview"
-                      className="cp_media_preview_img cp_media_preview_img_bg"
-                      onError={() => setBgPreviewLoadFailed(true)}
-                      reactKey={backgroundImagePublicId ?? bgPreviewSrc ?? "background"}
-                    />
+                  ) : (backgroundImagePublicId ||
+                    bgPreviewSrc ||
+                    (editBg && bgDraft && !bgPendingRemoval)) &&
+                    !bgPreviewLoadFailed ? (
+                    isBrandingDraftPreview(
+                      editBg,
+                      bgPendingRemoval,
+                      bgDraft,
+                      bgDraftObjectUrl,
+                    ) ? (
+                      bgDraftObjectUrl ? (
+                        <BrandingLocalPreviewImg
+                          src={bgDraftObjectUrl}
+                          alt="Background image preview"
+                          className="cp_media_preview_img cp_media_preview_img_bg"
+                        />
+                      ) : (
+                        <Loader2
+                          className="cp_settings_branding_preview_spinner"
+                          size={28}
+                          strokeWidth={1.75}
+                          aria-label="Loading preview"
+                        />
+                      )
+                    ) : (
+                      <SettingsBrandedImage
+                        publicId={backgroundImagePublicId}
+                        url={backgroundImageUrl ?? ""}
+                        alt="Background image preview"
+                        className="cp_media_preview_img cp_media_preview_img_bg"
+                        onError={() => setBgPreviewLoadFailed(true)}
+                        reactKey={backgroundImagePublicId ?? bgPreviewSrc ?? "background"}
+                      />
+                    )
                   ) : null}
                 </div>
                 {editBg && bgDraft && !readOnly ? (
@@ -1236,6 +1316,7 @@ export function CompanySettingsTabPanel({
                   exitOtherMediaEdits("bg");
                   setBgPendingRemoval(false);
                   setBgDraft(null);
+                  setBgPreviewLoadFailed(false);
                   setEditBg(true);
                 }}
                 onSave={async () => {
@@ -1358,7 +1439,10 @@ export function CompanySettingsTabPanel({
                 onChange={(e) => {
                   applySingleImageFromInput(e, (file) => {
                     setIconDraft(file);
-                    if (file) setIconPendingRemoval(false);
+                    if (file) {
+                      setIconPendingRemoval(false);
+                      setIconPreviewLoadFailed(false);
+                    }
                   });
                 }}
               />
@@ -1375,23 +1459,40 @@ export function CompanySettingsTabPanel({
                       strokeWidth={1.75}
                       aria-label="Loading preview"
                     />
-                  ) : (logoIconPublicId || iconPreviewSrc) && !iconPreviewLoadFailed ? (
-                    <SettingsBrandedImage
-                      publicId={
-                        editLogoIcon && !iconPendingRemoval && iconDraft
-                          ? null
-                          : logoIconPublicId
-                      }
-                      url={
-                        editLogoIcon && !iconPendingRemoval && iconDraft && iconDraftObjectUrl
-                          ? iconDraftObjectUrl
-                          : (logoIconUrl ?? "")
-                      }
-                      alt="Logo icon preview"
-                      className="cp_media_icon_preview"
-                      onError={() => setIconPreviewLoadFailed(true)}
-                      reactKey={logoIconPublicId ?? iconPreviewSrc ?? "logoIcon"}
-                    />
+                  ) : (logoIconPublicId ||
+                    iconPreviewSrc ||
+                    (editLogoIcon && iconDraft && !iconPendingRemoval)) &&
+                    !iconPreviewLoadFailed ? (
+                    isBrandingDraftPreview(
+                      editLogoIcon,
+                      iconPendingRemoval,
+                      iconDraft,
+                      iconDraftObjectUrl,
+                    ) ? (
+                      iconDraftObjectUrl ? (
+                        <BrandingLocalPreviewImg
+                          src={iconDraftObjectUrl}
+                          alt="Logo icon preview"
+                          className="cp_media_icon_preview"
+                        />
+                      ) : (
+                        <Loader2
+                          className="cp_settings_branding_preview_spinner"
+                          size={24}
+                          strokeWidth={1.75}
+                          aria-label="Loading preview"
+                        />
+                      )
+                    ) : (
+                      <SettingsBrandedImage
+                        publicId={logoIconPublicId}
+                        url={logoIconUrl ?? ""}
+                        alt="Logo icon preview"
+                        className="cp_media_icon_preview"
+                        onError={() => setIconPreviewLoadFailed(true)}
+                        reactKey={logoIconPublicId ?? iconPreviewSrc ?? "logoIcon"}
+                      />
+                    )
                   ) : (
                     <span className="cp_media_icon_placeholder">
                       <ImageIcon size={28} strokeWidth={1.5} aria-hidden />
@@ -1416,6 +1517,7 @@ export function CompanySettingsTabPanel({
                   exitOtherMediaEdits("icon");
                   setIconPendingRemoval(false);
                   setIconDraft(null);
+                  setIconPreviewLoadFailed(false);
                   setEditLogoIcon(true);
                 }}
                 onSave={async () => {

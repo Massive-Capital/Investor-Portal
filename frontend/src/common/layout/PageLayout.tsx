@@ -19,6 +19,7 @@ import {
   getStoredUserRole,
   isLpInvestorSessionUser,
   isPlatformAdmin,
+  resolveSyndicationSettingsNavPath,
 } from "../auth/roleUtils"
 import { canAccessSyndicationSidebarPath } from "../config/sideNavAccess.config"
 import { TopNavBar } from "../components/TopNavBar/TopNavBar"
@@ -362,6 +363,26 @@ function PageLayoutInner() {
                         to={to}
                         className={`app_sidebar_link${dealsActive ? " app_sidebar_link_active" : ""}`}
                         aria-current={dealsActive ? "page" : undefined}
+                      >
+                        <Icon size={18} />
+                        <span>{label}</span>
+                      </Link>
+                    )
+                  }
+
+                  if (label === "Settings") {
+                    const settingsTo = resolveSyndicationSettingsNavPath()
+                    const settingsActive =
+                      location.pathname === "/settings" ||
+                      location.pathname.startsWith("/settings/") ||
+                      location.pathname === "/account" ||
+                      location.pathname.startsWith("/account/")
+                    return (
+                      <Link
+                        key={label}
+                        to={settingsTo}
+                        className={`app_sidebar_link${settingsActive ? " app_sidebar_link_active" : ""}`}
+                        aria-current={settingsActive ? "page" : undefined}
                       >
                         <Icon size={18} />
                         <span>{label}</span>

@@ -1,7 +1,16 @@
-import { Download, Eye, FileSignature, FileText, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Download, Eye, FileSignature, FileText, Loader2, X } from "lucide-react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react"
+import { createPortal } from "react-dom"
 import { fetchDealMemberEsignStatus } from "../../api/dealsApi"
 import type {
+  DealInvestorEsignSendStatus,
   DealInvestorEsignStatus,
   DealInvestorRow,
 } from "../../types/deal-investors.types"
@@ -12,10 +21,15 @@ import {
 } from "../../utils/esignTemplateCategories"
 import {
   esignSignedPdfDownloadFilename,
+  esignStatusForProfileTab,
   esignWorkflowSteps,
+  findEsignSendForCategory,
   fallbackEsignStatusForRow,
-  investorEsignIsCompleted,
+  isProfileTabEsignCompleted,
   mergeEsignStatusWithDropbox,
+  parseEsignSendsFromApi,
+  parseEsignStatusFromApi,
+  resolveEsignPendingDocumentViewUrl,
   resolveEsignSignedPdfUrlForDocument,
   type DealEsignDropboxDetail,
   type EsignWorkflowStep,
@@ -36,7 +50,6 @@ export interface InvestorEsignStatusModalProps {
   dealId: string
   row: DealInvestorRow | null
   onClose: () => void
-  onStatusSynced?: () => void
 }
 
 function EsignHorizontalProgress({ steps }: { steps: EsignWorkflowStep[] }) {
@@ -55,6 +68,27 @@ function EsignHorizontalProgress({ steps }: { steps: EsignWorkflowStep[] }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+function EsignStageTimestamps({ steps }: { steps: EsignWorkflowStep[] }) {
+  return (
+    <dl className="deal_esign_stage_times" aria-label="Stage timestamps">
+      {steps.map((step) => (
+        <div key={step.key} className="deal_esign_stage_times_row">
+          <dt className="deal_esign_stage_times_label">{step.label}</dt>
+          <dd
+            className={
+              step.done
+                ? "deal_esign_stage_times_value deal_esign_stage_times_value--done"
+                : "deal_esign_stage_times_value"
+            }
+          >
+            {step.atDisplay}
+          </dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 
@@ -81,8 +115,9 @@ function ProfileTabPanel({
       className="deal_esign_status_panel"
     >
       <div className="deal_esign_panel deal_esign_panel--muted">
-        <p className="deal_esign_panel_title">Signing progress</p>
+        <p className="deal_esign_panel_title">Signing progress — {tab.label}</p>
         <EsignHorizontalProgress steps={steps} />
+        <EsignStageTimestamps steps={steps} />
         {/* {primarySigner ? (
           <p className="deal_esign_dropbox_inline">
             Dropbox Sign:{" "}
@@ -107,6 +142,10 @@ function ProfileTabPanel({
         <ul className="deal_esign_status_doc_list">
           {tab.documents.map((d) => {
             const signedUrl = resolveEsignSignedPdfUrlForDocument(status, d)
+            const pendingViewUrl = resolveEsignPendingDocumentViewUrl(d)
+            const viewUrl = signedUrl ?? pendingViewUrl
+            const showView = Boolean(viewUrl)
+            const showDownload = completed && Boolean(signedUrl)
             return (
               <li key={d.fileId} className="deal_esign_status_doc_row">
                 <div className="deal_esign_status_doc_main">
@@ -124,14 +163,14 @@ function ProfileTabPanel({
                     </span>
                   )}
                 </div>
-                {completed && signedUrl ? (
+                {showView ? (
                   <div
                     className="deal_esign_actions deal_esign_status_doc_actions"
                     role="group"
-                    aria-label={`${d.name} signed PDF`}
+                    aria-label={`${d.name} document`}
                   >
                     <a
-                      href={signedUrl}
+                      href={viewUrl!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="deal_esign_btn_link"
@@ -139,16 +178,23 @@ function ProfileTabPanel({
                       <Eye size={15} strokeWidth={2} aria-hidden />
                       View
                     </a>
-                    <a
-                      href={signedUrl}
-                      download={downloadName}
-                      rel="noopener noreferrer"
-                      className="deal_esign_btn_link deal_esign_btn_link--primary"
-                    >
-                      <Download size={15} strokeWidth={2} aria-hidden />
-                      Download
-                    </a>
+                    {showDownload ? (
+                      <a
+                        href={signedUrl!}
+                        download={downloadName}
+                        rel="noopener noreferrer"
+                        className="deal_esign_btn_link deal_esign_btn_link--primary"
+                      >
+                        <Download size={15} strokeWidth={2} aria-hidden />
+                        Download
+                      </a>
+                    ) : null}
                   </div>
+                ) : !completed ? (
+                  <p className="deal_esign_sync_hint">
+                    Document preview will appear after the investor completes
+                    Invest Now questionnaire and W-9 steps.
+                  </p>
                 ) : null}
               </li>
             )
@@ -177,7 +223,6 @@ export function InvestorEsignStatusModal({
   dealId,
   row,
   onClose,
-  onStatusSynced,
 }: InvestorEsignStatusModalProps) {
   const rowId = row?.id?.trim() ?? ""
   const dealIdTrimmed = dealId.trim()
@@ -185,11 +230,10 @@ export function InvestorEsignStatusModal({
   const [initialLoading, setInitialLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<DealInvestorEsignStatus | null>(null)
+  const [sends, setSends] = useState<DealInvestorEsignSendStatus[]>([])
   const [dropbox, setDropbox] = useState<DealEsignDropboxDetail | null>(null)
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
 
-  const onSyncedRef = useRef(onStatusSynced)
-  onSyncedRef.current = onStatusSynced
   const rowRef = useRef(row)
   rowRef.current = row
 
@@ -202,11 +246,15 @@ export function InvestorEsignStatusModal({
         setError(result.message)
         const fallback = fallbackEsignStatusForRow(fallbackRow)
         setStatus(fallback)
+        setSends(
+          parseEsignSendsFromApi(null, fallbackRow.esignStatusBundleJson),
+        )
         setDropbox(null)
         return
       }
       setError(null)
       setStatus(result.status)
+      setSends(result.sends)
       setDropbox(result.dropbox)
     },
     [],
@@ -221,12 +269,12 @@ export function InvestorEsignStatusModal({
 
     setInitialLoading(false)
     applyFetchResult(result, currentRow)
-    if (result.ok) onSyncedRef.current?.()
   }, [applyFetchResult, dealIdTrimmed, rowId])
 
   useEffect(() => {
     if (!open || !rowId) {
       setStatus(null)
+      setSends([])
       setDropbox(null)
       setError(null)
       setActiveTabId(null)
@@ -236,12 +284,20 @@ export function InvestorEsignStatusModal({
     void fetchStatus()
   }, [open, rowId, dealIdTrimmed, fetchStatus])
 
-  const mergedStatus = useMemo(() => {
-    const base =
-      status ?? (row ? fallbackEsignStatusForRow(row) : null)
-    if (!base) return null
-    return mergeEsignStatusWithDropbox(base, dropbox)
-  }, [status, dropbox, row])
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [open, onClose])
+
+  const resolvedSends = useMemo(() => {
+    if (sends.length > 0) return sends
+    if (!row) return []
+    return parseEsignSendsFromApi(null, row.esignStatusBundleJson)
+  }, [sends, row])
 
   const investorCategoryId = useMemo(
     () => (row ? resolveInvestorEsignCategoryId(row) : null),
@@ -249,12 +305,25 @@ export function InvestorEsignStatusModal({
   )
 
   const profileTabs = useMemo(() => {
-    if (!mergedStatus?.documents?.length) return []
-    return buildEsignProfileStatusTabs(
-      mergedStatus.documents,
-      investorCategoryId,
+    const documents = resolvedSends.flatMap((send) =>
+      send.documents.map((d) => ({
+        ...d,
+        categoryId: d.categoryId?.trim() || send.categoryId,
+      })),
     )
-  }, [mergedStatus, investorCategoryId])
+    if (documents.length === 0) {
+      const fallback =
+        status ??
+        (row ? fallbackEsignStatusForRow(row) : null) ??
+        (row ? parseEsignStatusFromApi(row.esignStatus) : null)
+      if (!fallback?.documents?.length) return []
+      return buildEsignProfileStatusTabs(
+        fallback.documents,
+        investorCategoryId,
+      )
+    }
+    return buildEsignProfileStatusTabs(documents, investorCategoryId)
+  }, [resolvedSends, status, row, investorCategoryId])
 
   useEffect(() => {
     if (profileTabs.length === 0) {
@@ -268,25 +337,50 @@ export function InvestorEsignStatusModal({
     })
   }, [profileTabs])
 
-  const steps = useMemo(
-    () => (mergedStatus ? esignWorkflowSteps(mergedStatus) : []),
-    [mergedStatus],
-  )
-
   const activeTab = profileTabs.find((t) => t.categoryId === activeTabId) ?? null
 
-  if (!open || !row || !mergedStatus) return null
+  const activeTabSend = useMemo(() => {
+    if (!activeTab) return null
+    return findEsignSendForCategory(resolvedSends, activeTab.categoryId) ?? null
+  }, [activeTab, resolvedSends])
 
-  const completed = investorEsignIsCompleted(mergedStatus, row)
+  const activeTabStatus = useMemo(() => {
+    if (!activeTab || !activeTabSend?.sentAt?.trim()) return null
+    const fromSend = esignStatusForProfileTab(activeTab, resolvedSends)
+    if (!fromSend) return null
+    return mergeEsignStatusWithDropbox(fromSend, dropbox, {
+      signatureRequestId: activeTabSend.signatureRequestId,
+    })
+  }, [activeTab, activeTabSend, resolvedSends, dropbox])
+
+  const activeTabSteps = useMemo(
+    () => (activeTabStatus ? esignWorkflowSteps(activeTabStatus) : []),
+    [activeTabStatus],
+  )
+
+  const activeTabCompleted = useMemo(
+    () => isProfileTabEsignCompleted(activeTabSend),
+    [activeTabSend],
+  )
+
+  if (!open || !row) return null
+
+  const hasEsignData =
+    profileTabs.length > 0 || resolvedSends.length > 0 || Boolean(status?.sentAt)
+
   const downloadName = esignSignedPdfDownloadFilename(row)
   const recipient = rowRecipientLabel(row)
   const email = row.userEmail?.trim()
 
-  return (
+  const handleBackdropMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  const modalTree = (
     <div
       className="um_modal_overlay deal_esign_overlay deal_esign_status_overlay"
       role="presentation"
-      onClick={onClose}
+      onMouseDown={handleBackdropMouseDown}
     >
       <div
         className="um_modal deal_esign_modal deal_esign_modal--status"
@@ -358,7 +452,21 @@ export function InvestorEsignStatusModal({
             </p>
           ) : null}
 
-          {profileTabs.length > 0 ? (
+          {initialLoading && !hasEsignData ? (
+            <p className="deal_esign_status_row" role="status">
+              <Loader2 className="deal_esign_spin" size={18} aria-hidden />
+              Loading eSign status…
+            </p>
+          ) : null}
+
+          {!initialLoading && !hasEsignData && !error ? (
+            <p className="deal_esign_notice" role="status">
+              No eSign request found for this investor. Send eSign from the
+              Actions menu first.
+            </p>
+          ) : null}
+
+          {hasEsignData && profileTabs.length > 0 ? (
             <>
               <div
                 className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer deal_esign_status_tabs_outer"
@@ -387,34 +495,33 @@ export function InvestorEsignStatusModal({
                         <span className="deals_tabs_label um_segmented_tab_label">
                           {tab.label}
                         </span>
-                        {tab.isInvestorProfile ? (
+                        {/* {tab.isInvestorProfile ? (
                           <span className="deal_esign_status_inv_badge">Investor</span>
-                        ) : null}
+                        ) : null} */}
                       </button>
                     )
                   })}
                 </div>
               </div>
 
-              {activeTab ? (
+              {activeTab && activeTabStatus ? (
                 <ProfileTabPanel
                   tab={activeTab}
-                  steps={steps}
+                  steps={activeTabSteps}
                   dropbox={dropbox}
-                  status={mergedStatus}
-                  completed={completed}
+                  status={activeTabStatus}
+                  completed={activeTabCompleted}
                   downloadName={downloadName}
                 />
               ) : null}
             </>
-          ) : (
+          ) : profileTabs.length === 0 ? (
             <div className="deal_esign_panel deal_esign_panel--muted">
               <p className="deal_esign_notice">
                 No documents were recorded for this eSign send.
               </p>
-              <EsignHorizontalProgress steps={steps} />
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="deal_esign_modal_foot">
@@ -425,4 +532,8 @@ export function InvestorEsignStatusModal({
       </div>
     </div>
   )
+
+  return typeof document !== "undefined"
+    ? createPortal(modalTree, document.body)
+    : modalTree
 }

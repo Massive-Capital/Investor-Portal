@@ -23,14 +23,25 @@ import {
 } from "../../services/deal/dealEsignTemplates.service.js";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
 import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
-import { markDealInvestorEsignPending } from "../../services/deal/dealMemberEsignStatus.service.js";
+import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
 import {
+  getInvestorEsignStatusWithDropboxSync,
+  syncDealInvestorEsignByTarget,
+} from "../../services/deal/dealMemberEsignCompletion.service.js";
+import {
+  findInvestorEsignTargetByMetadata,
+  investorEsignTargetHasPositiveCommitment,
+  markDealInvestorEsignPending,
+  readInvestorEsignStatusJson,
+  resolveEsignTargetForInvestorRowId,
+} from "../../services/deal/dealMemberEsignStatus.service.js";
+import {
+  applyInvestorPreviewToEsignDocuments,
   createInvestorSignatureRequest,
   esignDocumentsFromSelectedFiles,
   esignTemplateDisplayNameForFile,
 } from "../../services/deal/dealMemberSendEsignDropbox.service.js";
 import { sendDealMemberSendEsignEmail } from "../../services/deal/dealMemberSendEsign.service.js";
-import { getInvestorEsignStatusWithDropboxSync } from "../../services/deal/dealMemberEsignCompletion.service.js";
 
 /**
  * GET /deals/:dealId/members — roster from `deal_member`, merged with investment
@@ -133,7 +144,7 @@ export async function postDealMemberInvitationEmail(
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -202,7 +213,7 @@ export async function postDealMemberSendEsign(
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -268,8 +279,42 @@ export async function postDealMemberSendEsign(
       return;
     }
 
+    const esignTarget =
+      (await resolveEsignTargetForInvestorRowId(dealId, resolvedRosterId)) ??
+      (await findInvestorEsignTargetByMetadata(dealId, resolvedRosterId));
+    if (!esignTarget) {
+      res.status(400).json({ message: "Investor roster entry not found on this deal" });
+      return;
+    }
+    if (!(await investorEsignTargetHasPositiveCommitment(dealId, esignTarget))) {
+      res.status(400).json({
+        message:
+          "This investor must have a committed investment amount before you can send eSign documents",
+      });
+      return;
+    }
+
+    if (getDropboxSignConfig()) {
+      try {
+        await syncDealInvestorEsignByTarget(dealId, esignTarget);
+      } catch (err) {
+        console.warn("syncDealInvestorEsignByTarget before send:", err);
+      }
+    }
+    const esignApi = parseEsignStatusJson(
+      await readInvestorEsignStatusJson(dealId, esignTarget),
+    );
+    if (esignApi?.completedAt?.trim()) {
+      res.status(400).json({
+        message:
+          "E-sign is already completed for this investor. Open the Signed column for status and signed documents.",
+      });
+      return;
+    }
+
     let signatureRequestId: string | undefined;
     let signatureId: string | undefined;
+    let investorPreviewRelativePath: string | undefined;
     try {
       const sig = await createInvestorSignatureRequest({
         dealId,
@@ -278,6 +323,7 @@ export async function postDealMemberSendEsign(
         memberDisplayName: memberDisplayName.trim() || undefined,
         dealName,
         selectedFiles,
+        esignTarget,
       });
       if (!sig) {
         res.status(502).json({
@@ -287,6 +333,7 @@ export async function postDealMemberSendEsign(
       }
       signatureRequestId = sig.signatureRequestId;
       signatureId = sig.signatureId;
+      investorPreviewRelativePath = sig.investorPreviewRelativePath;
     } catch (err) {
       const msg =
         err instanceof Error
@@ -299,7 +346,10 @@ export async function postDealMemberSendEsign(
     await markDealInvestorEsignPending(dealId, {
       rosterId: resolvedRosterId,
       toEmail: toEmail.trim(),
-      documents: esignDocumentsFromSelectedFiles(selectedFiles),
+      documents: applyInvestorPreviewToEsignDocuments(
+        esignDocumentsFromSelectedFiles(selectedFiles),
+        investorPreviewRelativePath,
+      ),
       signatureRequestId,
       signatureId,
     });
@@ -358,7 +408,7 @@ export async function getDealMemberEsignStatus(
 
   try {
     const scope = await resolveDealViewerScope(user.id, user.userRole);
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -376,20 +426,32 @@ export async function getDealMemberEsignStatus(
       dealId.trim(),
       rowId.trim(),
     );
-    if (!result.status?.sentAt) {
+    if (!result.sends.length && !result.status?.sentAt) {
       res.status(404).json({ message: "No eSign request found for this investor" });
       return;
     }
 
     res.status(200).json({
-      status: {
-        sentAt: result.status.sentAt,
-        viewedAt: result.status.viewedAt,
-        signedAt: result.status.signedAt,
-        completedAt: result.status.completedAt,
-        signatureRequestId: result.status.signatureRequestId,
-        documents: result.status.documents,
-      },
+      status: result.status
+        ? {
+            sentAt: result.status.sentAt,
+            viewedAt: result.status.viewedAt,
+            signedAt: result.status.signedAt,
+            completedAt: result.status.completedAt,
+            signatureRequestId: result.status.signatureRequestId,
+            documents: result.status.documents,
+          }
+        : null,
+      sends: result.sends.map((send) => ({
+        categoryId: send.categoryId,
+        sentAt: send.sentAt,
+        viewedAt: send.viewedAt,
+        signedAt: send.signedAt,
+        completedAt: send.completedAt,
+        signatureRequestId: send.signatureRequestId,
+        signatureId: send.signatureId,
+        documents: send.documents,
+      })),
       dropbox: result.dropbox,
       syncedAt: result.syncedAt,
     });

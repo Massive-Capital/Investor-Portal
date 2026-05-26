@@ -27,11 +27,9 @@ import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import {
   listWorkspaceDocumentsForOfferingPreview,
   OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
-  offeringPreviewSectionsStorageKey,
 } from "./utils/offeringPreviewDocSections"
 import {
   OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
-  offeringPreviewInvestorVisibilityStorageKey,
   readInvestorVisibilityForOfferingPreview,
 } from "./utils/offeringPreviewInvestorVisibility"
 import { buildOfferingPreviewAssetBlocks } from "./utils/offeringPreviewAssets"
@@ -71,7 +69,7 @@ export type DealOfferingPreviewInnerProps = {
   detail: DealDetailApi
   classes: DealInvestorClass[]
   investorsPayload: DealInvestorsPayload
-  /** When true, gallery / summary / documents / assets / etc. follow “Make it visible to Investors” (localStorage). */
+  /** When true, gallery / summary / documents / assets / etc. follow “Make it visible to Investors” (database). */
   applyInvestorLinkVisibility: boolean
   isPublicOfferingRoute: boolean
   /** Logged-in LP on the deal workspace (investing deal page). */
@@ -137,28 +135,20 @@ export function DealOfferingPreviewInner({
   useEffect(() => {
     const dealId = detail.id?.trim()
     if (!dealId) return
-    const sectionsStorageKey = offeringPreviewSectionsStorageKey(dealId)
     const bump = () => setWorkspaceDocumentsRevision((n) => n + 1)
     const onCustom = (e: Event) => {
       const d = (e as CustomEvent<{ dealId?: string }>).detail
       if (d?.dealId === dealId) bump()
     }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === sectionsStorageKey) bump()
-    }
     window.addEventListener(
       OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
       onCustom,
     )
-    window.addEventListener("storage", onStorage)
-    window.addEventListener("focus", bump)
     return () => {
       window.removeEventListener(
         OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
         onCustom,
       )
-      window.removeEventListener("storage", onStorage)
-      window.removeEventListener("focus", bump)
     }
   }, [detail.id])
 
@@ -166,28 +156,20 @@ export function DealOfferingPreviewInner({
     if (!applyInvestorLinkVisibility) return
     const dealId = detail.id?.trim()
     if (!dealId) return
-    const storageKey = offeringPreviewInvestorVisibilityStorageKey(dealId)
     const bump = () => setInvestorVisibilityRevision((n) => n + 1)
     const onCustom = (e: Event) => {
       const d = (e as CustomEvent<{ dealId?: string }>).detail
       if (d?.dealId === dealId) bump()
     }
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === storageKey) bump()
-    }
     window.addEventListener(
       OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
       onCustom,
     )
-    window.addEventListener("storage", onStorage)
-    window.addEventListener("focus", bump)
     return () => {
       window.removeEventListener(
         OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
         onCustom,
       )
-      window.removeEventListener("storage", onStorage)
-      window.removeEventListener("focus", bump)
     }
   }, [applyInvestorLinkVisibility, detail.id])
 

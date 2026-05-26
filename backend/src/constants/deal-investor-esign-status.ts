@@ -49,6 +49,50 @@ export interface DealInvestorEsignStatusApi {
   documents: DealInvestorEsignDocumentRef[];
 }
 
+/** Per profile-type send with stage timestamps (Investors eSign status popup). */
+export type DealInvestorEsignSendStatusApi = {
+  categoryId: string;
+  sentAt: string;
+  viewedAt: string | null;
+  signedAt: string | null;
+  completedAt: string | null;
+  signatureRequestId: string | null;
+  signatureId: string | null;
+  documents: DealInvestorEsignDocumentRef[];
+};
+
+export function esignBundleToSendStatusList(
+  bundle: StoredDealInvestorEsignBundle,
+): DealInvestorEsignSendStatusApi[] {
+  return bundle.sends
+    .filter((s) => s.sentAt?.trim())
+    .map((send) => ({
+      categoryId: primaryCategoryForSend(send),
+      sentAt: send.sentAt,
+      viewedAt: send.viewedAt?.trim() || null,
+      signedAt: send.signedAt?.trim() || null,
+      completedAt: send.completedAt?.trim() || null,
+      signatureRequestId: send.signatureRequestId?.trim() || null,
+      signatureId: send.signatureId?.trim() || null,
+      documents: (send.documents ?? []).map((d) => {
+        const sendCompleted = Boolean(send.completedAt?.trim());
+        const base = {
+          fileId: d.fileId,
+          name: d.name,
+          categoryId:
+            d.categoryId?.trim() || primaryCategoryForSend(send) || undefined,
+          ...(d.templateRelativePath?.trim()
+            ? { templateRelativePath: d.templateRelativePath.trim() }
+            : {}),
+        };
+        if (sendCompleted && d.signedRelativePath?.trim()) {
+          return { ...base, signedRelativePath: d.signedRelativePath.trim() };
+        }
+        return base;
+      }),
+    }));
+}
+
 function parseDocumentRef(d: unknown): DealInvestorEsignDocumentRef | null {
   if (!d || typeof d !== "object" || Array.isArray(d)) return null;
   const doc = d as Record<string, unknown>;
@@ -136,9 +180,70 @@ export function serializeEsignStatusBundle(
   return JSON.stringify(bundle);
 }
 
+/** Maps Invest Now / deal investment `profile_id` to eSign template category. */
+export function esignCategoryFromCommitmentProfileId(
+  profileId: string | null | undefined,
+): string | null {
+  const p = String(profileId ?? "").trim();
+  if (!p) return null;
+  if (p === "llc_corp_trust_etc") return "llc";
+  if (
+    p === "individual" ||
+    p === "custodian_ira_401k" ||
+    p === "joint_tenancy"
+  ) {
+    return p;
+  }
+  return null;
+}
+
+/**
+ * Investors tab Signed column: workflow for one profile when `preferredCategoryId`
+ * is set; otherwise prefer the newest completed send, then newest pending.
+ */
+export function pickWorkflowSendForColumn(
+  sends: StoredDealInvestorEsignSend[],
+  preferredCategoryId?: string | null,
+): StoredDealInvestorEsignSend | null {
+  const sorted = [...sends]
+    .filter((s) => s.sentAt?.trim())
+    .sort(
+      (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+    );
+  if (sorted.length === 0) return null;
+
+  const cat = preferredCategoryId?.trim();
+  if (cat) {
+    const forCat = sorted.filter((s) => primaryCategoryForSend(s) === cat);
+    if (forCat.length === 0) return null;
+    const latestCat = forCat[forCat.length - 1]!;
+    if (latestCat.completedAt?.trim()) return latestCat;
+    const pendingInCat = forCat.filter((s) => !s.completedAt?.trim());
+    return (
+      pendingInCat.find((s) => s.signatureRequestId?.trim()) ??
+      pendingInCat[pendingInCat.length - 1] ??
+      latestCat
+    );
+  }
+
+  const completed = sorted.filter((s) => Boolean(s.completedAt?.trim()));
+  if (completed.length > 0) return completed[completed.length - 1]!;
+
+  const latest = sorted[sorted.length - 1]!;
+  const pending = sorted
+    .filter((s) => !s.completedAt?.trim())
+    .sort(
+      (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
+    );
+  const activePending =
+    pending.find((s) => s.signatureRequestId?.trim()) ?? pending[0];
+  return activePending ?? latest;
+}
+
 /** Flatten all sends for sponsor status UI and investor document lists. */
 export function aggregateEsignStatusFromBundle(
   bundle: StoredDealInvestorEsignBundle,
+  preferredCategoryId?: string | null,
 ): DealInvestorEsignStatusApi {
   const sends = [...bundle.sends].sort(
     (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
@@ -149,56 +254,107 @@ export function aggregateEsignStatusFromBundle(
     for (const d of send.documents ?? []) {
       const compositeId =
         sig && d.fileId ? `${sig}::${d.fileId}` : d.fileId;
+      const sendCompleted = Boolean(send.completedAt?.trim());
       documents.push({
         ...d,
         fileId: compositeId,
         categoryId: d.categoryId?.trim() || primaryCategoryForSend(send) || undefined,
-        signedRelativePath:
-          d.signedRelativePath?.trim() ||
-          (send.completedAt
-            ? send.documents?.find((x) => x.signedRelativePath?.trim())
-                ?.signedRelativePath
-            : undefined),
+        ...(sendCompleted && d.signedRelativePath?.trim()
+          ? { signedRelativePath: d.signedRelativePath.trim() }
+          : sendCompleted
+            ? {
+                signedRelativePath: send.documents
+                  ?.find((x) => x.signedRelativePath?.trim())
+                  ?.signedRelativePath?.trim(),
+              }
+            : {}),
       });
     }
   }
 
-  const sentAt = sends[0]?.sentAt ?? null;
+  const workflow = pickWorkflowSendForColumn(sends, preferredCategoryId);
+  const sentAt = sends[0]?.sentAt ?? workflow?.sentAt ?? null;
   const allComplete =
     sends.length > 0 && sends.every((s) => Boolean(s.completedAt?.trim()));
-  const pending = pickPendingEsignSend(sends);
-  const latest = sends[sends.length - 1]!;
+  const workflowCompleted = workflow?.completedAt?.trim() ?? null;
 
   return {
     sentAt,
-    viewedAt: pending?.viewedAt ?? latest.viewedAt ?? null,
-    signedAt: pending?.signedAt ?? latest.signedAt ?? null,
-    completedAt: allComplete
-      ? sends
-          .map((s) => s.completedAt?.trim())
-          .filter(Boolean)
-          .sort()
-          .at(-1) ?? null
-      : null,
-    signatureRequestId:
-      pending?.signatureRequestId?.trim() ??
-      latest.signatureRequestId?.trim() ??
-      null,
-    signatureId:
-      pending?.signatureId?.trim() ?? latest.signatureId?.trim() ?? null,
+    viewedAt: workflow?.viewedAt ?? null,
+    signedAt: workflow?.signedAt ?? null,
+    completedAt: workflowCompleted
+      ? workflowCompleted
+      : allComplete
+        ? sends
+            .map((s) => s.completedAt?.trim())
+            .filter(Boolean)
+            .sort()
+            .at(-1) ?? null
+        : null,
+    signatureRequestId: workflow?.signatureRequestId?.trim() ?? null,
+    signatureId: workflow?.signatureId?.trim() ?? null,
     documents,
   };
 }
 
+/** Active in-flight send (most recent when multiple profiles are pending). */
 export function pickPendingEsignSend(
   sends: StoredDealInvestorEsignSend[],
 ): StoredDealInvestorEsignSend | null {
   const pending = sends
     .filter((s) => s.sentAt?.trim() && !s.completedAt?.trim())
     .sort(
-      (a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+      (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
     );
   return pending[0] ?? null;
+}
+
+/** Newest `sentAt` across all sends in stored JSON (or -1 when none). */
+export function latestEsignSentMsFromRawJson(
+  raw: string | null | undefined,
+): number {
+  const bundle = parseEsignStatusBundle(raw);
+  if (!bundle?.sends.some((s) => s.sentAt?.trim())) return -1;
+  return bundle.sends.reduce((max, s) => {
+    const t = new Date(s.sentAt).getTime();
+    return t > max && !Number.isNaN(t) ? t : max;
+  }, -1);
+}
+
+/** Pick the row with the most recent eSign activity for Investors tab / Invest Now. */
+export function pickEsignFieldsFromInvestmentRows<
+  T extends { docSignedDate?: string | null; esignStatusJson?: string | null },
+>(rows: T[]): Pick<T, "docSignedDate" | "esignStatusJson"> {
+  let bestMs = -1;
+  let docSignedDate: string | null | undefined;
+  let esignStatusJson: string | null | undefined;
+  for (const r of rows) {
+    const ms = latestEsignSentMsFromRawJson(r.esignStatusJson);
+    if (ms > bestMs) {
+      bestMs = ms;
+      esignStatusJson = r.esignStatusJson;
+      docSignedDate = r.docSignedDate;
+    }
+  }
+  if (bestMs >= 0) {
+    return {
+      docSignedDate: docSignedDate ?? null,
+      esignStatusJson: esignStatusJson ?? null,
+    } as Pick<T, "docSignedDate" | "esignStatusJson">;
+  }
+  for (const r of rows) {
+    const d = r.docSignedDate?.trim();
+    if (d) {
+      return {
+        docSignedDate: r.docSignedDate ?? null,
+        esignStatusJson: r.esignStatusJson ?? null,
+      } as Pick<T, "docSignedDate" | "esignStatusJson">;
+    }
+  }
+  return {
+    docSignedDate: rows[0]?.docSignedDate ?? null,
+    esignStatusJson: rows[0]?.esignStatusJson ?? null,
+  } as Pick<T, "docSignedDate" | "esignStatusJson">;
 }
 
 export function findEsignSendBySignatureRequestId(
@@ -212,10 +368,64 @@ export function findEsignSendBySignatureRequestId(
   );
 }
 
+/** Whether a send belongs to the given eSign template profile and document set. */
+export function sendMatchesCategoryAndFileIds(
+  send: StoredDealInvestorEsignSend,
+  categoryId: string,
+  fileIds: Set<string>,
+): boolean {
+  const cat = categoryId.trim();
+  const sendCat = primaryCategoryForSend(send);
+  if (cat && sendCat && sendCat !== cat) return false;
+
+  const sameCategory =
+    !send.categoryId?.trim() ||
+    send.categoryId.trim() === cat ||
+    (send.documents ?? []).every(
+      (d) => !d.categoryId?.trim() || d.categoryId.trim() === cat,
+    );
+  if (!sameCategory) return false;
+
+  const docIds = (send.documents ?? [])
+    .map((d) => d.fileId.trim())
+    .filter(Boolean);
+  return (
+    docIds.length === fileIds.size &&
+    docIds.every((id) => fileIds.has(id))
+  );
+}
+
+/** Newest send for this investor profile template (category + template file ids). */
+export function findEsignSendForCategoryAndFiles(
+  bundle: StoredDealInvestorEsignBundle,
+  categoryId: string,
+  fileIds: Set<string>,
+): StoredDealInvestorEsignSend | null {
+  const matches = bundle.sends.filter((s) =>
+    sendMatchesCategoryAndFileIds(s, categoryId, fileIds),
+  );
+  if (matches.length === 0) return null;
+  return matches.sort(
+    (a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime(),
+  )[0]!;
+}
+
 export function esignBundleHasPending(
   bundle: StoredDealInvestorEsignBundle,
 ): boolean {
   return bundle.sends.some((s) => s.sentAt?.trim() && !s.completedAt?.trim());
+}
+
+/** True when Dropbox should be polled to refresh viewed / signed / completed timestamps. */
+export function esignBundleNeedsDropboxSync(
+  bundle: StoredDealInvestorEsignBundle,
+): boolean {
+  return bundle.sends.some(
+    (s) =>
+      Boolean(s.sentAt?.trim()) &&
+      Boolean(s.signatureRequestId?.trim()) &&
+      !s.completedAt?.trim(),
+  );
 }
 
 export function esignBundleIsAllCompleted(
@@ -273,10 +483,22 @@ export function buildEsignStatusJsonOnSent(params: {
 
 export function parseEsignStatusJson(
   raw: string | null | undefined,
+  preferredCategoryId?: string | null,
 ): DealInvestorEsignStatusApi | null {
   const bundle = parseEsignStatusBundle(raw);
   if (!bundle?.sends.length) return null;
-  return aggregateEsignStatusFromBundle(bundle);
+  return aggregateEsignStatusFromBundle(bundle, preferredCategoryId);
+}
+
+/** Investors tab Signed column label from stored eSign workflow timestamps. */
+export function esignSignedColumnLabelFromApi(
+  api: DealInvestorEsignStatusApi | null,
+): string | null {
+  if (!api?.sentAt?.trim()) return null;
+  if (api.completedAt?.trim()) return "Completed";
+  if (api.signedAt?.trim()) return "Signed";
+  if (api.viewedAt?.trim()) return "Viewed";
+  return "Sent";
 }
 
 /** @deprecated Use serializeEsignStatusBundle */

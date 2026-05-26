@@ -8,7 +8,7 @@ dotenv.config({ path: path.join(__dirname, ".env.local") });
 dotenv.config({ path: path.join(__dirname, ".env") });
 
 const DATABASE_USER = process.env.DATABASE_USER ?? "postgres";
-const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD ?? "Postgresql123";
+const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD ?? "Syndicationx$06062026";
 const DATABASE_HOST = process.env.DATABASE_HOST ?? "localhost";
 const DATABASE_PORT = process.env.DATABASE_PORT ?? "5432";
 const DATABASE_NAME = process.env.DATABASE_NAME ?? "dev_syndicationx_db";

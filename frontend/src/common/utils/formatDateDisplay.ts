@@ -65,14 +65,17 @@ export function formatDateDdMmmYyyy(
   return s
 }
 
-/** Investors tab Signed column: calendar date or **Pending** after eSign is sent. */
+/** Investors tab Signed column: workflow label or calendar date. */
 export function formatInvestorSignedColumn(
   raw: string | null | undefined,
 ): string {
   const s = String(raw ?? "").trim()
   if (!s || s === "—") return "—"
-  if (s.toLowerCase() === "pending") return "Pending"
-  if (s.toLowerCase() === "completed") return "Completed"
+  const lower = s.toLowerCase()
+  if (lower === "sent" || lower === "pending") return "Sent"
+  if (lower === "viewed") return "Viewed"
+  if (lower === "signed") return "Signed"
+  if (lower === "completed") return "Completed"
   return formatDateDdMmmYyyy(s)
 }
 

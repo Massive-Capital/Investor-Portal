@@ -1,16 +1,20 @@
 import { SESSION_BEARER_KEY } from "../../../../common/auth/sessionKeys"
 import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
-import {
-  formatDateDdMmmYyyy,
-  formatInvestorSignedColumn,
-} from "../../../../common/utils/formatDateDisplay"
+import { formatDateDdMmmYyyy } from "../../../../common/utils/formatDateDisplay"
 import {
   parseDropboxDetailFromApi,
+  esignWorkflowColumnLabel,
+  parseEsignSendsFromApi,
   parseEsignStatusFromApi,
   type DealEsignDropboxDetail,
 } from "../utils/investorEsignStatus"
+import {
+  logInvestorsApiResponseDebug,
+  logInvestorsDataTableDebug,
+} from "../tabs/investors/investorsTabDebug"
 import type { AddInvestmentFormValues } from "../tabs/deal_members/add-investment/add_deal_member_types"
 import type {
+  DealInvestorEsignSendStatus,
   DealInvestorEsignStatus,
   DealInvestorRow,
   DealInvestorsKpis,
@@ -1596,7 +1600,15 @@ export async function createDealMultipart(
 export async function updateDealMultipart(
   dealId: string,
   formData: FormData,
-): Promise<{ ok: true } | { ok: false; message: string; fieldErrors?: Record<string, string> }> {
+): Promise<
+  | { ok: true }
+  | {
+      ok: false
+      message: string
+      fieldErrors?: Record<string, string>
+      notFound?: boolean
+    }
+> {
   const base = getApiV1Base()
   if (!base)
     return { ok: false, message: "VITE_BASE_URL is not configured." }
@@ -1611,6 +1623,12 @@ export async function updateDealMultipart(
     errors?: Record<string, string>
   }
   if (res.status === 200) return { ok: true }
+  if (res.status === 404)
+    return {
+      ok: false,
+      message: data.message || "Deal not found",
+      notFound: true,
+    }
   if (res.status === 400 && data.errors)
     return { ok: false, message: data.message || "Validation failed", fieldErrors: data.errors }
   return {
@@ -1714,6 +1732,31 @@ function normalizeInvestorRowApi(
         ? formatCurrencyTableDisplay(committedTrimmed)
         : formatCommittedZeroUsd()
 
+  const esignStatus =
+    parseEsignStatusFromApi(raw.esignStatus ?? raw.esign_status) ??
+    parseEsignStatusFromApi(
+      raw.esignStatusBundleJson ??
+        raw.esign_status_bundle_json ??
+        raw.esignStatusJson ??
+        raw.esign_status_json,
+    )
+  const esignStatusBundleJson = String(
+    raw.esignStatusBundleJson ??
+      raw.esign_status_bundle_json ??
+      raw.esignStatusJson ??
+      raw.esign_status_json ??
+      "",
+  ).trim()
+  const signedDateRaw = str(
+    firstDefined(raw, [
+      "signedDate",
+      "signed_date",
+      "signed",
+      "docSignedDate",
+      "doc_signed_date",
+    ]),
+  )
+
   return {
     id: str(firstDefined(raw, ["id", "investor_id"]) ?? raw.id, `inv-${index}`),
     displayName: str(
@@ -1770,20 +1813,9 @@ function normalizeInvestorRowApi(
       ]),
     ),
     committed: committedDisplay,
-    signedDate: formatInvestorSignedColumn(
-      str(
-        firstDefined(raw, [
-          "signedDate",
-          "signed_date",
-          "signed",
-          "docSignedDate",
-          "doc_signed_date",
-        ]),
-      ),
-    ),
-    esignStatus: parseEsignStatusFromApi(
-      raw.esignStatus ?? raw.esign_status,
-    ),
+    esignStatus,
+    esignStatusBundleJson: esignStatusBundleJson || null,
+    signedDate: esignWorkflowColumnLabel(esignStatus, signedDateRaw),
     fundedDate: formatDateDdMmmYyyy(
       str(firstDefined(raw, ["fundedDate", "funded_date", "funded"])),
     ),
@@ -2007,9 +2039,15 @@ export async function fetchDealInvestors(
   options?: { lpInvestorsOnly?: boolean },
 ): Promise<DealInvestorsPayload> {
   const base = getApiV1Base()
-  if (!base) return { kpis: emptyInvestorsKpis(), investors: [] }
+  if (!base) {
+    console.warn(
+      "[InvestorsTab DEBUG] VITE_BASE_URL / API base is not set — investors list is empty",
+    )
+    return { kpis: emptyInvestorsKpis(), investors: [] }
+  }
   try {
-    const q = options?.lpInvestorsOnly ? "?lpInvestorsOnly=1" : ""
+    const lpOnly = Boolean(options?.lpInvestorsOnly)
+    const q = lpOnly ? "?lpInvestorsOnly=1" : ""
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/investors${q}`,
       {
@@ -2018,9 +2056,23 @@ export async function fetchDealInvestors(
       },
     )
     const data = await res.json().catch(() => ({}))
+    logInvestorsApiResponseDebug({
+      dealId,
+      lpInvestorsOnly: lpOnly,
+      ok: res.ok,
+      status: res.status,
+      raw: data,
+    })
     if (!res.ok) return { kpis: emptyInvestorsKpis(), investors: [] }
-    return normalizeDealInvestorsResponse(data)
-  } catch {
+    const normalized = normalizeDealInvestorsResponse(data)
+    logInvestorsDataTableDebug({
+      context: "after normalizeInvestorRowApi (fetchDealInvestors)",
+      dealId,
+      rows: normalized.investors,
+    })
+    return normalized
+  } catch (err) {
+    console.error("[InvestorsTab DEBUG] fetchDealInvestors failed", err)
     return { kpis: emptyInvestorsKpis(), investors: [] }
   }
 }
@@ -2199,6 +2251,9 @@ export type DealEsignTemplateFileRecord = {
   dropboxSignSavedAt?: string
   /** PDF includes appendix W-9 form after the uploaded document. */
   includesW9Appendix?: boolean
+  /** True when an investor has a filled preview or signed PDF for this profile template. */
+  latestInvestorFilled?: boolean
+  latestInvestorFilledSource?: "signed" | "preview"
 }
 
 export type EsignTemplateUploadMetaInput = {
@@ -2513,6 +2568,12 @@ export async function postDealEsignTemplateUploads(
   if (uploads.length === 0) {
     return { ok: false, message: "No documents to upload." }
   }
+  if (uploads.length > 1) {
+    return {
+      ok: false,
+      message: "Only one file can be uploaded per profile type.",
+    }
+  }
   const fd = new FormData()
   fd.append("categoryId", categoryId)
   for (const u of uploads) fd.append("esignFiles", u.file)
@@ -2616,6 +2677,147 @@ export function notifyDealEsignTemplatesChanged(dealId: string): void {
   )
 }
 
+export type InvestorQuestionnaireFieldType =
+  | "text"
+  | "phone"
+  | "address"
+  | "date"
+  | "ssn"
+  | "ein"
+  | "boolean"
+  | "textarea"
+  | "paragraph"
+  | "radio"
+  | "checkboxes"
+
+export type InvestorQuestionnaireSection = {
+  id: string
+  label: string
+  sortOrder: number
+  isDefault?: boolean
+}
+
+export type InvestorQuestionnaireQuestion = {
+  id: string
+  sectionId: string
+  label: string
+  sortOrder: number
+  required: boolean
+  fieldType: InvestorQuestionnaireFieldType
+  subtext?: string
+  options?: string[]
+  isDefault?: boolean
+}
+
+export type InvestorQuestionnaireProfileSectionVisibility = Record<
+  string,
+  Record<string, boolean>
+>
+
+export type InvestorQuestionnaireConfig = {
+  v: 1
+  sections: InvestorQuestionnaireSection[]
+  questions: InvestorQuestionnaireQuestion[]
+  profileSectionVisibility?: InvestorQuestionnaireProfileSectionVisibility
+}
+
+export type FetchDealInvestorQuestionnaireResult =
+  | { ok: true; config: InvestorQuestionnaireConfig }
+  | { ok: false; message: string }
+
+export async function fetchDealInvestorQuestionnaire(
+  dealId: string,
+): Promise<FetchDealInvestorQuestionnaireResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/investor-questionnaire`,
+      { headers: { ...authHeaders() }, credentials: "include" },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      config?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null
+            ? String(data.message)
+            : "Could not load investor questionnaire",
+      }
+    }
+    const config = data.config as InvestorQuestionnaireConfig | undefined
+    if (
+      !config ||
+      config.v !== 1 ||
+      !Array.isArray(config.sections) ||
+      !Array.isArray(config.questions)
+    ) {
+      return { ok: false, message: "Invalid questionnaire response" }
+    }
+    return { ok: true, config }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export type PutDealInvestorQuestionnaireResult =
+  | { ok: true; config: InvestorQuestionnaireConfig }
+  | { ok: false; message: string }
+
+export async function putDealInvestorQuestionnaire(
+  dealId: string,
+  config: InvestorQuestionnaireConfig,
+): Promise<PutDealInvestorQuestionnaireResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/investor-questionnaire`,
+      {
+        method: "PUT",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ config }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      config?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null
+            ? String(data.message)
+            : "Could not save investor questionnaire",
+      }
+    }
+    const saved = data.config as InvestorQuestionnaireConfig | undefined
+    if (
+      !saved ||
+      saved.v !== 1 ||
+      !Array.isArray(saved.sections) ||
+      !Array.isArray(saved.questions)
+    ) {
+      return { ok: false, message: "Invalid questionnaire response" }
+    }
+    return { ok: true, config: saved }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
 export type PostDealInvestorSendEsignResult =
   | { ok: true }
   | { ok: false; message: string }
@@ -2634,6 +2836,8 @@ export type DealMyEsignDocumentsResult = {
   documents: DealMyEsignDocument[]
   esignCompleted: boolean
   esignPending: boolean
+  /** Sent | Viewed | Signed | Completed — same workflow as Investors tab Signed column. */
+  workflowLabel?: string | null
   completedAt?: string | null
   sentAt?: string | null
   loadError?: string | null
@@ -2647,6 +2851,16 @@ export type DealMyEsignSignSessionResult =
       clientId: string | null
       testMode: boolean
       configured: boolean
+      signatureRequestId: string | null
+    }
+  | { ok: false; message: string }
+
+export type DealMyEsignSyncResult =
+  | {
+      ok: true
+      esignCompleted: boolean
+      esignPending: boolean
+      workflowLabel?: string | null
     }
   | { ok: false; message: string }
 
@@ -2678,12 +2892,14 @@ export async function fetchDealMyEsignSignSession(
       clientId?: string | null
       testMode?: boolean
       configured?: boolean
+      signatureRequestId?: string | null
     }
     if (!res.ok) {
       const msg =
         data.message != null ? String(data.message) : res.statusText
       return { ok: false, message: msg || "Could not load signing session" }
     }
+    const sessionSig = String(data.signatureRequestId ?? "").trim()
     return {
       ok: true,
       alreadyCompleted: Boolean(data.alreadyCompleted),
@@ -2691,9 +2907,95 @@ export async function fetchDealMyEsignSignSession(
       clientId: data.clientId ?? null,
       testMode: Boolean(data.testMode),
       configured: Boolean(data.configured),
+      signatureRequestId: sessionSig || sig || null,
     }
   } catch {
     return { ok: false, message: "Network error" }
+  }
+}
+
+/** POST `/deals/:dealId/my-esign-sync` — Invest Now: `phase` sign | finish (Dropbox events). */
+export async function postDealMyEsignSync(
+  dealId: string,
+  signatureRequestId?: string,
+  options?: { phase?: "sign" | "finish" },
+): Promise<DealMyEsignSyncResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  const sig = signatureRequestId?.trim()
+  const phase = options?.phase ?? "finish"
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/my-esign-sync`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          ...(sig ? { signatureRequestId: sig } : {}),
+          phase,
+        }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: unknown
+      esignCompleted?: boolean
+      esignPending?: boolean
+      workflowLabel?: string | null
+    }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return { ok: false, message: msg || "Could not sync eSign status" }
+    }
+    return {
+      ok: true,
+      esignCompleted: Boolean(data.esignCompleted),
+      esignPending: Boolean(data.esignPending),
+      workflowLabel: data.workflowLabel ?? null,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+/** POST `/deals/:dealId/my-esign-mark-viewed` — Invest Now View / open signing. */
+export async function postDealMyEsignMarkViewed(
+  dealId: string,
+  signatureRequestId: string,
+): Promise<{ ok: boolean; workflowLabel?: string | null }> {
+  const base = getApiV1Base()
+  if (!base) return { ok: false }
+  const sig = signatureRequestId.trim()
+  if (!sig) return { ok: false }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/my-esign-mark-viewed`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ signatureRequestId: sig }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      ok?: boolean
+      workflowLabel?: string | null
+    }
+    return {
+      ok: res.ok && Boolean(data.ok),
+      workflowLabel: data.workflowLabel ?? null,
+    }
+  } catch {
+    return { ok: false }
   }
 }
 
@@ -2730,6 +3032,7 @@ export async function fetchDealMyEsignDocuments(
       }>
       esignCompleted?: boolean
       esignPending?: boolean
+      workflowLabel?: string | null
       completedAt?: string | null
       sentAt?: string | null
     }
@@ -2769,6 +3072,7 @@ export async function fetchDealMyEsignDocuments(
       documents,
       esignCompleted: Boolean(data.esignCompleted),
       esignPending: Boolean(data.esignPending),
+      workflowLabel: data.workflowLabel ?? null,
       completedAt: data.completedAt ?? null,
       sentAt: data.sentAt ?? null,
       loadError: null,
@@ -2824,7 +3128,14 @@ export async function postDealInvestorSendEsign(
     if (!res.ok) {
       const msg =
         data.message != null ? String(data.message) : res.statusText
-      return { ok: false, message: msg || "Could not send eSign" }
+      const detail = msg || "Could not send eSign"
+      return {
+        ok: false,
+        message:
+          res.status >= 400 && !msg
+            ? `${detail} (${res.status})`
+            : detail,
+      }
     }
     return { ok: true }
   } catch {
@@ -2835,7 +3146,8 @@ export async function postDealInvestorSendEsign(
 export type FetchDealMemberEsignStatusResult =
   | {
       ok: true
-      status: DealInvestorEsignStatus
+      status: DealInvestorEsignStatus | null
+      sends: DealInvestorEsignSendStatus[]
       dropbox: DealEsignDropboxDetail | null
       syncedAt: string
     }
@@ -2861,6 +3173,7 @@ export async function fetchDealMemberEsignStatus(
     const data = (await res.json().catch(() => ({}))) as {
       message?: unknown
       status?: unknown
+      sends?: unknown
       dropbox?: unknown
       syncedAt?: string
     }
@@ -2869,13 +3182,15 @@ export async function fetchDealMemberEsignStatus(
         data.message != null ? String(data.message) : res.statusText
       return { ok: false, message: msg || "Could not load eSign status" }
     }
+    const sends = parseEsignSendsFromApi(data.sends)
     const status = parseEsignStatusFromApi(data.status)
-    if (!status?.sentAt) {
+    if (sends.length === 0 && !status?.sentAt) {
       return { ok: false, message: "No eSign status returned" }
     }
     return {
       ok: true,
-      status,
+      status: status ?? null,
+      sends,
       dropbox: parseDropboxDetailFromApi(data.dropbox),
       syncedAt: String(data.syncedAt ?? "").trim() || new Date().toISOString(),
     }

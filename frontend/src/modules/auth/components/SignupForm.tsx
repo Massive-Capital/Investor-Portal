@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   ArrowRight,
   Asterisk,
   Building2,
-  CheckCircle,
   CircleAlert,
   Eye,
   EyeOff,
@@ -18,16 +23,34 @@ import FooterForm from "../../../common/components/FooterForm";
 import Input from "../../../common/components/Input";
 import { UsPhoneInput } from "../../../common/components/UsPhoneInput";
 import {
+  AUTH_RETURN_NEXT_KEY,
+  SESSION_ACTIVITY_SESSION_ID_KEY,
+  SESSION_BEARER_KEY,
+  SESSION_USER_DETAILS_KEY,
+} from "../../../common/auth/sessionKeys";
+import { isPlatformAdmin } from "../../../common/auth/roleUtils";
+import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
+import {
   isValidUsNanp10,
   national10ToE164,
   nationalDigitsFromStoredPhone,
   nationalTenDigitsFromRawInput,
 } from "../../../common/phone/usPhoneNumber";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
+import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPath";
+import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePath";
+import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import "./signup_form.css";
 import { decodeJwtPayload } from "../utils/decode-jwt-payload";
 
 const LOGIN_PATH = "/signin";
+
+type SigninResponse = {
+  message?: string;
+  token?: string;
+  userDetails?: unknown;
+  activitySessionId?: string;
+};
 
 function normalizeApiBaseUrl(rawBase: string): string {
   const trimmed = String(rawBase ?? "").trim();
@@ -54,15 +77,13 @@ function buildApiUrl(rawBase: string, path: string): URL | null {
 export default function SignupForm() {
   const apiV1 = getApiV1Base();
   const navigate = useNavigate();
+  const location = useLocation();
   const { token: tokenParam } = useParams();
   const [searchParams] = useSearchParams();
   const token = (tokenParam ?? "").trim() || searchParams.get("token")?.trim() || "";
 
   const [isVisible, setIsVisible] = useState(false);
   const [isVisibleConfirm, setIsVisibleConfirm] = useState(false);
-  const [isConfirmSignup, setIsConfirmSignup] = useState(false);
-  const [signupConfirmationEmailSent, setSignupConfirmationEmailSent] =
-    useState(false);
   const [isError, setIsError] = useState("");
   const [linkExpired, setLinkExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -166,7 +187,7 @@ export default function SignupForm() {
 
   /**
    * Invite link: JWT carries email (and often company). GET /auth/signup/prefill
-   * fills first name, last name, phone, and optional username. With `dealId` (deal
+   * fills first name, last name, and phone. With `dealId` (deal
    * email invite), the server prefers roster rows for that deal.
    */
   useEffect(() => {
@@ -239,7 +260,7 @@ export default function SignupForm() {
           userName: un,
         });
         const phOkPrefill = ph.length === 10 && isValidUsNanp10(ph);
-        if (!fn && !ln && !ph && !un) {
+        if (!fn && !ln && !ph) {
           console.log("[signup-prefill] skipped apply", {
             reason: "all normalized fields empty",
           });
@@ -272,15 +293,6 @@ export default function SignupForm() {
     return () => ac.abort();
   }, [apiV1, token, resolvedInviteEmail, dealIdForPrefillQuery]);
 
-  const REDIRECT_DELAY_MS = 5000;
-  useEffect(() => {
-    if (!isConfirmSignup) return;
-    const timer = setTimeout(() => {
-      navigate(LOGIN_PATH, { replace: true });
-    }, REDIRECT_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [isConfirmSignup, navigate]);
-
   const [signUpFormData, setSignUpFormData] = useState<SignUpFormState>({
     email: resolvedInviteEmail,
     companyName: "",
@@ -311,12 +323,101 @@ export default function SignupForm() {
   const phoneNational = nationalTenDigitsFromRawInput(signUpFormData.phone);
   const phoneOk = isValidUsNanp10(phoneNational);
 
+  const requiredSignupFields = [
+    signUpFormData.email,
+    signUpFormData.phone,
+    signUpFormData.firstName,
+    signUpFormData.lastName,
+    signUpFormData.newPassword,
+    signUpFormData.confirmPassword,
+  ];
   const isDisabledBtn =
-    Object.values(signUpFormData).some((val) => val.trim() === "") ||
+    requiredSignupFields.some((val) => val.trim() === "") ||
     !phoneOk ||
-    isConfirmSignup ||
     isLoading ||
     !termsAccepted;
+
+  function persistSigninSession(data: SigninResponse) {
+    if (data.token) {
+      sessionStorage.setItem(SESSION_BEARER_KEY, data.token);
+    }
+    if (data.userDetails != null) {
+      sessionStorage.setItem(
+        SESSION_USER_DETAILS_KEY,
+        JSON.stringify(data.userDetails),
+      );
+    } else {
+      sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
+    }
+    if (
+      typeof data.activitySessionId === "string" &&
+      data.activitySessionId.trim()
+    ) {
+      sessionStorage.setItem(
+        SESSION_ACTIVITY_SESSION_ID_KEY,
+        data.activitySessionId.trim(),
+      );
+    } else {
+      sessionStorage.removeItem(SESSION_ACTIVITY_SESSION_ID_KEY);
+    }
+  }
+
+  function resolvePostAuthPath() {
+    const storedIntent = consumeInvestNowIntent();
+    const state = location.state as { from?: string; investNow?: boolean } | undefined;
+    const from =
+      parseSafeNextPath(state?.from) ??
+      parseSafeNextPath(new URLSearchParams(location.search).get("next")) ??
+      parseSafeNextPath(sessionStorage.getItem(AUTH_RETURN_NEXT_KEY));
+    sessionStorage.removeItem(AUTH_RETURN_NEXT_KEY);
+
+    const dealId = (dealIdForPrefillQuery || resolvedInviteDealId).trim();
+    let redirectTo = from
+      ? from
+      : isPlatformAdmin()
+        ? "/metrics"
+        : "/dashboard";
+    if (!from && dealId) {
+      redirectTo = dealWorkspacePath(dealId);
+    }
+    if (!from && storedIntent?.dealId) {
+      redirectTo = dealInvestNowPath(storedIntent.dealId);
+    }
+    if (redirectTo === "/") {
+      redirectTo = isPlatformAdmin() ? "/metrics" : "/dashboard";
+    }
+    const wantsInvestNow =
+      state?.investNow === true || Boolean(storedIntent?.dealId);
+    return {
+      redirectTo,
+      postAuthState: wantsInvestNow ? ({ investNow: true as const } as const) : undefined,
+    };
+  }
+
+  async function signInAfterSignup(email: string, password: string): Promise<boolean> {
+    const signInUrl = buildApiUrl(apiV1, "auth/signin");
+    if (!signInUrl) {
+      setIsError("API base URL is invalid. Check VITE_BASE_URL.");
+      return false;
+    }
+    const response = await fetch(signInUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = (await response.json().catch(() => ({}))) as SigninResponse;
+    if (!response.ok) {
+      setIsError(
+        data.message?.trim() ||
+          "Account created, but automatic sign-in failed. Please sign in manually.",
+      );
+      return false;
+    }
+    persistSigninSession(data);
+    const { redirectTo, postAuthState } = resolvePostAuthPath();
+    navigate(redirectTo, { replace: true, state: postAuthState });
+    return true;
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -357,7 +458,6 @@ export default function SignupForm() {
       });
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
-        emailSent?: boolean;
       };
       if (!response.ok) {
         setIsError(
@@ -365,8 +465,8 @@ export default function SignupForm() {
         );
         return;
       }
-      setSignupConfirmationEmailSent(data.emailSent === true);
-      setIsConfirmSignup(true);
+      const email = signUpFormData.email.trim().toLowerCase();
+      await signInAfterSignup(email, signUpFormData.newPassword);
     } catch {
       setIsError("Unable to connect. Please try again later.");
     } finally {
@@ -397,50 +497,6 @@ export default function SignupForm() {
     );
   }
 
-  if (isConfirmSignup) {
-    return (
-      <div className="signup_success_with_footer">
-        <div
-          className="authMessage authMessage--success"
-          style={{
-            flexDirection: "column",
-            alignItems: "center",
-            textAlign: "center",
-            gap: "1em",
-          }}
-        >
-          <CheckCircle size={48} aria-hidden className="authMessage__icon" />
-          <p className="loginSuccess" style={{ fontSize: "1em" }}>
-            Your account has been{" "}
-            <span style={{ fontWeight: 600 }}>successfully activated.</span>
-          </p>
-          {signupConfirmationEmailSent ? (
-            <p className="contentTwo" style={{ maxWidth: "28rem", margin: 0 }}>
-              We sent a <strong>signup successful</strong> message to your email
-              with a sign-in link. Check your inbox (and spam) before you sign in.
-            </p>
-          ) : (
-            <p className="contentTwo" style={{ maxWidth: "28rem", margin: 0 }}>
-              Your investor portal account is ready. We could not send the
-              confirmation email (mail or portal URL may not be configured on the
-              server). You can still sign in below with the email and password you
-              chose.
-            </p>
-          )}
-          <p className="contentTwo">Redirecting to sign in in a few seconds…</p>
-          <Link to={LOGIN_PATH} className="login-btn signup_success_signin_btn">
-            Sign in <ArrowRight width={20} aria-hidden />
-          </Link>
-        </div>
-        <div className="companyContent signup_success_footer">
-          <div className="contentOne">
-            <FooterForm />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="signup_page">
@@ -468,7 +524,7 @@ export default function SignupForm() {
           </div>
           <div className="emailData">
             <Input
-              labelName="Company name"
+              labelName="Company name (optional)"
               id="signup-companyName"
               icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
               type="text"
@@ -478,7 +534,7 @@ export default function SignupForm() {
               readOnly={Boolean(token && resolvedInviteCompanyName)}
               disabled={isLoading}
               aria-invalid={!!isError}
-              required
+              requiredIndicator={false}
             />
           </div>
         </div>
@@ -486,7 +542,7 @@ export default function SignupForm() {
         <div className="signupForm_row">
           <div className="emailData">
             <Input
-              labelName="User name"
+              labelName="Username (optional)"
               id="signup-userName"
               icon={<User width={20} strokeWidth={1.5} aria-hidden />}
               type="text"
@@ -495,7 +551,7 @@ export default function SignupForm() {
               onChange={handleChange}
               disabled={isLoading}
               aria-invalid={!!isError}
-              required
+              requiredIndicator={false}
             />
           </div>
           <div className="emailData">

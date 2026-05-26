@@ -323,6 +323,34 @@
       "when": 1892850000000,
       "tag": "0046_esign_reusable_template",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1892900000000,
+      "tag": "0047_deal_investor_questionnaire_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1892950000000,
+      "tag": "0048_deal_investment_questionnaire_answers_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1893000000000,
+      "tag": "0049_investment_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1893050000000,
+      "tag": "0050_investor_w9_form_json",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import {
   tryBackspaceNationalDigitFromCaret,
   tryDeleteNationalDigitFromCaret,
   usPhoneInlineMessage,
+  type UsPhoneValidationMode,
 } from "../phone/usPhoneNumber"
 import "./us-phone-input.css"
 
@@ -23,6 +24,11 @@ export interface UsPhoneInputProps {
   "aria-describedby"?: string
   /** Extra server / form error (shown after field messages). */
   error?: string | null
+  /**
+   * `nanp` — strict area/exchange rules (contacts, signup).
+   * `tenDigits` — any 10 digits after +1 mask (questionnaires).
+   */
+  validationMode?: UsPhoneValidationMode
 }
 
 export function UsPhoneInput({
@@ -38,13 +44,14 @@ export function UsPhoneInput({
   "aria-invalid": ariaInvalidProp,
   "aria-describedby": ariaDescribedBy,
   error: externalError,
+  validationMode = "nanp",
 }: UsPhoneInputProps) {
   const [touched, setTouched] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const pendingCaretRef = useRef<number | null>(null)
 
   const display = formatUsPhoneDisplayFromNational(nationalDigits)
-  const inline = usPhoneInlineMessage(nationalDigits, touched)
+  const inline = usPhoneInlineMessage(nationalDigits, touched, validationMode)
   const showErr = inline || externalError
   const ariaInvalid = Boolean(ariaInvalidProp || showErr)
 

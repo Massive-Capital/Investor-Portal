@@ -1,8 +1,12 @@
 import { FileSignature, Loader2, X } from "lucide-react"
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, type MouseEvent } from "react"
 import { DropboxSignEmbeddedSigner } from "@/common/components/dropbox-sign-embedded/DropboxSignEmbeddedSigner"
 import { toast } from "@/common/components/Toast"
 import "@/modules/Syndication/Deals/deal-esign-ui.css"
+import {
+  postDealMyEsignMarkViewed,
+  postDealMyEsignSync,
+} from "@/modules/Syndication/Deals/api/dealsApi"
 import { useInvestmentEsignSigning } from "./useInvestmentEsignSigning"
 
 export interface InvestmentEsignSignModalProps {
@@ -12,7 +16,7 @@ export interface InvestmentEsignSignModalProps {
   signatureRequestId?: string | null
   onClose: () => void
   /** Called after successful sign (refresh documents list). */
-  onSignedComplete?: () => void
+  onSignedComplete?: () => void | Promise<void>
 }
 
 export function InvestmentEsignSignModal({
@@ -43,17 +47,60 @@ export function InvestmentEsignSignModal({
     onClose()
   }, [onClose, reset])
 
-  const handleSigned = useCallback(() => {
+  const handleSignProgress = useCallback(() => {
+    const sigId =
+      activeSession?.signatureRequestId?.trim() || sigRequestId || ""
+    if (!sigId) return
+    void postDealMyEsignSync(dealIdTrimmed, sigId, { phase: "sign" })
+  }, [activeSession?.signatureRequestId, dealIdTrimmed, sigRequestId])
+
+  const handleFinish = useCallback(() => {
     if (signedHandledRef.current) return
     signedHandledRef.current = true
-    toast.success(
-      "Documents signed",
-      "Your signed documents will appear in the E-signatures tab shortly.",
-    )
-    reset()
-    onSignedComplete?.()
-    onClose()
-  }, [onClose, onSignedComplete, reset])
+    void (async () => {
+      const sigId =
+        activeSession?.signatureRequestId?.trim() ||
+        sigRequestId ||
+        undefined
+      const syncRes = await postDealMyEsignSync(dealIdTrimmed, sigId, {
+        phase: "finish",
+      })
+      if (!syncRes.ok) {
+        toast.error(
+          "Signed, sync pending",
+          syncRes.message ||
+            "Your signature was recorded. Refresh this step if status does not update.",
+        )
+      } else {
+        const done =
+          syncRes.esignCompleted ||
+          syncRes.workflowLabel?.toLowerCase() === "completed"
+        toast.success(
+          done ? "Documents completed" : "Signature received",
+          done
+            ? "Your subscription documents are fully signed."
+            : "Finalizing your signed documents…",
+        )
+      }
+      reset()
+      await onSignedComplete?.()
+      onClose()
+    })()
+  }, [
+    activeSession?.signatureRequestId,
+    dealIdTrimmed,
+    onClose,
+    onSignedComplete,
+    reset,
+    sigRequestId,
+  ])
+
+  const handleOpened = useCallback(() => {
+    const sigId =
+      activeSession?.signatureRequestId?.trim() || sigRequestId || ""
+    if (!sigId) return
+    void postDealMyEsignMarkViewed(dealIdTrimmed, sigId)
+  }, [activeSession?.signatureRequestId, dealIdTrimmed, sigRequestId])
 
   useEffect(() => {
     if (!open || !dealIdTrimmed) {
@@ -75,11 +122,15 @@ export function InvestmentEsignSignModal({
   const showEmbed = phase === "embed" && activeSession && embedKey > 0
   const isLoading = phase === "loading"
 
+  const handleBackdropMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) handleClose()
+  }
+
   return (
     <div
       className="um_modal_overlay deal_esign_overlay deal_esign_overlay--signing"
       role="presentation"
-      onClick={handleClose}
+      onMouseDown={handleBackdropMouseDown}
     >
       <div
         className="um_modal deal_esign_modal deal_esign_modal--signing"
@@ -152,7 +203,9 @@ export function InvestmentEsignSignModal({
                   clientId={activeSession.clientId}
                   testMode={activeSession.testMode}
                   useInlineContainer
-                  onSigned={handleSigned}
+                  onOpened={handleOpened}
+                  onSign={handleSignProgress}
+                  onFinish={handleFinish}
                   onCancel={handleClose}
                   onError={(msg) => {
                     setError(msg)
@@ -165,11 +218,7 @@ export function InvestmentEsignSignModal({
           </div>
         </div>
 
-        <div className="deal_esign_modal_foot">
-          {/* <p className="deal_esign_modal_foot_hint">
-            Complete all fields in the signing window, then submit. You can close
-            this dialog and return later if you need to finish later.
-          </p> */}
+        <div className="deal_esign_modal_foot deal_esign_modal_foot--compact">
           <button type="button" className="um_btn_secondary" onClick={handleClose}>
             Close
           </button>

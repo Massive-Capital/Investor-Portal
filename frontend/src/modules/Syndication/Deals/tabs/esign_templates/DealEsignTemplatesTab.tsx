@@ -1,4 +1,4 @@
-import { Upload } from "lucide-react"
+import { ClipboardList, Upload, Users } from "lucide-react"
 
 import {
 
@@ -19,6 +19,7 @@ import {
 } from "react"
 
 import { DropboxSignEmbeddedEditor } from "@/common/components/dropbox-sign-embedded"
+import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 
 import { toast } from "@/common/components/Toast"
 
@@ -49,43 +50,21 @@ import {
   type EsignTemplateUploadDraft,
 } from "./EsignTemplateUploadModal"
 import { esignTemplateDisplayName } from "../../utils/esignTemplateDisplay"
+import { DealEsignTemplatesQuestionnaireTab } from "./DealEsignTemplatesQuestionnaireTab"
+import {
+  ESIGN_ENTITY_CATEGORIES,
+  type EsignEntityCategory,
+} from "./esignEntityCategories"
 import "./deal-esign-templates.css"
 
+export type { EsignEntityCategory }
+export { ESIGN_ENTITY_CATEGORIES }
 
-
-export interface EsignEntityCategory {
-
-  id: string
-
-  label: string
-
-}
-
-
+type EsignTemplatesSubTab = "profiles" | "questionnaire"
 
 /** Logical folder label for e-signed templates (display + future API paths). */
 
 export const ESIGN_FOLDER_SLUG = "e-signed"
-
-
-
-export const ESIGN_ENTITY_CATEGORIES: EsignEntityCategory[] = [
-
-  { id: "individual", label: "Individual" },
-
-  {
-
-    id: "custodian_ira_401k",
-
-    label: "Custodian IRA or custodian based 401(k)",
-
-  },
-
-  { id: "joint_tenancy", label: "Joint tenancy" },
-
-  { id: "llc", label: "LLC, corp, partnership, trust, solo 401(k), or checkbook IRA" },
-
-]
 
 
 
@@ -127,7 +106,7 @@ function EsignCategoryUploadCard({
 
   files,
 
-  onFilesSelected,
+  onFileSelected,
 
   onRemoveFile,
 
@@ -149,7 +128,7 @@ function EsignCategoryUploadCard({
 
   files: DealEsignTemplateFileRecord[]
 
-  onFilesSelected: (categoryId: string, list: FileList | null) => void
+  onFileSelected: (categoryId: string, file: File) => void
 
   onRemoveFile: (categoryId: string, fileId: string) => void
 
@@ -171,7 +150,8 @@ function EsignCategoryUploadCard({
 
   const [dropFocus, setDropFocus] = useState(false)
 
-
+  const hasDocument = files.length > 0
+  const canAddDocument = canUploadDocuments && !hasDocument
 
   const accept =
 
@@ -181,7 +161,9 @@ function EsignCategoryUploadCard({
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
 
-    onFilesSelected(category.id, e.target.files)
+    const file = e.target.files?.[0]
+
+    if (file) onFileSelected(category.id, file)
 
     e.target.value = ""
 
@@ -195,9 +177,9 @@ function EsignCategoryUploadCard({
 
     setDropFocus(false)
 
-    if (e.dataTransfer.files?.length)
+    const file = e.dataTransfer.files?.[0]
 
-      onFilesSelected(category.id, e.dataTransfer.files)
+    if (file) onFileSelected(category.id, file)
 
   }
 
@@ -233,7 +215,7 @@ function EsignCategoryUploadCard({
 
       <div className="deal_esign_card_body">
 
-        {canUploadDocuments ? (
+        {canAddDocument ? (
 
           <>
 
@@ -249,11 +231,9 @@ function EsignCategoryUploadCard({
 
               accept={accept}
 
-              multiple
-
               disabled={uploading}
 
-              aria-label={`Upload documents for ${category.label}`}
+              aria-label={`Upload document for ${category.label}`}
 
               data-deal-id={dealId}
 
@@ -329,7 +309,7 @@ function EsignCategoryUploadCard({
 
                 <span className="deal_esign_dropzone_hint">
 
-                  {uploading ? "Uploading…" : "Drop files or click to upload"}
+                  {uploading ? "Uploading…" : "Drop a file or click to upload"}
 
                 </span>
 
@@ -345,7 +325,16 @@ function EsignCategoryUploadCard({
 
           </>
 
-        ) : (
+        ) : canUploadDocuments && hasDocument ? (
+
+          <p className="deal_esign_upload_restricted" role="status">
+
+            One document per profile type. Remove the current document to upload a
+            new one.
+
+          </p>
+
+        ) : !canUploadDocuments ? (
 
           <p className="deal_esign_upload_restricted" role="status">
 
@@ -353,7 +342,7 @@ function EsignCategoryUploadCard({
 
           </p>
 
-        )}
+        ) : null}
 
         {files.length > 0 ? (
 
@@ -399,7 +388,7 @@ function EsignCategoryUploadCard({
 
 
 
-export function DealEsignTemplatesTab({
+function DealEsignTemplatesProfilesTab({
 
   dealId,
 
@@ -489,11 +478,27 @@ export function DealEsignTemplatesTab({
 
 
 
-  const onFilesSelected = useCallback(
+  const onFileSelected = useCallback(
 
-    (categoryId: string, list: FileList | null) => {
+    (categoryId: string, file: File) => {
 
-      if (!canUploadDocuments || !list?.length) return
+      if (!canUploadDocuments) return
+
+      const existing = filesByCategory[categoryId] ?? []
+
+      if (existing.length > 0) {
+
+        toast.error(
+
+          "Upload not allowed",
+
+          "This profile type already has a document. Remove it to upload a new one.",
+
+        )
+
+        return
+
+      }
 
       const category = ESIGN_ENTITY_CATEGORIES.find((c) => c.id === categoryId)
 
@@ -501,11 +506,11 @@ export function DealEsignTemplatesTab({
 
       setUploadModalCategory(category)
 
-      setUploadModalFiles(Array.from(list))
+      setUploadModalFiles([file])
 
     },
 
-    [canUploadDocuments],
+    [canUploadDocuments, filesByCategory],
 
   )
 
@@ -528,6 +533,36 @@ export function DealEsignTemplatesTab({
     async (drafts: EsignTemplateUploadDraft[]) => {
 
       if (!uploadModalCategory || drafts.length === 0) return
+
+      const existing = filesByCategory[uploadModalCategory.id] ?? []
+
+      if (existing.length > 0) {
+
+        toast.error(
+
+          "Upload not allowed",
+
+          "This profile type already has a document. Remove it to upload a new one.",
+
+        )
+
+        return
+
+      }
+
+      if (drafts.length > 1) {
+
+        toast.error(
+
+          "Upload not allowed",
+
+          "Only one file can be uploaded per profile type.",
+
+        )
+
+        return
+
+      }
 
       setUploading(true)
 
@@ -561,7 +596,7 @@ export function DealEsignTemplatesTab({
 
           notifyDealEsignTemplatesChanged(dealId)
 
-          toast.success("Documents uploaded")
+          toast.success("Document uploaded")
 
           setUploadModalCategory(null)
 
@@ -581,7 +616,7 @@ export function DealEsignTemplatesTab({
 
     },
 
-    [dealId, uploadModalCategory],
+    [dealId, uploadModalCategory, filesByCategory],
 
   )
 
@@ -769,6 +804,10 @@ export function DealEsignTemplatesTab({
 
 
 
+      <div className="deal_esign_header">
+        <h3 className="deal_esign_title">Profiles</h3>
+      </div>
+
       <div className="deal_esign_cards">
 
         {ESIGN_ENTITY_CATEGORIES.map((cat) => (
@@ -783,7 +822,7 @@ export function DealEsignTemplatesTab({
 
             files={filesByCategory[cat.id] ?? []}
 
-            onFilesSelected={onFilesSelected}
+            onFileSelected={onFileSelected}
 
             onRemoveFile={onRequestRemoveFile}
 
@@ -856,6 +895,101 @@ export function DealEsignTemplatesTab({
 
   )
 
+}
+
+export function DealEsignTemplatesTab({
+  dealId,
+  canUploadDocuments = true,
+}: DealEsignTemplatesTabProps) {
+  const [activeSubTab, setActiveSubTab] =
+    useState<EsignTemplatesSubTab>("profiles")
+
+  return (
+    <div className="deal_esign_tab_shell">
+      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer deal_esign_subtabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+          <div
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row deal_esign_subtabs_row"
+            role="tablist"
+            aria-label="eSign template sections"
+          >
+            <button
+              type="button"
+              id="deal-esign-subtab-profiles"
+              role="tab"
+              aria-selected={activeSubTab === "profiles"}
+              aria-controls="deal-esign-panel-profiles"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                activeSubTab === "profiles" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setActiveSubTab("profiles")}
+            >
+              <Users
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Profiles
+              </span>
+            </button>
+            <button
+              type="button"
+              id="deal-esign-subtab-questionnaire"
+              role="tab"
+              aria-selected={activeSubTab === "questionnaire"}
+              aria-controls="deal-esign-panel-questionnaire"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                activeSubTab === "questionnaire" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setActiveSubTab("questionnaire")}
+            >
+              <ClipboardList
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Questionnaire
+              </span>
+            </button>
+          </div>
+        </TabsScrollStrip>
+      </div>
+
+      <div
+        id="deal-esign-panel-profiles"
+        role="tabpanel"
+        aria-labelledby="deal-esign-subtab-profiles"
+        hidden={activeSubTab !== "profiles"}
+        className="deal_esign_subtab_panel"
+      >
+        {activeSubTab === "profiles" ? (
+          <DealEsignTemplatesProfilesTab
+            dealId={dealId}
+            canUploadDocuments={canUploadDocuments}
+          />
+        ) : null}
+      </div>
+
+      <div
+        id="deal-esign-panel-questionnaire"
+        role="tabpanel"
+        aria-labelledby="deal-esign-subtab-questionnaire"
+        hidden={activeSubTab !== "questionnaire"}
+        className="deal_esign_subtab_panel"
+      >
+        {activeSubTab === "questionnaire" ? (
+          <DealEsignTemplatesQuestionnaireTab
+            dealId={dealId}
+            canEdit={canUploadDocuments}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 

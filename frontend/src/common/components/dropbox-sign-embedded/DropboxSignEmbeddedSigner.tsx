@@ -8,6 +8,11 @@ export type DropboxSignEmbeddedSignerProps = {
   testMode: boolean
   /** When true, embed in the host element instead of a body-level modal. */
   useInlineContainer?: boolean
+  /** Investor applied signature (Dropbox `sign` event) — show Signed, not Completed yet. */
+  onSign?: () => void
+  /** Investor clicked Finish in embedded UI (`finish` event) — persist Completed when Dropbox allows. */
+  onFinish?: () => void
+  /** @deprecated Use `onFinish`. Kept for callers that only pass one handler. */
   onSigned?: () => void
   onCancel?: () => void
   onError?: (message: string) => void
@@ -23,19 +28,23 @@ export function DropboxSignEmbeddedSigner({
   clientId,
   testMode,
   useInlineContainer = false,
+  onSign,
+  onFinish,
   onSigned,
   onCancel,
   onError,
   onOpened,
 }: DropboxSignEmbeddedSignerProps) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const onSignedRef = useRef(onSigned)
+  const onSignRef = useRef(onSign)
+  const onFinishRef = useRef(onFinish ?? onSigned)
   const onCancelRef = useRef(onCancel)
   const onErrorRef = useRef(onError)
   const onOpenedRef = useRef(onOpened)
-  const finishedRef = useRef(false)
+  const finishHandledRef = useRef(false)
 
-  onSignedRef.current = onSigned
+  onSignRef.current = onSign
+  onFinishRef.current = onFinish ?? onSigned
   onCancelRef.current = onCancel
   onErrorRef.current = onError
   onOpenedRef.current = onOpened
@@ -45,7 +54,7 @@ export function DropboxSignEmbeddedSigner({
     const cid = clientId?.trim()
     if (!url || !cid) return
 
-    finishedRef.current = false
+    finishHandledRef.current = false
 
     const container =
       useInlineContainer && hostRef.current ? hostRef.current : undefined
@@ -54,14 +63,15 @@ export function DropboxSignEmbeddedSigner({
 
     const client = new HelloSign({ clientId: cid })
 
-    const notifySigned = () => {
-      if (finishedRef.current) return
-      finishedRef.current = true
-      onSignedRef.current?.()
-    }
+    client.on("sign", () => {
+      onSignRef.current?.()
+    })
 
-    client.on("sign", notifySigned)
-    client.on("finish", notifySigned)
+    client.on("finish", () => {
+      if (finishHandledRef.current) return
+      finishHandledRef.current = true
+      onFinishRef.current?.()
+    })
 
     client.on("cancel", () => {
       onCancelRef.current?.()

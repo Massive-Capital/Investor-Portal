@@ -116,6 +116,21 @@ export async function isPortalUserLeadSponsorOnDeal(
              AND lower(trim(c.email)) = lower(trim(u.email))
          )
        )
+     UNION ALL
+     SELECT 1 AS ok
+     FROM deal_investment di
+     INNER JOIN users u ON u.id = $2::uuid
+     WHERE di.deal_id = $1::uuid
+       AND lower(trim(di.investor_role)) = 'lead sponsor'
+       AND trim(di.contact_id) <> '__portal_investment_autosave__'
+       AND (
+         trim(di.contact_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from di.contact_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
      LIMIT 1`,
     [d, s],
   );
@@ -140,6 +155,21 @@ export async function isPortalUserSponsorOnDeal(
          OR EXISTS (
            SELECT 1 FROM contact c
            WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+     UNION ALL
+     SELECT 1 AS ok
+     FROM deal_investment di
+     INNER JOIN users u ON u.id = $2::uuid
+     WHERE di.deal_id = $1::uuid
+       AND lower(trim(di.investor_role)) IN ${SPONSOR_ROLES_IN}
+       AND trim(di.contact_id) <> '__portal_investment_autosave__'
+       AND (
+         trim(di.contact_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from di.contact_id)
              AND lower(trim(c.email)) = lower(trim(u.email))
          )
        )

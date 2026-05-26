@@ -344,8 +344,32 @@ export function CreateDealPage() {
           backendAutosaveInFlightRef.current = true
           try {
             const result = await updateDealMultipart(persistedId, formData)
-            if (!result.ok && import.meta.env.DEV)
-              console.warn("[Create deal] Autosave failed:", result.message)
+            if (!result.ok) {
+              if (result.notFound && !editDealId) {
+                backendDealIdRef.current = null
+                setBackendDealId(null)
+                saveCreateDealDraft({ deal, asset, step: st })
+                const recreate = await createDealMultipart(formData)
+                if (recreate.ok && recreate.dealId) {
+                  backendDealIdRef.current = recreate.dealId
+                  setBackendDealId(recreate.dealId)
+                  saveCreateDealDraft({
+                    deal,
+                    asset,
+                    step: st,
+                    backendDealId: recreate.dealId,
+                  })
+                  notifyDealsListRefetch()
+                } else if (import.meta.env.DEV) {
+                  console.warn(
+                    "[Create deal] Autosave recreate failed:",
+                    recreate.ok ? undefined : recreate.message,
+                  )
+                }
+              } else if (import.meta.env.DEV) {
+                console.warn("[Create deal] Autosave failed:", result.message)
+              }
+            }
             /* Intentionally no notifyDealsListRefetch on PUT — refetching the whole
              * list on every autosave tick makes the DataTable jump and reorder. */
           } finally {

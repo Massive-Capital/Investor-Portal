@@ -115,6 +115,14 @@ export async function getDealInvestors(
       res.status(200).json({ kpis, investors });
       return;
     }
+    try {
+      const { syncDealInvestorEsignStatusesForDeal } = await import(
+        "../../services/deal/dealMemberEsignCompletion.service.js"
+      );
+      await syncDealInvestorEsignStatusesForDeal(dealId);
+    } catch (err) {
+      console.warn("syncDealInvestorEsignStatusesForDeal:", err);
+    }
     let rows = await listDealInvestmentsByDealId(dealId, {
       lpInvestorsOnly: false,
     });

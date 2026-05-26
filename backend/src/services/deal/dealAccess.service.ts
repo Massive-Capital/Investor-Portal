@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
 import {
   DEAL_PARTICIPANT,
   isCompanyAdminRole,
@@ -9,6 +10,7 @@ import { db } from "../../database/db.js";
 import type { AddDealFormRow } from "../../schema/deal.schema/add-deal-form.schema.js";
 import { users } from "../../schema/schema.js";
 import {
+  assignCreatorToDeal,
   isUserAssignedToDeal,
   listDealIdsAssignedToUser,
 } from "./assigningDealUser.service.js";
@@ -119,6 +121,31 @@ export async function getAddDealFormForViewer(
   const row = await getAddDealFormById(dealId);
   if (!(await dealAccessibleToViewerScope(row, scope))) return undefined;
   return row;
+}
+
+/**
+ * Draft deals created via POST before creator assignment was linked — repair
+ * org-scoped in-progress drafts for `deal_participant` on read/write.
+ */
+export async function getAddDealFormForViewerWithDraftCreatorRepair(
+  dealId: string,
+  scope: DealViewerScope,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormForViewerOrAssignedParticipant(
+    dealId,
+    scope,
+  );
+  if (existing) return existing;
+  if (!scope.assignedParticipationOnly || !scope.organizationId) {
+    return undefined;
+  }
+  const row = await getAddDealFormById(dealId);
+  if (!row || !isDealStageDraft(row.dealStage)) return undefined;
+  if (!(await isAddDealFormInOrganizationScope(row, scope.organizationId))) {
+    return undefined;
+  }
+  await assignCreatorToDeal(dealId, scope.userId);
+  return getAddDealFormForViewer(dealId, scope);
 }
 
 export async function assertDealIdInViewerScope(

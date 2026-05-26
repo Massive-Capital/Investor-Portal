@@ -110,6 +110,13 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     const docSignedPatch =
       hasDocSignedKey && docSignedRaw === "" ? null : docSignedRaw;
 
+    const hasQuestionnaireAnswersKey =
+      Object.prototype.hasOwnProperty.call(b, "questionnaire_answers") ||
+      Object.prototype.hasOwnProperty.call(b, "questionnaireAnswers");
+    const hasW9FormKey =
+      Object.prototype.hasOwnProperty.call(b, "w9_form") ||
+      Object.prototype.hasOwnProperty.call(b, "w9Form");
+
     const result = await applyMyInvestNowCommitmentAddon({
       dealId: dealId.trim(),
       viewerEmailNorm: emailNorm,
@@ -122,6 +129,12 @@ export async function patchDealLpInvestorMyInvestNowAddon(
         : undefined,
       status: statusPatch,
       docSignedDate: hasDocSignedKey ? docSignedPatch : undefined,
+      questionnaireAnswersInBody: hasQuestionnaireAnswersKey,
+      questionnaireAnswers: hasQuestionnaireAnswersKey
+        ? (b.questionnaire_answers ?? b.questionnaireAnswers)
+        : undefined,
+      w9FormInBody: hasW9FormKey,
+      w9Form: hasW9FormKey ? (b.w9_form ?? b.w9Form) : undefined,
     });
     if (!result.ok) {
       res.status(400).json({ message: result.message });

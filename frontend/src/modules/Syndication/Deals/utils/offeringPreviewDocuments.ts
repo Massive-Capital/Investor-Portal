@@ -1,9 +1,12 @@
 /**
  * Minimal offering documents shown on the investor-facing preview.
- * Written from the deal Documents tab; read on the offering preview page (same browser).
+ * Backed by in-memory runtime state hydrated from `offering_investor_preview_json` on the deal.
  */
 
-const STORAGE_PREFIX = "ip_offering_preview_docs:v1:"
+import {
+  getRuntimeOfferingPreviewFlatDocuments,
+  setRuntimeOfferingPreviewFlatDocuments,
+} from "./offeringPreviewRuntimeStore"
 
 /** Mirrors section “Shared with”; drives who sees the doc on Preview offering + shared link. */
 export type OfferingPreviewDocSharedWithScope = "lp_investor" | "offering_page"
@@ -19,10 +22,6 @@ export type OfferingPreviewDocument = {
    * `lp_investor`: LP portal only — omitted from Preview offering and the offering link.
    */
   sharedWithScope?: OfferingPreviewDocSharedWithScope
-}
-
-function storageKey(dealId: string): string {
-  return `${STORAGE_PREFIX}${dealId.trim()}`
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -66,25 +65,24 @@ function normalizeDoc(raw: unknown): OfferingPreviewDocument | null {
   }
 }
 
+function normalizeDocArray(parsed: unknown): OfferingPreviewDocument[] {
+  if (!Array.isArray(parsed)) return []
+  const out: OfferingPreviewDocument[] = []
+  for (const item of parsed) {
+    const d = normalizeDoc(item)
+    if (d) out.push(d)
+  }
+  return out
+}
+
 export function readOfferingPreviewDocuments(
   dealId: string,
 ): OfferingPreviewDocument[] {
   const id = dealId.trim()
-  if (!id || typeof window === "undefined") return []
-  try {
-    const raw = window.localStorage.getItem(storageKey(id))
-    if (!raw?.trim()) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    const out: OfferingPreviewDocument[] = []
-    for (const item of parsed) {
-      const d = normalizeDoc(item)
-      if (d) out.push(d)
-    }
-    return out
-  } catch {
-    return []
-  }
+  if (!id) return []
+  const cached = getRuntimeOfferingPreviewFlatDocuments(id)
+  if (cached) return cached
+  return []
 }
 
 export function writeOfferingPreviewDocuments(
@@ -92,10 +90,13 @@ export function writeOfferingPreviewDocuments(
   docs: OfferingPreviewDocument[],
 ): void {
   const id = dealId.trim()
-  if (!id || typeof window === "undefined") return
-  try {
-    window.localStorage.setItem(storageKey(id), JSON.stringify(docs))
-  } catch {
-    /* quota / private mode */
-  }
+  if (!id) return
+  setRuntimeOfferingPreviewFlatDocuments(id, docs)
+}
+
+/** Parse flat document list from legacy localStorage JSON. */
+export function parseOfferingPreviewDocumentsJson(
+  raw: unknown,
+): OfferingPreviewDocument[] {
+  return normalizeDocArray(raw)
 }

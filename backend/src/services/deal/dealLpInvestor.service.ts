@@ -9,7 +9,12 @@ import {
   dealInvestment,
   type DealInvestmentRow,
 } from "../../schema/deal.schema/deal-investment.schema.js";
-import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
+import {
+  latestEsignSentMsFromRawJson,
+  parseEsignStatusJson,
+  pickEsignFieldsFromInvestmentRows,
+} from "../../constants/deal-investor-esign-status.js";
+import { syncDealInvestorEsignStatusesForDeal } from "./dealMemberEsignCompletion.service.js";
 import {
   applyTotalCommittedToDealInvestmentRow,
   buildInvestorKpisFromRows,
@@ -182,6 +187,8 @@ export function syntheticInvestmentFromDealLpInvestor(
     investorClass: m.investorClass,
     docSignedDate: m.docSignedDate?.trim() ?? null,
     esignStatusJson: m.esignStatusJson?.trim() ?? null,
+    investorQuestionnaireAnswersJson: null,
+    investorW9FormJson: null,
     commitmentAmount: m.committed_amount,
     extraContributionAmounts: [],
     documentStoragePath: null,
@@ -237,6 +244,21 @@ export async function mergeDealLpRosterIntoFullInvestorRows(
   return [...investments, ...extra].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
+}
+
+/** When a contact has multiple LP investments, prefer the row with eSign activity. */
+function pickPreferredLpInvestmentRow(
+  prev: DealInvestmentRow | undefined,
+  next: DealInvestmentRow,
+): DealInvestmentRow {
+  if (!prev) return next;
+  const prevEsign = latestEsignSentMsFromRawJson(prev.esignStatusJson);
+  const nextEsign = latestEsignSentMsFromRawJson(next.esignStatusJson);
+  if (nextEsign > prevEsign) return next;
+  if (prevEsign > nextEsign) return prev;
+  const prevT = new Date(prev.createdAt).getTime();
+  const nextT = new Date(next.createdAt).getTime();
+  return nextT > prevT ? next : prev;
 }
 
 /** Prefer the row that actually has an active eSign send (latest `sentAt`). */
@@ -328,8 +350,18 @@ export async function listMergedLpInvestorsForDeal(
       latestInvAnyRole.set(k, inv);
     if (!isLpInvestorRole(inv.investor_role)) continue;
     const prevLp = latestInv.get(k);
-    if (!prevLp || t > new Date(prevLp.createdAt).getTime())
-      latestInv.set(k, inv);
+    latestInv.set(k, pickPreferredLpInvestmentRow(prevLp, inv));
+  }
+
+  const investmentsByContact = new Map<string, DealInvestmentRow[]>();
+  for (const inv of allInvestments) {
+    const k = normalizeContactKey(inv.contactId ?? "");
+    if (!k || k === normalizeContactKey(DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER)) {
+      continue;
+    }
+    const list = investmentsByContact.get(k) ?? [];
+    list.push(inv);
+    investmentsByContact.set(k, list);
   }
 
   const roster = await db
@@ -354,9 +386,22 @@ export async function listMergedLpInvestorsForDeal(
     );
   }
 
-  const withTotals = rows.map((r) =>
-    applyTotalCommittedToDealInvestmentRow(r, totalByContact),
-  );
+  const withTotals = rows.map((r) => {
+    const base = applyTotalCommittedToDealInvestmentRow(r, totalByContact);
+    const k = normalizeContactKey(r.contactId ?? "");
+    const siblings = k ? investmentsByContact.get(k) ?? [] : [];
+    if (siblings.length === 0) return base;
+    const esign = pickEsignFieldsFromInvestmentRows(siblings);
+    return {
+      ...base,
+      ...(esign.docSignedDate != null
+        ? { docSignedDate: esign.docSignedDate }
+        : {}),
+      ...(esign.esignStatusJson != null
+        ? { esignStatusJson: esign.esignStatusJson }
+        : {}),
+    };
+  });
   withTotals.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
@@ -503,6 +548,12 @@ export async function getLpInvestorsTabPayload(
   kpis: ReturnType<typeof buildInvestorKpisFromRows>;
   investors: LpInvestorApiRow[];
 }> {
+  try {
+    await syncDealInvestorEsignStatusesForDeal(dealId);
+  } catch (err) {
+    console.warn("syncDealInvestorEsignStatusesForDeal:", err);
+  }
+
   let merged = await listMergedLpInvestorsForDeal(dealId);
   const uid = viewerUserId?.trim();
   if (uid && (await isViewerCoSponsorOnDeal(dealId, uid))) {

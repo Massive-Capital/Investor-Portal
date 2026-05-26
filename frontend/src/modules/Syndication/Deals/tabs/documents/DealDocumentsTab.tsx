@@ -5,12 +5,14 @@ import "../deal_members/add-investment/add_deal_modal.css"
 
 type DealDocumentsTabProps = {
   dealId: string
+  offeringInvestorPreviewJson?: string | null
   investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
 }
 
 export function DealDocumentsTab({
   dealId,
+  offeringInvestorPreviewJson,
   investorsListRefreshKey = 0,
   onOfferingPreviewSynced,
 }: DealDocumentsTabProps) {
@@ -58,6 +60,7 @@ export function DealDocumentsTab({
           <DocumentsSection
             key={dealId}
             dealId={dealId}
+            offeringInvestorPreviewJson={offeringInvestorPreviewJson}
             investorsListRefreshKey={investorsListRefreshKey}
             onOfferingPreviewSynced={onOfferingPreviewSynced}
           />

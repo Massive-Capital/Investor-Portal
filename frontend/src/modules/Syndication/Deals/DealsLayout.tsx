@@ -1,9 +1,12 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 
-/** `/deals/:dealId` or `/deals/:dealId/offering-portfolio` — investing users may open a deal they participate in, not syndication tools. */
-const INVESTING_DEAL_DETAIL_PATH =
-  /^\/deals\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/offering-portfolio)?$/i
+/**
+ * Investing LP deal routes under `/deals/*` (not syndication list/create/tools):
+ * `/deals/:dealId`, `/deals/:dealId/offering-portfolio`, `/deals/:dealId/invest`.
+ */
+const INVESTING_DEAL_WORKSPACE_PATH =
+  /^\/deals\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/(offering-portfolio|invest))?$/i
 
 /** Syndication-only shell for `/deals/*` */
 export default function DealsLayout() {
@@ -12,7 +15,7 @@ export default function DealsLayout() {
 
   if (mode === "investing") {
     const path = (location.pathname || "/").replace(/\/+$/, "") || "/"
-    if (!INVESTING_DEAL_DETAIL_PATH.test(path)) {
+    if (!INVESTING_DEAL_WORKSPACE_PATH.test(path)) {
       return <Navigate to="/dashboard" replace />
     }
   }

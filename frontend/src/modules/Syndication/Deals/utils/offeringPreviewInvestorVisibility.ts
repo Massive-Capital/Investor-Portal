@@ -1,11 +1,13 @@
 /**
  * Per-section visibility for “Make it visible to Investors” (Offering details accordions).
- * Stored in localStorage in the sponsor browser. Used on the offering preview page
- * (`/deals/:id/offering-portfolio` and `/offering_portfolio?preview=`) so the preview
- * matches what is enabled for the shared investor link.
+ * Stored on the deal row as `offering_investor_preview_json.visibility` and held in memory
+ * while editing. Used on the offering preview page so the preview matches the shared link.
  */
 
-const STORAGE_PREFIX = "ip_offering_investor_preview_visibility:v1:"
+import {
+  getRuntimeOfferingPreviewVisibility,
+  setRuntimeOfferingPreviewVisibility,
+} from "./offeringPreviewRuntimeStore"
 
 /** Fired after `writeOfferingPreviewInvestorVisibility` (same tab + other tabs via storage). */
 export const OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT =
@@ -48,15 +50,11 @@ export function offeringSectionHasInvestorPreviewTarget(
   return Boolean(id)
 }
 
-function storageKey(dealId: string): string {
-  return `${STORAGE_PREFIX}${dealId.trim()}`
-}
-
-/** For `storage` event listeners when another tab updates visibility. */
+/** Stable id for cross-tab custom events (no longer a localStorage key). */
 export function offeringPreviewInvestorVisibilityStorageKey(
   dealId: string,
 ): string {
-  return storageKey(dealId)
+  return `ip_offering_investor_preview_visibility:v1:${dealId.trim()}`
 }
 
 function allTrue(): Record<OfferingDetailsSectionId, boolean> {
@@ -91,8 +89,8 @@ export function parseVisibilityFromOfferingInvestorPreviewJson(
 }
 
 /**
- * Visibility for preview / shared URL. Public investors always use server JSON;
- * sponsor preview merges server + localStorage (local wins after sync).
+ * Visibility for preview / shared URL. Public / shared links use server JSON only.
+ * Sponsor preview uses in-memory state hydrated from the database.
  */
 export function readInvestorVisibilityForOfferingPreview(
   dealId: string,
@@ -100,10 +98,12 @@ export function readInvestorVisibilityForOfferingPreview(
   opts?: { preferServerOnly?: boolean },
 ): Record<OfferingDetailsSectionId, boolean> {
   const fromServer = parseVisibilityFromOfferingInvestorPreviewJson(serverJson)
-  if (opts?.preferServerOnly && fromServer) return fromServer
-  const fromStorage = readOfferingPreviewInvestorVisibility(dealId)
-  if (!fromServer) return fromStorage
-  return { ...fromStorage, ...fromServer }
+  if (opts?.preferServerOnly) {
+    return fromServer ?? readOfferingPreviewInvestorVisibility(dealId)
+  }
+  if (!fromServer) return readOfferingPreviewInvestorVisibility(dealId)
+  const fromRuntime = readOfferingPreviewInvestorVisibility(dealId)
+  return { ...fromServer, ...fromRuntime }
 }
 
 export function readOfferingPreviewInvestorVisibility(
@@ -111,46 +111,29 @@ export function readOfferingPreviewInvestorVisibility(
 ): Record<OfferingDetailsSectionId, boolean> {
   const defaults = allTrue()
   const id = dealId.trim()
-  if (!id || typeof window === "undefined") return defaults
-  try {
-    const raw = window.localStorage.getItem(storageKey(id))
-    if (!raw?.trim()) return defaults
-    const parsed = JSON.parse(raw) as unknown
-    if (!isRecord(parsed)) return defaults
-    const sections = parsed.sections
-    if (!isRecord(sections)) return defaults
-    const out = { ...defaults }
-    for (const k of OFFERING_DETAILS_SECTION_ORDER) {
-      const v = sections[k.id]
-      if (typeof v === "boolean") out[k.id] = v
-    }
-    return out
-  } catch {
-    return defaults
-  }
+  if (!id) return defaults
+  const cached = getRuntimeOfferingPreviewVisibility(id)
+  if (cached) return cached
+  return defaults
 }
 
 export function writeOfferingPreviewInvestorVisibility(
   dealId: string,
   flags: Record<OfferingDetailsSectionId, boolean>,
+  opts?: { notify?: boolean },
 ): void {
   const id = dealId.trim()
-  if (!id || typeof window === "undefined") return
-  try {
-    const sections: Record<string, boolean> = {}
-    for (const { id: sid } of OFFERING_DETAILS_SECTION_ORDER) {
-      sections[sid] = Boolean(flags[sid])
-    }
-    window.localStorage.setItem(
-      storageKey(id),
-      JSON.stringify({ v: 1, sections }),
-    )
+  if (!id) return
+  const next = { ...allTrue() }
+  for (const k of OFFERING_DETAILS_SECTION_ORDER) {
+    next[k.id] = Boolean(flags[k.id])
+  }
+  setRuntimeOfferingPreviewVisibility(id, next)
+  if (typeof window !== "undefined" && opts?.notify !== false) {
     window.dispatchEvent(
       new CustomEvent(OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT, {
         detail: { dealId: id },
       }),
     )
-  } catch {
-    /* quota / private mode */
   }
 }

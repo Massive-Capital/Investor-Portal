@@ -25,6 +25,7 @@ import {
 } from "./api/dealsApi"
 import {
   dealIdFromOfferingPortfolioPathname,
+  dealInvestNowPath,
   dealWorkspacePath,
   EMPTY_INVESTORS_PAYLOAD,
   isDealUuidForOfferingPreview,
@@ -44,8 +45,8 @@ import {
 import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
 import {
   OFFERING_DETAILS_SECTION_ORDER,
-  offeringPreviewInvestorVisibilityStorageKey,
-  readOfferingPreviewInvestorVisibility,
+  OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+  readInvestorVisibilityForOfferingPreview,
 } from "./utils/offeringPreviewInvestorVisibility"
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
@@ -230,31 +231,41 @@ export function DealOfferingPortfolioPage() {
     if (!id) return
     writeInvestNowIntent(id)
     switchToInvesting()
-    navigate(dealWorkspacePath(id), { state: { investNow: true } })
+    navigate(dealInvestNowPath(id))
   }, [detail?.id, navigate, switchToInvesting])
 
   useEffect(() => {
     if (!detail?.id || isPublicOfferingRoute) return
-    const key = offeringPreviewInvestorVisibilityStorageKey(detail.id)
     const bump = () => setInvestorVisibilitySync((n) => n + 1)
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === key) bump()
+    const onVisibility = (e: Event) => {
+      const d = (e as CustomEvent<{ dealId?: string }>).detail
+      if (d?.dealId === detail.id) bump()
     }
-    window.addEventListener("storage", onStorage)
-    window.addEventListener("focus", bump)
-    document.addEventListener("visibilitychange", bump)
+    window.addEventListener(
+      OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+      onVisibility,
+    )
     return () => {
-      window.removeEventListener("storage", onStorage)
-      window.removeEventListener("focus", bump)
-      document.removeEventListener("visibilitychange", bump)
+      window.removeEventListener(
+        OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
+        onVisibility,
+      )
     }
   }, [detail?.id, isPublicOfferingRoute])
 
   const hasAnyInvestorVisibleSection = useMemo(() => {
     if (!detail?.id || isPublicOfferingRoute) return true
-    const v = readOfferingPreviewInvestorVisibility(detail.id)
+    const v = readInvestorVisibilityForOfferingPreview(
+      detail.id,
+      detail.offeringInvestorPreviewJson,
+    )
     return OFFERING_DETAILS_SECTION_ORDER.some(({ id }) => v[id] !== false)
-  }, [detail?.id, isPublicOfferingRoute, investorVisibilitySync])
+  }, [
+    detail?.id,
+    detail?.offeringInvestorPreviewJson,
+    isPublicOfferingRoute,
+    investorVisibilitySync,
+  ])
 
   const isDealDraft = isDealStageDraft(detail?.dealStage)
 

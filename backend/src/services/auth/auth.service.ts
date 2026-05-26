@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import jwt, { type SignOptions } from "jsonwebtoken";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { companies, users } from "../../schema/schema.js";
 import { getJwtExpiry, getJwtSecret } from "../../config/auth.js";
@@ -23,24 +23,24 @@ export type SigninFailure = {
 export type SigninResult = SigninSuccess | SigninFailure;
 
 /**
- * Same flow as legacy `userLogin`: email vs username lookup, status gates, bcrypt, JWT, userDetails.
- * Request body uses `email` in the original handler; here `rawEmailOrUsername` maps to `emailOrUsername` from the API.
+ * Sign-in by email only (username lookup disabled).
  */
 export async function signInWithPassword(
-  rawEmailOrUsername: string,
+  rawEmail: string,
   userPassword: string,
 ): Promise<SigninResult> {
-  const input = (rawEmailOrUsername ?? "").toString().trim();
+  const input = (rawEmail ?? "").toString().trim().toLowerCase();
   if (!input) {
-    return { ok: false, message: "Email or username is required" };
+    return { ok: false, message: "Email is required" };
+  }
+  if (!input.includes("@")) {
+    return { ok: false, message: "A valid email address is required" };
   }
   if (userPassword == null || userPassword === "") {
     return { ok: false, message: "Password is required" };
   }
 
-  const isEmail = input.includes("@");
-  const emailForLookup = isEmail ? input.toLowerCase() : null;
-  const usernameLower = input.toLowerCase();
+  const emailForLookup = input;
 
   try {
     const rows = await db
@@ -48,11 +48,7 @@ export async function signInWithPassword(
         user: users,
       })
       .from(users)
-      .where(
-        isEmail
-          ? eq(users.email, emailForLookup!)
-          : sql`lower(${users.username}) = ${usernameLower}`,
-      )
+      .where(eq(users.email, emailForLookup))
       .limit(1);
     const row = rows[0];
     if (!row) {
@@ -67,11 +63,7 @@ export async function signInWithPassword(
     const user = await db
       .select()
       .from(users)
-      .where(
-        isEmail
-          ? eq(users.email, emailForLookup!)
-          : sql`lower(${users.username}) = ${usernameLower}`,
-      )
+      .where(eq(users.email, emailForLookup))
       .limit(1);
     const usertable = user[0];
     if (!usertable) {

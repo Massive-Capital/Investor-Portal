@@ -71,6 +71,11 @@ export const addDealForm = pgTable("add_deal_form", {
    * for eSign Templates tab uploads (`deal-assets/<dealName-dealId>/e-signed/<category>/`).
    */
   esignTemplatesJson: text("esign_templates_json"),
+  /**
+   * JSON: `{ "v": 1, "sections": [...], "questions": [...] }` for eSign Templates → Questionnaire
+   * (section tabs + per-section question cards).
+   */
+  investorQuestionnaireJson: text("investor_questionnaire_json"),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

@@ -26,6 +26,7 @@ export function isDealUuidForOfferingPreview(id: string | undefined): boolean {
   return Boolean(id?.trim() && DEAL_OFFERING_PREVIEW_UUID_RE.test(id.trim()))
 }
 
+export { dealInvestNowPath } from "./utils/dealInvestNowPath"
 export { dealWorkspacePath } from "./utils/dealWorkspacePath"
 
 export function dealIdFromOfferingPortfolioPathname(

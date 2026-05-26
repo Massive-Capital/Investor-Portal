@@ -56,6 +56,8 @@ export interface DealInvestorRow {
    * When present, the Signed column is clickable to open the status popup.
    */
   esignStatus?: DealInvestorEsignStatus
+  /** Raw `esign_status_json` from DB when API sends it (fallback parse if `esignStatus` is null). */
+  esignStatusBundleJson?: string | null
   fundedDate: string
   selfAccredited: string
   verifiedAccLabel: string
@@ -100,6 +102,8 @@ export interface DealInvestorEsignDocumentRef {
   name: string
   /** eSign template profile (individual, llc, …). */
   categoryId?: string
+  /** Merged investor PDF (questionnaire + W-9) for View while pending. */
+  templateRelativePath?: string
   /** Set on all sent docs when signing is complete (combined signed PDF). */
   signedRelativePath?: string
 }
@@ -109,6 +113,17 @@ export interface DealInvestorEsignStatus {
   viewedAt: string | null
   signedAt: string | null
   completedAt: string | null
+  documents: DealInvestorEsignDocumentRef[]
+}
+
+/** One profile-type template send with stage timestamps. */
+export interface DealInvestorEsignSendStatus {
+  categoryId: string
+  sentAt: string
+  viewedAt: string | null
+  signedAt: string | null
+  completedAt: string | null
+  signatureRequestId?: string | null
   documents: DealInvestorEsignDocumentRef[]
 }
 

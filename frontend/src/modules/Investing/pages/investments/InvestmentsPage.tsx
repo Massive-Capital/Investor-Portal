@@ -6,7 +6,14 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
-import { DealsListPage } from "@/modules/Syndication/Deals/DealsListPage"
+// import { DealsListPage } from "@/modules/Syndication/Deals/DealsListPage"
+import { DealRowActions } from "@/modules/Syndication/Deals/components/DealRowActions"
+import {
+  dateSortValue,
+  dealTypeDisplayLabel,
+  formatDealListDateDisplay,
+  secTypeDisplayLabel,
+} from "@/modules/Syndication/Deals/dealsListDisplay"
 import { dealStageLabel } from "@/modules/Syndication/dealsDashboardUtils"
 import { dealStageChipCompactClassName } from "@/modules/Syndication/Deals/utils/dealStageChip"
 import "@/modules/Syndication/usermanagement/user_management.css"
@@ -21,31 +28,17 @@ import "./investments-page.css"
 export type { InvestmentListRow } from "./investments.types"
 
 const INVESTMENTS_TAB_PARAM = "tab"
-const ARCHIVES_SUB_TAB_PARAM = "archive"
 
-type InvestmentsPageTab = "deals" | "investments" | "archives"
-type ArchivesSubTab = "deals" | "investments"
+type InvestmentsPageTab = "investments" | "archives"
 
 const TAB_IDS: Record<InvestmentsPageTab, string> = {
-  deals: "investments-tab-deals",
   investments: "investments-tab-active",
   archives: "investments-tab-archives",
 }
 
-const ARCHIVES_TAB_IDS: Record<ArchivesSubTab, string> = {
-  deals: "investments-archives-tab-deals",
-  investments: "investments-archives-tab-investments",
-}
-
 function parseInvestmentsTab(value: string | null): InvestmentsPageTab {
-  if (value === "deals" || value === "investments" || value === "archives") {
-    return value
-  }
-  return "investments"
-}
-
-function parseArchivesSubTab(value: string | null): ArchivesSubTab {
-  if (value === "deals") return "deals"
+  if (value === "archives") return "archives"
+  // Legacy `?tab=deals` — Deals tab merged into Investments.
   return "investments"
 }
 
@@ -58,6 +51,33 @@ function formatUsd(n: number): string {
     maximumFractionDigits: 0,
   }).format(abs)
   return n < 0 ? `(${formatted})` : formatted
+}
+
+/** Deal name cell — same avatar + link layout as {@link DealsListPage} `DealListNameCell`. */
+function InvestmentDealNameCell({ row }: { row: InvestmentListRow }) {
+  const dealId = (row.dealId ?? row.id ?? "").trim()
+  const name = row.investmentName?.trim() || "—"
+  const nameLink = dealId ? (
+    <Link
+      className="deals_table_name_link"
+      to={`/investing/investments/${encodeURIComponent(dealId)}`}
+    >
+      {name}
+    </Link>
+  ) : (
+    <span className="deals_table_name_link">{name}</span>
+  )
+
+  return (
+    <div className="deals_list_name_cell">
+      <div className="deals_list_deal_avatar" aria-hidden>
+        <Briefcase size={18} strokeWidth={1.75} />
+      </div>
+      <div className="deals_list_name_text">
+        <div className="deals_list_name_primary">{nameLink}</div>
+      </div>
+    </div>
+  )
 }
 
 type InvestmentsTablePanelProps = {
@@ -136,7 +156,7 @@ function InvestmentsTablePanel({
               ? "No investments match your search."
               : emptyMessage
         }
-        initialSort={{ columnId: "investmentName", direction: "asc" }}
+        initialSort={{ columnId: "dealName", direction: "asc" }}
         pagination={filtered.length > 0 ? pagination : undefined}
       />
     </div>
@@ -175,18 +195,11 @@ function useMergedInvestmentRows() {
 export default function InvestmentsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = parseInvestmentsTab(searchParams.get(INVESTMENTS_TAB_PARAM))
-  const archivesSubTab = parseArchivesSubTab(
-    searchParams.get(ARCHIVES_SUB_TAB_PARAM),
-  )
   const { rows, loading } = useMergedInvestmentRows()
   const [query, setQuery] = useState("")
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [exportModalOpen, setExportModalOpen] = useState(false)
-  const [dealsTabCounts, setDealsTabCounts] = useState({
-    active: 0,
-    archived: 0,
-  })
 
   const setActiveTab = useCallback(
     (tab: InvestmentsPageTab) => {
@@ -195,32 +208,8 @@ export default function InvestmentsPage() {
           const next = new URLSearchParams(prev)
           if (tab === "investments") {
             next.delete(INVESTMENTS_TAB_PARAM)
-            next.delete(ARCHIVES_SUB_TAB_PARAM)
           } else {
             next.set(INVESTMENTS_TAB_PARAM, tab)
-            if (tab !== "archives") {
-              next.delete(ARCHIVES_SUB_TAB_PARAM)
-            }
-          }
-          return next
-        },
-        { replace: true },
-      )
-      setQuery("")
-    },
-    [setSearchParams],
-  )
-
-  const setArchivesSubTab = useCallback(
-    (subTab: ArchivesSubTab) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev)
-          next.set(INVESTMENTS_TAB_PARAM, "archives")
-          if (subTab === "investments") {
-            next.delete(ARCHIVES_SUB_TAB_PARAM)
-          } else {
-            next.set(ARCHIVES_SUB_TAB_PARAM, subTab)
           }
           return next
         },
@@ -252,17 +241,27 @@ export default function InvestmentsPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return [...rowsForTab]
-    return rowsForTab.filter(
-      (r) =>
-        (r.investmentName ?? "").toLowerCase().includes(q) ||
-        (r.offeringName ?? "").toLowerCase().includes(q) ||
-        (r.investmentProfile ?? "").toLowerCase().includes(q),
-    )
+    return rowsForTab.filter((r) => {
+      const haystack = [
+        r.investmentName,
+        r.offeringName,
+        r.investmentProfile,
+        r.viewerRolesLabel,
+        r.dealType,
+        r.secType,
+        r.propertyName,
+        r.owningEntityName,
+        dealStageLabel(r.status ?? ""),
+      ]
+        .map((s) => String(s ?? "").toLowerCase())
+        .join(" ")
+      return haystack.includes(q)
+    })
   }, [query, rowsForTab])
 
   useEffect(() => {
     setPage(1)
-  }, [activeTab, archivesSubTab, query])
+  }, [activeTab, query])
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -287,24 +286,97 @@ export default function InvestmentsPage() {
   const columns: DataTableColumn<InvestmentListRow>[] = useMemo(
     () => [
       {
-        id: "investmentName",
-        header: "Investment",
+        id: "dealName",
+        header: "Deal name",
         tdClassName: "um_td_user",
         sortValue: (r) => (r.investmentName ?? "").toLowerCase(),
-        cell: (r) => (
-          <Link
-            className="deals_table_name_link"
-            to={`/investing/investments/${encodeURIComponent(r.dealId || r.id)}`}
-          >
-            {r.investmentName || "—"}
-          </Link>
-        ),
+        cell: (r) => <InvestmentDealNameCell row={r} />,
       },
       {
-        id: "offeringName",
-        header: "Offering",
-        sortValue: (r) => (r.offeringName ?? "").toLowerCase(),
-        cell: (r) => r.offeringName || "—",
+        id: "dealStage",
+        header: "Deal stage",
+        sortValue: (r) => dealStageLabel(r.status ?? "").toLowerCase(),
+        cell: (r) => {
+          const label = dealStageLabel(r.status ?? "").trim() || "—"
+          if (label === "—") {
+            return <span className="um_status_muted">—</span>
+          }
+          return (
+            <span
+              className={dealStageChipCompactClassName(r.status)}
+              title={`Stage: ${label}`}
+            >
+              <span className="deals_list_stage_badge_icon" aria-hidden>
+                <CircleDot size={12} strokeWidth={2} />
+              </span>
+              <span>{label}</span>
+            </span>
+          )
+        },
+      },
+      {
+        id: "yourRole",
+        header: "Your role",
+        sortValue: (r) => (r.viewerRolesLabel ?? "").toLowerCase(),
+        cell: (r) => {
+          const label = (r.viewerRolesLabel ?? "").trim() || "—"
+          if (label === "—") {
+            return <span className="um_status_muted">—</span>
+          }
+          return <span className="deals_list_viewer_role_label">{label}</span>
+        },
+      },
+      {
+        id: "dealType",
+        header: "Deal type",
+        sortValue: (r) => (r.dealType ?? "").toLowerCase(),
+        cell: (r) => dealTypeDisplayLabel(r.dealType ?? ""),
+      },
+      {
+        id: "secType",
+        header: "SEC type",
+        sortValue: (r) => secTypeDisplayLabel(r.secType ?? "").toLowerCase(),
+        cell: (r) => secTypeDisplayLabel(r.secType ?? ""),
+      },
+      {
+        id: "propertyName",
+        header: "Property name",
+        sortValue: (r) => (r.propertyName ?? "").toLowerCase(),
+        cell: (r) => {
+          const t = String(r.propertyName ?? "").trim()
+          return t || "—"
+        },
+      },
+      {
+        id: "owningEntity",
+        header: "Owning entity",
+        sortValue: (r) => (r.owningEntityName ?? "").toLowerCase(),
+        cell: (r) => {
+          const t = String(r.owningEntityName ?? "").trim()
+          return t || "—"
+        },
+      },
+      {
+        id: "start",
+        header: "Start date",
+        align: "center",
+        thClassName: "deals_th_align_center",
+        sortValue: (r) => dateSortValue(r.startDateDisplay),
+        cell: (r) => formatDealListDateDisplay(r.startDateDisplay),
+      },
+      {
+        id: "close",
+        header: "Close date",
+        align: "center",
+        thClassName: "deals_th_align_center",
+        sortValue: (r) => dateSortValue(r.dealCloseDate),
+        cell: (r) => formatDealListDateDisplay(r.dealCloseDate),
+      },
+      {
+        id: "investmentProfile",
+        header: "Invested as",
+        sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
+        cell: (r) => r.investmentProfile || "—",
       },
       {
         id: "investedAmount",
@@ -331,38 +403,32 @@ export default function InvestmentsPage() {
         cell: (r) => r.currentValuation || "—",
       },
       {
-        id: "dealCloseDate",
-        header: "Close date",
-        sortValue: (r) => (r.dealCloseDate ?? "").toLowerCase(),
-        cell: (r) => r.dealCloseDate || "—",
-      },
-      {
-        id: "status",
-        header: "Status",
-        sortValue: (r) => dealStageLabel(r.status ?? "").toLowerCase(),
-        cell: (r) => {
-          const label = dealStageLabel(r.status ?? "").trim() || "—"
-          if (label === "—") {
-            return <span className="um_status_muted">—</span>
-          }
-          return (
-            <span
-              className={dealStageChipCompactClassName(r.status)}
-              title={`Status: ${label}`}
-            >
-              <span className="deals_list_stage_badge_icon" aria-hidden>
-                <CircleDot size={12} strokeWidth={2} />
-              </span>
-              <span>{label}</span>
-            </span>
-          )
-        },
-      },
-      {
         id: "actionRequired",
         header: "Action",
         sortValue: (r) => (r.actionRequired ?? "").toLowerCase(),
         cell: (r) => r.actionRequired || "—",
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        align: "center",
+        thClassName: "um_th_actions deals_th_actions_head",
+        tdClassName: "um_td_actions deal_inv_td_actions",
+        cell: (r) => {
+          const dealId = (r.dealId ?? r.id ?? "").trim()
+          if (!dealId) return null
+          return (
+            <div className="deal_members_actions_cell">
+              <DealRowActions
+                readOnlyActions
+                dealId={dealId}
+                dealName={r.investmentName}
+                dealStage={r.status}
+                archived={Boolean(r.archived)}
+              />
+            </div>
+          )
+        },
       },
     ],
     [],
@@ -370,8 +436,8 @@ export default function InvestmentsPage() {
 
   const investmentsEmptyMessage =
     activeTab === "archives"
-      ? "No archived investments here yet."
-      : "No committed investments to show."
+      ? "No archived deals or investments here yet."
+      : "No deals or investments in your scope yet."
 
   const investmentsTablePanelProps = {
     loading,
@@ -422,13 +488,14 @@ export default function InvestmentsPage() {
             role="tablist"
             aria-label="Investment views"
           >
-            <button
+            {/* Deals tab merged into Investments — same columns, single table. */}
+            {/* <button
               type="button"
-              id={TAB_IDS.deals}
+              id="investments-tab-deals"
               role="tab"
-              aria-selected={activeTab === "deals"}
+              aria-selected={false}
               aria-controls="investments-list-tabpanel"
-              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "deals" ? " um_members_tab_active" : ""}`}
+              className="um_members_tab deals_tabs_tab um_segmented_tab"
               onClick={() => setActiveTab("deals")}
             >
               <Briefcase
@@ -438,8 +505,7 @@ export default function InvestmentsPage() {
                 aria-hidden
               />
               <span className="deals_tabs_label um_segmented_tab_label">Deals</span>
-              <span className="deals_tabs_count">({dealsTabCounts.active})</span>
-            </button>
+            </button> */}
             <button
               type="button"
               id={TAB_IDS.investments}
@@ -490,112 +556,32 @@ export default function InvestmentsPage() {
           role="tabpanel"
           aria-labelledby={TAB_IDS[activeTab]}
         >
-          <div
-            className={
-              activeTab === "deals"
-                ? undefined
-                : "investments_deals_list_preload"
-            }
-            hidden={activeTab !== "deals"}
-            aria-hidden={activeTab !== "deals"}
-          >
+          {/* Former Deals tab — embedded list commented out; deal columns live on Investments. */}
+          {/* <div hidden aria-hidden>
             <DealsListPage
               dealsListContext="investing"
               embedded
-              onTabCountsChange={setDealsTabCounts}
             />
-          </div>
+          </div> */}
           {activeTab === "archives" ? (
-            <>
-              <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer investments_archives_subtabs">
-                <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
-                  <div
-                    className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
-                    role="tablist"
-                    aria-label="Archive views"
-                  >
-                    <button
-                      type="button"
-                      id={ARCHIVES_TAB_IDS.deals}
-                      role="tab"
-                      aria-selected={archivesSubTab === "deals"}
-                      aria-controls="investments-archives-tabpanel"
-                      className={`um_members_tab deals_tabs_tab um_segmented_tab${archivesSubTab === "deals" ? " um_members_tab_active" : ""}`}
-                      onClick={() => setArchivesSubTab("deals")}
-                    >
-                      <Briefcase
-                        className="deals_tabs_icon um_segmented_tab_icon"
-                        size={16}
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                      <span className="deals_tabs_label um_segmented_tab_label">
-                        Deals
-                      </span>
-                      <span className="deals_tabs_count">
-                        ({dealsTabCounts.archived})
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      id={ARCHIVES_TAB_IDS.investments}
-                      role="tab"
-                      aria-selected={archivesSubTab === "investments"}
-                      aria-controls="investments-archives-tabpanel"
-                      className={`um_members_tab deals_tabs_tab um_segmented_tab${archivesSubTab === "investments" ? " um_members_tab_active" : ""}`}
-                      onClick={() => setArchivesSubTab("investments")}
-                    >
-                      <TrendingUp
-                        className="deals_tabs_icon um_segmented_tab_icon"
-                        size={16}
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                      <span className="deals_tabs_label um_segmented_tab_label">
-                        Investments
-                      </span>
-                      <span className="deals_tabs_count">({archivedCount})</span>
-                    </button>
-                  </div>
-                </TabsScrollStrip>
-              </div>
-              <div
-                id="investments-archives-tabpanel"
-                role="tabpanel"
-                aria-labelledby={ARCHIVES_TAB_IDS[archivesSubTab]}
-                className="investments_archives_tabpanel"
-              >
-                {archivesSubTab === "deals" ? (
-                  <DealsListPage
-                    dealsListContext="investing"
-                    embedded
-                    investingArchiveView="archived"
-                    onTabCountsChange={setDealsTabCounts}
-                  />
-                ) : (
-                  <InvestmentsTablePanel
-                    {...investmentsTablePanelProps}
-                    searchAriaLabel="Search archived investments"
-                  />
-                )}
-              </div>
-            </>
-          ) : activeTab === "investments" ? (
+            <InvestmentsTablePanel
+              {...investmentsTablePanelProps}
+              searchAriaLabel="Search archived investments"
+            />
+          ) : (
             <InvestmentsTablePanel
               {...investmentsTablePanelProps}
               searchAriaLabel="Search investments"
             />
-          ) : null}
+          )}
         </div>
       </div>
 
-      {activeTab !== "deals" ? (
-        <ExportInvestmentsModal
-          open={exportModalOpen}
-          onClose={() => setExportModalOpen(false)}
-          investments={rowsForTab}
-        />
-      ) : null}
+      <ExportInvestmentsModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        investments={rowsForTab}
+      />
     </section>
   )
 }
