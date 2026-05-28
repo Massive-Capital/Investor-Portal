@@ -11,6 +11,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import {
   listMyEsignDocumentsForInvestor,
   syncDealInvestorEsignAfterEmbeddedSign,
@@ -57,7 +58,11 @@ export async function getDealMyEsignDocuments(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -144,7 +149,11 @@ export async function getDealMyEsignSignSessionHandler(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -228,7 +237,11 @@ export async function postDealMyEsignSync(
       .toLowerCase();
 
     try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -345,7 +358,11 @@ export async function postDealMyEsignMarkViewed(
   ).trim();
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;

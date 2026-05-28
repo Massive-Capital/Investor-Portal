@@ -18,6 +18,7 @@ export async function startReusableTemplateEmbeddedDraft(params: {
   portalTemplateId: string;
   viewerUserId: string;
   viewerRole?: string | null;
+  requestedOrganizationId?: string | null;
   title?: string;
 }): Promise<{
   editUrl: string;
@@ -37,6 +38,7 @@ export async function startReusableTemplateEmbeddedDraft(params: {
     params.portalTemplateId,
     params.viewerUserId,
     params.viewerRole,
+    params.requestedOrganizationId,
   );
   if (!row) {
     throw new Error("Template not found");

@@ -11,6 +11,7 @@ import {
 } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "../../../../common/components/Toast"
+import { focusFirstFormErrorAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
 import {
   assetImagePathsToUrls,
   getApiV1Base,
@@ -139,6 +140,7 @@ export function CreateDealPage() {
    * empty, skip autosaving to session so we do not wipe that stored draft.
    */
   const skipOverwriteEmptySessionDraftRef = useRef(false)
+  const formRef = useRef<HTMLFormElement>(null)
 
   useLayoutEffect(() => {
     if (editDealId) {
@@ -507,7 +509,11 @@ export function CreateDealPage() {
     if (!dealDraft.autoFundingAfterGpCountersigns)
       next.autoFundingAfterGpCountersigns = "Please select Yes or No."
     setDealErrors(next)
-    return Object.keys(next).length === 0
+    const ok = Object.keys(next).length === 0
+    if (!ok) {
+      focusFirstFormErrorAfterUpdate({ container: formRef.current })
+    }
+    return ok
   }
 
   function validateAsset(): boolean {
@@ -517,7 +523,11 @@ export function CreateDealPage() {
     const zipErr = zipCodeFieldError(assetDraft.zipCode)
     if (zipErr) next.zipCode = zipErr
     setAssetErrors(next)
-    return Object.keys(next).length === 0
+    const ok = Object.keys(next).length === 0
+    if (!ok) {
+      focusFirstFormErrorAfterUpdate({ container: formRef.current })
+    }
+    return ok
   }
 
   function handleSubmit(e: FormEvent) {
@@ -550,6 +560,10 @@ export function CreateDealPage() {
         if (dealNameErr) {
           setDealErrors((e) => ({ ...e, dealName: dealNameErr }))
           setStep(0)
+          focusFirstFormErrorAfterUpdate({
+            container: formRef.current,
+            preferSelector: "#deal-name-input",
+          })
         }
         toast.error(
           dealNameErr ?? result.message,
@@ -582,8 +596,14 @@ export function CreateDealPage() {
   }
 
   async function saveDeal() {
-    if (!validateAsset()) return
-    if (!validateDeal()) return
+    if (!validateAsset()) {
+      setStep(1)
+      return
+    }
+    if (!validateDeal()) {
+      setStep(0)
+      return
+    }
 
     const nextStageCanon = formDealStageToCanonical(dealDraft.dealStage)
     if (
@@ -701,6 +721,7 @@ export function CreateDealPage() {
 
       <section className="deals_create_deal_section" aria-labelledby={titleId}>
         <form
+          ref={formRef}
           className="deals_add_deal_asset_form"
           onSubmit={handleSubmit}
           noValidate

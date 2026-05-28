@@ -227,15 +227,31 @@ type ResolvedPortalUser = {
  * Load portal `users` and CRM `contact` rows for uuid `contact_id` values so list APIs
  * return name + email (contacts are not in `users`).
  */
+function emailFromContactIdLiteral(contactId: string): string | null {
+  const t = contactId.trim().toLowerCase();
+  return t.includes("@") ? t : null;
+}
+
 export async function resolveUsersByContactIds(
   rows: DealInvestmentRow[],
 ): Promise<Map<string, ResolvedPortalUser>> {
+  const m = new Map<string, ResolvedPortalUser>();
   const need = new Set<string>();
   for (const r of rows) {
     const id = r.contactId?.trim();
-    if (id && looksLikeUuid(id)) need.add(id.toLowerCase());
+    if (!id) continue;
+    const asEmail = emailFromContactIdLiteral(id);
+    if (asEmail) {
+      m.set(id.toLowerCase(), {
+        displayName: memberName(id),
+        userDisplayName: "—",
+        userEmail: asEmail,
+      });
+      continue;
+    }
+    if (looksLikeUuid(id)) need.add(id.toLowerCase());
   }
-  if (need.size === 0) return new Map();
+  if (need.size === 0) return m;
   const ids = [...need];
   const found = await db
     .select({
@@ -249,7 +265,6 @@ export async function resolveUsersByContactIds(
     .from(users)
     .leftJoin(companies, eq(users.organizationId, companies.id))
     .where(inArray(users.id, ids));
-  const m = new Map<string, ResolvedPortalUser>();
   for (const u of found) {
     const key = String(u.id).toLowerCase();
     const email = u.email?.trim() || "—";
@@ -642,7 +657,11 @@ export function mapRowToInvestorApi(
     stored || res?.displayName || memberName(row.contactId);
 
   const userDisplayName = res?.userDisplayName ?? legacy.userDisplayName;
-  const userEmail = res?.userEmail ?? legacy.userEmail;
+  let userEmail = res?.userEmail ?? legacy.userEmail;
+  const emailFromContactId = emailFromContactIdLiteral(cid);
+  if ((!userEmail || userEmail === "—") && emailFromContactId) {
+    userEmail = emailFromContactId;
+  }
 
   const extras = (row.extraContributionAmounts as string[] | null) ?? [];
   return {

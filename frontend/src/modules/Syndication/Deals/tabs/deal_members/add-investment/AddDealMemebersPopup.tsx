@@ -32,6 +32,7 @@ import {
 } from "../../../../../../common/components/data-table/DataTable"
 import {
   DropdownSelect,
+  MODAL_DROPDOWN_SELECT_PROPS,
   type DropdownSelectSection,
 } from "../../../../../../common/components/dropdown-select"
 import {
@@ -74,7 +75,10 @@ import {
 } from "./addMemberFormDraftStorage"
 import type { DealInvestorClass } from "../../../types/deal-investor-class.types"
 import { rowDisplayName } from "../../../../usermanagement/memberAdminShared"
-import { blurFormatMoneyInput } from "../../../utils/offeringMoneyFormat"
+import {
+  moneyAmountOnBlur,
+  moneyAmountOnChange,
+} from "../../../utils/offeringMoneyFormat"
 import { InfoIconPanel } from "../../offering_details/FieldInfoHeading"
 import "../../../../contacts/contacts.css"
 import "../../../../usermanagement/user_management.css"
@@ -1219,6 +1223,7 @@ export function AddInvestmentModal({
                       tight
                     >
                       <DropdownSelect
+                        {...MODAL_DROPDOWN_SELECT_PROPS}
                         id="add-inv-offering"
                         options={offeringOptions.map((o) => ({
                           value: o.value,
@@ -1246,6 +1251,7 @@ export function AddInvestmentModal({
                       }
                     >
                       <DropdownSelect
+                        {...MODAL_DROPDOWN_SELECT_PROPS}
                         id="add-inv-member"
                         sections={memberDropdownSections}
                         value={memberSelectValue}
@@ -1330,6 +1336,7 @@ export function AddInvestmentModal({
                           tight
                         >
                           <DropdownSelect
+                            {...MODAL_DROPDOWN_SELECT_PROPS}
                             id="add-inv-profile"
                             options={INVESTOR_PROFILE_SELECT_OPTIONS.map((o) => ({
                               value: o.value,
@@ -1384,6 +1391,7 @@ export function AddInvestmentModal({
                         />
                       ) : (
                         <DropdownSelect
+                          {...MODAL_DROPDOWN_SELECT_PROPS}
                           id="add-inv-role"
                           options={investorRoleDropdownOptions}
                           value={form.investorRole}
@@ -1440,6 +1448,7 @@ export function AddInvestmentModal({
                     }
                   >
                     <DropdownSelect
+                      {...MODAL_DROPDOWN_SELECT_PROPS}
                       id="add-inv-class"
                       options={investorClassOptions.map((o) => ({
                         value: o.value,
@@ -1497,13 +1506,15 @@ export function AddInvestmentModal({
                           placeholder="Enter amount"
                           value={form.commitmentAmount}
                           onChange={(e) =>
-                            patch({ commitmentAmount: e.target.value })
+                            patch({
+                              commitmentAmount: moneyAmountOnChange(
+                                e.target.value,
+                              ),
+                            })
                           }
                           onBlur={(e) =>
                             patch({
-                              commitmentAmount: blurFormatMoneyInput(
-                                e.target.value,
-                              ),
+                              commitmentAmount: moneyAmountOnBlur(e.target.value),
                             })
                           }
                           aria-label="Commitment amount"

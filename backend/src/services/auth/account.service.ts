@@ -6,6 +6,7 @@ import { enrichUserRecordForDealParticipant } from "../deal/dealParticipantProfi
 import { mergeLpInvestorFlagsIntoUserPayload } from "../investing/lpInvestorAccess.service.js";
 import { serializeUserForClient } from "../user/userAdmin.service.js";
 import { parseUsPhoneToE164 } from "../../utils/usPhone.js";
+import { listUserCompanyMemberships } from "./userCompanyMembership.service.js";
 
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
@@ -23,6 +24,20 @@ async function userDetailsShapeWithDealParticipant(
   userId: string,
 ): Promise<Record<string, unknown>> {
   const base = userDetailsShape(u);
+  const memberships = await listUserCompanyMemberships(userId);
+  if (memberships.length > 0) {
+    base.memberships = memberships;
+    if (
+      (base.organization_id == null || String(base.organization_id).trim() === "") &&
+      memberships[0]?.companyId
+    ) {
+      base.organization_id = memberships[0].companyId;
+      if (String(base.companyName ?? "").trim() === "") {
+        base.companyName = memberships[0].companyName;
+        base.organization_name = memberships[0].companyName;
+      }
+    }
+  }
   const enriched = await enrichUserRecordForDealParticipant(base, userId);
   return mergeLpInvestorFlagsIntoUserPayload(enriched, {
     email: u.email as string | undefined,

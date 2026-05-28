@@ -5,8 +5,21 @@ import {
   Save,
   X,
 } from "lucide-react"
-import { useCallback, useEffect, useId, useState, type FormEvent } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
+import { focusFirstFormErrorAfterUpdate } from "../../../common/utils/scrollToFirstFormError"
+import {
+  buildDealDetailReturnSearch,
+  type DealDetailReturnState,
+} from "./utils/offeringDetailsSectionNav"
 import { toast } from "../../../common/components/Toast"
 import { assetImagePathsToUrls } from "../../../common/utils/apiBaseUrl"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
@@ -43,6 +56,8 @@ export function AddDealAssetPage() {
     assetId?: string
   }>()
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnState = location.state as DealDetailReturnState | null
   const isEdit = Boolean(assetIdParam?.trim())
   const assetId = assetIdParam?.trim() ?? ""
 
@@ -59,15 +74,25 @@ export function AddDealAssetPage() {
   )
   const [hydrated, setHydrated] = useState(!isEdit)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
 
-  const backPath =
+  const dealDetailPath =
     dealId != null && dealId !== ""
       ? `/deals/${encodeURIComponent(dealId)}`
       : "/deals"
 
+  const dealDetailReturnPath = useMemo(() => {
+    if (!returnState?.returnTab && !returnState?.returnSection)
+      return dealDetailPath
+    return `${dealDetailPath}${buildDealDetailReturnSearch({
+      tab: returnState.returnTab,
+      offeringSection: returnState.returnSection,
+    })}`
+  }, [dealDetailPath, returnState?.returnSection, returnState?.returnTab])
+
   const goBack = useCallback(() => {
-    navigate(backPath)
-  }, [navigate, backPath])
+    navigate(dealDetailReturnPath)
+  }, [dealDetailReturnPath, navigate])
 
   useEffect(() => {
     setAppDocumentTitle(isEdit ? "Edit Asset" : "Add Asset")
@@ -201,7 +226,11 @@ export function AddDealAssetPage() {
     const zipErr = zipCodeFieldError(assetDraft.zipCode)
     if (zipErr) nextErr.zipCode = zipErr
     setAssetErrors(nextErr)
-    return Object.keys(nextErr).length === 0
+    const ok = Object.keys(nextErr).length === 0
+    if (!ok) {
+      focusFirstFormErrorAfterUpdate({ container: formRef.current })
+    }
+    return ok
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -258,7 +287,7 @@ export function AddDealAssetPage() {
     upsertDealAssetPersisted(dealId, entry)
 
     setAssetImageFiles([])
-    navigate(backPath)
+    navigate(dealDetailReturnPath)
   }
 
   if (!dealId) {
@@ -278,7 +307,7 @@ export function AddDealAssetPage() {
         <p className="deals_list_not_found" role="status">
           Loading asset…
         </p>
-        <Link to={backPath} className="deals_list_inline_back">
+        <Link to={dealDetailReturnPath} className="deals_list_inline_back">
           Back to deal
         </Link>
       </div>
@@ -289,7 +318,7 @@ export function AddDealAssetPage() {
     return (
       <div className="deals_list_page deals_detail_page deals_add_investor_class_page deals_add_deal_asset_page">
         <p className="deals_list_not_found">{loadError}</p>
-        <Link to={backPath} className="deals_list_inline_back">
+        <Link to={dealDetailReturnPath} className="deals_list_inline_back">
           Back to deal
         </Link>
       </div>
@@ -361,6 +390,7 @@ export function AddDealAssetPage() {
 
       <section className="deals_add_deal_asset_panel">
         <form
+          ref={formRef}
           className="deals_add_deal_asset_form"
           onSubmit={handleSubmit}
           noValidate

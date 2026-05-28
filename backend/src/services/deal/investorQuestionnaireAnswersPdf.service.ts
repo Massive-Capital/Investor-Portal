@@ -129,17 +129,67 @@ function wrapTextLines(
   if (!words.length) return [""];
   const lines: string[] = [];
   let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
-      current = candidate;
-      continue;
+  const breakWord = (word: string): string[] => {
+    if (font.widthOfTextAtSize(word, fontSize) <= maxWidth) return [word];
+    const parts: string[] = [];
+    let chunk = "";
+    for (const ch of word) {
+      const candidate = `${chunk}${ch}`;
+      if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+        chunk = candidate;
+        continue;
+      }
+      if (chunk) parts.push(chunk);
+      chunk = ch;
     }
-    if (current) lines.push(current);
-    current = word;
+    if (chunk) parts.push(chunk);
+    return parts.length ? parts : [word];
+  };
+  for (const word of words) {
+    const safeWordParts = breakWord(word);
+    for (const part of safeWordParts) {
+      const candidate = current ? `${current} ${part}` : part;
+      if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+        current = candidate;
+        continue;
+      }
+      if (current) lines.push(current);
+      current = part;
+    }
   }
   if (current) lines.push(current);
   return lines;
+}
+
+function drawWrappedLabel(
+  writer: PdfWriter,
+  text: string,
+  maxWidth: number,
+): void {
+  for (const line of wrapTextLines(text, writer.fontBold, LABEL_SIZE, maxWidth)) {
+    drawLine(writer, line, writer.fontBold, LABEL_SIZE, true);
+  }
+}
+
+function drawWrappedValue(
+  writer: PdfWriter,
+  text: string,
+  maxWidth: number,
+): void {
+  for (const line of wrapTextLines(text, writer.fontRegular, VALUE_SIZE, maxWidth)) {
+    drawLine(writer, line, writer.fontRegular, VALUE_SIZE);
+  }
+}
+
+function drawQuestionAnswer(
+  writer: PdfWriter,
+  label: string,
+  answer: string,
+): void {
+  const maxWidth = LETTER_WIDTH - MARGIN_X * 2;
+  drawWrappedLabel(writer, label, maxWidth);
+  drawWrappedValue(writer, answer, maxWidth);
+  writer.cursorTop += BLOCK_GAP;
 }
 
 type PdfWriter = {
@@ -200,17 +250,6 @@ function drawWrappedBlock(
   for (const line of wrapTextLines(text, font, size, maxWidth)) {
     drawLine(writer, line, font, size);
   }
-}
-
-function drawQuestionAnswer(
-  writer: PdfWriter,
-  label: string,
-  answer: string,
-): void {
-  const maxWidth = LETTER_WIDTH - MARGIN_X * 2;
-  drawLine(writer, label, writer.fontBold, LABEL_SIZE, true);
-  drawWrappedBlock(writer, answer, writer.fontRegular, VALUE_SIZE, maxWidth);
-  writer.cursorTop += BLOCK_GAP;
 }
 
 /**

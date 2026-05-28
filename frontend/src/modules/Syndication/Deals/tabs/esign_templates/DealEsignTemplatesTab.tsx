@@ -1,4 +1,4 @@
-import { ClipboardList, Upload, Users } from "lucide-react"
+import { ClipboardList, Plus, Upload, Users } from "lucide-react"
 
 import {
 
@@ -6,15 +6,9 @@ import {
 
   useEffect,
 
-  useId,
-
-  useRef,
+  useMemo,
 
   useState,
-
-  type ChangeEvent,
-
-  type DragEvent,
 
 } from "react"
 
@@ -31,6 +25,8 @@ import {
 
   notifyDealEsignTemplatesChanged,
 
+  patchDealEsignTemplateName,
+
   postDealEsignCompleteEmbeddedTemplate,
 
   postDealEsignEmbeddedDraft,
@@ -44,11 +40,12 @@ import {
 } from "@/modules/Syndication/Deals/api/dealsApi"
 
 import { EsignTemplateDeleteConfirmModal } from "./EsignTemplateDeleteConfirmModal"
-import { EsignTemplateFileRow } from "./EsignTemplateFileRow"
 import {
-  EsignTemplateUploadModal,
-  type EsignTemplateUploadDraft,
-} from "./EsignTemplateUploadModal"
+  EsignCreateTemplateModal,
+  type EsignCreateTemplateSubmit,
+} from "./EsignCreateTemplateModal"
+import { EsignProfileTemplateRow } from "./EsignProfileTemplateRow"
+import { EsignTemplateRenameModal } from "./EsignTemplateRenameModal"
 import { esignTemplateDisplayName } from "../../utils/esignTemplateDisplay"
 import { DealEsignTemplatesQuestionnaireTab } from "./DealEsignTemplatesQuestionnaireTab"
 import {
@@ -96,297 +93,62 @@ type EmbeddedEditorSession = {
 
 }
 
-
-
-function EsignCategoryUploadCard({
-
-  category,
-
-  dealId,
-
-  files,
-
-  onFileSelected,
-
-  onRemoveFile,
-
-  onSaveTemplate,
-
-  canUploadDocuments,
-
-  uploading,
-
-  savingTemplateId,
-
-  dropboxSignConfigured,
-
-}: {
-
-  category: EsignEntityCategory
-
-  dealId: string
-
-  files: DealEsignTemplateFileRecord[]
-
-  onFileSelected: (categoryId: string, file: File) => void
-
-  onRemoveFile: (categoryId: string, fileId: string) => void
-
-  onSaveTemplate: (categoryId: string, file: DealEsignTemplateFileRecord) => void
-
-  canUploadDocuments: boolean
-
-  uploading: boolean
-
-  savingTemplateId: string | null
-
-  dropboxSignConfigured: boolean
-
-}) {
-
-  const inputId = useId()
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const [dropFocus, setDropFocus] = useState(false)
-
-  const hasDocument = files.length > 0
-  const canAddDocument = canUploadDocuments && !hasDocument
-
-  const accept =
-
-    ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-
-
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-
-    const file = e.target.files?.[0]
-
-    if (file) onFileSelected(category.id, file)
-
-    e.target.value = ""
-
-  }
-
-
-
-  function handleDrop(e: DragEvent) {
-
-    e.preventDefault()
-
-    setDropFocus(false)
-
-    const file = e.dataTransfer.files?.[0]
-
-    if (file) onFileSelected(category.id, file)
-
-  }
-
-
-
-  const openPicker = useCallback(() => {
-
-    if (!uploading) fileInputRef.current?.click()
-
-  }, [uploading])
-
-
-
-  return (
-
-    <section
-
-      className="deal_esign_card"
-
-      aria-labelledby={`${inputId}-title`}
-
-    >
-
-      <div className="deal_esign_card_head">
-
-        <h3 id={`${inputId}-title`} className="deal_esign_card_title">
-
-          {category.label}
-
-        </h3>
-
-      </div>
-
-      <div className="deal_esign_card_body">
-
-        {canAddDocument ? (
-
-          <>
-
-            <input
-
-              ref={fileInputRef}
-
-              id={inputId}
-
-              type="file"
-
-              className="visually_hidden"
-
-              accept={accept}
-
-              disabled={uploading}
-
-              aria-label={`Upload document for ${category.label}`}
-
-              data-deal-id={dealId}
-
-              data-esign-folder={ESIGN_FOLDER_SLUG}
-
-              data-esign-category={category.id}
-
-              onChange={handleFileChange}
-
-            />
-
-            <div
-
-              role="button"
-
-              tabIndex={uploading ? -1 : 0}
-
-              className={`deal_esign_dropzone${dropFocus ? " deal_esign_dropzone_focus" : ""}${uploading ? " deal_esign_dropzone_busy" : ""}`}
-
-              aria-disabled={uploading}
-
-              onClick={openPicker}
-
-              onKeyDown={(e) => {
-
-                if (uploading) return
-
-                if (e.key === "Enter" || e.key === " ") {
-
-                  e.preventDefault()
-
-                  openPicker()
-
-                }
-
-              }}
-
-              onDragOver={(e) => {
-
-                if (uploading) return
-
-                e.preventDefault()
-
-                setDropFocus(true)
-
-              }}
-
-              onDragLeave={() => setDropFocus(false)}
-
-              onDrop={(e) => {
-
-                if (uploading) return
-
-                handleDrop(e)
-
-              }}
-
-            >
-
-              <Upload
-
-                className="deal_esign_dropzone_lead"
-
-                size={20}
-
-                strokeWidth={1.75}
-
-                aria-hidden
-
-              />
-
-              <div className="deal_esign_dropzone_text">
-
-                <span className="deal_esign_dropzone_hint">
-
-                  {uploading ? "Uploading…" : "Drop a file or click to upload"}
-
-                </span>
-
-                <span className="deal_esign_dropzone_sub">
-
-                  PDFs include W-9 at the end · Word stored locally
-
-                </span>
-
-              </div>
-
-            </div>
-
-          </>
-
-        ) : canUploadDocuments && hasDocument ? (
-
-          <p className="deal_esign_upload_restricted" role="status">
-
-            One document per profile type. Remove the current document to upload a
-            new one.
-
-          </p>
-
-        ) : !canUploadDocuments ? (
-
-          <p className="deal_esign_upload_restricted" role="status">
-
-            Only the lead sponsor can upload documents for this category.
-
-          </p>
-
-        ) : null}
-
-        {files.length > 0 ? (
-
-          <ul className="deal_esign_file_list" aria-label={`Files for ${category.label}`}>
-
-            {files.map((f) => (
-
-              <EsignTemplateFileRow
-
-                key={f.id}
-
-                dealId={dealId}
-
-                file={f}
-
-                canManageDocuments={canUploadDocuments}
-
-                uploading={uploading}
-
-                savingTemplate={savingTemplateId === f.id}
-
-                dropboxSignConfigured={dropboxSignConfigured}
-
-                onRemove={() => onRemoveFile(category.id, f.id)}
-
-                onEditTemplate={() => onSaveTemplate(category.id, f)}
-
-              />
-
-            ))}
-
-          </ul>
-
-        ) : null}
-
-      </div>
-
-    </section>
-
-  )
-
+function hasAnyEsignTemplateFiles(
+  filesByCategory: Record<string, DealEsignTemplateFileRecord[]>,
+): boolean {
+  return Object.values(filesByCategory).some((files) => files.length > 0)
 }
 
+function EsignCreateTemplateButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className="um_btn_primary"
+      onClick={onClick}
+      disabled={disabled}
+    >
+      <Plus size={16} strokeWidth={2} aria-hidden />
+      Create template
+    </button>
+  )
+}
 
+function EsignTemplatesEmptyState({
+  canUpload,
+  onCreateTemplate,
+  uploading,
+}: {
+  canUpload: boolean
+  onCreateTemplate: () => void
+  uploading?: boolean
+}) {
+  return (
+    <div className="deal_esign_empty" role="status">
+      {canUpload ? (
+        <button
+          type="button"
+          className="deal_esign_empty_dropzone"
+          onClick={onCreateTemplate}
+          disabled={uploading}
+          aria-label="Create first eSign template"
+        >
+          <Upload size={22} strokeWidth={2} aria-hidden />
+          <span className="deal_esign_empty_dropzone_title">Click to create template</span>
+        </button>
+      ) : (
+        <p className="deal_esign_empty_readonly">
+          No eSign templates have been uploaded for this deal yet.
+        </p>
+      )}
+    </div>
+  )
+}
 
 function DealEsignTemplatesProfilesTab({
 
@@ -416,15 +178,30 @@ function DealEsignTemplatesProfilesTab({
 
   )
 
-  const [uploadModalCategory, setUploadModalCategory] =
-    useState<EsignEntityCategory | null>(null)
-
-  const [uploadModalFiles, setUploadModalFiles] = useState<File[]>([])
+  const [createModalOpen, setCreateModalOpen] = useState(false)
 
   const [deletePending, setDeletePending] = useState<{
     fileId: string
     displayName: string
   } | null>(null)
+
+  const [renamePending, setRenamePending] = useState<{
+    fileId: string
+    templateName: string
+  } | null>(null)
+
+  const hasAnyDocuments = useMemo(
+    () => hasAnyEsignTemplateFiles(filesByCategory),
+    [filesByCategory],
+  )
+
+  const categoriesWithoutDocuments = useMemo(
+    () =>
+      ESIGN_ENTITY_CATEGORIES.filter(
+        (cat) => (filesByCategory[cat.id] ?? []).length === 0,
+      ),
+    [filesByCategory],
+  )
 
   const reload = useCallback(async () => {
 
@@ -476,148 +253,58 @@ function DealEsignTemplatesProfilesTab({
 
   }, [reload])
 
+  const onCreateTemplate = useCallback(() => {
+    if (!canUploadDocuments) return
+    if (categoriesWithoutDocuments.length === 0) {
+      toast.error(
+        "All profile types have a template",
+        "Remove a template to upload for another profile type.",
+      )
+      return
+    }
+    setCreateModalOpen(true)
+  }, [canUploadDocuments, categoriesWithoutDocuments])
 
-
-  const onFileSelected = useCallback(
-
-    (categoryId: string, file: File) => {
-
-      if (!canUploadDocuments) return
-
-      const existing = filesByCategory[categoryId] ?? []
-
-      if (existing.length > 0) {
-
-        toast.error(
-
-          "Upload not allowed",
-
-          "This profile type already has a document. Remove it to upload a new one.",
-
-        )
-
-        return
-
-      }
-
-      const category = ESIGN_ENTITY_CATEGORIES.find((c) => c.id === categoryId)
-
-      if (!category) return
-
-      setUploadModalCategory(category)
-
-      setUploadModalFiles([file])
-
-    },
-
-    [canUploadDocuments, filesByCategory],
-
-  )
-
-
-
-  const closeUploadModal = useCallback(() => {
-
+  const closeCreateModal = useCallback(() => {
     if (uploading) return
-
-    setUploadModalCategory(null)
-
-    setUploadModalFiles([])
-
+    setCreateModalOpen(false)
   }, [uploading])
 
-
-
-  const onConfirmUpload = useCallback(
-
-    async (drafts: EsignTemplateUploadDraft[]) => {
-
-      if (!uploadModalCategory || drafts.length === 0) return
-
-      const existing = filesByCategory[uploadModalCategory.id] ?? []
-
+  const onConfirmCreateTemplate = useCallback(
+    async (data: EsignCreateTemplateSubmit) => {
+      const existing = filesByCategory[data.categoryId] ?? []
       if (existing.length > 0) {
-
         toast.error(
-
           "Upload not allowed",
-
           "This profile type already has a document. Remove it to upload a new one.",
-
         )
-
         return
-
-      }
-
-      if (drafts.length > 1) {
-
-        toast.error(
-
-          "Upload not allowed",
-
-          "Only one file can be uploaded per profile type.",
-
-        )
-
-        return
-
       }
 
       setUploading(true)
-
       try {
-
-        const result = await postDealEsignTemplateUploads(
-
-          dealId,
-
-          uploadModalCategory.id,
-
-          drafts.map((d) => ({
-
-            file: d.file,
-
+        const result = await postDealEsignTemplateUploads(dealId, data.categoryId, [
+          {
+            file: data.file,
             meta: {
-
-              templateName: d.templateName,
-
-              includeQuestionnaire: d.includeQuestionnaire,
-
+              templateName: data.templateName,
+              includeQuestionnaire: data.includeQuestionnaire,
             },
-
-          })),
-
-        )
-
+          },
+        ])
         if (result.ok) {
-
           setFilesByCategory(result.filesByCategory)
-
           notifyDealEsignTemplatesChanged(dealId)
-
-          toast.success("Document uploaded")
-
-          setUploadModalCategory(null)
-
-          setUploadModalFiles([])
-
+          toast.success("Template created")
+          setCreateModalOpen(false)
         } else {
-
           toast.error("Upload failed", result.message)
-
         }
-
       } finally {
-
         setUploading(false)
-
       }
-
     },
-
-    [dealId, uploadModalCategory, filesByCategory],
-
+    [dealId, filesByCategory],
   )
 
 
@@ -662,11 +349,19 @@ function DealEsignTemplatesProfilesTab({
 
 
 
-  const onSaveTemplate = useCallback(
+  const onEditTemplate = useCallback(
 
     (_categoryId: string, file: DealEsignTemplateFileRecord) => {
 
       if (!canUploadDocuments) return
+
+      if (file.dropboxSignStatus === "ready") {
+        setRenamePending({
+          fileId: file.id,
+          templateName: esignTemplateDisplayName(file),
+        })
+        return
+      }
 
       void (async () => {
 
@@ -718,6 +413,33 @@ function DealEsignTemplatesProfilesTab({
 
     [canUploadDocuments, dealId],
 
+  )
+
+  const onConfirmRenameTemplate = useCallback(
+    (templateName: string) => {
+      if (!renamePending) return
+      void (async () => {
+        setSavingTemplateId(renamePending.fileId)
+        try {
+          const result = await patchDealEsignTemplateName(
+            dealId,
+            renamePending.fileId,
+            templateName,
+          )
+          if (result.ok) {
+            setFilesByCategory(result.filesByCategory)
+            notifyDealEsignTemplatesChanged(dealId)
+            setRenamePending(null)
+            toast.success("Template name updated")
+          } else {
+            toast.error("Could not update template name", result.message)
+          }
+        } finally {
+          setSavingTemplateId(null)
+        }
+      })()
+    },
+    [dealId, renamePending],
   )
 
 
@@ -804,53 +526,83 @@ function DealEsignTemplatesProfilesTab({
 
 
 
-      <div className="deal_esign_header">
-        <h3 className="deal_esign_title">Profiles</h3>
-      </div>
+      {loading ? (
+        <div className="deal_esign_empty_loading" aria-hidden />
+      ) : !hasAnyDocuments ? (
+        <EsignTemplatesEmptyState
+          canUpload={canUploadDocuments}
+          uploading={uploading}
+          onCreateTemplate={onCreateTemplate}
+        />
+      ) : (
+        <>
+          <div className="deal_esign_header">
+            {/* <h3 className="deal_esign_title">Profiles</h3> */}
+            {canUploadDocuments ? (
+              <EsignCreateTemplateButton
+                onClick={onCreateTemplate}
+                disabled={uploading}
+              />
+            ) : null}
+          </div>
 
-      <div className="deal_esign_cards">
+          <div className="deal_esign_profiles_table_wrap">
+            <table className="deal_esign_profiles_table">
+              <thead>
+                <tr>
+                  <th scope="col" className="deal_esign_profiles_th_profile">
+                    Profile
+                  </th>
+                  <th scope="col" className="deal_esign_profiles_th_name">
+                    Template name
+                  </th>
+                  <th scope="col" className="deal_esign_profiles_th_includes">
+                    Includes
+                  </th>
+                  {canUploadDocuments ? (
+                    <th scope="col" className="deal_esign_profiles_th_status">
+                      Status
+                    </th>
+                  ) : null}
+                  <th scope="col" className="deal_esign_profiles_th_actions">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {ESIGN_ENTITY_CATEGORIES.map((cat) => {
+                  const file = (filesByCategory[cat.id] ?? [])[0] ?? null
+                  return (
+                    <EsignProfileTemplateRow
+                      key={cat.id}
+                      category={cat}
+                      dealId={dealId}
+                      file={file}
+                      canManageDocuments={canUploadDocuments}
+                      uploading={uploading}
+                      savingTemplate={file != null && savingTemplateId === file.id}
+                      dropboxSignConfigured={dropboxSignConfigured}
+                      onRemove={() => {
+                        if (file) onRequestRemoveFile(cat.id, file.id)
+                      }}
+                      onEditTemplate={() => {
+                        if (file) onEditTemplate(cat.id, file)
+                      }}
+                    />
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
-        {ESIGN_ENTITY_CATEGORIES.map((cat) => (
-
-          <EsignCategoryUploadCard
-
-            key={cat.id}
-
-            category={cat}
-
-            dealId={dealId}
-
-            files={filesByCategory[cat.id] ?? []}
-
-            onFileSelected={onFileSelected}
-
-            onRemoveFile={onRequestRemoveFile}
-
-            onSaveTemplate={onSaveTemplate}
-
-            canUploadDocuments={canUploadDocuments}
-
-            uploading={uploading}
-
-            savingTemplateId={savingTemplateId}
-
-            dropboxSignConfigured={dropboxSignConfigured}
-
-          />
-
-        ))}
-
-      </div>
-
-
-
-      <EsignTemplateUploadModal
-        open={uploadModalCategory != null && uploadModalFiles.length > 0}
-        category={uploadModalCategory}
-        pendingFiles={uploadModalFiles}
+      <EsignCreateTemplateModal
+        open={createModalOpen}
+        categories={categoriesWithoutDocuments}
         uploading={uploading}
-        onClose={closeUploadModal}
-        onConfirm={onConfirmUpload}
+        onClose={closeCreateModal}
+        onConfirm={onConfirmCreateTemplate}
       />
 
       <EsignTemplateDeleteConfirmModal
@@ -861,6 +613,16 @@ function DealEsignTemplatesProfilesTab({
           if (!uploading) setDeletePending(null)
         }}
         onConfirm={onConfirmRemoveFile}
+      />
+
+      <EsignTemplateRenameModal
+        open={renamePending != null}
+        initialName={renamePending?.templateName ?? ""}
+        busy={Boolean(renamePending && savingTemplateId === renamePending.fileId)}
+        onClose={() => {
+          if (!savingTemplateId) setRenamePending(null)
+        }}
+        onSave={onConfirmRenameTemplate}
       />
 
       {embeddedSession ? (

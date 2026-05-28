@@ -17,6 +17,7 @@ import {
   type FormTooltipPanelAlign,
 } from "../../../../../common/components/form-tooltip/FormTooltip"
 import type { DealDetailApi } from "../../api/dealsApi"
+import { OFFERING_DETAILS_ASSETS_RETURN } from "../../utils/offeringDetailsSectionNav"
 import {
   computeDealAssetRowsFromClientStorage,
   persistDealAssetRowArchiveState,
@@ -246,6 +247,7 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
                 : () =>
                     navigate(
                       `/deals/${encodeURIComponent(detail.id)}/assets/${encodeURIComponent(row.id)}/edit`,
+                      { state: OFFERING_DETAILS_ASSETS_RETURN },
                     )
             }
             onArchive={() => archiveAsset(row.id)}
@@ -283,6 +285,7 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
           <div className="um_toolbar_actions">
             <Link
               to={addAssetHref}
+              state={OFFERING_DETAILS_ASSETS_RETURN}
               className="um_btn_primary deals_list_add_link"
             >
               <Plus size={18} aria-hidden />

@@ -1,8 +1,11 @@
 import {
   DropdownSelect,
+  MODAL_DROPDOWN_SELECT_PROPS,
   type DropdownSelectProps,
-} from "../../../../common/components/dropdown-select/DropdownSelect"
+} from "../../../../common/components/dropdown-select"
 import "./deals-create-dropdown.css"
+
+export { MODAL_DROPDOWN_SELECT_PROPS }
 
 /**
  * Create-deal / asset forms: custom dropdown aligned with `.deals_create_input` typography
@@ -16,7 +19,7 @@ export function DealsCreateDropdownSelect({
   return (
     <DropdownSelect
       {...rest}
-      useFixedPanel
+      {...MODAL_DROPDOWN_SELECT_PROPS}
       className={["deals_create_dropdown_select", className]
         .filter(Boolean)
         .join(" ")}

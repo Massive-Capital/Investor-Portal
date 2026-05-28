@@ -21,8 +21,13 @@ import {
   viewerIsLeadOrAdminSponsorOnAnyDeal,
 } from "../deal/dealMemberScope.service.js";
 import { listAddDealFormsForViewer } from "../deal/dealForm.service.js";
-import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
-import { companies } from "../../schema/schema.js";
+import {
+  normalizeOrganizationUuid,
+  resolveActiveOrganizationIdForUser,
+  resolveOrganizationIdForUserId,
+  userHasAccessToOrganization,
+} from "../org/orgResolution.service.js";
+import { companies, userCompanyMembership } from "../../schema/schema.js";
 import {
   contact,
   type ContactInsert,
@@ -117,11 +122,33 @@ export class ContactScopeConflictError extends Error {
 }
 
 async function userIdsInOrganization(organizationId: string): Promise<string[]> {
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.organizationId, organizationId));
-  return rows.map((r) => r.id);
+  const oid = normalizeOrganizationUuid(organizationId);
+  if (!oid) return [];
+  try {
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .leftJoin(
+        userCompanyMembership,
+        and(
+          eq(userCompanyMembership.userId, users.id),
+          eq(userCompanyMembership.companyId, oid),
+        ),
+      )
+      .where(
+        or(
+          eq(users.organizationId, oid),
+          eq(userCompanyMembership.companyId, oid),
+        ),
+      );
+    return [...new Set(rows.map((r) => r.id).filter(Boolean))];
+  } catch (err) {
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.organizationId, oid));
+    return rows.map((r) => r.id);
+  }
 }
 
 function normalizeContactEmailForScope(e: string): string {
@@ -167,6 +194,7 @@ export async function findContactByEmailForSignupPrefill(
 async function getViewerContactScopeContext(
   viewerUserId: string,
   jwtRoleFallback: string | null | undefined,
+  requestedOrganizationId?: string | null,
 ): Promise<{
   roleForScope: string;
   viewerEmailNorm: string;
@@ -183,14 +211,16 @@ async function getViewerContactScopeContext(
     .limit(1);
   const dbRole = String(row?.role ?? "").trim();
   const roleForScope = dbRole || String(jwtRoleFallback ?? "").trim();
-  const organizationId = await resolveOrganizationIdForUserId(
+  const preloaded = row
+    ? {
+        organizationId: row.organizationId,
+        role: row.role,
+      }
+    : null;
+  const organizationId = await resolveActiveOrganizationIdForUser(
     viewerUserId,
-    row
-      ? {
-          organizationId: row.organizationId,
-          role: row.role,
-        }
-      : null,
+    requestedOrganizationId,
+    preloaded,
   );
 
   return {
@@ -381,8 +411,13 @@ export async function insertContact(params: {
 export async function listContactsForViewerScoped(
   viewerUserId: string,
   viewerRole: string | null | undefined,
+  requestedOrganizationId?: string | null,
 ): Promise<ContactRow[]> {
-  const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  const ctx = await getViewerContactScopeContext(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   const sponsorTeamSeesFullCrm = await viewerIsLeadOrAdminSponsorOnAnyDeal(
     viewerUserId,
   );
@@ -413,17 +448,9 @@ export async function listContactsForViewerScoped(
       .orderBy(desc(contact.createdAt));
   }
 
-  const memberRows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.organizationId, orgId));
+  const memberIds = await userIdsInOrganization(orgId);
   /** Always include the viewer (e.g. company_admin with null `organization_id` still creates contacts). */
-  const ids = [
-    ...new Set([
-      ...memberRows.map((r) => r.id).filter(Boolean),
-      viewerUserId,
-    ]),
-  ];
+  const ids = [...new Set([...memberIds, viewerUserId])];
 
   const orgScope = or(
     eq(contact.organizationId, orgId),
@@ -456,10 +483,12 @@ export async function countDealInvestmentsByContactIdForViewer(params: {
   viewerUserId: string;
   jwtUserRole: string | undefined;
   contactIds: string[];
+  requestedOrganizationId?: string | null;
 }): Promise<Map<string, number>> {
   const scope = await resolveDealViewerScope(
     params.viewerUserId,
     params.jwtUserRole,
+    params.requestedOrganizationId,
   );
   const keys = [
     ...new Set(
@@ -532,8 +561,13 @@ function fillDealCountMapFromExecute(
 export async function listContactsForViewer(
   viewerUserId: string,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<ContactRow[]> {
-  return listContactsForViewerScoped(viewerUserId, viewerRole);
+  return listContactsForViewerScoped(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
 }
 
 export async function getContactById(
@@ -551,12 +585,18 @@ async function viewerCanAccessContactCreator(
   viewerUserId: string,
   createdByUserId: string,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<boolean> {
-  const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  const ctx = await getViewerContactScopeContext(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   if (isPlatformAdminRole(ctx.roleForScope)) return true;
   if (viewerUserId === createdByUserId) return true;
   const orgId = ctx.organizationId;
   if (!orgId) return false;
+  if (await userHasAccessToOrganization(createdByUserId, orgId)) return true;
   const creatorOrgId = await resolveOrganizationIdForUserId(createdByUserId);
   return creatorOrgId === orgId;
 }

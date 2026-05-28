@@ -4,6 +4,32 @@
   margin-bottom: 0.2rem;
 }
 
+/* Initial load — centered in the table panel / main content area */
+.investments_page_loading_panel.deal_inv_table_panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(52vh, 28rem);
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.investments_page_loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: center;
+}
+
+.investments_page_loading_text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
+
 .investments_page_lead {
   margin: 0.4rem 0 0;
   max-width: 40rem;
@@ -22,4 +48,53 @@
 
 .investments_archives_tabpanel {
   min-width: 0;
+}
+
+/* Investments table — keep “Invested as” compact; full text on hover via title */
+.investments_page
+  .deal_inv_table_panel
+  .deal_inv_table
+  th.investments_col_invested_as,
+.investments_page
+  .deal_inv_table_panel
+  .deal_inv_table
+  td.investments_col_invested_as {
+  width: 9.5rem;
+  max-width: 9.5rem;
+  box-sizing: border-box;
+}
+
+.investments_page .deal_inv_table_panel .deal_inv_table td.investments_col_invested_as {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.investments_invested_as_cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Start date — room for “27 May 2026” style values */
+.investments_page
+  .deal_inv_table_panel
+  .deal_inv_table
+  th.investments_col_start_date,
+.investments_page
+  .deal_inv_table_panel
+  .deal_inv_table
+  td.investments_col_start_date {
+  width: 9.5rem;
+  min-width: 9.5rem;
+  max-width: 9.5rem;
+  box-sizing: border-box;
+}
+
+.investments_page .deal_inv_table_panel .deal_inv_table td.investments_col_start_date {
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
 }

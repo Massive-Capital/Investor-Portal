@@ -71,27 +71,6 @@ function EsignHorizontalProgress({ steps }: { steps: EsignWorkflowStep[] }) {
   )
 }
 
-function EsignStageTimestamps({ steps }: { steps: EsignWorkflowStep[] }) {
-  return (
-    <dl className="deal_esign_stage_times" aria-label="Stage timestamps">
-      {steps.map((step) => (
-        <div key={step.key} className="deal_esign_stage_times_row">
-          <dt className="deal_esign_stage_times_label">{step.label}</dt>
-          <dd
-            className={
-              step.done
-                ? "deal_esign_stage_times_value deal_esign_stage_times_value--done"
-                : "deal_esign_stage_times_value"
-            }
-          >
-            {step.atDisplay}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
 function ProfileTabPanel({
   tab,
   steps,
@@ -117,7 +96,6 @@ function ProfileTabPanel({
       <div className="deal_esign_panel deal_esign_panel--muted">
         <p className="deal_esign_panel_title">Signing progress — {tab.label}</p>
         <EsignHorizontalProgress steps={steps} />
-        <EsignStageTimestamps steps={steps} />
         {/* {primarySigner ? (
           <p className="deal_esign_dropbox_inline">
             Dropbox Sign:{" "}

@@ -28,6 +28,7 @@ import {
   usePortalMode,
 } from "@/modules/Investing/context/PortalModeContext"
 import { PortalSwitchLoader } from "@/modules/Investing/components/portal-switch-loader/PortalSwitchLoader"
+import { NotificationsProvider } from "@/modules/notifications"
 import {
   pageTitleForAppPathname,
   setAppDocumentTitle,
@@ -62,6 +63,57 @@ function isSyndicatingDealsNavActive(pathname: string): boolean {
 
 function isNavItemGroup(item: NavItem): item is NavItemGroup {
   return "submenu" in item && Array.isArray(item.submenu)
+}
+
+function isAccountPath(pathname: string): boolean {
+  return (
+    pathname === "/account" || pathname.startsWith("/account/")
+  )
+}
+
+function isInvestingPath(pathname: string): boolean {
+  return pathname.startsWith("/investing")
+}
+
+/** Shared markup so Investing vs Syndicating sidebars keep icon/label alignment identical. */
+function SidebarNavItem({
+  to,
+  label,
+  icon: Icon,
+  isActive,
+  end,
+}: {
+  to: string
+  label: string
+  icon: SidebarIcon
+  isActive?: boolean
+  end?: boolean
+}) {
+  if (end !== undefined) {
+    return (
+      <NavLink
+        to={to}
+        end={end}
+        className={({ isActive: navActive }) =>
+          `app_sidebar_link${navActive ? " app_sidebar_link_active" : ""}`
+        }
+      >
+        <Icon size={18} />
+        <span>{label}</span>
+      </NavLink>
+    )
+  }
+  const active = isActive === true
+  return (
+    <Link
+      to={to}
+      className={`app_sidebar_link${active ? " app_sidebar_link_active" : ""}`}
+      aria-current={active ? "page" : undefined}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </Link>
+  )
 }
 
 /**
@@ -203,9 +255,10 @@ const investingNavItems: NavItemLink[] = [
 function PageLayoutInner() {
   const location = useLocation()
   useUserActivityTracking()
-  const { mode, portalSwitchOverlay } = usePortalMode()
+  const { mode, setMode, portalSwitchOverlay } = usePortalMode()
   const lpInvestor = isLpInvestorSessionUser()
   const { sidebarLogoSrc: workspaceSidebarLogoSrc } = useAppShellBranding()
+  const hasTenantSidebarLogo = Boolean(workspaceSidebarLogoSrc)
   const sidebarHeaderLogoSrc = workspaceSidebarLogoSrc ?? SX_SIDENAV_LOGO
 
   useEffect(() => {
@@ -247,17 +300,24 @@ function PageLayoutInner() {
     ...sharedSidebarTail,
   ]
 
-  const onInvestingModulePath =
-    location.pathname === "/account" ||
-    location.pathname.startsWith("/account/") ||
-    location.pathname.startsWith("/investing")
+  /**
+   * Sidebar nav set:
+   * - Investing: Dashboard, Investments, Profiles, Settings, FeedBack
+   * - Syndicating: Dashboard, Contacts, Deals, Reporting, Settings, …
+   *
+   * `/account` must not flip to Investing nav (Lead / Admin / Co-sponsor My account in Syndicating).
+   * `/investing/*` aligns portal mode so the footer label matches the nav (avoids misaligned UX).
+   */
+  useEffect(() => {
+    if (lpInvestor) return
+    if (isInvestingPath(location.pathname) && mode !== "investing") {
+      setMode("investing")
+    }
+  }, [location.pathname, mode, lpInvestor, setMode])
+
   const showInvestingSidebar =
-    lpInvestor || mode === "investing" || onInvestingModulePath
-  const modeLabel = lpInvestor
-    ? "Investing"
-    : mode === "syndicating"
-      ? "Syndicating"
-      : "Investing"
+    lpInvestor || mode === "investing" || isInvestingPath(location.pathname)
+  const modeLabel = showInvestingSidebar ? "Investing" : "Syndicating"
   const investingSidebarItems = lpInvestor
     ? investingNavItems
     : investingNavItems
@@ -268,14 +328,24 @@ function PageLayoutInner() {
         <PortalSwitchLoader caption={portalSwitchOverlay.caption} />
       ) : null}
       <aside className="app_sidebar">
-        <div className="app_sidebar_brand app_sidebar_brand_static">
+        <div
+          className={`app_sidebar_brand app_sidebar_brand_static${
+            hasTenantSidebarLogo
+              ? " app_sidebar_brand_static--tenant"
+              : " app_sidebar_brand_static--default"
+          }`}
+        >
           <div className="app_sidebar_brand_mark">
             <img
-              className="app_sidebar_brand_logo"
+              className={`app_sidebar_brand_logo${
+                hasTenantSidebarLogo
+                  ? " app_sidebar_brand_logo--tenant"
+                  : " app_sidebar_brand_logo--default"
+              }`}
               src={sidebarHeaderLogoSrc}
               alt="SyndicationX"
-              width={220}
-              height={80}
+              width={hasTenantSidebarLogo ? 200 : 220}
+              height={hasTenantSidebarLogo ? 72 : 80}
               loading="eager"
               fetchPriority="high"
               decoding="async"
@@ -290,49 +360,37 @@ function PageLayoutInner() {
               ? investingSidebarItems.map((item) => {
                   const Icon = item.icon
                   if (item.to === "/investing/profiles") {
-                    const profilesActive = location.pathname.startsWith(
-                      "/investing/profiles",
-                    )
                     return (
-                      <Link
+                      <SidebarNavItem
                         key={item.label}
                         to={item.to}
-                        className={`app_sidebar_link${profilesActive ? " app_sidebar_link_active" : ""}`}
-                        aria-current={profilesActive ? "page" : undefined}
-                      >
-                        <Icon size={18} />
-                        <span>{item.label}</span>
-                      </Link>
+                        label={item.label}
+                        icon={Icon}
+                        isActive={location.pathname.startsWith(
+                          "/investing/profiles",
+                        )}
+                      />
                     )
                   }
                   if (item.label === "Settings") {
-                    const settingsActive =
-                      location.pathname === "/account" ||
-                      location.pathname.startsWith("/account/")
                     return (
-                      <Link
+                      <SidebarNavItem
                         key={item.label}
                         to={item.to}
-                        className={`app_sidebar_link${settingsActive ? " app_sidebar_link_active" : ""}`}
-                        aria-current={settingsActive ? "page" : undefined}
-                      >
-                        <Icon size={18} />
-                        <span>{item.label}</span>
-                      </Link>
+                        label={item.label}
+                        icon={Icon}
+                        isActive={isAccountPath(location.pathname)}
+                      />
                     )
                   }
                   return (
-                    <NavLink
+                    <SidebarNavItem
                       key={item.label}
                       to={item.to}
+                      label={item.label}
+                      icon={Icon}
                       end={item.to === "/dashboard"}
-                      className={({ isActive }) =>
-                        `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
-                      }
-                    >
-                      <Icon size={18} />
-                      <span>{item.label}</span>
-                    </NavLink>
+                    />
                   )
                 })
               : sidebarItems.map((item) => {
@@ -354,19 +412,14 @@ function PageLayoutInner() {
                   const { label, to, icon: Icon } = item
 
                   if (to === "/deals") {
-                    const dealsActive = isSyndicatingDealsNavActive(
-                      location.pathname,
-                    )
                     return (
-                      <Link
+                      <SidebarNavItem
                         key={label}
                         to={to}
-                        className={`app_sidebar_link${dealsActive ? " app_sidebar_link_active" : ""}`}
-                        aria-current={dealsActive ? "page" : undefined}
-                      >
-                        <Icon size={18} />
-                        <span>{label}</span>
-                      </Link>
+                        label={label}
+                        icon={Icon}
+                        isActive={isSyndicatingDealsNavActive(location.pathname)}
+                      />
                     )
                   }
 
@@ -375,34 +428,27 @@ function PageLayoutInner() {
                     const settingsActive =
                       location.pathname === "/settings" ||
                       location.pathname.startsWith("/settings/") ||
-                      location.pathname === "/account" ||
-                      location.pathname.startsWith("/account/")
+                      isAccountPath(location.pathname)
                     return (
-                      <Link
+                      <SidebarNavItem
                         key={label}
                         to={settingsTo}
-                        className={`app_sidebar_link${settingsActive ? " app_sidebar_link_active" : ""}`}
-                        aria-current={settingsActive ? "page" : undefined}
-                      >
-                        <Icon size={18} />
-                        <span>{label}</span>
-                      </Link>
+                        label={label}
+                        icon={Icon}
+                        isActive={settingsActive}
+                      />
                     )
                   }
 
                   const linkEnd = to === "/dashboard" || to === "/metrics"
                   return (
-                    <NavLink
+                    <SidebarNavItem
                       key={label}
                       to={to}
+                      label={label}
+                      icon={Icon}
                       end={linkEnd}
-                      className={({ isActive }) =>
-                        `app_sidebar_link${isActive ? " app_sidebar_link_active" : ""}`
-                      }
-                    >
-                      <Icon size={18} />
-                      <span>{label}</span>
-                    </NavLink>
+                    />
                   )
                 })}
           </nav>
@@ -449,7 +495,9 @@ function PageLayoutInner() {
 function PageLayout() {
   return (
     <PortalModeProvider>
-      <PageLayoutInner />
+      <NotificationsProvider>
+        <PageLayoutInner />
+      </NotificationsProvider>
     </PortalModeProvider>
   )
 }

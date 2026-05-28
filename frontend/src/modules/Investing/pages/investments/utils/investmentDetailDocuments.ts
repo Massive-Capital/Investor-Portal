@@ -24,6 +24,8 @@ export type InvestmentDetailDocumentRow = {
   signatureRequestId?: string
   /** eSign template profile (individual, joint_tenancy, …). */
   categoryId?: string
+  /** Per-document signature state (E-signatures sub-tab only). */
+  esignStatus?: "pending" | "signed"
 }
 
 function rowKey(d: { id: string; url: string | null; name: string }): string {

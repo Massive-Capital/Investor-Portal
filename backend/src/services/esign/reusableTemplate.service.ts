@@ -11,7 +11,7 @@ import {
   type EsignReusableTemplateRow,
   type EsignTemplateSignerRole,
 } from "../../schema/esign.schema.js";
-import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
+import { resolveActiveOrganizationIdForUser } from "../org/orgResolution.service.js";
 import {
   buildStoredAssetName,
   type DealMemoryUploadFile,
@@ -28,6 +28,7 @@ type ViewerScopeContext = {
 async function getViewerScopeContext(
   viewerUserId: string,
   jwtRoleFallback: string | null | undefined,
+  requestedOrganizationId?: string | null,
 ): Promise<ViewerScopeContext> {
   const [row] = await db
     .select({
@@ -39,11 +40,13 @@ async function getViewerScopeContext(
     .limit(1);
   const roleForScope =
     String(row?.role ?? "").trim() || String(jwtRoleFallback ?? "").trim();
-  const organizationId = await resolveOrganizationIdForUserId(
+  const preloaded = row
+    ? { role: row.role, organizationId: row.organizationId }
+    : null;
+  const organizationId = await resolveActiveOrganizationIdForUser(
     viewerUserId,
-    row
-      ? { role: row.role, organizationId: row.organizationId }
-      : null,
+    requestedOrganizationId,
+    preloaded,
   );
   return { roleForScope, organizationId };
 }
@@ -66,8 +69,13 @@ function buildOrgScopeWhere(orgId: string, viewerUserId: string) {
 export async function listReusableTemplatesForViewer(
   viewerUserId: string,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<EsignReusableTemplateRow[]> {
-  const ctx = await getViewerScopeContext(viewerUserId, viewerRole);
+  const ctx = await getViewerScopeContext(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   if (isPlatformAdminRole(ctx.roleForScope)) {
     return db
       .select()
@@ -107,18 +115,28 @@ export async function getReusableTemplateForViewer(
   templateId: string,
   viewerUserId: string,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<EsignReusableTemplateRow | null> {
-  const rows = await listReusableTemplatesForViewer(viewerUserId, viewerRole);
+  const rows = await listReusableTemplatesForViewer(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   return rows.find((r) => r.id === templateId) ?? null;
 }
 
 export async function createReusableTemplateUpload(params: {
   userId: string;
   userRole?: string | null;
+  requestedOrganizationId?: string | null;
   name: string;
   file: DealMemoryUploadFile;
 }): Promise<EsignReusableTemplateRow> {
-  const ctx = await getViewerScopeContext(params.userId, params.userRole);
+  const ctx = await getViewerScopeContext(
+    params.userId,
+    params.userRole,
+    params.requestedOrganizationId,
+  );
   if (!isPdfUploadFile(params.file)) {
     throw new Error(
       "Only PDF documents can be used with Dropbox Sign. Convert Word files to PDF before uploading.",
@@ -171,11 +189,13 @@ export async function saveReusableTemplateAfterEditor(params: {
   roles: EsignTemplateSignerRole[];
   viewerUserId: string;
   viewerRole?: string | null;
+  requestedOrganizationId?: string | null;
 }): Promise<EsignReusableTemplateRow> {
   const existing = await getReusableTemplateForViewer(
     params.portalTemplateId,
     params.viewerUserId,
     params.viewerRole,
+    params.requestedOrganizationId,
   );
   if (!existing) {
     throw new Error("Template not found");

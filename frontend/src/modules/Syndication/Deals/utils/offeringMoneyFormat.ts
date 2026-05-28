@@ -173,19 +173,139 @@ export function blurFormatPercentTwoDecimalsInput(raw: string): string {
   return `${n.toFixed(2)}%`
 }
 
-/** Committed-amount field: live typing + prefill (same rules as blur). */
+/**
+ * Money fields while typing: format $ and commas as digits are entered
+ * (same end result as blur, but applied on every keystroke).
+ */
 export function formatCurrencyUsdTypeInput(raw: string): string {
-  return blurFormatMoneyInput(raw)
-}
-
-/** Whole number or decimal count for “number of units” (class offering). */
-export function blurFormatNumberOfUnitsInput(raw: string): string {
   const t = String(raw ?? "").trim()
   if (!t) return ""
-  const n = parseFloat(t.replace(/[^0-9.]/g, ""))
-  if (!Number.isFinite(n) || n < 0) return ""
-  if (Number.isInteger(n) || Math.abs(n - Math.round(n)) < 1e-9) {
-    return String(Math.max(0, Math.round(n)))
+
+  const digits = t.replace(/[^0-9.]/g, "")
+  if (!digits) return ""
+  if (digits === ".") return "$."
+
+  const endsWithDot = digits.endsWith(".")
+  const [wholeRaw, fracRaw = ""] = digits.split(".")
+  const wholeN = parseFloat(wholeRaw || "0")
+  if (!Number.isFinite(wholeN)) return ""
+
+  const wholeFmt = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(wholeN)
+
+  if (endsWithDot) return `${wholeFmt}.`
+
+  if (digits.includes(".")) {
+    const frac = fracRaw.slice(0, 2)
+    if (!frac) return wholeFmt
+    return `${wholeFmt}.${frac}`
   }
-  return String(Math.round(n * 1e6) / 1e6)
+
+  return blurFormatMoneyInput(digits)
+}
+
+/**
+ * Percent fields while typing: digits with a trailing % (up to two decimals).
+ */
+export function formatPercentTypeInput(raw: string, max?: number): string {
+  let sanitized = sanitizePercentTypingInput(raw)
+  if (!sanitized) return ""
+
+  const n = parseFloat(sanitized)
+  if (max !== undefined && Number.isFinite(n) && n > max) sanitized = String(max)
+
+  const cap = (value: number) =>
+    max === undefined ? value : Math.min(max, Math.max(0, value))
+
+  if (sanitized.endsWith(".")) {
+    const whole = sanitized.slice(0, -1)
+    const wholeN = parseFloat(whole || "0")
+    if (!Number.isFinite(wholeN)) return ""
+    return `${cap(wholeN)}.%`
+  }
+
+  if (sanitized.includes(".")) {
+    const [w, f = ""] = sanitized.split(".")
+    const wholeN = cap(parseFloat(w || "0"))
+    const frac = f.slice(0, 2)
+    return frac ? `${wholeN}.${frac}%` : `${wholeN}%`
+  }
+
+  const clamped = cap(parseFloat(sanitized))
+  if (!Number.isFinite(clamped)) return ""
+  return `${clamped}%`
+}
+
+export function parseNumberOfUnitsDigits(raw: string): number {
+  const t = String(raw ?? "").replace(/,/g, "").trim()
+  if (!t) return NaN
+  const n = parseFloat(t.replace(/[^0-9.]/g, ""))
+  return Number.isFinite(n) ? n : NaN
+}
+
+function formatUnitsWholeWithCommas(wholeDigits: string): string {
+  if (!wholeDigits) return ""
+  const n = parseInt(wholeDigits, 10)
+  if (!Number.isFinite(n)) return wholeDigits
+  return n.toLocaleString("en-US")
+}
+
+/** Strip to digits and at most one decimal point; whole part gets comma grouping. */
+export function formatNumberOfUnitsTypingInput(raw: string): string {
+  const cleaned = String(raw ?? "").replace(/[^0-9.]/g, "")
+  if (!cleaned) return ""
+  const dot = cleaned.indexOf(".")
+  if (dot === -1) return formatUnitsWholeWithCommas(cleaned)
+  const whole = cleaned.slice(0, dot)
+  const frac = cleaned.slice(dot + 1).replace(/\./g, "")
+  const wholeFmt = formatUnitsWholeWithCommas(whole)
+  if (!frac && cleaned.endsWith(".")) return `${wholeFmt}.`
+  if (!frac) return wholeFmt
+  return `${wholeFmt}.${frac}`
+}
+
+/** Unit count with comma grouping (no currency symbol). */
+export function blurFormatNumberOfUnitsInput(raw: string): string {
+  const n = parseNumberOfUnitsDigits(raw)
+  if (!Number.isFinite(n) || n < 0) return ""
+  const rounded =
+    Number.isInteger(n) || Math.abs(n - Math.round(n)) < 1e-9
+      ? Math.max(0, Math.round(n))
+      : Math.round(n * 1e6) / 1e6
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(
+    rounded,
+  )
+}
+
+export function formatNumberOfUnitsDisplay(raw: string | undefined): string {
+  const t = blurFormatNumberOfUnitsInput(String(raw ?? ""))
+  return t || "—"
+}
+
+function stripLeadingUsdSymbol(formatted: string): string {
+  return formatted.startsWith("$") ? formatted.slice(1) : formatted
+}
+
+/** Live-format without `$` — for inputs that show a separate currency prefix. */
+export function formatCurrencyUsdTypeInputBare(raw: string): string {
+  return stripLeadingUsdSymbol(formatCurrencyUsdTypeInput(raw))
+}
+
+/** Blur-format without `$` — pairs with {@link formatCurrencyUsdTypeInputBare}. */
+export function blurFormatMoneyInputBare(raw: string): string {
+  return stripLeadingUsdSymbol(blurFormatMoneyInput(raw))
+}
+
+/** Use on `onChange` for any USD amount field (formats $ and commas while typing). */
+export function moneyAmountOnChange(raw: string): string {
+  return formatCurrencyUsdTypeInput(raw)
+}
+
+/** Use on `onBlur` for any USD amount field. */
+export function moneyAmountOnBlur(raw: string): string {
+  return blurFormatMoneyInput(raw)
 }

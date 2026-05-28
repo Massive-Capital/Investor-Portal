@@ -1,11 +1,10 @@
-import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys"
+import { portalAuthHeaders } from "../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl"
 
 export type WorkspaceTabKey = "settings" | "email" | "contact" | "offerings"
 
 function authHeaders(): Record<string, string> {
-  const token = sessionStorage.getItem(SESSION_BEARER_KEY)
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  return portalAuthHeaders() as Record<string, string>
 }
 
 export async function fetchWorkspaceTabSettings(

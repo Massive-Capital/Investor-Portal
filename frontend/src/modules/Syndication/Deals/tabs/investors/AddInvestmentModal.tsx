@@ -28,6 +28,7 @@ import type { ReactNode } from "react"
 import { toast } from "../../../../../common/components/Toast"
 import {
   DropdownSelect,
+  MODAL_DROPDOWN_SELECT_PROPS,
   type DropdownSelectSection,
 } from "../../../../../common/components/dropdown-select"
 import { AddContactPanel } from "../../../contacts/components/AddContactPanel"
@@ -45,7 +46,10 @@ import { INVESTOR_ROLE_SELECT_OPTIONS } from "../../constants/investor-profile"
 import type { AddInvestmentFormValues } from "../../types/add-investment.types"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import { rowDisplayName } from "../../../usermanagement/memberAdminShared"
-import { blurFormatMoneyInput } from "../../utils/offeringMoneyFormat"
+import {
+  moneyAmountOnBlur,
+  moneyAmountOnChange,
+} from "../../utils/offeringMoneyFormat"
 import { InfoIconPanel } from "../offering_details/FieldInfoHeading"
 import "../../../contacts/contacts.css"
 import "../../../usermanagement/user_management.css"
@@ -625,6 +629,7 @@ export function AddInvestmentModal({
                       tight
                     >
                       <DropdownSelect
+                        {...MODAL_DROPDOWN_SELECT_PROPS}
                         id="add-inv-member"
                         sections={memberDropdownSections}
                         value={memberSelectValue}
@@ -786,13 +791,13 @@ export function AddInvestmentModal({
                         placeholder="Enter amount"
                         value={form.commitmentAmount}
                         onChange={(e) =>
-                          patch({ commitmentAmount: e.target.value })
+                          patch({
+                            commitmentAmount: moneyAmountOnChange(e.target.value),
+                          })
                         }
                         onBlur={(e) =>
                           patch({
-                            commitmentAmount: blurFormatMoneyInput(
-                              e.target.value,
-                            ),
+                            commitmentAmount: moneyAmountOnBlur(e.target.value),
                           })
                         }
                         aria-label="Commitment amount"
@@ -822,12 +827,12 @@ export function AddInvestmentModal({
                         value={amt}
                         onChange={(e) => {
                           const next = [...form.extraContributionAmounts]
-                          next[idx] = e.target.value
+                          next[idx] = moneyAmountOnChange(e.target.value)
                           patch({ extraContributionAmounts: next })
                         }}
                         onBlur={(e) => {
                           const next = [...form.extraContributionAmounts]
-                          next[idx] = blurFormatMoneyInput(e.target.value)
+                          next[idx] = moneyAmountOnBlur(e.target.value)
                           patch({ extraContributionAmounts: next })
                         }}
                         aria-label={`Additional contribution ${idx + 1}`}

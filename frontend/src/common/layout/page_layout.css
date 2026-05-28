@@ -94,8 +94,25 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  flex-shrink: 0;
   margin: 0 0 0.85em;
   overflow: visible;
+}
+
+/* Fallback when tenant/default modifier classes are not applied */
+.app_sidebar_brand_static:not(.app_sidebar_brand_static--tenant):not(
+    .app_sidebar_brand_static--default
+  ) {
+  min-height: 2.25rem;
+}
+
+.app_sidebar_brand_static:not(.app_sidebar_brand_static--tenant):not(
+    .app_sidebar_brand_static--default
+  )
+  .app_sidebar_brand_logo {
+  width: 8em;
+  max-width: 100%;
+  height: auto;
 }
 
 /** SyndicationX default — original sidebar logo size (8em wide, natural height). */
@@ -584,10 +601,8 @@
 /* Sidebar + nav: scale down on typical laptop widths (keeps main content font-size unchanged) */
 @media (max-width: 1600px) {
   .app_sidebar {
-    /* font-size: 0.8125em; */
     font-size: 1em;
-    /* padding: 1.05em 0.85em; */
-    padding:0 0.85em 1.05em 0.85em;
+    padding: 1.05em 0.85em;
   }
 
   .app_sidebar_nav {

@@ -35,6 +35,11 @@ import {
   logSocContactLabelsRead,
   logSocContactWrite,
 } from "../audit/index.js";
+import {
+  requestedOrganizationIdFromRequest,
+  resolveActiveOrganizationIdForUser,
+  userHasAccessToOrganization,
+} from "../services/org/orgResolution.service.js";
 
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,6 +67,16 @@ async function resolveOrganizationIdForContactLabels(
     if (fromQuery && ORG_UUID_RE.test(fromQuery)) return fromQuery;
     return null;
   }
+  const requested = requestedOrganizationIdFromRequest(req);
+  if (fromQuery && ORG_UUID_RE.test(fromQuery)) {
+    if (await userHasAccessToOrganization(userId, fromQuery)) return fromQuery;
+    return null;
+  }
+  const active = await resolveActiveOrganizationIdForUser(userId, requested, {
+    organizationId: row?.organizationId ?? null,
+    role: row?.role ?? null,
+  });
+  if (active) return active;
   if (selfOrg) return selfOrg;
   return getOrganizationIdForUser(userId);
 }
@@ -253,12 +268,18 @@ export async function getContacts(
     return;
   }
   try {
-    const rows = await listContactsForViewer(user.id, user.userRole);
+    const requestedOrg = requestedOrganizationIdFromRequest(req);
+    const rows = await listContactsForViewer(
+      user.id,
+      user.userRole,
+      requestedOrg,
+    );
     const contactIds = rows.map((r) => String(r.id));
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
       contactIds,
+      requestedOrganizationId: requestedOrg,
     });
     const contacts = await Promise.all(
       rows.map((r) => mapContactToJsonWithNames(r, dealCounts)),
@@ -520,7 +541,12 @@ export async function getContactEmailTemplates(
     return;
   }
   try {
-    const rows = await listContactEmailTemplatesForViewer(user.id, user.userRole);
+    const requestedOrg = requestedOrganizationIdFromRequest(req);
+    const rows = await listContactEmailTemplatesForViewer(
+      user.id,
+      user.userRole,
+      requestedOrg,
+    );
     const templates = await Promise.all(
       rows.map((r) => mapContactEmailTemplateToJsonWithName(r)),
     );
@@ -565,6 +591,7 @@ export async function postContactEmailTemplate(
   try {
     const row = await insertContactEmailTemplate({
       createdByUserId: user.id,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
       input: { name, subject, body, attachment, archived },
     });
     res.status(201).json({
@@ -615,6 +642,7 @@ export async function patchContactEmailTemplate(
     const updated = await updateContactEmailTemplateForViewer({
       viewerUserId: user.id,
       viewerRole: user.userRole,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
       templateId,
       input: { name, subject, body, attachment, archived },
     });
@@ -653,6 +681,7 @@ export async function deleteContactEmailTemplate(
     const ok = await deleteContactEmailTemplateForViewer({
       viewerUserId: user.id,
       viewerRole: user.userRole,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
       templateId,
     });
     if (!ok) {

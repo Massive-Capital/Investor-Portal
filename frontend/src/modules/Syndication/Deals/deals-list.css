@@ -1315,6 +1315,14 @@ a.deals_list_add_link.um_btn_primary {
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.25;
+  max-width: min(100%, 8.5rem);
+}
+
+.deals_stage_chip--compact > span:not(.deals_list_stage_badge_icon) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .deals_stage_chip--draft {

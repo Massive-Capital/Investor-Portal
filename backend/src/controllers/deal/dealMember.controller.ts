@@ -12,6 +12,7 @@ import {
 import {
   deleteDealMemberRosterEntry,
   listDealMembersMappedToInvestorApi,
+  markDealMemberInvitationMailSent
 } from "../../services/deal/dealMember.service.js";
 import { sendDealMemberInvitationEmail } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import { isPortalUserSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
@@ -42,6 +43,7 @@ import {
   esignTemplateDisplayNameForFile,
 } from "../../services/deal/dealMemberSendEsignDropbox.service.js";
 import { sendDealMemberSendEsignEmail } from "../../services/deal/dealMemberSendEsign.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 
 /**
  * GET /deals/:dealId/members — roster from `deal_member`, merged with investment
@@ -66,7 +68,11 @@ export async function getDealMembers(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -143,7 +149,11 @@ export async function postDealMemberInvitationEmail(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -166,7 +176,7 @@ export async function postDealMemberInvitationEmail(
       res.status(502).json({ message: msg });
       return;
     }
-
+await markDealMemberInvitationMailSent(dealId, { toEmail: toEmail.trim() });
     logSocDealMemberInvitationSent({
       actorUserId: user.id,
       dealId: dealId.trim(),
@@ -212,7 +222,11 @@ export async function postDealMemberSendEsign(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -407,7 +421,11 @@ export async function getDealMemberEsignStatus(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -486,7 +504,11 @@ export async function deleteDealMember(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;

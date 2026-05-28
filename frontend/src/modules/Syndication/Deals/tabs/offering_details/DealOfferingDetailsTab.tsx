@@ -1,6 +1,6 @@
 import { ChevronDown, Eye } from "lucide-react"
-import { useEffect, useId, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import type { DealDetailApi } from "../../api/dealsApi"
 import {
   OFFERING_DETAILS_ACCORDION_SECTION_ORDER,
@@ -28,18 +28,18 @@ import { FundingInfoSection } from "./FundingInfoSection"
 import { OfferingAnnouncementSection } from "./OfferingAnnouncementSection"
 import { OfferingInformationSection } from "./OfferingInformationSection"
 import { OfferingOverviewSection } from "./OfferingOverviewSection"
+import {
+  DEAL_DETAIL_TAB_QUERY_PARAM,
+  isOfferingDetailsSectionId,
+  OFFERING_SECTION_QUERY_PARAM,
+  offeringSectionElementId,
+  openSectionsFromUrlSection,
+  scrollToOfferingSection,
+} from "../../utils/offeringDetailsSectionNav"
 import "../deal_members/add-investment/add_deal_modal.css"
 interface DealOfferingDetailsTabProps {
   detail: DealDetailApi
   onDealUpdated?: (deal: DealDetailApi) => void
-}
-
-function initialSectionsOpen(): Record<OfferingDetailsSectionId, boolean> {
-  const o = {} as Record<OfferingDetailsSectionId, boolean>
-  OFFERING_DETAILS_ACCORDION_SECTION_ORDER.forEach(({ id }, i) => {
-    o[id] = i === 0
-  })
-  return o
 }
 
 export function DealOfferingDetailsTab({
@@ -49,8 +49,13 @@ export function DealOfferingDetailsTab({
   const onDealUpdatedRef = useRef(onDealUpdated)
   onDealUpdatedRef.current = onDealUpdated
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const baseId = useId()
-  const [openSections, setOpenSections] = useState(initialSectionsOpen)
+  const [openSections, setOpenSections] = useState(() =>
+    openSectionsFromUrlSection(
+      searchParams.get(OFFERING_SECTION_QUERY_PARAM),
+    ),
+  )
   const [previewHydrated, setPreviewHydrated] = useState(false)
   const [investorPreviewVisibility, setInvestorPreviewVisibility] = useState(
     () => readOfferingPreviewInvestorVisibility(detail.id),
@@ -93,6 +98,49 @@ export function DealOfferingDetailsTab({
     dispatchOverviewAssetsMergeEvent(detail.id)
   }, [detail.id, investorPreviewVisibility.assets])
 
+  useEffect(() => {
+    const fromUrl = searchParams.get(OFFERING_SECTION_QUERY_PARAM)
+    if (!isOfferingDetailsSectionId(fromUrl)) return
+    setOpenSections((prev) => {
+      const next = openSectionsFromUrlSection(fromUrl)
+      const unchanged = OFFERING_DETAILS_ACCORDION_SECTION_ORDER.every(
+        ({ id }) => prev[id] === next[id],
+      )
+      return unchanged ? prev : next
+    })
+    scrollToOfferingSection(fromUrl)
+  }, [searchParams])
+
+  const setSectionExpanded = useCallback(
+    (sectionId: OfferingDetailsSectionId, expanded: boolean) => {
+      setOpenSections((prev) => ({ ...prev, [sectionId]: expanded }))
+      setSearchParams(
+        (prevParams) => {
+          const next = new URLSearchParams(prevParams)
+          if (expanded) {
+            next.set(OFFERING_SECTION_QUERY_PARAM, sectionId)
+            if (!next.get(DEAL_DETAIL_TAB_QUERY_PARAM)?.trim())
+              next.set(DEAL_DETAIL_TAB_QUERY_PARAM, "offering_details")
+          } else if (next.get(OFFERING_SECTION_QUERY_PARAM) === sectionId) {
+            next.delete(OFFERING_SECTION_QUERY_PARAM)
+          }
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  const handleSectionSaved = useCallback(
+    (sectionId: OfferingDetailsSectionId, deal: DealDetailApi) => {
+      onDealUpdatedRef.current?.(deal)
+      setSectionExpanded(sectionId, true)
+      scrollToOfferingSection(sectionId)
+    },
+    [setSectionExpanded],
+  )
+
   function sectionBody(id: OfferingDetailsSectionId) {
     switch (id) {
       case "make_announcement":
@@ -101,23 +149,30 @@ export function DealOfferingDetailsTab({
             dealId={detail.id}
             initialTitle={detail.dealAnnouncementTitle}
             initialMessage={detail.dealAnnouncementMessage}
-            onSaved={(d) => onDealUpdated?.(d)}
+            onSaved={(d) => handleSectionSaved("make_announcement", d)}
           />
         )
       case "overview":
         return (
           <OfferingOverviewSection
             detail={detail}
-            onSaved={(d) => onDealUpdated?.(d)}
+            onSaved={(d) => handleSectionSaved("overview", d)}
           />
         )
       case "offering_information":
-        return <OfferingInformationSection dealId={detail.id} />
+        return (
+          <OfferingInformationSection
+            dealId={detail.id}
+            dealOfferingStatus={detail.offeringStatus}
+            dealOfferingVisibility={detail.offeringVisibility}
+          />
+        )
       case "gallery":
         return (
           <OfferingGallerySection
             detail={detail}
-            onDealUpdated={onDealUpdated}
+            onDealUpdated={(d) => onDealUpdatedRef.current?.(d)}
+            onUserSaved={(d) => handleSectionSaved("gallery", d)}
           />
         )
       case "summary":
@@ -125,7 +180,7 @@ export function DealOfferingDetailsTab({
           <InvestorSummarySection
             dealId={detail.id}
             initialStoredHtml={detail.investorSummaryHtml}
-            onSaved={(d) => onDealUpdated?.(d)}
+            onSaved={(d) => handleSectionSaved("summary", d)}
           />
         )
       case "assets":
@@ -135,7 +190,7 @@ export function DealOfferingDetailsTab({
           <KeyHighlightsSection
             dealId={detail.id}
             initialStoredJson={detail.keyHighlightsJson}
-            onSaved={(d) => onDealUpdated?.(d)}
+            onSaved={(d) => handleSectionSaved("key_highlights", d)}
           />
         )
       case "funding_instructions":
@@ -233,6 +288,7 @@ export function DealOfferingDetailsTab({
           return (
             <div
               key={id}
+              id={offeringSectionElementId(id)}
               className={`deal_offering_section${expanded ? " deal_offering_section_expanded" : ""}`}
               role="listitem"
             >
@@ -243,12 +299,7 @@ export function DealOfferingDetailsTab({
                   className="deal_offering_trigger_toggle"
                   aria-expanded={expanded}
                   aria-controls={panelId}
-                  onClick={() =>
-                    setOpenSections((prev) => ({
-                      ...prev,
-                      [id]: !prev[id],
-                    }))
-                  }
+                  onClick={() => setSectionExpanded(id, !expanded)}
                 >
                   <span className="deal_offering_trigger_label">{label}</span>
                 </button>
@@ -261,12 +312,7 @@ export function DealOfferingDetailsTab({
                   aria-label={
                     expanded ? `Collapse ${label}` : `Expand ${label}`
                   }
-                  onClick={() =>
-                    setOpenSections((prev) => ({
-                      ...prev,
-                      [id]: !prev[id],
-                    }))
-                  }
+                  onClick={() => setSectionExpanded(id, !expanded)}
                 >
                   <ChevronDown
                     size={20}

@@ -13,6 +13,7 @@ import {
   membershipsSortValue,
   organizationsSortValue,
   primaryRoleLabelFromRow,
+  memberUserCellPrimaryLabel,
   rowDisplayName,
 } from "./memberAdminShared"
 import {
@@ -30,12 +31,8 @@ interface ExportMembersModalProps {
 }
 
 function memberDisplayLabel(row: Record<string, unknown>): string {
-  const n = rowDisplayName(row).trim()
-  if (n && n !== "—") return n
-  const e = formatValue(row.email).trim()
-  if (e && e !== "—") return e
-  const u = formatMemberUsername(row.username)
-  return u && u !== "—" ? u : "—"
+  const n = memberUserCellPrimaryLabel(row).trim()
+  return n && n !== "—" ? n : "—"
 }
 
 export function ExportMembersModal({

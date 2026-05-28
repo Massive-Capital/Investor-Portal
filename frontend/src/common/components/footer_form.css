@@ -9,3 +9,7 @@
 body:has(.authPage) .poweredBy {
   margin: clamp(0.75em, 3vw, 1.25em) 0 0.35em 0;
 }
+
+body:has(.signup_page) .poweredBy {
+  margin: 0.5em 0 0;
+}

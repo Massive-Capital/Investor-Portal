@@ -15,6 +15,16 @@
   box-sizing: border-box;
 }
 
+.top_navbar_end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.5rem;
+  margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .top_navbar_user_wrap {
   position: relative;
   display: flex;

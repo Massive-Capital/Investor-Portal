@@ -21,6 +21,10 @@ import {
   canonicalUsPhoneKey10,
   parseUsPhoneToE164,
 } from "../../utils/usPhone.js";
+import {
+  isCompanyMembershipRole,
+  upsertUserCompanyMembership,
+} from "./userCompanyMembership.service.js";
 
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
@@ -381,10 +385,12 @@ export async function registerUser(
     if (phoneDup) return phoneDup;
 
     let createdUserId: string | undefined;
+    let membershipCompanyId: string | undefined = organizationId;
 
     if (pendingId && existingByEmail) {
       const orgToSet =
         organizationId ?? existingByEmail.organizationId ?? undefined;
+      membershipCompanyId = orgToSet;
       await db
         .update(users)
         .set({
@@ -419,6 +425,18 @@ export async function registerUser(
         })
         .returning({ id: users.id });
       createdUserId = inserted?.id;
+    }
+
+    if (
+      createdUserId &&
+      membershipCompanyId &&
+      isCompanyMembershipRole(roleForUser)
+    ) {
+      await upsertUserCompanyMembership(
+        createdUserId,
+        membershipCompanyId,
+        roleForUser,
+      );
     }
 
     try {

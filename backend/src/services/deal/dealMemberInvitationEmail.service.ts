@@ -48,15 +48,22 @@ function defaultSubject(
 /**
  * Resolves an email for a `contact_id` / portal user id stored on `deal_investment`.
  */
+function normalizeRecipientEmail(raw: string | null | undefined): string | null {
+  const t = String(raw ?? "").trim().toLowerCase();
+  return t.includes("@") ? t : null;
+}
+
 export async function resolveEmailForContactMemberId(
   contactMemberId: string,
+  contactEmailFallback?: string | null,
 ): Promise<string | null> {
+  const fromClient = normalizeRecipientEmail(contactEmailFallback);
+  if (fromClient) return fromClient;
+
   const id = contactMemberId.trim();
   if (!id) return null;
-  if (id.includes("@")) {
-    const lower = id.toLowerCase();
-    return lower.includes("@") ? lower : null;
-  }
+  const asEmail = normalizeRecipientEmail(id);
+  if (asEmail) return asEmail;
   if (!UUID_RE.test(id)) return null;
 
   const [u] = await db
@@ -64,16 +71,16 @@ export async function resolveEmailForContactMemberId(
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
-  const fromUser = u?.email?.trim().toLowerCase();
-  if (fromUser?.includes("@")) return fromUser;
+  const fromUser = normalizeRecipientEmail(u?.email);
+  if (fromUser) return fromUser;
 
   const [c] = await db
     .select({ email: contact.email })
     .from(contact)
     .where(eq(contact.id, id))
     .limit(1);
-  const fromContact = c?.email?.trim().toLowerCase();
-  if (fromContact?.includes("@")) return fromContact;
+  const fromContact = normalizeRecipientEmail(c?.email);
+  if (fromContact) return fromContact;
 
   return null;
 }
@@ -181,9 +188,19 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
   contactDisplayName: string
   sendInvitationMail: string
   dealMemberRole?: string
+  /** From Add Member / investment form when the UI already has the address. */
+  contactEmail?: string | null
+  /**
+   * `deal_member` when saving via Deal Members (`deal_member` upsert);
+   * `investor` for LP Investors tab / investor-framed invites.
+   */
+  invitationSource?: DealInvitationSource
 }): Promise<void> {
   if (String(input.sendInvitationMail).toLowerCase() !== "yes") return;
-  const to = await resolveEmailForContactMemberId(input.contactId);
+  const to = await resolveEmailForContactMemberId(
+    input.contactId,
+    input.contactEmail,
+  );
   if (!to) {
     console.warn(
       "sendDealMemberInviteForInvestmentIfRequested: no email for contact",
@@ -192,23 +209,29 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
     return;
   }
   const rawRole = String(input.dealMemberRole ?? "").trim();
-  const roleLower = rawRole.toLowerCase();
-  const sendAsDealMemberRole =
-    roleLower === "lead sponsor" ||
-    roleLower === "admin sponsor" ||
-    roleLower === "co-sponsor" ||
-    roleLower === "co sponsor";
+  const invitationSource =
+    input.invitationSource ??
+    (rawRole ? "deal_member" : "investor");
   const result = await sendDealMemberInvitationEmail({
     dealId: input.dealId,
     toEmail: to,
     memberDisplayName: input.contactDisplayName,
-    invitationSource: sendAsDealMemberRole ? "deal_member" : "investor",
-    dealMemberRoleLabel: sendAsDealMemberRole ? rawRole : "",
+    invitationSource,
+    dealMemberRoleLabel:
+      invitationSource === "deal_member" ? rawRole : "",
   });
   if (!result.ok) {
     console.warn(
       "sendDealMemberInviteForInvestmentIfRequested: send failed",
       result.error,
     );
+    return;
   }
+  const { markDealMemberInvitationMailSent } = await import(
+    "./dealMember.service.js"
+  );
+  await markDealMemberInvitationMailSent(input.dealId, {
+    contactMemberId: input.contactId,
+    toEmail: to,
+  });
 }

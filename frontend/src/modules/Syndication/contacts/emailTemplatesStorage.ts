@@ -1,5 +1,5 @@
 /** Backend-backed persistence for email templates. */
-import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys"
+import { portalAuthHeaders } from "../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl"
 
 export const EMAIL_TEMPLATE_SUBJECT_MAX = 255
@@ -71,13 +71,7 @@ function coerceRow(raw: Record<string, unknown>): EmailTemplateRow | null {
 }
 
 function authHeaders(): HeadersInit {
-  const token =
-    typeof sessionStorage !== "undefined"
-      ? sessionStorage.getItem(SESSION_BEARER_KEY)
-      : null
-  const h: HeadersInit = {}
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
+  return portalAuthHeaders()
 }
 
 function normalizeEmailTemplateRow(raw: Record<string, unknown>): EmailTemplateRow | null {

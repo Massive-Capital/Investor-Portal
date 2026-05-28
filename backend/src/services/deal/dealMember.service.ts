@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import {
   dealMember,
@@ -9,6 +9,8 @@ import {
   type DealInvestmentRow,
 } from "../../schema/deal.schema/deal-investment.schema.js";
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
+import { users } from "../../schema/auth.schema/signin.js";
+import { contact } from "../../schema/contact.schema.js";
 import {
   applyTotalCommittedToDealInvestmentRowForCanonical,
   enrichInvestorRolesForDealRows,
@@ -34,6 +36,55 @@ export type UpsertDealMemberInput = {
 
 function normalizeContactKey(raw: string): string {
   return String(raw ?? "").trim().toLowerCase();
+}
+
+/**
+ * Sets `send_invitation_mail = yes` on matching `deal_member` rows after a successful invite.
+ */
+export async function markDealMemberInvitationMailSent(
+  dealId: string,
+  input: { contactMemberId?: string; toEmail?: string },
+): Promise<void> {
+  const did = dealId.trim();
+  if (!did) return;
+
+  const contactKeys = new Set<string>();
+  const cid = String(input.contactMemberId ?? "").trim();
+  if (cid) contactKeys.add(normalizeContactKey(cid));
+
+  const toEmail = String(input.toEmail ?? "").trim().toLowerCase();
+  if (toEmail.includes("@")) {
+    contactKeys.add(normalizeContactKey(toEmail));
+
+    const [u] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(trim(${users.email})) = ${toEmail}`)
+      .limit(1);
+    if (u?.id) contactKeys.add(normalizeContactKey(String(u.id)));
+
+    const [c] = await db
+      .select({ id: contact.id })
+      .from(contact)
+      .where(sql`lower(trim(${contact.email})) = ${toEmail}`)
+      .limit(1);
+    if (c?.id) contactKeys.add(normalizeContactKey(String(c.id)));
+  }
+
+  const keys = [...contactKeys].filter(Boolean);
+  if (keys.length === 0) return;
+
+  const contactMatch = or(
+    ...keys.map(
+      (k) => sql`lower(trim(${dealMember.contactMemberId})) = ${k}`,
+    ),
+  );
+  if (!contactMatch) return;
+
+  await db
+    .update(dealMember)
+    .set({ sendInvitationMail: "yes", updatedAt: new Date() })
+    .where(and(eq(dealMember.dealId, did), contactMatch));
 }
 
 /** Canonical row for labels / ids when a contact has multiple investments (newest wins). */

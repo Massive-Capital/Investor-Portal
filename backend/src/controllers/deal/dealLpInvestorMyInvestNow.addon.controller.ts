@@ -5,6 +5,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
@@ -60,7 +61,11 @@ export async function patchDealLpInvestorMyInvestNowAddon(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (
       !(await assertDealIdReadableOrAssignedParticipant(dealId.trim(), scope))
     ) {
@@ -116,6 +121,15 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     const hasW9FormKey =
       Object.prototype.hasOwnProperty.call(b, "w9_form") ||
       Object.prototype.hasOwnProperty.call(b, "w9Form");
+    const isAdminActor =
+      user.userRole === "company_admin" || user.userRole === "platform_admin";
+    if (hasW9FormKey && isAdminActor) {
+      res.status(403).json({
+        message:
+          "Only investors can fill or update W-9 details. Sponsor/admin users have view-only access.",
+      });
+      return;
+    }
 
     const result = await applyMyInvestNowCommitmentAddon({
       dealId: dealId.trim(),

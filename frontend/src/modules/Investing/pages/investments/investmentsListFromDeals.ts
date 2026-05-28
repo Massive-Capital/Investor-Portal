@@ -159,6 +159,7 @@ function listRowFromDealAndInvestors(
     currentValuation: "—",
     dealCloseDate: (listRow.closeDateDisplay || "—").trim() || "—",
     status: (listRow.dealStage || "—").trim() || "—",
+    offeringStatus: listRow.offeringStatus?.trim() || undefined,
     actionRequired: "None",
     archived: Boolean(listRow.archived),
     dealType: listRow.dealType,

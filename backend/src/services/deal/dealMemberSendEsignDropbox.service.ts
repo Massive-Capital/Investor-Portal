@@ -30,7 +30,6 @@ import {
   type EsignTemplateFileRecord,
 } from "./dealEsignTemplates.service.js";
 import {
-  getInvestorQuestionnaireSignatureFormFields,
   prependPdfBuffers,
   replaceW9AppendixWithFilled,
   appendW9ToPdfBuffer,
@@ -295,14 +294,9 @@ async function resolveInvestorEsignFormFields(params: {
   formFields: DropboxSignFormFieldPerDocument[];
   customFields: DropboxSignPrefillCustomField[];
 }> {
-  const questionnaireFields =
-    params.answerPageCount > 0
-      ? getInvestorQuestionnaireSignatureFormFields(params.answerPageCount)
-      : [];
-
-  let templateFields: DropboxSignFormFieldPerDocument[] = [];
+  let formFields: DropboxSignFormFieldPerDocument[] = [];
   try {
-    templateFields = await getDropboxSignTemplateFormFieldsForEmbeddedFile(
+    formFields = await getDropboxSignTemplateFormFieldsForEmbeddedFile(
       params.templateId,
       { pageOffset: params.answerPageCount },
     );
@@ -313,15 +307,7 @@ async function resolveInvestorEsignFormFields(params: {
     );
   }
 
-  const seen = new Set<string>();
-  const formFields: DropboxSignFormFieldPerDocument[] = [];
-  /** Sponsor template positions win over built-in questionnaire defaults. */
-  for (const field of [...templateFields, ...questionnaireFields]) {
-    const key = field.apiId.trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    formFields.push(field);
-  }
+  /** Investor signing uses only sponsor-placed fields from the Dropbox template (investor role). */
 
   const answers = normalizeInvestorQuestionnaireAnswersInput(
     params.questionnaireAnswers,

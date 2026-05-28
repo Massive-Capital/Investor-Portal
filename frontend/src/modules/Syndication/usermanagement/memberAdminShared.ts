@@ -125,6 +125,13 @@ export function rowDisplayName(row: Record<string, unknown>): string {
   return [first, last].filter(Boolean).join(" ") || "—";
 }
 
+/** Primary label in members user cells: name when set, otherwise username. */
+export function memberUserCellPrimaryLabel(row: Record<string, unknown>): string {
+  const name = rowDisplayName(row);
+  if (name !== "—") return name;
+  return formatMemberUsername(row.username);
+}
+
 /**
  * Assignable role codes for platform-admin invites (backend `INVITE_ASSIGNABLE_ROLES`).
  * The Invite member modal filters this list by selected company name (see UserManagementPage).
@@ -239,7 +246,13 @@ export function parseMembershipsFromRow(
       }
       const rec = item as Record<string, unknown>;
       const company =
-        String(rec.company ?? rec.organization_name ?? "").trim() || "—";
+        String(
+          rec.company ??
+            rec.companyName ??
+            rec.company_name ??
+            rec.organization_name ??
+            "",
+        ).trim() || "—";
       const role = String(rec.role ?? "").trim() || "—";
       if (role === "—" && company === "—") continue;
       out.push({ company, role });

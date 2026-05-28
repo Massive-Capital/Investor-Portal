@@ -5,6 +5,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import { isPortalUserLeadSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
   getDealInvestorQuestionnaireState,
@@ -53,7 +54,11 @@ export async function getDealInvestorQuestionnaire(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -92,7 +97,11 @@ export async function putDealInvestorQuestionnaire(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;

@@ -14,7 +14,9 @@ import {
   isUserAssignedToDeal,
   listDealIdsAssignedToUser,
 } from "./assigningDealUser.service.js";
-import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
+import {
+  resolveActiveOrganizationIdForUser,
+} from "../org/orgResolution.service.js";
 import {
   getAddDealFormById,
   isAddDealFormInOrganizationScope,
@@ -33,6 +35,7 @@ export type { DealViewerScope } from "./dealForm.service.js";
 export async function resolveDealViewerScope(
   userId: string,
   jwtUserRole: string | undefined,
+  requestedOrganizationId?: string | null,
 ): Promise<DealViewerScope> {
   const [row] = await db
     .select({
@@ -43,14 +46,16 @@ export async function resolveDealViewerScope(
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  const organizationId = await resolveOrganizationIdForUserId(
+  const preloaded = row
+    ? {
+        organizationId: row.organizationId,
+        role: row.role,
+      }
+    : null;
+  const organizationId = await resolveActiveOrganizationIdForUser(
     userId,
-    row
-      ? {
-          organizationId: row.organizationId,
-          role: row.role,
-        }
-      : null,
+    requestedOrganizationId,
+    preloaded,
   );
   const dbRole = String(row?.role ?? "").trim();
   const jwtRole = String(jwtUserRole ?? "").trim();

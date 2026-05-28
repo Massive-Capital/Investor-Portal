@@ -123,7 +123,7 @@ export const DEAL_STAGE_CHOICES: DealStageChoice[] = [
   },
   {
     value: "capital_raising",
-    label: "Capital",
+    label: "Capital Raising",
     hint: "Actively raising equity.",
   },
   {

@@ -12,7 +12,6 @@ import { resolveEsignDocumentUrlForViewer } from "@/modules/Syndication/Deals/ut
 import { InvestmentEsignSignModal } from "@/modules/Investing/pages/investments/InvestmentEsignSignModal"
 import type { InvestmentSignStatusPayload } from "@/modules/Investing/api/investmentSignatureApi"
 import { InvestNowStepLayout } from "./InvestNowStepLayout"
-// import { InvestNowSignStatusBadges } from "./InvestNowSignStatusBadges"
 
 export type InvestNowEsignDocRow = {
   id: string
@@ -70,7 +69,6 @@ export function InvestNowEsignaturesStep({
   esignCompleted,
   esignWorkflowLabel,
   webhookSignStatus,
-  // signStatusLoading,
   fallbackSignatureRequestId,
   onRefreshDocuments,
   disabled,

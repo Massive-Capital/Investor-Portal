@@ -13,6 +13,8 @@ import { clearPortalSessionStorage } from "../../auth/sessionKeys"
 import { recordActivityLogout } from "../../auth/userActivityApi"
 import { getSessionUserDisplayName } from "../../auth/sessionUserDisplayName"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
+import { NotificationsNavButton } from "@/modules/notifications"
+import { CompanySwitcher } from "../CompanySwitcher/CompanySwitcher"
 import "./top_navbar.css"
 
 interface TopNavBarProps {
@@ -91,6 +93,7 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const pendingModeSwitchRef = useRef<"investing" | "syndicating" | null>(null)
 
   const closeMenu = useCallback(() => setMenuOpen(false), [])
 
@@ -111,6 +114,19 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
     }
   }, [menuOpen, closeMenu])
 
+  const applyPendingModeSwitch = useCallback(() => {
+    const target = pendingModeSwitchRef.current
+    if (!target) return
+    pendingModeSwitchRef.current = null
+    if (target === "investing") switchToInvesting()
+    else switchToSyndicating()
+  }, [switchToInvesting, switchToSyndicating])
+
+  useEffect(() => {
+    if (location.pathname !== "/dashboard") return
+    applyPendingModeSwitch()
+  }, [location.pathname, applyPendingModeSwitch])
+
   function handleMyAccount() {
     closeMenu()
     navigate("/account")
@@ -130,21 +146,30 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
 
   function handleSwitchToInvesting() {
     closeMenu()
-    // Navigate before switching mode: `DealsLayout` redirects to `/dashboard`
-    // if mode becomes investing while still on `/deals` (not a deal detail UUID).
+    if (location.pathname === "/dashboard") {
+      switchToInvesting()
+      return
+    }
+    pendingModeSwitchRef.current = "investing"
     navigate("/dashboard", { replace: true })
-    switchToInvesting()
   }
 
   function handleSwitchToSyndicating() {
-    switchToSyndicating()
     closeMenu()
-    navigate("/dashboard")
+    if (location.pathname === "/dashboard") {
+      switchToSyndicating()
+      return
+    }
+    pendingModeSwitchRef.current = "syndicating"
+    navigate("/dashboard", { replace: true })
   }
 
   return (
     <header className="top_navbar">
-      <div className="top_navbar_user_wrap" ref={wrapRef}>
+      <div className="top_navbar_end">
+        <CompanySwitcher />
+        <NotificationsNavButton />
+        <div className="top_navbar_user_wrap" ref={wrapRef}>
         <span className="top_navbar_avatar" aria-hidden>
           {initials}
         </span>
@@ -225,6 +250,7 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
             </ul>
           </div>
         ) : null}
+        </div>
       </div>
     </header>
   )

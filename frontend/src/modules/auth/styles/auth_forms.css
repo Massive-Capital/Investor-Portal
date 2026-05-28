@@ -93,7 +93,7 @@
 
 .loginCaption {
   /* margin: clamp(0.35em, 2vw, 10px) 0; */
- text-align: center;
+  text-align: center;
   color: black;
   font-size: 1.1em;
   font-weight: 700;

@@ -47,6 +47,11 @@ export const OFFERING_STATUS_OPTIONS = [
 
 export type OfferingStatusValue = (typeof OFFERING_STATUS_OPTIONS)[number]["value"]
 
+export type OfferingStatusSelectOption = {
+  value: OfferingStatusValue | string
+  label: string
+}
+
 export const DEFAULT_OFFERING_STATUS: OfferingStatusValue = "draft_hidden"
 
 export const OFFERING_VISIBILITY_OPTIONS = [
@@ -77,7 +82,7 @@ export const DEFAULT_OFFERING_VISIBILITY: OfferingVisibilityValue =
 export function offeringStatusOptionsForDealStage(
   dealStage: string | null | undefined,
   currentOfferingStatus?: string | null,
-): typeof OFFERING_STATUS_OPTIONS[number][] {
+): OfferingStatusSelectOption[] {
   const stage = normalizeDealStageCanonical(dealStage)
   if (!stage) return [...OFFERING_STATUS_OPTIONS]
   const allowed = new Set<DealStatus>(allowedStatusesForStage(stage))
@@ -106,6 +111,46 @@ export function isOfferingStatusFieldEditable(
   dealStage: string | null | undefined,
 ): boolean {
   return canEditFundraisingStatus(dealStage)
+}
+
+/** Human-readable label for overview display; empty API value shows "—". */
+export function offeringStatusLabelFromRaw(
+  raw: string | null | undefined,
+): string {
+  const v = String(raw ?? "").trim()
+  if (!v) return "—"
+  const opt = OFFERING_STATUS_OPTIONS.find((o) => o.value === v)
+  return opt?.label ?? v
+}
+
+/** Raw `offering_status` from the deal — no stage default injection. */
+export function offeringStatusFromApi(
+  raw: string | null | undefined,
+): string {
+  return String(raw ?? "").trim()
+}
+
+/** Human-readable label for overview visibility; empty API value shows "—". */
+export function offeringVisibilityLabelFromRaw(
+  raw: string | null | undefined,
+): string {
+  const mapped = mapLegacyOfferingVisibility(String(raw ?? ""))
+  if (!mapped.trim()) return "—"
+  const opt = OFFERING_VISIBILITY_OPTIONS.find((o) => o.value === mapped)
+  if (opt) return opt.label
+  return mapped
+}
+
+/** Select options for overview; keeps the stored value visible even when stage-locked. */
+export function offeringStatusOptionsForOverview(
+  dealStage: string | null | undefined,
+  currentOfferingStatus?: string | null,
+): OfferingStatusSelectOption[] {
+  const cur = offeringStatusFromApi(currentOfferingStatus)
+  const opts = offeringStatusOptionsForDealStage(dealStage, cur || null)
+  if (!cur) return opts
+  if (opts.some((o) => o.value === cur)) return opts
+  return [{ value: cur, label: offeringStatusLabelFromRaw(cur) }, ...opts]
 }
 
 /** Coerce to a valid status for the stage, or the stage default. */

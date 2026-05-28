@@ -1,4 +1,8 @@
 import { useId } from "react"
+import {
+  blurFormatMoneyInputBare,
+  formatCurrencyUsdTypeInputBare,
+} from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import { DealsCreateDropdownSelect } from "@/modules/Syndication/Deals/components/DealsCreateDropdownSelect"
 import "@/modules/Syndication/Deals/components/deals-create-dropdown.css"
 import { INVEST_NOW_FUNDING_METHOD_OPTIONS } from "./investNowFundingMethods"
@@ -55,8 +59,17 @@ export function InvestNowInvestmentStep({
             value={amount}
             disabled={disabled}
             placeholder="0"
-            onChange={(e) => onAmountChange(e.target.value)}
-            onBlur={onAmountBlur}
+            onChange={(e) =>
+              onAmountChange(formatCurrencyUsdTypeInputBare(e.target.value))
+            }
+            onBlur={() => {
+              if (!amount.trim()) {
+                onAmountChange("")
+                return
+              }
+              onAmountChange(blurFormatMoneyInputBare(amount))
+              onAmountBlur?.()
+            }}
           />
         </div>
       </InvestNowFormField>

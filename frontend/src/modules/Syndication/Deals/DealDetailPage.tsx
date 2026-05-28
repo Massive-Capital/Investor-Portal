@@ -9,7 +9,13 @@ import {
   Users,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom"
 import {
   dealDetailApiToRecord,
   dealStageLabel,
@@ -72,6 +78,11 @@ import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
 import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
+import {
+  DEAL_DETAIL_TAB_QUERY_PARAM,
+  isOfferingDetailsSectionId,
+  OFFERING_SECTION_QUERY_PARAM,
+} from "./utils/offeringDetailsSectionNav"
 import "../usermanagement/user_management.css"
 import "./deal-offering-portfolio.css"
 import "./deals-list.css"
@@ -112,7 +123,11 @@ export function DealDetailPage() {
   const { dealId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [activeTab, setActiveTab] = useState<string>("offering_details")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const fromUrl = searchParams.get(DEAL_DETAIL_TAB_QUERY_PARAM)?.trim()
+    return fromUrl || "offering_details"
+  })
   const [addInvestmentOpen, setAddInvestmentOpen] = useState(false)
   /** True while shared Add/Edit investment modal is open (add or edit) — hides session draft row in Deal Members table. */
   const [sharedInvestmentModalOpen, setSharedInvestmentModalOpen] =
@@ -254,6 +269,36 @@ export function DealDetailPage() {
   }, [dealDetailTabsVisible, activeTab])
 
   useEffect(() => {
+    const tabFromUrl = searchParams.get(DEAL_DETAIL_TAB_QUERY_PARAM)?.trim()
+    if (!tabFromUrl || !dealDetailTabsVisible.some((t) => t.id === tabFromUrl))
+      return
+    setActiveTab((prev) => (prev === tabFromUrl ? prev : tabFromUrl))
+  }, [searchParams, dealDetailTabsVisible])
+
+  const selectDealTab = useCallback(
+    (tabId: string) => {
+      setActiveTab(tabId)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set(DEAL_DETAIL_TAB_QUERY_PARAM, tabId)
+          if (tabId !== "offering_details") next.delete(OFFERING_SECTION_QUERY_PARAM)
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  useEffect(() => {
+    const section = searchParams.get(OFFERING_SECTION_QUERY_PARAM)
+    if (!isOfferingDetailsSectionId(section)) return
+    if (activeTab === "offering_details") return
+    setActiveTab("offering_details")
+  }, [searchParams, activeTab])
+
+  useEffect(() => {
     if (!dealId) {
       setDeal(undefined)
       return
@@ -358,12 +403,9 @@ export function DealDetailPage() {
     dealDetailApi?.dealAnnouncementTitle?.trim() ?? ""
   const announcementMessage =
     dealDetailApi?.dealAnnouncementMessage?.trim() ?? ""
-  const hideStagePillBecauseDraftBadge =
-    dealFormIncomplete &&
-    dealDetailApi != null &&
-    String(dealDetailApi.dealStage ?? "").trim().toLowerCase() === "draft"
-
   const isDealDraftStage = isDealStageDraft(dealDetailApi?.dealStage)
+  /** Stage chip already says Draft — avoid a second draft marker beside the title. */
+  const showIncompleteDraftBadge = dealFormIncomplete && !isDealDraftStage
 
   const offeringLinkAvailable = useMemo(
     () => dealHasOfferingShareLink(dealDetailApi) && !isDealDraftStage,
@@ -592,7 +634,7 @@ export function DealDetailPage() {
           <div className="deals_detail_title_stack">
             <div className="deals_list_name_with_draft deals_detail_title_name_block">
               <h1 className="deals_list_title">{displayName}</h1>
-              {dealFormIncomplete ? (
+              {showIncompleteDraftBadge ? (
                 <span
                   className="deals_list_draft_badge"
                   title="Deal details are incomplete or not finalized"
@@ -601,7 +643,7 @@ export function DealDetailPage() {
                 </span>
               ) : null}
             </div>
-            {!hideStagePillBecauseDraftBadge && displayStage ? (
+            {displayStage ? (
               <span
                 className={dealStageChipCompactClassName(dealDetailApi?.dealStage)}
               >
@@ -658,7 +700,7 @@ export function DealDetailPage() {
                     isActive ? " um_members_tab_active" : ""
                   }`}
                   onClick={() => {
-                    setActiveTab(tab.id)
+                    selectDealTab(tab.id)
                     if (tab.id === "investors") {
                       setDealMembersRefreshKey((k) => k + 1)
                     }

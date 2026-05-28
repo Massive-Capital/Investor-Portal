@@ -13,24 +13,45 @@
 }
 
 .asset_step_input_underline {
-  /* border: none; */
-  border: 1px solid var(--portal-border);
+  border: none;
+  border-bottom: 1px solid var(--portal-border);
   border-radius: 0;
   padding-left: 0;
   padding-right: 0;
   background: transparent;
-  /* Match boxed fields: same type scale and min height as .deals_create_input */
-  /* min-height: var(--deals-control-height, 2.75rem); */
   font-size: var(--deals-control-size, 0.9375rem);
   line-height: var(--deals-control-line-height, 1.45);
   padding-top: var(--deals-control-padding-y, 0.5rem);
   padding-bottom: var(--deals-control-padding-y, 0.5rem);
 }
 
-.asset_step_input_underline:focus {
+.asset_step_input_underline:focus,
+.asset_step_input_underline:focus-visible {
   outline: none;
   border-bottom-color: var(--portal-text);
   box-shadow: none;
+}
+
+/* State / city — full border (country and address lines stay underline) */
+.asset_step_location_bordered {
+  box-sizing: border-box;
+  border: 1px solid var(--portal-border, #e5e5e5);
+  border-radius: var(--portal-pill-radius, 9999px);
+  padding-left: var(--deals-control-padding-x, 0.75rem);
+  padding-right: var(--deals-control-padding-x, 0.75rem);
+  padding-top: var(--deals-control-padding-y, 0.5rem);
+  padding-bottom: var(--deals-control-padding-y, 0.5rem);
+  background: var(--portal-surface, #fff);
+  font-size: var(--deals-control-size, 0.9375rem);
+  line-height: var(--deals-control-line-height, 1.45);
+  min-height: var(--deals-control-height, 2.75rem);
+}
+
+.asset_step_location_bordered:focus,
+.asset_step_location_bordered:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted, #64748b);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
 }
 
 .asset_step_upload_block {

@@ -37,6 +37,7 @@ import {
   getDealEsignTemplateView,
   getDealEsignTemplateViewUrl,
   getDealEsignTemplates,
+  patchDealEsignTemplate,
   postDealEsignTemplateUploads,
 } from "../controllers/deal/dealEsignTemplates.controller.js";
 import {
@@ -177,6 +178,10 @@ router.post(
 router.post(
   "/deals/:dealId/esign-templates/:fileId/complete-embedded-template",
   postDealEsignCompleteEmbeddedTemplate,
+);
+router.patch(
+  "/deals/:dealId/esign-templates/:fileId",
+  patchDealEsignTemplate,
 );
 router.delete(
   "/deals/:dealId/esign-templates/:fileId",

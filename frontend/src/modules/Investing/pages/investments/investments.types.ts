@@ -23,7 +23,10 @@ export type InvestmentListRow = {
   distributedAmount: number
   currentValuation: string
   dealCloseDate: string
+  /** Deal lifecycle stage (same as former Deals list `dealStage`). */
   status: string
+  /** Offering workflow status (`offering_status`) — drives Invest now eligibility. */
+  offeringStatus?: string
   actionRequired: string
   /** When true, row appears under Archives tab (same pattern as deals list). */
   archived?: boolean

@@ -19,6 +19,11 @@ export {
   type CompanyWorkspaceTabSettingsRow,
 } from "./company.schema/companyWorkspaceTabSettings.schema.js";
 export {
+  userCompanyMembership,
+  type UserCompanyMembershipRow,
+  type UserCompanyMembershipInsert,
+} from "./company.schema/userCompanyMembership.schema.js";
+export {
   dealInvestment,
   type DealInvestmentInsert,
   type DealInvestmentRow,

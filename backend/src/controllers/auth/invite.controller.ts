@@ -1,9 +1,12 @@
 import type { Request, Response } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { companies, users } from "../../schema/schema.js";
 import { createInviteForEmail } from "../../services/auth/invite.service.js";
-import { sendInviteSignupEmail } from "../../services/auth/inviteEmail.service.js";
+import {
+  sendInviteCompanyMembershipEmail,
+  sendInviteSignupEmail,
+} from "../../services/auth/inviteEmail.service.js";
 import { upsertPendingInvitedUser } from "../../services/auth/invitePendingUser.service.js";
 import {
   canInviteUsersRole,
@@ -21,6 +24,10 @@ type InviteBody = {
   companyId?: unknown;
   invitedRole?: unknown;
 };
+
+function roleLabelForInvite(invitedRole: string | null): string {
+  return invitedRole === COMPANY_ADMIN ? "Company Admin" : "Company Member";
+}
 
 export async function postInviteUser(req: Request, res: Response): Promise<void> {
   const jwtUser = getJwtUser(req);
@@ -41,27 +48,6 @@ export async function postInviteUser(req: Request, res: Response): Promise<void>
   const emailNorm = email.trim().toLowerCase();
   if (!emailNorm || !emailNorm.includes("@")) {
     res.status(400).json({ message: "A valid email address is required" });
-    return;
-  }
-
-  try {
-    const [existingComplete] = await db
-      .select({ userSignupCompleted: users.userSignupCompleted })
-      .from(users)
-      .where(sql`lower(${users.email}) = ${emailNorm}`)
-      .limit(1);
-    if (
-      existingComplete &&
-      String(existingComplete.userSignupCompleted ?? "")
-        .trim()
-        .toLowerCase() === "true"
-    ) {
-      res.status(409).json({ message: "A user with this email already exists" });
-      return;
-    }
-  } catch (err) {
-    console.error("postInviteUser email lookup:", err);
-    res.status(500).json({ message: "Could not verify email" });
     return;
   }
 
@@ -129,11 +115,7 @@ export async function postInviteUser(req: Request, res: Response): Promise<void>
       raw === COMPANY_ADMIN || raw === COMPANY_USER ? raw : COMPANY_USER;
   }
 
-  const result = createInviteForEmail(
-    email,
-    companyContext,
-    invitedRoleForJwt,
-  );
+  const result = createInviteForEmail(email, companyContext, invitedRoleForJwt);
   if (!result.ok) {
     res.status(result.status).json({ message: result.message });
     return;
@@ -148,6 +130,43 @@ export async function postInviteUser(req: Request, res: Response): Promise<void>
   );
   if (!pending.ok) {
     res.status(pending.status).json({ message: pending.message });
+    return;
+  }
+
+  const companyLabel = companyContext.companyName?.trim() || "the company";
+  const roleLabel = roleLabelForInvite(invitedRoleForJwt);
+
+  if (pending.action === "existing_user_membership_added") {
+    const emailResult = await sendInviteCompanyMembershipEmail(
+      emailNorm,
+      companyLabel,
+      roleLabel,
+      {
+        needsSignup: pending.needsSignup,
+        signupUrl: pending.needsSignup ? result.signupUrl : null,
+      },
+    );
+    if (!emailResult.ok) {
+      console.error(
+        "postInviteUser: could not send company membership email to",
+        emailNorm,
+        emailResult.error,
+      );
+    }
+
+    const message = emailResult.ok
+      ? pending.needsSignup
+        ? `${emailNorm} was invited to ${companyLabel}. They already have a pending account elsewhere; an email was sent with registration instructions for this organization.`
+        : `${emailNorm} already has an account and was added to ${companyLabel} as ${roleLabel}. A notification email was sent.`
+      : `${emailNorm} was added to ${companyLabel}, but the notification email could not be sent. Check email configuration.`;
+
+    res.status(201).json({
+      message,
+      emailSent: emailResult.ok,
+      existingUser: true,
+      signupUrl: pending.needsSignup ? result.signupUrl : null,
+      expiresIn: pending.needsSignup ? result.expiresIn : null,
+    });
     return;
   }
 

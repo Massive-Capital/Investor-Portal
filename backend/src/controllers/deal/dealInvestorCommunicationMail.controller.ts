@@ -4,6 +4,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import {
   deleteDealInvestorCommunicationMail,
   listDealInvestorCommunicationMails,
@@ -38,7 +39,11 @@ async function assertDealReadable(
     res.status(400).json({ message: "Missing deal id" });
     return false;
   }
-  const scope = await resolveDealViewerScope(user.id, user.userRole);
+  const scope = await resolveDealViewerScope(
+    user.id,
+    user.userRole,
+    requestedOrganizationIdFromRequest(req),
+  );
   if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
     res.status(404).json({ message: "Deal not found" });
     return false;

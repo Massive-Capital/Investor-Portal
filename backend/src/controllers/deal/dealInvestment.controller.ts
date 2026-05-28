@@ -5,6 +5,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
   enrichFullInvestorApiFromLpRoster,
@@ -96,7 +97,11 @@ export async function getDealInvestors(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -187,7 +192,11 @@ export async function getDealCommitmentAmountByContact(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -236,6 +245,9 @@ export async function putDealInvestment(
   const offeringId = bodyString(b.offering_id);
   let contactId = bodyString(b.contact_id);
   const contactDisplayName = bodyString(b.contact_display_name);
+  const contactEmail = bodyString(
+    b.contact_email ?? b.contactEmail ?? b.email,
+  );
   const profileId = bodyString(b.profile_id);
   const userInvestorProfileIdFromBody = bodyString(
     b.user_investor_profile_id ?? b.userInvestorProfileId,
@@ -273,7 +285,11 @@ export async function putDealInvestment(
 
   const file = req.file;
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -394,6 +410,8 @@ export async function putDealInvestment(
         contactDisplayName: contactDisplayName.trim(),
         sendInvitationMail,
         dealMemberRole: investor_role,
+         contactEmail: contactEmail.trim() || null,
+        invitationSource: "deal_member",
       });
     }
     const fundNewlyApproved =
@@ -486,6 +504,9 @@ export async function postDealInvestment(
   const offeringId = bodyString(b.offering_id);
   let contactId = bodyString(b.contact_id);
   const contactDisplayName = bodyString(b.contact_display_name);
+  const contactEmail = bodyString(
+    b.contact_email ?? b.contactEmail ?? b.email,
+  );
   const profileId = bodyString(b.profile_id);
   const userInvestorProfileId = bodyString(
     b.user_investor_profile_id ?? b.userInvestorProfileId,
@@ -531,7 +552,11 @@ export async function postDealInvestment(
   let documentStoragePath: string | null = null;
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -600,6 +625,8 @@ export async function postDealInvestment(
         contactDisplayName: contactDisplayName.trim(),
         sendInvitationMail,
         dealMemberRole: investor_role,
+        contactEmail: contactEmail.trim() || null,
+        invitationSource: "deal_member",
       });
     }
     if (!autosave && !contactIsPlaceholder && fundApproved) {

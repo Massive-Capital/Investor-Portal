@@ -5,6 +5,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  TrendingUp,
   X,
 } from "lucide-react"
 import {
@@ -37,6 +38,8 @@ interface DealRowActionsProps {
   dealStage?: string
   /** Opens read-only deal preview (e.g. modal). */
   onPreviewDeal?: () => void
+  /** Investing list: open LP invest-now wizard (`/deals/:id/invest`). */
+  onInvestNow?: () => void
   onArchived?: () => void
   onRestored?: () => void
   /** Called after the user confirms with a non-empty reason (delete flow). */
@@ -51,6 +54,7 @@ export function DealRowActions({
   draftRow = false,
   dealStage = "",
   onPreviewDeal,
+  onInvestNow,
   onArchived,
   onRestored,
   onDeleted,
@@ -164,6 +168,11 @@ export function DealRowActions({
     navigate(`/deals/${encodeURIComponent(dealId)}`)
   }
 
+  function handleInvestNow() {
+    close()
+    onInvestNow?.()
+  }
+
   function handleEditDeal() {
     close()
     if (draftRow) {
@@ -252,6 +261,24 @@ export function DealRowActions({
                   View deal
                 </button>
               </li>
+              {readOnlyActions && onInvestNow ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    className="um_kebab_menuitem"
+                    role="menuitem"
+                    onClick={handleInvestNow}
+                  >
+                    <TrendingUp
+                      className="um_kebab_menuitem_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    Invest
+                  </button>
+                </li>
+              ) : null}
               {!readOnlyActions ? (
                 <>
                   <li role="none">

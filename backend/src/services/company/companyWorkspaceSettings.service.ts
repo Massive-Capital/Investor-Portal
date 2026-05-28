@@ -3,7 +3,6 @@ import { db } from "../../database/db.js";
 import {
   companies,
   companyWorkspaceTabSettings,
-  users,
 } from "../../schema/schema.js";
 import {
   COMPANY_USER,
@@ -12,6 +11,7 @@ import {
   LEGACY_USER,
   PLATFORM_USER,
 } from "../../constants/roles.js";
+import { userHasAccessToOrganization } from "../org/orgResolution.service.js";
 
 const WORKSPACE_COMPANY_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,15 +20,6 @@ const WORKSPACE_COMPANY_UUID_RE =
 function normalizeWorkspaceCompanyId(raw: string): string | null {
   const s = String(raw ?? "").trim().toLowerCase();
   return WORKSPACE_COMPANY_UUID_RE.test(s) ? s : null;
-}
-
-function sameWorkspaceCompany(
-  a: string | null | undefined,
-  b: string | null | undefined,
-): boolean {
-  const na = normalizeWorkspaceCompanyId(String(a ?? ""));
-  const nb = normalizeWorkspaceCompanyId(String(b ?? ""));
-  return na != null && nb != null && na === nb;
 }
 
 export const WORKSPACE_TAB_KEYS = [
@@ -57,12 +48,7 @@ export async function userCanAccessCompanyWorkspace(
     .limit(1);
   if (!co) return false;
   if (isPlatformAdminRole(userRole)) return true;
-  const [u] = await db
-    .select({ organizationId: users.organizationId })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return sameWorkspaceCompany(u?.organizationId ?? null, cid);
+  return userHasAccessToOrganization(userId, cid);
 }
 
 export async function userCanEditCompanyWorkspace(
@@ -80,13 +66,7 @@ export async function userCanEditCompanyWorkspace(
 
   const cid = normalizeWorkspaceCompanyId(companyId);
   if (!cid) return false;
-
-  const [u] = await db
-    .select({ organizationId: users.organizationId })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!sameWorkspaceCompany(u?.organizationId ?? null, cid)) return false;
+  if (!(await userHasAccessToOrganization(userId, cid))) return false;
 
   const r = String(userRole ?? "").trim();
   if (isCompanyAdminRole(r)) return true;

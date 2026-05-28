@@ -5,6 +5,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { eq } from "drizzle-orm";
@@ -87,7 +88,11 @@ export async function postDealLpInvestor(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -120,6 +125,8 @@ export async function postDealLpInvestor(
         contactId: contactId.trim(),
         contactDisplayName: contactDisplayName.trim(),
         sendInvitationMail,
+        contactEmail: contactEmail.trim() || null,
+        invitationSource: "investor",
       });
     }
 
@@ -190,7 +197,11 @@ export async function putDealLpInvestor(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -233,6 +244,8 @@ export async function putDealLpInvestor(
         contactId: contactId.trim(),
         contactDisplayName: contactDisplayName.trim(),
         sendInvitationMail,
+          contactEmail: contactEmail.trim() || null,
+        invitationSource: "investor",
       });
     }
 
@@ -293,7 +306,11 @@ export async function patchDealLpInvestorMyCommitment(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (
       !(await assertDealIdReadableOrAssignedParticipant(dealId.trim(), scope))
     ) {

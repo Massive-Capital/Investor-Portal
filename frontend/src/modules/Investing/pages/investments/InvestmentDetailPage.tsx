@@ -66,6 +66,44 @@ function formatInvDetailDateTime(iso: string | undefined): string {
   }).format(d)
 }
 
+function InvestmentDetailCenterDash() {
+  return <span className="investment_detail_cell_dash">—</span>
+}
+
+/** Narrow columns: ellipsis + themed tooltip with full text on hover. */
+function InvestmentDetailHoverTruncCell({ text }: { text: string }) {
+  const value = text.trim()
+  if (!value) {
+    return <span className="investment_detail_cell_dash investment_detail_cell_dash--left">—</span>
+  }
+  return (
+    <span
+      className="investment_detail_hover_trunc"
+      title={value}
+      tabIndex={0}
+    >
+      <span className="investment_detail_hover_trunc_label">{value}</span>
+      <span className="investment_detail_hover_trunc_tip" role="tooltip">
+        {value}
+      </span>
+    </span>
+  )
+}
+
+function InvestmentDetailApprovedByCell({ value }: { value?: string }) {
+  const text = String(value ?? "").trim()
+  if (!text) return <InvestmentDetailCenterDash />
+  return <span className="investment_detail_cell_text">{text}</span>
+}
+
+function InvestmentDetailApprovedOnCell({ iso }: { iso?: string }) {
+  const raw = String(iso ?? "").trim()
+  if (!raw) return <InvestmentDetailCenterDash />
+  const formatted = formatInvDetailDateTime(iso)
+  if (formatted === "—") return <InvestmentDetailCenterDash />
+  return <span className="investment_detail_cell_text">{formatted}</span>
+}
+
 type DebtInfoFields = {
   outstandingLoans: string
   debtService: string
@@ -464,8 +502,11 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
         id: "investorType",
         header: "Investor type",
         sortValue: (r) => (r.investorType ?? "").toLowerCase(),
-        tdClassName: "um_td_user",
-        cell: (r) => r.investorType?.trim() || "—",
+        thClassName: "investment_detail_col_investor_type",
+        tdClassName: "um_td_user investment_detail_col_investor_type",
+        cell: (r) => (
+          <InvestmentDetailHoverTruncCell text={r.investorType ?? ""} />
+        ),
       },
       {
         id: "invested",
@@ -486,16 +527,20 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
       {
         id: "approvedBy",
         header: "Approved by",
+        align: "center",
         sortValue: (r) => String(r.approvedBy ?? "").toLowerCase(),
-        tdClassName: "um_td_user",
-        cell: (r) => String(r.approvedBy ?? "").trim() || "—",
+        thClassName: "deals_th_align_center investment_detail_col_approved_by",
+        tdClassName: "investment_detail_col_approved_by investment_detail_td_center",
+        cell: (r) => <InvestmentDetailApprovedByCell value={r.approvedBy} />,
       },
       {
         id: "approvedOn",
         header: "Approved on",
+        align: "center",
         sortValue: (r) => String(r.approvedAtIso ?? ""),
-        tdClassName: "um_td_user",
-        cell: (r) => formatInvDetailDateTime(r.approvedAtIso),
+        thClassName: "deals_th_align_center investment_detail_col_approved_on",
+        tdClassName: "investment_detail_col_approved_on investment_detail_td_center",
+        cell: (r) => <InvestmentDetailApprovedOnCell iso={r.approvedAtIso} />,
       },
     ],
     [],
@@ -812,9 +857,12 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                       />
                     </div>
                     <div className="investment_detail_inv_profile_toolbar_end">
-                      <p className="investment_detail_inv_profile_totals" aria-live="polite">
+                      <span
+                        className="investment_detail_inv_profile_totals"
+                        aria-live="polite"
+                      >
                         Invested {investedDisplay}
-                      </p>
+                      </span>
                     </div>
                   </div>
                   <DataTable<InvestmentBreakdownLine>

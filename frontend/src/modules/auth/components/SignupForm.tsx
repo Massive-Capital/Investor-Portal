@@ -223,12 +223,11 @@ export default function SignupForm() {
           first_name?: string;
           lastName?: string;
           last_name?: string;
+          userName?: string;
+          username?: string;
           phone?: string;
           phoneNumber?: string;
           phone_number?: string;
-          userName?: string;
-          username?: string;
-          user_name?: string;
         };
         console.log("[signup-prefill] response", {
           ok: res.ok,
@@ -244,20 +243,14 @@ export default function SignupForm() {
         }
         const fn = (data.firstName ?? data.first_name ?? "").trim();
         const ln = (data.lastName ?? data.last_name ?? "").trim();
+        const un = String(data.userName ?? data.username ?? "").trim();
         const ph = nationalDigitsFromStoredPhone(
           String(data.phone ?? data.phoneNumber ?? data.phone_number ?? ""),
         );
-        const un = (
-          data.userName ??
-          data.username ??
-          data.user_name ??
-          ""
-        ).trim();
         console.log("[signup-prefill] normalized", {
           firstName: fn,
           lastName: ln,
           phoneDigits: ph,
-          userName: un,
         });
         const phOkPrefill = ph.length === 10 && isValidUsNanp10(ph);
         if (!fn && !ln && !ph) {
@@ -296,10 +289,10 @@ export default function SignupForm() {
   const [signUpFormData, setSignUpFormData] = useState<SignUpFormState>({
     email: resolvedInviteEmail,
     companyName: "",
+    userName: "",
     phone: "",
     firstName: "",
     lastName: "",
-    userName: "",
     newPassword: "",
     confirmPassword: "",
   });
@@ -506,207 +499,209 @@ export default function SignupForm() {
             autoComplete="off"
             onSubmit={handleSubmit}
           >
-        <div className="signupForm_row">
-          <div className="emailData">
-            <Input
-              labelName="Email"
-              id="signup-email"
-              icon={<Mail width={20} strokeWidth={1.5} aria-hidden />}
-              type="email"
-              name="email"
-              value={signUpFormData.email}
-              onChange={handleChange}
-              readOnly={Boolean(token && resolvedInviteEmail)}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              required
-            />
-          </div>
-          <div className="emailData">
-            <Input
-              labelName="Company name (optional)"
-              id="signup-companyName"
-              icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
-              type="text"
-              name="companyName"
-              value={signUpFormData.companyName}
-              onChange={handleChange}
-              readOnly={Boolean(token && resolvedInviteCompanyName)}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              requiredIndicator={false}
-            />
-          </div>
-        </div>
-
-        <div className="signupForm_row">
-          <div className="emailData">
-            <Input
-              labelName="Username (optional)"
-              id="signup-userName"
-              icon={<User width={20} strokeWidth={1.5} aria-hidden />}
-              type="text"
-              name="userName"
-              value={signUpFormData.userName}
-              onChange={handleChange}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              requiredIndicator={false}
-            />
-          </div>
-          <div className="emailData">
-            <div className="input_wrapper">
-              <label
-                htmlFor="signup-phone"
-                className="input_wrapper__label_row"
-              >
-                <span className="input_wrapper__label_leading">
-                  <span className="input_wrapper__label_icon">
-                    <Phone width={20} strokeWidth={1.5} aria-hidden />
-                  </span>
-                  <span className="input_wrapper__label_text">
-                    Phone number
-                  </span>
-                </span>
-                <span
-                  className="input_wrapper__required_mark"
-                  title="Required"
-                  aria-hidden
-                >
-                  <Asterisk
-                    className="input_wrapper__required_icon"
-                    size={14}
-                    strokeWidth={2.5}
-                    aria-hidden
-                  />
-                </span>
-              </label>
-              <UsPhoneInput
-                id="signup-phone"
-                name="phone"
-                nationalDigits={signUpFormData.phone}
-                onNationalDigitsChange={(digits) => {
-                  setSignUpFormData((prev) => ({ ...prev, phone: digits }));
-                  if (isError) setIsError("");
-                }}
-                readOnly={lockedPrefill.phone}
+        <div className="signupForm_rows">
+          <div className="signupForm_row">
+            <div className="emailData">
+              <Input
+                labelName="Email"
+                id="signup-email"
+                icon={<Mail width={20} strokeWidth={1.5} aria-hidden />}
+                type="email"
+                name="email"
+                value={signUpFormData.email}
+                onChange={handleChange}
+                readOnly={Boolean(token && resolvedInviteEmail)}
                 disabled={isLoading}
-                className="input_field"
                 aria-invalid={!!isError}
+                required
+              />
+            </div>
+            <div className="emailData">
+              <Input
+                labelName="Company"
+                id="signup-companyName"
+                icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
+                type="text"
+                name="companyName"
+                value={signUpFormData.companyName}
+                onChange={handleChange}
+                readOnly={Boolean(token && resolvedInviteCompanyName)}
+                disabled={isLoading}
+                aria-invalid={!!isError}
+                requiredIndicator={false}
               />
             </div>
           </div>
-        </div>
 
-        <div className="signupForm_row">
-          <div className="emailData">
-            <Input
-              labelName="First name"
-              id="signup-firstName"
-              icon={<User width={20} strokeWidth={1.5} aria-hidden />}
-              type="text"
-              name="firstName"
-              value={signUpFormData.firstName}
-              onChange={handleChange}
-              readOnly={lockedPrefill.firstName}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              required
-            />
+          <div className="signupForm_row">
+            <div className="emailData">
+              <Input
+                labelName="Account Name"
+                id="signup-userName"
+                icon={<User width={20} strokeWidth={1.5} aria-hidden />}
+                type="text"
+                name="userName"
+                value={signUpFormData.userName}
+                onChange={handleChange}
+                disabled={isLoading}
+                aria-invalid={!!isError}
+                requiredIndicator={false}
+              />
+            </div>
+            <div className="emailData">
+              <div className="input_wrapper">
+                <label
+                  htmlFor="signup-phone"
+                  className="input_wrapper__label_row"
+                >
+                  <span className="input_wrapper__label_leading">
+                    <span className="input_wrapper__label_icon">
+                      <Phone width={20} strokeWidth={1.5} aria-hidden />
+                    </span>
+                    <span className="input_wrapper__label_text">
+                      Phone number
+                    </span>
+                  </span>
+                  <span
+                    className="input_wrapper__required_mark"
+                    title="Required"
+                    aria-hidden
+                  >
+                    <Asterisk
+                      className="input_wrapper__required_icon"
+                      size={14}
+                      strokeWidth={2.5}
+                      aria-hidden
+                    />
+                  </span>
+                </label>
+                <UsPhoneInput
+                  id="signup-phone"
+                  name="phone"
+                  nationalDigits={signUpFormData.phone}
+                  onNationalDigitsChange={(digits) => {
+                    setSignUpFormData((prev) => ({ ...prev, phone: digits }));
+                    if (isError) setIsError("");
+                  }}
+                  readOnly={lockedPrefill.phone}
+                  disabled={isLoading}
+                  className="input_field"
+                  aria-invalid={!!isError}
+                />
+              </div>
+            </div>
           </div>
-          <div className="emailData">
-            <Input
-              labelName="Last name"
-              id="signup-lastName"
-              icon={<User width={20} strokeWidth={1.5} aria-hidden />}
-              type="text"
-              name="lastName"
-              value={signUpFormData.lastName}
-              onChange={handleChange}
-              readOnly={lockedPrefill.lastName}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              required
-            />
-          </div>
-        </div>
 
-        <div className="signupForm_row">
-          <div className="passwordData">
-            <Input
-              labelName="New password"
-              id="signup-newPassword"
-              icon={<LockKeyhole width={20} strokeWidth={1.5} aria-hidden />}
-              type={isVisible ? "text" : "password"}
-              name="newPassword"
-              value={signUpFormData.newPassword}
-              onChange={handleChange}
-              placeholder="......."
-              maxLength={16}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              required
-              suffix={
-                <span
-                  onClick={passwordVisible}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      passwordVisible();
-                    }
-                  }}
-                  className="passwordVisible"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={isVisible ? "Hide password" : "Show password"}
-                >
-                  {isVisible ? (
-                    <Eye size={20} strokeWidth={1.5} aria-hidden />
-                  ) : (
-                    <EyeOff size={20} strokeWidth={1.5} aria-hidden />
-                  )}
-                </span>
-              }
-            />
+          <div className="signupForm_row">
+            <div className="emailData">
+              <Input
+                labelName="First name"
+                id="signup-firstName"
+                icon={<User width={20} strokeWidth={1.5} aria-hidden />}
+                type="text"
+                name="firstName"
+                value={signUpFormData.firstName}
+                onChange={handleChange}
+                readOnly={lockedPrefill.firstName}
+                disabled={isLoading}
+                aria-invalid={!!isError}
+                required
+              />
+            </div>
+            <div className="emailData">
+              <Input
+                labelName="Last name"
+                id="signup-lastName"
+                icon={<User width={20} strokeWidth={1.5} aria-hidden />}
+                type="text"
+                name="lastName"
+                value={signUpFormData.lastName}
+                onChange={handleChange}
+                readOnly={lockedPrefill.lastName}
+                disabled={isLoading}
+                aria-invalid={!!isError}
+                required
+              />
+            </div>
           </div>
-          <div className="passwordData">
-            <Input
-              labelName="Confirm password"
-              id="signup-confirmPassword"
-              icon={<LockKeyhole width={20} strokeWidth={1.5} aria-hidden />}
-              type={isVisibleConfirm ? "text" : "password"}
-              name="confirmPassword"
-              value={signUpFormData.confirmPassword}
-              onChange={handleChange}
-              placeholder="......."
-              maxLength={16}
-              disabled={isLoading}
-              aria-invalid={!!isError}
-              required
-              suffix={
-                <span
-                  onClick={confirmPasswordVisible}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      confirmPasswordVisible();
+
+          <div className="signupForm_row">
+            <div className="passwordData">
+              <Input
+                labelName="New password"
+                id="signup-newPassword"
+                icon={<LockKeyhole width={20} strokeWidth={1.5} aria-hidden />}
+                type={isVisible ? "text" : "password"}
+                name="newPassword"
+                value={signUpFormData.newPassword}
+                onChange={handleChange}
+                placeholder="......."
+                maxLength={16}
+                disabled={isLoading}
+                aria-invalid={!!isError}
+                required
+                suffix={
+                  <span
+                    onClick={passwordVisible}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        passwordVisible();
+                      }
+                    }}
+                    className="passwordVisible"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={isVisible ? "Hide password" : "Show password"}
+                  >
+                    {isVisible ? (
+                      <Eye size={20} strokeWidth={1.5} aria-hidden />
+                    ) : (
+                      <EyeOff size={20} strokeWidth={1.5} aria-hidden />
+                    )}
+                  </span>
+                }
+              />
+            </div>
+            <div className="passwordData">
+              <Input
+                labelName="Confirm password"
+                id="signup-confirmPassword"
+                icon={<LockKeyhole width={20} strokeWidth={1.5} aria-hidden />}
+                type={isVisibleConfirm ? "text" : "password"}
+                name="confirmPassword"
+                value={signUpFormData.confirmPassword}
+                onChange={handleChange}
+                placeholder="......."
+                maxLength={16}
+                disabled={isLoading}
+                aria-invalid={!!isError}
+                required
+                suffix={
+                  <span
+                    onClick={confirmPasswordVisible}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        confirmPasswordVisible();
+                      }
+                    }}
+                    className="passwordVisible"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={
+                      isVisibleConfirm ? "Hide password" : "Show password"
                     }
-                  }}
-                  className="passwordVisible"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={
-                    isVisibleConfirm ? "Hide password" : "Show password"
-                  }
-                >
-                  {isVisibleConfirm ? (
-                    <Eye size={20} strokeWidth={1.5} aria-hidden />
-                  ) : (
-                    <EyeOff size={20} strokeWidth={1.5} aria-hidden />
-                  )}
-                </span>
-              }
-            />
+                  >
+                    {isVisibleConfirm ? (
+                      <Eye size={20} strokeWidth={1.5} aria-hidden />
+                    ) : (
+                      <EyeOff size={20} strokeWidth={1.5} aria-hidden />
+                    )}
+                  </span>
+                }
+              />
+            </div>
           </div>
         </div>
 
@@ -795,9 +790,9 @@ export default function SignupForm() {
 interface SignUpFormState {
   email: string;
   companyName: string;
+  userName: string;
   firstName: string;
   lastName: string;
-  userName: string;
   phone: string;
   newPassword: string;
   confirmPassword: string;

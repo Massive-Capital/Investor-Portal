@@ -17,11 +17,14 @@ import "../deal_members/add-investment/add_deal_modal.css"
 type OfferingGallerySectionProps = {
   detail: DealDetailApi
   onDealUpdated?: (deal: DealDetailApi) => void
+  /** Cover image changes — parent may scroll back to this accordion section. */
+  onUserSaved?: (deal: DealDetailApi) => void
 }
 
 export function OfferingGallerySection({
   detail,
   onDealUpdated,
+  onUserSaved,
 }: OfferingGallerySectionProps) {
   const viewModalTitleId = useId()
   const saveLockRef = useRef(false)
@@ -77,7 +80,7 @@ export function OfferingGallerySection({
           toast.error(result.message)
           return false
         }
-        onDealUpdated?.(result.deal)
+        onUserSaved?.(result.deal) ?? onDealUpdated?.(result.deal)
         toast.success("Cover image updated.")
         return true
       } finally {
@@ -85,7 +88,7 @@ export function OfferingGallerySection({
         setSavingUrl(null)
       }
     },
-    [detail.id, onDealUpdated],
+    [detail.id, onDealUpdated, onUserSaved],
   )
 
   const clearCover = useCallback(async () => {
@@ -98,13 +101,13 @@ export function OfferingGallerySection({
         toast.error(result.message)
         return
       }
-      onDealUpdated?.(result.deal)
+      onUserSaved?.(result.deal) ?? onDealUpdated?.(result.deal)
       toast.success("Cover image cleared.")
     } finally {
       saveLockRef.current = false
       setSavingUrl(null)
     }
-  }, [detail.id, onDealUpdated])
+  }, [detail.id, onDealUpdated, onUserSaved])
 
   if (urls.length === 0)
     return (

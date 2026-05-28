@@ -1,5 +1,8 @@
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
-import { parseMoneyDigits } from "./offeringMoneyFormat"
+import {
+  parseMoneyDigits,
+  parseNumberOfUnitsDigits,
+} from "./offeringMoneyFormat"
 
 /** `subscriptionType` from Add investor class → Class type = LP. */
 export function isLpInvestorClass(
@@ -11,8 +14,8 @@ export function isLpInvestorClass(
 export function hasInvestorClassNumberOfUnits(
   raw: string | undefined,
 ): boolean {
-  const t = String(raw ?? "").trim()
-  return Boolean(t) && t !== "—"
+  const n = parseNumberOfUnitsDigits(String(raw ?? ""))
+  return Number.isFinite(n) && n > 0
 }
 
 export function hasInvestorClassPricePerUnit(

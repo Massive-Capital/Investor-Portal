@@ -11,7 +11,10 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail"
 import { toast } from "../../../../../common/components/Toast"
-import { DropdownSelect } from "../../../../../common/components/dropdown-select"
+import {
+  DropdownSelect,
+  MODAL_DROPDOWN_SELECT_PROPS,
+} from "../../../../../common/components/dropdown-select"
 import { fetchMyProfileBook } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
 import { fetchDealInvestors } from "../../api/dealsApi"
 import { patchMyLpDealInvestNowCommitment } from "../../api/lpInvestNowCommitmentApi"
@@ -359,6 +362,7 @@ export function LpInvestNowModal({
                   </span>
                 </label>
                 <DropdownSelect
+                  {...MODAL_DROPDOWN_SELECT_PROPS}
                   id={profileFieldId}
                   options={profileTypeSelectOptions.map((o) => ({
                     value: o.value,
@@ -427,6 +431,7 @@ export function LpInvestNowModal({
                     </span>
                   </label>
                   <DropdownSelect
+                    {...MODAL_DROPDOWN_SELECT_PROPS}
                     id="lp-invest-now-saved-profile"
                     options={availableBookProfiles.map((p) => ({
                       value: p.id,

@@ -1,8 +1,9 @@
-import { desc, eq, getTableColumns } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, or } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import {
   companies,
   memberAdminAuditLogs,
+  userCompanyMembership,
   users,
   type UserRow,
 } from "../../schema/schema.js";
@@ -20,6 +21,7 @@ import {
   enrichUserRecordForDealParticipant,
 } from "../deal/dealParticipantProfile.service.js";
 import { enrichUserRowsWithMemberships } from "./userMemberships.service.js";
+import { hasUserCompanyMembership } from "../auth/userCompanyMembership.service.js";
 
 const ALLOWED_USER_STATUS = new Set(["active", "inactive"]);
 
@@ -61,6 +63,96 @@ export function serializeUserForClient(
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function isMissingMembershipTableError(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let i = 0; i < 4; i += 1) {
+    if (!cur || typeof cur !== "object") break;
+    const e = cur as { code?: string; message?: string; cause?: unknown };
+    if (e.code === "42P01") return true;
+    const msg = String(e.message ?? "").toLowerCase();
+    if (msg.includes('relation "user_company_membership" does not exist')) {
+      return true;
+    }
+    cur = e.cause;
+  }
+  return false;
+}
+
+async function listUsersScopedToCompany(companyId: string): Promise<Record<string, unknown>[]> {
+  const [scopeCompany] = await db
+    .select({ name: companies.name })
+    .from(companies)
+    .where(eq(companies.id, companyId))
+    .limit(1);
+  const scopeCompanyName = String(scopeCompany?.name ?? "").trim();
+
+  type RowShape = {
+    user: UserRow;
+    orgName: string | null;
+    hasScopedMembership: string | null;
+  };
+  let rows: RowShape[];
+  try {
+    rows = await db
+      .select({
+        user: users,
+        orgName: companies.name,
+        hasScopedMembership: userCompanyMembership.companyId,
+      })
+      .from(users)
+      .leftJoin(companies, eq(users.organizationId, companies.id))
+      .leftJoin(
+        userCompanyMembership,
+        and(
+          eq(userCompanyMembership.userId, users.id),
+          eq(userCompanyMembership.companyId, companyId),
+        ),
+      )
+      .where(
+        or(
+          eq(users.organizationId, companyId),
+          eq(userCompanyMembership.companyId, companyId),
+        ),
+      )
+      .orderBy(desc(users.createdAt));
+  } catch (err) {
+    if (!isMissingMembershipTableError(err)) throw err;
+    // Pre-migration DB fallback.
+    const fallbackRows = await db
+      .select({
+        user: users,
+        orgName: companies.name,
+      })
+      .from(users)
+      .leftJoin(companies, eq(users.organizationId, companies.id))
+      .where(eq(users.organizationId, companyId))
+      .orderBy(desc(users.createdAt));
+    rows = fallbackRows.map((r) => ({
+      user: r.user,
+      orgName: r.orgName,
+      hasScopedMembership: null,
+    }));
+  }
+
+  const deduped = new Map<string, { user: UserRow; orgName: string | null }>();
+  for (const r of rows) {
+    const id = String(r.user.id ?? "").trim();
+    if (!id) continue;
+    if (!deduped.has(id)) {
+      deduped.set(id, { user: r.user, orgName: r.orgName });
+    }
+  }
+
+  const mapped = [...deduped.values()].map(({ user, orgName }) =>
+    serializeUserForClient(
+      user,
+      scopeCompanyName || String(orgName ?? "").trim() || null,
+    ),
+  );
+  const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
+  return enrichUserRowsWithMemberships(withDeal);
+}
+
 export async function listUsersForAdmin(
   actorRole: string,
   actorOrganizationId: string | null,
@@ -73,39 +165,17 @@ export async function listUsersForAdmin(
     if (!applyOrgFilter) {
       return [];
     }
-
-    const rows = await db
-      .select({
-        ...getTableColumns(users),
-        orgName: companies.name,
-      })
-      .from(users)
-      .leftJoin(companies, eq(users.organizationId, companies.id))
-      .where(eq(users.organizationId, filterOrg))
-      .orderBy(desc(users.createdAt));
-    const mapped = rows.map((r) => {
-      const { orgName, ...userCols } = r;
-      return serializeUserForClient(userCols as UserRow, orgName);
-    });
-    const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
-    return enrichUserRowsWithMemberships(withDeal);
+    return listUsersScopedToCompany(filterOrg);
   }
-  if (isCompanyAdminRole(actorRole) && actorOrganizationId) {
-    const rows = await db
-      .select({
-        ...getTableColumns(users),
-        orgName: companies.name,
-      })
-      .from(users)
-      .leftJoin(companies, eq(users.organizationId, companies.id))
-      .where(eq(users.organizationId, actorOrganizationId))
-      .orderBy(desc(users.createdAt));
-    const mapped = rows.map((r) => {
-      const { orgName, ...userCols } = r;
-      return serializeUserForClient(userCols as UserRow, orgName);
-    });
-    const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
-    return enrichUserRowsWithMemberships(withDeal);
+  if (isCompanyAdminRole(actorRole)) {
+    const filterOrg = opts?.filterOrganizationId?.trim() ?? "";
+    const companyId =
+      filterOrg.length > 0 && ORG_UUID_RE.test(filterOrg)
+        ? filterOrg
+        : actorOrganizationId?.trim() ?? "";
+    if (companyId && ORG_UUID_RE.test(companyId)) {
+      return listUsersScopedToCompany(companyId);
+    }
   }
   return null;
 }
@@ -165,8 +235,26 @@ export async function updateMemberUser(
         message: "Cannot edit platform administrators",
       };
     }
-    const orgId = actor.organizationId;
-    if (!orgId || target.organizationId !== orgId) {
+    const actorOrgId = actor.organizationId
+      ? String(actor.organizationId).trim()
+      : "";
+    const targetPrimaryOrg = target.organizationId
+      ? String(target.organizationId).trim()
+      : "";
+    const samePrimary =
+      actorOrgId &&
+      targetPrimaryOrg &&
+      actorOrgId.toLowerCase() === targetPrimaryOrg.toLowerCase();
+    const targetInActorOrg =
+      actorOrgId &&
+      (await hasUserCompanyMembership(
+        String(target.id),
+        actorOrgId,
+      ));
+    const actorInTargetOrg =
+      targetPrimaryOrg &&
+      (await hasUserCompanyMembership(actorId, targetPrimaryOrg));
+    if (!samePrimary && !targetInActorOrg && !actorInTargetOrg) {
       return {
         ok: false,
         status: 403,

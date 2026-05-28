@@ -31,6 +31,7 @@ import {
   fetchDealsList,
   isDealListRowIncomplete,
 } from "./api/dealsApi"
+import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
 import {
   clearCreateDealDraft,
   CREATE_DEAL_DRAFT_UPDATED_EVENT,
@@ -122,7 +123,9 @@ function DealTableColumnHeader({
 function DealListNameCell({ row }: { row: DealListRow }) {
   const isSessionDraft = row.id === CREATE_DEAL_DRAFT_ROW_ID
   const isIncomplete = isDealListRowIncomplete(row)
-  const showDraftMarker = isSessionDraft || isIncomplete
+  /** Stage column already shows Draft — icon only for session draft or incomplete non-draft rows. */
+  const showDraftMarker =
+    isSessionDraft || (isIncomplete && !isDealStageDraft(row.dealStage))
 
   const nameLink = isSessionDraft ? (
     <Link className="deals_table_name_link" to="/deals/create?resume=1">

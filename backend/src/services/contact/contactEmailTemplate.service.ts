@@ -8,7 +8,7 @@ import {
   type ContactEmailTemplateRow,
   type EmailTemplateAttachment,
 } from "../../schema/contact.schema.js";
-import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
+import { resolveActiveOrganizationIdForUser } from "../org/orgResolution.service.js";
 
 export type CreateContactEmailTemplateInput = {
   name: string;
@@ -34,6 +34,7 @@ type ViewerScopeContext = {
 async function getViewerScopeContext(
   viewerUserId: string,
   jwtRoleFallback: string | null | undefined,
+  requestedOrganizationId?: string | null,
 ): Promise<ViewerScopeContext> {
   const [row] = await db
     .select({
@@ -44,14 +45,16 @@ async function getViewerScopeContext(
     .where(eq(users.id, viewerUserId))
     .limit(1);
   const roleForScope = String(row?.role ?? "").trim() || String(jwtRoleFallback ?? "").trim();
-  const organizationId = await resolveOrganizationIdForUserId(
+  const preloaded = row
+    ? {
+        role: row.role,
+        organizationId: row.organizationId,
+      }
+    : null;
+  const organizationId = await resolveActiveOrganizationIdForUser(
     viewerUserId,
-    row
-      ? {
-          role: row.role,
-          organizationId: row.organizationId,
-        }
-      : null,
+    requestedOrganizationId,
+    preloaded,
   );
   return { roleForScope, organizationId };
 }
@@ -74,8 +77,13 @@ function buildOrgScopeWhere(orgId: string, viewerUserId: string) {
 export async function listContactEmailTemplatesForViewer(
   viewerUserId: string,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<ContactEmailTemplateRow[]> {
-  const ctx = await getViewerScopeContext(viewerUserId, viewerRole);
+  const ctx = await getViewerScopeContext(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   if (isPlatformAdminRole(ctx.roleForScope)) {
     return db
       .select()
@@ -125,8 +133,13 @@ async function viewerCanAccessTemplate(
   viewerUserId: string,
   viewerRole: string | null | undefined,
   row: ContactEmailTemplateRow,
+  requestedOrganizationId?: string | null,
 ): Promise<boolean> {
-  const ctx = await getViewerScopeContext(viewerUserId, viewerRole);
+  const ctx = await getViewerScopeContext(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   if (isPlatformAdminRole(ctx.roleForScope)) return true;
   if (row.createdBy === viewerUserId) return true;
   if (!ctx.organizationId) return false;
@@ -139,9 +152,13 @@ async function viewerCanAccessTemplate(
 
 export async function insertContactEmailTemplate(params: {
   createdByUserId: string;
+  requestedOrganizationId?: string | null;
   input: CreateContactEmailTemplateInput;
 }): Promise<ContactEmailTemplateRow> {
-  const organizationId = await resolveOrganizationIdForUserId(params.createdByUserId);
+  const organizationId = await resolveActiveOrganizationIdForUser(
+    params.createdByUserId,
+    params.requestedOrganizationId,
+  );
   const row: ContactEmailTemplateInsert = {
     organizationId: organizationId ?? null,
     name: params.input.name,
@@ -160,6 +177,7 @@ export async function insertContactEmailTemplate(params: {
 export async function updateContactEmailTemplateForViewer(params: {
   viewerUserId: string;
   viewerRole?: string | null;
+  requestedOrganizationId?: string | null;
   templateId: string;
   input: UpdateContactEmailTemplateInput;
 }): Promise<ContactEmailTemplateRow | null> {
@@ -169,6 +187,7 @@ export async function updateContactEmailTemplateForViewer(params: {
     params.viewerUserId,
     params.viewerRole,
     existing,
+    params.requestedOrganizationId,
   );
   if (!canAccess) return null;
 
@@ -191,6 +210,7 @@ export async function updateContactEmailTemplateForViewer(params: {
 export async function deleteContactEmailTemplateForViewer(params: {
   viewerUserId: string;
   viewerRole?: string | null;
+  requestedOrganizationId?: string | null;
   templateId: string;
 }): Promise<boolean> {
   const existing = await getContactEmailTemplateById(params.templateId);
@@ -199,6 +219,7 @@ export async function deleteContactEmailTemplateForViewer(params: {
     params.viewerUserId,
     params.viewerRole,
     existing,
+    params.requestedOrganizationId,
   );
   if (!canAccess) return false;
 

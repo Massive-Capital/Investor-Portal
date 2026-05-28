@@ -7,6 +7,7 @@ const LP_INVESTOR_ALLOWED_PREFIXES = [
   "/account",
   "/support",
   "/refer-a-friend",
+  "/notifications",
 ] as const
 
 /** Authenticated LP read-only offering page (same route as sponsors; not general `/deals` shell). */

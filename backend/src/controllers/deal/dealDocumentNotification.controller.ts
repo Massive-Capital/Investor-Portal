@@ -4,6 +4,7 @@ import {
   assertDealIdInViewerScope,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import { sendDealDocumentSharedEmail } from "../../services/deal/dealDocumentSharedEmail.service.js";
 
 function bodyString(v: unknown): string {
@@ -82,7 +83,11 @@ export async function postDealDocumentSharedNotification(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;

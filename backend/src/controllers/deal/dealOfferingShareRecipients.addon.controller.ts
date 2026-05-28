@@ -4,6 +4,7 @@ import {
   getAddDealFormForViewerOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import { loadOfferingShareRecipientDirectory } from "../../services/deal/offeringShareRecipientDirectory.service.js";
 
 /**
@@ -27,7 +28,11 @@ export async function getDealOfferingShareRecipients(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const row = await getAddDealFormForViewerOrAssignedParticipant(
       dealId.trim(),
       scope,

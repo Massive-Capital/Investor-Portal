@@ -10,6 +10,7 @@ import {
 } from "react"
 import {
   DropdownSelect,
+  MODAL_DROPDOWN_SELECT_PROPS,
   type DropdownSelectSection,
 } from "../../../../../common/components/dropdown-select"
 import { toast } from "../../../../../common/components/Toast"
@@ -650,6 +651,7 @@ export function AddLpInvestorModal({
                   <span>Investors</span>
                 </label>
                 <DropdownSelect
+                  {...MODAL_DROPDOWN_SELECT_PROPS}
                   id="lp-inv-member"
                   sections={memberDropdownSections}
                   value={memberSelectValue}
@@ -690,6 +692,7 @@ export function AddLpInvestorModal({
                   <span>Profile</span>
                 </label>
                 <DropdownSelect
+                  {...MODAL_DROPDOWN_SELECT_PROPS}
                   id="lp-inv-profile"
                   options={INVESTOR_PROFILE_SELECT_OPTIONS.map((o) => ({
                     value: o.value,

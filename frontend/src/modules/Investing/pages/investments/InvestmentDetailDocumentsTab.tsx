@@ -1,5 +1,9 @@
 import { Download, Eye, FileSignature, FileText, Search } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/common/components/data-table/DataTable"
 import { InvestmentEsignSignModal } from "./InvestmentEsignSignModal"
 import {
   fetchDealById,
@@ -7,11 +11,13 @@ import {
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 import {
-  buildEsignProfileStatusTabs,
+  ESIGN_TEMPLATE_CATEGORIES,
   esignCategoryLabel,
 } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
 import { resolveEsignDocumentUrlForViewer } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import "@/modules/Syndication/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/deals-list.css"
+import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import { buildInvestmentDocumentAudience } from "./utils/buildInvestmentDocumentAudience"
 import type { InvestmentDocumentAudienceContext } from "./utils/investmentDocumentAudience"
 import {
@@ -19,6 +25,7 @@ import {
   type InvestmentDetailDocumentRow,
 } from "./utils/investmentDetailDocuments"
 import { syncInvestmentDealDocumentPreview } from "./utils/syncInvestmentDealDocumentPreview"
+import "@/modules/Syndication/Deals/deal-esign-ui.css"
 import "../deals/deal-details/lp-deal-details.css"
 import "./investment-detail.css"
 
@@ -33,6 +40,91 @@ function safeDownloadFilename(name: string): string {
   return base.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 200)
 }
 
+function formatOfferingDocumentDisplayName(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return "—"
+  return trimmed.charAt(0).toLocaleUpperCase() + trimmed.slice(1)
+}
+
+function investmentEsignStatusLabel(status: "pending" | "signed"): string {
+  return status === "signed" ? "Signed" : "Awaiting signature"
+}
+
+function investmentEsignStatusClassName(status: "pending" | "signed"): string {
+  return status === "signed"
+    ? "lpd_doc_esign_status lpd_doc_esign_status--signed"
+    : "lpd_doc_esign_status lpd_doc_esign_status--pending"
+}
+
+function OfferingDocumentRowActions({
+  doc,
+  displayName,
+}: {
+  doc: InvestmentDetailDocumentRow
+  displayName: string
+}) {
+  const url = doc.url?.trim() || ""
+  if (!url) return <span className="um_status_muted">—</span>
+  return (
+    <div
+      className="investment_detail_offering_doc_actions"
+      role="group"
+      aria-label={`${displayName} actions`}
+    >
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="investment_detail_offering_doc_action"
+        aria-label={`View ${displayName}`}
+      >
+        <Eye size={15} strokeWidth={2} aria-hidden />
+        View
+      </a>
+      <a
+        href={url}
+        download={safeDownloadFilename(doc.name)}
+        rel="noopener noreferrer"
+        className="investment_detail_offering_doc_action"
+        aria-label={`Download ${displayName}`}
+      >
+        <Download size={15} strokeWidth={2} aria-hidden />
+        Download
+      </a>
+    </div>
+  )
+}
+
+const offeringDocumentColumns: DataTableColumn<InvestmentDetailDocumentRow>[] = [
+  {
+    id: "name",
+    header: "Document name",
+    sortValue: (r) => (r.name ?? "").toLowerCase(),
+    tdClassName: "um_td_user",
+    cell: (r) => {
+      const displayName = formatOfferingDocumentDisplayName(r.name ?? "")
+      return (
+        <span className="investment_detail_offering_doc_name" title={displayName}>
+          {displayName}
+        </span>
+      )
+    },
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    align: "center",
+    thClassName: "investment_detail_offering_th_actions",
+    tdClassName: "investment_detail_offering_td_actions",
+    cell: (r) => (
+      <OfferingDocumentRowActions
+        doc={r}
+        displayName={formatOfferingDocumentDisplayName(r.name ?? "")}
+      />
+    ),
+  },
+]
+
 function filterDocuments(
   docs: InvestmentDetailDocumentRow[],
   query: string,
@@ -45,6 +137,59 @@ function filterDocuments(
       .toLowerCase()
     return blob.includes(q)
   })
+}
+
+type EsignProfileCardData = {
+  categoryId: string
+  label: string
+  /** One shared e-sign template document per investor profile type. */
+  document: InvestmentDetailDocumentRow
+}
+
+/** One card per profile type that has a shared e-sign document for this investor. */
+function buildEsignProfileCards(
+  documents: InvestmentDetailDocumentRow[],
+): EsignProfileCardData[] {
+  const cards: EsignProfileCardData[] = []
+
+  for (const cat of ESIGN_TEMPLATE_CATEGORIES) {
+    const document = documents.find(
+      (d) => (d.categoryId?.trim() || "") === cat.id,
+    )
+    if (!document) continue
+    cards.push({
+      categoryId: cat.id,
+      label: cat.label,
+      document,
+    })
+  }
+
+  const otherDocument = documents.find((d) => {
+    const cid = d.categoryId?.trim() || ""
+    return !cid || !ESIGN_TEMPLATE_CATEGORIES.some((c) => c.id === cid)
+  })
+  if (otherDocument) {
+    cards.push({
+      categoryId: "_other",
+      label: "Other",
+      document: otherDocument,
+    })
+  }
+
+  return cards
+}
+
+function esignProfileCardMatchesQuery(
+  card: EsignProfileCardData,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const d = card.document
+  const blob = [card.label, d.name, d.sectionLabel, d.visibilityLabel]
+    .join(" ")
+    .toLowerCase()
+  return blob.includes(q)
 }
 
 async function refreshDealDocumentPreviewFromServer(
@@ -82,9 +227,6 @@ export function InvestmentDetailDocumentsTab({
   const [signModalSignatureRequestId, setSignModalSignatureRequestId] = useState<
     string | null
   >(null)
-  const [activeEsignProfileId, setActiveEsignProfileId] = useState<string | null>(
-    null,
-  )
   const fetchGenRef = useRef(0)
   const autoEsignTabRef = useRef(false)
 
@@ -107,8 +249,8 @@ export function InvestmentDetailDocumentsTab({
           sectionLabel: categoryId
             ? esignCategoryLabel(categoryId)
             : "E-signatures",
-          visibilityLabel:
-            d.status === "signed" ? "Signed" : "Awaiting signature",
+          visibilityLabel: investmentEsignStatusLabel(d.status),
+          esignStatus: d.status,
           source: "esign" as const,
           canSign: d.status === "pending",
           signatureRequestId: d.signatureRequestId?.trim() || undefined,
@@ -187,41 +329,10 @@ export function InvestmentDetailDocumentsTab({
     [offeringDocuments, query],
   )
 
-  const esignProfileTabs = useMemo(
-    () =>
-      buildEsignProfileStatusTabs(
-        esignDocuments.map((d) => ({
-          fileId: d.id.replace(/^esign-/, ""),
-          name: d.name,
-          categoryId: d.categoryId,
-        })),
-        null,
-      ),
-    [esignDocuments],
-  )
-
-  useEffect(() => {
-    if (esignProfileTabs.length === 0) {
-      setActiveEsignProfileId(null)
-      return
-    }
-    setActiveEsignProfileId((prev) => {
-      if (prev && esignProfileTabs.some((t) => t.categoryId === prev)) return prev
-      return esignProfileTabs[0]?.categoryId ?? null
-    })
-  }, [esignProfileTabs])
-
-  const esignDocumentsForProfile = useMemo(() => {
-    if (!activeEsignProfileId) return esignDocuments
-    return esignDocuments.filter(
-      (d) => (d.categoryId?.trim() || "_other") === activeEsignProfileId,
-    )
-  }, [esignDocuments, activeEsignProfileId])
-
-  const filteredEsign = useMemo(
-    () => filterDocuments(esignDocumentsForProfile, query),
-    [esignDocumentsForProfile, query],
-  )
+  const esignProfileCards = useMemo(() => {
+    const built = buildEsignProfileCards(esignDocuments)
+    return built.filter((card) => esignProfileCardMatchesQuery(card, query))
+  }, [esignDocuments, query])
 
   const firstPendingSignatureRequestId = useMemo(() => {
     const pending = esignDocuments.find(
@@ -345,10 +456,8 @@ export function InvestmentDetailDocumentsTab({
               esignPending={esignPending}
               esignLoadError={esignLoadError}
               esignDocuments={esignDocuments}
-              esignProfileTabs={esignProfileTabs}
-              activeEsignProfileId={activeEsignProfileId}
-              onEsignProfileChange={setActiveEsignProfileId}
-              filteredEsign={filteredEsign}
+              esignProfileCards={esignProfileCards}
+              searchQuery={query}
               firstPendingSignatureRequestId={firstPendingSignatureRequestId}
               onOpenSignModal={openSignModal}
             />
@@ -418,13 +527,132 @@ function OfferingDocumentsPanel({
               available.
             </p>
           ) : null}
-          <ul className="lpd_doc_list">
-            {filteredOffering.map((doc) => (
-              <DocumentRow key={`${doc.source}-${doc.id}`} doc={doc} />
-            ))}
-          </ul>
+          <div className="deal_inv_table_panel investment_detail_offering_table_panel">
+            <DataTable<InvestmentDetailDocumentRow>
+              visualVariant="members"
+              membersTableClassName="um_table_members investment_detail_offering_table"
+              columns={offeringDocumentColumns}
+              rows={filteredOffering}
+              getRowKey={(r, i) => `${r.source}-${r.id}-${i}`}
+              emptyLabel="No offering documents match your search."
+              initialSort={{ columnId: "name", direction: "asc" }}
+            />
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function EsignProfileTypeCardsGrid({
+  cards,
+  onOpenSignModal,
+}: {
+  cards: EsignProfileCardData[]
+  onOpenSignModal: (signatureRequestId?: string | null) => void
+}) {
+  return (
+    <div
+      className={`deal_esign_profile_cards_grid investment_detail_esign_profile_cards${
+        cards.length === 1 ? " investment_detail_esign_profile_cards--single" : ""
+      }`}
+      role="list"
+      aria-label="E-sign documents by profile type"
+    >
+      {cards.map((card) => {
+        const doc = card.document
+        const url = doc.url?.trim() || ""
+        const canSign = Boolean(doc.canSign)
+        const status = doc.esignStatus
+
+        return (
+          <article
+            key={card.categoryId}
+            className="deal_esign_profile_card investment_detail_esign_profile_card"
+            role="listitem"
+            aria-labelledby={`inv-esign-card-${card.categoryId}`}
+          >
+            <header className="deal_esign_profile_card_head">
+              <div className="investment_detail_esign_profile_card_head_row">
+                <h3
+                  id={`inv-esign-card-${card.categoryId}`}
+                  className="deal_esign_profile_card_title"
+                >
+                  {card.label}
+                </h3>
+                {status ? (
+                  <span
+                    className={`${investmentEsignStatusClassName(status)} investment_detail_esign_profile_card_status`}
+                  >
+                    {investmentEsignStatusLabel(status)}
+                  </span>
+                ) : null}
+              </div>
+            </header>
+            <div className="investment_detail_esign_profile_card_body">
+              <div className="investment_detail_esign_card_doc_row">
+                <p
+                  className="investment_detail_esign_card_doc_name"
+                  title={doc.name}
+                >
+                  <FileSignature
+                    className="investment_detail_esign_card_doc_icon"
+                    size={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span>{doc.name}</span>
+                </p>
+                {url || canSign ? (
+                  <div
+                    className="investment_detail_esign_card_doc_actions"
+                    role="group"
+                    aria-label={`${doc.name} actions`}
+                  >
+                    {canSign ? (
+                      <button
+                        type="button"
+                        className="lpd_doc_action lpd_link lpd_doc_action_sign"
+                        aria-label={`Sign ${doc.name}`}
+                        onClick={() =>
+                          onOpenSignModal(doc.signatureRequestId ?? null)
+                        }
+                      >
+                        <FileSignature size={15} strokeWidth={2} aria-hidden />
+                        Sign
+                      </button>
+                    ) : null}
+                    {url ? (
+                      <>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="lpd_doc_action lpd_link"
+                          aria-label={`View ${doc.name}`}
+                        >
+                          <Eye size={15} strokeWidth={2} aria-hidden />
+                          View
+                        </a>
+                        <a
+                          href={url}
+                          download={safeDownloadFilename(doc.name)}
+                          rel="noopener noreferrer"
+                          className="lpd_doc_action lpd_link"
+                          aria-label={`Download ${doc.name}`}
+                        >
+                          <Download size={15} strokeWidth={2} aria-hidden />
+                          Download
+                        </a>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </article>
+        )
+      })}
     </div>
   )
 }
@@ -433,25 +661,21 @@ function EsignaturesDocumentsPanel({
   esignPending,
   esignLoadError,
   esignDocuments,
-  esignProfileTabs,
-  activeEsignProfileId,
-  onEsignProfileChange,
-  filteredEsign,
+  esignProfileCards,
+  searchQuery,
   firstPendingSignatureRequestId,
   onOpenSignModal,
 }: {
   esignPending: boolean
   esignLoadError: string | null
   esignDocuments: InvestmentDetailDocumentRow[]
-  esignProfileTabs: ReturnType<typeof buildEsignProfileStatusTabs>
-  activeEsignProfileId: string | null
-  onEsignProfileChange: (categoryId: string) => void
-  filteredEsign: InvestmentDetailDocumentRow[]
+  esignProfileCards: EsignProfileCardData[]
+  searchQuery: string
   firstPendingSignatureRequestId: string | null
   onOpenSignModal: (signatureRequestId?: string | null) => void
 }) {
   const hasAny = esignDocuments.length > 0
-  const hasFiltered = filteredEsign.length > 0
+  const hasVisibleCards = esignProfileCards.length > 0
 
   return (
     <div
@@ -477,38 +701,23 @@ function EsignaturesDocumentsPanel({
         </p>
       ) : null}
 
-      {esignProfileTabs.length > 1 ? (
-        <div
-          className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer investment_detail_esign_profile_tabs_outer"
-          role="presentation"
-        >
-          <div
-            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
-            role="tablist"
-            aria-label="E-sign profile types"
-          >
-            {esignProfileTabs.map((tab) => {
-              const selected = tab.categoryId === activeEsignProfileId
-              return (
-                <button
-                  key={tab.categoryId}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  className={`um_members_tab deals_tabs_tab um_segmented_tab${
-                    selected ? " um_members_tab_active" : ""
-                  }`}
-                  onClick={() => onEsignProfileChange(tab.categoryId)}
-                >
-                  <span className="deals_tabs_label um_segmented_tab_label">
-                    {tab.label}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      ) : null}
+      {!hasAny ? (
+        <p className="investment_detail_documents_status">
+          No e-sign documents have been sent to you on this deal yet. When your
+          sponsor sends templates for signature, they will appear here.
+        </p>
+      ) : !hasVisibleCards ? (
+        <p className="investment_detail_documents_status">
+          {searchQuery.trim()
+            ? "No e-sign documents match your search."
+            : "No e-sign documents are available for your profile types on this deal."}
+        </p>
+      ) : (
+        <EsignProfileTypeCardsGrid
+          cards={esignProfileCards}
+          onOpenSignModal={onOpenSignModal}
+        />
+      )}
 
       {esignPending ? (
         <p className="investment_detail_tab_hint investment_detail_esign_pending_hint">
@@ -522,106 +731,6 @@ function EsignaturesDocumentsPanel({
           </button>
         </p>
       ) : null}
-
-      {!hasAny ? (
-        <p className="investment_detail_documents_status">
-          No e-sign documents have been sent to you on this deal yet. When your
-          sponsor sends templates for signature, they will appear here.
-        </p>
-      ) : !hasFiltered ? (
-        <p className="investment_detail_documents_status">
-          No e-sign documents match your search.
-        </p>
-      ) : (
-        <ul className="lpd_doc_list">
-          {filteredEsign.map((doc) => (
-            <DocumentRow
-              key={`${doc.source}-${doc.id}`}
-              doc={doc}
-              onOpenSignModal={() =>
-                onOpenSignModal(doc.signatureRequestId ?? null)
-              }
-            />
-          ))}
-        </ul>
-      )}
     </div>
-  )
-}
-
-function DocumentRow({
-  doc,
-  onOpenSignModal,
-}: {
-  doc: InvestmentDetailDocumentRow
-  onOpenSignModal?: () => void
-}) {
-  const url = doc.url?.trim() || ""
-  const canSign = Boolean(doc.canSign && onOpenSignModal)
-  const isEsign = doc.source === "esign"
-  const Icon = isEsign ? FileSignature : FileText
-
-  return (
-    <li className={`lpd_doc_item${isEsign ? " lpd_doc_item_esign" : ""}`}>
-      <div className="lpd_doc_main">
-        <Icon
-          className="lpd_doc_ico"
-          size={18}
-          strokeWidth={2}
-          aria-hidden
-        />
-        <div>
-          <div className="lpd_doc_name">{doc.name}</div>
-          <div className="lpd_doc_meta">
-            {doc.sectionLabel}
-            {" · "}
-            {doc.visibilityLabel}
-          </div>
-        </div>
-      </div>
-      {url || canSign ? (
-        <div
-          className="lpd_doc_actions"
-          role="group"
-          aria-label={`${doc.name} actions`}
-        >
-          {canSign ? (
-            <button
-              type="button"
-              className="lpd_doc_action lpd_link lpd_doc_action_sign"
-              aria-label={`Sign ${doc.name}`}
-              onClick={onOpenSignModal}
-            >
-              <FileSignature size={16} strokeWidth={2} aria-hidden />
-              Sign
-            </button>
-          ) : null}
-          {url ? (
-            <>
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="lpd_doc_action lpd_link"
-                aria-label={`View ${doc.name}`}
-              >
-                <Eye size={16} strokeWidth={2} aria-hidden />
-                View
-              </a>
-              <a
-                href={url}
-                download={safeDownloadFilename(doc.name)}
-                rel="noopener noreferrer"
-                className="lpd_doc_action lpd_link"
-                aria-label={`Download ${doc.name}`}
-              >
-                <Download size={16} strokeWidth={2} aria-hidden />
-                Download
-              </a>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-    </li>
   )
 }

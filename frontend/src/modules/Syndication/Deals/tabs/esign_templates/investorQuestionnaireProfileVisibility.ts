@@ -63,6 +63,18 @@ export function cloneProfileSectionVisibility(
   return next
 }
 
+/** True when this profile × section is on in the default (recommended) matrix. */
+export function isRecommendedQuestionnaireSectionForProfile(
+  profileId: string,
+  sectionId: string,
+): boolean {
+  return isQuestionnaireSectionVisibleForProfile(
+    DEFAULT_INVESTOR_QUESTIONNAIRE_PROFILE_SECTION_VISIBILITY,
+    profileId,
+    sectionId,
+  )
+}
+
 /** Missing or true means the section is shown for that profile's e-sign template. */
 export function isQuestionnaireSectionVisibleForProfile(
   visibility: InvestorQuestionnaireProfileSectionVisibility | undefined,

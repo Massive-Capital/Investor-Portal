@@ -1,15 +1,34 @@
-import { ChevronDown, ChevronRight, Clock, Trash2 } from "lucide-react"
-import { useId, useState } from "react"
+import { Check, ChevronDown, ChevronRight, Clock, Pencil, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useId, useState } from "react"
 import {
   resolveQuestionForDisplay,
   type InvestorQuestionnaireQuestion,
 } from "./investorQuestionnaire.types"
 import {
   QUESTIONNAIRE_TYPE_OPTIONS,
+  fieldTypeDisplayLabel,
   fieldTypeUsesOptions,
 } from "./investorQuestionnaireFieldTypes"
 import type { InvestorQuestionnaireFieldType } from "./investorQuestionnaire.types"
 import { QuestionnaireToggle } from "./QuestionnaireToggle"
+
+type QuestionDraft = {
+  label: string
+  fieldType: InvestorQuestionnaireFieldType
+  subtext: string
+  required: boolean
+  options: string[]
+}
+
+function questionToDraft(question: InvestorQuestionnaireQuestion): QuestionDraft {
+  return {
+    label: question.label,
+    fieldType: question.fieldType,
+    subtext: question.subtext ?? "",
+    required: question.required,
+    options: question.options ?? [],
+  }
+}
 
 type QuestionnaireQuestionCardProps = {
   question: InvestorQuestionnaireQuestion
@@ -17,6 +36,9 @@ type QuestionnaireQuestionCardProps = {
   canEdit: boolean
   saving: boolean
   defaultExpanded?: boolean
+  /** Field is in a new section that is not saved yet — use Save / Edit per field. */
+  pendingFieldWorkflow?: boolean
+  fieldEditing?: boolean
   onToggleRequired: (questionId: string, required: boolean) => void
   onUpdateQuestion: (
     questionId: string,
@@ -28,6 +50,8 @@ type QuestionnaireQuestionCardProps = {
     >,
   ) => void
   onDeleteQuestion: (question: InvestorQuestionnaireQuestion) => void
+  onSaveField?: (questionId: string) => void
+  onEditField?: (questionId: string) => void
 }
 
 export function QuestionnaireQuestionCard({
@@ -39,9 +63,28 @@ export function QuestionnaireQuestionCard({
   onUpdateQuestion,
   onDeleteQuestion,
   defaultExpanded = false,
+  pendingFieldWorkflow = false,
+  fieldEditing = false,
+  onSaveField,
+  onEditField,
 }: QuestionnaireQuestionCardProps) {
   const q = resolveQuestionForDisplay(question)
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const [expanded, setExpanded] = useState(
+    defaultExpanded || (pendingFieldWorkflow && fieldEditing),
+  )
+  const [draft, setDraft] = useState<QuestionDraft>(() => questionToDraft(question))
+
+  useEffect(() => {
+    if (defaultExpanded) setExpanded(true)
+  }, [defaultExpanded])
+
+  useEffect(() => {
+    if (pendingFieldWorkflow && fieldEditing) {
+      setDraft(questionToDraft(question))
+      setExpanded(true)
+    }
+  }, [pendingFieldWorkflow, fieldEditing, question])
+
   const baseId = useId()
   const labelFieldId = `${baseId}-label`
   const typeFieldId = `${baseId}-type`
@@ -50,16 +93,56 @@ export function QuestionnaireQuestionCard({
   const requiredLabelId = `${baseId}-required-label`
   const panelId = `${baseId}-panel`
 
-  const disabled = !canEdit || saving
+  const disabled = !canEdit
+  const actionsDisabled = !canEdit || saving
   const defaultLocked = Boolean(q.isDefault)
   const coreDisabled = disabled || defaultLocked
   const optionsLocked = defaultLocked
-  const showOptions = fieldTypeUsesOptions(q.fieldType)
-  const options = q.options ?? []
+  const showOptions = fieldTypeUsesOptions(
+    pendingFieldWorkflow && fieldEditing ? draft.fieldType : q.fieldType,
+  )
+  const options =
+    pendingFieldWorkflow && fieldEditing ? draft.options : (q.options ?? [])
+
+  const applyDraft = useCallback(() => {
+    const patch: Partial<
+      Pick<
+        InvestorQuestionnaireQuestion,
+        "label" | "fieldType" | "subtext" | "required" | "options"
+      >
+    > = {
+      label: draft.label,
+      fieldType: draft.fieldType,
+      subtext: draft.subtext,
+      required: draft.required,
+    }
+    if (fieldTypeUsesOptions(draft.fieldType)) {
+      patch.options = draft.options.map((o) => o.trim()).filter(Boolean)
+    } else {
+      patch.options = []
+    }
+    onUpdateQuestion(question.id, patch)
+  }, [draft, onUpdateQuestion, question.id])
+
+  const handleSaveField = useCallback(() => {
+    if (!draft.label.trim()) return
+    if (
+      fieldTypeUsesOptions(draft.fieldType) &&
+      draft.options.map((o) => o.trim()).filter(Boolean).length === 0
+    ) {
+      return
+    }
+    applyDraft()
+    onSaveField?.(question.id)
+    setExpanded(false)
+  }, [applyDraft, draft, onSaveField, question.id])
+
+  const viewMode = pendingFieldWorkflow && !fieldEditing
+  const editMode = pendingFieldWorkflow && fieldEditing
 
   return (
     <li
-      className={`deal_esign_questionnaire_question_card${expanded ? " deal_esign_questionnaire_question_card_expanded" : ""}`}
+      className={`deal_esign_questionnaire_question_card${expanded ? " deal_esign_questionnaire_question_card_expanded" : ""}${viewMode ? " deal_esign_questionnaire_question_card_saved" : ""}`}
     >
       <div className="deal_esign_questionnaire_question_body">
         <div className="deal_esign_questionnaire_question_summary">
@@ -75,7 +158,7 @@ export function QuestionnaireQuestionCard({
                 Question {index + 1}
               </span>
               <span className="deal_esign_questionnaire_question_title">
-                {q.label}
+                {q.label.trim() || "Untitled question"}
               </span>
             </div>
             <div className="deal_esign_questionnaire_question_head_end">
@@ -84,6 +167,21 @@ export function QuestionnaireQuestionCard({
                   <Clock size={12} strokeWidth={2} aria-hidden />
                   Default
                 </span>
+              ) : null}
+              {canEdit && viewMode ? (
+                <button
+                  type="button"
+                  className="deal_esign_questionnaire_field_edit_btn"
+                  disabled={actionsDisabled}
+                  aria-label={`Edit ${q.label || "question"}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEditField?.(question.id)
+                  }}
+                >
+                  <Pencil size={14} strokeWidth={2} aria-hidden />
+                  Edit
+                </button>
               ) : null}
               {expanded ? (
                 <ChevronDown
@@ -104,7 +202,41 @@ export function QuestionnaireQuestionCard({
           </button>
         </div>
 
-        {expanded ? (
+        {expanded && viewMode ? (
+          <div
+            id={panelId}
+            className="deal_esign_questionnaire_question_panel deal_esign_questionnaire_question_panel_view"
+            role="region"
+            aria-label={`Saved settings for ${q.label}`}
+          >
+            <dl className="deal_esign_questionnaire_field_view_list">
+              <div className="deal_esign_questionnaire_field_view_row">
+                <dt>Label</dt>
+                <dd>{q.label.trim() || "—"}</dd>
+              </div>
+              <div className="deal_esign_questionnaire_field_view_row">
+                <dt>Type</dt>
+                <dd>{fieldTypeDisplayLabel(q.fieldType)}</dd>
+              </div>
+              {fieldTypeUsesOptions(q.fieldType) && (q.options?.length ?? 0) > 0 ? (
+                <div className="deal_esign_questionnaire_field_view_row">
+                  <dt>Options</dt>
+                  <dd>{q.options!.join(", ")}</dd>
+                </div>
+              ) : null}
+              <div className="deal_esign_questionnaire_field_view_row">
+                <dt>Subtext</dt>
+                <dd>{q.subtext?.trim() || "—"}</dd>
+              </div>
+              <div className="deal_esign_questionnaire_field_view_row">
+                <dt>Required</dt>
+                <dd>{q.required ? "Yes" : "No"}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : null}
+
+        {expanded && !viewMode ? (
           <div
             id={panelId}
             className="deal_esign_questionnaire_question_panel"
@@ -122,14 +254,18 @@ export function QuestionnaireQuestionCard({
                 id={labelFieldId}
                 type="text"
                 className={`deal_esign_questionnaire_field_input${defaultLocked ? " deal_esign_questionnaire_field_input_locked" : ""}`}
-                value={q.label}
-                placeholder={q.label}
+                value={editMode ? draft.label : q.label}
+                placeholder="Enter question label"
                 disabled={coreDisabled}
                 readOnly={defaultLocked}
                 aria-readonly={defaultLocked}
-                onChange={(e) =>
-                  onUpdateQuestion(question.id, { label: e.target.value })
-                }
+                onChange={(e) => {
+                  if (editMode) {
+                    setDraft((d) => ({ ...d, label: e.target.value }))
+                  } else {
+                    onUpdateQuestion(question.id, { label: e.target.value })
+                  }
+                }}
               />
             </div>
 
@@ -143,11 +279,21 @@ export function QuestionnaireQuestionCard({
               <select
                 id={typeFieldId}
                 className={`deal_esign_questionnaire_field_select${defaultLocked ? " deal_esign_questionnaire_field_input_locked" : ""}`}
-                value={q.fieldType}
+                value={editMode ? draft.fieldType : q.fieldType}
                 disabled={coreDisabled}
                 onChange={(e) => {
                   const fieldType = e.target.value as InvestorQuestionnaireFieldType
-                  if (fieldTypeUsesOptions(fieldType)) {
+                  if (editMode) {
+                    setDraft((d) => ({
+                      ...d,
+                      fieldType,
+                      options: fieldTypeUsesOptions(fieldType)
+                        ? d.options.length
+                          ? d.options
+                          : [""]
+                        : [],
+                    }))
+                  } else if (fieldTypeUsesOptions(fieldType)) {
                     onUpdateQuestion(question.id, {
                       fieldType,
                       options:
@@ -201,12 +347,16 @@ export function QuestionnaireQuestionCard({
                             className="deal_esign_questionnaire_field_input deal_esign_questionnaire_option_input"
                             value={option}
                             placeholder={`Option ${optionIndex + 1}`}
-                            disabled={disabled}
+                            disabled={coreDisabled}
                             aria-label={`Option ${optionIndex + 1}`}
                             onChange={(e) => {
                               const next = [...options]
                               next[optionIndex] = e.target.value
-                              onUpdateQuestion(question.id, { options: next })
+                              if (editMode) {
+                                setDraft((d) => ({ ...d, options: next }))
+                              } else {
+                                onUpdateQuestion(question.id, { options: next })
+                              }
                             }}
                           />
                         )}
@@ -214,11 +364,15 @@ export function QuestionnaireQuestionCard({
                           <button
                             type="button"
                             className="deal_esign_questionnaire_option_remove"
-                            disabled={disabled}
+                            disabled={actionsDisabled}
                             aria-label={`Remove option ${optionIndex + 1}`}
                             onClick={() => {
                               const next = options.filter((_, i) => i !== optionIndex)
-                              onUpdateQuestion(question.id, { options: next })
+                              if (editMode) {
+                                setDraft((d) => ({ ...d, options: next }))
+                              } else {
+                                onUpdateQuestion(question.id, { options: next })
+                              }
                             }}
                           >
                             <Trash2 size={14} strokeWidth={2} aria-hidden />
@@ -232,12 +386,15 @@ export function QuestionnaireQuestionCard({
                   <button
                     type="button"
                     className="deal_esign_questionnaire_option_add"
-                    disabled={disabled}
-                    onClick={() =>
-                      onUpdateQuestion(question.id, {
-                        options: [...options, ""],
-                      })
-                    }
+                    disabled={actionsDisabled}
+                    onClick={() => {
+                      const next = [...options, ""]
+                      if (editMode) {
+                        setDraft((d) => ({ ...d, options: next }))
+                      } else {
+                        onUpdateQuestion(question.id, { options: next })
+                      }
+                    }}
                   >
                     + Add option
                   </button>
@@ -253,12 +410,16 @@ export function QuestionnaireQuestionCard({
                 id={subtextFieldId}
                 type="text"
                 className="deal_esign_questionnaire_field_input"
-                value={q.subtext ?? ""}
+                value={editMode ? draft.subtext : (q.subtext ?? "")}
                 placeholder="Enter subtext"
                 disabled={disabled}
-                onChange={(e) =>
-                  onUpdateQuestion(question.id, { subtext: e.target.value })
-                }
+                onChange={(e) => {
+                  if (editMode) {
+                    setDraft((d) => ({ ...d, subtext: e.target.value }))
+                  } else {
+                    onUpdateQuestion(question.id, { subtext: e.target.value })
+                  }
+                }}
               />
             </div>
 
@@ -273,26 +434,64 @@ export function QuestionnaireQuestionCard({
                 <QuestionnaireToggle
                   id={requiredId}
                   labelId={requiredLabelId}
-                  checked={q.required}
+                  checked={editMode ? draft.required : q.required}
                   disabled={coreDisabled}
                   compact
-                  onChange={(required) => onToggleRequired(question.id, required)}
+                  onChange={(required) => {
+                    if (editMode) {
+                      setDraft((d) => ({ ...d, required }))
+                    } else {
+                      onToggleRequired(question.id, required)
+                    }
+                  }}
                 />
               </div>
-              {canEdit && !q.isDefault ? (
-                <button
-                  type="button"
-                  className="deal_esign_questionnaire_delete_btn"
-                  disabled={disabled}
-                  onClick={() => onDeleteQuestion(question)}
-                >
-                  <Trash2 size={14} strokeWidth={2} aria-hidden />
-                  Delete
-                </button>
-              ) : null}
+              <div className="deal_esign_questionnaire_question_foot_actions">
+                {editMode ? (
+                  <button
+                    type="button"
+                    className="um_btn_primary deal_esign_questionnaire_field_save_btn"
+                    disabled={
+                      actionsDisabled ||
+                      !draft.label.trim() ||
+                      (fieldTypeUsesOptions(draft.fieldType) &&
+                        draft.options.map((o) => o.trim()).filter(Boolean).length ===
+                          0)
+                    }
+                    onClick={handleSaveField}
+                  >
+                    <Check size={14} strokeWidth={2} aria-hidden />
+                    Save
+                  </button>
+                ) : null}
+                {canEdit && !q.isDefault && !editMode ? (
+                  <button
+                    type="button"
+                    className="deal_esign_questionnaire_delete_btn"
+                    disabled={actionsDisabled}
+                    onClick={() => onDeleteQuestion(question)}
+                  >
+                    <Trash2 size={14} strokeWidth={2} aria-hidden />
+                    Delete
+                  </button>
+                ) : null}
+                {canEdit && editMode && !q.isDefault ? (
+                  <button
+                    type="button"
+                    className="deal_esign_questionnaire_delete_btn"
+                    disabled={actionsDisabled}
+                    onClick={() => onDeleteQuestion(question)}
+                  >
+                    <Trash2 size={14} strokeWidth={2} aria-hidden />
+                    Delete
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
-        ) : (
+        ) : null}
+
+        {!expanded && !pendingFieldWorkflow ? (
           <div className="deal_esign_questionnaire_question_collapsed_foot">
             <div className="deal_esign_questionnaire_required_row">
               <span
@@ -311,7 +510,7 @@ export function QuestionnaireQuestionCard({
               />
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </li>
   )

@@ -258,7 +258,9 @@
 }
 
 .app_shell .deals_create_flow .deals_create_input.asset_step_input_underline,
-.app_shell .deals_create_page .deals_create_input.asset_step_input_underline {
+.app_shell .deals_create_page .deals_create_input.asset_step_input_underline,
+.app_shell .deals_add_deal_asset_page .deals_create_input.asset_step_input_underline,
+.app_shell .deals_add_deal_asset_panel .deals_create_input.asset_step_input_underline {
   font-size: var(--deals-control-size, 0.9375rem);
   line-height: var(--deals-control-line-height, 1.45);
   min-height: var(--deals-control-height, 2.75rem);
@@ -305,6 +307,14 @@
 
 .app_shell
   .deals_create_flow
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger,
+.app_shell
+  .deals_add_deal_asset_page
+  .deals_create_dropdown_select
+  .portal_dropdown_select_trigger,
+.app_shell
+  .deals_add_deal_asset_panel
   .deals_create_dropdown_select
   .portal_dropdown_select_trigger {
   font-size: var(--deals-control-size, 1rem);

@@ -13,7 +13,7 @@ function ToastItem({ t }: { t: ToastRecord }) {
   const isSuccess = t.variant === "success";
   return (
     <div
-      className="toast_pill"
+      className={`toast_pill ${isSuccess ? "toast_pill--success" : "toast_pill--error"}`}
       role="alert"
       aria-live={isSuccess ? "polite" : "assertive"}
     >

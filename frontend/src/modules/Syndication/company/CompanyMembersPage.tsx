@@ -61,6 +61,8 @@ import {
   accountStatusForUi,
   assignedDealCountFromRow,
   formatMemberUsername,
+  memberUserCellPrimaryLabel,
+  rowDisplayName,
   formatOrganizationsCsvCell,
   formatRoleCsvCell,
   formatValue,
@@ -71,7 +73,6 @@ import {
   primaryRoleLabelFromRow,
   normalizeMemberStatusForEdit,
   roleSortValue,
-  rowDisplayName,
   syncSessionUserDetailsById,
   userStatusForUi,
 } from "../usermanagement/memberAdminShared"
@@ -839,9 +840,9 @@ export default function CompanyMembersPage() {
               onClick={(e) => e.stopPropagation()}
               disabled={!id}
               aria-label={`Select member ${
-                formatMemberUsername(row.username) !== "—"
-                  ? formatMemberUsername(row.username)
-                  : String(row.email ?? "").trim() || "member"
+                memberUserCellPrimaryLabel(row) !== "—"
+                  ? memberUserCellPrimaryLabel(row)
+                  : "member"
               }`}
             />
           )
@@ -851,19 +852,17 @@ export default function CompanyMembersPage() {
         id: "user",
         header: "User",
         sortValue: (row) => {
-          const u = formatMemberUsername(row.username)
+          const name = memberUserCellPrimaryLabel(row)
           const e = formatValue(row.email)
-          return `${u} ${e}`.toLowerCase()
+          return `${name} ${e}`.toLowerCase()
         },
         tdClassName: "um_td_user",
         cell: (row) => {
           const rawEmail = String(row.email ?? "").trim()
           const emailShown = formatValue(row.email)
-          const usernameLabel = formatMemberUsername(row.username)
-          const usernamePlaceholder =
-            usernameLabel === "—"
-              ? " um_user_meta_username--placeholder"
-              : ""
+          const displayName = memberUserCellPrimaryLabel(row)
+          const namePlaceholder =
+            displayName === "—" ? " um_user_meta_username--placeholder" : ""
           return (
             <div className="um_user_cell">
               <div className="um_user_avatar_ring" aria-hidden>
@@ -873,9 +872,9 @@ export default function CompanyMembersPage() {
               </div>
               <div className="um_user_meta">
                 <span
-                  className={`um_user_meta_username${usernamePlaceholder}`}
+                  className={`um_user_meta_username${namePlaceholder}`}
                 >
-                  {usernameLabel}
+                  {displayName}
                 </span>
                 {rawEmail.includes("@") ? (
                   <a
@@ -942,8 +941,7 @@ export default function CompanyMembersPage() {
         tdClassName: "um_td_actions",
         cell: (row, rowIndex = 0) => {
           const rowKey = rowStableId(row, rowIndex)
-          const usernameLabel = formatMemberUsername(row.username)
-          const rawEmail = String(row.email ?? "").trim()
+          const memberLabel = memberUserCellPrimaryLabel(row)
           const menuOpen = actionMenuRowId === rowKey
           return (
             <div className="um_kebab_root">
@@ -952,7 +950,7 @@ export default function CompanyMembersPage() {
                 className="um_kebab_trigger"
                 aria-expanded={menuOpen}
                 aria-haspopup="menu"
-                aria-label={`Actions for ${usernameLabel !== "—" ? usernameLabel : rawEmail || "member"}`}
+                aria-label={`Actions for ${memberLabel !== "—" ? memberLabel : "member"}`}
                 ref={
                   menuOpen
                     ? (el) => {

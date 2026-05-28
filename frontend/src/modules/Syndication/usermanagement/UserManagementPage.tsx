@@ -47,7 +47,10 @@ import { decodeJwtPayload } from "../../auth/utils/decode-jwt-payload";
 import { formatUsPhoneStoredForUi } from "../../../common/phone/usPhoneNumber";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { isCompanyAdmin, isPlatformAdmin } from "../../../common/auth/roleUtils";
-import { resolvePlatformAdminMembersListScope } from "../../../common/auth/sessionOrganization";
+import {
+  getSessionOrganizationCompanyId,
+  resolvePlatformAdminMembersListScope,
+} from "../../../common/auth/sessionOrganization";
 import { DataTablePagination } from "../../../common/components/DataTablePagination/DataTablePagination";
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField";
 import { toast } from "../../../common/components/Toast";
@@ -435,7 +438,11 @@ export default function UserManagementPage({
     if (membersOrganizationScope !== undefined) {
       return membersOrganizationScope;
     }
-    return resolvePlatformAdminMembersListScope();
+    const platformScope = resolvePlatformAdminMembersListScope();
+    if (platformScope !== undefined) return platformScope;
+    const active = getSessionOrganizationCompanyId();
+    if (active && ORG_UUID_RE.test(active)) return active;
+    return undefined;
   }, [membersOrganizationScope, token, currentUserId]);
 
   const [memberRows, setMemberRows] =

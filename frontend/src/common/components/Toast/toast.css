@@ -28,10 +28,24 @@
   padding-bottom: calc(0.95em + 3px);
   box-sizing: border-box;
   border-radius: 9999px;
-  background: #d1d5db;
-  box-shadow: 0 10px 28px rgb(15 23 42 / 14%), 0 2px 8px rgb(15 23 42 / 8%);
+  border: 1px solid var(--portal-border, #e5e7eb);
+  background: var(--portal-surface, #ffffff);
+  color: var(--portal-text, #00477a);
+  box-shadow:
+    0 10px 28px rgb(15 23 42 / 12%),
+    0 2px 8px rgb(15 23 42 / 6%);
   overflow: hidden;
   animation: toast_enter 0.28s ease-out;
+}
+
+.toast_pill--success {
+  border-color: color-mix(in srgb, #22c55e 35%, var(--portal-border, #e5e7eb));
+  background: color-mix(in srgb, #f0fdf4 88%, var(--portal-surface, #fff));
+}
+
+.toast_pill--error {
+  border-color: color-mix(in srgb, #e11d48 35%, var(--portal-border, #e5e7eb));
+  background: color-mix(in srgb, #fff1f2 88%, var(--portal-surface, #fff));
 }
 
 @keyframes toast_enter {
@@ -57,11 +71,11 @@
 }
 
 .toast_pill_icon--success {
-  background: #22c55e;
+  background: #16a34a;
 }
 
 .toast_pill_icon--error {
-  background: #e11d48;
+  background: #dc2626;
 }
 
 .toast_pill_body {
@@ -75,14 +89,14 @@
 .toast_pill_title {
   font-size: 0.9375em;
   font-weight: 700;
-  color: #64748b;
+  color: var(--portal-text, #00477a);
   line-height: 1.25;
 }
 
 .toast_pill_desc {
   font-size: 0.8125em;
-  font-weight: 400;
-  color: #94a3b8;
+  font-weight: 500;
+  color: var(--portal-text-secondary, #4f4f4f);
   line-height: 1.35;
 }
 
@@ -98,14 +112,19 @@
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #94a3b8;
+  color: var(--portal-text-muted, #64748b);
   cursor: pointer;
   transition: color 0.15s ease, background 0.15s ease;
 }
 
 .toast_pill_close:hover {
-  color: #64748b;
-  background: rgb(255 255 255 / 35%);
+  color: var(--portal-text, #00477a);
+  background: var(--portal-primary-soft, #e6f0ff);
+}
+
+.toast_pill_close:focus-visible {
+  outline: 2px solid var(--portal-primary, #00477a);
+  outline-offset: 2px;
 }
 
 .toast_pill_timer {
@@ -114,11 +133,22 @@
   left: 0;
   right: 0;
   height: 3px;
-  background: rgb(100 116 139 / 45%);
+  background: var(--portal-primary, #00477a);
+  opacity: 0.45;
   transform-origin: left center;
   animation-name: toast_timer_shrink;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
+}
+
+.toast_pill--success .toast_pill_timer {
+  background: #16a34a;
+  opacity: 0.55;
+}
+
+.toast_pill--error .toast_pill_timer {
+  background: #dc2626;
+  opacity: 0.55;
 }
 
 @keyframes toast_timer_shrink {

@@ -434,7 +434,7 @@ export function normalizeDealDetailApi(
   ])
   const internalNameRaw = firstDefined(d, ["internalName", "internal_name"])
   const offeringStatus =
-    offeringStatusRaw != null ? str(offeringStatusRaw) : "draft_hidden"
+    offeringStatusRaw != null ? str(offeringStatusRaw) : ""
   const visStr =
     offeringVisibilityRaw != null ? str(offeringVisibilityRaw) : ""
   const visMapped = visStr ? mapLegacyOfferingVisibility(visStr) : ""
@@ -2624,6 +2624,58 @@ export async function postDealEsignTemplateUploads(
   }
 }
 
+export async function patchDealEsignTemplateName(
+  dealId: string,
+  fileId: string,
+  templateName: string,
+): Promise<FetchDealEsignTemplatesResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ templateName: templateName.trim() }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null
+            ? String(data.message)
+            : "Could not update template name",
+      }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
 export async function deleteDealEsignTemplateFile(
   dealId: string,
   fileId: string,
@@ -3470,6 +3522,8 @@ function appendDealInvestmentMultipartFields(
   fd.append("offering_id", values.offeringId)
   fd.append("contact_id", values.contactId)
   fd.append("contact_display_name", values.contactDisplayName?.trim() ?? "")
+   const contactEmail = values.contactEmail?.trim()
+  if (contactEmail) fd.append("contact_email", contactEmail)
   fd.append("profile_id", values.profileId)
   fd.append("investor_role", values.investorRole?.trim() ?? "")
   fd.append("status", values.status)

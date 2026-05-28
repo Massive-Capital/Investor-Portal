@@ -1,6 +1,6 @@
 import { ArrowLeft, ChevronRight, Loader2, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { toast } from "@/common/components/Toast"
 import { setAppDocumentTitle } from "@/common/utils/appDocumentTitle"
@@ -51,7 +51,6 @@ import {
   NO_SAVED_PROFILES_FOR_INVESTOR_TYPE_MSG,
 } from "@/modules/Syndication/Deals/utils/lpInvestNowSavedProfileOptions"
 import {
-  blurFormatMoneyInput,
   formatCurrencyUsdTypeInput,
   parseMoneyDigits,
 } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
@@ -104,6 +103,10 @@ import "@/modules/Syndication/Deals/deals-list.css"
 import "@/modules/Syndication/Deals/deals-create.css"
 import "./invest-now-flow.css"
 
+type InvestNowLocationState = {
+  returnTo?: string
+}
+
 function formatDealCloseDateForInvestments(raw: string | undefined): string {
   const t = String(raw ?? "").trim()
   if (!t) return "—"
@@ -120,6 +123,7 @@ export function DealInvestNowPage() {
   const { dealId: dealIdParam = "" } = useParams<{ dealId: string }>()
   const dealId = decodeURIComponent(dealIdParam.trim())
   const navigate = useNavigate()
+  const location = useLocation()
   const { switchToInvesting } = usePortalMode()
 
   const [loading, setLoading] = useState(true)
@@ -254,7 +258,12 @@ export function DealInvestNowPage() {
     return Number.isFinite(n) && n > 0 ? n : null
   }, [investorClasses])
 
-  const backTo = dealId ? dealWorkspacePath(dealId) : "/investing/investments"
+  const backTo = useMemo(() => {
+    const fromState = (location.state as InvestNowLocationState | null)
+      ?.returnTo?.trim()
+    if (fromState) return fromState
+    return dealId ? dealWorkspacePath(dealId) : "/investing/investments"
+  }, [dealId, location.state])
 
   useEffect(() => {
     switchToInvesting()
@@ -1077,7 +1086,6 @@ export function DealInvestNowPage() {
             setFundingMethod(v)
             if (error) setError("")
           }}
-          onAmountBlur={() => setAmount((prev) => blurFormatMoneyInput(prev))}
           disabled={submitting}
           error={error}
         />
@@ -1174,7 +1182,11 @@ export function DealInvestNowPage() {
               type="button"
               className="deals_list_back_circle"
               onClick={() => navigate(backTo)}
-              aria-label="Back to deal"
+              aria-label={
+                backTo === "/investing/investments"
+                  ? "Back to investments"
+                  : "Back to deal"
+              }
             >
               <ArrowLeft size={20} strokeWidth={2} aria-hidden />
             </button>

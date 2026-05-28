@@ -9,6 +9,7 @@ import {
   saveReusableTemplateAfterEditor,
 } from "../../services/esign/reusableTemplate.service.js";
 import { startReusableTemplateEmbeddedDraft } from "../../services/esign/reusableTemplateDropbox.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -96,7 +97,11 @@ export async function getReusableTemplates(
     return;
   }
   try {
-    const rows = await listReusableTemplatesForViewer(user.id, user.userRole);
+    const rows = await listReusableTemplatesForViewer(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     res.status(200).json({
       templates: rows.map(rowToJson),
     });
@@ -133,6 +138,7 @@ export async function postReusableTemplateUpload(
     const row = await createReusableTemplateUpload({
       userId: user.id,
       userRole: user.userRole,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
       name,
       file,
     });
@@ -178,6 +184,7 @@ export async function postReusableTemplateEmbeddedDraft(
       portalTemplateId: templateId,
       viewerUserId: user.id,
       viewerRole: user.userRole,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
       title,
     });
     res.status(200).json(result);
@@ -231,6 +238,7 @@ export async function postReusableTemplateSave(
       roles,
       viewerUserId: user.id,
       viewerRole: user.userRole,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
     });
     res.status(200).json({
       message: "Template saved",

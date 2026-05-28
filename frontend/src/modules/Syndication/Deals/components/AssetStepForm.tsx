@@ -7,6 +7,7 @@ import {
 import { useUsCountriesNowLocations } from "../hooks/useUsCountriesNowLocations"
 import {
   getUsCitiesForStateCode,
+  getUsStateDisplayName,
   getUsStateDropdownOptions,
   isUnitedStatesCountry,
   resolveUsStateCodeForDraft,
@@ -42,6 +43,21 @@ function FieldError({ message }: { message?: string }) {
   return <p className="deals_create_field_error">{message}</p>
 }
 
+/** Keep saved location values visible/selectable even when not in the API list yet. */
+function withSavedLocationOption(
+  options: { value: string; label: string }[],
+  savedRaw: string,
+  labelForValue?: (value: string) => string,
+): { value: string; label: string }[] {
+  const saved = savedRaw.trim()
+  if (!saved) return options
+  if (options.some((o) => o.value === saved)) return options
+  return [
+    { value: saved, label: labelForValue?.(saved) ?? saved },
+    ...options,
+  ]
+}
+
 export function AssetStepForm({
   draft,
   errors,
@@ -60,6 +76,13 @@ export function AssetStepForm({
     [isUs, draft.state],
   )
 
+  /** Select value: USPS code when known, otherwise raw saved state (custom / legacy). */
+  const usStateSelectValue = useMemo(() => {
+    if (!isUs) return ""
+    if (usStateCode) return usStateCode
+    return draft.state.trim()
+  }, [isUs, usStateCode, draft.state])
+
   const countriesNow = useUsCountriesNowLocations({
     enabled: isUs && usLocationSource === "countriesNow",
     selectedStateCode: usStateCode,
@@ -72,6 +95,18 @@ export function AssetStepForm({
     if (countriesNow.stateOptions.length > 0) return countriesNow.stateOptions
     return getUsStateDropdownOptions()
   }, [isUs, usLocationSource, countriesNow.stateOptions])
+
+  const usStateOptionsForSelect = useMemo(() => {
+    const merged = withSavedLocationOption(
+      usStateOptions,
+      usStateSelectValue,
+      (value) => {
+        const code = resolveUsStateCodeForDraft(value)
+        return code ? getUsStateDisplayName(code) : value
+      },
+    )
+    return merged
+  }, [usStateOptions, usStateSelectValue])
 
   const usCityOptions = useMemo(() => {
     if (!isUs || !usStateCode) return []
@@ -90,6 +125,15 @@ export function AssetStepForm({
     countriesNow.cityNames,
     draft.city,
   ])
+
+  const usCityOptionsForSelect = useMemo(
+    () =>
+      withSavedLocationOption(
+        usCityOptions.map((name) => ({ value: name, label: name })),
+        draft.city,
+      ),
+    [usCityOptions, draft.city],
+  )
 
   const usStatesLoading =
     isUs &&
@@ -182,7 +226,7 @@ export function AssetStepForm({
         </label>
 
         <label className="deals_create_label">
-          Country
+          <span className="deals_create_label_text">Country</span>
           <DealsCreateDropdownSelect
             options={COUNTRY_OPTIONS.map((o) => ({
               value: o.value,
@@ -208,8 +252,8 @@ export function AssetStepForm({
           />
         </label>
 
-           <label className="deals_create_label">
-          State
+        <label className="deals_create_label">
+          <span className="deals_create_label_text">State</span>
           {isUs ? (
             <>
               <DealsCreateDropdownSelect
@@ -220,9 +264,9 @@ export function AssetStepForm({
                       ? "Loading states…"
                       : "Select state",
                   },
-                  ...usStateOptions,
+                  ...usStateOptionsForSelect,
                 ]}
-                value={usStateCode}
+                value={usStateSelectValue}
                 onChange={(v) => onChange({ state: v, city: "" })}
                 disabled={usStatesLoading}
                 invalid={Boolean(errors.state)}
@@ -233,7 +277,7 @@ export function AssetStepForm({
                 searchPlaceholder="Search states…"
                 searchAriaLabel="Filter state list"
                 searchShowOptionCountHint
-                triggerClassName="asset_step_input_underline"
+                triggerClassName="asset_step_location_bordered"
               />
               {usLocationSource === "countriesNow" &&
               countriesNow.statesError ? (
@@ -245,7 +289,7 @@ export function AssetStepForm({
             </>
           ) : (
             <input
-              className="deals_create_input asset_step_input_underline"
+              className="deals_create_input asset_step_location_bordered"
               value={draft.state}
               onChange={(e) => onChange({ state: e.target.value })}
               aria-invalid={Boolean(errors.state)}
@@ -255,7 +299,7 @@ export function AssetStepForm({
         </label>
 
         <label className="deals_create_label">
-          City
+          <span className="deals_create_label_text">City</span>
           {isUs ? (
             <>
               <DealsCreateDropdownSelect
@@ -268,18 +312,11 @@ export function AssetStepForm({
                         ? "Loading cities…"
                         : "Select city",
                   },
-                  ...usCityOptions.map((name) => ({
-                    value: name,
-                    label: name,
-                  })),
+                  ...usCityOptionsForSelect,
                 ]}
-                value={
-                  draft.city && usCityOptions.includes(draft.city)
-                    ? draft.city
-                    : ""
-                }
+                value={draft.city.trim()}
                 onChange={(v) => onChange({ city: v })}
-                disabled={!usStateCode || Boolean(usCitiesLoading)}
+                disabled={!usStateCode}
                 invalid={Boolean(errors.city)}
                 placeholder={
                   !usStateCode
@@ -292,7 +329,7 @@ export function AssetStepForm({
                 searchPlaceholder="Search cities…"
                 searchAriaLabel="Filter city list"
                 searchShowOptionCountHint
-                triggerClassName="asset_step_input_underline"
+                triggerClassName="asset_step_location_bordered"
               />
               {usLocationSource === "countriesNow" &&
               usStateCode &&
@@ -305,7 +342,7 @@ export function AssetStepForm({
             </>
           ) : (
             <input
-              className="deals_create_input asset_step_input_underline"
+              className="deals_create_input asset_step_location_bordered"
               value={draft.city}
               onChange={(e) => onChange({ city: e.target.value })}
               aria-invalid={Boolean(errors.city)}

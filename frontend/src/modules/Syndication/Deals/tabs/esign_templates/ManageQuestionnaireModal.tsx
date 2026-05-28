@@ -1,5 +1,5 @@
-import { Settings2, X } from "lucide-react"
-import { useEffect, useId } from "react"
+import { Save, Settings2, Sparkles, X } from "lucide-react"
+import { useEffect, useId, useState } from "react"
 import { createPortal } from "react-dom"
 import {
   ESIGN_ENTITY_CATEGORIES,
@@ -7,6 +7,7 @@ import {
 } from "./esignEntityCategories"
 import {
   isQuestionnaireSectionVisibleForProfile,
+  isRecommendedQuestionnaireSectionForProfile,
   setQuestionnaireSectionVisibleForProfile,
 } from "./investorQuestionnaireProfileVisibility"
 import type {
@@ -22,7 +23,7 @@ export interface ManageQuestionnaireModalProps {
   canEdit: boolean
   saving: boolean
   onClose: () => void
-  onVisibilityChange: (
+  onSave: (
     visibility: InvestorQuestionnaireProfileSectionVisibility | undefined,
   ) => void
 }
@@ -34,9 +35,12 @@ export function ManageQuestionnaireModal({
   canEdit,
   saving,
   onClose,
-  onVisibilityChange,
+  onSave,
 }: ManageQuestionnaireModalProps) {
   const titleId = useId()
+  const [draftVisibility, setDraftVisibility] = useState<
+    InvestorQuestionnaireProfileSectionVisibility | undefined
+  >(visibility)
 
   useEffect(() => {
     if (!open) return
@@ -47,9 +51,20 @@ export function ManageQuestionnaireModal({
     return () => window.removeEventListener("keydown", onKey)
   }, [open, saving, onClose])
 
+  useEffect(() => {
+    if (!open) return
+    setDraftVisibility(visibility)
+  }, [open, visibility])
+
   if (!open || typeof document === "undefined") return null
 
   const disabled = !canEdit || saving
+
+  function handleSave() {
+    const hasRules = draftVisibility && Object.keys(draftVisibility).length > 0
+    onSave(hasRules ? draftVisibility : undefined)
+    onClose()
+  }
 
   return createPortal(
     <div
@@ -87,7 +102,11 @@ export function ManageQuestionnaireModal({
         </div>
         {/* <p className="deal_esign_manage_q_desc">
           Choose which questionnaire sections appear on each investor profile&apos;s
-          e-sign template. When a section is off, it is hidden for that profile type.
+          e-sign template. Cells marked{" "}
+          <span className="deal_esign_manage_q_recommended_badge deal_esign_manage_q_recommended_badge_inline">
+            Recommended
+          </span>{" "}
+          are turned on by default for that profile type.
         </p> */}
         <div className="deals_add_inv_modal_scroll deal_esign_manage_q_scroll">
           <table className="deal_esign_manage_q_table">
@@ -134,36 +153,61 @@ export function ManageQuestionnaireModal({
                   </th>
                   {ESIGN_ENTITY_CATEGORIES.map((profile) => {
                     const checked = isQuestionnaireSectionVisibleForProfile(
-                      visibility,
+                      draftVisibility,
                       profile.id,
                       section.id,
                     )
+                    const recommended =
+                      isRecommendedQuestionnaireSectionForProfile(
+                        profile.id,
+                        section.id,
+                      )
                     const toggleId = `manage-q-${section.id}-${profile.id}`
                     return (
-                      <td
-                        key={profile.id}
-                        className="deal_esign_manage_q_cell"
-                      >
-                        <QuestionnaireToggle
-                          id={toggleId}
-                          checked={checked}
-                          disabled={disabled}
-                          ariaLabel={`${checked ? "Hide" : "Show"} ${section.label} for ${profile.label}`}
-                          onChange={(next) => {
-                            const updated =
-                              setQuestionnaireSectionVisibleForProfile(
-                                visibility,
-                                profile.id,
-                                section.id,
-                                next,
+                      <td key={profile.id} className="deal_esign_manage_q_cell">
+                        <div className="deal_esign_manage_q_cell_control">
+                          <QuestionnaireToggle
+                            id={toggleId}
+                            checked={checked}
+                            disabled={disabled}
+                            compact
+                            ariaLabel={`${checked ? "Hide" : "Show"} ${section.label} for ${profile.label}${
+                              recommended ? " (recommended on by default)" : ""
+                            }`}
+                            onChange={(next) => {
+                              const updated =
+                                setQuestionnaireSectionVisibleForProfile(
+                                  draftVisibility,
+                                  profile.id,
+                                  section.id,
+                                  next,
+                                )
+                              setDraftVisibility(
+                                Object.keys(updated).length > 0
+                                  ? updated
+                                  : undefined,
                               )
-                            const hasRules =
-                              Object.keys(updated).length > 0
-                            onVisibilityChange(
-                              hasRules ? updated : undefined,
-                            )
-                          }}
-                        />
+                            }}
+                          />
+                          <span
+                            className="deal_esign_manage_q_recommended_slot"
+                            title={
+                              recommended
+                                ? `Recommended for ${profile.label}`
+                                : undefined
+                            }
+                            aria-hidden={!recommended}
+                          >
+                            {recommended ? (
+                              <span
+                                className="deal_esign_manage_q_recommended_icon"
+                                aria-label="Recommended for this profile"
+                              >
+                                <Sparkles size={8} strokeWidth={2} aria-hidden />
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
                       </td>
                     )
                   })}
@@ -171,15 +215,34 @@ export function ManageQuestionnaireModal({
               ))}
             </tbody>
           </table>
+          <p className="deal_esign_manage_q_note" role="note">
+            <span className="deal_esign_manage_q_recommended_icon_note" aria-hidden>
+              <Sparkles size={8} strokeWidth={2} />
+            </span>
+            <span>
+              The icon marks sections we recommend turning on by default for that
+              investor profile type.
+            </span>
+          </p>
         </div>
         <div className="um_modal_actions">
           <button
             type="button"
-            className="um_btn_primary"
+            className="um_btn_secondary"
             onClick={onClose}
             disabled={saving}
           >
-            {saving ? "Saving…" : "Done"}
+            <X size={16} strokeWidth={2} aria-hidden />
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="um_btn_primary"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            <Save size={16} strokeWidth={2} aria-hidden />
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>

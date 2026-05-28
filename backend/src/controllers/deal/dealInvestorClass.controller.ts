@@ -6,6 +6,7 @@ import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import {
   deleteInvestorClass,
   insertInvestorClass,
@@ -14,46 +15,103 @@ import {
   type InvestorClassInput,
   updateInvestorClass,
 } from "../../services/deal/dealInvestorClass.service.js";
+import {
+  INVESTOR_CLASS_SUBSCRIPTION_TYPES,
+  normalizeInvestorClassAdvancedOptionsJson,
+} from "../../services/deal/dealInvestorClassAdvancedOptions.js";
 
 function bodyString(v: unknown): string {
   return typeof v === "string" ? v : v != null ? String(v) : "";
 }
 
-function parseInput(b: Record<string, unknown>): InvestorClassInput {
+function emptyInvestorClassInput(): InvestorClassInput {
   return {
-    name: bodyString(b.name).trim(),
-    subscriptionType: bodyString(b.subscription_type ?? b.subscriptionType).trim(),
-    entityName: bodyString(b.entity_name ?? b.entityName).trim(),
-    startDate: bodyString(b.start_date ?? b.startDate).trim(),
-    offeringSize: bodyString(b.offering_size ?? b.offeringSize).trim(),
-    raiseAmountDistributions: bodyString(
-      b.raise_amount_distributions ?? b.raiseAmountDistributions,
-    ).trim(),
-    billingRaiseQuota: bodyString(
-      b.billing_raise_quota ?? b.billingRaiseQuota,
-    ).trim(),
-    minimumInvestment: bodyString(
-      b.minimum_investment ?? b.minimumInvestment,
-    ).trim(),
-    numberOfUnits: bodyString(
-      b.number_of_units ?? b.numberOfUnits,
-    ).trim(),
-    pricePerUnit: bodyString(b.price_per_unit ?? b.pricePerUnit).trim(),
-    status: bodyString(b.status).trim() || "draft",
-    visibility: bodyString(b.visibility).trim(),
-    advancedOptionsJson: (() => {
-      const raw = b.advanced_options_json ?? b.advancedOptionsJson;
-      if (raw == null) return "{}";
-      if (typeof raw === "string") {
-        const t = raw.trim();
-        return t === "" ? "{}" : t;
-      }
-      try {
-        return JSON.stringify(raw);
-      } catch {
-        return "{}";
-      }
-    })(),
+    name: "",
+    subscriptionType: "",
+    entityName: "",
+    startDate: "",
+    offeringSize: "",
+    raiseAmountDistributions: "",
+    billingRaiseQuota: "",
+    minimumInvestment: "",
+    numberOfUnits: "",
+    pricePerUnit: "",
+    status: "draft",
+    visibility: "",
+    advancedOptionsJson: "{}",
+  };
+}
+
+function parseAdvancedOptionsJsonFromBody(
+  b: Record<string, unknown>,
+  subscriptionType: string,
+): { json: string; error?: string } {
+  const raw = b.advanced_options_json ?? b.advancedOptionsJson;
+  let advancedOptionsJson = "{}";
+  if (typeof raw === "string") {
+    advancedOptionsJson = raw;
+  } else if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+    try {
+      advancedOptionsJson = JSON.stringify(raw);
+    } catch {
+      return { json: "{}", error: "advanced_options_json must be valid JSON" };
+    }
+  }
+  const maxInvestment = bodyString(
+    b.maximum_investment ?? b.maximumInvestment,
+  ).trim();
+  return normalizeInvestorClassAdvancedOptionsJson({
+    subscriptionType,
+    advancedOptionsJson,
+    maximumInvestment: maxInvestment || undefined,
+  });
+}
+
+function parseInput(
+  b: Record<string, unknown>,
+): { input: InvestorClassInput; error?: string } {
+  const subscriptionType = bodyString(
+    b.subscription_type ?? b.subscriptionType,
+  ).trim();
+  if (
+    subscriptionType &&
+    !(INVESTOR_CLASS_SUBSCRIPTION_TYPES as readonly string[]).includes(
+      subscriptionType.toLowerCase(),
+    )
+  ) {
+    return {
+      input: emptyInvestorClassInput(),
+      error: `Invalid subscription_type: ${subscriptionType}`,
+    };
+  }
+  const advanced = parseAdvancedOptionsJsonFromBody(b, subscriptionType);
+  if (advanced.error) {
+    return { input: emptyInvestorClassInput(), error: advanced.error };
+  }
+  return {
+    input: {
+      name: bodyString(b.name).trim(),
+      subscriptionType,
+      entityName: bodyString(b.entity_name ?? b.entityName).trim(),
+      startDate: bodyString(b.start_date ?? b.startDate).trim(),
+      offeringSize: bodyString(b.offering_size ?? b.offeringSize).trim(),
+      raiseAmountDistributions: bodyString(
+        b.raise_amount_distributions ?? b.raiseAmountDistributions,
+      ).trim(),
+      billingRaiseQuota: bodyString(
+        b.billing_raise_quota ?? b.billingRaiseQuota,
+      ).trim(),
+      minimumInvestment: bodyString(
+        b.minimum_investment ?? b.minimumInvestment,
+      ).trim(),
+      numberOfUnits: bodyString(
+        b.number_of_units ?? b.numberOfUnits,
+      ).trim(),
+      pricePerUnit: bodyString(b.price_per_unit ?? b.pricePerUnit).trim(),
+      status: bodyString(b.status).trim() || "draft",
+      visibility: bodyString(b.visibility).trim(),
+      advancedOptionsJson: advanced.json,
+    },
   };
 }
 
@@ -75,7 +133,11 @@ export async function getDealInvestorClasses(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -108,13 +170,22 @@ export async function postDealInvestorClass(
     return;
   }
   const b = req.body as Record<string, unknown>;
-  const input = parseInput(b);
+  const parsed = parseInput(b);
+  if (parsed.error) {
+    res.status(400).json({ message: parsed.error });
+    return;
+  }
+  const input = parsed.input;
   if (!input.name) {
     res.status(400).json({ message: "Name is required" });
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -152,13 +223,22 @@ export async function putDealInvestorClass(
     return;
   }
   const b = req.body as Record<string, unknown>;
-  const input = parseInput(b);
+  const parsed = parseInput(b);
+  if (parsed.error) {
+    res.status(400).json({ message: parsed.error });
+    return;
+  }
+  const input = parsed.input;
   if (!input.name) {
     res.status(400).json({ message: "Name is required" });
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -200,7 +280,11 @@ export async function deleteDealInvestorClass(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;

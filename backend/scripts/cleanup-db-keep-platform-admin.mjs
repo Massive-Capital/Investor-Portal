@@ -25,17 +25,28 @@ const pool = new pg.Pool({
   password: process.env.DATABASE_PASSWORD ?? "Postgresql123",
   host: process.env.DATABASE_HOST ?? "localhost",
   port: Number(process.env.DATABASE_PORT ?? "5432"),
-  database: process.env.DATABASE_NAME ?? "dev_syndicationx_db",
+  database: process.env.DATABASE_NAME ?? "investor_portal_db",
 });
 
 const CLEANUP_SQL = `
 BEGIN;
+
+-- Activity
+DELETE FROM user_page_navigations;
+DELETE FROM user_portal_sessions;
 
 -- Audit / mail (RESTRICT on users — clear before user deletes)
 DELETE FROM investor_communication_logs;
 DELETE FROM member_admin_audit_logs;
 DELETE FROM company_admin_audit_logs;
 DELETE FROM soc_auth_audit_logs;
+
+-- eSign / signatures
+DELETE FROM investment_signatures;
+DELETE FROM esign_reusable_template;
+
+-- Company membership
+DELETE FROM user_company_membership;
 
 -- CRM
 DELETE FROM contact;
@@ -100,7 +111,7 @@ COMMIT;
 `;
 
 async function main() {
-  const dbName = process.env.DATABASE_NAME ?? "dev_syndicationx_db";
+  const dbName = process.env.DATABASE_NAME ?? "investor_portal_db";
   console.log(`Database: ${dbName}${dryRun ? " (dry-run)" : ""}`);
 
   const client = await pool.connect();

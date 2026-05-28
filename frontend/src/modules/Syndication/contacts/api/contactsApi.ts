@@ -1,15 +1,9 @@
-import { SESSION_BEARER_KEY } from "@/common/auth/sessionKeys"
+import { portalAuthHeaders, organizationIdQueryParam } from "@/common/auth/portalAuthHeaders"
 import { getApiV1Base } from "@/common/utils/apiBaseUrl"
 import type { ContactRow, ContactStatus } from "../types/contact.types"
 
 function authHeaders(): HeadersInit {
-  const token =
-    typeof sessionStorage !== "undefined"
-      ? sessionStorage.getItem(SESSION_BEARER_KEY)
-      : null
-  const h: HeadersInit = {}
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
+  return portalAuthHeaders()
 }
 
 function normalizeStatus(raw: unknown): ContactRow["status"] {
@@ -227,7 +221,7 @@ export async function fetchOrganizationContactTags(options?: {
   const base = getApiV1Base()
   if (!base) return []
   const params = new URLSearchParams()
-  const oid = options?.organizationId?.trim()
+  const oid = options?.organizationId?.trim() ?? organizationIdQueryParam()
   if (oid) params.set("organizationId", oid)
   const q = params.toString()
   const url = `${base}/contacts/organization-tags${q ? `?${q}` : ""}`
@@ -254,7 +248,7 @@ export async function fetchOrganizationContactLists(options?: {
   const base = getApiV1Base()
   if (!base) return []
   const params = new URLSearchParams()
-  const oid = options?.organizationId?.trim()
+  const oid = options?.organizationId?.trim() ?? organizationIdQueryParam()
   if (oid) params.set("organizationId", oid)
   const q = params.toString()
   const url = `${base}/contacts/organization-lists${q ? `?${q}` : ""}`

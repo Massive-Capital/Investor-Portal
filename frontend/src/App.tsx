@@ -55,6 +55,7 @@ import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage
 import { MyAccountPasswordPage } from "./modules/myaccount/MyAccountPasswordPage";
 import { CompanyOverview } from "./modules/Investing/pages/company_overview/CompanyOverview";
 import Landing_Page from "./modules/Landing_Page/Landing_Page";
+import { NotificationsPage } from "@/modules/notifications";
 
 type PlaceholderPageProps = {
   title: string;
@@ -245,6 +246,7 @@ function App() {
               path="refer-a-friend"
               element={<PlaceholderPage title="Refer a friend" />}
             />
+            <Route path="notifications" element={<NotificationsPage />} />
             <Route path="support" element={<PlaceholderPage title="Support" />} />
             <Route path="settings" element={<SettingsRoute />} />
             <Route path="company" element={<CompanyRoute />} />

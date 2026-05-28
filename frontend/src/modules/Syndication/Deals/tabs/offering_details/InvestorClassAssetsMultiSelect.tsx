@@ -23,18 +23,54 @@ export type InvestorClassAssetsMultiSelectProps = {
 
 type AssetListRow = DealAssetRow & { isAllOption?: boolean }
 
+function allDealAssetIds(assetRows: readonly DealAssetRow[]): string[] {
+  return assetRows.map((r) => r.id)
+}
+
+function isAllAssetsSelected(
+  current: readonly string[],
+  assetRows: readonly DealAssetRow[],
+): boolean {
+  if (current.includes(INVESTOR_CLASS_ASSET_TAG_ALL)) return true
+  const ids = allDealAssetIds(assetRows)
+  if (ids.length === 0) return false
+  return ids.every((id) => current.includes(id))
+}
+
+function isInvestorClassAssetTagSelected(
+  tagId: string,
+  current: readonly string[],
+  assetRows: readonly DealAssetRow[],
+): boolean {
+  if (tagId === INVESTOR_CLASS_ASSET_TAG_ALL) {
+    return isAllAssetsSelected(current, assetRows)
+  }
+  return isAllAssetsSelected(current, assetRows) || current.includes(tagId)
+}
+
 function toggleInvestorClassAssetTag(
   current: readonly string[],
   tagId: string,
+  assetRows: readonly DealAssetRow[],
 ): string[] {
+  const assetIds = allDealAssetIds(assetRows)
+  const allOn = isAllAssetsSelected(current, assetRows)
+
   if (tagId === INVESTOR_CLASS_ASSET_TAG_ALL) {
-    return current.includes(INVESTOR_CLASS_ASSET_TAG_ALL)
-      ? current.filter((t) => t !== INVESTOR_CLASS_ASSET_TAG_ALL)
-      : [INVESTOR_CLASS_ASSET_TAG_ALL]
+    return allOn ? [] : [INVESTOR_CLASS_ASSET_TAG_ALL]
   }
+
+  if (allOn) {
+    return assetIds.filter((id) => id !== tagId)
+  }
+
   let next = current.filter((t) => t !== INVESTOR_CLASS_ASSET_TAG_ALL)
   if (next.includes(tagId)) next = next.filter((t) => t !== tagId)
   else next = [...next, tagId]
+
+  if (assetIds.length > 0 && assetIds.every((id) => next.includes(id))) {
+    return [INVESTOR_CLASS_ASSET_TAG_ALL]
+  }
   return next
 }
 
@@ -60,8 +96,6 @@ export function InvestorClassAssetsMultiSelect({
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listboxId = useId()
-
-  const selectedSet = useMemo(() => new Set(selectedTags), [selectedTags])
 
   const listRows: AssetListRow[] = useMemo(
     () => [
@@ -109,18 +143,33 @@ export function InvestorClassAssetsMultiSelect({
   const toggleTag = useCallback(
     (tagId: string) => {
       if (disabled) return
-      onSelectedTagsChange(toggleInvestorClassAssetTag(selectedTags, tagId))
+      onSelectedTagsChange(
+        toggleInvestorClassAssetTag(selectedTags, tagId, assetRows),
+      )
     },
-    [disabled, onSelectedTagsChange, selectedTags],
+    [assetRows, disabled, onSelectedTagsChange, selectedTags],
   )
 
   const removeChip = useCallback(
     (tagId: string) => {
       if (disabled) return
-      onSelectedTagsChange(selectedTags.filter((t) => t !== tagId))
+      if (tagId === INVESTOR_CLASS_ASSET_TAG_ALL) {
+        onSelectedTagsChange([])
+        return
+      }
+      onSelectedTagsChange(
+        toggleInvestorClassAssetTag(selectedTags, tagId, assetRows),
+      )
     },
-    [disabled, onSelectedTagsChange, selectedTags],
+    [assetRows, disabled, onSelectedTagsChange, selectedTags],
   )
+
+  const chipTags = useMemo(() => {
+    if (isAllAssetsSelected(selectedTags, assetRows)) {
+      return [INVESTOR_CLASS_ASSET_TAG_ALL]
+    }
+    return selectedTags.filter((t) => t !== INVESTOR_CLASS_ASSET_TAG_ALL)
+  }, [assetRows, selectedTags])
 
   const clearAll = useCallback(() => {
     if (disabled) return
@@ -177,7 +226,7 @@ export function InvestorClassAssetsMultiSelect({
         className={`deal_ov_assets_ms_field${open ? " deal_ov_assets_ms_field_open" : ""}`}
       >
         <div className="deal_ov_assets_ms_field_inner">
-          {selectedTags.map((tag) => {
+          {chipTags.map((tag) => {
             const label = chipLabelForTag(tag, assetRows)
             return (
               <span key={tag} className="deal_ov_assets_ms_chip">
@@ -234,9 +283,12 @@ export function InvestorClassAssetsMultiSelect({
             type="button"
             className="deal_ov_assets_ms_clear"
             aria-label="Clear all selected assets"
-            disabled={disabled || (selectedTags.length === 0 && !search.trim())}
+            disabled={disabled || (chipTags.length === 0 && !search.trim())}
             onMouseDown={(ev) => ev.preventDefault()}
-            onClick={clearAll}
+            onClick={(ev) => {
+              ev.stopPropagation()
+              clearAll()
+            }}
           >
             <X size={16} strokeWidth={2} aria-hidden />
           </button>
@@ -255,7 +307,11 @@ export function InvestorClassAssetsMultiSelect({
             <p className="deal_ov_assets_ms_empty">No matching assets.</p>
           ) : (
             filteredOptions.map((r, i) => {
-              const isSelected = selectedSet.has(r.id)
+              const isSelected = isInvestorClassAssetTagSelected(
+                r.id,
+                selectedTags,
+                assetRows,
+              )
               const isHi = i === highlightedIndex
               const label = r.name.trim() || "—"
               const rowId = `${controlId}-asset-opt-${r.id}`
@@ -264,22 +320,23 @@ export function InvestorClassAssetsMultiSelect({
                   ? "Applies to every asset on this deal"
                   : r.address?.trim() || ""
               return (
-                <label
+                <div
                   key={r.id}
-                  htmlFor={rowId}
+                  id={rowId}
                   className={`deal_ov_assets_ms_row${isHi ? " deal_ov_assets_ms_row_highlight" : ""}`}
                   role="option"
                   aria-selected={isSelected}
                   onMouseEnter={() => setHighlightedIndex(i)}
                   onMouseDown={(ev) => ev.preventDefault()}
+                  onClick={() => toggleTag(r.id)}
                 >
                   <input
-                    id={rowId}
                     type="checkbox"
                     className="deal_ov_assets_ms_checkbox"
                     checked={isSelected}
-                    onChange={() => toggleTag(r.id)}
+                    readOnly
                     tabIndex={-1}
+                    aria-hidden
                   />
                   <span className="deal_ov_assets_ms_row_text">
                     <span className="deal_ov_assets_ms_row_main">{label}</span>
@@ -287,7 +344,7 @@ export function InvestorClassAssetsMultiSelect({
                       <span className="deal_ov_assets_ms_row_sub">{sub}</span>
                     ) : null}
                   </span>
-                </label>
+                </div>
               )
             })
           )}

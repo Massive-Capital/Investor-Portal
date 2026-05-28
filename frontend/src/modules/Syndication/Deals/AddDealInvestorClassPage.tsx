@@ -1,12 +1,20 @@
 import { ArrowLeft } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
+import {
+  buildDealDetailReturnSearch,
+  type DealDetailReturnState,
+} from "./utils/offeringDetailsSectionNav"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
 import { fetchDealInvestorClasses } from "./api/dealsApi"
 import {
   AddInvestorClassPanel,
   DEAL_ADD_IC_PAGE_TITLE_ID,
+  InvestorClassAllocationToolbarNotice,
+  InvestorClassPipelineStepper,
+  type InvestorClassPipelineStep,
 } from "./tabs/offering_details/OfferingInformationSection"
+import { computeInvestorClassAllocationTotals } from "./utils/investorClassAllocationTotals"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import "../usermanagement/user_management.css"
 import "./deal-investor-class.css"
@@ -16,18 +24,36 @@ import "./deals-list.css"
 export function AddDealInvestorClassPage() {
   const { dealId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [rows, setRows] = useState<DealInvestorClass[]>([])
   const [loading, setLoading] = useState(true)
-  const [pipelineStep, setPipelineStep] = useState<1 | 2 | 3>(1)
+  const [pipelineStep, setPipelineStep] = useState<InvestorClassPipelineStep>(1)
+  const [, setVisitedPipelineSteps] = useState<
+    ReadonlySet<InvestorClassPipelineStep>
+  >(() => new Set([1]))
 
-  const backPath =
+  const handlePipelineStepChange = useCallback((step: InvestorClassPipelineStep) => {
+    setPipelineStep(step)
+    setVisitedPipelineSteps((prev) => {
+      if (prev.has(step)) return prev
+      return new Set([...prev, step])
+    })
+  }, [])
+
+  const dealDetailPath =
     dealId != null && dealId !== ""
       ? `/deals/${encodeURIComponent(dealId)}`
       : "/deals"
 
+  const returnState = location.state as DealDetailReturnState | null
+
   const goBack = useCallback(() => {
-    navigate(backPath)
-  }, [navigate, backPath])
+    const qs = buildDealDetailReturnSearch({
+      tab: returnState?.returnTab ?? "offering_details",
+      offeringSection: returnState?.returnSection,
+    })
+    navigate(`${dealDetailPath}${qs}`)
+  }, [dealDetailPath, navigate, returnState?.returnSection, returnState?.returnTab])
 
   const load = useCallback(async () => {
     if (!dealId) return
@@ -50,7 +76,13 @@ export function AddDealInvestorClassPage() {
 
   useEffect(() => {
     setPipelineStep(1)
+    setVisitedPipelineSteps(new Set([1]))
   }, [dealId])
+
+  const allocationTotals = useMemo(
+    () => computeInvestorClassAllocationTotals(rows),
+    [rows],
+  )
 
   if (!dealId) {
     return (
@@ -82,53 +114,27 @@ export function AddDealInvestorClassPage() {
               </h1>
             </div>
           </div>
-          <div
-            className="add_contact_stepper deals_add_deal_asset_stepper"
-            role="group"
-            aria-label="Progress"
-          >
-            <div
-              className={
-                pipelineStep === 1
-                  ? "add_contact_step_node add_contact_step_node_active"
-                  : "add_contact_step_node add_contact_step_node_done"
-              }
-            >
-              <span
-                className="add_contact_step_dot"
-                aria-current={pipelineStep === 1 ? "step" : undefined}
-              >
-                1
-              </span>
-              <span className="add_contact_step_label">Class Details</span>
-            </div>
-            <span
-              className={
-                pipelineStep > 1
-                  ? "add_contact_step_line add_contact_step_line_active"
-                  : "add_contact_step_line"
-              }
-              aria-hidden
-            />
-            <div
-              className={
-                pipelineStep === 2
-                  ? "add_contact_step_node add_contact_step_node_active"
-                  : "add_contact_step_node"
-              }
-            >
-              <span className="add_contact_step_dot">2</span>
-              <span className="add_contact_step_label">
-                Advanced
-              </span>
-            </div>
-          </div>
+          <InvestorClassPipelineStepper pipelineStep={pipelineStep} />
         </div>
       </header>
 
       {loading ? (
         <section className="deals_add_investor_class_loading_panel deals_page_loader_center_panel" role="status">
           <p className="deal_offering_muted">Loading investor classes…</p>
+        </section>
+      ) : allocationTotals.addDisabled ? (
+        <section
+          className="deals_add_investor_class_loading_panel deal_inv_class_add_blocked_panel"
+          aria-labelledby={DEAL_ADD_IC_PAGE_TITLE_ID}
+        >
+          <InvestorClassAllocationToolbarNotice totals={allocationTotals} />
+          <p className="deal_offering_muted deal_inv_class_add_blocked_hint">
+            Edit an existing class on the deal to lower legal ownership or
+            distribution share before adding another class.
+          </p>
+          <button type="button" className="um_btn_secondary" onClick={goBack}>
+            Back to classes
+          </button>
         </section>
       ) : (
         <AddInvestorClassPanel
@@ -138,7 +144,7 @@ export function AddDealInvestorClassPage() {
           onClose={goBack}
           onCreated={goBack}
           pipelineStep={pipelineStep}
-          onPipelineStepChange={setPipelineStep}
+          onPipelineStepChange={handlePipelineStepChange}
         />
       )}
     </div>

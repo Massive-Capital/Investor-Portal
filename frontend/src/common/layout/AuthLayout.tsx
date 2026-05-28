@@ -10,10 +10,7 @@ import { formatAppDocumentTitle } from "../utils/appDocumentTitle";
 import { normalizeDealGallerySrc } from "../utils/apiBaseUrl";
 import "./auth_layout.css";
 import "../../modules/auth/styles/auth_forms.css";
-// import companyLogo from "@/assets/images/massive-capital-logo.png";
-// import companyLogo from "@/assets/images/syndicationx_high_resolution_logo.png"
 import companyLogo from "@/assets/images/sx_logo_width_reduced.png";
-import authPageBackgroundUrl from "@/assets/images/inital_img.webp?url";
 
 interface AuthLayoutProps {
   title?: string;
@@ -81,18 +78,6 @@ export default function AuthLayout({
     link.href = href;
   }, [branding?.logoIconUrl, branding?.settingsTabUpdatedAt]);
 
-  const backgroundStyle = useMemo(() => {
-    const u = branding?.backgroundImageUrl;
-    if (u) {
-      const href = withBrandingVersionOnUrl(
-        normalizeDealGallerySrc(u),
-        branding?.settingsTabUpdatedAt,
-      );
-      return `url(${href})` as const;
-    }
-    return `url(${authPageBackgroundUrl})` as const;
-  }, [branding?.backgroundImageUrl, branding?.settingsTabUpdatedAt]);
-
   const logoSrc = useMemo(() => {
     const u = branding?.logoImageUrl;
     if (u) {
@@ -109,10 +94,7 @@ export default function AuthLayout({
     .join(" ");
 
   return (
-    <div
-      className={authPageClasses}
-      style={{ backgroundImage: backgroundStyle }}
-    >
+    <div className={authPageClasses}>
       <div className="authContent">
         <div className="loginData">
           <div className="loginCred">

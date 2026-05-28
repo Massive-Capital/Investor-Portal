@@ -62,6 +62,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/account": "My account",
   "/refer-a-friend": "Refer a friend",
   "/support": "Support",
+  "/notifications": "Notifications",
 };
 
 export function pageTitleForAppPathname(

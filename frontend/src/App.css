@@ -98,6 +98,22 @@ body {
   --ui-border-radius: 6px;
   --portal-card-radius: 8px;
   --portal-pill-radius: 9999px;
+  /** Custom dropdown — unified pill shell (reference: white field + gray footer strip). */
+  --portal-dropdown-shell-radius: 22px;
+  --portal-dropdown-shell-border: rgba(0, 0, 0, 0.08);
+  --portal-dropdown-shell-muted: #f4f4f5;
+  --portal-dropdown-trigger-min-height: 2.5rem;
+  --portal-dropdown-trigger-padding-block: 0.45rem;
+  --portal-dropdown-trigger-padding-inline: 0.875rem;
+  --portal-dropdown-trigger-font-size: 0.9375rem;
+  --portal-dropdown-chevron-size: 1.75rem;
+  --portal-dropdown-shell-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 4px 16px rgba(0, 0, 0, 0.06);
+  --portal-dropdown-panel-shadow:
+    0 8px 30px rgba(0, 0, 0, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  --portal-dropdown-action-pill-bg: #f3f4f6;
   --portal-icon-box-radius: 10px;
 
   /* ===== INPUTS / FOCUS ===== */
@@ -165,7 +181,7 @@ button {
   ),
 .app_shell textarea {
   box-sizing: border-box;
-  width: 100%;
+  /* width: 100%; */
   max-width: 100%;
   /* 2.5rem / 0.9375rem font ≈ 2.6667em; padding 0.5/0.75 rem as fraction of field font */
   /* min-height: 2.6666667em; */

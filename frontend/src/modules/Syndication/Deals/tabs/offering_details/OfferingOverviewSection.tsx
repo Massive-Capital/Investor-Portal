@@ -4,9 +4,11 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react"
 import { toast } from "../../../../../common/components/Toast"
+import { focusFirstFormErrorAfterUpdate } from "../../../../../common/utils/scrollToFirstFormError"
 import {
   fetchDealById,
   fetchDealInvestorClasses,
@@ -25,6 +27,8 @@ import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import {
   blurFormatMoneyInput,
   blurFormatNumberOfUnitsInput,
+  formatCurrencyUsdTypeInput,
+  formatNumberOfUnitsTypingInput,
 } from "../../utils/offeringMoneyFormat"
 import {
   isInvestmentFlowOpeningTransition,
@@ -34,10 +38,10 @@ import {
   DEFAULT_OFFERING_VISIBILITY,
   isOfferingStatusFieldEditable,
   mapLegacyOfferingVisibility,
-  normalizeOfferingStatusForStage,
-  offeringStatusOptionsForDealStage,
+  offeringStatusFromApi,
+  offeringStatusLabelFromRaw,
+  offeringStatusOptionsForOverview,
   OFFERING_VISIBILITY_OPTIONS,
-  type OfferingStatusValue,
   type OfferingVisibilityValue,
 } from "../../utils/offeringOverviewForm"
 import { investorClassRowToFormValues } from "./OfferingInformationSection"
@@ -61,7 +65,7 @@ type OfferingOverviewSectionProps = {
 }
 
 type OverviewDraft = {
-  offeringStatus: OfferingStatusValue
+  offeringStatus: string
   offeringVisibility: OfferingVisibilityValue
   dealName: string
   dealType: string
@@ -107,13 +111,6 @@ function closeDateForDateInput(raw: string | null | undefined): string {
   return `${y}-${m}-${day}`
 }
 
-function normalizeStatus(
-  dealStage: string | undefined,
-  v: string | undefined,
-): OfferingStatusValue {
-  return normalizeOfferingStatusForStage(dealStage, v)
-}
-
 function normalizeVisibility(v: string | undefined): OfferingVisibilityValue {
   const mapped = mapLegacyOfferingVisibility(String(v ?? ""))
   const ok = OFFERING_VISIBILITY_OPTIONS.some((o) => o.value === mapped)
@@ -122,7 +119,7 @@ function normalizeVisibility(v: string | undefined): OfferingVisibilityValue {
 
 function stateFromDetail(d: DealDetailApi): OverviewDraft {
   return {
-    offeringStatus: normalizeStatus(d.dealStage, d.offeringStatus),
+    offeringStatus: offeringStatusFromApi(d.offeringStatus),
     offeringVisibility: normalizeVisibility(d.offeringVisibility),
     dealName: d.dealName?.trim() || "",
     dealType: (d.dealType ?? "").trim(),
@@ -176,9 +173,7 @@ function mergeOverviewDraftWithClasses(
     classMinimumInvestment: blurFormatMoneyInput(
       row.minimumInvestment ?? "",
     ),
-    classNumberOfUnits: blurFormatNumberOfUnitsInput(
-      row.numberOfUnits ?? "",
-    ),
+    classNumberOfUnits: blurFormatNumberOfUnitsInput(row.numberOfUnits ?? ""),
     classPricePerUnit: blurFormatMoneyInput(row.pricePerUnit ?? ""),
     classInvestmentType: investmentTypeFromClassRow(row),
   }
@@ -225,6 +220,10 @@ export function OfferingOverviewSection({
   )
   const [saving, setSaving] = useState(false)
   const [dealNameError, setDealNameError] = useState<string | undefined>()
+  const [classOfferingSizeError, setClassOfferingSizeError] = useState<
+    string | undefined
+  >()
+  const overviewRef = useRef<HTMLDivElement>(null)
 
   const selectedClassRow = useMemo(
     () => classes.find((c) => c.id === draft.selectedClassId),
@@ -365,24 +364,39 @@ export function OfferingOverviewSection({
     setDraft({ ...savedSnapshot })
   }, [savedSnapshot])
 
+  const focusOverviewField = useCallback((preferSelector: string) => {
+    focusFirstFormErrorAfterUpdate({
+      container: overviewRef.current,
+      preferSelector,
+    })
+  }, [])
+
   const handleSave = useCallback(async () => {
     if (saving) return
     const name = draft.dealName.trim()
     if (!name) {
-      toast.error("Offering name is required.")
+      const message = "Offering name is required."
+      setDealNameError(message)
+      toast.error(message)
+      focusOverviewField(`#deal-ov-oname-${detail.id}`)
       return
     }
     if (assetRows.length > 0 && draft.selectedAssetIds.length === 0) {
       toast.error("Select at least one asset.")
+      focusOverviewField(`#deal-ov-assets-${detail.id}`)
       return
     }
     if (classes.length > 0) {
       if (!draft.selectedClassId) {
         toast.error("Select an investor class.")
+        focusOverviewField(`#deal-ov-class-${detail.id}`)
         return
       }
       if (isMoneyFieldEmpty(draft.classOfferingSize)) {
-        toast.error("Offering size is required.")
+        const message = "Offering size is required."
+        setClassOfferingSizeError(message)
+        toast.error(message)
+        focusOverviewField(`#deal-ov-osize-${detail.id}`)
         return
       }
     }
@@ -531,12 +545,26 @@ export function OfferingOverviewSection({
     } finally {
       setSaving(false)
     }
-  }, [assetRows, classes, detail.id, draft, onSaved, savedSnapshot, saving])
+  }, [
+    assetRows,
+    classes,
+    detail.id,
+    draft,
+    focusOverviewField,
+    onSaved,
+    savedSnapshot,
+    saving,
+  ])
 
   const statusOptions = useMemo(
     () =>
-      offeringStatusOptionsForDealStage(detail.dealStage, draft.offeringStatus),
+      offeringStatusOptionsForOverview(detail.dealStage, draft.offeringStatus),
     [detail.dealStage, draft.offeringStatus],
+  )
+
+  const dealStatusDisplay = useMemo(
+    () => offeringStatusLabelFromRaw(detail.offeringStatus),
+    [detail.offeringStatus],
   )
 
   const statusFieldEditable = isOfferingStatusFieldEditable(detail.dealStage)
@@ -545,15 +573,15 @@ export function OfferingOverviewSection({
     if (statusFieldEditable) return undefined
     const stage = String(detail.dealStage ?? "").trim().toLowerCase()
     if (stage === "draft") {
-      return "Fundraising status is fixed while the deal is in Draft. Move the deal to Capital Raising to manage fundraising statuses."
+      return "Deal status is fixed while the deal is in Draft. Move the deal to Capital Raising to manage deal statuses."
     }
     if (stage === "asset_managing" || stage === "managing_asset") {
-      return "Fundraising status is locked while the deal is Managing Asset (Closed only)."
+      return "Deal status is locked while the deal is Managing Asset (Closed only)."
     }
     if (stage === "liquidated") {
-      return "Fundraising status is locked while the deal is Liquidated (Past only)."
+      return "Deal status is locked while the deal is Liquidated (Past only)."
     }
-    return "Fundraising status can only be changed while the deal is in Capital Raising."
+    return "Deal status can only be changed while the deal is in Capital Raising."
   }, [detail.dealStage, statusFieldEditable])
 
   const visibilityOptionHint = useMemo(() => {
@@ -580,7 +608,7 @@ export function OfferingOverviewSection({
   const showPricePerUnitRow = isSelectedLpClass
 
   return (
-    <div className="deal_offering_overview">
+    <div className="deal_offering_overview" ref={overviewRef}>
       <p className="deal_offering_overview_hint">
         Set how this offering appears to investors. Deal structure, linked
         assets, and class economics can be edited here; full class setup stays
@@ -619,29 +647,36 @@ export function OfferingOverviewSection({
                 </span>
               </div>
               <div className="deal_kh_td deal_kh_td_stack" role="cell">
-                <select
-                  id={`deal-ov-status-${id}`}
-                  className="deal_kh_select"
-                  value={draft.offeringStatus}
-                  aria-required
-                  disabled={!statusFieldEditable}
-                  aria-disabled={!statusFieldEditable}
-                  onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      offeringStatus: normalizeStatus(
-                        detail.dealStage,
-                        e.target.value,
-                      ),
-                    }))
-                  }
-                >
-                  {statusOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                {statusFieldEditable ? (
+                  <select
+                    id={`deal-ov-status-${id}`}
+                    className="deal_kh_select"
+                    value={draft.offeringStatus}
+                    aria-required
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        offeringStatus: e.target.value,
+                      }))
+                    }
+                  >
+                    {!draft.offeringStatus.trim() ? (
+                      <option value="">—</option>
+                    ) : null}
+                    {statusOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span
+                    id={`deal-ov-status-${id}`}
+                    className="deal_offering_overview_readonly_value"
+                  >
+                    {dealStatusDisplay}
+                  </span>
+                )}
                 {statusFieldLockedHint ? (
                   <p className="deal_offering_visibility_hint" role="note">
                     {statusFieldLockedHint}
@@ -1021,7 +1056,9 @@ export function OfferingOverviewSection({
                   onChange={(e) =>
                     setDraft((d) => ({
                       ...d,
-                      classMinimumInvestment: e.target.value,
+                      classMinimumInvestment: formatCurrencyUsdTypeInput(
+                        e.target.value,
+                      ),
                     }))
                   }
                   onBlur={(e) =>
@@ -1062,12 +1099,19 @@ export function OfferingOverviewSection({
                   required={!classFieldsDisabled}
                   aria-required={!classFieldsDisabled}
                   value={draft.classOfferingSize}
-                  onChange={(e) =>
+                  aria-invalid={classOfferingSizeError ? true : undefined}
+                  aria-describedby={
+                    classOfferingSizeError
+                      ? `deal-ov-osize-err-${id}`
+                      : undefined
+                  }
+                  onChange={(e) => {
+                    setClassOfferingSizeError(undefined)
                     setDraft((d) => ({
                       ...d,
-                      classOfferingSize: e.target.value,
+                      classOfferingSize: formatCurrencyUsdTypeInput(e.target.value),
                     }))
-                  }
+                  }}
                   onBlur={(e) =>
                     setDraft((d) => ({
                       ...d,
@@ -1077,6 +1121,15 @@ export function OfferingOverviewSection({
                   autoComplete="off"
                   aria-label="Offering size"
                 />
+                {classOfferingSizeError ? (
+                  <p
+                    id={`deal-ov-osize-err-${id}`}
+                    className="deals_create_field_error"
+                    role="alert"
+                  >
+                    {classOfferingSizeError}
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -1095,14 +1148,16 @@ export function OfferingOverviewSection({
                     id={`deal-ov-nunits-${id}`}
                     type="text"
                     className="deal_kh_input"
-                    inputMode="decimal"
+                    inputMode="numeric"
                     disabled={classFieldsDisabled}
                     aria-disabled={classFieldsDisabled}
                     value={draft.classNumberOfUnits}
                     onChange={(e) =>
                       setDraft((d) => ({
                         ...d,
-                        classNumberOfUnits: e.target.value,
+                        classNumberOfUnits: formatNumberOfUnitsTypingInput(
+                          e.target.value,
+                        ),
                       }))
                     }
                     onBlur={(e) =>
@@ -1142,7 +1197,9 @@ export function OfferingOverviewSection({
                     onChange={(e) =>
                       setDraft((d) => ({
                         ...d,
-                        classPricePerUnit: e.target.value,
+                        classPricePerUnit: formatCurrencyUsdTypeInput(
+                          e.target.value,
+                        ),
                       }))
                     }
                     onBlur={(e) =>

@@ -1,4 +1,4 @@
-import { SESSION_BEARER_KEY } from "@/common/auth/sessionKeys"
+import { portalAuthHeaders } from "@/common/auth/portalAuthHeaders"
 import { getApiV1Base } from "@/common/utils/apiBaseUrl"
 
 export type EsignTemplateSignerRole = {
@@ -24,13 +24,7 @@ export type ReusableEsignTemplateRow = {
 }
 
 function authHeaders(): HeadersInit {
-  const token =
-    typeof sessionStorage !== "undefined"
-      ? sessionStorage.getItem(SESSION_BEARER_KEY)
-      : null
-  const h: HeadersInit = {}
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
+  return portalAuthHeaders()
 }
 
 export async function fetchTemplatesDropboxSignConfig(): Promise<

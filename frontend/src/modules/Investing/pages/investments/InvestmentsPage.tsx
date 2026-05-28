@@ -1,6 +1,8 @@
-import { Archive, Briefcase, CircleDot, Download, Search, TrendingUp } from "lucide-react"
+import { Archive, Briefcase, Download, Search, TrendingUp } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
+import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   DataTable,
@@ -15,7 +17,6 @@ import {
   secTypeDisplayLabel,
 } from "@/modules/Syndication/Deals/dealsListDisplay"
 import { dealStageLabel } from "@/modules/Syndication/dealsDashboardUtils"
-import { dealStageChipCompactClassName } from "@/modules/Syndication/Deals/utils/dealStageChip"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import "@/modules/Syndication/Deals/deals-list.css"
@@ -23,6 +24,7 @@ import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDeal
 import { ExportInvestmentsModal } from "./ExportInvestmentsModal"
 import { getMergedInvestmentListRows } from "./investmentsRuntimeData"
 import type { InvestmentListRow } from "./investments.types"
+import "@/common/components/data-table/data-table.css"
 import "./investments-page.css"
 
 export type { InvestmentListRow } from "./investments.types"
@@ -113,52 +115,69 @@ function InvestmentsTablePanel({
   emptyMessage,
   pagination,
 }: InvestmentsTablePanelProps) {
+  const isInitialLoad = loading && totalRows === 0
+
   return (
     <div
-      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading && totalRows === 0 ? " deals_list_table_panel_loading" : ""}`}
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${
+        isInitialLoad ? " investments_page_loading_panel" : ""
+      }${loading ? " deals_list_table_panel_loading" : ""}`}
       aria-busy={loading}
     >
-      <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
-        <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
-          <button
-            type="button"
-            className="um_toolbar_export_btn"
-            onClick={onExport}
-          >
-            <Download size={18} strokeWidth={2} aria-hidden />
-            <span>Export All</span>
-          </button>
+      {isInitialLoad ? (
+        <div
+          className="investments_page_loading"
+          role="status"
+          aria-live="polite"
+          aria-label="Loading investments"
+        >
+          <div className="data_table_loader_spinner" aria-hidden />
+          <span className="investments_page_loading_text">Loading investments…</span>
         </div>
-        <div className="um_search_wrap">
-          <Search className="um_search_icon" size={18} aria-hidden />
-          <input
-            type="search"
-            className="um_search_input"
-            placeholder="Search investments…"
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            aria-label={searchAriaLabel}
+      ) : (
+        <>
+          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions">
+              <button
+                type="button"
+                className="um_toolbar_export_btn"
+                onClick={onExport}
+              >
+                <Download size={18} strokeWidth={2} aria-hidden />
+                <span>Export All</span>
+              </button>
+            </div>
+            <div className="um_search_wrap">
+              <Search className="um_search_icon" size={18} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search investments…"
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+                aria-label={searchAriaLabel}
+              />
+            </div>
+          </div>
+          <DataTable<InvestmentListRow>
+            visualVariant="members"
+            membersTableClassName="um_table_members deal_inv_table"
+            columns={columns}
+            rows={filtered}
+            isLoading={loading}
+            getRowKey={(r, i) =>
+              (r.dealId && r.dealId.trim()) || r.id || `inv-row-${i}`
+            }
+            emptyLabel={
+              query.trim()
+                ? "No investments match your search."
+                : emptyMessage
+            }
+            initialSort={{ columnId: "dealName", direction: "asc" }}
+            pagination={filtered.length > 0 ? pagination : undefined}
           />
-        </div>
-      </div>
-      <DataTable<InvestmentListRow>
-        visualVariant="members"
-        membersTableClassName="um_table_members deal_inv_table"
-        columns={columns}
-        rows={filtered}
-        getRowKey={(r, i) =>
-          (r.dealId && r.dealId.trim()) || r.id || `inv-row-${i}`
-        }
-        emptyLabel={
-          loading && totalRows === 0
-            ? "Loading…"
-            : query.trim()
-              ? "No investments match your search."
-              : emptyMessage
-        }
-        initialSort={{ columnId: "dealName", direction: "asc" }}
-        pagination={filtered.length > 0 ? pagination : undefined}
-      />
+        </>
+      )}
     </div>
   )
 }
@@ -193,6 +212,8 @@ function useMergedInvestmentRows() {
 }
 
 export default function InvestmentsPage() {
+  const navigate = useNavigate()
+  const { switchToInvesting } = usePortalMode()
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = parseInvestmentsTab(searchParams.get(INVESTMENTS_TAB_PARAM))
   const { rows, loading } = useMergedInvestmentRows()
@@ -283,6 +304,18 @@ export default function InvestmentsPage() {
     [page, pageSize, filtered.length],
   )
 
+  const openInvestNow = useCallback(
+    (dealId: string) => {
+      const id = dealId.trim()
+      if (!id) return
+      switchToInvesting()
+      navigate(dealInvestNowPath(id), {
+        state: { returnTo: "/investing/investments" },
+      })
+    },
+    [navigate, switchToInvesting],
+  )
+
   const columns: DataTableColumn<InvestmentListRow>[] = useMemo(
     () => [
       {
@@ -292,40 +325,40 @@ export default function InvestmentsPage() {
         sortValue: (r) => (r.investmentName ?? "").toLowerCase(),
         cell: (r) => <InvestmentDealNameCell row={r} />,
       },
-      {
-        id: "dealStage",
-        header: "Deal stage",
-        sortValue: (r) => dealStageLabel(r.status ?? "").toLowerCase(),
-        cell: (r) => {
-          const label = dealStageLabel(r.status ?? "").trim() || "—"
-          if (label === "—") {
-            return <span className="um_status_muted">—</span>
-          }
-          return (
-            <span
-              className={dealStageChipCompactClassName(r.status)}
-              title={`Stage: ${label}`}
-            >
-              <span className="deals_list_stage_badge_icon" aria-hidden>
-                <CircleDot size={12} strokeWidth={2} />
-              </span>
-              <span>{label}</span>
-            </span>
-          )
-        },
-      },
-      {
-        id: "yourRole",
-        header: "Your role",
-        sortValue: (r) => (r.viewerRolesLabel ?? "").toLowerCase(),
-        cell: (r) => {
-          const label = (r.viewerRolesLabel ?? "").trim() || "—"
-          if (label === "—") {
-            return <span className="um_status_muted">—</span>
-          }
-          return <span className="deals_list_viewer_role_label">{label}</span>
-        },
-      },
+      // {
+      //   id: "dealStage",
+      //   header: "Deal stage",
+      //   sortValue: (r) => dealStageLabel(r.status ?? "").toLowerCase(),
+      //   cell: (r) => {
+      //     const label = dealStageLabel(r.status ?? "").trim() || "—"
+      //     if (label === "—") {
+      //       return <span className="um_status_muted">—</span>
+      //     }
+      //     return (
+      //       <span
+      //         className={dealStageChipCompactClassName(r.status)}
+      //         title={`Stage: ${label}`}
+      //       >
+      //         <span className="deals_list_stage_badge_icon" aria-hidden>
+      //           <CircleDot size={12} strokeWidth={2} />
+      //         </span>
+      //         <span>{label}</span>
+      //       </span>
+      //     )
+      //   },
+      // },
+      // {
+      //   id: "yourRole",
+      //   header: "Your role",
+      //   sortValue: (r) => (r.viewerRolesLabel ?? "").toLowerCase(),
+      //   cell: (r) => {
+      //     const label = (r.viewerRolesLabel ?? "").trim() || "—"
+      //     if (label === "—") {
+      //       return <span className="um_status_muted">—</span>
+      //     }
+      //     return <span className="deals_list_viewer_role_label">{label}</span>
+      //   },
+      // },
       {
         id: "dealType",
         header: "Deal type",
@@ -360,7 +393,8 @@ export default function InvestmentsPage() {
         id: "start",
         header: "Start date",
         align: "center",
-        thClassName: "deals_th_align_center",
+        thClassName: "deals_th_align_center investments_col_start_date",
+        tdClassName: "investments_col_start_date",
         sortValue: (r) => dateSortValue(r.startDateDisplay),
         cell: (r) => formatDealListDateDisplay(r.startDateDisplay),
       },
@@ -375,8 +409,20 @@ export default function InvestmentsPage() {
       {
         id: "investmentProfile",
         header: "Invested as",
+        thClassName: "investments_col_invested_as",
+        tdClassName: "investments_col_invested_as",
         sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
-        cell: (r) => r.investmentProfile || "—",
+        cell: (r) => {
+          const text = r.investmentProfile?.trim() || "—"
+          return (
+            <span
+              className="investments_invested_as_cell"
+              title={text !== "—" ? text : undefined}
+            >
+              {text}
+            </span>
+          )
+        },
       },
       {
         id: "investedAmount",
@@ -402,12 +448,12 @@ export default function InvestmentsPage() {
         sortValue: (r) => (r.currentValuation ?? "").toLowerCase(),
         cell: (r) => r.currentValuation || "—",
       },
-      {
-        id: "actionRequired",
-        header: "Action",
-        sortValue: (r) => (r.actionRequired ?? "").toLowerCase(),
-        cell: (r) => r.actionRequired || "—",
-      },
+      // {
+      //   id: "actionRequired",
+      //   header: "Action",
+      //   sortValue: (r) => (r.actionRequired ?? "").toLowerCase(),
+      //   cell: (r) => r.actionRequired || "—",
+      // },
       {
         id: "actions",
         header: "Actions",
@@ -425,13 +471,16 @@ export default function InvestmentsPage() {
                 dealName={r.investmentName}
                 dealStage={r.status}
                 archived={Boolean(r.archived)}
+                onInvestNow={
+                  r.archived ? undefined : () => openInvestNow(dealId)
+                }
               />
             </div>
           )
         },
       },
     ],
-    [],
+    [openInvestNow],
   )
 
   const investmentsEmptyMessage =

@@ -885,6 +885,16 @@ export async function downloadUrlToBuffer(url: string): Promise<Buffer> {
 }
 
 const EMBEDDED_FILE_INVESTOR_SIGNER = "0";
+const DEFAULT_INVESTOR_SIGNER_KEYS = new Set([
+  "",
+  "0",
+  "investor",
+  "client",
+  "subscriber",
+  "buyer",
+  "purchaser",
+  "member",
+]);
 
 function mapTemplateFieldType(
   raw: string,
@@ -916,26 +926,98 @@ function templateFieldSignerRaw(o: Record<string, unknown>): unknown {
   );
 }
 
+function isInvestorLikeSignerName(name: string): boolean {
+  const s = name.trim().toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes("investor") ||
+    s.includes("subscriber") ||
+    s.includes("buyer") ||
+    s.includes("purchaser") ||
+    s.includes("client") ||
+    s.includes("member")
+  );
+}
+
+function buildInvestorSignerKeysFromTemplate(template: unknown): Set<string> {
+  const out = new Set<string>(DEFAULT_INVESTOR_SIGNER_KEYS);
+  if (!template || typeof template !== "object" || Array.isArray(template)) {
+    return out;
+  }
+  const t = template as Record<string, unknown>;
+  const rawRoles = t.signer_roles ?? t.signerRoles;
+  if (!Array.isArray(rawRoles)) return out;
+  let inferredFirstRoleOrder: number | null = null;
+  let inferredFirstRoleName = "";
+  let foundInvestorLikeRole = false;
+
+  for (const role of rawRoles) {
+    if (!role || typeof role !== "object" || Array.isArray(role)) continue;
+    const r = role as Record<string, unknown>;
+    const name = String(r.name ?? r.role ?? "").trim();
+    const orderRaw = r.order ?? r.index ?? r.signerIndex ?? r.signer_index;
+    const orderNum = Number(orderRaw);
+    if (name) out.add(name.toLowerCase());
+    if (Number.isFinite(orderNum)) out.add(String(Math.floor(orderNum)));
+    if (name && isInvestorLikeSignerName(name)) {
+      foundInvestorLikeRole = true;
+      if (Number.isFinite(orderNum)) out.add(String(Math.floor(orderNum)));
+      out.add(name.toLowerCase());
+    }
+    if (
+      Number.isFinite(orderNum) &&
+      (inferredFirstRoleOrder == null || orderNum < inferredFirstRoleOrder)
+    ) {
+      inferredFirstRoleOrder = Math.floor(orderNum);
+      inferredFirstRoleName = name.toLowerCase();
+    }
+  }
+  if (!foundInvestorLikeRole && inferredFirstRoleOrder != null) {
+    out.add(String(inferredFirstRoleOrder));
+    if (inferredFirstRoleName) out.add(inferredFirstRoleName);
+  }
+  return out;
+}
+
 /** Map Dropbox template signer to embedded file API signer `0` (investor-only). */
-function mapTemplateSignerToEmbeddedFileSigner(raw: unknown): string | null {
+function mapTemplateSignerToEmbeddedFileSigner(
+  raw: unknown,
+  investorSignerKeys: Set<string>,
+): string | null {
   if (raw == null) return EMBEDDED_FILE_INVESTOR_SIGNER;
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const o = raw as Record<string, unknown>;
-    return mapTemplateSignerToEmbeddedFileSigner(
-      o.name ?? o.role ?? o.signer_role ?? o.signerRole,
-    );
+    const nested =
+      o.signer ??
+      o.signer_role ??
+      o.signerRole ??
+      o.role ??
+      o.name ??
+      o.order ??
+      o.index ??
+      o.signer_index ??
+      o.signerIndex ??
+      o.id ??
+      o.signer_id ??
+      o.signerId;
+    if (nested == null) {
+      // Avoid misclassifying unknown nested signer objects as investor.
+      return null;
+    }
+    return mapTemplateSignerToEmbeddedFileSigner(nested, investorSignerKeys);
   }
   if (typeof raw === "number") {
-    if (raw === 0) return EMBEDDED_FILE_INVESTOR_SIGNER;
-    return null;
+    return investorSignerKeys.has(String(raw))
+      ? EMBEDDED_FILE_INVESTOR_SIGNER
+      : null;
   }
   const s = String(raw).trim().toLowerCase();
   if (!s) return EMBEDDED_FILE_INVESTOR_SIGNER;
-  if (s === "0" || s === "investor" || s === "client") {
+  if (investorSignerKeys.has(s) || isInvestorLikeSignerName(s)) {
     return EMBEDDED_FILE_INVESTOR_SIGNER;
   }
-  if (s === "1" || s === "sponsor" || s === "sender" || s === "me") return null;
-  return EMBEDDED_FILE_INVESTOR_SIGNER;
+  if (s === "sponsor" || s === "sender" || s === "me") return null;
+  return null;
 }
 
 function templateFieldApiId(o: Record<string, unknown>, page: number): string | null {
@@ -953,19 +1035,30 @@ function templateFieldApiId(o: Record<string, unknown>, page: number): string | 
   return slug ? `${slug}_p${page}` : null;
 }
 
+function numericOrDefault(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function parseTemplateFormFieldRecord(
   raw: unknown,
   documentIndex: number,
+  documentPageOffset: number,
   pageOffset: number,
+  investorSignerKeys: Set<string>,
 ): DropboxSignFormFieldPerDocument | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  const page = Math.max(1, Math.floor(Number(o.page) || 1) + pageOffset);
+  const page =
+    Math.max(1, Math.floor(Number(o.page) || 1) + documentPageOffset) + pageOffset;
   const apiId = templateFieldApiId(o, page);
   if (!apiId) return null;
   const type = mapTemplateFieldType(String(o.type ?? ""));
   if (!type) return null;
-  const signer = mapTemplateSignerToEmbeddedFileSigner(templateFieldSignerRaw(o));
+  const signer = mapTemplateSignerToEmbeddedFileSigner(
+    templateFieldSignerRaw(o),
+    investorSignerKeys,
+  );
   if (!signer) return null;
   const name = String(o.name ?? "").trim() || undefined;
   return {
@@ -973,10 +1066,11 @@ function parseTemplateFormFieldRecord(
     apiId,
     type,
     signer,
-    x: Math.floor(Number(o.x) || 0),
-    y: Math.floor(Number(o.y) || 0),
-    width: Math.max(1, Math.floor(Number(o.width) || 100)),
-    height: Math.max(1, Math.floor(Number(o.height) || 20)),
+    // Preserve exact sponsor placement coordinates; only page is offset.
+    x: numericOrDefault(o.x, 0),
+    y: numericOrDefault(o.y, 0),
+    width: Math.max(1, numericOrDefault(o.width, 100)),
+    height: Math.max(1, numericOrDefault(o.height, 20)),
     page,
     required: o.required !== false && o.required !== "0" && o.required !== 0,
     name,
@@ -1025,29 +1119,102 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
   const pageOffset = Math.max(0, Math.floor(opts?.pageOffset ?? 0));
   const out: DropboxSignFormFieldPerDocument[] = [];
   const seenApiIds = new Set<string>();
+  const investorSignerKeys = buildInvestorSignerKeysFromTemplate(data.template);
+  const docs = data.template?.documents ?? [];
+  const sortedDocIndexes = [...new Set(
+    docs.map((d) =>
+      Math.max(0, Math.floor(Number(d.index ?? d.document_index) || 0)),
+    ),
+  )].sort((a, b) => a - b);
+  const docPageOffsetByIndex = new Map<number, number>();
+  const docByIndex = new Map<number, (typeof docs)[number]>();
+  for (const doc of docs) {
+    const idx = Math.max(0, Math.floor(Number(doc.index ?? doc.document_index) || 0));
+    if (!docByIndex.has(idx)) docByIndex.set(idx, doc);
+  }
+
+  const docMinPageByIndex = new Map<number, number>();
+  for (const docIndex of sortedDocIndexes) {
+    const doc = docByIndex.get(docIndex);
+    if (!doc) continue;
+    const fieldLists = [
+      ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
+      ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
+    ];
+    let minPage = Number.POSITIVE_INFINITY;
+    for (const raw of fieldLists) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const o = raw as Record<string, unknown>;
+      const p = Math.max(1, Math.floor(Number(o.page) || 1));
+      if (p < minPage) minPage = p;
+    }
+    if (Number.isFinite(minPage)) docMinPageByIndex.set(docIndex, minPage);
+  }
+  const needsDocRebase = sortedDocIndexes.some((docIndex) => {
+    if (docIndex <= 0) return false;
+    return (docMinPageByIndex.get(docIndex) ?? 1) === 1;
+  });
+
+  let runningPages = 0;
+  for (const docIndex of sortedDocIndexes) {
+    docPageOffsetByIndex.set(docIndex, needsDocRebase ? runningPages : 0);
+    const doc = docByIndex.get(docIndex);
+    const pageCountRaw =
+      (doc as { page_count?: unknown; pageCount?: unknown; num_pages?: unknown })?.page_count ??
+      (doc as { page_count?: unknown; pageCount?: unknown; num_pages?: unknown })?.pageCount ??
+      (doc as { page_count?: unknown; pageCount?: unknown; num_pages?: unknown })?.num_pages;
+    const declaredPageCount = Math.max(0, Math.floor(Number(pageCountRaw) || 0));
+    let inferredMaxPage = 0;
+    if (doc) {
+      const fieldLists = [
+        ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
+        ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
+      ];
+      for (const raw of fieldLists) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const o = raw as Record<string, unknown>;
+        const p = Math.max(1, Math.floor(Number(o.page) || 1));
+        if (p > inferredMaxPage) inferredMaxPage = p;
+      }
+    }
+    const pageCount = Math.max(declaredPageCount, inferredMaxPage);
+    runningPages += pageCount;
+  }
 
   const rootFields = data.template as { form_fields?: unknown[] } | undefined;
   if (Array.isArray(rootFields?.form_fields)) {
     for (const raw of rootFields.form_fields) {
-      const parsed = parseTemplateFormFieldRecord(raw, 0, pageOffset);
+      const parsed = parseTemplateFormFieldRecord(
+        raw,
+        0,
+        0,
+        pageOffset,
+        investorSignerKeys,
+      );
       if (!parsed || seenApiIds.has(parsed.apiId)) continue;
       seenApiIds.add(parsed.apiId);
       out.push(parsed);
     }
   }
 
-  const documents = data.template?.documents ?? [];
-  for (const doc of documents) {
+  for (const doc of docs) {
     const docIndex = Math.max(
       0,
       Math.floor(Number(doc.index ?? doc.document_index) || 0),
     );
+    const documentPageOffset = docPageOffsetByIndex.get(docIndex) ?? 0;
     const fieldLists = [
       ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
       ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
     ];
     for (const raw of fieldLists) {
-      const parsed = parseTemplateFormFieldRecord(raw, docIndex, pageOffset);
+      const parsed = parseTemplateFormFieldRecord(
+        raw,
+        docIndex,
+        documentPageOffset,
+        pageOffset,
+        investorSignerKeys,
+      );
       if (!parsed || seenApiIds.has(parsed.apiId)) continue;
       seenApiIds.add(parsed.apiId);
       out.push(parsed);
@@ -1057,7 +1224,13 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
   const templateCustom = data.template?.custom_fields ?? [];
   if (Array.isArray(templateCustom)) {
     for (const raw of templateCustom) {
-      const parsed = parseTemplateFormFieldRecord(raw, 0, pageOffset);
+      const parsed = parseTemplateFormFieldRecord(
+        raw,
+        0,
+        0,
+        pageOffset,
+        investorSignerKeys,
+      );
       if (!parsed || seenApiIds.has(parsed.apiId)) continue;
       seenApiIds.add(parsed.apiId);
       out.push(parsed);

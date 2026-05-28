@@ -22,6 +22,18 @@ export interface InvestorClassAdvancedForm {
   investmentType: string
   /** Class-level preferred return (Mezzanine main form). */
   classPreferredReturnType: string
+  /** Mezzanine — average annual return rate (e.g. `8%`). */
+  classPreferredReturnPct: string
+  /** Mezzanine — basis for accrual (e.g. capital balance). */
+  preferredReturnAccruesOn: string
+  /** Mezzanine — day count for average annual return. */
+  classDayCountConvention: string
+  classStartDateOverride: string
+  classEndDate: string
+  classPrefReturnAdvancedOpen: boolean
+  classCatchUpPreferredReturns: string
+  classHonorOnlyOnCapitalEvent: string
+  classCompoundingPeriod: string
   entityLegalOwnershipPct: string
   entityLegalOwnershipFrozen: boolean
   distributionSharePct: string

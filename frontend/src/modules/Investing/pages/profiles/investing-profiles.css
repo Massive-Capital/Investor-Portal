@@ -128,3 +128,105 @@
   right: 0;
   margin: 0;
 }
+
+.investing_profiles_name_link {
+  font: inherit;
+  /* color: var(--portal-link, #2563eb); */
+  color: black;
+  font-weight: 600;
+  text-align: left;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.investing_profiles_name_link:hover {
+  text-decoration: underline;
+}
+
+/* Profile view — same shell as Add / Edit profile wizard */
+.investing_entity_view_modal.investing_entity_view_modal--wizard.investing_add_profile_form_panel {
+  max-width: min(40rem, 96vw);
+}
+
+.investing_profile_view_overlay.contacts_view_modal_overlay {
+  align-items: flex-start;
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+}
+
+.investing_profile_view_head.add_contact_modal_head {
+  text-align: left;
+  padding-right: 2.5rem;
+}
+
+.investing_profile_view_head .um_modal_close {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.investing_profile_view_desc {
+  margin: 0.35em 0 0.65em;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--portal-text-secondary, #4f4f4f);
+  font-weight: 500;
+}
+
+.investing_profile_view_step_btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.investing_profile_view_step_btn:focus-visible {
+  outline: 2px solid var(--portal-primary, #00477a);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.investing_profile_view_scroll.deals_add_inv_modal_scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(52vh, 28rem);
+  overflow-y: auto;
+}
+
+.investing_profile_view_fields .um_field:last-child {
+  margin-bottom: 0;
+}
+
+.investing_profile_view_footer .add_contact_modal_actions_trailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.investing_entity_view_section + .investing_entity_view_section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--portal-border, #e2e8f0);
+}
+
+.investing_entity_view_section_title {
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--portal-text-secondary, #64748b);
+}
+
+.investing_entity_view_footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}

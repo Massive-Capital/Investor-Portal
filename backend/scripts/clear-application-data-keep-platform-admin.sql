@@ -1,5 +1,5 @@
 -- =============================================================================
--- Clear DATA from all 24 application tables (rows only — tables are NOT dropped).
+-- Clear DATA from all application tables (rows only — tables are NOT dropped).
 --
 -- IMPORTANT: Do not use TRUNCATE ... CASCADE on companies — users.organization_id
 -- references companies, so PostgreSQL would truncate users too and delete platform admin.
@@ -7,7 +7,7 @@
 -- Kept user: platform.admin@example.com (seed id b2c15cb6-1678-4819-9d24-6fdd8d192064)
 --
 -- Run from backend/:
---   psql -h localhost -p 5432 -U postgres -d dev_syndicationx_db -f scripts/clear-application-data-keep-platform-admin.sql
+--   psql -h localhost -p 5432 -U postgres -d investor_portal_db -f scripts/clear-application-data-keep-platform-admin.sql
 --
 -- BACK UP THE DATABASE FIRST.
 -- =============================================================================
@@ -40,6 +40,10 @@ DELETE FROM public.soc_auth_audit_logs;
 
 -- eSign templates
 DELETE FROM public.esign_reusable_template;
+DELETE FROM public.investment_signatures;
+
+-- Company membership (scoped roles)
+DELETE FROM public.user_company_membership;
 
 -- CRM
 DELETE FROM public.contact;
@@ -95,12 +99,14 @@ UNION ALL SELECT 'deal_lp_investor', count(*)::int FROM public.deal_lp_investor
 UNION ALL SELECT 'deal_member', count(*)::int FROM public.deal_member
 UNION ALL SELECT 'deals', count(*)::int FROM public.deals
 UNION ALL SELECT 'esign_reusable_template', count(*)::int FROM public.esign_reusable_template
+UNION ALL SELECT 'investment_signatures', count(*)::int FROM public.investment_signatures
 UNION ALL SELECT 'investor_communication_logs', count(*)::int FROM public.investor_communication_logs
 UNION ALL SELECT 'member_admin_audit_logs', count(*)::int FROM public.member_admin_audit_logs
 UNION ALL SELECT 'organization_contact_list', count(*)::int FROM public.organization_contact_list
 UNION ALL SELECT 'organization_contact_tag', count(*)::int FROM public.organization_contact_tag
 UNION ALL SELECT 'soc_auth_audit_logs', count(*)::int FROM public.soc_auth_audit_logs
 UNION ALL SELECT 'user_beneficiaries', count(*)::int FROM public.user_beneficiaries
+UNION ALL SELECT 'user_company_membership', count(*)::int FROM public.user_company_membership
 UNION ALL SELECT 'user_investor_profiles', count(*)::int FROM public.user_investor_profiles
 UNION ALL SELECT 'user_page_navigations', count(*)::int FROM public.user_page_navigations
 UNION ALL SELECT 'user_portal_sessions', count(*)::int FROM public.user_portal_sessions

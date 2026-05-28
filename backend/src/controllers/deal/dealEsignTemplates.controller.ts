@@ -5,6 +5,7 @@ import {
   assertDealIdInViewerScope,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
+import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import type { DealMemoryUploadFile } from "../../services/deal/dealForm.service.js";
 import { isPortalUserLeadSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
@@ -16,8 +17,11 @@ import {
   isPdfEsignFile,
   removeDealEsignTemplateFile,
   parseEsignTemplateUploadMeta,
+  EsignTemplateNameRequiredError,
+  EsignTemplateRenameNotAllowedError,
   EsignTemplateUploadLimitError,
   saveDealEsignTemplateFiles,
+  updateDealEsignTemplateName,
 } from "../../services/deal/dealEsignTemplates.service.js";
 import {
   findLatestInvestorFilledDocumentForTemplate,
@@ -62,7 +66,11 @@ export async function getDealEsignTemplates(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -115,7 +123,11 @@ export async function getDealEsignTemplateViewUrl(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -225,7 +237,11 @@ export async function getDealEsignTemplateView(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -322,7 +338,11 @@ export async function postDealEsignTemplateUploads(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
@@ -363,6 +383,82 @@ export async function postDealEsignTemplateUploads(
 }
 
 /**
+ * PATCH /deals/:dealId/esign-templates/:fileId
+ * Body: { templateName } — ready templates only (rename display name).
+ */
+export async function patchDealEsignTemplate(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  const fileId =
+    typeof req.params.fileId === "string"
+      ? req.params.fileId
+      : req.params.fileId?.[0];
+  if (!dealId || !fileId) {
+    res.status(400).json({ message: "Missing deal id or file id" });
+    return;
+  }
+
+  const b = req.body as Record<string, unknown>;
+  const templateName = bodyString(b.templateName ?? b.template_name).trim();
+
+  try {
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    if (!(await isPortalUserLeadSponsorOnDeal(dealId, user.id))) {
+      res.status(403).json({
+        message: "Only the lead sponsor on this deal can update eSign templates",
+      });
+      return;
+    }
+
+    const updated = await updateDealEsignTemplateName(
+      dealId,
+      fileId,
+      templateName,
+    );
+    if (!updated) {
+      res.status(404).json({ message: "File not found" });
+      return;
+    }
+    const state = await getDealEsignTemplatesState(dealId);
+    res.status(200).json({
+      message: "Template name updated",
+      file: updated,
+      hasDocuments: dealHasEsignTemplateDocuments(state),
+      filesByCategory: groupEsignFilesByCategory(state),
+    });
+  } catch (err) {
+    if (err instanceof EsignTemplateNameRequiredError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+    if (err instanceof EsignTemplateRenameNotAllowedError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
+    console.error("patchDealEsignTemplate:", err);
+    res.status(500).json({ message: "Could not update template name" });
+  }
+}
+
+/**
  * DELETE /deals/:dealId/esign-templates/:fileId — lead sponsor only.
  */
 export async function deleteDealEsignTemplate(
@@ -388,7 +484,11 @@ export async function deleteDealEsignTemplate(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     if (!(await assertDealIdInViewerScope(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;

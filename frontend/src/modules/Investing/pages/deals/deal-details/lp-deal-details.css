@@ -532,9 +532,40 @@
 }
 
 .lpd_doc_meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
   font-size: 0.75rem;
   color: var(--lpdd-muted);
   margin-top: 0.15rem;
+}
+
+.lpd_doc_meta_category {
+  color: var(--lpdd-muted);
+}
+
+.lpd_doc_meta_sep {
+  color: var(--lpdd-muted);
+}
+
+.lpd_doc_esign_status {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.3;
+  border-radius: 4px;
+}
+
+.lpd_doc_esign_status--signed {
+  color: #166534;
+  background: color-mix(in srgb, #15803d 14%, transparent);
+}
+
+.lpd_doc_esign_status--pending {
+  color: #92400e;
+  background: color-mix(in srgb, #d97706 12%, transparent);
 }
 
 .lpd_doc_actions {

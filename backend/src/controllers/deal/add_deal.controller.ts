@@ -17,6 +17,10 @@ import {
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { assignCreatorToDeal } from "../../services/deal/assigningDealUser.service.js";
+import {
+  requestedOrganizationIdFromRequest,
+  userHasAccessToOrganization,
+} from "../../services/org/orgResolution.service.js";
 import { sendOfferingPreviewShareEmails } from "../../services/deal/offeringPreviewShareEmail.service.js";
 import { canInvestorAccessPublicOffering } from "../../constants/deal-lifecycle/index.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
@@ -223,7 +227,12 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
           ? String(orgQ[0] ?? "").trim()
           : "";
 
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const requestedOrg = requestedOrganizationIdFromRequest(req);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrg,
+    );
 
     const incRaw = req.query.includeParticipantDeals;
     const includeParticipantDeals =
@@ -236,8 +245,11 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
 
     if (orgParam && DEALS_ORG_UUID_RE.test(orgParam)) {
       if (!scope.isPlatformAdmin) {
-        res.status(403).json({ message: "Not allowed" });
-        return;
+        const allowed = await userHasAccessToOrganization(user.id, orgParam);
+        if (!allowed) {
+          res.status(403).json({ message: "Not allowed" });
+          return;
+        }
       }
       rows = await listAddDealFormsByOrganizationId(orgParam);
     } else {
@@ -350,7 +362,11 @@ export async function patchDealInvestorSummary(
         : "";
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -413,7 +429,11 @@ export async function patchDealAnnouncement(
             : "";
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -501,7 +521,11 @@ export async function patchDealOfferingOverview(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -550,7 +574,11 @@ export async function patchDealOfferingInvestorPreview(
   }
   const body = req.body;
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -611,7 +639,11 @@ export async function patchDealKeyHighlights(
             : "";
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -683,7 +715,11 @@ export async function patchDealGalleryCover(
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -731,7 +767,11 @@ export async function patchDealOfferingGallery(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -778,7 +818,11 @@ export async function postDealOfferingDocumentUploads(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewerOrAssignedParticipant(
       dealId,
       scope,
@@ -827,7 +871,11 @@ export async function postDealOfferingGalleryUploads(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -876,7 +924,11 @@ export async function getOfferingPreviewToken(
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewerOrAssignedParticipant(
       dealIdParam,
       scope,
@@ -933,7 +985,11 @@ export async function postOfferingPreviewShareEmail(
   }
   const emails = emailsRaw.map((x) => String(x).trim()).filter(Boolean);
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });
@@ -1071,7 +1127,11 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
     return;
   }
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const row = await getAddDealFormForViewerWithDraftCreatorRepair(
       dealId,
       scope,
@@ -1200,7 +1260,11 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
   const fileList = Array.isArray(files) ? files : [];
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewerWithDraftCreatorRepair(
       dealId,
       scope,
@@ -1282,7 +1346,11 @@ export async function deleteDeal(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const scope = await resolveDealViewerScope(user.id, user.userRole);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
     const visible = await getAddDealFormForViewer(dealId, scope);
     if (!visible) {
       res.status(404).json({ message: "Deal not found" });

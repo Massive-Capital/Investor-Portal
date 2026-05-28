@@ -1,4 +1,4 @@
-import { Pencil, Plus, Settings2, X } from "lucide-react"
+import { Check, Pencil, Plus, Settings2, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "@/common/components/Toast"
@@ -42,26 +42,36 @@ export function DealEsignTemplatesQuestionnaireTab({
   const seededRef = useRef(false)
   const [expandQuestionId, setExpandQuestionId] = useState<string | null>(null)
   const [manageModalOpen, setManageModalOpen] = useState(false)
+  /** Unsaved custom section — persisted only after Save section. */
+  const [pendingSectionId, setPendingSectionId] = useState<string | null>(null)
+  /** Custom fields in a pending section that are still being edited (not yet saved). */
+  const [editingPendingQuestionIds, setEditingPendingQuestionIds] = useState<
+    Set<string>
+  >(() => new Set())
 
   const createCustomQuestion = useCallback(
     (sectionId: string, sortOrder: number): InvestorQuestionnaireQuestion => ({
       id: `question_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       sectionId,
-      label: "Check Label",
+      label: "",
       sortOrder,
       required: false,
-      fieldType: "checkboxes",
-      options: ["One"],
+      fieldType: "text",
     }),
     [],
   )
 
+  const saveGenerationRef = useRef(0)
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const persist = useCallback(
     async (next: InvestorQuestionnaireConfig) => {
       if (!canEdit) return true
+      const generation = ++saveGenerationRef.current
       setSaving(true)
       try {
         const result = await putDealInvestorQuestionnaire(dealId, next)
+        if (generation !== saveGenerationRef.current) return true
         if (result.ok) {
           setConfig(mergeQuestionnaireWithDefaults(result.config).config)
           return true
@@ -69,26 +79,66 @@ export function DealEsignTemplatesQuestionnaireTab({
         toast.error("Could not save questionnaire", result.message)
         return false
       } finally {
-        setSaving(false)
+        if (generation === saveGenerationRef.current) {
+          setSaving(false)
+        }
       }
     },
     [canEdit, dealId],
   )
 
+  const schedulePersist = useCallback(
+    (next: InvestorQuestionnaireConfig) => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current)
+      }
+      persistTimerRef.current = setTimeout(() => {
+        persistTimerRef.current = null
+        void persist(next)
+      }, 450)
+    },
+    [persist],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current)
+      }
+    }
+  }, [])
+
   const updateConfig = useCallback(
     (
       updater: (prev: InvestorQuestionnaireConfig) => InvestorQuestionnaireConfig,
-      options?: { persist?: boolean },
+      options?: {
+        persist?: boolean
+        persistImmediate?: boolean
+        /** Save even while a new section is still pending. */
+        forcePersist?: boolean
+      },
     ) => {
       setConfig((prev) => {
         const next = updater(prev)
-        if (options?.persist !== false && canEdit) {
-          void persist(next)
+        const shouldPersist =
+          options?.persist !== false &&
+          canEdit &&
+          (!pendingSectionId || options?.forcePersist)
+        if (shouldPersist) {
+          if (persistTimerRef.current) {
+            clearTimeout(persistTimerRef.current)
+            persistTimerRef.current = null
+          }
+          if (options?.persistImmediate || options?.forcePersist) {
+            void persist(next)
+          } else {
+            schedulePersist(next)
+          }
         }
         return next
       })
     },
-    [canEdit, persist],
+    [canEdit, pendingSectionId, persist, schedulePersist],
   )
 
   useEffect(() => {
@@ -142,16 +192,29 @@ export function DealEsignTemplatesQuestionnaireTab({
     ? questionsForSection(config.questions, activeSection.id)
     : []
 
+  const questionInPendingSection = useCallback(
+    (questionId: string) => {
+      if (!pendingSectionId) return false
+      return config.questions.some(
+        (q) => q.id === questionId && q.sectionId === pendingSectionId,
+      )
+    },
+    [config.questions, pendingSectionId],
+  )
+
   const onToggleRequired = useCallback(
     (questionId: string, required: boolean) => {
-      updateConfig((prev) => ({
-        ...prev,
-        questions: prev.questions.map((q) =>
-          q.id === questionId && !q.isDefault ? { ...q, required } : q,
-        ),
-      }))
+      updateConfig(
+        (prev) => ({
+          ...prev,
+          questions: prev.questions.map((q) =>
+            q.id === questionId && !q.isDefault ? { ...q, required } : q,
+          ),
+        }),
+        questionInPendingSection(questionId) ? { persist: false } : undefined,
+      )
     },
-    [updateConfig],
+    [questionInPendingSection, updateConfig],
   )
 
   const onUpdateQuestion = useCallback(
@@ -164,45 +227,91 @@ export function DealEsignTemplatesQuestionnaireTab({
         >
       >,
     ) => {
-      updateConfig((prev) => ({
-        ...prev,
-        questions: prev.questions.map((q) => {
-          if (q.id !== questionId) return q
-          const safePatch = q.isDefault
-            ? {
-                ...(patch.subtext !== undefined ? { subtext: patch.subtext } : {}),
-                ...(patch.options !== undefined ? { options: patch.options } : {}),
-              }
-            : patch
-          const next = { ...q, ...safePatch }
-          const subtext = next.subtext?.trim()
-          if (!subtext) delete next.subtext
-          else next.subtext = subtext
-          if (next.fieldType === "radio" || next.fieldType === "checkboxes") {
-            const opts = (next.options ?? [])
-              .map((o) => o.trim())
-              .filter(Boolean)
-            if (opts.length > 0) next.options = opts
-            else delete next.options
-          } else {
-            delete next.options
-          }
-          return next
+      updateConfig(
+        (prev) => ({
+          ...prev,
+          questions: prev.questions.map((q) => {
+            if (q.id !== questionId) return q
+            const safePatch = q.isDefault
+              ? {
+                  ...(patch.subtext !== undefined ? { subtext: patch.subtext } : {}),
+                  ...(patch.options !== undefined ? { options: patch.options } : {}),
+                }
+              : patch
+            const next = { ...q, ...safePatch }
+            const subtext = next.subtext?.trim()
+            if (!subtext) delete next.subtext
+            else next.subtext = subtext
+            if (next.fieldType === "radio" || next.fieldType === "checkboxes") {
+              const opts = (next.options ?? [])
+                .map((o) => o.trim())
+                .filter(Boolean)
+              if (opts.length > 0) next.options = opts
+              else delete next.options
+            } else {
+              delete next.options
+            }
+            return next
+          }),
         }),
-      }))
+        questionInPendingSection(questionId) ? { persist: false } : undefined,
+      )
     },
-    [updateConfig],
+    [questionInPendingSection, updateConfig],
   )
 
   const onDeleteQuestion = useCallback(
     (question: InvestorQuestionnaireQuestion) => {
       if (question.isDefault) return
-      updateConfig((prev) => ({
-        ...prev,
-        questions: prev.questions.filter((q) => q.id !== question.id),
-      }))
+      setEditingPendingQuestionIds((prev) => {
+        const next = new Set(prev)
+        next.delete(question.id)
+        return next
+      })
+      updateConfig(
+        (prev) => ({
+          ...prev,
+          questions: prev.questions.filter((q) => q.id !== question.id),
+        }),
+        question.sectionId === pendingSectionId
+          ? { persist: false }
+          : { persistImmediate: true },
+      )
     },
-    [updateConfig],
+    [pendingSectionId, updateConfig],
+  )
+
+  const markQuestionEditing = useCallback((questionId: string) => {
+    setEditingPendingQuestionIds((prev) => {
+      const next = new Set(prev)
+      next.add(questionId)
+      return next
+    })
+  }, [])
+
+  const markQuestionSaved = useCallback((questionId: string) => {
+    setEditingPendingQuestionIds((prev) => {
+      const next = new Set(prev)
+      next.delete(questionId)
+      return next
+    })
+    setExpandQuestionId(null)
+  }, [])
+
+  const onSavePendingQuestionField = useCallback(
+    (questionId: string) => {
+      markQuestionSaved(questionId)
+      toast.success("Field saved")
+    },
+    [markQuestionSaved],
+  )
+
+  const onEditPendingQuestionField = useCallback(
+    (questionId: string) => {
+      markQuestionEditing(questionId)
+      setExpandQuestionId(questionId)
+    },
+    [markQuestionEditing],
   )
 
   const onAddField = useCallback(() => {
@@ -212,46 +321,118 @@ export function DealEsignTemplatesQuestionnaireTab({
       activeQuestions.length,
     )
     setExpandQuestionId(question.id)
-    updateConfig((prev) => ({
-      ...prev,
-      questions: [...prev.questions, question],
-    }))
-  }, [activeSection, activeQuestions.length, createCustomQuestion, updateConfig])
+    if (activeSection.id === pendingSectionId) {
+      markQuestionEditing(question.id)
+    }
+    updateConfig(
+      (prev) => ({
+        ...prev,
+        questions: [...prev.questions, question],
+      }),
+      activeSection.id === pendingSectionId
+        ? { persist: false }
+        : { persistImmediate: true },
+    )
+  }, [
+    activeSection,
+    activeQuestions.length,
+    createCustomQuestion,
+    markQuestionEditing,
+    pendingSectionId,
+    updateConfig,
+  ])
 
   const onAddSection = useCallback(() => {
+    if (pendingSectionId) return
     const id = `section_${Date.now()}`
     const firstQuestion = createCustomQuestion(id, 0)
-    updateConfig((prev) => {
-      const maxOrder = prev.sections.reduce(
-        (m, s) => Math.max(m, s.sortOrder),
-        -1,
-      )
-      const nextSection: InvestorQuestionnaireSection = {
-        id,
-        label: "New section",
-        sortOrder: maxOrder + 1,
-      }
-      return {
-        ...prev,
-        sections: [...prev.sections, nextSection],
-        questions: [...prev.questions, firstQuestion],
-      }
-    })
+    updateConfig(
+      (prev) => {
+        const maxOrder = prev.sections.reduce(
+          (m, s) => Math.max(m, s.sortOrder),
+          -1,
+        )
+        const nextSection: InvestorQuestionnaireSection = {
+          id,
+          label: "New section",
+          sortOrder: maxOrder + 1,
+        }
+        return {
+          ...prev,
+          sections: [...prev.sections, nextSection],
+          questions: [...prev.questions, firstQuestion],
+        }
+      },
+      { persist: false },
+    )
+    setPendingSectionId(id)
     setActiveSectionId(id)
     setEditingSectionId(id)
     setSectionLabelDraft("New section")
     setExpandQuestionId(firstQuestion.id)
-  }, [createCustomQuestion, updateConfig])
+    setEditingPendingQuestionIds(new Set([firstQuestion.id]))
+  }, [createCustomQuestion, pendingSectionId, updateConfig])
+
+  const onSavePendingSection = useCallback(() => {
+    if (!pendingSectionId) return
+    if (editingPendingQuestionIds.size > 0) {
+      toast.error(
+        "Unsaved fields",
+        "Save each field in this section before saving the section.",
+      )
+      return
+    }
+    void (async () => {
+      const label = sectionLabelDraft.trim() || "New section"
+      const pendingId = pendingSectionId
+      const next: InvestorQuestionnaireConfig = {
+        ...config,
+        sections: config.sections.map((s) =>
+          s.id === pendingId ? { ...s, label } : s,
+        ),
+      }
+      setConfig(next)
+      const ok = await persist(next)
+      if (!ok) return
+      setPendingSectionId(null)
+      setEditingSectionId(null)
+      setEditingPendingQuestionIds(new Set())
+      toast.success("Section saved")
+    })()
+  }, [config, editingPendingQuestionIds, pendingSectionId, persist, sectionLabelDraft])
+
+  const onDiscardPendingSection = useCallback(() => {
+    if (!pendingSectionId) return
+    const discardId = pendingSectionId
+    setConfig((prev) => {
+      const remaining = sortSections(
+        prev.sections.filter((s) => s.id !== discardId),
+      )
+      setActiveSectionId(remaining[0]?.id ?? "personal")
+      return {
+        ...prev,
+        sections: remaining,
+        questions: prev.questions.filter((q) => q.sectionId !== discardId),
+      }
+    })
+    setPendingSectionId(null)
+    setEditingSectionId(null)
+    setExpandQuestionId(null)
+    setEditingPendingQuestionIds(new Set())
+  }, [pendingSectionId])
 
   const onRemoveSection = useCallback(
     (sectionId: string) => {
       const section = config.sections.find((s) => s.id === sectionId)
       if (!section || section.isDefault) return
-      updateConfig((prev) => ({
-        ...prev,
-        sections: prev.sections.filter((s) => s.id !== sectionId),
-        questions: prev.questions.filter((q) => q.sectionId !== sectionId),
-      }))
+      updateConfig(
+        (prev) => ({
+          ...prev,
+          sections: prev.sections.filter((s) => s.id !== sectionId),
+          questions: prev.questions.filter((q) => q.sectionId !== sectionId),
+        }),
+        { persistImmediate: true },
+      )
       if (activeSectionId === sectionId) {
         const remaining = sortSections(
           config.sections.filter((s) => s.id !== sectionId),
@@ -265,15 +446,20 @@ export function DealEsignTemplatesQuestionnaireTab({
   const commitSectionLabel = useCallback(
     (sectionId: string) => {
       const label = sectionLabelDraft.trim() || "New section"
-      updateConfig((prev) => ({
-        ...prev,
-        sections: prev.sections.map((s) =>
-          s.id === sectionId ? { ...s, label } : s,
-        ),
-      }))
-      setEditingSectionId(null)
+      updateConfig(
+        (prev) => ({
+          ...prev,
+          sections: prev.sections.map((s) =>
+            s.id === sectionId ? { ...s, label } : s,
+          ),
+        }),
+        sectionId === pendingSectionId ? { persist: false } : undefined,
+      )
+      if (sectionId !== pendingSectionId) {
+        setEditingSectionId(null)
+      }
     },
-    [sectionLabelDraft, updateConfig],
+    [pendingSectionId, sectionLabelDraft, updateConfig],
   )
 
   return (
@@ -291,8 +477,8 @@ export function DealEsignTemplatesQuestionnaireTab({
       <div className="deal_esign_questionnaire_toolbar">
         <button
           type="button"
-          className="deal_esign_questionnaire_manage_btn"
-          disabled={loading || saving}
+          className="um_btn_primary"
+          disabled={loading || saving || Boolean(pendingSectionId)}
           onClick={() => setManageModalOpen(true)}
         >
           <Settings2 size={16} strokeWidth={2} aria-hidden />
@@ -307,11 +493,11 @@ export function DealEsignTemplatesQuestionnaireTab({
         canEdit={canEdit}
         saving={saving}
         onClose={() => setManageModalOpen(false)}
-        onVisibilityChange={(profileSectionVisibility) => {
+        onSave={(profileSectionVisibility) => {
           updateConfig((prev) => ({
             ...prev,
             profileSectionVisibility,
-          }))
+          }), { persistImmediate: true })
         }}
       />
 
@@ -325,11 +511,12 @@ export function DealEsignTemplatesQuestionnaireTab({
             {sections.map((section) => {
               const isActive = section.id === activeSectionId
               const isEditing = editingSectionId === section.id
+              const isPending = section.id === pendingSectionId
               const tabId = sectionTabId(section.id)
               return (
                 <div
                   key={section.id}
-                  className={`deal_esign_questionnaire_section_tab${isActive ? " deal_esign_questionnaire_section_tab_active" : ""}`}
+                  className={`deal_esign_questionnaire_section_tab${isActive ? " deal_esign_questionnaire_section_tab_active" : ""}${isPending ? " deal_esign_questionnaire_section_tab_pending" : ""}`}
                 >
                   <button
                     type="button"
@@ -381,7 +568,7 @@ export function DealEsignTemplatesQuestionnaireTab({
                       >
                         <Pencil size={14} strokeWidth={2} aria-hidden />
                       </button>
-                      {!section.isDefault ? (
+                      {!section.isDefault && !isPending ? (
                         <button
                           type="button"
                           className="deal_esign_questionnaire_section_icon_btn deal_esign_questionnaire_section_icon_btn_danger"
@@ -401,6 +588,12 @@ export function DealEsignTemplatesQuestionnaireTab({
                 type="button"
                 className="deal_esign_questionnaire_add_section_btn"
                 aria-label="Add section"
+                disabled={Boolean(pendingSectionId) || saving}
+                title={
+                  pendingSectionId
+                    ? "Save or discard the new section first"
+                    : undefined
+                }
                 onClick={onAddSection}
               >
                 <Plus size={18} strokeWidth={2} aria-hidden />
@@ -418,24 +611,64 @@ export function DealEsignTemplatesQuestionnaireTab({
         }
         className="deal_esign_questionnaire_panel"
       >
+        {pendingSectionId && activeSectionId === pendingSectionId ? (
+          <div
+            className="deal_esign_questionnaire_section_draft_bar"
+            role="region"
+            aria-label="New section actions"
+          >
+            <p className="deal_esign_questionnaire_section_draft_text">
+              Save this section to add it to the questionnaire, or discard to cancel.
+            </p>
+            <div className="deal_esign_questionnaire_section_draft_actions">
+              <button
+                type="button"
+                className="um_btn_secondary deal_esign_questionnaire_section_draft_btn"
+                disabled={saving}
+                onClick={onDiscardPendingSection}
+              >
+                <X size={16} strokeWidth={2} aria-hidden />
+                Discard
+              </button>
+              <button
+                type="button"
+                className="um_btn_primary deal_esign_questionnaire_section_draft_btn"
+                disabled={saving}
+                onClick={onSavePendingSection}
+              >
+                <Check size={16} strokeWidth={2} aria-hidden />
+                {saving ? "Saving…" : "Save section"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {activeSection ? (
           <ul
             className="deal_esign_questionnaire_questions"
             aria-label={`Questions in ${activeSection.label}`}
           >
-            {activeQuestions.map((question, index) => (
-              <QuestionnaireQuestionCard
-                key={question.id}
-                question={question}
-                index={index}
-                canEdit={canEdit}
-                saving={saving}
-                defaultExpanded={question.id === expandQuestionId}
-                onToggleRequired={onToggleRequired}
-                onUpdateQuestion={onUpdateQuestion}
-                onDeleteQuestion={onDeleteQuestion}
-              />
-            ))}
+            {activeQuestions.map((question, index) => {
+              const inPendingSection = question.sectionId === pendingSectionId
+              const fieldEditing =
+                inPendingSection && editingPendingQuestionIds.has(question.id)
+              return (
+                <QuestionnaireQuestionCard
+                  key={question.id}
+                  question={question}
+                  index={index}
+                  canEdit={canEdit}
+                  saving={saving}
+                  defaultExpanded={question.id === expandQuestionId}
+                  pendingFieldWorkflow={inPendingSection}
+                  fieldEditing={fieldEditing}
+                  onToggleRequired={onToggleRequired}
+                  onUpdateQuestion={onUpdateQuestion}
+                  onDeleteQuestion={onDeleteQuestion}
+                  onSaveField={onSavePendingQuestionField}
+                  onEditField={onEditPendingQuestionField}
+                />
+              )
+            })}
           </ul>
         ) : null}
         {activeSection && canEdit && !activeSection.isDefault ? (

@@ -24,6 +24,11 @@ import {
   logSocMembershipExportNotify,
   logSocMembershipListView,
 } from "../audit/index.js";
+import {
+  organizationIdFromRequestHeader,
+  resolveActiveOrganizationIdForUser,
+  userHasAccessToOrganization,
+} from "../services/org/orgResolution.service.js";
 import emailConfig, {
   getEmailBccFromEnv,
   smtpEnvelopeForSendMail,
@@ -145,14 +150,30 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
     ORG_UUID_RE.test(String(actor.organizationId).trim())
       ? String(actor.organizationId).trim()
       : undefined;
-  const filterOrganizationId = isPlatformAdminRole(role)
+  let filterOrganizationId = isPlatformAdminRole(role)
     ? orgFromQuery ?? orgFromActor
     : undefined;
+
+  if (isCompanyAdminRole(role) && orgFromQuery && ORG_UUID_RE.test(orgFromQuery)) {
+    const allowed = await userHasAccessToOrganization(jwtUser.id, orgFromQuery);
+    if (allowed) filterOrganizationId = orgFromQuery;
+  }
+  if (isCompanyAdminRole(role) && !filterOrganizationId) {
+    const active = await resolveActiveOrganizationIdForUser(
+      jwtUser.id,
+      orgFromQuery ?? organizationIdFromRequestHeader(req),
+      {
+        organizationId: actor.organizationId ?? null,
+        role: actor.role,
+      },
+    );
+    if (active) filterOrganizationId = active;
+  }
 
   const rows = await listUsersForAdmin(
     role,
     actor.organizationId ?? null,
-    isPlatformAdminRole(role)
+    filterOrganizationId
       ? { filterOrganizationId }
       : undefined,
   );
@@ -162,11 +183,13 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
   }
 
   const restrictToOrganizationId: string | null =
-    isCompanyAdminRole(role) && orgFromActor
-      ? orgFromActor
-      : filterOrganizationId && ORG_UUID_RE.test(filterOrganizationId)
-        ? filterOrganizationId
-        : null;
+    isCompanyAdminRole(role) && filterOrganizationId && ORG_UUID_RE.test(filterOrganizationId)
+      ? filterOrganizationId
+      : isCompanyAdminRole(role) && orgFromActor
+        ? orgFromActor
+        : filterOrganizationId && ORG_UUID_RE.test(filterOrganizationId)
+          ? filterOrganizationId
+          : null;
 
   const useGlobalCounts =
     isPlatformAdminRole(role) && restrictToOrganizationId == null;

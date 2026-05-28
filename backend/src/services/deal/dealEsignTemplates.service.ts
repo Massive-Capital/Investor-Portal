@@ -401,6 +401,52 @@ export async function saveDealEsignTemplateFiles(params: {
   return added;
 }
 
+/** Thrown when rename is attempted on a template that is not ready. */
+export class EsignTemplateRenameNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EsignTemplateRenameNotAllowedError";
+  }
+}
+
+/** Thrown when template name is empty. */
+export class EsignTemplateNameRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EsignTemplateNameRequiredError";
+  }
+}
+
+/**
+ * Updates display name for a ready eSign template (lead sponsor).
+ * Does not reopen Dropbox Sign field editor.
+ */
+export async function updateDealEsignTemplateName(
+  dealId: string,
+  fileId: string,
+  templateName: string,
+): Promise<EsignTemplateFileRecord | null> {
+  const name = templateName.trim();
+  if (!name) {
+    throw new EsignTemplateNameRequiredError("Template name is required");
+  }
+
+  const state = await getDealEsignTemplatesState(dealId);
+  const file = findEsignTemplateFile(state, fileId);
+  if (!file) return null;
+
+  if (file.dropboxSignStatus !== "ready") {
+    throw new EsignTemplateRenameNotAllowedError(
+      "Only ready templates can be renamed here. Use Edit to finish Dropbox Sign setup first.",
+    );
+  }
+
+  file.templateName = name;
+  file.dropboxSignTitle = name;
+  await persistEsignTemplatesJson(dealId, state);
+  return file;
+}
+
 export async function removeDealEsignTemplateFile(
   dealId: string,
   fileId: string,

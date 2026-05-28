@@ -1,0 +1,60 @@
+.company_switcher_wrap {
+  position: relative;
+  margin-right: 0.75rem;
+}
+
+.company_switcher_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 14rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--border-subtle, #d8dee9);
+  border-radius: 0.5rem;
+  background: var(--surface-elevated, #fff);
+  color: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.company_switcher_label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company_switcher_menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 3000;
+  min-width: 12rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border: 1px solid var(--border-subtle, #d8dee9);
+  border-radius: 0.5rem;
+  background: var(--surface-elevated, #fff);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.company_switcher_item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  text-align: left;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.company_switcher_item:hover {
+  background: var(--surface-muted, #f1f5f9);
+}
+
+.company_switcher_item_active {
+  font-weight: 600;
+  background: var(--surface-muted, #f1f5f9);
+}

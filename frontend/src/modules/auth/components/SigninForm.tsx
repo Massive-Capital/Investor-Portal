@@ -25,6 +25,7 @@ import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPa
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import { toast } from "../../../common/components/Toast";
+import { ensureActiveCompanyInitialized } from "../../../common/auth/setActiveCompany";
 import "./signin_form.css";
 
 const SigninForm = () => {
@@ -58,15 +59,34 @@ const SigninForm = () => {
           password,
         }),
       });
-      const data = (await response.json().catch(() => ({}))) as {
+      const rawBody = await response.text().catch(() => "");
+      let data: {
         message?: string;
         token?: string;
         userDetails?: unknown;
         activitySessionId?: string;
-      };
+      } = {};
+      if (rawBody.trim()) {
+        try {
+          data = JSON.parse(rawBody) as typeof data;
+        } catch {
+          data = {};
+        }
+      }
+
       if (!response.ok) {
+        if (response.status === 502 || response.status === 503) {
+          setError(
+            "Cannot reach the API. Start the backend (npm run dev in the backend folder) and ensure BACKEND_PORT in backend/.env.local matches the Vite proxy (default 5004).",
+          );
+          return;
+        }
         const msg =
-          data.message?.trim() || "Sign in failed. Please try again.";
+          data.message?.trim() ||
+          (rawBody.trim() && !rawBody.trim().startsWith("{")
+            ? rawBody.trim().slice(0, 240)
+            : "") ||
+          "Sign in failed. Please try again.";
         if (response.status === 403) {
           setError(
             data.message ||
@@ -91,6 +111,7 @@ const SigninForm = () => {
           SESSION_USER_DETAILS_KEY,
           JSON.stringify(data.userDetails),
         );
+        ensureActiveCompanyInitialized();
       } else {
         sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
       }
@@ -129,7 +150,9 @@ const SigninForm = () => {
         : undefined;
       navigate(redirectTo, { replace: true, state: postSignInState });
     } catch {
-      setError("Unable to connect. Please try again later.");
+      setError(
+        "Unable to connect to the API. Start the backend with npm run dev in the backend folder (port 5004 by default), then refresh this page.",
+      );
     } finally {
       setIsLoading(false);
     }

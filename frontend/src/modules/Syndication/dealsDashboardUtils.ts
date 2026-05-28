@@ -20,6 +20,8 @@ import { parseMoneyDigits } from "./Deals/utils/offeringMoneyFormat"
 import type { DealInvestorClass } from "./Deals/types/deal-investor-class.types"
 import type { DealInvestorsPayload } from "./Deals/types/deal-investors.types"
 import type { DealListRow } from "./Deals/types/deals.types"
+import { normalizeDealStageCanonical } from "./Deals/constants/deal-lifecycle/deal-stage"
+import { canonicalDealStageToFormValue } from "./Deals/constants/deal-stage-modal-config"
 import { DEAL_STAGE_CHOICES } from "./Deals/types/deals.types"
 import { collectDealGalleryUrls } from "./Deals/utils/offeringGalleryUrls"
 
@@ -56,9 +58,18 @@ export interface DealRecord {
   reviewCount?: number
 }
 
-export function dealStageLabel(code: string): string {
+/** Short lifecycle label — never echoes arbitrary API text (e.g. deal name in `deal_stage`). */
+export function dealStageLabel(code: string | null | undefined): string {
   const raw = String(code ?? "").trim()
   if (!raw) return ""
+
+  const canon = normalizeDealStageCanonical(raw)
+  if (canon) {
+    const formVal = canonicalDealStageToFormValue(canon)
+    const fromCanon = DEAL_STAGE_CHOICES.find((c) => c.value === formVal)
+    if (fromCanon) return fromCanon.label
+  }
+
   const normalized =
     raw === "raising_capital"
       ? "capital_raising"
@@ -67,8 +78,10 @@ export function dealStageLabel(code: string): string {
         : raw.toLowerCase() === "draft"
           ? "Draft"
           : raw
-  const found = DEAL_STAGE_CHOICES.find((c) => c.value === normalized)
-  return found?.label ?? normalized
+  const fromForm = DEAL_STAGE_CHOICES.find((c) => c.value === normalized)
+  if (fromForm) return fromForm.label
+
+  return "—"
 }
 
 function parseInvestorClassAdvancedJson(json: string): {

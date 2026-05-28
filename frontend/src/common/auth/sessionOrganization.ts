@@ -3,6 +3,10 @@ import {
   SESSION_WORKSPACE_COMPANY_ID_KEY,
 } from "./sessionKeys"
 import { isPlatformAdmin } from "./roleUtils"
+import {
+  getSessionAccessibleCompanies,
+  isAccessibleCompanyId,
+} from "./sessionMemberships"
 
 function organizationIdFromUserDetailsRoot(
   o: Record<string, unknown> | null,
@@ -61,11 +65,9 @@ function getWorkspaceKeyFromSessionLower(): string | null {
 /**
  * Resolves the current workspace `companies.id` (UUID) for loading company-scoped data.
  *
- * - **Org users (e.g. company admin):** prefers `userDetails` `organizationId` so a stale
- *   `sessionStorage` workspace key (from a prior platform-admin session) does not override
- *   their org — fixes branding/settings uploads targeting the wrong company and getting 403.
- * - **Platform admin:** keeps directory/workspace key first when set (selected company), then
- *   falls back to org in session if any.
+ * - **Platform admin:** workspace key first (selected company), then session org.
+ * - **Multi-company users:** validated workspace key when set, else primary org in session.
+ * - **Single-company users:** primary org in session (ignores stale workspace keys).
  */
 export function getSessionOrganizationCompanyId(): string | null {
   const { orgFromUser, workspaceKey } = readOrgIdAndWorkspaceKeyFromSession()
@@ -74,8 +76,19 @@ export function getSessionOrganizationCompanyId(): string | null {
     if (orgFromUser) return orgFromUser
     return null
   }
+
+  const accessible = getSessionAccessibleCompanies()
+  const multiCompany = accessible.length > 1
+
+  if (multiCompany) {
+    if (workspaceKey && isAccessibleCompanyId(workspaceKey)) return workspaceKey
+    if (orgFromUser && isAccessibleCompanyId(orgFromUser)) return orgFromUser
+    if (accessible[0]?.companyId) return accessible[0].companyId
+    return null
+  }
+
   if (orgFromUser) return orgFromUser
-  if (workspaceKey) return workspaceKey
+  if (workspaceKey && isAccessibleCompanyId(workspaceKey)) return workspaceKey
   return null
 }
 

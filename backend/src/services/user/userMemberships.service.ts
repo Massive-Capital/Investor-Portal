@@ -9,6 +9,21 @@ export interface UserMembershipPair {
   role: string;
 }
 
+function isMissingMembershipTableError(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let i = 0; i < 4; i += 1) {
+    if (!cur || typeof cur !== "object") break;
+    const e = cur as { code?: string; message?: string; cause?: unknown };
+    if (e.code === "42P01") return true;
+    const msg = String(e.message ?? "").toLowerCase();
+    if (msg.includes('relation "user_company_membership" does not exist')) {
+      return true;
+    }
+    cur = e.cause;
+  }
+  return false;
+}
+
 function pairKey(a: UserMembershipPair): string {
   return `${a.company.trim().toLowerCase()}|${a.role.trim().toLowerCase()}`;
 }
@@ -100,6 +115,51 @@ async function fetchDealCompanyRolePairsForUserIds(
   return map;
 }
 
+async function fetchCompanyMembershipPairsForUserIds(
+  userIds: string[],
+): Promise<Map<string, UserMembershipPair[]>> {
+  const map = new Map<string, UserMembershipPair[]>();
+  if (userIds.length === 0) return map;
+
+  let res;
+  try {
+    res = await pool.query<{
+      user_id: string;
+      company_name: string | null;
+      role: string | null;
+    }>(
+      `SELECT
+         lower(ucm.user_id::text) AS user_id,
+         COALESCE(NULLIF(trim(c.name), ''), '—') AS company_name,
+         trim(ucm.role) AS role
+       FROM user_company_membership ucm
+       INNER JOIN companies c ON c.id = ucm.company_id
+       WHERE ucm.user_id = ANY($1::uuid[])`,
+      [userIds],
+    );
+  } catch (err) {
+    if (isMissingMembershipTableError(err)) {
+      // Old DB without migration 0051: keep legacy behavior instead of failing request.
+      return map;
+    }
+    throw err;
+  }
+
+  for (const row of res.rows) {
+    const uid = String(row.user_id ?? "").trim().toLowerCase();
+    const company = String(row.company_name ?? "").trim() || "—";
+    const rawRole = String(row.role ?? "").trim();
+    if (!uid || !rawRole) continue;
+    const role = displayPortalRole(rawRole);
+    const pair: UserMembershipPair = { company, role };
+    const list = map.get(uid) ?? [];
+    if (!list.some((x) => pairKey(x) === pairKey(pair))) list.push(pair);
+    map.set(uid, list);
+  }
+
+  return map;
+}
+
 /**
  * Adds `memberships: { company, role }[]` to each user row: portal org role plus distinct
  * deal-level roles per company from `deal_member` (when applicable).
@@ -116,6 +176,8 @@ export async function enrichUserRowsWithMemberships(
   ];
   const dealPairsByUser =
     ids.length > 0 ? await fetchDealCompanyRolePairsForUserIds(ids) : new Map();
+  const companyPairsByUser =
+    ids.length > 0 ? await fetchCompanyMembershipPairsForUserIds(ids) : new Map();
 
   return rows.map((row) => {
     const id = String(row.id ?? "").trim().toLowerCase();
@@ -124,7 +186,15 @@ export async function enrichUserRowsWithMemberships(
     const list: UserMembershipPair[] = [];
     const seen = new Set<string>();
 
-    if (portalRole && portalRole !== "—") {
+    const explicitCompanyMemberships = companyPairsByUser.get(id) ?? [];
+    for (const p of explicitCompanyMemberships) {
+      const k = pairKey(p);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      list.push(p);
+    }
+
+    if (explicitCompanyMemberships.length === 0 && portalRole && portalRole !== "—") {
       const p: UserMembershipPair = { company: portalCompany, role: portalRole };
       list.push(p);
       seen.add(pairKey(p));
@@ -136,6 +206,14 @@ export async function enrichUserRowsWithMemberships(
       seen.add(k);
       list.push(p);
     }
+
+    list.sort((a, b) => {
+      const c = a.company.localeCompare(b.company, undefined, {
+        sensitivity: "base",
+      });
+      if (c !== 0) return c;
+      return a.role.localeCompare(b.role, undefined, { sensitivity: "base" });
+    });
 
     return { ...row, memberships: list };
   });

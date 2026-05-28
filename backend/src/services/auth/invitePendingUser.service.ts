@@ -4,6 +4,11 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { markContactsAsPortalUserByEmailNorm } from "../contact/contact.service.js";
+import {
+  hasUserCompanyMembership,
+  isCompanyMembershipRole,
+  upsertUserCompanyMembership,
+} from "./userCompanyMembership.service.js";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -13,7 +18,14 @@ export type InviteCompanyContext = {
 };
 
 export type UpsertPendingInviteResult =
-  | { ok: true }
+  | {
+      ok: true;
+      action:
+        | "pending_invite_upserted"
+        | "existing_user_membership_added";
+      /** Set when invitee still needs to finish first-time signup. */
+      needsSignup?: boolean;
+    }
   | { ok: false; status: number; message: string };
 
 /**
@@ -31,6 +43,15 @@ export async function upsertPendingInvitedUser(
     return { ok: false, status: 400, message: "A valid email address is required" };
   }
 
+  const inviteOrg = company.companyId?.trim() ?? "";
+  if (!inviteOrg || !isCompanyMembershipRole(invitedRole)) {
+    return {
+      ok: false,
+      status: 400,
+      message: "A valid company and company role are required for this invite.",
+    };
+  }
+
   const [existing] = await db
     .select()
     .from(users)
@@ -40,62 +61,82 @@ export async function upsertPendingInvitedUser(
   if (existing) {
     const completed =
       String(existing.userSignupCompleted ?? "").trim().toLowerCase() === "true";
-    if (completed) {
-      const inviteOrg = company.companyId?.trim() ?? "";
-      const memberOrg = existing.organizationId?.trim() ?? "";
-      const sameOrg =
-        inviteOrg !== "" && memberOrg !== "" && inviteOrg === memberOrg;
-      if (sameOrg) {
-        return {
-          ok: false,
-          status: 409,
-          message:
-            "This email is already a member of your organization.",
-        };
-      }
+    const existingOrg = existing.organizationId?.trim() ?? "";
+
+    const alreadyInInviteCompany = await hasUserCompanyMembership(
+      existing.id,
+      inviteOrg,
+    );
+    const legacyPrimaryOrgMatch =
+      existingOrg !== "" && existingOrg === inviteOrg;
+
+    if (alreadyInInviteCompany || legacyPrimaryOrgMatch) {
       return {
         ok: false,
         status: 409,
-        message: "A user with this email already exists",
+        message: "This email is already a member of your organization.",
       };
     }
 
-    const patch: {
-      role: string;
-      inviteExpiresAt: Date;
-      updatedAt: Date;
-      organizationId?: string | null;
-    } = {
-      role: invitedRole,
-      inviteExpiresAt,
-      updatedAt: new Date(),
-    };
-    if (company.companyId != null && company.companyId !== "") {
-      patch.organizationId = company.companyId;
+    if (completed) {
+      await upsertUserCompanyMembership(existing.id, inviteOrg, invitedRole);
+      try {
+        await markContactsAsPortalUserByEmailNorm(emailNorm);
+      } catch (e) {
+        console.error("markContactsAsPortalUserByEmailNorm after cross-company invite:", e);
+      }
+      return {
+        ok: true,
+        action: "existing_user_membership_added",
+        needsSignup: false,
+      };
     }
 
-    await db.update(users).set(patch).where(eq(users.id, existing.id));
+    // Pending signup elsewhere: add membership for this company without moving primary org.
+    const samePendingOrg =
+      existingOrg !== "" && existingOrg === inviteOrg;
+    if (samePendingOrg) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "This email is already invited to your organization. Ask them to complete signup.",
+      };
+    }
+
+    await upsertUserCompanyMembership(existing.id, inviteOrg, invitedRole);
     try {
       await markContactsAsPortalUserByEmailNorm(emailNorm);
     } catch (e) {
-      console.error("markContactsAsPortalUserByEmailNorm after invite patch:", e);
+      console.error("markContactsAsPortalUserByEmailNorm after pending cross-company invite:", e);
     }
-    return { ok: true };
+    return {
+      ok: true,
+      action: "existing_user_membership_added",
+      needsSignup: true,
+    };
   }
 
   const placeholderUsername = `invited_${randomBytes(12).toString("hex")}`;
   const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), BCRYPT_ROUNDS);
 
-  await db.insert(users).values({
-    email: emailNorm,
-    username: placeholderUsername,
-    passwordHash,
-    role: invitedRole,
-    userStatus: "active",
-    userSignupCompleted: "false",
-    organizationId: company.companyId ?? null,
-    inviteExpiresAt,
-  });
+  const [inserted] = await db
+    .insert(users)
+    .values({
+      email: emailNorm,
+      username: placeholderUsername,
+      passwordHash,
+      role: invitedRole,
+      userStatus: "active",
+      userSignupCompleted: "false",
+      organizationId: company.companyId ?? null,
+      inviteExpiresAt,
+    })
+    .returning({ id: users.id });
+
+  if (inserted?.id) {
+    await upsertUserCompanyMembership(inserted.id, inviteOrg, invitedRole);
+  }
 
   try {
     await markContactsAsPortalUserByEmailNorm(emailNorm);
@@ -103,5 +144,5 @@ export async function upsertPendingInvitedUser(
     console.error("markContactsAsPortalUserByEmailNorm after pending invite insert:", e);
   }
 
-  return { ok: true };
+  return { ok: true, action: "pending_invite_upserted", needsSignup: true };
 }

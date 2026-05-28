@@ -126,6 +126,11 @@
 }
 
 .deals_add_inv_modal_form .portal_dropdown_select_trigger.deals_add_inv_field_pill {
+  min-height: var(--portal-dropdown-trigger-min-height, 2.5rem);
+  padding: var(--portal-dropdown-trigger-padding-block, 0.45rem)
+    0.65rem var(--portal-dropdown-trigger-padding-block, 0.45rem)
+    0.75rem;
+  font-size: var(--deals-add-inv-control-font);
   border-radius: 9999px;
   justify-content: space-between;
   gap: 0.35rem;
@@ -135,7 +140,8 @@
 .deals_add_inv_modal_form .um_field_select.deals_add_inv_field_control {
   box-sizing: border-box;
   min-height: var(--deals-add-inv-control-min-h);
-  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  /* padding: 0.5rem 2.25rem 0.5rem 0.75rem; */
+  padding: 0.5rem 0.25rem 0.5rem 0.75rem;
   border-radius: var(--deals-add-inv-control-radius);
   font-family: var(--deals-add-inv-font-family);
   font-size: var(--deals-add-inv-control-font);
@@ -295,10 +301,40 @@
   min-width: 0;
 }
 
-.deals_add_inv_modal_form .portal_dropdown_select_trigger.deals_add_inv_field_pill {
-  min-height: var(--deals-add-inv-control-min-h);
-  font-size: var(--deals-add-inv-control-font);
+/* Portaled menus: opening a dropdown must not expand modal / scroll area height */
+.deals_add_inv_modal_form .portal_dropdown_select--fixed-panel .portal_dropdown_select_shell {
+  flex: 0 0 auto;
 }
+
+/*
+ * Safety net: any modal dropdown still using inline panels must overlay, not grow layout.
+ * Prefer MODAL_DROPDOWN_SELECT_PROPS / ModalDropdownSelect / DealsCreateDropdownSelect.
+ */
+.deals_add_inv_modal_form
+  .portal_dropdown_select:not(.portal_dropdown_select--fixed-panel) {
+  position: relative;
+}
+
+.deals_add_inv_modal_form
+  .portal_dropdown_select:not(.portal_dropdown_select--fixed-panel)
+  .portal_dropdown_select_shell--open:not(.portal_dropdown_select_shell--open-fixed) {
+  overflow: visible;
+}
+
+.deals_add_inv_modal_form
+  .portal_dropdown_select:not(.portal_dropdown_select--fixed-panel)
+  .portal_dropdown_select_shell
+  .portal_dropdown_select_panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 50;
+  max-height: min(260px, 45vh);
+  margin-top: 0;
+  box-shadow: var(--portal-dropdown-panel-shadow);
+}
+
 
 /* Lead Sponsor row: member/contact cannot be changed (dropdown disabled). */
 .deals_add_inv_modal_form

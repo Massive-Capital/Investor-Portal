@@ -40,6 +40,10 @@ import {
   exportSavedAddressRow,
 } from "./investingProfileBookExport"
 import { InvestingEntityViewModal } from "./InvestingEntityViewModal"
+import {
+  buildInvestorProfileViewDescription,
+  buildInvestorProfileViewSections,
+} from "./investorProfileViewDetails"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
 import {
   fetchInvestmentCountsByUserInvestorProfileId,
@@ -486,24 +490,24 @@ export default function InvestingProfilesPage() {
     [addrPage, addrPageSize, filteredAddresses.length],
   )
 
+  const profileViewSections = useMemo(() => {
+    if (!viewModal || viewModal.kind !== "profile") return null
+    return buildInvestorProfileViewSections({
+      row: viewModal.row,
+      savedAddresses,
+      savedBeneficiaries: beneficiaries,
+    })
+  }, [viewModal, savedAddresses, beneficiaries])
+
   const viewModalConfig = useMemo(() => {
     if (!viewModal) return null
     if (viewModal.kind === "profile") {
-      const r = viewModal.row
+      const name = viewModal.row.profileName?.trim()
       return {
-        title: "Profile details" as const,
-        rows: [
-          { label: "Profile name", value: r.profileName },
-          { label: "Profile type", value: r.profileType },
-          { label: "Added by", value: r.addedBy },
-          { label: "Investments", value: String(r.investmentsCount ?? 0) },
-          { label: "Date created", value: formatProfileListDate(r.dateCreated) },
-          { label: "Status", value: r.archived ? "Archived" : "Active" },
-          {
-            label: "Last change note",
-            value: r.lastEditReason?.trim() || "—",
-          },
-        ],
+        title: name || "Profile details",
+        description: buildInvestorProfileViewDescription(viewModal.row),
+        sections: profileViewSections ?? [],
+        profileId: viewModal.row.id,
       }
     }
     if (viewModal.kind === "beneficiary") {
@@ -541,7 +545,11 @@ export default function InvestingProfilesPage() {
         { label: "Status", value: a.archived ? "Archived" : "Active" },
       ],
     }
-  }, [viewModal])
+  }, [viewModal, profileViewSections])
+
+  const openProfileView = useCallback((row: InvestorProfileListRow) => {
+    setViewModal({ kind: "profile", row })
+  }, [])
 
   const profileColumns: DataTableColumn<InvestorProfileListRow>[] = useMemo(
     () => [
@@ -550,7 +558,18 @@ export default function InvestingProfilesPage() {
         header: "Profile name",
         sortValue: (r) => (r.profileName ?? "").toLowerCase(),
         tdClassName: "um_td_user",
-        cell: (r) => r.profileName?.trim() || "—",
+        cell: (r) => {
+          const name = r.profileName?.trim() || "—"
+          return (
+            <button
+              type="button"
+              className="deals_table_name_link investing_profiles_name_link"
+              onClick={() => openProfileView(r)}
+            >
+              {name}
+            </button>
+          )
+        },
       },
       {
         id: "profileType",
@@ -591,7 +610,7 @@ export default function InvestingProfilesPage() {
             kind="profile"
             archived={Boolean(row.archived)}
             onSetArchived={(v) => setProfileArchived(row.id, v)}
-            onView={() => setViewModal({ kind: "profile", row })}
+            onView={() => openProfileView(row)}
             onEdit={() => void navigate(`/investing/profiles/${encodeURIComponent(row.id)}/edit`)}
             onExport={() =>
               exportInvestorProfileRow(row, fileSlug(row.profileName, "profile"))
@@ -600,7 +619,7 @@ export default function InvestingProfilesPage() {
         ),
       },
     ],
-    [setProfileArchived, navigate],
+    [setProfileArchived, navigate, openProfileView],
   )
 
   const beneficiaryColumns: DataTableColumn<BeneficiaryListRow>[] = useMemo(
@@ -1093,7 +1112,26 @@ export default function InvestingProfilesPage() {
           open
           onClose={() => setViewModal(null)}
           title={viewModalConfig.title}
-          rows={viewModalConfig.rows}
+          description={
+            "description" in viewModalConfig
+              ? viewModalConfig.description
+              : undefined
+          }
+          rows={"rows" in viewModalConfig ? viewModalConfig.rows : undefined}
+          sections={
+            "sections" in viewModalConfig ? viewModalConfig.sections : undefined
+          }
+          onEdit={
+            "profileId" in viewModalConfig && viewModalConfig.profileId
+              ? () => {
+                  setViewModal(null)
+                  void navigate(
+                    `/investing/profiles/${encodeURIComponent(viewModalConfig.profileId!)}/edit`,
+                  )
+                }
+              : undefined
+          }
+          editLabel="Edit profile"
         />
       ) : null}
       <ExportInvestorProfilesModal
