@@ -13,6 +13,7 @@ import {
   postDealOfferingDocumentUploads,
   patchDealInvestorSummary,
   patchDealKeyHighlights,
+  // getDealOfferingInvestorPreview,
   patchDealOfferingInvestorPreview,
   patchDealOfferingOverview,
   postDeal,
@@ -212,6 +213,10 @@ router.put(
 router.patch("/deals/:dealId/investor-summary", patchDealInvestorSummary);
 router.patch("/deals/:dealId/deal-announcement", patchDealAnnouncement);
 router.patch("/deals/:dealId/key-highlights", patchDealKeyHighlights);
+router.get(
+  "/deals/:dealId/offering-investor-preview",
+  patchDealOfferingInvestorPreview,
+);
 router.patch(
   "/deals/:dealId/offering-investor-preview",
   patchDealOfferingInvestorPreview,

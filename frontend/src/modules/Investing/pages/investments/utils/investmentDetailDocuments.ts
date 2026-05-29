@@ -1,19 +1,24 @@
 import {
   effectiveDocumentSharedWithScope,
-  readOfferingPreviewSections,
+  readDealDocumentSectionsForWorkspace,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
+  sectionVisibleOnOfferingPreview,
   type SectionSharedWithScope,
 } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 import { readOfferingPreviewDocuments } from "@/modules/Syndication/Deals/utils/offeringPreviewDocuments"
-import type { NestedPreviewDocument } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
+import type { NestedPreviewDocument, OfferingPreviewSection } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 import type { InvestmentDocumentAudienceContext } from "./investmentDocumentAudience"
-import { nestedDocumentVisibleToInvestor } from "./investmentDocumentAudience"
+import {
+  EMPTY_INVESTMENT_DOCUMENT_AUDIENCE,
+  nestedDocumentVisibleToInvestor,
+} from "./investmentDocumentAudience"
 
 export type InvestmentDetailDocumentRow = {
   id: string
   name: string
   url: string | null
+  dateAdded: string
   sectionLabel: string
   /** How this file is exposed on the deal Documents tab. */
   visibilityLabel: string
@@ -28,19 +33,36 @@ export type InvestmentDetailDocumentRow = {
   esignStatus?: "pending" | "signed"
 }
 
-function rowKey(d: { id: string; url: string | null; name: string }): string {
-  const u = d.url?.trim()
-  if (u) return `url:${u}`
-  return `id:${d.id}:${d.name}`
+export type InvestmentDetailDocumentSectionGroup = {
+  sectionId: string
+  sectionLabel: string
+  documents: InvestmentDetailDocumentRow[]
+  /** Total files in this section on the deal (before investor filtering). */
+  totalOnDeal: number
+}
+
+/** LP portal: signed-in investors see Offering link + LP portal only scoped files. */
+const LP_PORTAL_DOCUMENT_CTX = {
+  isPublicAnonymousOffering: false,
+  isLpDealWorkspace: true,
+} as const
+
+export { EMPTY_INVESTMENT_DOCUMENT_AUDIENCE }
+
+function sortDocumentsByName(
+  a: InvestmentDetailDocumentRow,
+  b: InvestmentDetailDocumentRow,
+): number {
+  return a.name.localeCompare(b.name, "en", { sensitivity: "base" })
 }
 
 function pushRow(
   out: InvestmentDetailDocumentRow[],
-  seen: Set<string>,
   args: {
     id: string
     name: string
     url: string | null
+    dateAdded: string
     sectionLabel: string
     scope: SectionSharedWithScope
   },
@@ -48,63 +70,79 @@ function pushRow(
   const scope = args.scope
   const source: InvestmentDetailDocumentRow["source"] =
     scope === "offering_page" ? "offering_link" : "assigned"
-  const key = rowKey({ id: args.id, url: args.url, name: args.name })
-  if (seen.has(key)) return
-  seen.add(key)
   out.push({
     id: args.id,
     name: args.name,
     url: args.url,
+    dateAdded: args.dateAdded,
     sectionLabel: args.sectionLabel,
     visibilityLabel: sectionSharedWithDisplay(scope),
     source,
   })
 }
 
+function documentVisibleToInvestorOnLpPortal(
+  doc: NestedPreviewDocument,
+  sec: OfferingPreviewSection,
+  audience: InvestmentDocumentAudienceContext,
+): boolean {
+  const scope = effectiveDocumentSharedWithScope(doc, sec)
+  if (!sectionVisibleOnOfferingPreview(scope, LP_PORTAL_DOCUMENT_CTX)) return false
+  return nestedDocumentVisibleToInvestor(doc, audience)
+}
+
+function readDocumentSectionsForInvestorListing(dealId: string) {
+  return readDealDocumentSectionsForWorkspace(dealId)
+}
+
 /**
- * Deal Documents tab (sponsor uploads): files this investor may see —
- * LP portal / Shared With targeting, or Offering link visibility.
+ * Deal Documents tab (sponsor uploads): files this investor may see, grouped by
+ * section in the same order as the syndication Documents tab.
  */
-export function listDocumentsForInvestmentDetail(
+export function listInvestmentDetailDocumentSectionGroups(
   dealId: string,
   audience: InvestmentDocumentAudienceContext,
-): {
-  assigned: InvestmentDetailDocumentRow[]
-  offeringLink: InvestmentDetailDocumentRow[]
-  all: InvestmentDetailDocumentRow[]
-} {
-  const id = dealId.trim()
-  if (!id) {
-    return { assigned: [], offeringLink: [], all: [] }
-  }
+): InvestmentDetailDocumentSectionGroup[] {
+  const id = dealId?.trim() ?? ""
+  if (!id) return []
 
-  const allRows: InvestmentDetailDocumentRow[] = []
-  const seen = new Set<string>()
+  const groups: InvestmentDetailDocumentSectionGroup[] = []
 
-  const sections = readOfferingPreviewSections(id)
+  const sections = readDocumentSectionsForInvestorListing(id)
   for (const sec of sections) {
     const sl = sectionDisplayLabel(sec)
+    const rows: InvestmentDetailDocumentRow[] = []
+    const totalOnDeal = sec.nestedDocuments.length
     for (const d of sec.nestedDocuments) {
-      if (!nestedDocumentVisibleToInvestor(d, audience)) continue
+      if (!documentVisibleToInvestorOnLpPortal(d, sec, audience)) continue
       const scope = effectiveDocumentSharedWithScope(d, sec)
-      pushRow(
-        allRows,
-        seen,
-        {
-          id: d.id,
-          name: d.name,
-          url: d.url,
-          sectionLabel: sl,
-          scope,
-        },
-      )
+      pushRow(rows, {
+        id: d.id,
+        name: d.name,
+        url: d.url,
+        dateAdded: d.dateAdded?.trim() || "—",
+        sectionLabel: sl,
+        scope,
+      })
+    }
+    if (totalOnDeal > 0) {
+      groups.push({
+        sectionId: sec.id,
+        sectionLabel: sl,
+        documents: rows.sort(sortDocumentsByName),
+        totalOnDeal,
+      })
     }
   }
 
-  if (allRows.length === 0) {
+  if (groups.length === 0) {
+    const legacyRows: InvestmentDetailDocumentRow[] = []
+    const seenLegacyIds = new Set<string>()
     for (const d of readOfferingPreviewDocuments(id)) {
+      if (seenLegacyIds.has(d.id)) continue
       const scope: SectionSharedWithScope =
         d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
+      if (!sectionVisibleOnOfferingPreview(scope, LP_PORTAL_DOCUMENT_CTX)) continue
       const legacyDoc: NestedPreviewDocument = {
         id: d.id,
         name: d.name,
@@ -118,24 +156,59 @@ export function listDocumentsForInvestmentDetail(
         sharedWithScope: scope,
       }
       if (!nestedDocumentVisibleToInvestor(legacyDoc, audience)) continue
-      pushRow(allRows, seen, {
+      seenLegacyIds.add(d.id)
+      pushRow(legacyRows, {
         id: d.id,
         name: d.name,
         url: d.url,
+        dateAdded: d.dateAdded?.trim() || "—",
         sectionLabel: "Documents",
         scope,
       })
     }
+    if (legacyRows.length > 0) {
+      groups.push({
+        sectionId: "legacy-documents",
+        sectionLabel: "Documents",
+        documents: legacyRows.sort(sortDocumentsByName),
+        totalOnDeal: legacyRows.length,
+      })
+    }
   }
 
+  return groups
+}
+
+/**
+ * Flat list of offering documents for this investor (all sections combined).
+ */
+export function listDocumentsForInvestmentDetail(
+  dealId: string,
+  audience: InvestmentDocumentAudienceContext,
+): {
+  assigned: InvestmentDetailDocumentRow[]
+  offeringLink: InvestmentDetailDocumentRow[]
+  all: InvestmentDetailDocumentRow[]
+} {
+  const allRows = listInvestmentDetailDocumentSectionGroups(dealId, audience).flatMap(
+    (g) => g.documents,
+  )
   const assigned = allRows.filter((r) => r.source === "assigned")
   const offeringLink = allRows.filter((r) => r.source === "offering_link")
-  const sortByName = (a: InvestmentDetailDocumentRow, b: InvestmentDetailDocumentRow) =>
-    a.name.localeCompare(b.name, "en", { sensitivity: "base" })
 
   return {
-    assigned: assigned.sort(sortByName),
-    offeringLink: offeringLink.sort(sortByName),
-    all: [...allRows].sort(sortByName),
+    assigned: assigned.sort(sortDocumentsByName),
+    offeringLink: offeringLink.sort(sortDocumentsByName),
+    all: [...allRows].sort(sortDocumentsByName),
   }
+}
+
+export function dealHasOfferingDocumentsOnDeal(dealId: string): boolean {
+  return readDocumentSectionsForInvestorListing(dealId).some(
+    (section) => section.nestedDocuments.length > 0,
+  )
+}
+
+export function dealHasOfferingDocumentSections(dealId: string): boolean {
+  return dealHasOfferingDocumentsOnDeal(dealId)
 }

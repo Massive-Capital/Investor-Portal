@@ -1,12 +1,20 @@
 import type { DealInvestorClass } from "@/modules/Syndication/Deals/types/deal-investor-class.types"
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { NestedPreviewDocument } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
+
 export type InvestmentDocumentAudienceContext = {
   viewerRows: DealInvestorRow[]
   dealClasses: DealInvestorClass[]
   /** All investor row ids for this viewer (email match), for Shared With id resolution. */
   viewerInvestorIds: ReadonlySet<string>
 }
+
+export const EMPTY_INVESTMENT_DOCUMENT_AUDIENCE: InvestmentDocumentAudienceContext =
+  {
+    viewerRows: [],
+    dealClasses: [],
+    viewerInvestorIds: new Set(),
+  }
 
 function investorRowMatchesDealClass(
   row: DealInvestorRow,
@@ -22,12 +30,32 @@ function investorRowMatchesDealClass(
 }
 
 function hasExplicitDocumentAudience(doc: NestedPreviewDocument): boolean {
-  return (
-    doc.sharedWithAllInvestors ||
-    doc.sharedDealClassIds.length > 0 ||
-    doc.sharedInvestorIds.length > 0 ||
-    (doc.sharedSponsorUserIds?.length ?? 0) > 0
-  )
+  if (doc.sharedDealClassIds.length > 0) return true
+  if (doc.sharedInvestorIds.length > 0) return true
+  if ((doc.sharedSponsorUserIds?.length ?? 0) > 0) return true
+  if (doc.sharedWithAllInvestors) return true
+  return false
+}
+
+function viewerMatchesSharedInvestorId(
+  sharedId: string,
+  ctx: InvestmentDocumentAudienceContext,
+): boolean {
+  const target = sharedId.trim()
+  if (!target) return false
+  if (ctx.viewerInvestorIds.has(target)) return true
+  for (const row of ctx.viewerRows) {
+    for (const raw of [
+      row.id,
+      row.contactId,
+      row.profileId,
+      row.userInvestorProfileId,
+      row.offeringId,
+    ]) {
+      if (raw?.trim() === target) return true
+    }
+  }
+  return false
 }
 
 /**
@@ -41,14 +69,10 @@ export function nestedDocumentVisibleToInvestor(
   if (!hasExplicitDocumentAudience(doc)) return true
   if (doc.sharedWithAllInvestors) return true
 
-  const { viewerRows, dealClasses, viewerInvestorIds } = ctx
+  const { viewerRows, dealClasses } = ctx
 
   for (const id of doc.sharedInvestorIds) {
-    if (viewerInvestorIds.has(id)) return true
-  }
-
-  for (const row of viewerRows) {
-    if (doc.sharedInvestorIds.includes(row.id)) return true
+    if (viewerMatchesSharedInvestorId(id, ctx)) return true
   }
 
   for (const classId of doc.sharedDealClassIds) {

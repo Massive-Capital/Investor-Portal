@@ -39,7 +39,10 @@ import {
   readInvestorW9FormForTarget,
   type InvestorW9FormData,
 } from "./investorW9Form.service.js";
-import { applyQuestionnairePrefillToEsignFormFields } from "./investorQuestionnaireEsignPrefill.service.js";
+import {
+  applyQuestionnairePrefillToEsignFormFields,
+  type EsignQuestionnairePrefillContext,
+} from "./investorQuestionnaireEsignPrefill.service.js";
 import type { InvestorEsignRowTarget } from "./dealMemberEsignStatus.service.js";
 import {
   DEAL_ESIGN_PREVIEW_FOLDER,
@@ -152,6 +155,13 @@ export async function createInvestorSignatureRequest(params: {
     }
   }
 
+  const prefillContext = await buildEsignPrefillContext({
+    dealId: params.dealId,
+    esignTarget: params.esignTarget,
+    memberDisplayName: params.memberDisplayName,
+    memberEmail: signerEmail,
+  });
+
   if (assembled?.needsCustomDropboxFile) {
     const { formFields, customFields } = await resolveInvestorEsignFormFields({
       dealId: params.dealId,
@@ -159,6 +169,7 @@ export async function createInvestorSignatureRequest(params: {
       answerPageCount: assembled.answerPageCount,
       questionnaireAnswers: assembled.answers,
       memberDisplayName: params.memberDisplayName,
+      prefillContext,
     });
 
     if (formFields.length === 0) {
@@ -204,7 +215,10 @@ export async function createInvestorSignatureRequest(params: {
     };
   }
 
-  const customFields = await resolveQuestionnairePrefillCustomFields(params);
+  const customFields = await resolveQuestionnairePrefillCustomFields({
+    ...params,
+    prefillContext,
+  });
 
   const result = await createEmbeddedSignatureRequestWithTemplates({
     templateIds,
@@ -236,6 +250,33 @@ async function resolveInvestorW9FormData(params: {
   return readInvestorW9FormForTarget(params.dealId, params.esignTarget);
 }
 
+async function buildEsignPrefillContext(params: {
+  dealId: string;
+  esignTarget?: InvestorEsignRowTarget | null;
+  memberDisplayName?: string;
+  memberEmail?: string;
+}): Promise<EsignQuestionnairePrefillContext> {
+  let investmentAmount = "";
+  if (params.esignTarget?.table === "investment") {
+    const [row] = await db
+      .select({ commitmentAmount: dealInvestment.commitmentAmount })
+      .from(dealInvestment)
+      .where(
+        and(
+          eq(dealInvestment.id, params.esignTarget.id),
+          eq(dealInvestment.dealId, params.dealId),
+        ),
+      )
+      .limit(1);
+    investmentAmount = String(row?.commitmentAmount ?? "").trim();
+  }
+  return {
+    memberDisplayName: params.memberDisplayName?.trim(),
+    memberEmail: params.memberEmail?.trim().toLowerCase(),
+    investmentAmount,
+  };
+}
+
 /** Text-merge prefill when signing via Dropbox template (unmodified PDF). */
 async function resolveQuestionnairePrefillCustomFields(params: {
   dealId: string;
@@ -243,6 +284,7 @@ async function resolveQuestionnairePrefillCustomFields(params: {
   esignTarget?: InvestorEsignRowTarget | null;
   questionnaireAnswers?: InvestorQuestionnaireAnswersMap | null;
   memberDisplayName?: string;
+  prefillContext?: EsignQuestionnairePrefillContext;
 }): Promise<DropboxSignPrefillCustomField[]> {
   if (params.selectedFiles.length !== 1) return [];
 
@@ -280,6 +322,7 @@ async function resolveQuestionnairePrefillCustomFields(params: {
     config,
     answers,
     memberDisplayName: params.memberDisplayName,
+    prefillContext: params.prefillContext,
   });
   return customFields;
 }
@@ -290,6 +333,7 @@ async function resolveInvestorEsignFormFields(params: {
   answerPageCount: number;
   questionnaireAnswers?: InvestorQuestionnaireAnswersMap | null;
   memberDisplayName?: string;
+  prefillContext?: EsignQuestionnairePrefillContext;
 }): Promise<{
   formFields: DropboxSignFormFieldPerDocument[];
   customFields: DropboxSignPrefillCustomField[];
@@ -322,6 +366,7 @@ async function resolveInvestorEsignFormFields(params: {
     config,
     answers,
     memberDisplayName: params.memberDisplayName,
+    prefillContext: params.prefillContext,
   });
 }
 

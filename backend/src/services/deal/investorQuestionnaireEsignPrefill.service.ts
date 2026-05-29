@@ -19,6 +19,7 @@ const COMPUTED_FULL_NAME_FIELD_KEYS = new Set(
   [
     "print name",
     "fullname1",
+    "full name",
     "investor name",
     "name",
     "subscriber name",
@@ -35,14 +36,27 @@ const FIELD_KEY_TO_QUESTION_ID: Record<string, string> = {
   [normalizeFieldKey("Last Name")]: "last_name",
   [normalizeFieldKey("Telephone")]: "telephone",
   [normalizeFieldKey("Phone")]: "telephone",
+  [normalizeFieldKey("Phone Number")]: "telephone",
   [normalizeFieldKey("Address")]: "address",
   [normalizeFieldKey("Mailing Address")]: "address",
   [normalizeFieldKey("SSN")]: "social_security_number",
+  [normalizeFieldKey("TIN")]: "social_security_number",
   [normalizeFieldKey("Social Security Number")]: "social_security_number",
   [normalizeFieldKey("Birth Date")]: "birth_date",
   [normalizeFieldKey("Date of Birth")]: "birth_date",
   [normalizeFieldKey("Entity Legal Name")]: "entity_full_legal_name",
   [normalizeFieldKey("Entity Name")]: "entity_full_legal_name",
+  [normalizeFieldKey("Email")]: "email",
+  [normalizeFieldKey("Email Address")]: "email",
+  [normalizeFieldKey("Investment Amount")]: "investment_amount",
+  [normalizeFieldKey("Commitment Amount")]: "investment_amount",
+  [normalizeFieldKey("Amount")]: "investment_amount",
+};
+
+export type EsignQuestionnairePrefillContext = {
+  memberDisplayName?: string;
+  memberEmail?: string;
+  investmentAmount?: string;
 };
 
 function formatAnswerForEsign(
@@ -129,15 +143,26 @@ function resolveFullName(
 function resolveValueForFieldKey(
   fieldKey: string,
   formatted: Map<string, string>,
-  memberDisplayName?: string,
+  prefillContext?: EsignQuestionnairePrefillContext,
 ): string {
   if (COMPUTED_FULL_NAME_FIELD_KEYS.has(fieldKey)) {
-    return resolveFullName(formatted, memberDisplayName);
+    return resolveFullName(formatted, prefillContext?.memberDisplayName);
   }
 
-  const questionId = FIELD_KEY_TO_QUESTION_ID[fieldKey] ?? fieldKey.replace(/\s+/g, "_");
+  const questionId =
+    FIELD_KEY_TO_QUESTION_ID[fieldKey] ?? fieldKey.replace(/\s+/g, "_");
   if (formatted.has(questionId)) {
     return formatted.get(questionId) ?? "";
+  }
+
+  if (questionId === "email") {
+    const email = prefillContext?.memberEmail?.trim();
+    if (email) return email;
+  }
+
+  if (questionId === "investment_amount") {
+    const amt = prefillContext?.investmentAmount?.trim();
+    if (amt) return amt;
   }
 
   for (const [qid, value] of formatted.entries()) {
@@ -169,14 +194,28 @@ export function applyQuestionnairePrefillToEsignFormFields({
   config,
   answers,
   memberDisplayName,
+  prefillContext,
 }: {
   formFields: DropboxSignFormFieldPerDocument[];
   config: InvestorQuestionnaireJson;
   answers: InvestorQuestionnaireAnswersMap;
   memberDisplayName?: string;
+  prefillContext?: EsignQuestionnairePrefillContext;
 }): QuestionnaireEsignPrefillResult {
+  const ctx: EsignQuestionnairePrefillContext = {
+    memberDisplayName:
+      prefillContext?.memberDisplayName?.trim() || memberDisplayName?.trim(),
+    memberEmail: prefillContext?.memberEmail?.trim(),
+    investmentAmount: prefillContext?.investmentAmount?.trim(),
+  };
+
   const formatted = buildFormattedAnswerMap(config, answers);
-  if (!formatted.size && !memberDisplayName?.trim()) {
+  if (
+    !formatted.size &&
+    !ctx.memberDisplayName &&
+    !ctx.memberEmail &&
+    !ctx.investmentAmount
+  ) {
     return { formFields, customFields: [] };
   }
 
@@ -194,8 +233,8 @@ export function applyQuestionnairePrefillToEsignFormFields({
     const fieldKey = normalizeFieldKey(fieldName);
     const apiKey = normalizeFieldKey(field.apiId);
     const value =
-      resolveValueForFieldKey(fieldKey, formatted, memberDisplayName) ||
-      resolveValueForFieldKey(apiKey, formatted, memberDisplayName);
+      resolveValueForFieldKey(fieldKey, formatted, ctx) ||
+      resolveValueForFieldKey(apiKey, formatted, ctx);
     if (!value) return field;
 
     const customName = fieldName;

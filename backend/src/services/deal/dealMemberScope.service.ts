@@ -1,6 +1,65 @@
 import { pool } from "../../database/db.js";
 
 /**
+ * Distinct deal ids where this portal user appears on `deal_member` with any
+ * non-empty role (portal user id or contact email match).
+ */
+export async function listDealIdsFromDealMemberRosterForUser(
+  userId: string,
+): Promise<string[]> {
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT dm.deal_id::text AS deal_id
+     FROM deal_member dm
+     INNER JOIN users u ON u.id = $1::uuid
+     WHERE trim(dm.deal_member_role) <> ''
+       AND (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )`,
+    [userId],
+  );
+  return [
+    ...new Set(
+      res.rows
+        .map((r) => String(r.deal_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** True when the portal user has any `deal_member` roster row on this deal. */
+export async function isPortalUserOnDealMemberRoster(
+  dealId: string,
+  userId: string,
+): Promise<boolean> {
+  const d = String(dealId ?? "").trim();
+  const s = String(userId ?? "").trim();
+  if (!d || !s) return false;
+  const res = await pool.query<{ ok: number }>(
+    `SELECT 1 AS ok
+     FROM deal_member dm
+     INNER JOIN users u ON u.id = $2::uuid
+     WHERE dm.deal_id = $1::uuid
+       AND trim(dm.deal_member_role) <> ''
+       AND (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+     LIMIT 1`,
+    [d, s],
+  );
+  return res.rows.length > 0;
+}
+
+/**
  * Distinct deal ids where this user appears on `deal_member` as Co-sponsor
  * (portal user id or contact email match).
  */
@@ -94,6 +153,49 @@ const SPONSOR_ROLES_IN =
  * True when this portal user appears on `deal_member` for the deal in a Lead / Admin /
  * Co-sponsor role (id or contact email match).
  */
+/** True when the portal user is Lead Sponsor or Admin sponsor on this deal. */
+export async function isPortalUserLeadOrAdminSponsorOnDeal(
+  dealId: string,
+  userId: string,
+): Promise<boolean> {
+  const d = String(dealId ?? "").trim();
+  const s = String(userId ?? "").trim();
+  if (!d || !s) return false;
+  const res = await pool.query<{ ok: number }>(
+    `SELECT 1 AS ok
+     FROM deal_member dm
+     INNER JOIN users u ON u.id = $2::uuid
+     WHERE dm.deal_id = $1::uuid
+       AND lower(trim(dm.deal_member_role)) IN ('lead sponsor', 'admin sponsor')
+       AND (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+     UNION ALL
+     SELECT 1 AS ok
+     FROM deal_investment di
+     INNER JOIN users u ON u.id = $2::uuid
+     WHERE di.deal_id = $1::uuid
+       AND lower(trim(di.investor_role)) IN ('lead sponsor', 'admin sponsor')
+       AND trim(di.contact_id) <> '__portal_investment_autosave__'
+       AND (
+         trim(di.contact_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(di.contact_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+     LIMIT 1`,
+    [d, s],
+  );
+  return res.rows.length > 0;
+}
+
 /** True when the portal user is Lead Sponsor on this deal (id or contact email match). */
 export async function isPortalUserLeadSponsorOnDeal(
   dealId: string,

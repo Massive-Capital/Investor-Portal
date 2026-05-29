@@ -9,12 +9,12 @@ import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolu
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
-import { isDealStageCapitalRaising } from "../../utils/dealStageCapitalRaising.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
   getLpInvestorsTabPayload,
 } from "../../services/deal/dealLpInvestor.service.js";
 import { applyMyInvestNowCommitmentAddon } from "../../services/deal/dealLpInvestorMyInvestNowCommitment.addon.service.js";
+import { evaluateLpInvestNowEligibility } from "../../services/deal/dealLpInvestNowEligibility.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -74,11 +74,9 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     }
 
     const dealRow = await getAddDealFormById(dealId.trim());
-    if (!dealRow || !isDealStageCapitalRaising(dealRow.dealStage)) {
-      res.status(403).json({
-        message:
-          "Investments can only be recorded while the deal is raising capital.",
-      });
+    const investEligibility = evaluateLpInvestNowEligibility(dealRow);
+    if (!investEligibility.ok) {
+      res.status(403).json({ message: investEligibility.message });
       return;
     }
 
@@ -121,15 +119,6 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     const hasW9FormKey =
       Object.prototype.hasOwnProperty.call(b, "w9_form") ||
       Object.prototype.hasOwnProperty.call(b, "w9Form");
-    const isAdminActor =
-      user.userRole === "company_admin" || user.userRole === "platform_admin";
-    if (hasW9FormKey && isAdminActor) {
-      res.status(403).json({
-        message:
-          "Only investors can fill or update W-9 details. Sponsor/admin users have view-only access.",
-      });
-      return;
-    }
 
     const result = await applyMyInvestNowCommitmentAddon({
       dealId: dealId.trim(),

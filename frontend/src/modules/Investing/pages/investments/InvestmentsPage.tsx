@@ -1,8 +1,16 @@
-import { Archive, Briefcase, Download, Search, TrendingUp } from "lucide-react"
+import {
+  Archive,
+  Briefcase,
+  Clock,
+  Download,
+  Search,
+  TrendingUp,
+} from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
+import { dealWorkspacePath } from "@/modules/Syndication/Deals/utils/dealWorkspacePath"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   DataTable,
@@ -22,6 +30,7 @@ import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
 import { ExportInvestmentsModal } from "./ExportInvestmentsModal"
+import { resolveInvestmentOnboardingBucket } from "./investmentOnboardingBucket"
 import { getMergedInvestmentListRows } from "./investmentsRuntimeData"
 import type { InvestmentListRow } from "./investments.types"
 import "@/common/components/data-table/data-table.css"
@@ -31,17 +40,19 @@ export type { InvestmentListRow } from "./investments.types"
 
 const INVESTMENTS_TAB_PARAM = "tab"
 
-type InvestmentsPageTab = "investments" | "archives"
+type InvestmentsPageTab = "in_progress" | "pending" | "archives"
 
 const TAB_IDS: Record<InvestmentsPageTab, string> = {
-  investments: "investments-tab-active",
+  in_progress: "investments-tab-in-progress",
+  pending: "investments-tab-pending",
   archives: "investments-tab-archives",
 }
 
 function parseInvestmentsTab(value: string | null): InvestmentsPageTab {
   if (value === "archives") return "archives"
-  // Legacy `?tab=deals` — Deals tab merged into Investments.
-  return "investments"
+  if (value === "pending") return "pending"
+  // Legacy `?tab=investments` / `deals` — default to In progress.
+  return "in_progress"
 }
 
 function formatUsd(n: number): string {
@@ -56,13 +67,30 @@ function formatUsd(n: number): string {
 }
 
 /** Deal name cell — same avatar + link layout as {@link DealsListPage} `DealListNameCell`. */
-function InvestmentDealNameCell({ row }: { row: InvestmentListRow }) {
+function InvestmentDealNameCell({
+  row,
+  pendingOnboarding,
+}: {
+  row: InvestmentListRow
+  pendingOnboarding?: boolean
+}) {
+  const { switchToInvesting } = usePortalMode()
   const dealId = (row.dealId ?? row.id ?? "").trim()
   const name = row.investmentName?.trim() || "—"
   const nameLink = dealId ? (
     <Link
       className="deals_table_name_link"
-      to={`/investing/investments/${encodeURIComponent(dealId)}`}
+      to={
+        pendingOnboarding
+          ? dealWorkspacePath(dealId)
+          : `/investing/investments/${encodeURIComponent(dealId)}`
+      }
+      onClick={() => switchToInvesting()}
+      state={
+        pendingOnboarding
+          ? { returnTo: "/investing/investments?tab=pending" }
+          : undefined
+      }
     >
       {name}
     </Link>
@@ -227,7 +255,7 @@ export default function InvestmentsPage() {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev)
-          if (tab === "investments") {
+          if (tab === "in_progress") {
             next.delete(INVESTMENTS_TAB_PARAM)
           } else {
             next.set(INVESTMENTS_TAB_PARAM, tab)
@@ -241,23 +269,37 @@ export default function InvestmentsPage() {
     [setSearchParams],
   )
 
-  const { activeCount, archivedCount } = useMemo(() => {
-    let active = 0
+  const { inProgressCount, pendingCount, archivedCount } = useMemo(() => {
+    let inProgress = 0
+    let pending = 0
     let archived = 0
     for (const r of rows) {
-      if (r.archived) archived++
-      else active++
+      if (r.archived) {
+        archived++
+        continue
+      }
+      if (resolveInvestmentOnboardingBucket(r) === "pending") pending++
+      else inProgress++
     }
-    return { activeCount: active, archivedCount: archived }
+    return {
+      inProgressCount: inProgress,
+      pendingCount: pending,
+      archivedCount: archived,
+    }
   }, [rows])
 
-  const rowsForTab = useMemo(
-    () =>
-      rows.filter((r) =>
-        activeTab === "archives" ? Boolean(r.archived) : !r.archived,
-      ),
-    [rows, activeTab],
-  )
+  const rowsForTab = useMemo(() => {
+    if (activeTab === "archives") {
+      return rows.filter((r) => Boolean(r.archived))
+    }
+    return rows.filter((r) => {
+      if (r.archived) return false
+      const bucket = resolveInvestmentOnboardingBucket(r)
+      return activeTab === "pending"
+        ? bucket === "pending"
+        : bucket === "in_progress"
+    })
+  }, [rows, activeTab])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -304,6 +346,20 @@ export default function InvestmentsPage() {
     [page, pageSize, filtered.length],
   )
 
+  const openDealPreview = useCallback(
+    (dealId: string, returnTab?: InvestmentsPageTab) => {
+      const id = dealId.trim()
+      if (!id) return
+      switchToInvesting()
+      const returnTo =
+        returnTab === "pending"
+          ? "/investing/investments?tab=pending"
+          : "/investing/investments"
+      navigate(dealWorkspacePath(id), { state: { returnTo } })
+    },
+    [navigate, switchToInvesting],
+  )
+
   const openInvestNow = useCallback(
     (dealId: string) => {
       const id = dealId.trim()
@@ -323,7 +379,15 @@ export default function InvestmentsPage() {
         header: "Deal name",
         tdClassName: "um_td_user",
         sortValue: (r) => (r.investmentName ?? "").toLowerCase(),
-        cell: (r) => <InvestmentDealNameCell row={r} />,
+        cell: (r) => (
+          <InvestmentDealNameCell
+            row={r}
+            pendingOnboarding={
+              activeTab === "pending" ||
+              resolveInvestmentOnboardingBucket(r) === "pending"
+            }
+          />
+        ),
       },
       // {
       //   id: "dealStage",
@@ -463,6 +527,9 @@ export default function InvestmentsPage() {
         cell: (r) => {
           const dealId = (r.dealId ?? r.id ?? "").trim()
           if (!dealId) return null
+          const isPending =
+            activeTab === "pending" ||
+            resolveInvestmentOnboardingBucket(r) === "pending"
           return (
             <div className="deal_members_actions_cell">
               <DealRowActions
@@ -471,6 +538,11 @@ export default function InvestmentsPage() {
                 dealName={r.investmentName}
                 dealStage={r.status}
                 archived={Boolean(r.archived)}
+                onPreviewDeal={
+                  r.archived || !isPending
+                    ? undefined
+                    : () => openDealPreview(dealId, "pending")
+                }
                 onInvestNow={
                   r.archived ? undefined : () => openInvestNow(dealId)
                 }
@@ -480,13 +552,15 @@ export default function InvestmentsPage() {
         },
       },
     ],
-    [openInvestNow],
+    [activeTab, openDealPreview, openInvestNow],
   )
 
   const investmentsEmptyMessage =
     activeTab === "archives"
       ? "No archived deals or investments here yet."
-      : "No deals or investments in your scope yet."
+      : activeTab === "pending"
+        ? "No deals awaiting investor onboarding."
+        : "No active investments in your portfolio yet."
 
   const investmentsTablePanelProps = {
     loading,
@@ -557,12 +631,12 @@ export default function InvestmentsPage() {
             </button> */}
             <button
               type="button"
-              id={TAB_IDS.investments}
+              id={TAB_IDS.in_progress}
               role="tab"
-              aria-selected={activeTab === "investments"}
+              aria-selected={activeTab === "in_progress"}
               aria-controls="investments-list-tabpanel"
-              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "investments" ? " um_members_tab_active" : ""}`}
-              onClick={() => setActiveTab("investments")}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "in_progress" ? " um_members_tab_active" : ""}`}
+              onClick={() => setActiveTab("in_progress")}
             >
               <TrendingUp
                 className="deals_tabs_icon um_segmented_tab_icon"
@@ -571,9 +645,29 @@ export default function InvestmentsPage() {
                 aria-hidden
               />
               <span className="deals_tabs_label um_segmented_tab_label">
-                Investments
+                In progress
               </span>
-              <span className="deals_tabs_count">({activeCount})</span>
+              <span className="deals_tabs_count">({inProgressCount})</span>
+            </button>
+            <button
+              type="button"
+              id={TAB_IDS.pending}
+              role="tab"
+              aria-selected={activeTab === "pending"}
+              aria-controls="investments-list-tabpanel"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "pending" ? " um_members_tab_active" : ""}`}
+              onClick={() => setActiveTab("pending")}
+            >
+              <Clock
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Pending
+              </span>
+              <span className="deals_tabs_count">({pendingCount})</span>
             </button>
             <button
               type="button"
@@ -612,17 +706,16 @@ export default function InvestmentsPage() {
               embedded
             />
           </div> */}
-          {activeTab === "archives" ? (
-            <InvestmentsTablePanel
-              {...investmentsTablePanelProps}
-              searchAriaLabel="Search archived investments"
-            />
-          ) : (
-            <InvestmentsTablePanel
-              {...investmentsTablePanelProps}
-              searchAriaLabel="Search investments"
-            />
-          )}
+          <InvestmentsTablePanel
+            {...investmentsTablePanelProps}
+            searchAriaLabel={
+              activeTab === "archives"
+                ? "Search archived investments"
+                : activeTab === "pending"
+                  ? "Search pending investments"
+                  : "Search in-progress investments"
+            }
+          />
         </div>
       </div>
 

@@ -25,6 +25,8 @@ import {
   type DealViewerScope,
 } from "./dealForm.service.js";
 import {
+  isPortalUserOnDealMemberRoster,
+  listDealIdsFromDealMemberRosterForUser,
   listDealIdsWhereViewerIsCoSponsor,
   viewerHasNonCoSponsorDealMemberRole,
 } from "./dealMemberScope.service.js";
@@ -105,14 +107,16 @@ export async function dealAccessibleToViewerScope(
   scope: DealViewerScope,
 ): Promise<boolean> {
   if (!deal) return false;
+  const dealId = String(deal.id);
+  if (await isPortalUserOnDealMemberRoster(dealId, scope.userId)) return true;
   if (scope.lpInvestorEmailScopedDealIds?.length) {
-    return scope.lpInvestorEmailScopedDealIds.includes(String(deal.id));
+    return scope.lpInvestorEmailScopedDealIds.includes(dealId);
   }
   if (scope.coSponsorDashboardDealIds?.length) {
-    return scope.coSponsorDashboardDealIds.includes(String(deal.id));
+    return scope.coSponsorDashboardDealIds.includes(dealId);
   }
   if (scope.assignedParticipationOnly) {
-    return isUserAssignedToDeal(scope.userId, String(deal.id));
+    return isUserAssignedToDeal(scope.userId, dealId);
   }
   if (scope.seesAllDeals) return true;
   if (!scope.organizationId) return false;
@@ -202,7 +206,23 @@ export async function getAddDealFormForViewerOrAssignedParticipant(
 export async function listDealsForViewer(
   scope: DealViewerScope,
 ): Promise<AddDealFormRow[]> {
-  return listAddDealFormsForViewer(scope);
+  const base = await listAddDealFormsForViewer(scope);
+  if (scope.seesAllDeals) return base;
+
+  const rosterIds = await listDealIdsFromDealMemberRosterForUser(scope.userId);
+  if (rosterIds.length === 0) return base;
+
+  const visibleIds = new Set(base.map((r) => String(r.id)));
+  const missing = rosterIds.filter((id) => !visibleIds.has(id));
+  if (missing.length === 0) return base;
+
+  const extraRows = await listAddDealFormsByIds(missing);
+  const byId = new Map<string, AddDealFormRow>();
+  for (const r of base) byId.set(String(r.id), r);
+  for (const r of extraRows) byId.set(String(r.id), r);
+  return [...byId.values()].sort((a, b) =>
+    String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
+  );
 }
 
 /**

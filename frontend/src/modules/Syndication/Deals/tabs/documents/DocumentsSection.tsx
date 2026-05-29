@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
+import { ConfirmDeleteModal } from "@/common/components/ConfirmDeleteModal"
 import {
   FormTooltip,
   type FormTooltipPanelAlign,
@@ -60,22 +61,24 @@ import {
   ensureDefaultDocumentSectionInList,
   isDefaultDocumentSection,
   orderDocumentSectionsWithDefaultFirst,
-  readOfferingPreviewSections,
+  readDealDocumentSectionsForWorkspace,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
   writeOfferingPreviewSections,
+  parseOfferingPreviewSectionsJson,
   type NestedPreviewDocument,
   type OfferingPreviewSection,
   type SectionSharedWithScope,
 } from "../../utils/offeringPreviewDocSections"
 import {
   applyOfferingInvestorPreviewJsonFromServer,
+  persistOfferingInvestorPreviewToServer,
   scheduleOfferingInvestorPreviewServerSync,
 } from "../../utils/offeringPreviewServerState"
 import { isOfferingPreviewHydrated } from "../../utils/offeringPreviewRuntimeStore"
 
 interface DocumentsSectionProps {
-  dealId: string
+  dealId?: string
   offeringInvestorPreviewJson?: string | null
   investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
@@ -306,8 +309,10 @@ export function DocumentsSection({
   investorsListRefreshKey = 0,
   onOfferingPreviewSynced,
 }: DocumentsSectionProps) {
+  const dealIdTrim = dealId?.trim() ?? ""
   const addSectionTitleId = useId()
   const uploadDocsTitleId = useId()
+  const visibilityConfirmTitleId = useId()
   const quickUploadInputRef = useRef<HTMLInputElement>(null)
   const [previewHydrated, setPreviewHydrated] = useState(false)
   const [sections, setSections] = useState<OfferingPreviewSection[]>([])
@@ -329,30 +334,56 @@ export function DocumentsSection({
   const [quickUploadError, setQuickUploadError] = useState<string | null>(null)
   const [quickUploadDropFocus, setQuickUploadDropFocus] = useState(false)
   const [documentUploadBusy, setDocumentUploadBusy] = useState(false)
+  const [deletePending, setDeletePending] = useState<
+    | { kind: "document"; sectionId: string; docId: string; label: string }
+    | { kind: "section"; sectionId: string; label: string }
+    | null
+  >(null)
+  const [visibilityChangePending, setVisibilityChangePending] = useState<{
+    sectionId: string
+    docId: string
+    docName: string
+    previousScope: SectionSharedWithScope
+    nextScope: SectionSharedWithScope
+  } | null>(null)
+  const [visibilitySaveBusy, setVisibilitySaveBusy] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
   const [sponsorRosterRows, setSponsorRosterRows] = useState<DealInvestorRow[]>([])
   const onSyncedRef = useRef(onOfferingPreviewSynced)
   onSyncedRef.current = onOfferingPreviewSynced
 
+  function countNestedDocumentsInPreviewJson(
+    json: string | null | undefined,
+  ): number {
+    if (!json?.trim()) return 0
+    try {
+      const parsed = JSON.parse(json) as { sections?: unknown }
+      return parseOfferingPreviewSectionsJson(parsed.sections).reduce(
+        (n, s) => n + s.nestedDocuments.length,
+        0,
+      )
+    } catch {
+      return 0
+    }
+  }
+
   useEffect(() => {
-    const id = dealId.trim()
+    const id = dealIdTrim
     if (!id) {
       setPreviewHydrated(false)
       setSections([])
       return
     }
     applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson)
-    setSections(
-      orderDocumentSectionsWithDefaultFirst(readOfferingPreviewSections(id)),
-    )
+    setSections(readDealDocumentSectionsForWorkspace(id))
     setPreviewHydrated(isOfferingPreviewHydrated(id))
     setExpandedSections({})
     setCheckedDocsBySection({})
-  }, [dealId, offeringInvestorPreviewJson])
+  }, [dealIdTrim, offeringInvestorPreviewJson])
 
   useEffect(() => {
-    const id = dealId.trim()
+    const id = dealIdTrim
     if (!id) {
       setDealClasses([])
       setInvestorRows([])
@@ -374,7 +405,7 @@ export function DocumentsSection({
     return () => {
       cancelled = true
     }
-  }, [dealId, investorsListRefreshKey])
+  }, [dealIdTrim, investorsListRefreshKey])
 
   const toggleSection = useCallback((sectionId: string) => {
     setExpandedSections((prev) => ({
@@ -411,9 +442,10 @@ export function DocumentsSection({
   }, [])
 
   useEffect(() => {
-    if (!previewHydrated || !dealId.trim()) return
-    writeOfferingPreviewSections(dealId, sections)
-    scheduleOfferingInvestorPreviewServerSync(dealId, {
+    if (!previewHydrated || !dealIdTrim) return
+    writeOfferingPreviewSections(dealIdTrim, sections)
+    scheduleOfferingInvestorPreviewServerSync(dealIdTrim, {
+      sections,
       onSuccess: (d) => {
         applyOfferingInvestorPreviewJsonFromServer(
           d.id,
@@ -423,7 +455,30 @@ export function DocumentsSection({
         onSyncedRef.current?.(d)
       },
     })
-  }, [dealId, sections, previewHydrated])
+  }, [dealIdTrim, sections, previewHydrated])
+
+  /** If the tab has more documents than the last server snapshot, push to DB. */
+  useEffect(() => {
+    if (!previewHydrated || !dealIdTrim) return
+    const localCount = sections.reduce(
+      (n, s) => n + s.nestedDocuments.length,
+      0,
+    )
+    if (localCount === 0) return
+    const serverCount = countNestedDocumentsInPreviewJson(
+      offeringInvestorPreviewJson,
+    )
+    if (localCount <= serverCount) return
+    void persistOfferingInvestorPreviewToServer(dealIdTrim, {
+      sections,
+      onSuccess: (d) => onSyncedRef.current?.(d),
+    })
+  }, [
+    dealIdTrim,
+    offeringInvestorPreviewJson,
+    previewHydrated,
+    sections,
+  ])
 
   const onAddSection = useCallback(() => {
     setSectionName("")
@@ -479,7 +534,7 @@ export function DocumentsSection({
         let nestedDocuments: NestedPreviewDocument[] = []
 
         if (sectionFiles.length > 0) {
-          const idTrim = dealId.trim()
+          const idTrim = dealIdTrim
           if (!idTrim) {
             setAddSectionError("Save the deal before uploading documents.")
             return
@@ -525,28 +580,37 @@ export function DocumentsSection({
           }
         }
 
-        setSections((prev) =>
-          orderDocumentSectionsWithDefaultFirst([
+        const idTrim = dealIdTrim
+        setSections((prev) => {
+          const next = orderDocumentSectionsWithDefaultFirst([
             ...prev,
             {
               id: newSectionId,
               sectionLabel: name,
               documentLabel: name,
               visibility: sectionSharedWithDisplay("offering_page"),
-              sharedWithScope: "offering_page",
+              sharedWithScope: "offering_page" as const,
               requireLpReview: false,
               dateAdded: formatDateAdded(),
               nestedDocuments,
             },
-          ]),
-        )
+          ])
+          if (idTrim) {
+            writeOfferingPreviewSections(idTrim, next, { notify: false })
+            void persistOfferingInvestorPreviewToServer(idTrim, {
+              sections: next,
+              onSuccess: (d) => onSyncedRef.current?.(d),
+            })
+          }
+          return next
+        })
         setShowAddSectionModal(false)
         setSectionName("")
         setSectionFiles([])
         setAddSectionError(null)
       })()
     },
-    [dealId, sectionFiles, sectionName],
+    [dealIdTrim, sectionFiles, sectionName],
   )
 
   const appendUploadedFilesToSection = useCallback(
@@ -562,7 +626,7 @@ export function DocumentsSection({
           : `Only PDF files can be uploaded. Remove: ${nonPdf.map((f) => f.name).join(", ")}.`
       }
 
-      const idTrim = dealId.trim()
+      const idTrim = dealIdTrim
       if (!idTrim) return "Save the deal before uploading documents."
 
       const createdAt = Date.now()
@@ -603,7 +667,7 @@ export function DocumentsSection({
             ...row,
             lpDisplaySectionId: resolvedSectionId,
           }))
-          return orderDocumentSectionsWithDefaultFirst(
+          const next = orderDocumentSectionsWithDefaultFirst(
             list.map((s) =>
               s.id !== resolvedSectionId
                 ? s
@@ -614,6 +678,12 @@ export function DocumentsSection({
                   },
             ),
           )
+          writeOfferingPreviewSections(idTrim, next, { notify: false })
+          void persistOfferingInvestorPreviewToServer(idTrim, {
+            sections: next,
+            onSuccess: (d) => onSyncedRef.current?.(d),
+          })
+          return next
         })
 
         setExpandedSections((prev) => ({
@@ -627,7 +697,7 @@ export function DocumentsSection({
         setDocumentUploadBusy(false)
       }
     },
-    [dealId],
+    [dealIdTrim],
   )
 
   const uploadFilesToDefaultSection = useCallback(
@@ -773,6 +843,105 @@ export function DocumentsSection({
     })
   }, [])
 
+  const removeSectionById = useCallback((sectionId: string) => {
+    setSections((prev) => {
+      const victim = prev.find((s) => s.id === sectionId)
+      const next = orderDocumentSectionsWithDefaultFirst(
+        prev.filter((s) => s.id !== sectionId),
+      )
+      if (victim) {
+        for (const d of victim.nestedDocuments) {
+          revokeBlobUrlIfOrphaned(d.url, next)
+        }
+      }
+      return next
+    })
+    setCheckedDocsBySection((c) => {
+      if (!c[sectionId]) return c
+      const next = { ...c }
+      delete next[sectionId]
+      return next
+    })
+  }, [])
+
+  const onConfirmDeletePending = useCallback(() => {
+    if (!deletePending) return
+    if (deletePending.kind === "document") {
+      removeNestedDocument(deletePending.sectionId, deletePending.docId)
+    } else {
+      removeSectionById(deletePending.sectionId)
+    }
+    setDeletePending(null)
+  }, [deletePending, removeNestedDocument, removeSectionById])
+
+  const requestDocumentVisibilityChange = useCallback(
+    (
+      sectionId: string,
+      doc: NestedPreviewDocument,
+      section: OfferingPreviewSection,
+      nextScope: SectionSharedWithScope,
+    ) => {
+      const currentScope = effectiveDocumentSharedWithScope(doc, section)
+      if (nextScope === currentScope) return
+      setVisibilityChangePending({
+        sectionId,
+        docId: doc.id,
+        docName: doc.name.trim() || "Document",
+        previousScope: currentScope,
+        nextScope,
+      })
+    },
+    [],
+  )
+
+  const cancelVisibilityChange = useCallback(() => {
+    if (visibilitySaveBusy) return
+    setVisibilityChangePending(null)
+  }, [visibilitySaveBusy])
+
+  const confirmVisibilityChange = useCallback(() => {
+    const pending = visibilityChangePending
+    const idTrim = dealIdTrim
+    if (!pending || !idTrim || visibilitySaveBusy) return
+
+    setVisibilitySaveBusy(true)
+    const nextSections = sections.map((s) =>
+      s.id !== pending.sectionId
+        ? s
+        : {
+            ...s,
+            nestedDocuments: s.nestedDocuments.map((n) =>
+              n.id !== pending.docId
+                ? n
+                : {
+                    ...n,
+                    sharedWithScope: pending.nextScope,
+                  },
+            ),
+          },
+    )
+
+    setSections(nextSections)
+    writeOfferingPreviewSections(idTrim, nextSections, { notify: false })
+    void persistOfferingInvestorPreviewToServer(idTrim, {
+      sections: nextSections,
+      onSuccess: (d) => onSyncedRef.current?.(d),
+    })
+      .finally(() => {
+        setVisibilitySaveBusy(false)
+        setVisibilityChangePending(null)
+      })
+  }, [dealIdTrim, sections, visibilityChangePending, visibilitySaveBusy])
+
+  useEffect(() => {
+    if (!visibilityChangePending || visibilitySaveBusy) return
+    function onKeyDown(ev: globalThis.KeyboardEvent) {
+      if (ev.key === "Escape") cancelVisibilityChange()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [visibilityChangePending, visibilitySaveBusy, cancelVisibilityChange])
+
   const duplicateNestedDocument = useCallback(
     (sectionId: string, doc: NestedPreviewDocument) => {
       const nid = `dup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -847,6 +1016,16 @@ export function DocumentsSection({
   }, [sections, query, dealClasses, lpInvestorRows, sponsorUserOptions])
 
   const emptySearchLabel = query.trim() ? "No sections match your search." : null
+
+  if (!dealIdTrim) {
+    return (
+      <div className="deal_docs">
+        <p className="deal_docs_ui_empty" role="status">
+          Save the deal before managing documents.
+        </p>
+      </div>
+    )
+  }
 
   const renderQuickUploadDropzone = (variant: "toolbar" | "panel") => (
     <div
@@ -1060,26 +1239,13 @@ export function DocumentsSection({
                           type="button"
                           className="deal_docs_ui_banner_icon_btn deal_docs_ui_banner_icon_btn_danger"
                           aria-label={`Delete section ${section.sectionLabel}`}
-                          onClick={() => {
-                            setSections((prev) => {
-                              const victim = prev.find((s) => s.id === section.id)
-                              const next = orderDocumentSectionsWithDefaultFirst(
-                                prev.filter((s) => s.id !== section.id),
-                              )
-                              if (victim) {
-                                for (const d of victim.nestedDocuments) {
-                                  revokeBlobUrlIfOrphaned(d.url, next)
-                                }
-                              }
-                              return next
+                          onClick={() =>
+                            setDeletePending({
+                              kind: "section",
+                              sectionId: section.id,
+                              label: section.sectionLabel,
                             })
-                            setCheckedDocsBySection((c) => {
-                              if (!c[section.id]) return c
-                              const next = { ...c }
-                              delete next[section.id]
-                              return next
-                            })
-                          }}
+                          }
                         >
                           <Trash2 size={18} strokeWidth={2} aria-hidden />
                         </button>
@@ -1239,7 +1405,7 @@ export function DocumentsSection({
                                   </td>
                                   <td className="deal_docs_ui_td deal_docs_ui_td_shared_entities">
                                     <DocumentSharedWithPicker
-                                      dealId={dealId}
+                                      dealId={dealIdTrim}
                                       idPrefix={`${section.id}-${d.id}`}
                                       classIds={d.sharedDealClassIds}
                                       investorIds={d.sharedInvestorIds}
@@ -1364,23 +1530,11 @@ export function DocumentsSection({
                                           onChange={(e) => {
                                             const v =
                                               e.target.value as SectionSharedWithScope
-                                            setSections((prev) =>
-                                              prev.map((s) =>
-                                                s.id !== section.id
-                                                  ? s
-                                                  : {
-                                                      ...s,
-                                                      nestedDocuments:
-                                                        s.nestedDocuments.map((n) =>
-                                                          n.id !== d.id
-                                                            ? n
-                                                            : {
-                                                                ...n,
-                                                                sharedWithScope: v,
-                                                              },
-                                                        ),
-                                                    },
-                                              ),
+                                            requestDocumentVisibilityChange(
+                                              section.id,
+                                              d,
+                                              section,
+                                              v,
                                             )
                                           }}
                                         >
@@ -1461,7 +1615,12 @@ export function DocumentsSection({
                                         title="Remove document"
                                         aria-label={`Remove ${d.name}`}
                                         onClick={() =>
-                                          removeNestedDocument(section.id, d.id)
+                                          setDeletePending({
+                                            kind: "document",
+                                            sectionId: section.id,
+                                            docId: d.id,
+                                            label: d.name,
+                                          })
                                         }
                                       >
                                         <Trash2 size={16} strokeWidth={2} aria-hidden />
@@ -1705,6 +1864,114 @@ export function DocumentsSection({
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      <ConfirmDeleteModal
+        open={deletePending != null}
+        message="Are you sure you want to delete this file? This action cannot be undone."
+        itemLabel={
+          deletePending?.kind === "section" ?
+            `Section: ${deletePending.label}`
+          : deletePending?.label
+        }
+        onCancel={() => setDeletePending(null)}
+        onConfirm={onConfirmDeletePending}
+      />
+
+      {visibilityChangePending
+        ? createPortal(
+            <div
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_shared_notify_overlay"
+              role="presentation"
+              onMouseDown={(e) => {
+                if (
+                  e.target === e.currentTarget &&
+                  !visibilitySaveBusy
+                ) {
+                  cancelVisibilityChange()
+                }
+              }}
+            >
+              <div
+                className="um_modal deals_add_inv_modal_panel add_contact_panel deal_docs_shared_notify_modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={visibilityConfirmTitleId}
+              >
+                <div className="um_modal_head add_contact_modal_head">
+                  <h3
+                    id={visibilityConfirmTitleId}
+                    className="um_modal_title add_contact_modal_title"
+                  >
+                    Save visibility change?
+                  </h3>
+                  <button
+                    type="button"
+                    className="um_modal_close"
+                    aria-label="Close"
+                    disabled={visibilitySaveBusy}
+                    onClick={cancelVisibilityChange}
+                  >
+                    <X size={20} strokeWidth={2} aria-hidden />
+                  </button>
+                </div>
+                <div className="deals_add_inv_modal_scroll">
+                  <p className="deal_offering_muted">
+                    Update visibility for{" "}
+                    <strong>{visibilityChangePending.docName}</strong>?
+                  </p>
+                  <p className="deal_offering_muted">
+                    <strong>From:</strong>{" "}
+                    {sectionSharedWithDisplay(
+                      visibilityChangePending.previousScope,
+                    )}
+                    <br />
+                    <strong>To:</strong>{" "}
+                    {sectionSharedWithDisplay(visibilityChangePending.nextScope)}
+                  </p>
+                  <p className="deal_offering_muted">
+                    {visibilityChangePending.nextScope === "lp_investor" ?
+                      "Signed-in investors will see this file on the Offering Documents tab in the LP portal. It will not appear on the public offering link."
+                    : "This file will appear on the public offering link, preview, and the Offering Documents tab for signed-in investors."}
+                  </p>
+                </div>
+                <div className="um_modal_actions">
+                  <button
+                    type="button"
+                    className="um_btn_secondary"
+                    disabled={visibilitySaveBusy}
+                    onClick={cancelVisibilityChange}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="um_btn_primary"
+                    disabled={visibilitySaveBusy}
+                    onClick={confirmVisibilityChange}
+                  >
+                    {visibilitySaveBusy ? (
+                      <>
+                        <Loader2
+                          size={16}
+                          strokeWidth={2}
+                          className="deals_deal_view_spinner"
+                          aria-hidden
+                        />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} strokeWidth={2} aria-hidden />
+                        Save
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>,
             document.body,

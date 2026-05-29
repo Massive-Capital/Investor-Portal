@@ -706,6 +706,33 @@ button.lpd_link:hover {
   max-width: 40rem;
 }
 
+.lpdd_offering_docs {
+  margin-top: 1.75rem;
+}
+
+.lpdd_section_heading {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--lpdd-text);
+  margin: 0 0 1rem;
+}
+
+.lpdd_offering_docs_status {
+  font-size: 0.9375rem;
+  color: var(--lpdd-muted);
+  margin: 0;
+}
+
+.lpdd_offering_docs_status--alert {
+  color: var(--lpdd-danger, #b42318);
+}
+
+.lpdd_offering_docs_panel .investment_detail_offering_docs_panel {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
 /* Sticky CTA (mobile) */
 .lpdd_sticky_cta {
   position: fixed;

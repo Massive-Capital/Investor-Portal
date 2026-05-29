@@ -45,7 +45,9 @@ import {
   EMPTY_INVESTORS_PAYLOAD,
 } from "./dealOfferingPreviewShared"
 import { LpDealDetailsPage } from "@/modules/Investing/pages/deals/deal-details"
+import { refreshInvestmentDealDocumentsPreview } from "@/modules/Investing/pages/investments/utils/refreshInvestmentDealDocumentsPreview"
 import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
+import { clearOfferingPreviewRuntime } from "./utils/offeringPreviewRuntimeStore"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import { ADD_MEMBER_DRAFT_ROW_ID } from "./tabs/deal_members/add-investment/addMemberDraftInvestorRow"
 import {
@@ -254,8 +256,13 @@ export function DealDetailPage() {
     [memberRosterForTabs, sessionEmail],
   )
 
-  const dealsListBackPath =
-    mode === "investing" ? "/investing/investments" : "/deals"
+  const dealsListBackPath = useMemo(() => {
+    if (mode !== "investing") return "/deals"
+    const returnTo = (
+      location.state as { returnTo?: string } | null
+    )?.returnTo?.trim()
+    return returnTo || "/investing/investments"
+  }, [mode, location.state])
 
   const dealDetailTabsVisible = useMemo(
     () => DEAL_DETAIL_TABS.filter((t) => viewerDealTabIds.has(t.id)),
@@ -299,7 +306,8 @@ export function DealDetailPage() {
   }, [searchParams, activeTab])
 
   useEffect(() => {
-    if (!dealId) {
+    const id = dealId?.trim() ?? ""
+    if (!id) {
       setDeal(undefined)
       return
     }
@@ -308,12 +316,16 @@ export function DealDetailPage() {
     setDealDetailApi(null)
     void (async () => {
       try {
-        const d = await fetchDealById(dealId)
+        const d = await fetchDealById(id)
         if (!cancelled) {
-          applyOfferingInvestorPreviewJsonFromServer(
-            d.id,
-            d.offeringInvestorPreviewJson,
-          )
+          if (mode === "investing") {
+            await refreshInvestmentDealDocumentsPreview(d.id)
+          } else {
+            applyOfferingInvestorPreviewJsonFromServer(
+              d.id,
+              d.offeringInvestorPreviewJson,
+            )
+          }
           setDealDetailApi(d)
           setDeal(dealDetailApiToRecord(d))
         }
@@ -326,8 +338,9 @@ export function DealDetailPage() {
     })()
     return () => {
       cancelled = true
+      clearOfferingPreviewRuntime(id)
     }
-  }, [dealId])
+  }, [dealId, mode])
 
   useEffect(() => {
     if (mode !== "investing" || !dealId?.trim()) return
@@ -822,6 +835,7 @@ export function DealDetailPage() {
         ) : activeTab === "esign_templates" ? (
           <DealEsignTemplatesTab
             dealId={dealId}
+            offeringInvestorPreviewJson={dealDetailApi?.offeringInvestorPreviewJson}
             canUploadDocuments={canUploadEsignTemplates}
           />
         ) : activeTab === "investor_communication" && dealId?.trim() ? (

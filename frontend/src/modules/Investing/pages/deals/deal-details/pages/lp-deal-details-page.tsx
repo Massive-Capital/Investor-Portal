@@ -4,7 +4,9 @@ import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
 import { DealOfferingPreviewInner } from "@/modules/Syndication/Deals/DealOfferingPreviewInner"
 import type { DealInvestorsPayload } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealInvestorClass } from "@/modules/Syndication/Deals/types/deal-investor-class.types"
+import { canLpInvestNowOnDeal } from "@/modules/Investing/utils/lpInvestNowEligibility"
 import { LpDealStickyCta } from "../components/lp-deal-sticky-cta"
+import { LpDealOfferingDocumentsPanel } from "../components/lp-deal-offering-documents-panel"
 import "@/modules/Syndication/Deals/deal-offering-portfolio.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import "../lp-deal-details.css"
@@ -26,6 +28,8 @@ export function LpDealDetailsPage({
   onInvestNow,
   backTo,
 }: LpDealDetailsPageProps) {
+  const showInvestNowCta = canLpInvestNowOnDeal(deal)
+
   return (
     <div className="lpdd deal_offer_pf_page">
       <div className="deal_offer_pf lpdd_shell">
@@ -43,13 +47,18 @@ export function LpDealDetailsPage({
           applyInvestorLinkVisibility
           isPublicOfferingRoute={false}
           isLpDealWorkspace
-          showInvestNowCta
-          onInvestNow={onInvestNow}
+          showDocumentsSection={false}
+          showInvestNowCta={showInvestNowCta}
+          onInvestNow={showInvestNowCta ? onInvestNow : undefined}
           galleryUsesPersistedSourcesOnly={false}
         />
+
+        <LpDealOfferingDocumentsPanel dealId={deal.id.trim()} />
       </div>
 
-      <LpDealStickyCta label="Invest now" onInvest={onInvestNow} />
+      {showInvestNowCta ? (
+        <LpDealStickyCta label="Invest now" onInvest={onInvestNow} />
+      ) : null}
     </div>
   )
 }

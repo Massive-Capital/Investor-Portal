@@ -13,6 +13,7 @@ import {
   getAddDealFormForViewer,
   getAddDealFormForViewerOrAssignedParticipant,
   getAddDealFormForViewerWithDraftCreatorRepair,
+  listDealsForViewer,
   resolveDealViewerScope,
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
@@ -273,7 +274,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
             ? await listAddDealFormsByIds(participantDealIds)
             : [];
       } else {
-        rows = await listAddDealFormsForViewer(scope);
+        rows = await listDealsForViewer(scope);
       }
     }
 

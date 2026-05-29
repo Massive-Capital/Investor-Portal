@@ -231,9 +231,110 @@ a.deals_list_add_link.um_btn_primary {
   color: var(--portal-text, #e2e8f0);
 }
 
-/* Padding inside the bordered section card (same stack pattern as Offering Details). */
-.deal_documents_list_section > .deal_docs {
+/* Documents tab section — no outer card chrome (content uses deal_docs_ui_* panels). */
+.deal_documents_tab_root .deal_offering_section.deal_documents_list_section {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.deal_documents_tab_root
+  .deal_offering_section.deal_documents_list_section
+  > .deal_docs
+  > .um_panel.deals_list_table_panel.deals_list_card_surface.deal_inv_table_panel.deal_assets_datatable_panel {
   padding: 1rem 1.1rem 1.15rem;
+  box-sizing: border-box;
+  border: none;
+  box-shadow: none;
+  border-radius: var(--portal-card-radius, 8px);
+  background: #f8f8f8;
+}
+
+.deal_documents_tab_root
+  .deal_offering_section.deal_documents_list_section
+  > .deal_docs
+  > .um_panel
+  .deal_docs_toolbar.um_toolbar {
+  padding: 0 0 1rem;
+  margin: 0;
+}
+
+/* Match investor Offering Documents tab section list surface. */
+.deal_documents_tab_root
+  .deal_offering_section.deal_documents_list_section
+  .deal_docs_ui_root {
+  margin-top: 0;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 8px);
+  overflow: hidden;
+  background: var(--portal-surface, #fff);
+}
+
+:root[data-theme="dark"]
+  .deal_documents_tab_root
+  .deal_offering_section.deal_documents_list_section
+  > .deal_docs
+  > .um_panel.deals_list_table_panel.deals_list_card_surface.deal_inv_table_panel.deal_assets_datatable_panel {
+  background: var(--portal-surface, #1a1a1a);
+}
+
+:root[data-theme="dark"]
+  .deal_documents_tab_root
+  .deal_offering_section.deal_documents_list_section
+  .deal_docs_ui_root {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--portal-surface, #1a1a1a);
+}
+
+.deal_documents_list_section > .deal_docs {
+  padding: 0;
+}
+
+/* Offering Details tab — match Documents tab section surfaces. */
+.deal_offering_root {
+  padding: 1rem 1.1rem 1.15rem;
+  box-sizing: border-box;
+  background: #f8f8f8;
+  border-radius: var(--portal-card-radius, 8px);
+  min-width: 0;
+}
+
+.deal_offering_root .deal_offering_top {
+  margin-bottom: 1rem;
+}
+
+.deal_offering_root .deal_offering_stack {
+  margin-top: 0;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 8px);
+  overflow: hidden;
+  background: var(--portal-surface, #fff);
+}
+
+.deal_offering_root .deal_offering_stack > .deal_offering_section {
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+  background: transparent;
+}
+
+.deal_offering_root .deal_offering_stack > .deal_offering_section:last-child {
+  border-bottom: none;
+}
+
+:root[data-theme="dark"] .deal_offering_root {
+  background: var(--portal-surface, #1a1a1a);
+}
+
+:root[data-theme="dark"] .deal_offering_root .deal_offering_stack {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--portal-surface, #1a1a1a);
+}
+
+:root[data-theme="dark"] .deal_offering_root .deal_offering_stack > .deal_offering_section {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
 /* Tab panel below deal tabs: align with list page rhythm */

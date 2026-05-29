@@ -6,7 +6,7 @@ import {
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
-import { isPortalUserLeadSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
+import { isPortalUserLeadOrAdminSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
   getDealInvestorQuestionnaireState,
   parseInvestorQuestionnaireJson,
@@ -106,10 +106,10 @@ export async function putDealInvestorQuestionnaire(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (!(await isPortalUserLeadSponsorOnDeal(dealId, user.id))) {
+    if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
       res.status(403).json({
         message:
-          "Only the lead sponsor on this deal can update the investor questionnaire",
+          "Only the lead or admin sponsor on this deal can update the investor questionnaire",
       });
       return;
     }

@@ -99,13 +99,18 @@ function mergeInvestmentLists(
       continue
     }
     // Local / LP flow row wins for display fields; amounts stay on the local row
+    const investedAmount = l.investedAmount
     byKey.set(k, {
       ...existing,
       id: l.id,
       dealId:
         (l.dealId ?? existing.dealId ?? "").trim() ||
         (l.id ?? existing.id ?? "").trim(),
-      investedAmount: l.investedAmount,
+      investedAmount,
+      onboardingBucket:
+        investedAmount > 0
+          ? "in_progress"
+          : (l.onboardingBucket ?? existing.onboardingBucket),
       investmentName: l.investmentName,
       offeringName: l.offeringName,
       investmentProfile: l.investmentProfile,

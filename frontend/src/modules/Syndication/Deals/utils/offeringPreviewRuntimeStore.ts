@@ -12,8 +12,8 @@ const visibilityByDeal = new Map<
 >()
 const hydratedDeals = new Set<string>()
 
-function dealKey(dealId: string): string {
-  return dealId.trim()
+function dealKey(dealId: string | null | undefined): string {
+  return dealId?.trim() ?? ""
 }
 
 export function isOfferingPreviewHydrated(dealId: string): boolean {

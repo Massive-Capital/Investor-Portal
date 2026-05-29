@@ -90,6 +90,8 @@ export type DealOfferingPreviewInnerProps = {
    * When false, the same sources as Offering details → Gallery are used (local asset previews in this browser).
    */
   galleryUsesPersistedSourcesOnly?: boolean
+  /** When false, the bento Documents block is omitted (e.g. sectioned list shown elsewhere). */
+  showDocumentsSection?: boolean
 }
 
 export function DealOfferingPreviewInner({
@@ -104,6 +106,7 @@ export function DealOfferingPreviewInner({
   publicInvestNowSignInState,
   galleryUsesPersistedSourcesOnly = false,
   offeringStatusRules: offeringStatusRulesProp,
+  showDocumentsSection = true,
 }: DealOfferingPreviewInnerProps) {
   const statusRules = useMemo(
     () =>
@@ -117,6 +120,15 @@ export function DealOfferingPreviewInner({
   useEffect(() => {
     setGalleryOpen(false)
   }, [detail.id])
+
+  /* `overflow-x: hidden` on html/body (App.css) breaks `position: sticky` on public preview tabs */
+  useEffect(() => {
+    const html = document.documentElement
+    html.classList.add("deal_offer_pf_sticky_scroll")
+    return () => {
+      html.classList.remove("deal_offer_pf_sticky_scroll")
+    }
+  }, [])
 
   const title =
     detail.dealName?.trim() ||
@@ -217,10 +229,11 @@ export function DealOfferingPreviewInner({
     [detail, galleryUrls],
   )
   const previewDocuments = useMemo(() => {
-    if (
+    const suppressForOfferingLink =
       applyInvestorLinkVisibility &&
-      investorPreviewVisibility.documents === false
-    ) {
+      investorPreviewVisibility.documents === false &&
+      !isLpDealWorkspace
+    if (suppressForOfferingLink) {
       return []
     }
     return listWorkspaceDocumentsForOfferingPreview(detail.id ?? "", {
@@ -781,8 +794,10 @@ export function DealOfferingPreviewInner({
             //   ) : null
             // }
             documents={
-              !applyInvestorLinkVisibility ||
-              investorPreviewVisibility.documents !== false ? (
+              showDocumentsSection &&
+              (!applyInvestorLinkVisibility ||
+                investorPreviewVisibility.documents !== false ||
+                isLpDealWorkspace) ? (
                 <section
                   className="deal_offer_pf_wireframe_block deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_bento_full"
                   aria-labelledby="deal-pf-documents"

@@ -38,6 +38,35 @@ export function committedAmountForViewerEmail(
 }
 
 /**
+ * Viewer has committed capital and/or started document signing on this deal
+ * (Invest Now / investment onboarding in progress or complete).
+ */
+export function viewerDealHasStartedInvestment(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): boolean {
+  if (!viewerEmailNorm) return false
+  for (const inv of payload.investors) {
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
+    if (investorRowCommittedNumeric(inv) > 0) return true
+    if (investorEsignWasSent(inv)) return true
+  }
+  return false
+}
+
+/**
+ * Invited LP on the deal roster who has not started Invest Now yet.
+ */
+export function viewerDealNeedsOnboarding(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): boolean {
+  if (!viewerEmailNorm) return false
+  if (viewerDealHasStartedInvestment(payload, viewerEmailNorm)) return false
+  return viewerOnDealAsInvitedInvestor(payload, viewerEmailNorm)
+}
+
+/**
  * Investor participates on this deal (committed and/or eSign in progress).
  */
 export function viewerHasDealParticipation(

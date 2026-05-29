@@ -57,11 +57,6 @@ export async function startDealEsignEmbeddedTemplateDraft(params: {
   if (!file) {
     throw new Error("eSign template file not found");
   }
-  if (file.dropboxSignStatus === "ready") {
-    throw new Error(
-      "This template is already saved. Use Edit to update the template name only.",
-    );
-  }
   if (!isPdfEsignFile(file)) {
     throw new Error(
       "Only PDF documents can be configured in Dropbox Sign. Convert Word files to PDF before uploading.",
@@ -183,6 +178,6 @@ export function getDealEsignDropboxSignPublicConfig(): {
   return {
     configured: Boolean(cfg),
     clientId: cfg?.clientId ?? null,
-    testMode: cfg?.testMode ?? true,
+    testMode: cfg?.testMode ?? false,
   };
 }

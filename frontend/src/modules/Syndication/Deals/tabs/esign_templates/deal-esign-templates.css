@@ -1215,11 +1215,13 @@
 }
 
 .deal_esign_profiles_cell_actions {
-  min-width: 10rem;
+  min-width: 3.5rem;
   text-align: center;
+  vertical-align: middle;
 }
 
-.deal_esign_profiles_cell_actions .deal_esign_file_actions {
+.deal_esign_profiles_kebab {
+  display: inline-flex;
   justify-content: center;
 }
 

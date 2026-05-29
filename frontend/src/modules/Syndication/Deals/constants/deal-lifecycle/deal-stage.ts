@@ -16,7 +16,10 @@ export function isDealStageDraft(raw: string | null | undefined): boolean {
 export function normalizeDealStageCanonical(
   raw: string | null | undefined,
 ): DealStage | null {
-  const key = String(raw ?? "").trim().toLowerCase()
+  const key = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
   switch (key) {
     case "draft":
       return "draft"

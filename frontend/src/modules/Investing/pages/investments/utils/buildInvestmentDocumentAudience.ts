@@ -1,8 +1,14 @@
 import { getLpInvestorDealIdsFromSession } from "@/common/auth/roleUtils"
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
-import { fetchDealInvestorClasses, fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
+import {
+  fetchDealInvestorClasses,
+  fetchDealInvestors,
+} from "@/modules/Syndication/Deals/api/dealsApi"
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import { investorRowMatchesViewerEmail } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
+import { viewerHasDealParticipation } from "@/modules/Investing/utils/investingViewerDealScope"
 import type { InvestmentDocumentAudienceContext } from "./investmentDocumentAudience"
+import { EMPTY_INVESTMENT_DOCUMENT_AUDIENCE } from "./investmentDocumentAudience"
 
 function normEmail(s: string): string {
   return s.trim().toLowerCase()
@@ -13,8 +19,8 @@ function viewerRowsForEmail(
   investors: DealInvestorRow[],
   viewerEmailNorm: string,
 ): DealInvestorRow[] {
-  return investors.filter(
-    (inv) => normEmail(String(inv.userEmail ?? "")) === viewerEmailNorm,
+  return investors.filter((inv) =>
+    investorRowMatchesViewerEmail(inv, viewerEmailNorm),
   )
 }
 
@@ -24,11 +30,17 @@ function collectViewerInvestorIds(
 ): Set<string> {
   const ids = new Set<string>()
   for (const inv of investors) {
-    if (normEmail(String(inv.userEmail ?? "")) !== viewerEmailNorm) continue
-    const id = inv.id?.trim()
-    if (id) ids.add(id)
-    const contactId = inv.contactId?.trim()
-    if (contactId) ids.add(contactId)
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
+    for (const raw of [
+      inv.id,
+      inv.contactId,
+      inv.profileId,
+      inv.userInvestorProfileId,
+      inv.offeringId,
+    ]) {
+      const id = raw?.trim()
+      if (id) ids.add(id)
+    }
   }
   return ids
 }
@@ -45,8 +57,8 @@ function mergeInvestorLists(
   return [...byId.values()]
 }
 
-function sessionIncludesDeal(dealId: string): boolean {
-  const key = dealId.trim().toLowerCase()
+function sessionIncludesDeal(dealId: string | null | undefined): boolean {
+  const key = dealId?.trim().toLowerCase() ?? ""
   if (!key) return false
   return getLpInvestorDealIdsFromSession().some(
     (id) => id.trim().toLowerCase() === key,
@@ -59,34 +71,45 @@ function sessionIncludesDeal(dealId: string): boolean {
  */
 export async function buildInvestmentDocumentAudience(
   dealId: string,
-): Promise<InvestmentDocumentAudienceContext | null> {
-  const id = dealId.trim()
-  if (!id) return null
+): Promise<InvestmentDocumentAudienceContext> {
+  const id = dealId?.trim() ?? ""
+  if (!id) return EMPTY_INVESTMENT_DOCUMENT_AUDIENCE
   const em = getSessionUserEmail()
-  if (!em?.trim()) return null
+  if (!em?.trim()) return EMPTY_INVESTMENT_DOCUMENT_AUDIENCE
   const emn = normEmail(em)
-  const [fullPayload, lpPayload, dealClasses] = await Promise.all([
-    fetchDealInvestors(id, { lpInvestorsOnly: false }),
-    fetchDealInvestors(id, { lpInvestorsOnly: true }),
-    fetchDealInvestorClasses(id),
-  ])
-  const allInvestors = mergeInvestorLists(
-    fullPayload.investors,
-    lpPayload.investors,
-  )
-  let viewerRows = viewerRowsForEmail(allInvestors, emn)
-  if (viewerRows.length === 0) {
-    viewerRows = viewerRowsForEmail(lpPayload.investors, emn)
-  }
-  const viewerInvestorIds = collectViewerInvestorIds(allInvestors, emn)
+  try {
+    const [fullPayload, lpPayload, dealClasses] = await Promise.all([
+      fetchDealInvestors(id, { lpInvestorsOnly: false }),
+      fetchDealInvestors(id, { lpInvestorsOnly: true }),
+      fetchDealInvestorClasses(id),
+    ])
+    const allInvestors = mergeInvestorLists(
+      fullPayload.investors,
+      lpPayload.investors,
+    )
+    let viewerRows = viewerRowsForEmail(allInvestors, emn)
+    if (viewerRows.length === 0) {
+      viewerRows = viewerRowsForEmail(lpPayload.investors, emn)
+    }
+    const viewerInvestorIds = collectViewerInvestorIds(allInvestors, emn)
 
-  if (viewerRows.length > 0 || viewerInvestorIds.size > 0) {
-    return { viewerRows, dealClasses, viewerInvestorIds }
-  }
+    if (viewerRows.length > 0 || viewerInvestorIds.size > 0) {
+      return { viewerRows, dealClasses, viewerInvestorIds }
+    }
 
-  if (sessionIncludesDeal(id)) {
-    return { viewerRows: [], dealClasses, viewerInvestorIds }
-  }
+    if (
+      sessionIncludesDeal(id) ||
+      viewerHasDealParticipation(fullPayload, emn) ||
+      viewerHasDealParticipation(lpPayload, emn)
+    ) {
+      return { viewerRows: [], dealClasses, viewerInvestorIds }
+    }
 
-  return null
+    return EMPTY_INVESTMENT_DOCUMENT_AUDIENCE
+  } catch {
+    if (sessionIncludesDeal(id)) {
+      return { viewerRows: [], dealClasses: [], viewerInvestorIds: new Set() }
+    }
+    return EMPTY_INVESTMENT_DOCUMENT_AUDIENCE
+  }
 }

@@ -130,15 +130,15 @@
   padding: 0;
 }
 
-/* One shell per section: header + panel share outer border & radius (no “floating” card below) */
+/* One shell per section: header + panel (no outer card border) */
 .deal_offering_section {
   min-width: 0;
   width: 100%;
   margin-bottom: 0.75em;
-  border: 1px solid var(--portal-border);
-  border-radius: 10px;
-  background: var(--portal-surface, #fff);
-  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -1710,11 +1710,6 @@ a.deal_offering_add_ic_header.um_btn_primary {
 :root[data-theme="dark"] .deal_offering_preview_btn:hover {
   background: #fff;
   border-color: color-mix(in srgb, var(--portal-text) 25%, var(--portal-border));
-}
-
-:root[data-theme="dark"] .deal_offering_section {
-  border-color: var(--portal-border);
-  background: var(--portal-surface);
 }
 
 :root[data-theme="dark"] .deal_offering_section_expanded .deal_offering_trigger,

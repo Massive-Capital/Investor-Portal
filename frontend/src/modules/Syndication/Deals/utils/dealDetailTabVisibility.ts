@@ -11,6 +11,17 @@ export type ViewerDealMemberRole =
   | "lp_investor"
   | null
 
+/** Lead, admin, and co-sponsor on the deal roster (deal Documents tab / workspace). */
+export function viewerIsDealSponsorRole(
+  role: ViewerDealMemberRole,
+): boolean {
+  return (
+    role === "lead_sponsor" ||
+    role === "admin_sponsor" ||
+    role === "co_sponsor"
+  )
+}
+
 function roleLikeStringsForMember(m: DealInvestorRow): string[] {
   const out: string[] = []
   const r = String(m.investorRole ?? "").trim()
@@ -177,11 +188,11 @@ const CO_SPONSOR_HIDDEN_TABS = new Set([
   "distributions",
 ])
 
-/** eSign Templates tab: document upload is limited to the deal’s lead sponsor. */
+/** eSign Templates tab: upload / edit / delete templates — lead or admin sponsor. */
 export function viewerCanUploadDealEsignTemplates(
   role: ViewerDealMemberRole,
 ): boolean {
-  return role === "lead_sponsor"
+  return role === "lead_sponsor" || role === "admin_sponsor"
 }
 
 /** Investors tab: send eSign to an investor — lead, admin, or co-sponsor on the deal. */

@@ -394,6 +394,7 @@ function migrateFlatToSections(flat: OfferingPreviewDocument[]): OfferingPreview
     sharedInvestorIds: [],
     sharedWithAllInvestors: false,
     sharedSponsorUserIds: [],
+    ...(d.sharedWithScope ? { sharedWithScope: d.sharedWithScope } : {}),
   }))
   const datePool = nestedDocuments.map((d) => d.dateAdded).filter((d) => d !== "—")
   const dateAdded =
@@ -424,6 +425,84 @@ function previewDocDisplayName(
   return `${labelPart} — ${nm}`
 }
 
+/** Parse composite flat name `{sectionLabel} — {fileName}` from preview flattening. */
+export function parseFlatDocumentDisplayName(name: string): {
+  sectionLabel: string
+  fileName: string
+} {
+  const sep = " — "
+  const idx = name.indexOf(sep)
+  if (idx > 0) {
+    const sectionLabel = name.slice(0, idx).trim()
+    const fileName = name.slice(idx + sep.length).trim()
+    return {
+      sectionLabel,
+      fileName: fileName || name.trim() || "Document",
+    }
+  }
+  return { sectionLabel: "", fileName: name.trim() || "Document" }
+}
+
+/**
+ * When flat preview docs exist but are missing from section nested lists, attach
+ * them to the matching section (by label) so investors see every sponsor upload.
+ */
+export function reconcileFlatDocumentsIntoSections(
+  sections: OfferingPreviewSection[],
+  flat: OfferingPreviewDocument[],
+): OfferingPreviewSection[] {
+  const nestedIds = new Set(
+    sections.flatMap((s) => s.nestedDocuments.map((d) => d.id)),
+  )
+  const orphanFlat = flat.filter((d) => d.id.trim() && !nestedIds.has(d.id.trim()))
+  if (orphanFlat.length === 0) return sections
+
+  const next = sections.map((s) => ({
+    ...s,
+    nestedDocuments: [...s.nestedDocuments],
+  }))
+
+  for (const fd of orphanFlat) {
+    const { sectionLabel, fileName } = parseFlatDocumentDisplayName(fd.name)
+    let section =
+      sectionLabel.trim().length > 0
+        ? next.find((s) => sectionDisplayLabel(s) === sectionLabel.trim())
+        : undefined
+
+    if (!section && sectionLabel.trim()) {
+      const recoveredId = `recovered-${sectionLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${fd.id.trim()}`
+      section = {
+        id: recoveredId,
+        sectionLabel: sectionLabel.trim(),
+        documentLabel: sectionLabel.trim(),
+        visibility: sectionSharedWithDisplay("offering_page"),
+        sharedWithScope: "offering_page",
+        requireLpReview: false,
+        dateAdded: fd.dateAdded?.trim() || "—",
+        nestedDocuments: [],
+      }
+      next.push(section)
+    }
+
+    if (!section) continue
+
+    section.nestedDocuments.push({
+      id: fd.id.trim(),
+      name: fileName,
+      url: fd.url,
+      dateAdded: fd.dateAdded?.trim() || "—",
+      lpDisplaySectionId: section.id,
+      sharedDealClassIds: [],
+      sharedInvestorIds: [],
+      sharedWithAllInvestors: false,
+      sharedSponsorUserIds: [],
+      ...(fd.sharedWithScope ? { sharedWithScope: fd.sharedWithScope } : {}),
+    })
+  }
+
+  return next
+}
+
 export function flattenSectionsToPreviewDocs(
   sections: OfferingPreviewSection[],
 ): OfferingPreviewDocument[] {
@@ -442,17 +521,36 @@ export function flattenSectionsToPreviewDocs(
   return out
 }
 
-export function readOfferingPreviewSections(dealId: string): OfferingPreviewSection[] {
-  const id = dealId.trim()
+export function readOfferingPreviewSections(dealId: string | null | undefined): OfferingPreviewSection[] {
+  const id = dealId?.trim() ?? ""
   if (!id) return []
-  const cached = getRuntimeOfferingPreviewSections(id)
-  if (cached) return sanitizeSections(cached)
   const flat = readOfferingPreviewDocuments(id)
+  const cached = getRuntimeOfferingPreviewSections(id)
+  if (cached) {
+    return sanitizeSections(reconcileFlatDocumentsIntoSections(cached, flat))
+  }
   if (flat.length === 0) return sanitizeSections([])
   const migrated = sanitizeSections(migrateFlatToSections(flat))
   setRuntimeOfferingPreviewSections(id, migrated)
   writeOfferingPreviewDocuments(id, flattenSectionsToPreviewDocs(migrated))
   return migrated
+}
+
+/**
+ * Deal-scoped document sections for the syndication Documents tab (and eSign picker).
+ * Only reads `offering_investor_preview_json` / runtime state keyed by this `dealId`.
+ */
+export function readDealDocumentSectionsForWorkspace(
+  dealId: string | null | undefined,
+): OfferingPreviewSection[] {
+  const id = dealId?.trim() ?? ""
+  if (!id) return []
+  return orderDocumentSectionsWithDefaultFirst(
+    reconcileFlatDocumentsIntoSections(
+      readOfferingPreviewSections(id),
+      readOfferingPreviewDocuments(id),
+    ),
+  )
 }
 
 export function writeOfferingPreviewSections(

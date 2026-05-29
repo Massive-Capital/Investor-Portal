@@ -1,5 +1,11 @@
 /* Investor-facing offering preview — deal-room style (app theme tokens) */
 
+/* App.css sets overflow-x:hidden on html/body, which breaks vertical position:sticky */
+html.deal_offer_pf_sticky_scroll,
+html.deal_offer_pf_sticky_scroll body {
+  overflow-x: clip;
+}
+
 /* .deal_offer_pf_page {
   background: color-mix(
     in srgb,
@@ -31,13 +37,28 @@
 }
 
 /* Sponsor preview inside app shell scroll column */
-.app_main_content .deal_offer_pf_page .deal_offer_pf_card {
+.app_main_content .deal_offer_pf_page,
+.app_main_content .deal_offer_pf_page .deal_offer_pf,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_header,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_card,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_wireframe,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_wireframe_layout,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_wireframe_gallery,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_wireframe_body,
+.app_main_content .deal_offer_pf_page .deal_offer_pf_wireframe_sidebar {
   overflow: visible;
 }
 
-/* Shared `/offering_portfolio?preview=` link (no app shell) */
+/* Shared `/offering_portfolio?preview=` link (no app shell) — body scroll; no overflow clipping */
+.deal_offer_pf_page--public,
 .deal_offer_pf_page--public .deal_offer_pf,
-.deal_offer_pf_page--public .deal_offer_pf_card {
+.deal_offer_pf_page--public .deal_offer_pf_header,
+.deal_offer_pf_page--public .deal_offer_pf_card,
+.deal_offer_pf_page--public .deal_offer_pf_wireframe,
+.deal_offer_pf_page--public .deal_offer_pf_wireframe_layout,
+.deal_offer_pf_page--public .deal_offer_pf_wireframe_gallery,
+.deal_offer_pf_page--public .deal_offer_pf_wireframe_body,
+.deal_offer_pf_page--public .deal_offer_pf_wireframe_sidebar {
   overflow: visible;
 }
 
@@ -116,52 +137,39 @@
 
 /* —— Wireframe portfolio layout (preview + shared link) —— */
 .deal_offer_pf_wireframe {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
   padding: 1.15rem 1.25rem 1.35rem;
   box-sizing: border-box;
   overflow: visible;
 }
 
 .deal_offer_pf_wireframe_layout {
+  --deal-offer-pf-sticky-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  --deal-offer-pf-sticky-max-height: calc(
+    100dvh - var(--deal-offer-pf-sticky-top) - 1rem
+  );
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.5rem;
-  align-items: stretch;
+  grid-template-areas:
+    "gallery"
+    "sidebar"
+    "body";
+  gap: 1.25rem;
+  align-items: start;
   overflow: visible;
 }
 
-@media (min-width: 960px) {
-  .deal_offer_pf_wireframe_layout {
-    grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    gap: 1.75rem;
-    align-items: stretch;
-  }
-
-  .deal_offer_pf_wireframe_primary {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: start;
-  }
-
-  .deal_offer_pf_wireframe_sidebar {
-    grid-column: 2;
-    grid-row: 1 / -1;
-    align-self: stretch;
-    min-height: 100%;
-  }
-
-  .deal_offer_pf_wireframe_secondary {
-    grid-column: 1;
-    grid-row: 2;
-    align-self: start;
-  }
+/* Flatten main so gallery + body participate in the parent grid */
+.deal_offer_pf_wireframe_main {
+  display: contents;
 }
 
-.deal_offer_pf_wireframe_primary,
-.deal_offer_pf_wireframe_secondary {
+.deal_offer_pf_wireframe_gallery {
+  grid-area: gallery;
+  min-width: 0;
+}
+
+.deal_offer_pf_wireframe_body {
+  grid-area: body;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -173,32 +181,56 @@
 }
 
 .deal_offer_pf_wireframe_sidebar {
-  display: flex;
-  flex-direction: column;
+  grid-area: sidebar;
+  position: -webkit-sticky;
+  position: sticky;
+  top: var(--deal-offer-pf-sticky-top);
+  z-index: 2;
+  align-self: start;
+  width: 100%;
   min-width: 0;
+  max-height: var(--deal-offer-pf-sticky-max-height);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
 
-@media (min-width: 960px) {
-  /* Tall grid cell (gallery + documents/assets); sticky keeps summary on screen while scrolling */
-  .deal_offer_pf_sidebar_sticky,
-  .app_main_content .deal_offer_pf_sidebar_sticky,
-  .deal_offer_pf_page--public .deal_offer_pf_sidebar_sticky {
-    position: sticky;
-    top: 1rem;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    width: 100%;
-    box-sizing: border-box;
-  }
+.deal_offer_pf_sidebar_sticky {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
 
-  .deal_offer_pf_sidebar_card {
-    flex-shrink: 0;
+/* Side-by-side: metrics stay sticky for full scroll of gallery + body */
+@media (min-width: 36rem) {
+  .deal_offer_pf_wireframe_layout {
+    grid-template-columns: minmax(0, 1fr) minmax(min(100%, 16.5rem), 22rem);
+    grid-template-areas:
+      "gallery sidebar"
+      "body sidebar";
+    column-gap: clamp(1rem, 3vw, 1.75rem);
+    row-gap: 1.25rem;
   }
+}
+
+@media (min-width: 64rem) {
+  .deal_offer_pf_wireframe_layout {
+    grid-template-columns: minmax(0, 1.85fr) minmax(16.5rem, 1fr);
+  }
+}
+
+.app_main_content .deal_offer_pf_wireframe_layout {
+  --deal-offer-pf-sticky-top: 0.5rem;
+  --deal-offer-pf-sticky-max-height: calc(100dvh - 5.25rem);
 }
 
 .deal_offer_pf_sidebar_card {
+  flex-shrink: 0;
   padding: 1rem 1.05rem 1.1rem;
   border-radius: 10px;
   border: 1px solid var(--portal-border, #e2e8f0);

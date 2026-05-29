@@ -7,7 +7,7 @@ import {
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import type { DealMemoryUploadFile } from "../../services/deal/dealForm.service.js";
-import { isPortalUserLeadSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
+import { isPortalUserLeadOrAdminSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
   dealHasEsignTemplateDocuments,
   ensureEsignTemplatePdfPrepared,
@@ -347,9 +347,10 @@ export async function postDealEsignTemplateUploads(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (!(await isPortalUserLeadSponsorOnDeal(dealId, user.id))) {
+    if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
       res.status(403).json({
-        message: "Only the lead sponsor on this deal can upload eSign templates",
+        message:
+          "Only the lead or admin sponsor on this deal can manage eSign templates",
       });
       return;
     }
@@ -421,9 +422,10 @@ export async function patchDealEsignTemplate(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (!(await isPortalUserLeadSponsorOnDeal(dealId, user.id))) {
+    if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
       res.status(403).json({
-        message: "Only the lead sponsor on this deal can update eSign templates",
+        message:
+          "Only the lead or admin sponsor on this deal can manage eSign templates",
       });
       return;
     }
@@ -493,9 +495,10 @@ export async function deleteDealEsignTemplate(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (!(await isPortalUserLeadSponsorOnDeal(dealId, user.id))) {
+    if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
       res.status(403).json({
-        message: "Only the lead sponsor on this deal can remove eSign templates",
+        message:
+          "Only the lead or admin sponsor on this deal can manage eSign templates",
       });
       return;
     }

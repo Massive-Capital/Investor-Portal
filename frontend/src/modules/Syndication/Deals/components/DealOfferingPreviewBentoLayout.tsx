@@ -12,7 +12,7 @@ function SidebarSummaryRow({ label, value }: OfferingSidebarSummaryRow) {
 
 export interface DealOfferingPreviewBentoLayoutProps {
   gallery: ReactNode
-  /** Sticky right column: summary, invest CTA, announcement, funding. */
+  /** Below metrics card: invest CTA, announcement, etc. */
   sidebar: ReactNode
   summaryRows: OfferingSidebarSummaryRow[]
   keyHighlights: ReactNode | null
@@ -20,13 +20,12 @@ export interface DealOfferingPreviewBentoLayoutProps {
   documents: ReactNode | null
   assets: ReactNode | null
   location: ReactNode | null
-  /** Full-width sections below the main stack (e.g. classes). */
   classesRow: ReactNode | null
 }
 
 /**
- * Wireframe portfolio: gallery + sidebar grid, then key highlights → summary →
- * documents → assets → location.
+ * Responsive grid: gallery → sticky metrics → rest on narrow screens;
+ * metrics column stays sticky beside gallery + body from ~36rem up.
  */
 export function DealOfferingPreviewBentoLayout({
   gallery,
@@ -42,17 +41,26 @@ export function DealOfferingPreviewBentoLayout({
   return (
     <div className="deal_offer_pf_wireframe">
       <div className="deal_offer_pf_wireframe_layout">
-        <div className="deal_offer_pf_wireframe_primary">
+        <div className="deal_offer_pf_wireframe_main">
           <section
-            className="deal_offer_pf_wireframe_block deal_offer_pf_wireframe_block--gallery"
+            className="deal_offer_pf_wireframe_block deal_offer_pf_wireframe_gallery"
             aria-label="Photo gallery"
           >
             {gallery}
           </section>
 
-          {keyHighlights}
-
-          {summary}
+          <div className="deal_offer_pf_wireframe_body">
+            {keyHighlights}
+            {summary}
+            <div className="deal_offer_pf_wireframe_stack">
+              {documents}
+              {assets}
+              {location}
+            </div>
+            {classesRow ? (
+              <div className="deal_offer_pf_wireframe_below">{classesRow}</div>
+            ) : null}
+          </div>
         </div>
 
         <aside
@@ -76,18 +84,6 @@ export function DealOfferingPreviewBentoLayout({
             {sidebar}
           </div>
         </aside>
-
-        <div className="deal_offer_pf_wireframe_secondary">
-          <div className="deal_offer_pf_wireframe_stack">
-            {documents}
-            {assets}
-            {location}
-          </div>
-
-          {classesRow ? (
-            <div className="deal_offer_pf_wireframe_below">{classesRow}</div>
-          ) : null}
-        </div>
       </div>
     </div>
   )

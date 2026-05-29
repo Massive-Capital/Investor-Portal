@@ -27,6 +27,10 @@ import {
   PortalModeProvider,
   usePortalMode,
 } from "@/modules/Investing/context/PortalModeContext"
+import {
+  isLpDealDetailPath,
+  isLpDealOfferingPortfolioPath,
+} from "@/modules/Investing/shell/LpInvestorShellGuard"
 import { PortalSwitchLoader } from "@/modules/Investing/components/portal-switch-loader/PortalSwitchLoader"
 import { NotificationsProvider } from "@/modules/notifications"
 import {
@@ -73,6 +77,16 @@ function isAccountPath(pathname: string): boolean {
 
 function isInvestingPath(pathname: string): boolean {
   return pathname.startsWith("/investing")
+}
+
+/** Investments hub + LP deal workspace / Invest now (`/deals/:dealId`, `/invest`). */
+function isInvestingInvestmentsNavActive(pathname: string): boolean {
+  const p = pathname.replace(/\/$/, "") || "/"
+  if (p === "/investing/investments" || p.startsWith("/investing/investments/"))
+    return true
+  if (isLpDealDetailPath(p)) return true
+  if (isLpDealOfferingPortfolioPath(p)) return true
+  return false
 }
 
 /** Shared markup so Investing vs Syndicating sidebars keep icon/label alignment identical. */
@@ -359,6 +373,19 @@ function PageLayoutInner() {
             {showInvestingSidebar
               ? investingSidebarItems.map((item) => {
                   const Icon = item.icon
+                  if (item.to === "/investing/investments") {
+                    return (
+                      <SidebarNavItem
+                        key={item.label}
+                        to={item.to}
+                        label={item.label}
+                        icon={Icon}
+                        isActive={isInvestingInvestmentsNavActive(
+                          location.pathname,
+                        )}
+                      />
+                    )
+                  }
                   if (item.to === "/investing/profiles") {
                     return (
                       <SidebarNavItem

@@ -3,6 +3,7 @@ import {
   CloudUpload,
   FileText,
   FileUp,
+  FolderOpen,
   Loader2,
   Type,
   Users,
@@ -21,7 +22,16 @@ import {
 } from "react"
 import type { LucideIcon } from "lucide-react"
 import { createPortal } from "react-dom"
+import { toast } from "@/common/components/Toast"
+import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "../../utils/offeringPreviewDocSections"
+import { applyOfferingInvestorPreviewJsonFromServer } from "../../utils/offeringPreviewServerState"
 import type { EsignEntityCategory } from "./esignEntityCategories"
+import {
+  dealHasAnySectionDocuments,
+  fetchDealDocumentAsPdfFile,
+  listDealPdfDocumentsForEsignTemplate,
+  type DealDocumentPickOption,
+} from "./esignCreateTemplateDocumentSources"
 import "../investors/add-investment-modal.css"
 import "./esign-template-upload-modal.css"
 
@@ -31,6 +41,8 @@ export type EsignCreateTemplateSubmit = {
   templateName: string
   includeQuestionnaire: boolean
 }
+
+type DocumentSourceMode = "upload" | "deal"
 
 const UPLOAD_ACCEPT = ".pdf,application/pdf"
 
@@ -93,10 +105,10 @@ function DocumentUploadZone({
               <CloudUpload size={22} strokeWidth={1.75} />
             </span>
             <span id={`${id}-label`} className="deal_esign_doc_upload_title">
-              Upload your document
+              Upload from your computer
             </span>
             <span className="deal_esign_doc_upload_sub">
-              Click to browse or drop a file here
+              Click to browse or drop a PDF here
             </span>
             <span className="deal_esign_doc_upload_formats" aria-hidden>
               <span className="deal_esign_doc_format_chip">PDF</span>
@@ -130,6 +142,100 @@ function DocumentUploadZone({
   )
 }
 
+function DocumentSourceToggle({
+  value,
+  disabled,
+  hasDealDocuments,
+  onChange,
+}: {
+  value: DocumentSourceMode
+  disabled: boolean
+  hasDealDocuments: boolean
+  onChange: (mode: DocumentSourceMode) => void
+}) {
+  return (
+    <div
+      className="deal_esign_doc_source_toggle"
+      role="radiogroup"
+      aria-label="Document source"
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === "deal"}
+        className={`deal_esign_doc_source_toggle_btn${
+          value === "deal" ? " deal_esign_doc_source_toggle_btn--active" : ""
+        }`}
+        disabled={disabled || !hasDealDocuments}
+        onClick={() => onChange("deal")}
+      >
+        <FolderOpen size={16} strokeWidth={2} aria-hidden />
+        Deal documents
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={value === "upload"}
+        className={`deal_esign_doc_source_toggle_btn${
+          value === "upload" ? " deal_esign_doc_source_toggle_btn--active" : ""
+        }`}
+        disabled={disabled}
+        onClick={() => onChange("upload")}
+      >
+        <CloudUpload size={16} strokeWidth={2} aria-hidden />
+        My computer
+      </button>
+    </div>
+  )
+}
+
+function DealDocumentPicker({
+  id,
+  options,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string
+  options: DealDocumentPickOption[]
+  value: string
+  disabled: boolean
+  onChange: (documentId: string) => void
+}) {
+  if (options.length === 0) {
+    return (
+      <p className="deal_esign_doc_deal_empty" id={id}>
+        No PDFs available from the deal <strong>Documents</strong> tab. Upload a PDF
+        there, or choose <strong>My computer</strong> above.
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <select
+        id={id}
+        className="um_field_select deals_add_inv_field_control deal_esign_doc_deal_select"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">Select a document…</option>
+        {options.map((opt) => (
+          <option key={opt.id} value={opt.id}>
+            {opt.sectionLabel} — {opt.name}
+          </option>
+        ))}
+      </select>
+      {value ? (
+        <p className="deal_esign_create_field_hint deal_esign_doc_deal_selected_hint">
+          Uses the PDF stored on this deal&apos;s Documents tab.
+        </p>
+      ) : null}
+    </>
+  )
+}
+
 function CreateTemplateField({
   id,
   label,
@@ -157,6 +263,8 @@ function CreateTemplateField({
 
 export interface EsignCreateTemplateModalProps {
   open: boolean
+  dealId: string
+  offeringInvestorPreviewJson?: string | null
   categories: EsignEntityCategory[]
   uploading: boolean
   onClose: () => void
@@ -165,6 +273,8 @@ export interface EsignCreateTemplateModalProps {
 
 export function EsignCreateTemplateModal({
   open,
+  dealId,
+  offeringInvestorPreviewJson,
   categories,
   uploading,
   onClose,
@@ -176,23 +286,51 @@ export function EsignCreateTemplateModal({
   const [file, setFile] = useState<File | null>(null)
   const [templateName, setTemplateName] = useState("")
   const [includeQuestionnaire, setIncludeQuestionnaire] = useState(false)
+  const [documentSource, setDocumentSource] = useState<DocumentSourceMode>("upload")
+  const [dealDocuments, setDealDocuments] = useState<DealDocumentPickOption[]>([])
+  const [selectedDealDocumentId, setSelectedDealDocumentId] = useState("")
+  const [resolvingDocument, setResolvingDocument] = useState(false)
+
+  const refreshDealDocuments = useCallback(() => {
+    setDealDocuments(listDealPdfDocumentsForEsignTemplate(dealId))
+  }, [dealId])
 
   useEffect(() => {
     if (!open) return
+    const id = dealId?.trim() ?? ""
+    if (id) {
+      applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson, {
+        notify: false,
+      })
+    }
     setCategoryId(categories[0]?.id ?? "")
     setFile(null)
     setTemplateName("")
     setIncludeQuestionnaire(false)
-  }, [open, categories])
+    setSelectedDealDocumentId("")
+    setResolvingDocument(false)
+    refreshDealDocuments()
+    setDocumentSource(dealHasAnySectionDocuments(dealId) ? "deal" : "upload")
+  }, [open, categories, dealId, offeringInvestorPreviewJson, refreshDealDocuments])
+
+  useEffect(() => {
+    if (!open) return
+    function onSectionsChanged() {
+      refreshDealDocuments()
+    }
+    window.addEventListener(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, onSectionsChanged)
+    return () =>
+      window.removeEventListener(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, onSectionsChanged)
+  }, [open, refreshDealDocuments])
 
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !uploading) onClose()
+      if (e.key === "Escape" && !uploading && !resolvingDocument) onClose()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, uploading, onClose])
+  }, [open, uploading, resolvingDocument, onClose])
 
   const onFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const next = e.target.files?.[0] ?? null
@@ -201,36 +339,95 @@ export function EsignCreateTemplateModal({
     if (next) setTemplateName(defaultTemplateName(next))
   }, [])
 
+  const onDocumentSourceChange = useCallback((mode: DocumentSourceMode) => {
+    setDocumentSource(mode)
+    if (mode === "upload") {
+      setSelectedDealDocumentId("")
+    } else {
+      setFile(null)
+    }
+  }, [])
+
+  const onDealDocumentChange = useCallback(
+    (documentId: string) => {
+      setSelectedDealDocumentId(documentId)
+      const picked = dealDocuments.find((d) => d.id === documentId)
+      if (picked) {
+        const base = picked.name.replace(/\.[^.]+$/, "").trim()
+        setTemplateName(base || picked.name)
+      }
+    },
+    [dealDocuments],
+  )
+
+  const busy = uploading || resolvingDocument
+
+  const hasDocument =
+    documentSource === "upload"
+      ? Boolean(file)
+      : Boolean(selectedDealDocumentId)
+
   const handleSubmit = useCallback(
-    (e?: FormEvent) => {
+    async (e?: FormEvent) => {
       e?.preventDefault()
-      if (!file || !categoryId.trim() || !templateName.trim()) return
-      void onConfirm({
+      if (!hasDocument || !categoryId.trim() || !templateName.trim() || busy) return
+
+      let submitFile = file
+      if (documentSource === "deal") {
+        const picked = dealDocuments.find((d) => d.id === selectedDealDocumentId)
+        if (!picked) return
+        setResolvingDocument(true)
+        try {
+          submitFile = await fetchDealDocumentAsPdfFile(picked)
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Could not load the selected document."
+          toast.error("Document unavailable", message)
+          return
+        } finally {
+          setResolvingDocument(false)
+        }
+      }
+
+      if (!submitFile) return
+      await onConfirm({
         categoryId,
-        file,
+        file: submitFile,
         templateName: templateName.trim(),
         includeQuestionnaire,
       })
     },
-    [categoryId, file, includeQuestionnaire, onConfirm, templateName],
+    [
+      busy,
+      categoryId,
+      dealDocuments,
+      documentSource,
+      file,
+      hasDocument,
+      includeQuestionnaire,
+      onConfirm,
+      selectedDealDocumentId,
+      templateName,
+    ],
   )
 
   if (!open || typeof document === "undefined") return null
 
   const canSubmit =
-    Boolean(file) &&
+    hasDocument &&
     Boolean(categoryId) &&
     Boolean(templateName.trim()) &&
-    !uploading
+    !busy
 
   const documentPickId = `${formId}-document-pick`
+  const dealDocumentSelectId = `${formId}-deal-document`
 
   return createPortal(
     <div
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_esign_upload_overlay"
       role="presentation"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !uploading) onClose()
+        if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
       <div
@@ -252,7 +449,7 @@ export function EsignCreateTemplateModal({
             type="button"
             className="um_modal_close"
             onClick={onClose}
-            disabled={uploading}
+            disabled={busy}
             aria-label="Close"
           >
             <X size={20} strokeWidth={2} aria-hidden />
@@ -261,7 +458,7 @@ export function EsignCreateTemplateModal({
 
         <form
           className="deals_add_inv_modal_form deal_esign_create_modal_form"
-          onSubmit={handleSubmit}
+          onSubmit={(e) => void handleSubmit(e)}
           noValidate
         >
           <div className="deals_add_inv_modal_scroll deal_esign_create_modal_body">
@@ -275,7 +472,7 @@ export function EsignCreateTemplateModal({
                   id={`${formId}-profile`}
                   className="um_field_select deals_add_inv_field_control"
                   value={categoryId}
-                  disabled={uploading || categories.length === 0}
+                  disabled={busy || categories.length === 0}
                   onChange={(e) => setCategoryId(e.target.value)}
                 >
                   {categories.length === 0 ? (
@@ -290,20 +487,36 @@ export function EsignCreateTemplateModal({
                 </select>
               </CreateTemplateField>
 
-              {/* Uploaded PDF includes W-9 at the end when enabled. */}
               <CreateTemplateField
                 id={documentPickId}
                 label="Document"
                 Icon={FileText}
+                hint="Choose an existing deal PDF or upload one from your computer."
               >
-                <DocumentUploadZone
-                  id={documentPickId}
-                  file={file}
-                  disabled={uploading}
-                  inputRef={fileInputRef}
-                  onPickClick={() => fileInputRef.current?.click()}
-                  onFileChange={onFileChange}
+                <DocumentSourceToggle
+                  value={documentSource}
+                  disabled={busy}
+                  hasDealDocuments={dealHasAnySectionDocuments(dealId)}
+                  onChange={onDocumentSourceChange}
                 />
+                {documentSource === "deal" ? (
+                  <DealDocumentPicker
+                    id={dealDocumentSelectId}
+                    options={dealDocuments}
+                    value={selectedDealDocumentId}
+                    disabled={busy}
+                    onChange={onDealDocumentChange}
+                  />
+                ) : (
+                  <DocumentUploadZone
+                    id={documentPickId}
+                    file={file}
+                    disabled={busy}
+                    inputRef={fileInputRef}
+                    onPickClick={() => fileInputRef.current?.click()}
+                    onFileChange={onFileChange}
+                  />
+                )}
               </CreateTemplateField>
 
               <CreateTemplateField
@@ -316,7 +529,7 @@ export function EsignCreateTemplateModal({
                   type="text"
                   className="deals_add_inv_input deals_add_inv_field_control"
                   value={templateName}
-                  disabled={uploading}
+                  disabled={busy}
                   placeholder="e.g. Subscription agreement"
                   onChange={(e) => setTemplateName(e.target.value)}
                 />
@@ -338,7 +551,7 @@ export function EsignCreateTemplateModal({
                   type="checkbox"
                   className="deal_esign_create_option_checkbox"
                   checked={includeQuestionnaire}
-                  disabled={uploading}
+                  disabled={busy}
                   onChange={(e) => setIncludeQuestionnaire(e.target.checked)}
                 />
               </label>
@@ -349,7 +562,7 @@ export function EsignCreateTemplateModal({
             <button
               type="button"
               className="um_btn_secondary"
-              disabled={uploading}
+              disabled={busy}
               onClick={onClose}
             >
               <X size={16} strokeWidth={2} aria-hidden />
@@ -360,7 +573,17 @@ export function EsignCreateTemplateModal({
               className="um_btn_primary"
               disabled={!canSubmit}
             >
-              {uploading ? (
+              {resolvingDocument ? (
+                <>
+                  <Loader2
+                    size={16}
+                    strokeWidth={2}
+                    aria-hidden
+                    className="add_contact_modal_btn_spin"
+                  />
+                  Loading document…
+                </>
+              ) : uploading ? (
                 <>
                   <Loader2
                     size={16}

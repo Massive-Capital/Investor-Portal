@@ -1,3 +1,6 @@
+/** Investments list tab: active commitment vs invited but not onboarded. */
+export type InvestmentOnboardingBucket = "in_progress" | "pending"
+
 export type InvestmentListRow = {
   id: string
   /** Underlying deal id (same as `id` for API rows; set for localStorage rows). */
@@ -28,6 +31,11 @@ export type InvestmentListRow = {
   /** Offering workflow status (`offering_status`) — drives Invest now eligibility. */
   offeringStatus?: string
   actionRequired: string
+  /**
+   * Drives In progress vs Pending tabs on the investments page.
+   * `pending` = invited LP who has not started Invest Now; `in_progress` = committed and/or eSign started.
+   */
+  onboardingBucket?: InvestmentOnboardingBucket
   /** When true, row appears under Archives tab (same pattern as deals list). */
   archived?: boolean
   /** Former Deals tab columns (from `DealListRow`). */

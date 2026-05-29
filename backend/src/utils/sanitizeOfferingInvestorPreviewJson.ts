@@ -150,6 +150,37 @@ function normalizeSection(raw: unknown): Record<string, unknown> | null {
   };
 }
 
+function flattenSectionsToOfferingDocuments(
+  sections: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const sec of sections) {
+    const sectionLabel = String(sec.sectionLabel ?? "").trim() || "Documents";
+    const sectionScope =
+      sec.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page";
+    const nested = sec.nestedDocuments;
+    if (!Array.isArray(nested)) continue;
+    for (const item of nested) {
+      if (!isRecord(item)) continue;
+      const fileName = String(item.name ?? "").trim() || "Document";
+      const docScope =
+        item.sharedWithScope === "lp_investor"
+          ? "lp_investor"
+          : item.sharedWithScope === "offering_page"
+            ? "offering_page"
+            : sectionScope;
+      out.push({
+        id: item.id,
+        name: `${sectionLabel} — ${fileName}`,
+        url: item.url ?? null,
+        dateAdded: item.dateAdded ?? "—",
+        sharedWithScope: docScope,
+      });
+    }
+  }
+  return out;
+}
+
 function sanitizeSectionsInput(raw: unknown): Record<string, unknown>[] {
   if (!Array.isArray(raw)) return [];
   const out: Record<string, unknown>[] = [];
@@ -221,7 +252,8 @@ export function sanitizeOfferingInvestorPreviewBody(
   }
   const sections = sanitizeSectionsInput(root.sections);
   const visibility = sanitizeVisibilityInput(root.visibility);
-  const out = { v: 1 as const, visibility, sections };
+  const offeringDocuments = flattenSectionsToOfferingDocuments(sections);
+  const out = { v: 1 as const, visibility, sections, offeringDocuments };
   const s = JSON.stringify(out);
   if (s.length > MAX_PAYLOAD_CHARS) {
     throw new OfferingInvestorPreviewJsonTooLargeError();

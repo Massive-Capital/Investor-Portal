@@ -827,6 +827,32 @@ export async function patchDealInvestorSummary(
   }
 }
 
+export async function fetchDealOfferingInvestorPreviewJson(
+  dealId: string,
+): Promise<string | null> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("VITE_BASE_URL is not configured.")
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/offering-investor-preview`,
+    {
+      headers: { ...authHeaders() },
+      credentials: "include",
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    offeringInvestorPreviewJson?: string | null
+    message?: string
+  }
+  if (!res.ok) {
+    throw new Error(
+      data.message || `Could not load offering documents (${res.status})`,
+    )
+  }
+  const raw = data.offeringInvestorPreviewJson
+  if (raw == null || !String(raw).trim()) return null
+  return String(raw)
+}
+
 export async function patchDealOfferingInvestorPreview(
   dealId: string,
   body: {

@@ -9,8 +9,10 @@ import {
   formatViewerInvestingDealRolesLabel,
   mapInvestingDealsPageScope,
   resolveViewerInvestingDealRoles,
+  viewerDealNeedsOnboarding,
   viewerHasDealParticipation,
 } from "@/modules/Investing/utils/investingViewerDealScope"
+import type { InvestmentOnboardingBucket } from "./investments.types"
 import { investorCommittedVisibleToViewer } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import {
   fetchDealById,
@@ -19,7 +21,10 @@ import {
   fetchDealsList,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
-import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import type {
+  DealInvestorRow,
+  DealInvestorsPayload,
+} from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import {
@@ -128,12 +133,21 @@ function buildProfileBreakdownForDeal(
   })
 }
 
+function onboardingBucketForDealPayload(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): InvestmentOnboardingBucket {
+  if (viewerDealNeedsOnboarding(payload, viewerEmailNorm)) return "pending"
+  return "in_progress"
+}
+
 function listRowFromDealAndInvestors(
   listRow: DealListRow,
   inv: DealInvestorRow | undefined,
   committed: number,
   nameByUserProfileId: ReadonlyMap<string, string> | undefined,
   viewerRolesLabel: string,
+  onboardingBucket: InvestmentOnboardingBucket,
 ): InvestmentListRow {
   const dealId = listRow.id
   const profileId = inv ? String(inv.profileId ?? "").trim() : ""
@@ -161,6 +175,7 @@ function listRowFromDealAndInvestors(
     status: (listRow.dealStage || "—").trim() || "—",
     offeringStatus: listRow.offeringStatus?.trim() || undefined,
     actionRequired: "None",
+    onboardingBucket,
     archived: Boolean(listRow.archived),
     dealType: listRow.dealType,
     secType: listRow.secType,
@@ -210,6 +225,7 @@ export async function loadInvestmentListRowsFromDeals(
         committed,
         nameMap,
         viewerRolesLabel,
+        onboardingBucketForDealPayload(payload, emn),
       ),
     )
   }
@@ -318,6 +334,7 @@ export async function loadInvestmentDetailFromDeal(
     committed,
     nameMap,
     viewerRolesLabel,
+    onboardingBucketForDealPayload(payload, emn),
   )
   const investedAsBreakdown = buildProfileBreakdownForDeal(
     myCommitments,

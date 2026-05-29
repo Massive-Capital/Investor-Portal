@@ -1,14 +1,9 @@
 import { Download, Eye, FileSignature, FileText, Search } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/common/components/data-table/DataTable"
 import { InvestmentEsignSignModal } from "./InvestmentEsignSignModal"
-import {
-  fetchDealById,
-  fetchDealMyEsignDocuments,
-} from "@/modules/Syndication/Deals/api/dealsApi"
+import { InvestorOfferingDocumentsList } from "./components/InvestorOfferingDocumentsList"
+import { fetchDealMyEsignDocuments } from "@/modules/Syndication/Deals/api/dealsApi"
+import "@/modules/Syndication/Deals/deal-offering-details.css"
 import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 import {
   ESIGN_TEMPLATE_CATEGORIES,
@@ -21,10 +16,14 @@ import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import { buildInvestmentDocumentAudience } from "./utils/buildInvestmentDocumentAudience"
 import type { InvestmentDocumentAudienceContext } from "./utils/investmentDocumentAudience"
 import {
-  listDocumentsForInvestmentDetail,
+  dealHasOfferingDocumentSections,
+  EMPTY_INVESTMENT_DOCUMENT_AUDIENCE,
+  listInvestmentDetailDocumentSectionGroups,
   type InvestmentDetailDocumentRow,
+  type InvestmentDetailDocumentSectionGroup,
 } from "./utils/investmentDetailDocuments"
-import { syncInvestmentDealDocumentPreview } from "./utils/syncInvestmentDealDocumentPreview"
+import { refreshInvestmentDealDocumentsPreview } from "./utils/refreshInvestmentDealDocumentsPreview"
+import { bindInvestmentOfferingDocumentsAutoRefresh } from "./utils/bindInvestmentOfferingDocumentsAutoRefresh"
 import "@/modules/Syndication/Deals/deal-esign-ui.css"
 import "../deals/deal-details/lp-deal-details.css"
 import "./investment-detail.css"
@@ -40,12 +39,6 @@ function safeDownloadFilename(name: string): string {
   return base.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 200)
 }
 
-function formatOfferingDocumentDisplayName(raw: string): string {
-  const trimmed = raw.trim()
-  if (!trimmed) return "—"
-  return trimmed.charAt(0).toLocaleUpperCase() + trimmed.slice(1)
-}
-
 function investmentEsignStatusLabel(status: "pending" | "signed"): string {
   return status === "signed" ? "Signed" : "Awaiting signature"
 }
@@ -56,87 +49,32 @@ function investmentEsignStatusClassName(status: "pending" | "signed"): string {
     : "lpd_doc_esign_status lpd_doc_esign_status--pending"
 }
 
-function OfferingDocumentRowActions({
-  doc,
-  displayName,
-}: {
-  doc: InvestmentDetailDocumentRow
-  displayName: string
-}) {
-  const url = doc.url?.trim() || ""
-  if (!url) return <span className="um_status_muted">—</span>
-  return (
-    <div
-      className="investment_detail_offering_doc_actions"
-      role="group"
-      aria-label={`${displayName} actions`}
-    >
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="investment_detail_offering_doc_action"
-        aria-label={`View ${displayName}`}
-      >
-        <Eye size={15} strokeWidth={2} aria-hidden />
-        View
-      </a>
-      <a
-        href={url}
-        download={safeDownloadFilename(doc.name)}
-        rel="noopener noreferrer"
-        className="investment_detail_offering_doc_action"
-        aria-label={`Download ${displayName}`}
-      >
-        <Download size={15} strokeWidth={2} aria-hidden />
-        Download
-      </a>
-    </div>
-  )
-}
-
-const offeringDocumentColumns: DataTableColumn<InvestmentDetailDocumentRow>[] = [
-  {
-    id: "name",
-    header: "Document name",
-    sortValue: (r) => (r.name ?? "").toLowerCase(),
-    tdClassName: "um_td_user",
-    cell: (r) => {
-      const displayName = formatOfferingDocumentDisplayName(r.name ?? "")
-      return (
-        <span className="investment_detail_offering_doc_name" title={displayName}>
-          {displayName}
-        </span>
-      )
-    },
-  },
-  {
-    id: "actions",
-    header: "Actions",
-    align: "center",
-    thClassName: "investment_detail_offering_th_actions",
-    tdClassName: "investment_detail_offering_td_actions",
-    cell: (r) => (
-      <OfferingDocumentRowActions
-        doc={r}
-        displayName={formatOfferingDocumentDisplayName(r.name ?? "")}
-      />
-    ),
-  },
-]
-
-function filterDocuments(
-  docs: InvestmentDetailDocumentRow[],
+function filterOfferingDocumentSections(
+  sections: InvestmentDetailDocumentSectionGroup[],
   query: string,
-): InvestmentDetailDocumentRow[] {
+): InvestmentDetailDocumentSectionGroup[] {
   const q = query.trim().toLowerCase()
-  if (!q) return docs
-  return docs.filter((d) => {
-    const blob = [d.name, d.sectionLabel, d.visibilityLabel]
-      .join(" ")
-      .toLowerCase()
-    return blob.includes(q)
-  })
+  return sections
+    .filter((section) => section.totalOnDeal > 0)
+    .map((section) => {
+      if (!q) return section
+      const sectionLabelMatches = section.sectionLabel.toLowerCase().includes(q)
+      const documents = section.documents.filter((d) => {
+        const blob = [d.name, d.sectionLabel, section.sectionLabel]
+          .join(" ")
+          .toLowerCase()
+        return blob.includes(q)
+      })
+      if (sectionLabelMatches) return section
+      return { ...section, documents }
+    })
+    .filter((section) => {
+      if (!q) return true
+      return (
+        section.documents.length > 0 ||
+        section.sectionLabel.toLowerCase().includes(q)
+      )
+    })
 }
 
 type EsignProfileCardData = {
@@ -192,22 +130,6 @@ function esignProfileCardMatchesQuery(
   return blob.includes(q)
 }
 
-async function refreshDealDocumentPreviewFromServer(
-  dealId: string,
-): Promise<boolean> {
-  const id = dealId.trim()
-  if (!id) return false
-  try {
-    const deal = await fetchDealById(id)
-    syncInvestmentDealDocumentPreview(id, deal.offeringInvestorPreviewJson, {
-      notify: false,
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
 export function InvestmentDetailDocumentsTab({
   dealId,
 }: InvestmentDetailDocumentsTabProps) {
@@ -215,9 +137,10 @@ export function InvestmentDetailDocumentsTab({
   const [activeSubTab, setActiveSubTab] = useState<DocumentsSubTab>("offering")
   const [loadPending, setLoadPending] = useState(true)
   const [audience, setAudience] =
-    useState<InvestmentDocumentAudienceContext | null>(null)
+    useState<InvestmentDocumentAudienceContext>(EMPTY_INVESTMENT_DOCUMENT_AUDIENCE)
   const [sectionsRevision, setSectionsRevision] = useState(0)
   const [previewSyncFailed, setPreviewSyncFailed] = useState(false)
+  const [dealHasDocumentSections, setDealHasDocumentSections] = useState(false)
   const [esignDocuments, setEsignDocuments] = useState<
     InvestmentDetailDocumentRow[]
   >([])
@@ -246,6 +169,7 @@ export function InvestmentDetailDocumentsTab({
           id: `esign-${d.fileId}`,
           name: d.name,
           url: resolveEsignDocumentUrlForViewer(d.url),
+          dateAdded: "—",
           sectionLabel: categoryId
             ? esignCategoryLabel(categoryId)
             : "E-signatures",
@@ -267,7 +191,7 @@ export function InvestmentDetailDocumentsTab({
   useEffect(() => {
     const id = dealId.trim()
     if (!id) {
-      setAudience(null)
+      setAudience(EMPTY_INVESTMENT_DOCUMENT_AUDIENCE)
       setPreviewSyncFailed(false)
       setLoadPending(false)
       return
@@ -278,18 +202,19 @@ export function InvestmentDetailDocumentsTab({
     setPreviewSyncFailed(false)
 
     void (async () => {
-      let aud: InvestmentDocumentAudienceContext | null = null
+      const preview = await refreshInvestmentDealDocumentsPreview(id)
+      if (fetchGenRef.current !== gen) return
+      setDealHasDocumentSections(preview.hasSections)
+      setPreviewSyncFailed(!preview.syncedFromServer)
+
+      let aud = EMPTY_INVESTMENT_DOCUMENT_AUDIENCE
       try {
         aud = await buildInvestmentDocumentAudience(id)
       } catch {
-        aud = null
+        aud = EMPTY_INVESTMENT_DOCUMENT_AUDIENCE
       }
       if (fetchGenRef.current !== gen) return
       setAudience(aud)
-
-      const synced = await refreshDealDocumentPreviewFromServer(id)
-      if (fetchGenRef.current !== gen) return
-      if (!synced && aud) setPreviewSyncFailed(true)
 
       await loadEsignDocuments(id)
       if (fetchGenRef.current !== gen) return
@@ -298,6 +223,15 @@ export function InvestmentDetailDocumentsTab({
       setLoadPending(false)
     })()
   }, [dealId, loadEsignDocuments])
+
+  useEffect(() => {
+    const id = dealId.trim()
+    if (!id) return
+    return bindInvestmentOfferingDocumentsAutoRefresh(id, () => {
+      setDealHasDocumentSections(dealHasOfferingDocumentSections(id))
+      setSectionsRevision((n) => n + 1)
+    })
+  }, [dealId])
 
   useEffect(() => {
     const id = dealId.trim()
@@ -316,17 +250,18 @@ export function InvestmentDetailDocumentsTab({
     }
   }, [dealId])
 
-  const offeringDocuments = useMemo(() => {
-    if (!audience) return []
-    const base = listDocumentsForInvestmentDetail(dealId, audience)
-    return [...base.all].sort((a, b) =>
-      a.name.localeCompare(b.name, "en", { sensitivity: "base" }),
-    )
+  const offeringDocumentSections = useMemo(() => {
+    return listInvestmentDetailDocumentSectionGroups(dealId, audience)
   }, [dealId, audience, sectionsRevision])
 
-  const filteredOffering = useMemo(
-    () => filterDocuments(offeringDocuments, query),
-    [offeringDocuments, query],
+  const offeringDocuments = useMemo(
+    () => offeringDocumentSections.flatMap((section) => section.documents),
+    [offeringDocumentSections],
+  )
+
+  const filteredOfferingSections = useMemo(
+    () => filterOfferingDocumentSections(offeringDocumentSections, query),
+    [offeringDocumentSections, query],
   )
 
   const esignProfileCards = useMemo(() => {
@@ -342,7 +277,12 @@ export function InvestmentDetailDocumentsTab({
   }, [esignDocuments])
 
   const showAudienceGate =
-    !audience && esignDocuments.length === 0 && activeSubTab === "offering"
+    previewSyncFailed &&
+    !dealHasDocumentSections &&
+    !dealHasOfferingDocumentSections(dealId) &&
+    offeringDocuments.length === 0 &&
+    esignDocuments.length === 0 &&
+    activeSubTab === "offering"
 
   return (
     <div
@@ -418,27 +358,6 @@ export function InvestmentDetailDocumentsTab({
           </div>
         </div>
 
-        <div className="lpdd_doc_search um_search_wrap">
-          <Search className="um_search_icon" size={16} strokeWidth={2} aria-hidden />
-          <input
-            type="search"
-            className="um_search_input"
-            placeholder={
-              activeSubTab === "esignatures"
-                ? "Search e-sign documents…"
-                : "Search offering documents…"
-            }
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label={
-              activeSubTab === "esignatures"
-                ? "Search e-sign documents"
-                : "Search offering documents"
-            }
-            autoComplete="off"
-          />
-        </div>
-
         <div className="investment_detail_documents_body">
           {loadPending ? (
             <p className="investment_detail_documents_status" role="status">
@@ -448,8 +367,15 @@ export function InvestmentDetailDocumentsTab({
             <OfferingDocumentsPanel
               showAudienceGate={showAudienceGate}
               previewSyncFailed={previewSyncFailed}
+              hasSectionsOnDeal={
+                dealHasDocumentSections ||
+                dealHasOfferingDocumentSections(dealId) ||
+                offeringDocuments.length > 0
+              }
               offeringDocuments={offeringDocuments}
-              filteredOffering={filteredOffering}
+              filteredOfferingSections={filteredOfferingSections}
+              searchQuery={query}
+              onSearchQueryChange={setQuery}
             />
           ) : (
             <EsignaturesDocumentsPanel
@@ -458,6 +384,7 @@ export function InvestmentDetailDocumentsTab({
               esignDocuments={esignDocuments}
               esignProfileCards={esignProfileCards}
               searchQuery={query}
+              onSearchQueryChange={setQuery}
               firstPendingSignatureRequestId={firstPendingSignatureRequestId}
               onOpenSignModal={openSignModal}
             />
@@ -482,16 +409,36 @@ export function InvestmentDetailDocumentsTab({
 function OfferingDocumentsPanel({
   showAudienceGate,
   previewSyncFailed,
+  hasSectionsOnDeal,
   offeringDocuments,
-  filteredOffering,
+  filteredOfferingSections,
+  searchQuery,
+  onSearchQueryChange,
 }: {
   showAudienceGate: boolean
   previewSyncFailed: boolean
+  hasSectionsOnDeal: boolean
   offeringDocuments: InvestmentDetailDocumentRow[]
-  filteredOffering: InvestmentDetailDocumentRow[]
+  filteredOfferingSections: InvestmentDetailDocumentSectionGroup[]
+  searchQuery: string
+  onSearchQueryChange: (value: string) => void
 }) {
-  const hasAny = offeringDocuments.length > 0
-  const hasFiltered = filteredOffering.length > 0
+  const hasVisibleDocs = offeringDocuments.length > 0
+  const hasSearchMatches = filteredOfferingSections.length > 0
+  const showOfferingList =
+    !showAudienceGate &&
+    (hasSectionsOnDeal || hasVisibleDocs) &&
+    !(searchQuery.trim() && !hasSearchMatches)
+
+  const statusMessage = showAudienceGate
+    ? "Sign in as an investor with a commitment on this deal to view offering documents shared by your sponsor."
+    : previewSyncFailed && !hasSectionsOnDeal
+      ? "Could not load the latest document list from the server. Try refreshing the page, or open this investment again after your sponsor shares files on the deal Documents tab."
+      : !hasSectionsOnDeal
+        ? "No offering documents are on this deal yet."
+        : searchQuery.trim() && !hasSearchMatches
+          ? "No offering documents match your search."
+          : null
 
   return (
     <div
@@ -500,46 +447,55 @@ function OfferingDocumentsPanel({
       aria-labelledby="inv-docs-tab-offering"
       className="investment_detail_docs_subpanel"
     >
-      {showAudienceGate ? (
-        <p className="investment_detail_documents_status">
-          Sign in as an investor with a commitment on this deal to view offering
-          documents shared by your sponsor.
-        </p>
-      ) : previewSyncFailed && !hasAny ? (
-        <p className="investment_detail_documents_status" role="alert">
-          Could not load the latest document list from the server. Try refreshing
-          the page, or open this investment again after your sponsor shares files on
-          the deal Documents tab.
-        </p>
-      ) : !hasAny ? (
-        <p className="investment_detail_documents_status">
-          No offering documents are visible to you on this deal yet.
-        </p>
-      ) : !hasFiltered ? (
-        <p className="investment_detail_documents_status">
-          No offering documents match your search.
-        </p>
-      ) : (
-        <div className="investment_detail_documents_groups">
-          {previewSyncFailed ? (
-            <p className="investment_detail_tab_hint" role="status">
+      <div className="deal_docs investment_detail_offering_docs">
+        <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_assets_datatable_panel investment_detail_offering_docs_panel">
+          <div
+            className="um_toolbar deal_docs_toolbar investment_detail_offering_docs_toolbar"
+            role="toolbar"
+            aria-label="Search offering documents"
+          >
+            <div className="um_search_wrap">
+              <Search className="um_search_icon" size={16} strokeWidth={2} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search documents…"
+                value={searchQuery}
+                onChange={(e) => onSearchQueryChange(e.target.value)}
+                aria-label="Search offering documents"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          {previewSyncFailed && hasSectionsOnDeal ? (
+            <p className="investment_detail_offering_docs_notice" role="status">
               Showing cached documents; a fresh sync from the server was not
               available.
             </p>
           ) : null}
-          <div className="deal_inv_table_panel investment_detail_offering_table_panel">
-            <DataTable<InvestmentDetailDocumentRow>
-              visualVariant="members"
-              membersTableClassName="um_table_members investment_detail_offering_table"
-              columns={offeringDocumentColumns}
-              rows={filteredOffering}
-              getRowKey={(r, i) => `${r.source}-${r.id}-${i}`}
-              emptyLabel="No offering documents match your search."
-              initialSort={{ columnId: "name", direction: "asc" }}
-            />
-          </div>
+
+          {statusMessage ? (
+            <p
+              className={`investment_detail_documents_status${previewSyncFailed && !hasSectionsOnDeal ? " investment_detail_documents_status--alert" : ""}`}
+              role={previewSyncFailed && !hasSectionsOnDeal ? "alert" : "status"}
+            >
+              {statusMessage}
+            </p>
+          ) : null}
+
+          {!hasVisibleDocs && showOfferingList && !searchQuery.trim() ? (
+            <p className="investment_detail_offering_docs_notice" role="status">
+              No offering documents match your visibility or Shared With settings
+              on this deal yet.
+            </p>
+          ) : null}
+
+          {showOfferingList ? (
+            <InvestorOfferingDocumentsList sections={filteredOfferingSections} />
+          ) : null}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -590,65 +546,63 @@ function EsignProfileTypeCardsGrid({
               </div>
             </header>
             <div className="investment_detail_esign_profile_card_body">
-              <div className="investment_detail_esign_card_doc_row">
-                <p
-                  className="investment_detail_esign_card_doc_name"
-                  title={doc.name}
+              <p
+                className="investment_detail_esign_card_doc_name"
+                title={doc.name}
+              >
+                <FileSignature
+                  className="investment_detail_esign_card_doc_icon"
+                  size={16}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span>{doc.name}</span>
+              </p>
+              {url || canSign ? (
+                <div
+                  className="investment_detail_esign_card_doc_actions"
+                  role="group"
+                  aria-label={`${doc.name} actions`}
                 >
-                  <FileSignature
-                    className="investment_detail_esign_card_doc_icon"
-                    size={16}
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                  <span>{doc.name}</span>
-                </p>
-                {url || canSign ? (
-                  <div
-                    className="investment_detail_esign_card_doc_actions"
-                    role="group"
-                    aria-label={`${doc.name} actions`}
-                  >
-                    {canSign ? (
-                      <button
-                        type="button"
-                        className="lpd_doc_action lpd_link lpd_doc_action_sign"
-                        aria-label={`Sign ${doc.name}`}
-                        onClick={() =>
-                          onOpenSignModal(doc.signatureRequestId ?? null)
-                        }
+                  {canSign ? (
+                    <button
+                      type="button"
+                      className="lpd_doc_action lpd_link lpd_doc_action_sign"
+                      aria-label={`Sign ${doc.name}`}
+                      onClick={() =>
+                        onOpenSignModal(doc.signatureRequestId ?? null)
+                      }
+                    >
+                      <FileSignature size={15} strokeWidth={2} aria-hidden />
+                      Sign
+                    </button>
+                  ) : null}
+                  {url ? (
+                    <>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="lpd_doc_action lpd_link"
+                        aria-label={`View ${doc.name}`}
                       >
-                        <FileSignature size={15} strokeWidth={2} aria-hidden />
-                        Sign
-                      </button>
-                    ) : null}
-                    {url ? (
-                      <>
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="lpd_doc_action lpd_link"
-                          aria-label={`View ${doc.name}`}
-                        >
-                          <Eye size={15} strokeWidth={2} aria-hidden />
-                          View
-                        </a>
-                        <a
-                          href={url}
-                          download={safeDownloadFilename(doc.name)}
-                          rel="noopener noreferrer"
-                          className="lpd_doc_action lpd_link"
-                          aria-label={`Download ${doc.name}`}
-                        >
-                          <Download size={15} strokeWidth={2} aria-hidden />
-                          Download
-                        </a>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+                        <Eye size={15} strokeWidth={2} aria-hidden />
+                        View
+                      </a>
+                      <a
+                        href={url}
+                        download={safeDownloadFilename(doc.name)}
+                        rel="noopener noreferrer"
+                        className="lpd_doc_action lpd_link"
+                        aria-label={`Download ${doc.name}`}
+                      >
+                        <Download size={15} strokeWidth={2} aria-hidden />
+                        Download
+                      </a>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </article>
         )
@@ -663,6 +617,7 @@ function EsignaturesDocumentsPanel({
   esignDocuments,
   esignProfileCards,
   searchQuery,
+  onSearchQueryChange,
   firstPendingSignatureRequestId,
   onOpenSignModal,
 }: {
@@ -671,6 +626,7 @@ function EsignaturesDocumentsPanel({
   esignDocuments: InvestmentDetailDocumentRow[]
   esignProfileCards: EsignProfileCardData[]
   searchQuery: string
+  onSearchQueryChange: (value: string) => void
   firstPendingSignatureRequestId: string | null
   onOpenSignModal: (signatureRequestId?: string | null) => void
 }) {
@@ -684,53 +640,76 @@ function EsignaturesDocumentsPanel({
       aria-labelledby="inv-docs-tab-esignatures"
       className="investment_detail_docs_subpanel"
     >
-      {/* <p className="investment_detail_documents_group_hint">
-        Subscription documents sent for your signature on this deal.
-      </p>
+      <div className="investment_detail_esign_docs">
+        <div className="um_panel um_members_tab_panel deals_list_card_surface investment_detail_esign_docs_panel">
+          {esignPending ? (
+            <div
+              className="investment_detail_esign_pending_banner"
+              role="status"
+            >
+              <p className="investment_detail_esign_pending_banner_text">
+                You have documents waiting for your signature.
+              </p>
+              <button
+                type="button"
+                className="um_btn_primary investment_detail_esign_pending_banner_btn"
+                onClick={() => onOpenSignModal(firstPendingSignatureRequestId)}
+              >
+                <FileSignature size={16} strokeWidth={2} aria-hidden />
+                Sign now
+              </button>
+            </div>
+          ) : null}
 
-      <div className="deal_esign_panel_head_row">
-        <span />
-        <button type="button" className="deal_esign_refresh_btn" onClick={onRefresh}>
-          Refresh from Dropbox Sign
-        </button>
-      </div> */}
-
-      {esignLoadError ? (
-        <p className="deal_esign_notice deal_esign_notice--error" role="alert">
-          {esignLoadError}
-        </p>
-      ) : null}
-
-      {!hasAny ? (
-        <p className="investment_detail_documents_status">
-          No e-sign documents have been sent to you on this deal yet. When your
-          sponsor sends templates for signature, they will appear here.
-        </p>
-      ) : !hasVisibleCards ? (
-        <p className="investment_detail_documents_status">
-          {searchQuery.trim()
-            ? "No e-sign documents match your search."
-            : "No e-sign documents are available for your profile types on this deal."}
-        </p>
-      ) : (
-        <EsignProfileTypeCardsGrid
-          cards={esignProfileCards}
-          onOpenSignModal={onOpenSignModal}
-        />
-      )}
-
-      {esignPending ? (
-        <p className="investment_detail_tab_hint investment_detail_esign_pending_hint">
-          You have documents waiting for your signature.{" "}
-          <button
-            type="button"
-            className="lpd_link lpd_link_button"
-            onClick={() => onOpenSignModal(firstPendingSignatureRequestId)}
+          <div
+            className="um_toolbar investment_detail_esign_docs_toolbar"
+            role="toolbar"
+            aria-label="Search e-sign documents"
           >
-            Sign now
-          </button>
-        </p>
-      ) : null}
+            <div className="um_search_wrap">
+              <Search
+                className="um_search_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search e-sign documents…"
+                value={searchQuery}
+                onChange={(e) => onSearchQueryChange(e.target.value)}
+                aria-label="Search e-sign documents"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          {esignLoadError ? (
+            <p className="deal_esign_notice deal_esign_notice--error" role="alert">
+              {esignLoadError}
+            </p>
+          ) : null}
+
+          {!hasAny ? (
+            <p className="investment_detail_documents_status">
+              No e-sign documents have been sent to you on this deal yet. When
+              your sponsor sends templates for signature, they will appear here.
+            </p>
+          ) : !hasVisibleCards ? (
+            <p className="investment_detail_documents_status">
+              {searchQuery.trim()
+                ? "No e-sign documents match your search."
+                : "No e-sign documents are available for your profile types on this deal."}
+            </p>
+          ) : (
+            <EsignProfileTypeCardsGrid
+              cards={esignProfileCards}
+              onOpenSignModal={onOpenSignModal}
+            />
+          )}
+        </div>
+      </div>
     </div>
   )
 }

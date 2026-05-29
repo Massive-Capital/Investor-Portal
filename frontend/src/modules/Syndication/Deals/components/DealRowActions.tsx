@@ -165,6 +165,10 @@ export function DealRowActions({
       goContinueCreateDraft()
       return
     }
+    if (readOnlyActions && onPreviewDeal) {
+      onPreviewDeal()
+      return
+    }
     navigate(`/deals/${encodeURIComponent(dealId)}`)
   }
 

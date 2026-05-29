@@ -69,7 +69,9 @@ interface DealEsignTemplatesTabProps {
 
   dealId: string
 
-  /** When false, upload UI is hidden (lead sponsor only). */
+  offeringInvestorPreviewJson?: string | null
+
+  /** When false, upload UI is hidden (lead or admin sponsor only). */
 
   canUploadDocuments?: boolean
 
@@ -153,6 +155,8 @@ function EsignTemplatesEmptyState({
 function DealEsignTemplatesProfilesTab({
 
   dealId,
+
+  offeringInvestorPreviewJson,
 
   canUploadDocuments = true,
 
@@ -349,19 +353,23 @@ function DealEsignTemplatesProfilesTab({
 
 
 
+  const onRenameTemplate = useCallback(
+    (_categoryId: string, file: DealEsignTemplateFileRecord) => {
+      if (!canUploadDocuments) return
+      if (file.dropboxSignStatus !== "ready") return
+      setRenamePending({
+        fileId: file.id,
+        templateName: esignTemplateDisplayName(file),
+      })
+    },
+    [canUploadDocuments],
+  )
+
   const onEditTemplate = useCallback(
 
     (_categoryId: string, file: DealEsignTemplateFileRecord) => {
 
       if (!canUploadDocuments) return
-
-      if (file.dropboxSignStatus === "ready") {
-        setRenamePending({
-          fileId: file.id,
-          templateName: esignTemplateDisplayName(file),
-        })
-        return
-      }
 
       void (async () => {
 
@@ -509,7 +517,7 @@ function DealEsignTemplatesProfilesTab({
         <p className="deal_esign_readonly_banner" role="note">
 
           You can view eSign templates on this deal. Upload, edit, and delete are
-          restricted to the lead sponsor.
+          restricted to the lead or admin sponsor.
 
         </p>
 
@@ -588,6 +596,9 @@ function DealEsignTemplatesProfilesTab({
                       onEditTemplate={() => {
                         if (file) onEditTemplate(cat.id, file)
                       }}
+                      onRenameTemplate={() => {
+                        if (file) onRenameTemplate(cat.id, file)
+                      }}
                     />
                   )
                 })}
@@ -599,6 +610,8 @@ function DealEsignTemplatesProfilesTab({
 
       <EsignCreateTemplateModal
         open={createModalOpen}
+        dealId={dealId}
+        offeringInvestorPreviewJson={offeringInvestorPreviewJson}
         categories={categoriesWithoutDocuments}
         uploading={uploading}
         onClose={closeCreateModal}
@@ -661,6 +674,7 @@ function DealEsignTemplatesProfilesTab({
 
 export function DealEsignTemplatesTab({
   dealId,
+  offeringInvestorPreviewJson,
   canUploadDocuments = true,
 }: DealEsignTemplatesTabProps) {
   const [activeSubTab, setActiveSubTab] =
@@ -731,6 +745,7 @@ export function DealEsignTemplatesTab({
         {activeSubTab === "profiles" ? (
           <DealEsignTemplatesProfilesTab
             dealId={dealId}
+            offeringInvestorPreviewJson={offeringInvestorPreviewJson}
             canUploadDocuments={canUploadDocuments}
           />
         ) : null}

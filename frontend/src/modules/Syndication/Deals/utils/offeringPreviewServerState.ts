@@ -5,7 +5,11 @@ import {
   readOfferingPreviewSections,
   writeOfferingPreviewSections,
   migrateFlatDocumentsToSections,
+  reconcileFlatDocumentsIntoSections,
+  flattenSectionsToPreviewDocs,
+  type OfferingPreviewSection,
 } from "./offeringPreviewDocSections"
+import { parseOfferingPreviewDocumentsJson, readOfferingPreviewDocuments, writeOfferingPreviewDocuments } from "./offeringPreviewDocuments"
 import {
   OFFERING_DETAILS_SECTION_ORDER,
   readOfferingPreviewInvestorVisibility,
@@ -27,6 +31,7 @@ const pendingOnSuccess = new Map<
   string,
   ((deal: DealDetailApi) => void) | undefined
 >()
+const pendingSectionsSnapshot = new Map<string, OfferingPreviewSection[]>()
 const migrationStarted = new Set<string>()
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -48,7 +53,7 @@ function scheduleLegacyLocalStorageMigration(
   dealId: string,
   hadServerSections: boolean,
 ): void {
-  const id = dealId.trim()
+  const id = dealId?.trim() ?? ""
   if (!id || hadServerSections || migrationStarted.has(id)) return
   migrationStarted.add(id)
   void (async () => {
@@ -95,7 +100,7 @@ export function applyOfferingInvestorPreviewJsonFromServer(
   json: string | null | undefined,
   opts?: { notify?: boolean },
 ): void {
-  const id = dealId.trim()
+  const id = dealId?.trim() ?? ""
   if (!id) return
 
   const hadServerSections = serverJsonHasSections(json)
@@ -118,8 +123,21 @@ export function applyOfferingInvestorPreviewJsonFromServer(
     return
   }
 
-  const sections = parseOfferingPreviewSectionsJson(parsed.sections)
+  const sectionsRaw = parsed.sections
+  let sections = parseOfferingPreviewSectionsJson(sectionsRaw)
+  const flatFromJson = parseOfferingPreviewDocumentsJson(parsed.offeringDocuments)
+  const flatFromRuntime = readOfferingPreviewDocuments(id)
+  const flat = flatFromJson.length > 0 ? flatFromJson : flatFromRuntime
+  const hasNestedDocs = sections.some((s) => s.nestedDocuments.length > 0)
+  if (!hasNestedDocs && flat.length > 0) {
+    sections = migrateFlatDocumentsToSections(flat)
+  } else if (flat.length > 0) {
+    sections = reconcileFlatDocumentsIntoSections(sections, flat)
+  }
   writeOfferingPreviewSections(id, sections, opts)
+  if (flatFromJson.length > 0) {
+    writeOfferingPreviewDocuments(id, flattenSectionsToPreviewDocs(sections))
+  }
 
   const visRaw = parsed.visibility
   if (isRecord(visRaw)) {
@@ -140,32 +158,44 @@ export function applyOfferingInvestorPreviewJsonFromServer(
 }
 
 export function cancelOfferingInvestorPreviewServerSync(dealId: string): void {
-  const id = dealId.trim()
+  const id = dealId?.trim() ?? ""
   if (!id || typeof window === "undefined") return
   const prev = syncTimers.get(id)
   if (prev) window.clearTimeout(prev)
   syncTimers.delete(id)
   pendingOnSuccess.delete(id)
+  pendingSectionsSnapshot.delete(id)
 }
 
 export async function persistOfferingInvestorPreviewToServer(
   dealId: string,
+  opts?: {
+    sections?: OfferingPreviewSection[]
+    onSuccess?: (deal: DealDetailApi) => void
+  },
 ): Promise<DealDetailApi | null> {
-  const id = dealId.trim()
+  const id = dealId?.trim() ?? ""
   if (!id || typeof window === "undefined") return null
-  if (!isOfferingPreviewHydrated(id)) return null
-  const sections = readOfferingPreviewSections(id)
+  markOfferingPreviewHydrated(id)
+  const sections = opts?.sections ?? readOfferingPreviewSections(id)
   const visibility = readOfferingPreviewInvestorVisibility(id)
+  writeOfferingPreviewSections(id, sections, { notify: false })
   try {
     const deal = await patchDealOfferingInvestorPreview(id, {
       visibility,
       sections: sections as unknown[],
+      offeringDocuments: flattenSectionsToPreviewDocs(sections) as unknown[],
     })
     applyOfferingInvestorPreviewJsonFromServer(id, deal.offeringInvestorPreviewJson, {
       notify: false,
     })
+    if (opts?.onSuccess) opts.onSuccess(deal)
     return deal
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[offeringPreview] Could not save document sections for deal ${id}:`,
+      err,
+    )
     return null
   }
 }
@@ -175,25 +205,39 @@ export async function persistOfferingInvestorPreviewToServer(
  */
 export function scheduleOfferingInvestorPreviewServerSync(
   dealId: string,
-  opts?: { onSuccess?: (deal: DealDetailApi) => void; delayMs?: number },
+  opts?: {
+    onSuccess?: (deal: DealDetailApi) => void
+    delayMs?: number
+    /** Exact sections from the Documents tab — avoids stale runtime reads on save. */
+    sections?: OfferingPreviewSection[]
+  },
 ): void {
-  const id = dealId.trim()
+  const id = dealId?.trim() ?? ""
   if (!id || typeof window === "undefined") return
-  if (!isOfferingPreviewHydrated(id)) return
+  if (opts?.sections) {
+    markOfferingPreviewHydrated(id)
+  } else if (!isOfferingPreviewHydrated(id)) {
+    return
+  }
   const prev = syncTimers.get(id)
   if (prev) window.clearTimeout(prev)
   pendingOnSuccess.set(id, opts?.onSuccess)
-  const delay = opts?.delayMs ?? 900
+  if (opts?.sections) {
+    pendingSectionsSnapshot.set(id, opts.sections)
+  }
+  const delay = opts?.delayMs ?? 350
   syncTimers.set(
     id,
     window.setTimeout(() => {
       syncTimers.delete(id)
       const onSuccess = pendingOnSuccess.get(id)
       pendingOnSuccess.delete(id)
-      void (async () => {
-        const deal = await persistOfferingInvestorPreviewToServer(id)
-        if (deal && onSuccess) onSuccess(deal)
-      })()
+      const sectionsSnapshot = pendingSectionsSnapshot.get(id)
+      pendingSectionsSnapshot.delete(id)
+      void persistOfferingInvestorPreviewToServer(id, {
+          sections: sectionsSnapshot ?? readOfferingPreviewSections(id),
+          onSuccess,
+        })
     }, delay),
   )
 }

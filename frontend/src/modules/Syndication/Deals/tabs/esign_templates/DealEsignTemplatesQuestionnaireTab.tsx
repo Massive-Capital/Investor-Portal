@@ -470,7 +470,7 @@ export function DealEsignTemplatesQuestionnaireTab({
       {!canEdit ? (
         <p className="deal_esign_readonly_banner" role="note">
           You can view the investor questionnaire. Editing is restricted to the
-          lead sponsor.
+          lead or admin sponsor.
         </p>
       ) : null}
 

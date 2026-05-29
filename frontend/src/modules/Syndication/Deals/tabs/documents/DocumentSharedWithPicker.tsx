@@ -264,7 +264,7 @@ export function DocumentSharedWithPicker(args: {
   }, [hasAudienceSelection, notifyRecipients.length])
 
   const handleConfirmSendNotification = useCallback(() => {
-    const idTrim = dealId.trim()
+    const idTrim = dealId?.trim() ?? ""
     if (!idTrim) {
       toast.error("Save the deal", "Save the deal before sending notifications.")
       return
