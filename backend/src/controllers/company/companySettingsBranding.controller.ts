@@ -36,7 +36,7 @@ const ASSET_TYPE_TO_PUBLIC_ID_KEY: Record<
   logoIcon: "logoIconPublicId",
 };
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 1 * 1024 * 1024;
 
 const ALLOWED_IMAGE_EXT = new Set(["png", "jpg", "webp", "gif", "svg", "ico"]);
 
@@ -212,7 +212,7 @@ export async function postCompanySettingsBranding(
     return;
   }
   if (file.size > MAX_BYTES) {
-    res.status(400).json({ message: "File too large (max 8 MB)" });
+    res.status(400).json({ message: "File too large (max 1 MB)" });
     return;
   }
   let originalname = String(

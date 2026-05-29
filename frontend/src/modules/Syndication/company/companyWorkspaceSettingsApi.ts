@@ -91,6 +91,9 @@ export async function putWorkspaceTabSettings(
 
 export type CompanyBrandingAsset = "logo" | "background" | "logoIcon"
 
+/** Logo, background image, and logo icon uploads (client + server). */
+export const MAX_BRANDING_FILE_BYTES = 1 * 1024 * 1024
+
 const MAX_MULTIPART_BRANDING_NAME_LEN = 180
 
 /**
@@ -213,6 +216,9 @@ export async function postCompanySettingsBranding(
   }
   if (!file || (typeof file.size === "number" && file.size <= 0)) {
     return { ok: false, message: "Choose a non-empty image file." }
+  }
+  if (typeof file.size === "number" && file.size > MAX_BRANDING_FILE_BYTES) {
+    return { ok: false, message: "File too large (max 1 MB)." }
   }
   let toSend: File
   try {

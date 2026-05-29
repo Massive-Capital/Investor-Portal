@@ -43,7 +43,7 @@ export function InvestNowW9Form({
   }
 
   return (
-    <div className="invest_now_w9_form">
+    <>
       <InvestNowFormField
         id={nameId}
         label={INVEST_NOW_W9_NAME_LABEL}
@@ -189,6 +189,6 @@ export function InvestNowW9Form({
           onChange={(e) => patch({ ssn: formatSsnItinInput(e.target.value) })}
         />
       </InvestNowFormField>
-    </div>
+    </>
   )
 }

@@ -8,7 +8,7 @@ import multer from "multer";
  */
 const brandingUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 1 * 1024 * 1024, files: 1 },
 });
 
 export function uploadCompanySettingsBranding(
@@ -23,7 +23,7 @@ export function uploadCompanySettingsBranding(
     }
     const m = err as { code?: string; message?: string };
     if (m.code === "LIMIT_FILE_SIZE") {
-      res.status(400).json({ message: "File too large (max 8 MB)" });
+      res.status(400).json({ message: "File too large (max 1 MB)" });
       return;
     }
     if (m.code) {

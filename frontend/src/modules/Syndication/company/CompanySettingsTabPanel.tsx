@@ -15,6 +15,7 @@ import {
 import {
   fetchWorkspaceTabSettings,
   materializeBrandingFile,
+  MAX_BRANDING_FILE_BYTES,
   postCompanySettingsBranding,
   putWorkspaceTabSettings,
 } from "./companyWorkspaceSettingsApi";
@@ -589,6 +590,10 @@ export function CompanySettingsTabPanel({
     if (!f) return;
     if (!isLikelyImageFile(f)) {
       toast.error("Invalid file", "Please choose an image file (PNG, JPEG, SVG, ICO, etc.).");
+      return;
+    }
+    if (f.size > MAX_BRANDING_FILE_BYTES) {
+      toast.error("File too large", "Maximum file size is 1 MB.");
       return;
     }
     void materializeBrandingFile(f)
