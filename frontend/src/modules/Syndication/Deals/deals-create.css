@@ -242,6 +242,7 @@
   padding-left: var(--deals-control-padding-x, 0.75rem);
   padding-right: var(--deals-control-padding-x, 0.75rem);
   border-radius: 10px;
+  resize: none;
 }
 
 .app_shell .deals_create_flow .deals_create_select,

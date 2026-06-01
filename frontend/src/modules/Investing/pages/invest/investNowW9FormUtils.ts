@@ -1,5 +1,5 @@
 import {
-  formatSsnItinInput,
+  // formatSsnItinInput,
   nineDigitsFromSsnItinInput,
   ssnItinFieldError,
 } from "@/common/tax/usSsnItin"
@@ -84,12 +84,6 @@ function sessionDisplayName(): string {
   return [sessionStr("firstName"), sessionStr("lastName")].filter(Boolean).join(" ")
 }
 
-function ssnFromWizard(wizard: Record<string, unknown>): string {
-  const raw = String(wizard.ssn ?? wizard.spouseSsn ?? "").trim()
-  const digits = nineDigitsFromSsnItinInput(raw)
-  return digits ? formatSsnItinInput(digits) : ""
-}
-
 function prefillFromQuestionnaire(
   answers: InvestNowQuestionnaireAnswers | undefined,
 ): Partial<InvestNowW9FormValues> {
@@ -98,14 +92,9 @@ function prefillFromQuestionnaire(
   const last = String(answers.last_name ?? "").trim()
   const name = [first, last].filter(Boolean).join(" ")
   const addressLine = String(answers.address ?? "").trim()
-  const ssnDigits = nineDigitsFromSsnItinInput(
-    String(answers.social_security_number ?? ""),
-  )
-  const ssn = ssnDigits ? formatSsnItinInput(ssnDigits) : ""
   const partial: Partial<InvestNowW9FormValues> = {}
   if (name) partial.name = name
   if (addressLine) partial.addressLine = addressLine
-  if (ssn) partial.ssn = ssn
   return partial
 }
 
@@ -129,7 +118,6 @@ export function mergeInvestNowW9Values(
 ): InvestNowW9FormValues {
   const next = { ...current }
   if (!next.name.trim() && prefill.name.trim()) next.name = prefill.name.trim()
-  if (!next.ssn.trim() && prefill.ssn.trim()) next.ssn = prefill.ssn.trim()
   if (!hasAnyAddress(next)) {
     if (prefill.addressLine.trim()) next.addressLine = prefill.addressLine.trim()
     if (prefill.street1.trim()) next.street1 = prefill.street1.trim()
@@ -169,7 +157,6 @@ export function buildInvestNowW9Prefill({
     next = {
       ...next,
       name,
-      ssn: wizard ? ssnFromWizard(wizard) : "",
     }
 
     const taxAddressId = wizard ? String(wizard.taxAddressId ?? "").trim() : ""
@@ -194,7 +181,6 @@ export function buildInvestNowW9Prefill({
     city: fromQuestionnaire.city ?? "",
     state: fromQuestionnaire.state ?? "",
     zip: fromQuestionnaire.zip ?? "",
-    ssn: fromQuestionnaire.ssn ?? "",
   })
 
   return next

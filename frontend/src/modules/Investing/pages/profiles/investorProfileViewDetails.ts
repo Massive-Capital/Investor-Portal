@@ -8,6 +8,7 @@ import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
 } from "@/common/phone/usPhoneNumber"
+import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 
 export type InvestorProfileViewDetailRow = { label: string; value: string }
 
@@ -442,7 +443,7 @@ export function buildInvestorProfileViewDescription(
   row: InvestorProfileListRow,
 ): string {
   const parts = [
-    row.profileType?.trim(),
+    bookProfileTypeDisplayLabel(row),
     `${row.investmentsCount ?? 0} investment${row.investmentsCount === 1 ? "" : "s"}`,
     row.archived ? "Archived" : "Active",
     row.dateCreated ? `Added ${formatProfileListDate(row.dateCreated)}` : "",

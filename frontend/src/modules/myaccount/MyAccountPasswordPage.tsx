@@ -1,5 +1,5 @@
 import type { FormEvent } from "react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { LockKeyhole } from "lucide-react"
 import { toast } from "../../common/components/Toast"
 import { postChangePassword } from "./accountApi"
@@ -15,8 +15,17 @@ export function MyAccountPasswordPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
+  const hasChanges = useMemo(
+    () =>
+      currentPassword.length > 0 ||
+      newPassword.length > 0 ||
+      confirmPassword.length > 0,
+    [confirmPassword, currentPassword, newPassword],
+  )
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    if (!hasChanges || isLoading) return
     setError("")
     if (newPassword !== confirmPassword) {
       setError("New password and confirmation do not match.")
@@ -59,8 +68,7 @@ export function MyAccountPasswordPage() {
   }
 
   return (
-    <div>
-      <h2 className="myaccount_section_title">Change password</h2>
+    <div className="myaccount_form_body">
       <p className="myaccount_readonly_note">
         Use a strong password you do not use elsewhere. Password must be{" "}
         {PASSWORD_MIN}–{PASSWORD_MAX} characters.
@@ -141,7 +149,7 @@ export function MyAccountPasswordPage() {
           <button
             type="submit"
             className="um_btn_primary"
-            disabled={isLoading}
+            disabled={isLoading || !hasChanges}
           >
             {isLoading ? "Updating…" : "Update password"}
           </button>

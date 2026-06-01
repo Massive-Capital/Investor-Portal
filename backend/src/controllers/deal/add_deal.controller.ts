@@ -18,6 +18,7 @@ import {
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { assignCreatorToDeal } from "../../services/deal/assigningDealUser.service.js";
+import { assignCreatorAsLeadSponsorOnDeal } from "../../services/deal/dealMember.service.js";
 import {
   requestedOrganizationIdFromRequest,
   userHasAccessToOrganization,
@@ -1198,7 +1199,9 @@ export async function postDeal(req: Request, res: Response): Promise<void> {
 
     const assetPaths = await saveDealAssetFiles({ files: fileList });
     const created = await insertAddDealForm(input, assetPaths, organizationId);
-    await assignCreatorToDeal(String(created.id), user.id);
+    const dealId = String(created.id);
+    await assignCreatorToDeal(dealId, user.id);
+    await assignCreatorAsLeadSponsorOnDeal(dealId, user.id);
     res.status(201).json({
       message: "Deal created",
       deal: mapRowToJson(created, { investmentRowCount: 0 }),

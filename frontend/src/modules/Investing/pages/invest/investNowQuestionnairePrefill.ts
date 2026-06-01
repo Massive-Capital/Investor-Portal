@@ -1,5 +1,4 @@
 import { nationalDigitsFromStoredPhone } from "@/common/phone/usPhoneNumber"
-import { formatSsnItinInput, nineDigitsFromSsnItinInput } from "@/common/tax/usSsnItin"
 import type { SavedAddress } from "@/modules/Investing/pages/profiles/address.types"
 import type { InvestorProfileListRow } from "@/modules/Investing/pages/profiles/investor-profiles.types"
 import { readSessionUser } from "@/modules/myaccount/sessionUser"
@@ -72,7 +71,6 @@ function personalPrefillValue(
     lastName: string
     telephone: string
     addressLine: string
-    ssnFormatted: string
   },
 ): string | undefined {
   switch (questionId) {
@@ -84,9 +82,8 @@ function personalPrefillValue(
       return ctx.telephone || undefined
     case "address":
       return ctx.addressLine || undefined
-    case "social_security_number": {
-      return ctx.ssnFormatted || undefined
-    }
+    case "social_security_number":
+      return undefined
     default:
       return undefined
   }
@@ -116,12 +113,8 @@ export function buildInvestNowQuestionnairePrefill({
   const telephone = resolveTelephone(wizard)
   const taxAddr = resolveTaxAddress(wizard, addresses)
   const addressLine = taxAddr ? formatAddressLine(taxAddr) : ""
-  const ssnDigits = nineDigitsFromSsnItinInput(
-    strField(wizard, "ssn") || strField(wizard, "spouseSsn"),
-  )
-  const ssnFormatted = ssnDigits ? formatSsnItinInput(ssnDigits) : ""
 
-  const ctx = { firstName, lastName, telephone, addressLine, ssnFormatted }
+  const ctx = { firstName, lastName, telephone, addressLine }
 
   const questionIds = config
     ? questionsForSection(config.questions, sectionId).map((q) => q.id)

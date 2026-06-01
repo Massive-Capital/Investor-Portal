@@ -12,7 +12,8 @@ import {
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail"
 import { toast } from "../../../../../common/components/Toast"
-import { fetchMyProfileBook } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
+import { fetchMyProfileBook, normalizeInvestorProfileListRow } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
+import type { InvestorProfileListRow } from "@/modules/Investing/pages/profiles/investor-profiles.types"
 import { fetchDealInvestors } from "../../api/dealsApi"
 import { patchMyLpDealInvestNowCommitment } from "../../api/lpInvestNowCommitmentApi"
 import { INVESTOR_PROFILE_SELECT_OPTIONS } from "../../constants/investor-profile"
@@ -83,9 +84,7 @@ export function LpInvestNowModalOffering({
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [bookLoading, setBookLoading] = useState(false)
-  const [bookProfiles, setBookProfiles] = useState<
-    { id: string; profileName: string; profileType: string }[]
-  >([])
+  const [bookProfiles, setBookProfiles] = useState<InvestorProfileListRow[]>([])
   const [blockedProfileKeys, setBlockedProfileKeys] = useState<Set<string>>(
     () => new Set(),
   )
@@ -115,11 +114,7 @@ export function LpInvestNowModalOffering({
         ])
         if (cancelled) return
         setBookProfiles(
-          (book.profiles ?? []).map((p) => ({
-            id: p.id,
-            profileName: p.profileName,
-            profileType: p.profileType,
-          })),
+          (book.profiles ?? []).map((p) => normalizeInvestorProfileListRow(p)),
         )
         if (inv && em) {
           const p = getLpInvestNowPrefillFromPayload(inv, em)
@@ -133,9 +128,6 @@ export function LpInvestNowModalOffering({
           if (p) {
             setProfile(p.profileId)
             setSavedUserProfileId(p.userInvestorProfileId ?? "")
-            setAmount(
-              p.amount.trim() ? formatCurrencyUsdTypeInput(p.amount) : "",
-            )
             setStatus(p.status)
             setDocSignedDate(p.docSignedDate)
           }

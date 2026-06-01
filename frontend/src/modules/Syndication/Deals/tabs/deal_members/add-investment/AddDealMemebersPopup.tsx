@@ -1026,23 +1026,25 @@ export function AddInvestmentModal({
       )
       return false
     }
-    if (!investorClassesReady) {
-      setError("Loading investor classes…")
-      return false
-    }
-    if (noDealClasses) {
-      setError(
-        "Add at least one investor class in the Classes section before recording an investment.",
-      )
-      return false
-    }
-    if (!form.investorClass.trim()) {
-      setError("Select an investor class.")
-      return false
-    }
-    if (!dealClasses.some((c) => c.id === form.investorClass.trim())) {
-      setError("Select a valid investor class from this deal.")
-      return false
+    if (isInvestorEntry) {
+      if (!investorClassesReady) {
+        setError("Loading investor classes…")
+        return false
+      }
+      if (noDealClasses) {
+        setError(
+          "Add at least one investor class in the Classes section before recording an investment.",
+        )
+        return false
+      }
+      if (!form.investorClass.trim()) {
+        setError("Select an investor class.")
+        return false
+      }
+      if (!dealClasses.some((c) => c.id === form.investorClass.trim())) {
+        setError("Select a valid investor class from this deal.")
+        return false
+      }
     }
     if (isInvestorEntry && !form.commitmentAmount.trim()) {
       setError("Enter a commitment amount.")
@@ -1088,10 +1090,15 @@ export function AddInvestmentModal({
     if (!validateInvestmentStep1()) return
     setSubmitting(true)
     try {
-      await onSave(
-        withInvitationMailPolicy(form, dealBlocksInvitationEmails),
-        null,
-      )
+      let values = withInvitationMailPolicy(form, dealBlocksInvitationEmails)
+      if (
+        !isInvestorEntry &&
+        !values.investorClass.trim() &&
+        dealClasses[0]?.id?.trim()
+      ) {
+        values = { ...values, investorClass: dealClasses[0].id.trim() }
+      }
+      await onSave(values, null)
       if (mode === "add") {
         skipFlushDraftAfterSaveRef.current = true
         backendInvestmentIdRef.current = null
@@ -1430,48 +1437,49 @@ export function AddInvestmentModal({
                   </InvFormField> */}
                   </div>
 
-                 
-
-                  <InvFormField
-                    id="add-inv-class"
-                    label="Investor class"
-                    Icon={Tag}
-                    labelSuffix={
-                      noDealClasses ? (
-                        <span className="deals_add_inv_label_info">
-                          <InfoIconPanel
-                            ariaLabel="More information: Investor class"
-                            infoContent={INVESTOR_CLASS_UNAVAILABLE_HINT}
-                          />
-                        </span>
-                      ) : null
-                    }
-                  >
-                    <DropdownSelect
-                      {...MODAL_DROPDOWN_SELECT_PROPS}
+                  {isInvestorEntry ? (
+                    <InvFormField
                       id="add-inv-class"
-                      options={investorClassOptions.map((o) => ({
-                        value: o.value,
-                        label: o.label,
-                      }))}
-                      value={form.investorClass}
-                      disabled={
-                        !investorClassesReady || dealClasses.length === 0
+                      label="Investor class"
+                      Icon={Tag}
+                      labelSuffix={
+                        noDealClasses ? (
+                          <span className="deals_add_inv_label_info">
+                            <InfoIconPanel
+                              ariaLabel="More information: Investor class"
+                              infoContent={INVESTOR_CLASS_UNAVAILABLE_HINT}
+                            />
+                          </span>
+                        ) : null
                       }
-                      onChange={(v) => patch({ investorClass: v })}
-                      placeholder="Select investor class"
-                      ariaLabel="Investor class"
-                      ariaDescribedBy={
-                        noDealClasses ? "add-inv-class-hint" : undefined
-                      }
-                      triggerClassName={DROPDOWN_TRIGGER_PILL}
-                    />
-                    {noDealClasses ? (
-                      <p id="add-inv-class-hint" className="visually_hidden">
-                        {INVESTOR_CLASS_UNAVAILABLE_HINT}
-                      </p>
-                    ) : null}
-                  </InvFormField>
+                    >
+                      <DropdownSelect
+                        {...MODAL_DROPDOWN_SELECT_PROPS}
+                        id="add-inv-class"
+                        options={investorClassOptions.map((o) => ({
+                          value: o.value,
+                          label: o.label,
+                        }))}
+                        value={form.investorClass}
+                        disabled={
+                          !investorClassesReady || dealClasses.length === 0
+                        }
+                        onChange={(v) => patch({ investorClass: v })}
+                        placeholder="Select investor class"
+                        ariaLabel="Investor class"
+                        ariaDescribedBy={
+                          noDealClasses ? "add-inv-class-hint" : undefined
+                        }
+                        triggerClassName={DROPDOWN_TRIGGER_PILL}
+                      />
+                      {noDealClasses ? (
+                        <p id="add-inv-class-hint" className="visually_hidden">
+                          {INVESTOR_CLASS_UNAVAILABLE_HINT}
+                        </p>
+                      ) : null}
+                    </InvFormField>
+                  ) : null}
+                  {/* Deal Members: investor class is not collected here (assigned via Offering / investor flows). */}
 
                   {isInvestorEntry ? (
                     <div className="add_contact_name_grid">

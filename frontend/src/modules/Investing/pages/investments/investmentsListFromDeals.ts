@@ -6,9 +6,11 @@ import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import {
   applyLpSessionDealIdScope,
   committedAmountForViewerEmail,
+  dealIsInViewerInvestmentsListScope,
   formatViewerInvestingDealRolesLabel,
   mapInvestingDealsPageScope,
   resolveViewerInvestingDealRoles,
+  viewerDealHasStartedInvestment,
   viewerDealNeedsOnboarding,
   viewerHasDealParticipation,
 } from "@/modules/Investing/utils/investingViewerDealScope"
@@ -138,7 +140,8 @@ function onboardingBucketForDealPayload(
   viewerEmailNorm: string,
 ): InvestmentOnboardingBucket {
   if (viewerDealNeedsOnboarding(payload, viewerEmailNorm)) return "pending"
-  return "in_progress"
+  if (viewerDealHasStartedInvestment(payload, viewerEmailNorm)) return "in_progress"
+  return "pending"
 }
 
 function listRowFromDealAndInvestors(
@@ -208,6 +211,7 @@ export async function loadInvestmentListRowsFromDeals(
     (await fetchUserInvestorProfileNameMap())
   const out: InvestmentListRow[] = []
   for (const { row, payload, members } of scoped) {
+    if (!dealIsInViewerInvestmentsListScope(payload, emn)) continue
     const committed = committedAmountForViewerEmail(payload, emn)
     const inv = primaryViewerRow(payload.investors, emn)
     const viewerRolesLabel = formatViewerInvestingDealRolesLabel(

@@ -327,6 +327,11 @@ export function InvestmentDetailDocumentsTab({
               />
               <span className="deals_tabs_label um_segmented_tab_label">
                 Offering Documents
+                {offeringDocuments.length > 0 ? (
+                  <span className="investment_detail_docs_tab_count">
+                    {offeringDocuments.length}
+                  </span>
+                ) : null}
               </span>
             </button>
             <button

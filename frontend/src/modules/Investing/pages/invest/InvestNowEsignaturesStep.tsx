@@ -45,6 +45,8 @@ export interface InvestNowEsignaturesStepProps {
   /** From invest-now eSign send when document rows lack a request id. */
   fallbackSignatureRequestId?: string | null
   onRefreshDocuments: () => void | Promise<void>
+  /** After Dropbox Sign finish — refresh docs and complete Invest Now flow. */
+  onSignedComplete?: () => void | Promise<void>
   disabled: boolean
   error?: string
 }
@@ -71,6 +73,7 @@ export function InvestNowEsignaturesStep({
   webhookSignStatus,
   fallbackSignatureRequestId,
   onRefreshDocuments,
+  onSignedComplete,
   disabled,
   error,
 }: InvestNowEsignaturesStepProps) {
@@ -239,15 +242,14 @@ export function InvestNowEsignaturesStep({
           Document status:{" "}
           <strong>{esignWorkflowLabel}</strong>
           {esignWorkflowLabel.toLowerCase() !== "completed"
-            ? " — complete signing below, then click Finish in the signing window."
-            : " — you can finish Invest Now and return to your dashboard."}
+            ? " — complete signing below; you will return to Investments automatically."
+            : " — returning you to Investments."}
         </p>
       ) : null}
 
       {!esignLoading && esignCompleted ? (
         <p className="invest_now_esign_status invest_now_esign_status_ok" role="status">
-          All required documents are signed. You can finish and return to your
-          dashboard.
+          All required documents are signed. Returning you to Investments…
         </p>
       ) : null}
 
@@ -291,6 +293,8 @@ export function InvestNowEsignaturesStep({
           {displayDocuments.map((doc) => {
             const url = doc.url?.trim() || ""
             const showSign = docCanSign(doc)
+            const viewUrl =
+              url && (doc.status === "signed" || !esignCompleted) ? url : ""
             return (
               <li key={doc.id} className="invest_now_esign_doc_row">
                 <div className="invest_now_esign_doc_main">
@@ -324,7 +328,7 @@ export function InvestNowEsignaturesStep({
                     </div>
                   </div>
                 </div>
-                {url || showSign ? (
+                {viewUrl || showSign ? (
                   <div
                     className="invest_now_esign_doc_actions"
                     role="group"
@@ -344,10 +348,10 @@ export function InvestNowEsignaturesStep({
                         Sign
                       </button>
                     ) : null}
-                    {url ? (
+                    {viewUrl ? (
                       <>
                         <a
-                          href={url}
+                          href={viewUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="invest_now_esign_doc_link"
@@ -365,7 +369,7 @@ export function InvestNowEsignaturesStep({
                           View
                         </a>
                         <a
-                          href={url}
+                          href={viewUrl}
                           download={safeDownloadFilename(doc.name)}
                           rel="noopener noreferrer"
                           className="invest_now_esign_doc_link"
@@ -398,7 +402,10 @@ export function InvestNowEsignaturesStep({
           setSignModalOpen(false)
           setSignModalSignatureRequestId(null)
         }}
-        onSignedComplete={onRefreshDocuments}
+        onSignedComplete={async () => {
+          await onRefreshDocuments()
+          await onSignedComplete?.()
+        }}
       />
     </InvestNowStepLayout>
   )

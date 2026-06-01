@@ -15,7 +15,8 @@ import {
   DropdownSelect,
   MODAL_DROPDOWN_SELECT_PROPS,
 } from "../../../../../common/components/dropdown-select"
-import { fetchMyProfileBook } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
+import { fetchMyProfileBook, normalizeInvestorProfileListRow } from "@/modules/Investing/pages/profiles/investingProfileBookApi"
+import type { InvestorProfileListRow } from "@/modules/Investing/pages/profiles/investor-profiles.types"
 import { fetchDealInvestors } from "../../api/dealsApi"
 import { patchMyLpDealInvestNowCommitment } from "../../api/lpInvestNowCommitmentApi"
 import type { DealInvestorsPayload } from "../../types/deal-investors.types"
@@ -37,9 +38,12 @@ import {
   parseMoneyDigits,
 } from "../../utils/offeringMoneyFormat"
 import { getLpInvestNowPrefillFromPayload } from "../../utils/prefillLpInvestNowFields"
+import { bookProfileTypeDisplayLabel, commitmentProfileIdFromBookProfile } from "../../utils/resolveInvestNowDealContext"
+import { investNowProfileDropdownOption } from "@/modules/Investing/pages/invest/investNowProfileDropdownOption"
 import "../../../contacts/contacts.css"
 import "../deal_members/add-investment/add_deal_modal.css"
 import "./lp-invest-now-modal.css"
+import "@/modules/Investing/pages/invest/invest-now-flow.css"
 
 const DROPDOWN_TRIGGER_PILL =
   "um_field_select deals_add_inv_field_control deals_add_inv_field_pill"
@@ -82,9 +86,7 @@ export function LpInvestNowModal({
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [bookLoading, setBookLoading] = useState(false)
-  const [bookProfiles, setBookProfiles] = useState<
-    { id: string; profileName: string; profileType: string }[]
-  >([])
+  const [bookProfiles, setBookProfiles] = useState<InvestorProfileListRow[]>([])
   const [blockedProfileKeys, setBlockedProfileKeys] = useState<Set<string>>(
     () => new Set(),
   )
@@ -114,11 +116,7 @@ export function LpInvestNowModal({
         ])
         if (cancelled) return
         setBookProfiles(
-          (book.profiles ?? []).map((p) => ({
-            id: p.id,
-            profileName: p.profileName,
-            profileType: p.profileType,
-          })),
+          (book.profiles ?? []).map((p) => normalizeInvestorProfileListRow(p)),
         )
         if (inv && em) {
           const p = getLpInvestNowPrefillFromPayload(inv, em)
@@ -154,21 +152,25 @@ export function LpInvestNowModal({
   )
 
   const profileTypeSelectOptions = useMemo(() => {
-    const normalizedTypes = new Set(
-      (bookProfiles ?? []).map((p) => String(p.profileType ?? "").trim().toLowerCase()),
+    const commitmentIds = new Set(
+      (bookProfiles ?? [])
+        .map((p) => commitmentProfileIdFromBookProfile(p))
+        .filter(Boolean),
     )
     const opts: { value: string; label: string }[] = []
-    if (normalizedTypes.has("individual")) {
+    if (commitmentIds.has("individual")) {
       opts.push({ value: "individual", label: "Individual" })
     }
-    if (normalizedTypes.has("joint tenancy")) {
+    if (commitmentIds.has("joint_tenancy")) {
       opts.push({ value: "joint_tenancy", label: "Joint tenancy" })
     }
-    if (normalizedTypes.has("entity")) {
+    if (commitmentIds.has("custodian_ira_401k")) {
       opts.push({
         value: "custodian_ira_401k",
         label: "Custodian IRA or custodian based 401(k)",
       })
+    }
+    if (commitmentIds.has("llc_corp_trust_etc")) {
       opts.push({
         value: "llc_corp_trust_etc",
         label: "LLC, corp, partnership, trust, solo 401(k), or checkbook IRA",
@@ -433,10 +435,13 @@ export function LpInvestNowModal({
                   <DropdownSelect
                     {...MODAL_DROPDOWN_SELECT_PROPS}
                     id="lp-invest-now-saved-profile"
-                    options={availableBookProfiles.map((p) => ({
-                      value: p.id,
-                      label: p.profileName?.trim() || "—",
-                    }))}
+                    options={availableBookProfiles.map((p) =>
+                      investNowProfileDropdownOption({
+                        id: p.id,
+                        profileName: p.profileName,
+                        profileType: bookProfileTypeDisplayLabel(p),
+                      }),
+                    )}
                     value={savedUserProfileId}
                     onChange={(v) => {
                       setSavedUserProfileId(v)

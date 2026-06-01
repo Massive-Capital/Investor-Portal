@@ -860,3 +860,34 @@
 }
 
 
+
+/* Invest Now profile dropdown — name + profile type stacked in listbox */
+.invest_now_profile_option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.invest_now_profile_option_name {
+  line-height: 1.3;
+}
+
+.invest_now_profile_option_type {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deals_create_dropdown_panel .portal_dropdown_select_option .invest_now_profile_option {
+  width: 100%;
+}
+
+.portal_dropdown_select_option:disabled .invest_now_profile_option_type {
+  color: var(--portal-text-muted, #94a3b8);
+}
+
+

@@ -1,5 +1,5 @@
 import { ArrowLeft, ChevronRight, Loader2, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { toast } from "@/common/components/Toast"
@@ -50,12 +50,10 @@ import {
   filterBookProfilesByCommitmentKind,
   NO_SAVED_PROFILES_FOR_INVESTOR_TYPE_MSG,
 } from "@/modules/Syndication/Deals/utils/lpInvestNowSavedProfileOptions"
-import {
-  formatCurrencyUsdTypeInput,
-  parseMoneyDigits,
-} from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import { getLpInvestNowPrefillFromPayload } from "@/modules/Syndication/Deals/utils/prefillLpInvestNowFields"
 import {
+  bookProfileTypeDisplayLabel,
   commitmentProfileIdFromBookProfile,
   resolveInvestNowInvestmentClassLabel,
   resolveInvestNowSponsorLabel,
@@ -74,6 +72,7 @@ import {
   investNowActiveStepperPhaseId,
   investNowFlowStepSubtitle,
 } from "./investNowFlowSteps"
+import { investNowProfileDropdownOption } from "./investNowProfileDropdownOption"
 import { InvestNowFlowStepper } from "./InvestNowFlowStepper"
 import { InvestNowQuestionnaireSectionStep } from "./InvestNowQuestionnaireSectionStep"
 import { InvestNowW9Step } from "./InvestNowW9Step"
@@ -128,6 +127,8 @@ export function DealInvestNowPage() {
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const pendingAutoFinishRef = useRef(false)
+  const finishStartedRef = useRef(false)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState("")
 
@@ -137,9 +138,6 @@ export function DealInvestNowPage() {
   const [investmentClassLabel, setInvestmentClassLabel] = useState("—")
   const [sponsorLabel, setSponsorLabel] = useState("—")
 
-  const [bookProfiles, setBookProfiles] = useState<
-    { id: string; profileName: string; profileType: string }[]
-  >([])
   const [bookProfileRows, setBookProfileRows] = useState<InvestorProfileListRow[]>(
     [],
   )
@@ -306,13 +304,6 @@ export function DealInvestNowPage() {
         )
         setBookProfileRows(rows)
         setBookAddresses((book.addresses ?? []) as SavedAddress[])
-        setBookProfiles(
-          rows.map((p) => ({
-            id: p.id,
-            profileName: p.profileName,
-            profileType: p.profileType,
-          })),
-        )
 
         const prefill = em
           ? getLpInvestNowPrefillFromPayload(inv, em)
@@ -340,11 +331,6 @@ export function DealInvestNowPage() {
         if (prefill) {
           setProfileId(prefill.profileId)
           setSavedUserProfileId(prefill.userInvestorProfileId ?? "")
-          setAmount(
-            prefill.amount.trim()
-              ? formatCurrencyUsdTypeInput(prefill.amount)
-              : "",
-          )
           setStatus(prefill.status)
           setDocSignedDate(prefill.docSignedDate)
         }
@@ -363,8 +349,8 @@ export function DealInvestNowPage() {
   }, [dealId, navigate, backTo])
 
   const selectedBookProfile = useMemo(
-    () => bookProfiles.find((p) => p.id === savedUserProfileId),
-    [bookProfiles, savedUserProfileId],
+    () => bookProfileRows.find((p) => p.id === savedUserProfileId),
+    [bookProfileRows, savedUserProfileId],
   )
 
   useEffect(() => {
@@ -372,6 +358,21 @@ export function DealInvestNowPage() {
     const next = commitmentProfileIdFromBookProfile(selectedBookProfile)
     if (next) setProfileId(next)
   }, [selectedBookProfile])
+
+  /** Each profile selection starts with an empty amount; server stores the entered total. */
+  useEffect(() => {
+    setAmount("")
+  }, [savedUserProfileId])
+
+  /** SSN is entered fresh on each Invest Now run (not copied from saved profile or questionnaire). */
+  useEffect(() => {
+    setW9Values((prev) => ({ ...prev, ssn: "" }))
+    setQuestionnaireAnswers((prev) => {
+      if (!String(prev.social_security_number ?? "").trim()) return prev
+      const { social_security_number: _omit, ...rest } = prev
+      return rest
+    })
+  }, [savedUserProfileId])
 
   useEffect(() => {
     setEsignDocuments([])
@@ -462,27 +463,30 @@ export function DealInvestNowPage() {
   ])
 
   const profileDropdownOptions = useMemo(() => {
-    const active = bookProfiles.filter((p) => p.profileName?.trim())
+    const active = bookProfileRows.filter((p) => p.profileName?.trim())
     return active.map((p) => {
       const pid = commitmentProfileIdFromBookProfile(p)
       const key = lpProfileUseKey(pid, p.id)
-      return {
-        value: p.id,
-        label: p.profileName.trim(),
-        disabled: !pid || blockedProfileKeys.has(key),
-      }
+      return investNowProfileDropdownOption(
+        {
+          id: p.id,
+          profileName: p.profileName,
+          profileType: bookProfileTypeDisplayLabel(p),
+        },
+        !pid || blockedProfileKeys.has(key),
+      )
     })
-  }, [bookProfiles, blockedProfileKeys])
+  }, [bookProfileRows, blockedProfileKeys])
 
   const validateInvestorStep = useCallback((): string | null => {
     if (bookLoading) return "Loading your saved profiles…"
     if (!savedUserProfileId.trim()) return "Select a profile"
     if (!profileId.trim()) return "This profile type cannot be used for this deal"
-    const matching = filterBookProfilesByCommitmentKind(bookProfiles, profileId)
+    const matching = filterBookProfilesByCommitmentKind(bookProfileRows, profileId)
     if (matching.length === 0) return NO_SAVED_PROFILES_FOR_INVESTOR_TYPE_MSG
     const available = availableBookProfilesForCommitmentType(
       profileId,
-      bookProfiles,
+      bookProfileRows,
       blockedProfileKeys,
     )
     if (available.length === 0) return ALL_SAVED_PROFILES_IN_USE_ON_DEAL_MSG
@@ -499,7 +503,7 @@ export function DealInvestNowPage() {
     bookLoading,
     savedUserProfileId,
     profileId,
-    bookProfiles,
+    bookProfileRows,
     blockedProfileKeys,
     investmentClassLabel,
     sponsorLabel,
@@ -612,9 +616,9 @@ export function DealInvestNowPage() {
   }, [validateInvestmentStep])
 
   const investorDisplayName = useMemo(() => {
-    const p = bookProfiles.find((row) => row.id === savedUserProfileId)
+    const p = bookProfileRows.find((row) => row.id === savedUserProfileId)
     return p?.profileName?.trim() || ""
-  }, [bookProfiles, savedUserProfileId])
+  }, [bookProfileRows, savedUserProfileId])
 
   const esignProfileLabel = useMemo(
     () => esignCategoryLabel(esignCategoryId),
@@ -772,6 +776,11 @@ export function DealInvestNowPage() {
     esignCompleted,
     refreshWebhookSignStatus,
   ])
+
+  const onEsignSignedComplete = useCallback(async () => {
+    pendingAutoFinishRef.current = true
+    await loadEsignStepData()
+  }, [loadEsignStepData])
 
   const validateEsignaturesStep = useCallback((): string | null => {
     if (esignLoading) return "Loading e-sign documents…"
@@ -933,6 +942,7 @@ export function DealInvestNowPage() {
   ])
 
   const onFinish = useCallback(async () => {
+    if (finishStartedRef.current) return
     const investorErr = validateInvestorStep()
     if (investorErr) {
       setError(investorErr)
@@ -957,6 +967,8 @@ export function DealInvestNowPage() {
       if (esignStepIndex >= 0) setStepIndex(esignStepIndex)
       return
     }
+    finishStartedRef.current = true
+    setSubmitting(true)
     const n = parseMoneyDigits(String(amount).trim())
 
     const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
@@ -994,7 +1006,8 @@ export function DealInvestNowPage() {
       actionRequired: "None",
     })
 
-    navigate("/dashboard", { replace: true })
+    switchToInvesting()
+    navigate("/investing/investments", { replace: true })
   }, [
     validateInvestorStep,
     validateInvestmentStep,
@@ -1009,7 +1022,22 @@ export function DealInvestNowPage() {
     offeringSize,
     closeDate,
     navigate,
+    switchToInvesting,
   ])
+
+  useEffect(() => {
+    if (
+      !pendingAutoFinishRef.current ||
+      !esignCompleted ||
+      stepIndex !== esignStepIndex ||
+      esignStepIndex < 0 ||
+      finishStartedRef.current
+    ) {
+      return
+    }
+    pendingAutoFinishRef.current = false
+    void onFinish()
+  }, [esignCompleted, stepIndex, esignStepIndex, onFinish])
 
   if (!dealId) {
     return (
@@ -1162,6 +1190,7 @@ export function DealInvestNowPage() {
         signStatusLoading={signStatusLoading}
         fallbackSignatureRequestId={esignSignatureRequestId}
         onRefreshDocuments={() => loadEsignStepData()}
+        onSignedComplete={onEsignSignedComplete}
         disabled={submitting || esignLoading}
         error={error}
       />

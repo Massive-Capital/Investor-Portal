@@ -1,42 +1,68 @@
-/* My account layout (fields use .um_field from user_management.css — same as Invite member modal) */
-.myaccount_shell {
-  max-width: 880px;
+/* My account — same page chrome as investing Profiles / Investments (`um_page` + segmented tabs + card panel) */
+
+.myaccount_page {
   min-width: 0;
 }
 
-.myaccount_header {
-  margin-bottom: 1.25em;
+.myaccount_page_header {
+  margin-bottom: 0.2rem;
 }
 
-.myaccount_title {
-  margin: 0 0 0.35em;
-  font-size: 1.35em;
-  font-weight: 700;
-  color: #0f172a;
-  letter-spacing: -0.02em;
+.myaccount_form_panel {
+  --myaccount-panel-px: clamp(1rem, 2.5vw, 1.5rem);
+  --myaccount-panel-pt: 1.1rem;
+  --myaccount-panel-pb: 1.35rem;
+  padding: var(--myaccount-panel-pt) var(--myaccount-panel-px)
+    var(--myaccount-panel-pb);
+  box-sizing: border-box;
 }
 
-.myaccount_section_title {
-  margin: 0 0 1em;
-  font-size: 1em;
-  font-weight: 600;
-  color: #0f172a;
+.deals_list_page .myaccount_form_panel.deals_list_card_surface {
+  background: #f6f6f6;
+}
+
+:root[data-theme="dark"]
+  .deals_list_page
+  .myaccount_form_panel.deals_list_card_surface {
+  background: var(--portal-surface, #1a1a1a);
+}
+
+.myaccount_form_body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 36rem;
+  min-width: 0;
 }
 
 .myaccount_readonly_note {
-  margin: 0 0 0.85em;
-  font-size: 0.8125em;
-  color: #64748b;
-  line-height: 1.45;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.myaccount_form_body .um_msg_error {
+  margin: 0 0 1rem;
+}
+
+.myaccount_form_body .um_field {
+  margin-bottom: 0;
+}
+
+.myaccount_form_body form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .myaccount_actions {
   display: flex;
   align-items: center;
-  gap: 0.75em;
-  margin-top: 0.25em;
-  padding-top: 1em;
-  border-top: 1px solid #f1f5f9;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--portal-border, #e2e8f0);
 }
 
 @keyframes myaccount_btn_spin {
@@ -49,14 +75,18 @@
   animation: myaccount_btn_spin 0.85s linear infinite;
 }
 
-/* NavLink renders <a>: strip default underline so tabs match Members (button) styling */
-.myaccount_shell .um_members_tabs_row a.um_members_tab {
+/* NavLink renders <a>: strip default underline so tabs match segmented pill styling */
+.myaccount_page .um_members_tabs_row a.um_members_tab {
   text-decoration: none;
 }
 
-/* Read-only fields */
-.myaccount_shell .um_field input:read-only {
-  background: #f8fafc;
-  color: #64748b;
+/* Read-only account fields */
+.myaccount_page .um_field input:read-only {
+  background: color-mix(
+    in srgb,
+    var(--portal-surface-muted, #f8fafc) 88%,
+    var(--portal-surface, #fff)
+  );
+  color: var(--portal-text-muted, #64748b);
   cursor: default;
 }

@@ -1,5 +1,8 @@
 import { SESSION_USER_DETAILS_KEY } from "@/common/auth/sessionKeys"
-import { isLeadSponsorRole } from "../constants/investor-profile"
+import {
+  investorProfileLabel,
+  isLeadSponsorRole,
+} from "../constants/investor-profile"
 import type { DealDetailApi } from "../api/dealsApi"
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../types/deal-investors.types"
@@ -124,4 +127,14 @@ export function commitmentProfileIdFromBookProfile(profile: {
     profile.profileType,
     profile.profileWizardState,
   )
+}
+
+/** Human-readable profile type for tables and Invest Now (uses wizard state for Entity rows). */
+export function bookProfileTypeDisplayLabel(profile: {
+  profileType: string
+  profileWizardState?: unknown
+}): string {
+  const commitmentId = commitmentProfileIdFromBookProfile(profile)
+  if (commitmentId) return investorProfileLabel(commitmentId)
+  return profile.profileType?.trim() || "—"
 }

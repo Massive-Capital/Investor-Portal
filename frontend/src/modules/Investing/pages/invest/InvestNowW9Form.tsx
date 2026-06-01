@@ -23,7 +23,7 @@ export function InvestNowW9Form({
   const nameId = useId()
   const addressId = useId()
   const ssnId = useId()
-  const [addressDetailsOpen, setAddressDetailsOpen] = useState(false)
+  const [addressDetailsOpen, setAddressDetailsOpen] = useState(true)
 
   function patch(partial: Partial<InvestNowW9FormValues>) {
     onChange({ ...values, ...partial })
@@ -43,7 +43,7 @@ export function InvestNowW9Form({
   }
 
   return (
-    <>
+    <div className="invest_now_w9_form deals_create_fields">
       <InvestNowFormField
         id={nameId}
         label={INVEST_NOW_W9_NAME_LABEL}
@@ -189,6 +189,6 @@ export function InvestNowW9Form({
           onChange={(e) => patch({ ssn: formatSsnItinInput(e.target.value) })}
         />
       </InvestNowFormField>
-    </>
+    </div>
   )
 }

@@ -34,6 +34,9 @@ export type UpsertDealMemberInput = {
   addedByUserId: string;
 };
 
+/** Stored `deal_member.deal_member_role` for the single Lead Sponsor slot per deal. */
+export const LEAD_SPONSOR_DEAL_MEMBER_ROLE = "Lead Sponsor";
+
 function normalizeContactKey(raw: string): string {
   return String(raw ?? "").trim().toLowerCase();
 }
@@ -161,6 +164,43 @@ export async function upsertDealMemberForDeal(
         updatedAt: now,
       },
     });
+}
+
+/**
+ * Adds the deal creator as Lead Sponsor on the roster when no other Lead Sponsor exists.
+ */
+export async function assignCreatorAsLeadSponsorOnDeal(
+  dealId: string,
+  creatorUserId: string,
+): Promise<void> {
+  const did = String(dealId ?? "").trim();
+  const uid = String(creatorUserId ?? "").trim();
+  if (!did || !uid) return;
+
+  const [existingLeadSponsor] = await db
+    .select({ contactMemberId: dealMember.contactMemberId })
+    .from(dealMember)
+    .where(
+      and(
+        eq(dealMember.dealId, did),
+        sql`lower(trim(${dealMember.dealMemberRole})) = 'lead sponsor'`,
+      ),
+    )
+    .limit(1);
+
+  const existingContact = normalizeContactKey(
+    existingLeadSponsor?.contactMemberId ?? "",
+  );
+  if (existingContact && existingContact !== normalizeContactKey(uid)) {
+    return;
+  }
+
+  await upsertDealMemberForDeal(did, {
+    contactMemberId: uid,
+    dealMemberRole: LEAD_SPONSOR_DEAL_MEMBER_ROLE,
+    sendInvitationMail: "no",
+    addedByUserId: uid,
+  });
 }
 
 /**

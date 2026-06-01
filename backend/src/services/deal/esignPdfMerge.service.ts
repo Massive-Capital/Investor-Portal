@@ -348,6 +348,64 @@ export async function loadInvestorQuestionnaireSignaturePagePdf(): Promise<Buffe
  * Main document pages follow; W-9 (if any) should still be appended afterward.
  */
 /** Prefix PDF(s) in order before `mainPdf`. */
+/**
+ * Inserts PDF(s) immediately after `afterPageIndex` (0-based) of `mainPdf`, then appends
+ * the remaining pages of `mainPdf`. Used to place investor answer pages after the
+ * questionnaire signature page (page 1) so Dropbox template page 1 stays aligned.
+ */
+export async function insertPdfBuffersAfterPage(
+  mainPdf: Buffer,
+  afterPageIndex: number,
+  insertBuffers: Buffer[],
+): Promise<{ buffer: Buffer; inserted: boolean; insertPageCount: number }> {
+  const toInsert = insertBuffers.filter((b) => b?.length);
+  if (!toInsert.length) {
+    return { buffer: mainPdf, inserted: false, insertPageCount: 0 };
+  }
+
+  try {
+    const mainDoc = await PDFDocument.load(mainPdf, { ignoreEncryption: true });
+    const merged = await PDFDocument.create();
+    const indices = mainDoc.getPageIndices();
+    const splitAt = Math.max(
+      0,
+      Math.min(Math.floor(afterPageIndex), indices.length - 1),
+    );
+
+    const beforeIndices = indices.slice(0, splitAt + 1);
+    if (beforeIndices.length) {
+      const beforePages = await merged.copyPages(mainDoc, beforeIndices);
+      for (const page of beforePages) merged.addPage(page);
+    }
+
+    let insertPageCount = 0;
+    for (const buf of toInsert) {
+      const insertDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
+      insertPageCount += insertDoc.getPageCount();
+      const insertPages = await merged.copyPages(
+        insertDoc,
+        insertDoc.getPageIndices(),
+      );
+      for (const page of insertPages) merged.addPage(page);
+    }
+
+    const afterIndices = indices.slice(splitAt + 1);
+    if (afterIndices.length) {
+      const afterPages = await merged.copyPages(mainDoc, afterIndices);
+      for (const page of afterPages) merged.addPage(page);
+    }
+
+    return {
+      buffer: Buffer.from(await merged.save()),
+      inserted: true,
+      insertPageCount,
+    };
+  } catch (err) {
+    console.error("[esign] Failed to insert PDF buffers after page:", err);
+    return { buffer: mainPdf, inserted: false, insertPageCount: 0 };
+  }
+}
+
 export async function prependPdfBuffers(
   mainPdf: Buffer,
   prefixBuffers: Buffer[],

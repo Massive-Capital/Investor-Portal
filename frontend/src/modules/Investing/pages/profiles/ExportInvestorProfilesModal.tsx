@@ -2,6 +2,7 @@ import { Download, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
+import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 import "@/modules/Syndication/Deals/components/export-deals-modal.css"
 
 function downloadCsv(content: string, filename: string): void {
@@ -41,7 +42,7 @@ function buildInvestorProfilesExportCsv(rows: InvestorProfileListRow[]): string 
     lines.push(
       [
         esc(r.profileName),
-        esc(r.profileType),
+        esc(bookProfileTypeDisplayLabel(r)),
         esc(r.addedBy),
         esc(String(r.investmentsCount)),
         esc(formatDateForExport(r.dateCreated)),
@@ -80,7 +81,7 @@ export function ExportInvestorProfilesModal({
       list = list.filter(
         (r) =>
           (r.profileName ?? "").toLowerCase().includes(q) ||
-          (r.profileType ?? "").toLowerCase().includes(q) ||
+          (bookProfileTypeDisplayLabel(r) ?? "").toLowerCase().includes(q) ||
           (r.addedBy ?? "").toLowerCase().includes(q),
       )
     }
@@ -258,7 +259,7 @@ export function ExportInvestorProfilesModal({
                     {row.profileName || "—"}
                   </span>
                   <span className="deals_export_modal_row_meta">
-                    {row.profileType || "—"}
+                    {bookProfileTypeDisplayLabel(row)}
                   </span>
                 </label>
               </li>

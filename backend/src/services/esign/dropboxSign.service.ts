@@ -552,9 +552,17 @@ export async function createEmbeddedSignatureRequestWithTemplates(
   return { signatureRequestId, signatureId, signUrl, expiresAt };
 }
 
-export type CreateEmbeddedSignatureWithFilesParams = {
-  fileBuffer: Buffer;
+export type EmbeddedSigningFile = {
+  buffer: Buffer;
   fileName: string;
+};
+
+export type CreateEmbeddedSignatureWithFilesParams = {
+  /** Single-file signing (legacy). Prefer `files` when sending questionnaire + template separately. */
+  fileBuffer?: Buffer;
+  fileName?: string;
+  /** One or more PDFs — sponsor fields use matching `document_index` on each file. */
+  files?: EmbeddedSigningFile[];
   signerEmail: string;
   signerName: string;
   title: string;
@@ -584,11 +592,29 @@ export async function createEmbeddedSignatureRequestWithFile(
   if (params.subject) form.append("subject", params.subject);
   if (params.message) form.append("message", params.message);
 
-  const blob = new Blob([new Uint8Array(params.fileBuffer)], {
-    type: "application/pdf",
+  const signingFiles: EmbeddedSigningFile[] =
+    params.files?.length ?
+      params.files
+    : params.fileBuffer?.length ?
+      [
+        {
+          buffer: params.fileBuffer,
+          fileName: params.fileName?.trim() || "investment-documents.pdf",
+        },
+      ]
+    : [];
+
+  if (signingFiles.length === 0) {
+    throw new Error("At least one PDF file is required for embedded signing");
+  }
+
+  signingFiles.forEach((file, index) => {
+    const blob = new Blob([new Uint8Array(file.buffer)], {
+      type: "application/pdf",
+    });
+    const name = file.fileName.trim() || `document-${index + 1}.pdf`;
+    form.append(`file[${index}]`, blob, name);
   });
-  const name = params.fileName.trim() || "investment-documents.pdf";
-  form.append("file[0]", blob, name);
 
   form.append("signers[0][email_address]", params.signerEmail.trim());
   form.append("signers[0][name]", params.signerName.trim() || params.signerEmail.trim());
@@ -1045,12 +1071,18 @@ function parseTemplateFormFieldRecord(
   documentIndex: number,
   documentPageOffset: number,
   pageOffset: number,
+  pageOffsetSkipsTemplatePageOne: boolean,
   investorSignerKeys: Set<string>,
 ): DropboxSignFormFieldPerDocument | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  const page =
-    Math.max(1, Math.floor(Number(o.page) || 1) + documentPageOffset) + pageOffset;
+  const templatePage = Math.max(
+    1,
+    Math.floor(Number(o.page) || 1) + documentPageOffset,
+  );
+  const effectiveOffset =
+    pageOffsetSkipsTemplatePageOne && templatePage <= 1 ? 0 : pageOffset;
+  const page = templatePage + effectiveOffset;
   const apiId = templateFieldApiId(o, page);
   if (!apiId) return null;
   const type = mapTemplateFieldType(String(o.type ?? ""));
@@ -1078,20 +1110,34 @@ function parseTemplateFormFieldRecord(
   };
 }
 
-/** Embedded file upload is a single merged PDF — all fields use document index 0. */
+/** Map loaded template fields onto the embedded signing request file index. */
 export function normalizeEmbeddedFileFormFields(
   fields: DropboxSignFormFieldPerDocument[],
+  documentIndex = 0,
 ): DropboxSignFormFieldPerDocument[] {
-  return fields.map((field) => ({ ...field, documentIndex: 0 }));
+  const idx = Math.max(0, Math.floor(documentIndex));
+  return fields.map((field) => ({ ...field, documentIndex: idx }));
 }
 
+export type DropboxTemplateFieldsForEmbeddedOpts = {
+  /**
+   * Investor answer pages prepended before the sponsor template in the signing PDF.
+   * Shifts every sponsor field page by this count; x/y stay as placed in the editor.
+   */
+  pageOffset?: number;
+  /**
+   * When true, template page 1 is not shifted (legacy layout). Default: shift all pages.
+   */
+  pageOffsetSkipsTemplatePageOne?: boolean;
+};
+
 /**
- * Loads sponsor-placed fields from a Dropbox Sign template and shifts pages when
- * questionnaire answer pages are prepended to the signing PDF.
+ * Loads sponsor-placed fields from a Dropbox Sign template and shifts page numbers
+ * when questionnaire answer pages are prepended to the signing PDF.
  */
 export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
   templateId: string,
-  opts?: { pageOffset?: number },
+  opts?: DropboxTemplateFieldsForEmbeddedOpts,
 ): Promise<DropboxSignFormFieldPerDocument[]> {
   const id = templateId.trim();
   if (!id) return [];
@@ -1117,68 +1163,16 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
   };
 
   const pageOffset = Math.max(0, Math.floor(opts?.pageOffset ?? 0));
+  const pageOffsetSkipsTemplatePageOne =
+    opts?.pageOffsetSkipsTemplatePageOne === true;
   const out: DropboxSignFormFieldPerDocument[] = [];
   const seenApiIds = new Set<string>();
   const investorSignerKeys = buildInvestorSignerKeysFromTemplate(data.template);
   const docs = data.template?.documents ?? [];
-  const sortedDocIndexes = [...new Set(
-    docs.map((d) =>
-      Math.max(0, Math.floor(Number(d.index ?? d.document_index) || 0)),
-    ),
-  )].sort((a, b) => a - b);
-  const docPageOffsetByIndex = new Map<number, number>();
   const docByIndex = new Map<number, (typeof docs)[number]>();
   for (const doc of docs) {
     const idx = Math.max(0, Math.floor(Number(doc.index ?? doc.document_index) || 0));
     if (!docByIndex.has(idx)) docByIndex.set(idx, doc);
-  }
-
-  const docMinPageByIndex = new Map<number, number>();
-  for (const docIndex of sortedDocIndexes) {
-    const doc = docByIndex.get(docIndex);
-    if (!doc) continue;
-    const fieldLists = [
-      ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
-      ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
-    ];
-    let minPage = Number.POSITIVE_INFINITY;
-    for (const raw of fieldLists) {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-      const o = raw as Record<string, unknown>;
-      const p = Math.max(1, Math.floor(Number(o.page) || 1));
-      if (p < minPage) minPage = p;
-    }
-    if (Number.isFinite(minPage)) docMinPageByIndex.set(docIndex, minPage);
-  }
-  const needsDocRebase = sortedDocIndexes.some((docIndex) => {
-    if (docIndex <= 0) return false;
-    return (docMinPageByIndex.get(docIndex) ?? 1) === 1;
-  });
-
-  let runningPages = 0;
-  for (const docIndex of sortedDocIndexes) {
-    docPageOffsetByIndex.set(docIndex, needsDocRebase ? runningPages : 0);
-    const doc = docByIndex.get(docIndex);
-    const pageCountRaw =
-      (doc as { page_count?: unknown; pageCount?: unknown; num_pages?: unknown })?.page_count ??
-      (doc as { page_count?: unknown; pageCount?: unknown; num_pages?: unknown })?.pageCount ??
-      (doc as { page_count?: unknown; pageCount?: unknown; num_pages?: unknown })?.num_pages;
-    const declaredPageCount = Math.max(0, Math.floor(Number(pageCountRaw) || 0));
-    let inferredMaxPage = 0;
-    if (doc) {
-      const fieldLists = [
-        ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
-        ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
-      ];
-      for (const raw of fieldLists) {
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-        const o = raw as Record<string, unknown>;
-        const p = Math.max(1, Math.floor(Number(o.page) || 1));
-        if (p > inferredMaxPage) inferredMaxPage = p;
-      }
-    }
-    const pageCount = Math.max(declaredPageCount, inferredMaxPage);
-    runningPages += pageCount;
   }
 
   const rootFields = data.template as { form_fields?: unknown[] } | undefined;
@@ -1189,6 +1183,7 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
         0,
         0,
         pageOffset,
+        pageOffsetSkipsTemplatePageOne,
         investorSignerKeys,
       );
       if (!parsed || seenApiIds.has(parsed.apiId)) continue;
@@ -1202,7 +1197,6 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
       0,
       Math.floor(Number(doc.index ?? doc.document_index) || 0),
     );
-    const documentPageOffset = docPageOffsetByIndex.get(docIndex) ?? 0;
     const fieldLists = [
       ...(Array.isArray(doc.form_fields) ? doc.form_fields : []),
       ...(Array.isArray(doc.custom_fields) ? doc.custom_fields : []),
@@ -1211,8 +1205,9 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
       const parsed = parseTemplateFormFieldRecord(
         raw,
         docIndex,
-        documentPageOffset,
+        0,
         pageOffset,
+        pageOffsetSkipsTemplatePageOne,
         investorSignerKeys,
       );
       if (!parsed || seenApiIds.has(parsed.apiId)) continue;
@@ -1229,6 +1224,7 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
         0,
         0,
         pageOffset,
+        pageOffsetSkipsTemplatePageOne,
         investorSignerKeys,
       );
       if (!parsed || seenApiIds.has(parsed.apiId)) continue;
@@ -1237,5 +1233,5 @@ export async function getDropboxSignTemplateFormFieldsForEmbeddedFile(
     }
   }
 
-  return normalizeEmbeddedFileFormFields(out);
+  return normalizeEmbeddedFileFormFields(out, 0);
 }

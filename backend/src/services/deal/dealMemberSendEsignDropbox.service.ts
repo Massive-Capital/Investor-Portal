@@ -194,6 +194,8 @@ export async function createInvestorSignatureRequest(params: {
       };
     }
 
+    // One merged PDF (answers + sponsor template) so Dropbox page numbers stay aligned
+    // with the combined document the signer scrolls through.
     const result = await createEmbeddedSignatureRequestWithFile({
       fileBuffer: assembled.buffer,
       fileName: assembled.fileName,
@@ -330,6 +332,7 @@ async function resolveQuestionnairePrefillCustomFields(params: {
 async function resolveInvestorEsignFormFields(params: {
   dealId: string;
   templateId: string;
+  /** Investor answer pages prepended before the sponsor template in the signing PDF. */
   answerPageCount: number;
   questionnaireAnswers?: InvestorQuestionnaireAnswersMap | null;
   memberDisplayName?: string;
@@ -386,11 +389,16 @@ async function assembleInvestorSigningPdf(params: {
 }): Promise<{
   buffer: Buffer;
   fileName: string;
+  templateFileName: string;
   templateId: string;
   answerPageCount: number;
   answers: InvestorQuestionnaireAnswersMap | null;
   needsCustomDropboxFile: boolean;
   savePreview: boolean;
+  /** Questionnaire answers PDF merged into the signing buffer. */
+  answersPdfBuffer?: Buffer;
+  /** Prepared sponsor template before answer pages are merged. */
+  templateSigningBuffer?: Buffer;
 } | null> {
   if (params.selectedFiles.length !== 1) return null;
 
@@ -436,33 +444,43 @@ async function assembleInvestorSigningPdf(params: {
     file,
     esignState,
   );
-  let buffer: Buffer = Buffer.from(await readFile(absolutePath));
+  let templateSigningBuffer: Buffer = Buffer.from(await readFile(absolutePath));
 
+  if (w9Data) {
+    if (file.includesW9Appendix) {
+      templateSigningBuffer = Buffer.from(
+        await replaceW9AppendixWithFilled(templateSigningBuffer, w9Data),
+      );
+    } else {
+      const appended = await appendW9ToPdfBuffer(templateSigningBuffer, w9Data);
+      templateSigningBuffer = Buffer.from(appended.buffer);
+    }
+  }
+
+  let buffer = templateSigningBuffer;
   let answerPageCount = 0;
+  let answersPdfBuffer: Buffer | undefined;
+
   if (prependQuestionnaireAnswers && answers && profileId) {
     const config = await getDealInvestorQuestionnaireState(params.dealId);
-    const answersPdf = await buildInvestorQuestionnaireAnswersPdf({
+    answersPdfBuffer = await buildInvestorQuestionnaireAnswersPdf({
       config,
       answers,
       commitmentProfileId: profileId,
       dealName: params.dealName,
       investorName: params.memberDisplayName,
     });
-    answerPageCount = await countPdfPages(answersPdf);
-    const merged = await prependPdfBuffers(buffer, [answersPdf]);
+    answerPageCount = await countPdfPages(answersPdfBuffer);
+    // Order: investor answers → questionnaire signature (template p.1) → agreement, etc.
+    const merged = await prependPdfBuffers(templateSigningBuffer, [
+      answersPdfBuffer,
+    ]);
     if (!merged.prepended) return null;
     buffer = Buffer.from(merged.buffer);
   }
 
-  if (w9Data) {
-    if (file.includesW9Appendix) {
-      buffer = Buffer.from(await replaceW9AppendixWithFilled(buffer, w9Data));
-    } else {
-      const appended = await appendW9ToPdfBuffer(buffer, w9Data);
-      buffer = Buffer.from(appended.buffer);
-    }
-  }
-
+  const templateBaseName =
+    file.originalName.replace(/\.pdf$/i, "") || "investment-documents";
   const suffix = prependQuestionnaireAnswers
     ? "-with-questionnaire"
     : w9Data
@@ -470,12 +488,15 @@ async function assembleInvestorSigningPdf(params: {
       : "";
   return {
     buffer,
-    fileName: file.originalName.replace(/\.pdf$/i, "") + `${suffix}.pdf`,
+    fileName: `${templateBaseName}${suffix}.pdf`,
+    templateFileName: `${templateBaseName}.pdf`,
     templateId,
     answerPageCount,
     answers,
     needsCustomDropboxFile,
     savePreview,
+    ...(answersPdfBuffer ? { answersPdfBuffer } : {}),
+    templateSigningBuffer,
   };
 }
 

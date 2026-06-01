@@ -1,4 +1,13 @@
-import { Briefcase, IdCard, Loader2, Mail, Save, UserRound, X } from "lucide-react"
+import {
+  Briefcase,
+  IdCard,
+  Loader2,
+  Mail,
+  Save,
+  Tag,
+  UserRound,
+  X,
+} from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -37,9 +46,13 @@ import {
 import type { DealInvestorRow } from "../../types/deal-investors.types"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import { rowDisplayName } from "../../../usermanagement/memberAdminShared"
+import { InfoIconPanel } from "../offering_details/FieldInfoHeading"
 import "../../../usermanagement/user_management.css"
 import "../../components/deal-step-form.css"
 import "../deal_members/add-investment/add_deal_modal.css"
+
+const INVESTOR_CLASS_UNAVAILABLE_HINT =
+  "Please complete the Classes section to assign an investor class."
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
@@ -181,6 +194,7 @@ export function AddLpInvestorModal({
   const [membersLoading, setMembersLoading] = useState(false)
   const [addContactModalOpen, setAddContactModalOpen] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
+  const [investorClassId, setInvestorClassId] = useState("")
   const [backendLpRosterId, setBackendLpRosterId] = useState<string | null>(null)
   const backendLpRosterIdRef = useRef<string | null>(null)
   const lpAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -212,12 +226,24 @@ export function AddLpInvestorModal({
     if (!open) setAddContactModalOpen(false)
   }, [open])
 
+  const investorClassOptions = useMemo(
+    () =>
+      dealClasses.map((c) => ({
+        value: c.id,
+        label: c.name?.trim() || c.id,
+      })),
+    [dealClasses],
+  )
+
+  const noDealClasses = dealClasses.length === 0
+
   useEffect(() => {
     if (!open) {
       setContactId("")
       setContactDisplayName("")
       setContactEmail("")
       setProfileId("")
+      setInvestorClassId("")
       setSendInvitationMail("yes")
       setError(null)
       setBackendLpRosterId(null)
@@ -238,6 +264,7 @@ export function AddLpInvestorModal({
           "",
       )
       setSendInvitationMail("no")
+      setInvestorClassId(resolveLpInvestorClassId(editRow, dealClasses))
       setError(null)
       setBackendLpRosterId(editRow.id)
       backendLpRosterIdRef.current = editRow.id
@@ -258,6 +285,18 @@ export function AddLpInvestorModal({
           setSendInvitationMail("yes")
         else setSendInvitationMail("no")
         setProfileId(String(f.profileId ?? "").trim())
+        const draftClassRaw = String(f.investorClass ?? "").trim()
+        if (draftClassRaw && dealClasses.some((c) => c.id === draftClassRaw)) {
+          setInvestorClassId(draftClassRaw)
+        } else if (draftClassRaw) {
+          const byName = dealClasses.find(
+            (c) =>
+              c.name.trim().toLowerCase() === draftClassRaw.toLowerCase(),
+          )
+          setInvestorClassId(byName?.id ?? dealClasses[0]?.id ?? "")
+        } else {
+          setInvestorClassId(dealClasses[0]?.id ?? "")
+        }
         setError(null)
         /** Only `deal_lp_investor` ids — never `backendInvestmentId` (different table / PUT route). */
         const bid = draft?.backendLpInvestorId?.trim()
@@ -277,6 +316,7 @@ export function AddLpInvestorModal({
     setContactDisplayName("")
     setContactEmail("")
     setProfileId("")
+    setInvestorClassId(dealClasses[0]?.id ?? "")
     setSendInvitationMail(dealBlocksInvitationEmails ? "no" : "yes")
     setError(null)
     const stored = loadLpRosterId(dealId)
@@ -294,7 +334,24 @@ export function AddLpInvestorModal({
     editRow,
     resumeAddMemberDraft,
     dealBlocksInvitationEmails,
+    dealClasses,
   ])
+
+  useEffect(() => {
+    if (!open || dealClasses.length === 0) return
+    if (isEditMode && editRow) {
+      const resolved = resolveLpInvestorClassId(editRow, dealClasses)
+      setInvestorClassId((prev) => {
+        if (prev && dealClasses.some((c) => c.id === prev)) return prev
+        return resolved
+      })
+      return
+    }
+    setInvestorClassId((prev) => {
+      if (prev && dealClasses.some((c) => c.id === prev)) return prev
+      return dealClasses[0]?.id ?? ""
+    })
+  }, [open, isEditMode, editRow, dealClasses])
 
   const patchMemberById = useCallback(
     (raw: string) => {
@@ -405,14 +462,6 @@ export function AddLpInvestorModal({
     [handleContactCreated],
   )
 
-  const investorClassIdForPayload = useMemo(
-    () =>
-      isEditMode && editRow
-        ? resolveLpInvestorClassId(editRow, dealClasses)
-        : dealClasses[0]?.id?.trim() ?? "",
-    [isEditMode, editRow, dealClasses],
-  )
-
   backendLpRosterIdRef.current = backendLpRosterId
 
   useEffect(() => {
@@ -428,7 +477,7 @@ export function AddLpInvestorModal({
     lpAutosaveTimerRef.current = setTimeout(() => {
       lpAutosaveTimerRef.current = null
       void (async () => {
-        const classId = investorClassIdForPayload.trim()
+        const classId = investorClassId.trim()
         if (!classId) return
         const values: AddInvestmentFormValues = {
           offeringId: "primary",
@@ -514,7 +563,7 @@ export function AddLpInvestorModal({
     contactEmail,
     sendInvitationMail,
     onListRefresh,
-    investorClassIdForPayload,
+    investorClassId,
     isEditMode,
     dealBlocksInvitationEmails,
     profileId,
@@ -533,9 +582,13 @@ export function AddLpInvestorModal({
       )
       return
     }
-    const classId = investorClassIdForPayload.trim()
+    const classId = investorClassId.trim()
     if (!classId) {
-      setError("Could not resolve an investor class for this deal.")
+      setError("Select an investor class.")
+      return
+    }
+    if (!dealClasses.some((c) => c.id === classId)) {
+      setError("Select a valid investor class from this deal.")
       return
     }
     if (
@@ -713,6 +766,40 @@ export function AddLpInvestorModal({
                   Used for investor identity and invitation email context when you notify
                   them about being added to the deal.
                 </p>
+              </div>
+
+              <div className="um_field">
+                <label htmlFor="lp-inv-class" className="um_field_label_row">
+                  <Tag className="um_field_label_icon" size={17} aria-hidden />
+                  <span>Investor class</span>
+                  {noDealClasses ? (
+                    <span className="deals_add_inv_label_info">
+                      <InfoIconPanel
+                        ariaLabel="More information: Investor class"
+                        infoContent={INVESTOR_CLASS_UNAVAILABLE_HINT}
+                      />
+                    </span>
+                  ) : null}
+                </label>
+                <DropdownSelect
+                  {...MODAL_DROPDOWN_SELECT_PROPS}
+                  id="lp-inv-class"
+                  options={investorClassOptions}
+                  value={investorClassId}
+                  disabled={noDealClasses}
+                  onChange={(v) => setInvestorClassId(v)}
+                  placeholder="Select investor class"
+                  ariaLabel="Investor class"
+                  ariaDescribedBy={
+                    noDealClasses ? "lp-inv-class-hint" : undefined
+                  }
+                  triggerClassName={DROPDOWN_TRIGGER_PILL}
+                />
+                {noDealClasses ? (
+                  <p id="lp-inv-class-hint" className="visually_hidden">
+                    {INVESTOR_CLASS_UNAVAILABLE_HINT}
+                  </p>
+                ) : null}
               </div>
 
               <div className="um_field">

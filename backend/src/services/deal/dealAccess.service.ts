@@ -30,6 +30,7 @@ import {
   listDealIdsWhereViewerIsCoSponsor,
   viewerHasNonCoSponsorDealMemberRole,
 } from "./dealMemberScope.service.js";
+import { assignCreatorAsLeadSponsorOnDeal } from "./dealMember.service.js";
 import { listLpInvestorDealIdsForUserEmail } from "../investing/lpInvestorAccess.service.js";
 
 export type { DealViewerScope } from "./dealForm.service.js";
@@ -154,6 +155,7 @@ export async function getAddDealFormForViewerWithDraftCreatorRepair(
     return undefined;
   }
   await assignCreatorToDeal(dealId, scope.userId);
+  await assignCreatorAsLeadSponsorOnDeal(dealId, scope.userId);
   return getAddDealFormForViewer(dealId, scope);
 }
 

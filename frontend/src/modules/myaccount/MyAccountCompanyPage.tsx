@@ -35,8 +35,7 @@ export function MyAccountCompanyPage() {
   }, [location.pathname, loadFromSession])
 
   return (
-    <div>
-      <h2 className="myaccount_section_title">Company details</h2>
+    <div className="myaccount_form_body">
       <div className="um_field">
         <label htmlFor="myaccount-companyName" className="um_field_label_row">
           <Building2 className="um_field_label_icon" size={17} aria-hidden />

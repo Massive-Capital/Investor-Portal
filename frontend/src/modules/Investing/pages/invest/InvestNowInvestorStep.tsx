@@ -1,4 +1,5 @@
 import { useId } from "react"
+import type { DropdownSelectOption } from "@/common/components/dropdown-select"
 import { DealsCreateDropdownSelect } from "@/modules/Syndication/Deals/components/DealsCreateDropdownSelect"
 import "@/modules/Syndication/Deals/components/deals-create-dropdown.css"
 import type { LpBookProfileFilterRow } from "@/modules/Syndication/Deals/utils/lpInvestNowSavedProfileOptions"
@@ -6,7 +7,7 @@ import { InvestNowFormField, InvestNowReadonlyField } from "./InvestNowFormField
 import { InvestNowStepLayout } from "./InvestNowStepLayout"
 
 export interface InvestNowInvestorStepProps {
-  profileOptions: { value: string; label: string; disabled?: boolean }[]
+  profileOptions: DropdownSelectOption[]
   savedUserProfileId: string
   onSavedProfileChange: (id: string) => void
   investmentClassLabel: string

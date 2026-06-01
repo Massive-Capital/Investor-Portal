@@ -93,6 +93,21 @@ export function dealIsInViewerInvestingScope(
   return viewerHasDealParticipation(payload, em)
 }
 
+/**
+ * Investments list tabs: onboarded LP (committed and/or eSign started) or invited
+ * LP who has not started Invest Now. Excludes sponsor-only deal visibility.
+ */
+export function dealIsInViewerInvestmentsListScope(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): boolean {
+  if (!viewerEmailNorm) return false
+  return (
+    viewerDealHasStartedInvestment(payload, viewerEmailNorm) ||
+    viewerDealNeedsOnboarding(payload, viewerEmailNorm)
+  )
+}
+
 const SPONSOR_ROLE_DISPLAY_ORDER = [
   "Lead Sponsor",
   "Admin Sponsor",

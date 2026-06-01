@@ -45,6 +45,7 @@ import {
   buildInvestorProfileViewSections,
 } from "./investorProfileViewDetails"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
+import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 import {
   fetchInvestmentCountsByUserInvestorProfileId,
   mergeInvestorProfileRowsWithLinkedCounts,
@@ -348,6 +349,7 @@ export default function InvestingProfilesPage() {
       const dateLabel = formatProfileListDate(r.dateCreated).toLowerCase()
       return (
         (r.profileName ?? "").toLowerCase().includes(q) ||
+        bookProfileTypeDisplayLabel(r).toLowerCase().includes(q) ||
         (r.profileType ?? "").toLowerCase().includes(q) ||
         (r.addedBy ?? "").toLowerCase().includes(q) ||
         String(r.investmentsCount).includes(q) ||
@@ -574,8 +576,8 @@ export default function InvestingProfilesPage() {
       {
         id: "profileType",
         header: "Profile type",
-        sortValue: (r) => (r.profileType ?? "").toLowerCase(),
-        cell: (r) => r.profileType || "—",
+        sortValue: (r) => bookProfileTypeDisplayLabel(r).toLowerCase(),
+        cell: (r) => bookProfileTypeDisplayLabel(r),
       },
       {
         id: "addedBy",

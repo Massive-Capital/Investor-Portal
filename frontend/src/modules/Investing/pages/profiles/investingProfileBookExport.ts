@@ -1,6 +1,7 @@
 import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
 import type { SavedAddress } from "./address.types"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
+import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 
 function downloadCsv(content: string, filename: string): void {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
@@ -42,7 +43,7 @@ export function exportInvestorProfileRow(row: InvestorProfileListRow, filenameBa
     headers.join(","),
     [
       esc(row.profileName),
-      esc(row.profileType),
+      esc(bookProfileTypeDisplayLabel(row)),
       esc(row.addedBy),
       esc(String(row.investmentsCount ?? 0)),
       esc(formatDateForExport(row.dateCreated)),

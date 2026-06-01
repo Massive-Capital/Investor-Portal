@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { and, eq } from "drizzle-orm";
+import { PDFDocument } from "pdf-lib";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
 import { db } from "../../database/db.js";
 import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
@@ -121,14 +122,31 @@ function safeRosterSegment(raw: string): string {
   return sanitizeStoragePathSegment(raw, 64) || "investor";
 }
 
+/** Flatten AcroForm widgets so field labels (e.g. api ids) are not visible in viewers. */
+async function flattenSignedPdfBuffer(buffer: Buffer): Promise<Buffer> {
+  try {
+    const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+    try {
+      doc.getForm().flatten();
+    } catch {
+      /* Dropbox PDF may already be flattened or have no form */
+    }
+    return Buffer.from(await doc.save());
+  } catch (err) {
+    console.warn("flattenSignedPdfBuffer:", err);
+    return buffer;
+  }
+}
+
 async function persistSignedPdf(params: {
   dealId: string;
   rosterId: string;
   signatureRequestId: string;
 }): Promise<string> {
-  const pdf = await downloadSignatureRequestPdfBuffer(
+  const downloaded = await downloadSignatureRequestPdfBuffer(
     params.signatureRequestId,
   );
+  const pdf = await flattenSignedPdfBuffer(downloaded);
   const dealFolder = await resolveDealStorageFolderName(params.dealId);
   const rosterFolder = safeRosterSegment(params.rosterId);
   const fileName = `signed-${Date.now()}.pdf`;
@@ -202,15 +220,36 @@ async function applyProgressFromDropbox(
   const dropboxProgress = workflowTimestampsFromDropbox(summary);
   const progressViewed = dropboxProgress.viewedAt?.trim() || null;
   const progressSigned = dropboxProgress.signedAt?.trim() || null;
+  const signersSigned = dropboxSignersAllSigned(summary.signers);
+  const hasStoredSignedPdf = (existing.documents ?? []).some((d) =>
+    Boolean(d.signedRelativePath?.trim()),
+  );
 
-  if (progressViewed || progressSigned) {
+  if (progressViewed || progressSigned || signersSigned) {
+    let signedRelativePath: string | undefined;
+    if (!hasStoredSignedPdf && (signersSigned || progressSigned)) {
+      try {
+        signedRelativePath = await persistSignedPdf({
+          dealId,
+          rosterId: target.id,
+          signatureRequestId: sigId,
+        });
+      } catch (err) {
+        console.warn("persistSignedPdf (signed, not yet completed):", err);
+      }
+    }
+
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
       viewedAt: current.viewedAt ?? progressViewed,
       signedAt: current.signedAt ?? progressSigned,
       signatureRequestId: sigId,
+      documents: (current.documents ?? []).map((d) => ({
+        ...d,
+        ...(signedRelativePath ? { signedRelativePath } : {}),
+      })),
     }));
-    return false;
+    return Boolean(signedRelativePath);
   }
 
   return alreadyComplete;
@@ -389,18 +428,28 @@ export async function syncDealInvestorEsignByTarget(
     const signatureRequestId = send.signatureRequestId?.trim();
     if (!signatureRequestId) continue;
 
-    if (send.completedAt?.trim()) {
+    if (!send.completedAt?.trim()) {
+      changed =
+        (await applyProgressFromDropbox(dealId, target, signatureRequestId)) ||
+        changed;
+    }
+
+    const rawFresh = await readInvestorEsignStatusJson(dealId, target);
+    const bundleFresh = parseEsignStatusBundle(rawFresh);
+    const sendFresh = bundleFresh
+      ? findEsignSendBySignatureRequestId(bundleFresh, signatureRequestId)
+      : null;
+    if (
+      sendFresh &&
+      (sendFresh.completedAt?.trim() || sendFresh.signedAt?.trim())
+    ) {
       changed =
         (await ensureSignedPdfStoredForCompletedRequest(
           dealId,
           target,
           signatureRequestId,
-          send,
+          sendFresh,
         )) || changed;
-    } else {
-      changed =
-        (await applyProgressFromDropbox(dealId, target, signatureRequestId)) ||
-        changed;
     }
   }
   return changed;
@@ -436,11 +485,18 @@ export async function handleDealInvestorEsignWebhook(params: {
   });
 }
 
-export function listCompletedEsignDocumentsForSend(
+function sendHasStoredOrRecordedSignature(
+  send: StoredDealInvestorEsignSend,
+): boolean {
+  if (send.completedAt?.trim() || send.signedAt?.trim()) return true;
+  return (send.documents ?? []).some((d) => Boolean(d.signedRelativePath?.trim()));
+}
+
+function listSignedEsignDocumentsForSend(
   send: StoredDealInvestorEsignSend,
   signatureRequestId: string,
 ): Array<{ fileId: string; name: string; url: string | null }> {
-  if (!send.completedAt?.trim()) return [];
+  if (!sendHasStoredOrRecordedSignature(send)) return [];
   const docs = send.documents ?? [];
   if (docs.length === 0) return [];
 
@@ -460,9 +516,18 @@ export function listCompletedEsignDocumentsForSend(
   });
 }
 
+/** @deprecated Prefer listSignedEsignDocumentsForSend — kept for callers expecting completedAt. */
+export function listCompletedEsignDocumentsForSend(
+  send: StoredDealInvestorEsignSend,
+  signatureRequestId: string,
+): Array<{ fileId: string; name: string; url: string | null }> {
+  if (!send.completedAt?.trim()) return [];
+  return listSignedEsignDocumentsForSend(send, signatureRequestId);
+}
+
 /**
  * Documents sent for eSign on this deal — template previews while pending,
- * combined signed PDF after completion.
+ * combined signed PDF after the investor signs (never the pre-sign preview again).
  */
 export async function listMyEsignDocumentsForInvestor(
   dealId: string,
@@ -481,14 +546,15 @@ export async function listMyEsignDocumentsForInvestor(
       send.documents?.find((d) => d.categoryId?.trim())?.categoryId?.trim() ||
       "";
 
-    if (send.completedAt?.trim()) {
-      const completed = listCompletedEsignDocumentsForSend(send, sig);
-      for (const d of completed) {
+    if (sendHasStoredOrRecordedSignature(send)) {
+      const signed = listSignedEsignDocumentsForSend(send, sig);
+      const fullyCompleted = Boolean(send.completedAt?.trim());
+      for (const d of signed) {
         out.push({
           fileId: d.fileId,
           name: d.name,
           url: d.url,
-          status: "signed",
+          status: fullyCompleted || d.url ? "signed" : "pending",
           ...(categoryId ? { categoryId } : {}),
           ...(sig ? { signatureRequestId: sig } : {}),
         });
