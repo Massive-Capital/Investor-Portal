@@ -3,6 +3,7 @@ import {
   Eye,
   FileSignature,
   Link2,
+  Loader2,
   Mail,
   MoreHorizontal,
   Pencil,
@@ -233,13 +234,14 @@ export function DealMemberRowActions({
                   undone.
                 </p>
               </div>
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
                   onClick={() => setDeleteConfirmOpen(false)}
                   disabled={deleteBusy}
                 >
+                  <X size={16} strokeWidth={2} aria-hidden />
                   Cancel
                 </button>
                 <button
@@ -248,7 +250,22 @@ export function DealMemberRowActions({
                   onClick={() => void confirmDelete()}
                   disabled={deleteBusy}
                 >
-                  {deleteBusy ? "Removing…" : "Remove member"}
+                  {deleteBusy ? (
+                    <>
+                      <Loader2
+                        size={16}
+                        strokeWidth={2}
+                        className="deals_deal_view_spinner"
+                        aria-hidden
+                      />
+                      Removing…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} strokeWidth={2} aria-hidden />
+                      Remove member
+                    </>
+                  )}
                 </button>
               </div>
             </div>

@@ -1,15 +1,15 @@
 import {
   ClipboardList,
   DollarSign,
-  LayoutDashboard,
   LineChart,
   Plus,
   UserRound,
   Users,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 import { ToolStyleCard } from "../../../common/components/tool-style-card/ToolStyleCard"
+import { cardCompactAmountOrDash } from "../../../common/components/card-compact-amount/CardCompactAmount"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { InvestingDashboardPage } from "@/modules/Investing/pages/dashboard"
 import { SyndicatingDealsSection } from "../Deals/SyndicatingDealsSection"
@@ -23,8 +23,8 @@ import "./sponsor-dashboard.css"
 function formatDashboardValue(
   loading: boolean,
   summary: SyndicationDashboardSummary | null,
-  pick: (s: SyndicationDashboardSummary) => string,
-): string {
+  pick: (s: SyndicationDashboardSummary) => ReactNode,
+): ReactNode {
   if (loading || summary == null) return "—"
   return pick(summary)
 }
@@ -60,17 +60,12 @@ function SyndicatingDashboard() {
 
   return (
     <section className="um_page sponsor_dash sponsor_dash_syndicating">
-      <div className="um_members_header_block">
-        <div className="um_header_row">
-          <h2 className="um_title um_title_with_icon">
-            <LayoutDashboard
-              className="um_title_icon"
-              size={26}
-              strokeWidth={1.75}
-              aria-hidden
-            />
-            Syndicating dashboard
-          </h2>
+      <header className="sponsor_dash_hero">
+        <div className="sponsor_dash_hero_copy">
+          <p className="sponsor_dash_hero_eyebrow">Portfolio Overview</p>
+          <h1 className="sponsor_dash_hero_title">Syndicating dashboard</h1>
+        </div>
+        <div className="sponsor_dash_hero_actions">
           <Link
             className="um_btn_primary sponsor_dash_add_link"
             to="/deals/create"
@@ -79,27 +74,30 @@ function SyndicatingDashboard() {
             Add deal
           </Link>
         </div>
-      </div>
+      </header>
 
       <section
         className="sponsor_dash_metrics"
         aria-label="Dashboard summary"
         aria-busy={loading}
       >
-           <ToolStyleCard
+        <ToolStyleCard
           variant="metric"
           icon={LineChart}
           title="Total target amount"
-          description={formatDashboardValue(loading, summary, (s) => s.totalTargetDisplay)}
+          description={formatDashboardValue(loading, summary, (s) =>
+            cardCompactAmountOrDash(s.totalTargetDisplay),
+          )}
         />
-            
         <ToolStyleCard
           variant="metric"
           icon={DollarSign}
           title="Total distributions"
-          description={formatDashboardValue(loading, summary, (s) => s.totalDistributionsDisplay)}
+          description={formatDashboardValue(loading, summary, (s) =>
+            cardCompactAmountOrDash(s.totalDistributionsDisplay),
+          )}
         />
-         <ToolStyleCard
+        <ToolStyleCard
           variant="metric"
           icon={UserRound}
           title="# of investors"
@@ -120,18 +118,13 @@ function SyndicatingDashboard() {
           icon={ClipboardList}
           title="# of reviews"
           description="—"
-          // footer={<a href="#reviews">Turn on reviews</a>}
         />
-        {/* <ToolStyleCard
-          variant="metric"
-          icon={CreditCard}
-          title="Billing quota"
-          description="—"
-          hintTitle="Your syndication billing quota for active deals."
-        /> */}
       </section>
 
-      <SyndicatingDealsSection dealsHeadingId="sponsor-deals-heading" />
+      <SyndicatingDealsSection
+        dealsHeadingId="sponsor-deals-heading"
+        searchPlaceholder="Search deals…"
+      />
     </section>
   )
 }

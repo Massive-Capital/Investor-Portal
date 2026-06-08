@@ -1,16 +1,18 @@
 import type { LucideIcon } from "lucide-react"
 import { useId } from "react"
+import "@/common/components/tool-style-card/tool-style-card.css"
 import { Sparkline, sparklineFromSeed } from "./Sparkline"
 
 export type MetricTone = "blue" | "green" | "amber" | "violet" | "slate" | "rose"
 
-const TONE_COLORS: Record<MetricTone, string> = {
-  blue: "#3b82f6",
-  green: "#22c55e",
-  amber: "#f59e0b",
-  violet: "#8b5cf6",
-  slate: "#64748b",
-  rose: "#f43f5e",
+/** Sparkline accent only — card chrome matches dashboard `ToolStyleCard` metric variant */
+const TONE_SPARK_COLORS: Record<MetricTone, string> = {
+  blue: "#d4af37",
+  green: "#d4af37",
+  amber: "#d4af37",
+  violet: "#d4af37",
+  slate: "#d4af37",
+  rose: "#d4af37",
 }
 
 type MetricKpiCardProps = {
@@ -35,27 +37,36 @@ export function MetricKpiCard({
   sparkSeed = 1,
 }: MetricKpiCardProps) {
   const gradientId = useId()
-  const color = TONE_COLORS[tone]
+  const sparkColor = TONE_SPARK_COLORS[tone]
   const points = sparklineFromSeed(sparkSeed)
 
   return (
-    <article className="pm_kpi_card" aria-busy={loading}>
-      <div className="pm_kpi_card_head">
-        <span className="pm_kpi_label">{label}</span>
-        <span className={`pm_kpi_icon pm_kpi_icon_${tone}`} aria-hidden>
-          <Icon size={16} strokeWidth={2} />
-        </span>
+    <article
+      className="tool_style_card tool_style_card--metric portal_metric_kpi_card pm_kpi_card"
+      aria-busy={loading}
+    >
+      <div className="tool_style_card_metric_header">
+        <span className="tool_style_card_label_inline">{label}</span>
+        <div className="tool_style_card_icon_box" aria-hidden>
+          <Icon className="tool_style_card_icon" size={22} strokeWidth={1.75} />
+        </div>
       </div>
-      <p className="pm_kpi_value">{loading ? "—" : value}</p>
-      <div className="pm_kpi_spark_row">
-        <Sparkline
-          points={points}
-          color={color}
-          width={140}
-          height={40}
-          gradientId={gradientId}
-        />
+      <p className="tool_style_card_value_lead pm_kpi_value">
+        {loading ? "—" : value}
+      </p>
+
+      <div className="pm_kpi_spark_row" aria-hidden={loading}>
+        {!loading ? (
+          <Sparkline
+            points={points}
+            color={sparkColor}
+            width={140}
+            height={40}
+            gradientId={gradientId}
+          />
+        ) : null}
       </div>
+
       {(footer || subfooter) && !loading ? (
         <div className="pm_kpi_footer">
           {footer ? <span className="pm_kpi_footer_main">{footer}</span> : null}

@@ -143,6 +143,11 @@ export type NestedPreviewDocument = {
    * `lp_investor`: LP portal only.
    */
   sharedWithScope?: SectionSharedWithScope
+  /**
+   * When true, only investors who have saved at least one book profile on this
+   * deal (Invest Now profile step) may see the file in the LP portal.
+   */
+  requiresProfileInvestment?: boolean
 }
 
 export type OfferingPreviewSection = {
@@ -169,6 +174,185 @@ export const DEFAULT_DOCUMENT_SECTION_ID = "default-documents-section"
 
 /** Label shown in the Documents tab for the default section. */
 export const DEFAULT_DOCUMENT_SECTION_LABEL = "General"
+
+/** Auto-managed section for investor-completed eSign PDFs. */
+export const ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID =
+  "esign-template-documents-section"
+
+export const ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL = "Esign template"
+
+/** Auto-managed section for sponsor-saved funding instructions PDF. */
+export const FUNDING_INFORMATION_DOCUMENTS_SECTION_ID =
+  "funding-information-documents-section"
+
+export const FUNDING_INFORMATION_DOCUMENTS_SECTION_LABEL =
+  "Funding Information"
+
+/** Legacy single-doc id; new saves use `${prefix}-${timestamp}`. */
+export const FUNDING_INSTRUCTIONS_AUTO_PDF_DOC_ID =
+  "funding-instructions-auto-pdf"
+
+export const FUNDING_INSTRUCTIONS_AUTO_PDF_DOC_ID_PREFIX =
+  FUNDING_INSTRUCTIONS_AUTO_PDF_DOC_ID
+
+export function isFundingInstructionsAutoPdfDocument(
+  doc: Pick<OfferingPreviewDocument, "id"> | { id?: string | null },
+): boolean {
+  const id = String(doc.id ?? "").trim()
+  if (!id) return false
+  return (
+    id === FUNDING_INSTRUCTIONS_AUTO_PDF_DOC_ID_PREFIX ||
+    id.startsWith(`${FUNDING_INSTRUCTIONS_AUTO_PDF_DOC_ID_PREFIX}-`)
+  )
+}
+
+export function isEsignTemplateDocumentsSection(
+  s: OfferingPreviewSection,
+): boolean {
+  if (s.id === ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID) return true
+  return (
+    sectionDisplayLabel(s).trim().toLowerCase() ===
+    ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL.toLowerCase()
+  )
+}
+
+export function isFundingInformationDocumentsSection(
+  s: OfferingPreviewSection,
+): boolean {
+  if (s.id === FUNDING_INFORMATION_DOCUMENTS_SECTION_ID) return true
+  return (
+    sectionDisplayLabel(s).trim().toLowerCase() ===
+    FUNDING_INFORMATION_DOCUMENTS_SECTION_LABEL.toLowerCase()
+  )
+}
+
+export function isAutoManagedDocumentsSection(
+  s: OfferingPreviewSection,
+): boolean {
+  return (
+    isEsignTemplateDocumentsSection(s) ||
+    isFundingInformationDocumentsSection(s)
+  )
+}
+
+/** Parse document sections from `offering_investor_preview_json` on the deal row. */
+export function parseDocumentSectionsFromPreviewJson(
+  json: string | null | undefined,
+): OfferingPreviewSection[] {
+  if (!json?.trim()) return []
+  try {
+    const parsed = JSON.parse(json) as { sections?: unknown }
+    return parseOfferingPreviewSectionsJson(parsed.sections)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Sponsors always manage auto-managed sections (Funding Information PDF, eSign)
+ * in the Documents tab. Merge them from the server/runtime snapshot so local
+ * edits cannot drop them on autosave.
+ */
+export function mergeAutoManagedDocumentSections(
+  localSections: OfferingPreviewSection[],
+  dealId: string,
+  previewJson?: string | null,
+): OfferingPreviewSection[] {
+  const id = dealId.trim()
+  const fromJson = parseDocumentSectionsFromPreviewJson(previewJson).filter(
+    isAutoManagedDocumentsSection,
+  )
+  const fromWorkspace = id
+    ? readDealDocumentSectionsForWorkspace(id).filter(isAutoManagedDocumentsSection)
+    : []
+  const autoById = new Map<string, OfferingPreviewSection>()
+  for (const section of fromJson) {
+    autoById.set(section.id, section)
+  }
+  for (const section of fromWorkspace) {
+    const existing = autoById.get(section.id)
+    if (
+      !existing ||
+      section.nestedDocuments.length >= existing.nestedDocuments.length
+    ) {
+      autoById.set(section.id, section)
+    }
+  }
+  const autoManaged = [...autoById.values()]
+  if (autoManaged.length === 0) return localSections
+
+  const byId = new Map(localSections.map((s) => [s.id, s]))
+  let changed = false
+  for (const section of autoManaged) {
+    const prev = byId.get(section.id)
+    if (
+      !prev ||
+      documentSectionsSnapshot([prev]) !== documentSectionsSnapshot([section])
+    ) {
+      changed = true
+    }
+    byId.set(section.id, section)
+  }
+  if (!changed) return localSections
+
+  return orderDocumentSectionsWithDefaultFirst([...byId.values()])
+}
+
+/** Stable JSON snapshot for comparing document section lists. */
+export function documentSectionsSnapshot(
+  sections: OfferingPreviewSection[],
+): string {
+  return JSON.stringify(sections)
+}
+
+export function documentSectionsEqual(
+  a: OfferingPreviewSection[],
+  b: OfferingPreviewSection[],
+): boolean {
+  return documentSectionsSnapshot(a) === documentSectionsSnapshot(b)
+}
+
+/** True when the auto-generated funding instructions PDF is present on the deal. */
+export function hasFundingInformationDocumentsSection(
+  sections: OfferingPreviewSection[],
+): boolean {
+  const section = sections.find(isFundingInformationDocumentsSection)
+  if (!section) return false
+  return section.nestedDocuments.some(
+    (d) => isFundingInstructionsAutoPdfDocument(d) && Boolean(d.url?.trim()),
+  )
+}
+
+/**
+ * After saving Funding Information, mirror the Funding Information documents
+ * section from preview JSON into the sponsor Documents tab workspace.
+ */
+export function applyFundingInformationDocumentsSectionFromPreview(
+  dealId: string,
+  previewJson: string | null | undefined,
+): boolean {
+  const id = dealId.trim()
+  if (!id) return false
+  const fromJson = parseDocumentSectionsFromPreviewJson(previewJson)
+  const fundingSection = fromJson.find(isFundingInformationDocumentsSection)
+  if (
+    !fundingSection ||
+    !hasFundingInformationDocumentsSection([fundingSection])
+  ) {
+    return false
+  }
+
+  const current = readDealDocumentSectionsForWorkspace(id)
+  const withoutFunding = current.filter(
+    (s) => !isFundingInformationDocumentsSection(s),
+  )
+  const next = orderDocumentSectionsWithDefaultFirst([
+    ...withoutFunding,
+    fundingSection,
+  ])
+  writeOfferingPreviewSections(id, next)
+  return true
+}
 
 export function isDefaultDocumentSection(s: OfferingPreviewSection): boolean {
   if (s.id === DEFAULT_DOCUMENT_SECTION_ID) return true
@@ -263,6 +447,7 @@ function normalizeNested(
     : parseIdListField(raw.sharedInvestorIds)
   const sharedSponsorUserIds = parseIdListField(raw.sharedSponsorUserIds)
   const sharedWithScope = parseDocumentSharedWithScope(raw.sharedWithScope)
+  const requiresProfileInvestment = Boolean(raw.requiresProfileInvestment)
   return {
     id,
     name,
@@ -274,6 +459,7 @@ function normalizeNested(
     sharedWithAllInvestors,
     sharedSponsorUserIds,
     ...(sharedWithScope ? { sharedWithScope } : {}),
+    ...(requiresProfileInvestment ? { requiresProfileInvestment: true } : {}),
   }
 }
 
@@ -345,6 +531,7 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
       nestedDocuments: s.nestedDocuments.map((d) => {
         const sharedWithAllInvestors = Boolean(d.sharedWithAllInvestors)
         const docScope = parseDocumentSharedWithScope(d.sharedWithScope)
+        const requiresProfileInvestment = Boolean(d.requiresProfileInvestment)
         return {
           ...d,
           lpDisplaySectionId: ids.has(d.lpDisplaySectionId) ? d.lpDisplaySectionId : s.id,
@@ -355,6 +542,7 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
           sharedWithAllInvestors,
           sharedSponsorUserIds: parseIdListField(d.sharedSponsorUserIds),
           ...(docScope ? { sharedWithScope: docScope } : {}),
+          ...(requiresProfileInvestment ? { requiresProfileInvestment: true } : {}),
         }
       }),
     }

@@ -12,8 +12,10 @@ type Props = {
   value: string;
   onChange: (value: string) => void;
   options: CardRadioOption[];
-  /** Accessible name for the radiogroup */
+  /** Accessible name for the radiogroup when not using `ariaLabelledBy`. */
   ariaLabel?: string;
+  /** Id of visible label element (settings rows). */
+  ariaLabelledBy?: string;
   disabled?: boolean;
 };
 
@@ -23,10 +25,16 @@ export function CardRadioGroup({
   onChange,
   options,
   ariaLabel,
+  ariaLabelledBy,
   disabled = false,
 }: Props) {
   return (
-    <div className="card_radio_group" role="radiogroup" aria-label={ariaLabel}>
+    <div
+      className="card_radio_group"
+      role="radiogroup"
+      aria-label={ariaLabelledBy ? undefined : ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+    >
       {options.map((opt) => {
         const selected = value === opt.value;
         const Icon = opt.icon;

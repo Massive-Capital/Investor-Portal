@@ -1,4 +1,5 @@
-import { Search, X } from "lucide-react"
+import { Download, Search, X } from "lucide-react"
+import { ExportModalFooter } from "../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "../Deals/components/export-deals-modal.css"
 import { formatUsPhoneStoredForUi } from "../../../common/phone/usPhoneNumber"
@@ -15,6 +16,7 @@ import {
   primaryRoleLabelFromRow,
   memberUserCellPrimaryLabel,
   rowDisplayName,
+  type OrganizationDisplayScope,
 } from "./memberAdminShared"
 import {
   buildMembersCsv,
@@ -28,6 +30,7 @@ interface ExportMembersModalProps {
   open: boolean
   onClose: () => void
   members: Record<string, unknown>[]
+  organizationScope?: OrganizationDisplayScope | null
 }
 
 function memberDisplayLabel(row: Record<string, unknown>): string {
@@ -39,6 +42,7 @@ export function ExportMembersModal({
   open,
   onClose,
   members,
+  organizationScope,
 }: ExportMembersModalProps) {
   const [modalQuery, setModalQuery] = useState("")
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
@@ -67,9 +71,9 @@ export function ExportMembersModal({
           memberRoleDisplayName(r.role),
           primaryRoleLabelFromRow(r),
           membershipsSortValue(r),
-          organizationsSortValue(r),
+          organizationsSortValue(r, organizationScope),
           formatRoleCsvCell(r),
-          formatOrganizationsCsvCell(r),
+          formatOrganizationsCsvCell(r, organizationScope),
           formatMembershipsCsvCell(r),
           formatValue(r.userStatus),
           accountStatusLabel(r),
@@ -83,7 +87,7 @@ export function ExportMembersModal({
       memberDisplayLabel(a).localeCompare(memberDisplayLabel(b)),
     )
     return list
-  }, [members, modalQuery])
+  }, [members, modalQuery, organizationScope])
 
   const keyForRow = useCallback(
     (row: Record<string, unknown>) => memberRowKey(row),
@@ -146,7 +150,7 @@ export function ExportMembersModal({
     const keySet = selectedKeys
     const chosen = members.filter((r) => keySet.has(keyForRow(r)))
     if (chosen.length === 0) return
-    const csv = buildMembersCsv(chosen)
+    const csv = buildMembersCsv(chosen, organizationScope)
     const stamp = new Date().toISOString().slice(0, 10)
     downloadMembersCsv(csv, `members-export-${stamp}.csv`)
     void notifyMembersExportAudit({
@@ -259,23 +263,17 @@ export function ExportMembersModal({
           )}
         </ul>
 
-        <footer className="deals_export_modal_footer">
-          <button
-            type="button"
-            className="deals_export_modal_btn_secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
+        <ExportModalFooter onClose={onClose}>
           <button
             type="button"
             className="deals_export_modal_btn_primary"
             onClick={handleExportExcel}
             disabled={selectedKeys.size === 0}
           >
+            <Download size={16} strokeWidth={2} aria-hidden />
             Export to Excel
           </button>
-        </footer>
+        </ExportModalFooter>
       </div>
     </div>
   )

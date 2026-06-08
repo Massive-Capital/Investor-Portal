@@ -217,7 +217,7 @@ export function AssetStepForm({
             />
           </span>
           <input
-            className="deals_create_input asset_step_input_underline"
+            className="deals_create_input"
             value={draft.propertyName}
             onChange={(e) => onChange({ propertyName: e.target.value })}
             aria-invalid={Boolean(errors.propertyName)}
@@ -244,11 +244,12 @@ export function AssetStepForm({
                 })
               else onChange({ country: next })
             }}
+            placeholder="Select country"
             searchable
             searchPlaceholder="Search countries…"
             searchAriaLabel="Filter country list"
             searchShowOptionCountHint
-            triggerClassName="asset_step_input_underline"
+            triggerClassName="asset_step_location_bordered"
           />
         </label>
 
@@ -355,7 +356,7 @@ export function AssetStepForm({
           Street address line 1
           <input
             type="text"
-            className="deals_create_input asset_step_input_underline"
+            className="deals_create_input"
             value={draft.streetAddress1}
             onChange={(e) => onChange({ streetAddress1: e.target.value })}
             autoComplete="street-address"
@@ -365,7 +366,7 @@ export function AssetStepForm({
         <label className="deals_create_label asset_step_label_full">
           Street address line 2
           <input
-            className="deals_create_input asset_step_input_underline"
+            className="deals_create_input"
             value={draft.streetAddress2}
             onChange={(e) => onChange({ streetAddress2: e.target.value })}
           />
@@ -373,10 +374,10 @@ export function AssetStepForm({
 
      
 
-        <label className="deals_create_label">
+        <label className="deals_create_label asset_step_label_full">
           Zip code
           <input
-            className="deals_create_input asset_step_input_underline"
+            className="deals_create_input"
             value={draft.zipCode}
             onChange={(e) =>
               onChange({ zipCode: normalizeZipCodeDigits(e.target.value) })

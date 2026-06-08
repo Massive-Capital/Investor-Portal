@@ -358,8 +358,8 @@ function PageLayoutInner() {
               }`}
               src={sidebarHeaderLogoSrc}
               alt="SyndicationX"
-              width={hasTenantSidebarLogo ? 200 : 220}
-              height={hasTenantSidebarLogo ? 72 : 80}
+              width={hasTenantSidebarLogo ? 200 : 240}
+              height={hasTenantSidebarLogo ? 72 : 96}
               loading="eager"
               fetchPriority="high"
               decoding="async"

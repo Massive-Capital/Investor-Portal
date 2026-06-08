@@ -17,8 +17,8 @@ import { db } from "../../database/db.js";
 import { users } from "../../schema/auth.schema/signin.js";
 import { resolveDealViewerScope } from "../deal/dealAccess.service.js";
 import {
-  listDealIdsWhereViewerIsCoSponsor,
   viewerIsLeadOrAdminSponsorOnAnyDeal,
+  viewerShouldSeeOnlySelfCreatedContacts,
 } from "../deal/dealMemberScope.service.js";
 import { listAddDealFormsForViewer } from "../deal/dealForm.service.js";
 import {
@@ -313,7 +313,9 @@ async function assertContactEmailPhoneUniqueForCreatorScope(params: {
       : await resolveOrganizationIdForUserId(params.creatorUserId);
 
   let scopePredicate: SQL;
-  if (!orgId) {
+  if (await viewerShouldSeeOnlySelfCreatedContacts(params.creatorUserId)) {
+    scopePredicate = eq(contact.createdBy, params.creatorUserId);
+  } else if (!orgId) {
     scopePredicate = sql`true`;
   } else {
     const memberIds = await userIdsInOrganization(orgId);
@@ -421,11 +423,11 @@ export async function listContactsForViewerScoped(
   const sponsorTeamSeesFullCrm = await viewerIsLeadOrAdminSponsorOnAnyDeal(
     viewerUserId,
   );
-  const coSponsorDealIds = await listDealIdsWhereViewerIsCoSponsor(viewerUserId);
   const coSponsorNarrowToCreatorOnly =
-    coSponsorDealIds.length > 0 &&
-    !sponsorTeamSeesFullCrm &&
-    !isCompanyAdminRole(ctx.roleForScope);
+    await viewerShouldSeeOnlySelfCreatedContacts(
+      viewerUserId,
+      ctx.roleForScope,
+    );
 
   const vis =
     isCompanyAdminRole(ctx.roleForScope) || sponsorTeamSeesFullCrm
@@ -609,6 +611,14 @@ async function viewerCanAccessContactRow(
 ): Promise<boolean> {
   const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
   if (isPlatformAdminRole(ctx.roleForScope)) return true;
+  if (
+    await viewerShouldSeeOnlySelfCreatedContacts(
+      viewerUserId,
+      ctx.roleForScope,
+    )
+  ) {
+    return viewerUserId === row.createdBy;
+  }
   if (viewerUserId === row.createdBy) return true;
   const viewerOrg = ctx.organizationId;
   if (

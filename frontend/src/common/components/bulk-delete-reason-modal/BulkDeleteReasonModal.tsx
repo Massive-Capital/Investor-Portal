@@ -1,4 +1,4 @@
-import { AlertTriangle, ClipboardList, X } from "lucide-react"
+import { AlertTriangle, ClipboardList, Loader2, Trash2, X } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 import { createPortal } from "react-dom"
 import "./bulk-delete-reason-modal.css"
@@ -144,7 +144,7 @@ export function BulkDeleteReasonModal({
               {err}
             </p>
           ) : null}
-          <div className="um_modal_actions contacts_suspend_modal_actions">
+          <div className="um_modal_actions add_contact_modal_actions contacts_suspend_modal_actions">
             <button
               type="button"
               className="um_btn_secondary"
@@ -154,13 +154,25 @@ export function BulkDeleteReasonModal({
               <X size={16} strokeWidth={2} aria-hidden />
               Cancel
             </button>
-            <button
-              type="submit"
-              className="um_btn_primary bulk_delete_reason_confirm_btn"
-              disabled={busy}
-            >
-              {busy ? "Deleting…" : confirmLabel}
-            </button>
+            <div className="add_contact_modal_actions_trailing">
+              <button
+                type="submit"
+                className="um_btn_primary bulk_delete_reason_confirm_btn"
+                disabled={busy}
+              >
+              {busy ? (
+                <>
+                  <Loader2 size={16} strokeWidth={2} aria-hidden />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} strokeWidth={2} aria-hidden />
+                  {confirmLabel}
+                </>
+              )}
+              </button>
+            </div>
           </div>
         </form>
       </div>

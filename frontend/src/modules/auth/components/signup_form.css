@@ -4,24 +4,8 @@
   max-width: min(100%, 900px);
 }
 
-.authPage:has(.signup_page) .loginForm {
-  padding: 0.75em 2.5em 1em;
+.authPage:has(.signup_page) .auth_card.loginForm {
   max-width: 100%;
-  box-sizing: border-box;
-}
-
-/* .authPage:has(.signup_page) .companyLogo__img,
-.authPage:has(.signup_page) .companyLogo img {
-  width: min(11em, 72vw);
-  max-width: min(100%, 11em);
-} */
-
-.authPage:has(.signup_page) .loginCaption {
-  text-align: center;
-  color: black;
-  font-size: 1.1em;
-  font-weight: 700;
-  margin: 0.5em 0 0.5em 0;
 }
 
 body:has(.signup_page) .companyContent {
@@ -81,10 +65,9 @@ body:has(.signup_page) #root {
   max-width: 900px;
   min-width: 0;
   box-sizing: border-box;
-  border-radius: 10px;
+  border-radius: var(--portal-pill-radius, 4px);
   box-shadow: none;
-  background-color: #faf7f2;
-  /* Let the page scroll as one column — capped height + overflow-y:auto caused a tight inner scrollbar */
+  background: transparent;
   overflow: visible;
 }
 
@@ -162,7 +145,7 @@ body:has(.signup_page) #root {
   width: 100%;
   max-width: 20em;
   min-width: 0;
-  border-radius: var(--ui-button-border-radius, 25px);
+  border-radius: var(--ui-button-border-radius, 4px);
   padding: 0.45em 1em;
   box-sizing: border-box;
 }
@@ -173,9 +156,9 @@ body:has(.signup_page) #root {
   align-items: flex-start;
   gap: 0.35em;
   margin: 0.35em 0 0;
-  font-size: 11px;
-  line-height: 1.35;
-  color: gray;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted);
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -218,14 +201,20 @@ body:has(.signup_page) #root {
   margin: 0.35em 0 0;
   font-size: 0.75em;
   line-height: 1.35;
-  color: #64748b;
+  color: var(--portal-text-muted);
   max-width: 100%;
 }
 
 .terms,
 .policy {
-  color: var(--main-auth-button-color);
+  color: var(--portal-gold-accent, #d4af37);
+  font-weight: 600;
   text-decoration: none;
+}
+
+.terms:hover,
+.policy:hover {
+  text-decoration: underline;
 }
 
 .signup_success_with_footer {

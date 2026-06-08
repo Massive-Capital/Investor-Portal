@@ -1,0 +1,11 @@
+/* Active / Archived strip beside toolbar actions (Contacts, Templates, Profiles) */
+.contacts_toolbar_filters_row .active_archived_tabs_outer {
+  flex: 1 1 auto;
+  min-width: min(100%, 14rem);
+  margin-bottom: 0;
+}
+
+.contacts_toolbar_filters_row .active_archived_tabs_outer .um_members_tabs_row {
+  width: max-content;
+  min-width: min(100%, max-content);
+}

@@ -27,7 +27,7 @@
   padding: 0.85em 0.9em 0.95em;
   padding-bottom: calc(0.95em + 3px);
   box-sizing: border-box;
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   border: 1px solid var(--portal-border, #e5e7eb);
   background: var(--portal-surface, #ffffff);
   color: var(--portal-text, #00477a);

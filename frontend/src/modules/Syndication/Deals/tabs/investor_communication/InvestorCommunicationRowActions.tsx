@@ -1,4 +1,12 @@
-import { Eye, Mail, MoreHorizontal, Send, Trash2, X } from "lucide-react"
+import {
+  Eye,
+  Loader2,
+  Mail,
+  MoreHorizontal,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -171,13 +179,14 @@ export function InvestorCommunicationRowActions({
                   undone.
                 </p>
               </div>
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
                   onClick={() => setDeleteConfirmOpen(false)}
                   disabled={deleteBusy}
                 >
+                  <X size={16} strokeWidth={2} aria-hidden />
                   Cancel
                 </button>
                 <button
@@ -186,7 +195,17 @@ export function InvestorCommunicationRowActions({
                   onClick={() => void confirmDelete()}
                   disabled={deleteBusy}
                 >
-                  {deleteBusy ? "Deleting…" : "Delete"}
+                  {deleteBusy ? (
+                    <>
+                      <Loader2 size={16} strokeWidth={2} aria-hidden />
+                      Deleting…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} strokeWidth={2} aria-hidden />
+                      Delete
+                    </>
+                  )}
                 </button>
               </div>
             </div>

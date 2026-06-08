@@ -159,7 +159,11 @@ export default function DealInvitePage() {
     <AuthLayout
       title="Investor Portal | Invitation"
       caption={
-        isEsignNext ? "Sign your deal documents" : "Complete access to your deal"
+        isEsignNext
+          ? "Sign your deal documents"
+          : accountExists
+            ? "Sign in to continue"
+            : "Complete access to your deal"
       }
     >
       <div className="deal_invite_shell deal_invite_panel">
@@ -172,7 +176,7 @@ export default function DealInvitePage() {
               ? "Sign in to complete your documents"
               : "Create an account to sign your documents"
             : accountExists
-              ? "Your account is already on this deal"
+              ? "Sign in to open this deal"
               : "You need an account to open this deal"}
         </h1>
         <p className="deal_invite_body">
@@ -181,7 +185,7 @@ export default function DealInvitePage() {
               ? "Your eSign documents are ready. Sign in with the email below, then you can review and sign in the portal."
               : "Your eSign documents are ready. Create an account with the email below (or sign in if you already have one), then complete signing in the portal."
             : accountExists
-              ? "An account already exists for this invitation email. Sign in to open the deal."
+              ? "You already have a SyndicationX account for this email. You’ve been added to a new deal — sign in below to open it and continue."
               : "No account was found for this invitation. Create one with the email below, or sign in if you already use the portal."}
         </p>
 
@@ -207,7 +211,11 @@ export default function DealInvitePage() {
             state={signinState}
             className={accountExists ? "deal_invite_btn_primary" : "deal_invite_btn_secondary"}
           >
-            {isEsignNext ? "Sign in to sign" : "Sign in"}
+            {isEsignNext
+              ? "Sign in to sign"
+              : accountExists
+                ? "Sign in to open deal"
+                : "Sign in"}
           </Link>
         </div>
       </div>

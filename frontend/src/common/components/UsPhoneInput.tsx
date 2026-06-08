@@ -24,6 +24,7 @@ export interface UsPhoneInputProps {
   "aria-describedby"?: string
   /** Extra server / form error (shown after field messages). */
   error?: string | null
+  placeholder?: string
   /**
    * `nanp` — strict area/exchange rules (contacts, signup).
    * `tenDigits` — any 10 digits after +1 mask (questionnaires).
@@ -45,6 +46,7 @@ export function UsPhoneInput({
   "aria-describedby": ariaDescribedBy,
   error: externalError,
   validationMode = "nanp",
+  placeholder,
 }: UsPhoneInputProps) {
   const [touched, setTouched] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -90,6 +92,7 @@ export function UsPhoneInput({
           .filter(Boolean)
           .join(" ")}
         value={display}
+        placeholder={placeholder}
         disabled={disabled}
         readOnly={readOnly}
         aria-invalid={ariaInvalid}

@@ -37,6 +37,7 @@ import {
   nationalDigitsFromStoredPhone,
   nationalTenDigitsFromRawInput,
 } from "../../../../common/phone/usPhoneNumber"
+import { focusFirstFormErrorAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
 import { fetchMyProfile } from "../../../myaccount/accountApi"
 import { getSessionUserDisplayName } from "../../../../common/auth/sessionUserDisplayName"
 import type { ContactRow } from "../types/contact.types"
@@ -411,6 +412,7 @@ export function AddContactPanel({
   const [listPickerOpen, setListPickerOpen] = useState(false)
   const [ownerInput, setOwnerInput] = useState("")
   const ownerComboboxRef = useRef<HTMLInputElement>(null)
+  const contactFormRef = useRef<HTMLFormElement>(null)
   const [editReason, setEditReason] = useState("")
   const [fieldError, setFieldError] = useState<{
     firstName?: string
@@ -606,7 +608,11 @@ export function AddContactPanel({
       }
     }
     setFieldError(err)
-    return Object.keys(err).length === 0
+    const ok = Object.keys(err).length === 0
+    if (!ok) {
+      focusFirstFormErrorAfterUpdate({ container: contactFormRef.current })
+    }
+    return ok
   }
 
   function handleFormSubmit(e: FormEvent) {
@@ -632,6 +638,7 @@ export function AddContactPanel({
           ...f,
           editReason: "Enter a reason for this change.",
         }))
+        focusFirstFormErrorAfterUpdate({ container: contactFormRef.current })
         return
       }
       setFieldError((f) => ({ ...f, editReason: undefined }))
@@ -738,6 +745,7 @@ export function AddContactPanel({
         </div>
 
         <form
+          ref={contactFormRef}
           className="deals_add_inv_modal_form"
           onSubmit={handleFormSubmit}
           noValidate
@@ -856,85 +864,87 @@ export function AddContactPanel({
                     </div>
                   </div>
 
-                  <div className="um_field">
-                    <label
-                      htmlFor="contact-email"
-                      className="um_field_label_row"
-                    >
-                      <Mail
-                        className="um_field_label_icon"
-                        size={17}
-                        aria-hidden
-                      />
-                      <span>
-                        Email{" "}
-                        <span className="contacts_required" aria-hidden>
-                          *
-                        </span>
-                      </span>
-                    </label>
-                    <input
-                      id="contact-email"
-                      type="email"
-                      className={
-                        fieldError.email ? "um_field_input_invalid" : undefined
-                      }
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value)
-                        if (fieldError.email)
-                          setFieldError((f) => ({ ...f, email: undefined }))
-                      }}
-                      autoComplete="email"
-                      placeholder="name@company.com"
-                      aria-invalid={Boolean(fieldError.email)}
-                      aria-describedby={
-                        fieldError.email ? "contact-email-err" : undefined
-                      }
-                    />
-                    {fieldError.email ? (
-                      <p
-                        id="contact-email-err"
-                        className="um_field_hint um_field_hint_error"
+                  <div className="add_contact_name_grid add_contact_contact_grid">
+                    <div className="um_field add_contact_field_tight">
+                      <label
+                        htmlFor="contact-email"
+                        className="um_field_label_row"
                       >
-                        {fieldError.email}
-                      </p>
-                    ) : null}
+                        <Mail
+                          className="um_field_label_icon"
+                          size={17}
+                          aria-hidden
+                        />
+                        <span>
+                          Email{" "}
+                          <span className="contacts_required" aria-hidden>
+                            *
+                          </span>
+                        </span>
+                      </label>
+                      <input
+                        id="contact-email"
+                        type="email"
+                        className={
+                          fieldError.email ? "um_field_input_invalid" : undefined
+                        }
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value)
+                          if (fieldError.email)
+                            setFieldError((f) => ({ ...f, email: undefined }))
+                        }}
+                        autoComplete="email"
+                        placeholder="name@company.com"
+                        aria-invalid={Boolean(fieldError.email)}
+                        aria-describedby={
+                          fieldError.email ? "contact-email-err" : undefined
+                        }
+                      />
+                      {fieldError.email ? (
+                        <p
+                          id="contact-email-err"
+                          className="um_field_hint um_field_hint_error"
+                        >
+                          {fieldError.email}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="um_field add_contact_field_tight">
+                      <label
+                        htmlFor="contact-phone"
+                        className="um_field_label_row"
+                      >
+                        <Phone
+                          className="um_field_label_icon"
+                          size={17}
+                          aria-hidden
+                        />
+                        <span>Phone</span>
+                      </label>
+                      <UsPhoneInput
+                        id="contact-phone"
+                        name="phone"
+                        nationalDigits={phone}
+                        onNationalDigitsChange={(next) => {
+                          setPhone(next)
+                          if (fieldError.phone)
+                            setFieldError((f) => ({ ...f, phone: undefined }))
+                        }}
+                        className="um_field_input"
+                        invalidClassName="um_field_input_invalid"
+                        autoComplete="tel"
+                        aria-invalid={Boolean(fieldError.phone)}
+                        error={fieldError.phone ?? null}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <hr className="add_contact_section_rule" />
 
                 <div className="add_contact_section">
-                  <div className="um_field">
-                    <label
-                      htmlFor="contact-phone"
-                      className="um_field_label_row"
-                    >
-                      <Phone
-                        className="um_field_label_icon"
-                        size={17}
-                        aria-hidden
-                      />
-                      <span>Phone</span>
-                    </label>
-                    <UsPhoneInput
-                      id="contact-phone"
-                      name="phone"
-                      nationalDigits={phone}
-                      onNationalDigitsChange={(next) => {
-                        setPhone(next)
-                        if (fieldError.phone)
-                          setFieldError((f) => ({ ...f, phone: undefined }))
-                      }}
-                      className="um_field_input"
-                      invalidClassName="um_field_input_invalid"
-                      autoComplete="tel"
-                      aria-invalid={Boolean(fieldError.phone)}
-                      error={fieldError.phone ?? null}
-                    />
-                  </div>
-
                   <div className="um_field">
                     <label
                       htmlFor="contact-note"

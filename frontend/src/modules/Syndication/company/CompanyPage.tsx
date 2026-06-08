@@ -44,7 +44,7 @@ import {
   SESSION_USER_DETAILS_KEY,
   SESSION_WORKSPACE_COMPANY_ID_KEY,
 } from "../../../common/auth/sessionKeys";
-import { getSessionOrganizationCompanyId } from "../../../common/auth/sessionOrganization";
+import { getSessionOrganizationCompanyId, getActiveWorkspaceCompanyName } from "../../../common/auth/sessionOrganization";
 import {
   canAccessMembersPage,
   canEditCompanyWorkspace,
@@ -67,6 +67,8 @@ import "../Deals/deal-investors-tab.css";
 import "../Deals/deals-list.css";
 import "../usermanagement/user_management.css";
 import "./company_page.css";
+import "./company-settings-tab.css";
+import "./company-email-settings-tab.css";
 
 type CompanyPageTab =
   | "settings"
@@ -76,41 +78,6 @@ type CompanyPageTab =
   | "billing"
   | "members"
   | "companies";
-
-/** Display name from sign-in `userDetails` (the member’s company, not the directory cache). */
-function readSessionCompanyName(): string {
-  try {
-    const raw = sessionStorage.getItem(SESSION_USER_DETAILS_KEY);
-    if (!raw) return "";
-    const parsed = JSON.parse(raw) as unknown;
-    let o: Record<string, unknown> | null = null;
-    if (
-      Array.isArray(parsed) &&
-      parsed[0] &&
-      typeof parsed[0] === "object" &&
-      !Array.isArray(parsed[0])
-    ) {
-      o = parsed[0] as Record<string, unknown>;
-    } else if (
-      parsed &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed)
-    ) {
-      o = parsed as Record<string, unknown>;
-    }
-    if (!o) return "";
-    const name =
-      o.companyName ??
-      o.company_name ??
-      o.organizationName ??
-      o.organization_name;
-    if (name == null || name === "") return "";
-    return String(name).trim();
-  } catch {
-    /* ignore */
-  }
-    return "";
-}
 
 /** Keep sign-in `userDetails` in sync when the user edits company name on Settings (client-side). */
 function writeSessionCompanyDisplayName(next: string): void {
@@ -275,6 +242,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   const canEditWorkspace = canEditCompanyWorkspace();
 
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
+  const [companiesLoading, setCompaniesLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [toolbarNotice, setToolbarNotice] = useState("");
@@ -317,7 +285,11 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   const kebabPortalRef = useRef<HTMLUListElement | null>(null);
 
   const loadCompanies = useCallback(async () => {
-    if (!token || !apiV1) return;
+    if (!token || !apiV1) {
+      setCompaniesLoading(false);
+      return;
+    }
+    setCompaniesLoading(true);
     setLoadError("");
     try {
       const res = await fetch(`${apiV1}/companies`, {
@@ -368,6 +340,8 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       );
     } catch {
       setLoadError("Unable to connect.");
+    } finally {
+      setCompaniesLoading(false);
     }
   }, [token, apiV1]);
 
@@ -378,7 +352,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   const [userDetailsRev, setUserDetailsRev] = useState(0);
 
   const sessionCompanyName = useMemo(
-    () => (token ? readSessionCompanyName() : ""),
+    () => (token ? getActiveWorkspaceCompanyName() : ""),
     [token, userDetailsRev],
   );
 
@@ -473,10 +447,10 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     [workspaceCompanyId],
   );
 
-  /** Prefer signed-in user’s company from session; directory is fallback (e.g. platform admin). */
+  /** Active workspace company name; directory is fallback (e.g. platform admin). */
   const effectiveCompanyName = useMemo(() => {
-    const fromSession = sessionCompanyName.trim();
-    if (fromSession) return fromSession;
+    const fromWorkspace = sessionCompanyName.trim();
+    if (fromWorkspace) return fromWorkspace;
     if (workspaceCompanyId) {
       const row = companies.find(
         (c) => c.id.trim().toLowerCase() === workspaceCompanyId,
@@ -1158,7 +1132,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         {!customersStandalone ? (
           <>
             <div
-              className="um_panel um_members_tab_panel"
+              className="um_panel um_members_tab_panel cp_settings_tab_panel"
               id="cp-page-panel-settings"
               role="tabpanel"
               aria-labelledby="cp-page-tab-settings"
@@ -1173,7 +1147,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
             </div>
 
             <div
-              className="um_panel um_members_tab_panel"
+              className="um_panel um_members_tab_panel cp_settings_tab_panel"
               id="cp-page-panel-email"
               role="tabpanel"
               aria-labelledby="cp-page-tab-email"
@@ -1235,6 +1209,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                 <div className="cp_settings_members_embed">
                   <UserManagementPage
                     membersOrganizationScope={settingsMembersOrganizationScope}
+                    membersWorkspaceCompanyName={effectiveCompanyName}
                   />
                 </div>
               </div>
@@ -1256,7 +1231,9 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
 
         {platformAdmin && customersStandalone ? (
           <div
-            className="um_panel um_members_tab_panel cp_companies_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel"
+            className={`um_panel um_members_tab_panel cp_companies_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${
+              companiesLoading ? " deals_list_table_panel_loading" : ""
+            }`}
             id={
               customersListTab === "archived"
                 ? "cp-customers-panel-archived"
@@ -1269,6 +1246,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                 ? "cp-customers-tab-archived"
                 : "cp-customers-tab-active"
             }
+            aria-busy={companiesLoading}
             hidden={false}
           >
             <div className="um_toolbar um_toolbar_export_then_search">
@@ -1277,6 +1255,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   type="button"
                   className="um_btn_toolbar"
                   disabled={
+                    companiesLoading ||
                     customersListTab === "archived" ||
                     customersTabRows.length === 0
                   }
@@ -1291,7 +1270,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   type="button"
                   className="um_toolbar_export_btn"
                   onClick={() => setCompaniesExportOpen(true)}
-                  disabled={customersTabRows.length === 0}
+                  disabled={companiesLoading || customersTabRows.length === 0}
                 >
                   <Download size={18} strokeWidth={2} aria-hidden />
                   <span>Export All</span>
@@ -1308,6 +1287,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                     setSearchQuery(e.target.value);
                     setToolbarNotice("");
                   }}
+                  disabled={companiesLoading}
                   aria-label={
                     customersListTab === "archived"
                       ? "Search archived companies"
@@ -1323,30 +1303,34 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
             ) : null}
             {loadError ? (
               <p className="um_msg_error">{loadError}</p>
-            ) : companies.length === 0 ? (
-              <p className="um_hint">No companies yet.</p>
-            ) : customersTabRows.length === 0 ? (
-              <p className="um_hint">
-                {customersListTab === "archived"
-                  ? "No archived companies. Suspend a company from Active to move it here."
-                  : "No active companies."}
-              </p>
-            ) : filteredRows.length === 0 ? (
-              <p className="um_hint">No companies match your search.</p>
-            ) : (
+            ) : null}
+            {!loadError ? (
               <div className="cp_company_tab_table_wrap">
                 <DataTable
                   visualVariant="members"
                   membersTableClassName="um_table_members deal_inv_table"
                   initialSort={{ columnId: "company", direction: "asc" }}
                   columns={customerCompaniesColumns}
-                  rows={filteredRows}
+                  rows={companiesLoading ? [] : filteredRows}
                   getRowKey={(row) => row.id}
-                  emptyLabel="No companies match your search."
-                  pagination={customersCompaniesPagination}
+                  isLoading={companiesLoading}
+                  emptyLabel={
+                    companies.length === 0
+                      ? ""
+                      : customersTabRows.length === 0
+                        ? customersListTab === "archived"
+                          ? "No archived companies. Suspend a company from Active to move it here."
+                          : "No active companies."
+                        : "No companies match your search."
+                  }
+                  pagination={
+                    !companiesLoading && filteredRows.length > 0
+                      ? customersCompaniesPagination
+                      : undefined
+                  }
                 />
               </div>
-            )}
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1622,7 +1606,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   {editErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
@@ -1705,7 +1689,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   {suspendErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
@@ -1782,7 +1766,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   {addErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"

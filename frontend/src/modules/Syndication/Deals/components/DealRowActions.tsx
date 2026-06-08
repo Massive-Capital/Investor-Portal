@@ -40,10 +40,14 @@ interface DealRowActionsProps {
   onPreviewDeal?: () => void
   /** Investing list: open LP invest-now wizard (`/deals/:id/invest`). */
   onInvestNow?: () => void
+  /** Pending list: resume saved Invest Now progress for a draft profile. */
+  onResumeInvesting?: () => void
   onArchived?: () => void
   onRestored?: () => void
   /** Called after the user confirms with a non-empty reason (delete flow). */
   onDeleted?: (reason: string) => void
+  /** When true, kebab stays visible but cannot open (no actions for this row). */
+  actionsDisabled?: boolean
 }
 
 export function DealRowActions({
@@ -55,9 +59,11 @@ export function DealRowActions({
   dealStage = "",
   onPreviewDeal,
   onInvestNow,
+  onResumeInvesting,
   onArchived,
   onRestored,
   onDeleted,
+  actionsDisabled = false,
 }: DealRowActionsProps) {
   const navigate = useNavigate()
   const confirmTitleId = useId()
@@ -87,7 +93,7 @@ export function DealRowActions({
   }, [confirmKind, closeConfirm])
 
   useLayoutEffect(() => {
-    if (!open) return
+    if (!open || actionsDisabled) return
 
     function syncPosition() {
       const trigger = wrapRef.current
@@ -124,10 +130,10 @@ export function DealRowActions({
       window.removeEventListener("scroll", syncPosition, true)
       window.removeEventListener("resize", syncPosition)
     }
-  }, [open])
+  }, [open, actionsDisabled])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || actionsDisabled) return
     function onDoc(e: MouseEvent) {
       const t = e.target as Node
       if (wrapRef.current?.contains(t)) return
@@ -177,6 +183,11 @@ export function DealRowActions({
     onInvestNow?.()
   }
 
+  function handleResumeInvesting() {
+    close()
+    onResumeInvesting?.()
+  }
+
   function handleEditDeal() {
     close()
     if (draftRow) {
@@ -222,19 +233,29 @@ export function DealRowActions({
   const isLifecycleDraftDeal =
     !draftRow && String(dealStage ?? "").trim().toLowerCase() === "draft"
 
+  const triggerTitle = actionsDisabled
+    ? "No in-progress Invest Now draft for this investment"
+    : undefined
+
   return (
     <div className="um_kebab_root" ref={wrapRef}>
       <button
         type="button"
         className="um_kebab_trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
+        aria-haspopup={actionsDisabled ? undefined : "menu"}
+        aria-expanded={actionsDisabled ? undefined : open}
+        aria-disabled={actionsDisabled || undefined}
+        disabled={actionsDisabled}
+        title={triggerTitle}
         aria-label={`Actions for ${dealName.trim() || "deal"}${draftRow ? " (draft)" : ""}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (actionsDisabled) return
+          setOpen((v) => !v)
+        }}
       >
         <MoreHorizontal size={18} strokeWidth={2} aria-hidden />
       </button>
-      {open && typeof document !== "undefined"
+      {open && !actionsDisabled && typeof document !== "undefined"
         ? createPortal(
             <ul
               ref={menuRef}
@@ -265,6 +286,24 @@ export function DealRowActions({
                   View deal
                 </button>
               </li>
+              {readOnlyActions && onResumeInvesting ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    className="um_kebab_menuitem"
+                    role="menuitem"
+                    onClick={handleResumeInvesting}
+                  >
+                    <TrendingUp
+                      className="um_kebab_menuitem_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    Resume investing
+                  </button>
+                </li>
+              ) : null}
               {readOnlyActions && onInvestNow ? (
                 <li role="none">
                   <button
@@ -279,7 +318,7 @@ export function DealRowActions({
                       strokeWidth={2}
                       aria-hidden
                     />
-                    Invest
+                    Invest now
                   </button>
                 </li>
               ) : null}
@@ -417,7 +456,7 @@ export function DealRowActions({
                     </p>
                   ) : null}
                 </div>
-                <div className="um_modal_actions">
+                <div className="um_modal_actions add_contact_modal_actions">
                   <button
                     type="button"
                     className="um_btn_secondary"

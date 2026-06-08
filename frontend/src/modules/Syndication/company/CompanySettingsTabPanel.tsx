@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
+import { FormHeadingWithInfo } from "../../../common/components/form-heading/FormHeadingWithInfo";
 import { normalizeDealGallerySrc } from "../../../common/utils/apiBaseUrl";
 import {
   BrandingLocalPreviewImg,
@@ -25,7 +26,7 @@ import {
   Ban,
   Briefcase,
   Building2,
-  Check,
+  Save,
   ChevronDown,
   CheckCircle2,
   ClipboardList,
@@ -45,6 +46,7 @@ import {
 } from "lucide-react";
 import { CardRadioGroup } from "../../../common/components/CardRadioGroup/CardRadioGroup";
 import { toast } from "../../../common/components/Toast";
+import "./company-settings-tab.css";
 
 /**
  * Data-URL preview for a picked branding file. Uses materialized bytes (not `blob:`) so
@@ -95,16 +97,25 @@ function SettingsSectionHeading({
   id,
   Icon,
   children,
+  description,
 }: {
   id: string;
   Icon: LucideIcon;
   children: ReactNode;
+  description?: string;
 }) {
   return (
-    <h3 id={id} className="cp_settings_h3 cp_settings_h3_with_icon">
-      <Icon className="cp_settings_h3_icon" size={20} strokeWidth={1.75} aria-hidden />
-      <span>{children}</span>
-    </h3>
+    <div className="cp_settings_section_head">
+      <FormHeadingWithInfo
+        as="h3"
+        id={id}
+        className="cp_settings_h3 cp_settings_h3_with_icon"
+        leadingIcon={Icon}
+        leadingIconClassName="cp_settings_h3_icon"
+        title={children}
+        info={description ? <p>{description}</p> : undefined}
+      />
+    </div>
   );
 }
 
@@ -137,32 +148,36 @@ function SettingsFieldEditActions({
   if (readOnly) return null;
   if (editing) {
     return (
-      <>
-        <button
-          type="button"
-          className="um_btn_primary"
-          onClick={() => void onSave()}
-        >
-          <Check size={16} strokeWidth={2} aria-hidden />
-          {saveLabel}
-        </button>
+      <div className="cp_settings_row_actions um_modal_actions add_contact_modal_actions">
         <button type="button" className="um_btn_secondary" onClick={onCancel}>
           <X size={16} strokeWidth={2} aria-hidden />
           Cancel
         </button>
-      </>
+        <div className="add_contact_modal_actions_trailing">
+          <button
+            type="button"
+            className="um_btn_primary"
+            onClick={() => void onSave()}
+          >
+            <Save size={16} strokeWidth={2} aria-hidden />
+            {saveLabel}
+          </button>
+        </div>
+      </div>
     );
   }
   return (
-    <button
-      type="button"
-      className="um_btn_secondary cp_settings_edit_btn"
-      aria-label={editAriaLabel}
-      onClick={onEdit}
-    >
-      <Pencil size={16} strokeWidth={2} aria-hidden />
-      Edit
-    </button>
+    <div className="cp_settings_row_actions">
+      <button
+        type="button"
+        className="um_btn_secondary cp_settings_edit_btn"
+        aria-label={editAriaLabel}
+        onClick={onEdit}
+      >
+        <Pencil size={16} strokeWidth={2} aria-hidden />
+        Edit
+      </button>
+    </div>
   );
 }
 
@@ -628,24 +643,34 @@ export function CompanySettingsTabPanel({
 
   return (
     <div className="cp_settings_root">
-      <p className="cp_settings_page_lead">
-        Configure your organization name, how investors register, deal defaults, and branding
-        for the company portal. Changes apply to your workspace and saved to your company
-        record.
-      </p>
+      <header className="cp_settings_header">
+        <h2 className="cp_settings_title">Workspace settings</h2>
+        <p className="cp_settings_page_lead">
+          Configure your organization name, investor registration, deal defaults, and branding
+          for the company portal. Changes apply to this workspace and are saved to your company
+          record.
+        </p>
+      </header>
+
+      <div className="cp_settings_stack">
       <section className="cp_settings_section" aria-labelledby="cp-gen-settings">
-        <SettingsSectionHeading id="cp-gen-settings" Icon={Settings}>
+        <SettingsSectionHeading
+          id="cp-gen-settings"
+          Icon={Settings}
+          description="Identity and portal link for the company workspace you are signed into."
+        >
           General settings
         </SettingsSectionHeading>
+        <div className="cp_settings_fields">
         <div className="cp_settings_row cp_settings_row_general">
-          <div className="cp_settings_label_col cp_settings_label_col_general">
+          <div className="cp_settings_label_col">
             <SettingsFieldLabel>Company name</SettingsFieldLabel>
           </div>
-          <div className="cp_settings_control cp_settings_control_general">
+          <div className="cp_settings_control">
             <div className="cp_settings_value_row cp_settings_name_edit_row">
               <input
                 type="text"
-                className="cp_settings_pill_input_field"
+                className="cp_settings_field_input"
                 value={editingName ? nameDraft : companyName}
                 disabled={readOnly || !editingName}
                 onChange={(e) => setNameDraft(e.target.value)}
@@ -676,10 +701,10 @@ export function CompanySettingsTabPanel({
           </div>
         </div>
         <div className="cp_settings_row cp_settings_row_spaced cp_settings_row_general">
-          <div className="cp_settings_label_col cp_settings_label_col_general">
+          <div className="cp_settings_label_col">
             <SettingsFieldLabel>Company portal link</SettingsFieldLabel>
           </div>
-          <div className="cp_settings_control cp_settings_control_general">
+          <div className="cp_settings_control">
             <div className="cp_settings_value_row">
               <div className="um_view_field_box cp_settings_readonly_pill cp_settings_portal_mono">
                 {portalHost}
@@ -695,12 +720,18 @@ export function CompanySettingsTabPanel({
             </div>
           </div>
         </div>
+        </div>
       </section>
 
       <section className="cp_settings_section" aria-labelledby="cp-reg-settings">
-        <SettingsSectionHeading id="cp-reg-settings" Icon={ClipboardList}>
+        <SettingsSectionHeading
+          id="cp-reg-settings"
+          Icon={ClipboardList}
+          description="Control how investors register and which offerings they can see on your portal."
+        >
           Registration settings
         </SettingsSectionHeading>
+        <div className="cp_settings_fields">
         <div className="cp_settings_row">
           <div className="cp_settings_label_col">
             <SettingsFieldLabel>Investor qualification form</SettingsFieldLabel>
@@ -785,12 +816,18 @@ export function CompanySettingsTabPanel({
             </div>
           </div>
         </div>
+        </div>
       </section>
 
       <section className="cp_settings_section" aria-labelledby="cp-deal-settings">
-        <SettingsSectionHeading id="cp-deal-settings" Icon={Briefcase}>
+        <SettingsSectionHeading
+          id="cp-deal-settings"
+          Icon={Briefcase}
+          description="Defaults applied across deals in this workspace."
+        >
           Global deal settings
         </SettingsSectionHeading>
+        <div className="cp_settings_fields">
         <div className="cp_settings_row">
           <div className="cp_settings_label_col">
             <SettingsFieldLabel>Require email verification before investing</SettingsFieldLabel>
@@ -997,22 +1034,19 @@ export function CompanySettingsTabPanel({
             </div>
           </div>
         </div>
+        </div>
       </section>
 
       {/* `logoImageUrl` — see `applySettingsMediaFromPayload` */}
       <section className="cp_settings_section" aria-labelledby="cp-logo">
-        <SettingsSectionHeading id="cp-logo" Icon={ImageIcon}>
+        <SettingsSectionHeading
+          id="cp-logo"
+          Icon={ImageIcon}
+          description="Displayed on your deals, offerings, and company portal."
+        >
           Logo
         </SettingsSectionHeading>
-        <div className="cp_settings_row cp_settings_row_media_column">
-          <div className="cp_settings_label_col">
-            <p className="cp_settings_help_in_row cp_settings_help_after_heading">
-              Upload your logo to be displayed on your deals, offerings, and on your company
-              portal.
-            </p>
-          </div>
-          <div className="cp_settings_control">
-            <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_media_block">
+        <div className="cp_settings_media_panel">
               <div className="cp_media_card">
                 <input
                   ref={logoFileInputRef}
@@ -1200,25 +1234,19 @@ export function CompanySettingsTabPanel({
                   </div>
                 ) : null}
               </div>
-            </div>
-          </div>
         </div>
       </section>
 
       {/* `backgroundImageUrl` — see `applySettingsMediaFromPayload` */}
       <section className="cp_settings_section" aria-labelledby="cp-bg">
-        <SettingsSectionHeading id="cp-bg" Icon={Images}>
+        <SettingsSectionHeading
+          id="cp-bg"
+          Icon={Images}
+          description="Optional high-resolution image for your company portal login page."
+        >
           Background image
         </SettingsSectionHeading>
-        <div className="cp_settings_row cp_settings_row_media_column">
-          <div className="cp_settings_label_col">
-            <p className="cp_settings_help_in_row cp_settings_help_after_heading">
-              Optionally, upload a high resolution background image to be displayed on your
-              company portal login.
-            </p>
-          </div>
-          <div className="cp_settings_control">
-            <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_media_block">
+        <div className="cp_settings_media_panel">
               <div className="cp_media_card">
 
                 <input
@@ -1414,94 +1442,107 @@ export function CompanySettingsTabPanel({
                   </div>
                 ) : null}
               </div>
-            </div>
-          </div>
         </div>
       </section>
 
       {/* `logoIconUrl` — see `applySettingsMediaFromPayload` */}
       <section className="cp_settings_section" aria-labelledby="cp-logo-icon">
-        <SettingsSectionHeading id="cp-logo-icon" Icon={ImageIcon}>
+        <SettingsSectionHeading
+          id="cp-logo-icon"
+          Icon={ImageIcon}
+          description="Smaller logo for the browser tab and collapsed sidebar."
+        >
           Logo icon
         </SettingsSectionHeading>
-        <div className="cp_settings_row cp_settings_row_media_column">
-          <div className="cp_settings_label_col">
-            <p className="cp_settings_help_in_row cp_settings_help_after_heading">
-              Upload a smaller version of your logo that will show in the browser tab and the
-              collapsed version of the sidebar.
-            </p>
-          </div>
-          <div className="cp_settings_control">
-            <div className="cp_settings_value_row cp_settings_media_edit_row cp_settings_logo_icon_row">
+        <div className="cp_settings_media_panel">
+              <div className="cp_media_card cp_media_card_icon">
                 <input
-                ref={iconFileInputRef}
-                type="file"
-                accept="image/*,.ico,image/x-icon,image/vnd.microsoft.icon"
-                multiple={false}
-                className="cp_settings_hidden_file_input"
-                aria-hidden
-                tabIndex={-1}
-                onChange={(e) => {
-                  applySingleImageFromInput(e, (file) => {
-                    setIconDraft(file);
-                    if (file) {
-                      setIconPendingRemoval(false);
-                      setIconPreviewLoadFailed(false);
-                    }
-                  });
-                }}
-              />
-              <div className="cp_settings_icon_block">
+                  ref={iconFileInputRef}
+                  type="file"
+                  accept="image/*,.ico,image/x-icon,image/vnd.microsoft.icon"
+                  multiple={false}
+                  className="cp_settings_hidden_file_input"
+                  aria-hidden
+                  tabIndex={-1}
+                  onChange={(e) => {
+                    applySingleImageFromInput(e, (file) => {
+                      setIconDraft(file);
+                      if (file) {
+                        setIconPendingRemoval(false);
+                        setIconPreviewLoadFailed(false);
+                      }
+                    });
+                  }}
+                />
                 <div
-                  className="cp_media_icon_preview_wrap"
+                  className={`cp_media_preview cp_media_preview_icon${
+                    (logoIconPublicId ||
+                      iconPreviewSrc ||
+                      (editLogoIcon && iconDraft && !iconPendingRemoval)) &&
+                    !iconPreviewLoadFailed &&
+                    !mediaBrandingLoading
+                      ? " cp_media_preview_has_image"
+                      : ""
+                  }`}
                   role={mediaBrandingLoading ? "status" : undefined}
                   aria-live={mediaBrandingLoading ? "polite" : undefined}
                 >
                   {mediaBrandingLoading ? (
-                    <Loader2
-                      className="cp_settings_branding_preview_spinner"
-                      size={24}
-                      strokeWidth={1.75}
-                      aria-label="Loading preview"
-                    />
+                    <div
+                      className="cp_settings_branding_preview_loading cp_settings_branding_preview_loading_icon"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2
+                        className="cp_settings_branding_preview_spinner"
+                        size={24}
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                      <span>Loading preview…</span>
+                    </div>
                   ) : (logoIconPublicId ||
                     iconPreviewSrc ||
                     (editLogoIcon && iconDraft && !iconPendingRemoval)) &&
                     !iconPreviewLoadFailed ? (
-                    isBrandingDraftPreview(
-                      editLogoIcon,
-                      iconPendingRemoval,
-                      iconDraft,
-                      iconDraftObjectUrl,
-                    ) ? (
-                      iconDraftObjectUrl ? (
-                        <BrandingLocalPreviewImg
-                          src={iconDraftObjectUrl}
+                    <div className="cp_media_icon_preview_wrap">
+                      {isBrandingDraftPreview(
+                        editLogoIcon,
+                        iconPendingRemoval,
+                        iconDraft,
+                        iconDraftObjectUrl,
+                      ) ? (
+                        iconDraftObjectUrl ? (
+                          <BrandingLocalPreviewImg
+                            src={iconDraftObjectUrl}
+                            alt="Logo icon preview"
+                            className="cp_media_icon_preview"
+                          />
+                        ) : (
+                          <Loader2
+                            className="cp_settings_branding_preview_spinner"
+                            size={24}
+                            strokeWidth={1.75}
+                            aria-label="Loading preview"
+                          />
+                        )
+                      ) : (
+                        <SettingsBrandedImage
+                          publicId={logoIconPublicId}
+                          url={logoIconUrl ?? ""}
                           alt="Logo icon preview"
                           className="cp_media_icon_preview"
+                          onError={() => setIconPreviewLoadFailed(true)}
+                          reactKey={logoIconPublicId ?? iconPreviewSrc ?? "logoIcon"}
                         />
-                      ) : (
-                        <Loader2
-                          className="cp_settings_branding_preview_spinner"
-                          size={24}
-                          strokeWidth={1.75}
-                          aria-label="Loading preview"
-                        />
-                      )
-                    ) : (
-                      <SettingsBrandedImage
-                        publicId={logoIconPublicId}
-                        url={logoIconUrl ?? ""}
-                        alt="Logo icon preview"
-                        className="cp_media_icon_preview"
-                        onError={() => setIconPreviewLoadFailed(true)}
-                        reactKey={logoIconPublicId ?? iconPreviewSrc ?? "logoIcon"}
-                      />
-                    )
+                      )}
+                    </div>
                   ) : (
-                    <span className="cp_media_icon_placeholder">
-                      <ImageIcon size={28} strokeWidth={1.5} aria-hidden />
-                    </span>
+                    <div className="cp_media_icon_preview_wrap">
+                      <span className="cp_media_icon_placeholder">
+                        <ImageIcon size={28} strokeWidth={1.5} aria-hidden />
+                      </span>
+                    </div>
                   )}
                 </div>
                 {editLogoIcon && iconDraft && !readOnly ? (
@@ -1510,10 +1551,7 @@ export function CompanySettingsTabPanel({
                   </p>
                 ) : null}
               </div>
-              <div
-                className="cp_settings_media_toolbar cp_settings_media_toolbar--icon"
-                aria-label="Logo icon actions"
-              >
+              <div className="cp_settings_media_toolbar" aria-label="Logo icon actions">
                 <SettingsFieldEditActions
                 readOnly={readOnly}
                 editing={editLogoIcon}
@@ -1615,10 +1653,9 @@ export function CompanySettingsTabPanel({
                   </div>
                 ) : null}
               </div>
-            </div>
-          </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

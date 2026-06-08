@@ -119,6 +119,17 @@
 
 
 
+.invest_now_questionnaire_fieldset_invalid {
+  border: 1px solid var(--portal-danger, #b91c1c);
+  border-radius: var(--portal-card-radius, 4px);
+  padding: 0.65rem 0.75rem;
+  background: rgb(254 242 242 / 35%);
+}
+
+.invest_now_questionnaire_fieldset_invalid .invest_now_questionnaire_option {
+  border-color: rgb(185 28 28 / 35%);
+}
+
 .invest_now_questionnaire_fieldset {
 
   border: none;
@@ -184,6 +195,8 @@
   margin-top: 0.2rem;
 
   flex-shrink: 0;
+
+  accent-color: var(--portal-control-accent, var(--sidebar-bg-color, #131b2e));
 
 }
 
@@ -473,7 +486,7 @@
 
   padding: 1rem 1.25rem;
 
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
 
   border: 1px solid var(--um_border_error, #f5c2c7);
 
@@ -511,7 +524,7 @@
 
   border: 1px solid var(--portal-border, #e2e8f0);
 
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
 
   background: color-mix(
     in srgb,
@@ -631,7 +644,7 @@
 
   border: 1px solid var(--portal-border, #e2e8f0);
 
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
 
   background: color-mix(
     in srgb,

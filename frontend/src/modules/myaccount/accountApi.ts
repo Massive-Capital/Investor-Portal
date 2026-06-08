@@ -6,6 +6,7 @@ export type ProfilePatchBody = Partial<{
   lastName: string
   phone: string
   companyName: string
+  username: string
 }>
 
 function authJsonHeaders(): HeadersInit {

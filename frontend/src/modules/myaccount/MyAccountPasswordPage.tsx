@@ -1,6 +1,6 @@
 import type { FormEvent } from "react"
 import { useMemo, useState } from "react"
-import { LockKeyhole } from "lucide-react"
+import { KeyRound, LockKeyhole } from "lucide-react"
 import { toast } from "../../common/components/Toast"
 import { postChangePassword } from "./accountApi"
 import { mergeSessionUserDetails } from "./sessionUser"
@@ -151,7 +151,14 @@ export function MyAccountPasswordPage() {
             className="um_btn_primary"
             disabled={isLoading || !hasChanges}
           >
-            {isLoading ? "Updating…" : "Update password"}
+            {isLoading ? (
+              "Updating…"
+            ) : (
+              <>
+                <KeyRound size={16} strokeWidth={2} aria-hidden />
+                Update password
+              </>
+            )}
           </button>
         </div>
       </form>

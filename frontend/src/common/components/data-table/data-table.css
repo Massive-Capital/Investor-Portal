@@ -3,6 +3,71 @@
   max-width: 100%;
 }
 
+/* Neutral scrollbars on portal tables (overrides any global marketing-page scrollbar rules). */
+.data_table_scroll,
+.data_table_scroll_region,
+.um_table_wrap.data_table_shell,
+.deals_list_table_panel .data_table_scroll_region {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.data_table_scroll::-webkit-scrollbar,
+.data_table_scroll_region::-webkit-scrollbar,
+.um_table_wrap.data_table_shell::-webkit-scrollbar,
+.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.data_table_scroll::-webkit-scrollbar-track,
+.data_table_scroll_region::-webkit-scrollbar-track,
+.um_table_wrap.data_table_shell::-webkit-scrollbar-track,
+.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.data_table_scroll::-webkit-scrollbar-thumb,
+.data_table_scroll_region::-webkit-scrollbar-thumb,
+.um_table_wrap.data_table_shell::-webkit-scrollbar-thumb,
+.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+:root[data-theme="dark"] .data_table_scroll,
+:root[data-theme="dark"] .data_table_scroll_region,
+:root[data-theme="dark"] .um_table_wrap.data_table_shell,
+:root[data-theme="dark"] .deals_list_table_panel .data_table_scroll_region {
+  scrollbar-color: #475569 transparent;
+}
+
+:root[data-theme="dark"] .data_table_scroll::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .data_table_scroll_region::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .um_table_wrap.data_table_shell::-webkit-scrollbar-thumb,
+:root[data-theme="dark"]
+  .deals_list_table_panel
+  .data_table_scroll_region::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+/* Empty members tables: no horizontal scroll track when there is nothing to scroll. */
+.data_table_scroll_region.data_table_scroll_region--empty {
+  overflow-x: hidden;
+}
+
+.data_table_scroll_region.data_table_scroll_region--empty .um_table,
+.data_table_scroll_region.data_table_scroll_region--empty .data_table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.um_table_wrap.data_table_shell:has(.data_table_scroll_region--empty),
+.um_table_wrap:not(.data_table_shell):has(.data_table_scroll_region--empty) {
+  overflow-x: hidden;
+}
+
 /* Members-style DataTable: pagination stays fixed; only the table scrolls horizontally if needed */
 .um_table_wrap.data_table_shell {
   width: 100%;
@@ -31,53 +96,81 @@
 }
 
 /**
- * Sticky first column — fixed during horizontal scroll.
- * Z-index: corner header > body sticky col > scrolling cells (avoids header/body painting over sticky).
+ * Sticky columns — fixed during horizontal scroll.
+ * Per-table widths: `--data-table-sticky-col-0-width`, `--data-table-sticky-col-1-width`.
+ * Z-index: corner header > body sticky cols > scrolling cells.
  */
 .data_table_sticky_first th.data_table_col_sticky,
 .data_table_sticky_first td.data_table_col_sticky {
   position: sticky;
-  left: 0;
-  min-width: 12rem;
   vertical-align: middle;
   box-shadow: none;
   background-clip: padding-box;
 }
 
-/* Scrolling columns stay below sticky column (horizontal scroll) */
+.data_table_sticky_first th.data_table_col_sticky--0,
+.data_table_sticky_first td.data_table_col_sticky--0 {
+  left: 0;
+  min-width: var(--data-table-sticky-col-0-width, 12rem);
+}
+
+.data_table_sticky_first th.data_table_col_sticky--1,
+.data_table_sticky_first td.data_table_col_sticky--1 {
+  left: var(--data-table-sticky-col-0-width, 12rem);
+  min-width: var(--data-table-sticky-col-1-width, 12rem);
+}
+
+/* Separator on the last pinned column when horizontally scrolling */
+.data_table_sticky_first th.data_table_col_sticky_edge,
+.data_table_sticky_first td.data_table_col_sticky_edge {
+  box-shadow: 1px 0 0 0 color-mix(in srgb, var(--portal-border, #e2e8f0) 90%, transparent);
+}
+
+:root[data-theme="dark"] .data_table_sticky_first th.data_table_col_sticky_edge,
+:root[data-theme="dark"] .data_table_sticky_first td.data_table_col_sticky_edge {
+  box-shadow: 1px 0 0 0 color-mix(in srgb, var(--portal-border, #334155) 85%, transparent);
+}
+
+/* Scrolling columns stay below sticky columns */
 .data_table_sticky_first thead th:not(.data_table_col_sticky),
 .data_table_sticky_first tbody td:not(.data_table_col_sticky) {
   position: relative;
   z-index: 0;
 }
 
-.data_table_sticky_first tbody td.data_table_col_sticky {
+.data_table_sticky_first tbody td.data_table_col_sticky--0 {
   z-index: 2;
-  background: var(--portal-surface, #ffffff);
+  background: var(--portal-table-row-odd, #ffffff);
 }
 
-.data_table_sticky_first thead th.data_table_col_sticky {
+.data_table_sticky_first tbody td.data_table_col_sticky--1 {
+  z-index: 3;
+  background: var(--portal-table-row-odd, #ffffff);
+}
+
+.data_table_sticky_first thead th.data_table_col_sticky--0 {
   z-index: 4;
-  background: var(--portal-surface, #ffffff);
+  background: var(--portal-panel-bg, var(--portal-surface, #ffffff));
 }
 
-.um_table.data_table_sticky_first thead th.data_table_col_sticky {
-  background: var(--portal-surface, #ffffff);
+.data_table_sticky_first thead th.data_table_col_sticky--1 {
+  z-index: 5;
+  background: var(--portal-panel-bg, var(--portal-surface, #ffffff));
 }
 
-.um_table.data_table_sticky_first tbody td.data_table_col_sticky {
-  background: var(--portal-surface, #ffffff);
+.um_table.data_table_sticky_first thead th.data_table_col_sticky--0,
+.um_table.data_table_sticky_first thead th.data_table_col_sticky--1 {
+  background: var(--portal-panel-bg, var(--portal-surface, #ffffff));
 }
 
-:root[data-theme="dark"] .data_table_sticky_first thead th.data_table_col_sticky,
-:root[data-theme="dark"] .data_table_sticky_first tbody td.data_table_col_sticky {
-  background: var(--portal-surface, #121212);
+.um_table.data_table_sticky_first tbody td.data_table_col_sticky--0,
+.um_table.data_table_sticky_first tbody td.data_table_col_sticky--1 {
+  background: var(--portal-table-row-odd, #ffffff);
 }
 
 :root[data-theme="dark"] .data_table_sticky_first th.data_table_col_sticky,
 :root[data-theme="dark"] .data_table_sticky_first td.data_table_col_sticky {
-  border-right-color: var(--portal-border, #334155);
-  box-shadow: none;
+  border-right-color: var(--portal-table-border, #334155);
 }
 
 /* Header row: same surface as tbody — no separate gray band (first table row). */
@@ -111,14 +204,15 @@
 .data_table th,
 .data_table td {
   padding: 0.65em 0.75em;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--portal-table-border, #e2e8f0);
   vertical-align: top;
+  color: var(--portal-table-body-text, var(--portal-text));
 }
 
 .data_table th {
   font-weight: 600;
-  color: #334155;
-  background: #f8fafc;
+  color: var(--portal-table-header-text, #475569);
+  background: var(--portal-table-header-bg, #f8fafc);
   white-space: nowrap;
 }
 
@@ -155,17 +249,17 @@
 }
 
 .data_table_th_sorted {
-  color: #0f172a;
+  color: var(--portal-table-sorted-text, #0f172a);
 }
 
 .data_table_empty {
   padding: 1.5em 1em;
   text-align: center;
-  color: #64748b;
+  color: var(--portal-table-empty-text, #64748b);
   font-size: 0.9em;
-  border: 1px dashed #e2e8f0;
-  border-radius: 8px;
-  background: #fafafa;
+  border: 1px dashed var(--portal-table-empty-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 4px);
+  background: var(--portal-table-empty-bg, #fafafa);
 }
 
 .data_table_empty_members_cell {
@@ -273,147 +367,34 @@
 }
 
 /* --- Striped body rows (all DataTables; row index = sorted + paginated slice) --- */
-.data_table tbody tr.data_table_row_odd td {
-  background-color: #ffffff;
-}
-
-.data_table tbody tr.data_table_row_even td {
-  background-color: #f8fafc;
-}
-
-.data_table_sticky_first tbody tr.data_table_row_odd td.data_table_col_sticky {
-  background-color: #ffffff;
-}
-
-.data_table_sticky_first tbody tr.data_table_row_even td.data_table_col_sticky {
-  background-color: #f8fafc;
-}
-
-.um_table tbody tr.data_table_row_odd td {
-  background-color: #ffffff;
-}
-
-.um_table tbody tr.data_table_row_even td {
-  background-color: #f8fafc;
-}
-
-.um_table.data_table_sticky_first tbody tr.data_table_row_odd td.data_table_col_sticky {
-  background-color: #ffffff;
-}
-
-.um_table.data_table_sticky_first tbody tr.data_table_row_even td.data_table_col_sticky {
-  background-color: #f8fafc;
-}
-
-/* Deal Investors / Members: panel rules set sticky #f8f8f8 — zebra must win. */
+.data_table tbody tr.data_table_row_odd td,
+.um_table tbody tr.data_table_row_odd td,
 .deal_inv_table_panel .um_table.deal_inv_table tbody tr.data_table_row_odd td {
-  background-color: #ffffff;
+  background-color: var(--portal-table-row-odd, #ffffff);
 }
 
+.data_table tbody tr.data_table_row_even td,
+.um_table tbody tr.data_table_row_even td,
 .deal_inv_table_panel .um_table.deal_inv_table tbody tr.data_table_row_even td {
-  background-color: #f8fafc;
+  background-color: var(--portal-table-row-even, #f8fafc);
 }
 
+.data_table_sticky_first tbody tr.data_table_row_odd td.data_table_col_sticky,
+.um_table.data_table_sticky_first tbody tr.data_table_row_odd td.data_table_col_sticky,
 .deal_inv_table_panel
   .um_table.deal_inv_table.data_table_sticky_first
   tbody
   tr.data_table_row_odd
   td.data_table_col_sticky {
-  background-color: #ffffff;
+  background-color: var(--portal-table-row-odd, #ffffff);
 }
 
+.data_table_sticky_first tbody tr.data_table_row_even td.data_table_col_sticky,
+.um_table.data_table_sticky_first tbody tr.data_table_row_even td.data_table_col_sticky,
 .deal_inv_table_panel
   .um_table.deal_inv_table.data_table_sticky_first
   tbody
   tr.data_table_row_even
   td.data_table_col_sticky {
-  background-color: #f8fafc;
-}
-
-:root[data-theme="dark"] .data_table tbody tr.data_table_row_odd td,
-:root[data-theme="dark"] .um_table tbody tr.data_table_row_odd td {
-  background-color: var(--portal-surface, #121212);
-}
-
-:root[data-theme="dark"] .data_table tbody tr.data_table_row_even td,
-:root[data-theme="dark"] .um_table tbody tr.data_table_row_even td {
-  background-color: color-mix(
-    in srgb,
-    var(--portal-text, #f1f5f9) 4%,
-    var(--portal-surface, #121212)
-  );
-}
-
-:root[data-theme="dark"]
-  .data_table_sticky_first
-  tbody
-  tr.data_table_row_odd
-  td.data_table_col_sticky,
-:root[data-theme="dark"]
-  .um_table.data_table_sticky_first
-  tbody
-  tr.data_table_row_odd
-  td.data_table_col_sticky {
-  background-color: var(--portal-surface, #121212);
-}
-
-:root[data-theme="dark"]
-  .data_table_sticky_first
-  tbody
-  tr.data_table_row_even
-  td.data_table_col_sticky,
-:root[data-theme="dark"]
-  .um_table.data_table_sticky_first
-  tbody
-  tr.data_table_row_even
-  td.data_table_col_sticky {
-  background-color: color-mix(
-    in srgb,
-    var(--portal-text, #f1f5f9) 4%,
-    var(--portal-surface, #121212)
-  );
-}
-
-:root[data-theme="dark"]
-  .deal_inv_table_panel
-  .um_table.deal_inv_table
-  tbody
-  tr.data_table_row_odd
-  td {
-  background-color: var(--portal-surface, #121212);
-}
-
-:root[data-theme="dark"]
-  .deal_inv_table_panel
-  .um_table.deal_inv_table
-  tbody
-  tr.data_table_row_even
-  td {
-  background-color: color-mix(
-    in srgb,
-    var(--portal-text, #f1f5f9) 4%,
-    var(--portal-surface, #121212)
-  );
-}
-
-:root[data-theme="dark"]
-  .deal_inv_table_panel
-  .um_table.deal_inv_table.data_table_sticky_first
-  tbody
-  tr.data_table_row_odd
-  td.data_table_col_sticky {
-  background-color: var(--portal-surface, #121212);
-}
-
-:root[data-theme="dark"]
-  .deal_inv_table_panel
-  .um_table.deal_inv_table.data_table_sticky_first
-  tbody
-  tr.data_table_row_even
-  td.data_table_col_sticky {
-  background-color: color-mix(
-    in srgb,
-    var(--portal-text, #f1f5f9) 4%,
-    var(--portal-surface, #121212)
-  );
+  background-color: var(--portal-table-row-even, #f8fafc);
 }

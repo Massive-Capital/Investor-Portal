@@ -32,7 +32,7 @@
   width: 100%;
   box-shadow: none;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
   box-sizing: border-box;
 }

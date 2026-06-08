@@ -225,7 +225,7 @@ export function ManageQuestionnaireModal({
             </span>
           </p>
         </div>
-        <div className="um_modal_actions">
+        <div className="um_modal_actions add_contact_modal_actions">
           <button
             type="button"
             className="um_btn_secondary"

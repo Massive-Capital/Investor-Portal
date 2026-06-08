@@ -1,5 +1,9 @@
 import type { DealInvestorClass } from "@/modules/Syndication/Deals/types/deal-investor-class.types"
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import {
+  investorEsignIsFullyCompletedForRow,
+  investorEsignWasSent,
+} from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import type { NestedPreviewDocument } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 
 export type InvestmentDocumentAudienceContext = {
@@ -58,6 +62,20 @@ function viewerMatchesSharedInvestorId(
   return false
 }
 
+function viewerHasCompletedProfileInvestment(
+  viewerRows: InvestmentDocumentAudienceContext["viewerRows"],
+): boolean {
+  for (const row of viewerRows) {
+    const hasProfile =
+      Boolean(String(row.userInvestorProfileId ?? "").trim()) ||
+      Boolean(String(row.profileId ?? "").trim())
+    if (!hasProfile) continue
+    if (!investorEsignWasSent(row)) continue
+    if (investorEsignIsFullyCompletedForRow(row)) return true
+  }
+  return false
+}
+
 /**
  * Workspace document is visible when Shared With targets this investor (or everyone),
  * or when no audience is selected (all LPs allowed by the section).
@@ -66,6 +84,12 @@ export function nestedDocumentVisibleToInvestor(
   doc: NestedPreviewDocument,
   ctx: InvestmentDocumentAudienceContext,
 ): boolean {
+  if (
+    doc.requiresProfileInvestment &&
+    !viewerHasCompletedProfileInvestment(ctx.viewerRows)
+  ) {
+    return false
+  }
   if (!hasExplicitDocumentAudience(doc)) return true
   if (doc.sharedWithAllInvestors) return true
 

@@ -1,6 +1,12 @@
 import { X } from "lucide-react"
 import { useEffect, useId } from "react"
 import { createPortal } from "react-dom"
+import {
+  ModalCancelButton,
+  ModalDeleteButton,
+  ModalFooterActions,
+  ModalFooterTrailing,
+} from "./modal/ModalFooterButtons"
 
 export interface ConfirmDeleteModalProps {
   open: boolean
@@ -72,24 +78,19 @@ export function ConfirmDeleteModal({
         <div className="deals_add_inv_modal_scroll">
           <p className="deals_suspend_all_modal_message">{body}</p>
         </div>
-        <div className="um_modal_actions">
-          <button
-            type="button"
-            className="um_btn_secondary"
-            onClick={onCancel}
-            disabled={busy}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="um_btn_primary deal_member_delete_confirm_btn"
-            onClick={() => void onConfirm()}
-            disabled={busy}
-          >
-            {busy ? "Deleting…" : confirmLabel}
-          </button>
-        </div>
+        <ModalFooterActions>
+          <ModalCancelButton onClick={onCancel} disabled={busy} />
+          <ModalFooterTrailing>
+            <ModalDeleteButton
+              onClick={() => void onConfirm()}
+              disabled={busy}
+              busy={busy}
+              busyLabel="Deleting…"
+            >
+              {confirmLabel}
+            </ModalDeleteButton>
+          </ModalFooterTrailing>
+        </ModalFooterActions>
       </div>
     </div>,
     document.body,

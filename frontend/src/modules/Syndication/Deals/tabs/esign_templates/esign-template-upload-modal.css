@@ -47,7 +47,7 @@
 .deal_esign_upload_row {
   padding: 0.75rem 1rem;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface-muted, #f8fafc);
 }
 
@@ -120,7 +120,7 @@
   gap: 0.35rem;
   margin-bottom: 0.65rem;
   padding: 0.2rem;
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-chrome-bg, #f1f5f9);
   border: 1px solid var(--portal-border, #e2e8f0);
 }
@@ -134,7 +134,7 @@
   min-height: 2.25rem;
   padding: 0.35rem 0.5rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: transparent;
   font-family: inherit;
   font-size: 0.8125rem;
@@ -152,9 +152,14 @@
 }
 
 .deal_esign_doc_source_toggle_btn--active {
-  background: var(--portal-surface, #fff);
-  color: var(--portal-text, #0f172a);
-  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
+  background: var(--portal-tab-active-bg);
+  color: var(--portal-tab-active-text, var(--portal-text, #0f172a));
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .deal_esign_doc_source_toggle_btn--active {
+  color: var(--portal-tab-active-text, #d4af37);
+  background: var(--portal-tab-active-bg);
 }
 
 .deal_esign_doc_source_toggle_btn:disabled {
@@ -172,7 +177,7 @@
   font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--portal-text-muted, #64748b);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-chrome-bg, #f8fafc);
   border: 1px dashed var(--portal-border, #e2e8f0);
 }
@@ -335,7 +340,7 @@
   width: 2.75rem;
   height: 2.75rem;
   flex-shrink: 0;
-  border-radius: 12px;
+  border-radius: var(--portal-card-radius, 4px);
   color: var(--portal-focus, #2563eb);
   background: color-mix(in srgb, var(--portal-focus, #2563eb) 10%, var(--portal-surface, #fff));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--portal-focus, #2563eb) 16%, transparent);
@@ -412,7 +417,7 @@
   margin: 0.15rem 0 0;
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 12px;
+  border-radius: var(--portal-card-radius, 4px);
   background: color-mix(in srgb, var(--portal-chrome-bg, #f8fafc) 55%, var(--portal-surface, #fff));
   cursor: pointer;
   transition:
@@ -431,7 +436,7 @@
   width: 2rem;
   height: 2rem;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   color: var(--portal-focus, #2563eb);
   background: color-mix(in srgb, var(--portal-focus, #2563eb) 10%, transparent);
 }

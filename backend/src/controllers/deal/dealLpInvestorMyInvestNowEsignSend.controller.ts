@@ -46,6 +46,10 @@ export async function postDealLpInvestorMyInvestNowEsignSend(
 
   const b = req.body as Record<string, unknown>;
   const profileId = bodyString(b.profile_id ?? b.profileId);
+  const userInvestorProfileId = bodyString(
+    b.user_investor_profile_id ?? b.userInvestorProfileId,
+  );
+  const investmentId = bodyString(b.investment_id ?? b.investmentId);
 
   try {
     const scope = await resolveDealViewerScope(
@@ -89,6 +93,8 @@ export async function postDealLpInvestorMyInvestNowEsignSend(
       viewerEmail: emailNorm,
       viewerUserId: user.id,
       profileId,
+      userInvestorProfileId: userInvestorProfileId || undefined,
+      investmentId: investmentId || undefined,
       memberDisplayName: displayName || undefined,
       questionnaireAnswers:
         questionnaireRaw != null && typeof questionnaireRaw === "object"

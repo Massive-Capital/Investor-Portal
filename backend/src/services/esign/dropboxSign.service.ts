@@ -127,6 +127,25 @@ async function parseDropboxSignError(res: Response): Promise<string> {
   return `Dropbox Sign API error (${res.status})`;
 }
 
+function isDropboxSignRateLimitMessage(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("exceeded_rate") || m.includes("too many requests");
+}
+
+/** True when Dropbox Sign returned a per-minute request cap error. */
+export function isDropboxSignRateLimitError(err: unknown): boolean {
+  if (err instanceof Error) return isDropboxSignRateLimitMessage(err.message);
+  return isDropboxSignRateLimitMessage(String(err));
+}
+
+/** Short-lived cache — many portal routes poll the same signature_request id. */
+const SIGNATURE_REQUEST_DETAIL_CACHE_MS = 45_000;
+const signatureRequestDetailCache = new Map<
+  string,
+  { fetchedAt: number; detail: DropboxSignatureRequestDetail }
+>();
+let dropboxSignRateLimitedUntilMs = 0;
+
 function appendSignerRoles(form: FormData, roles: DropboxSignSignerRole[]): void {
   roles.forEach((role, index) => {
     form.append(`signer_roles[${index}][name]`, role.name);
@@ -776,8 +795,7 @@ function latestIso(dates: Array<string | null | undefined>): string | null {
   return best;
 }
 
-/** Full signature request state from Dropbox Sign (viewed / signed / complete per signer). */
-export async function getSignatureRequestDetail(
+async function fetchSignatureRequestDetailFromApi(
   signatureRequestId: string,
 ): Promise<DropboxSignatureRequestDetail> {
   const { apiKey } = requireDropboxSignConfig();
@@ -788,7 +806,11 @@ export async function getSignatureRequestDetail(
     },
   );
   if (!res.ok) {
-    throw new Error(await parseDropboxSignError(res));
+    const errMsg = await parseDropboxSignError(res);
+    if (isDropboxSignRateLimitMessage(errMsg)) {
+      dropboxSignRateLimitedUntilMs = Date.now() + 60_000;
+    }
+    throw new Error(errMsg);
   }
 
   const data = (await res.json()) as {
@@ -834,6 +856,40 @@ export async function getSignatureRequestDetail(
     lastViewedAt,
     lastSignedAt,
   };
+}
+
+/** Full signature request state from Dropbox Sign (viewed / signed / complete per signer). */
+export async function getSignatureRequestDetail(
+  signatureRequestId: string,
+): Promise<DropboxSignatureRequestDetail> {
+  const id = signatureRequestId.trim();
+  if (!id) {
+    throw new Error("Missing signature request id");
+  }
+
+  const now = Date.now();
+  const cached = signatureRequestDetailCache.get(id);
+  if (cached && now - cached.fetchedAt < SIGNATURE_REQUEST_DETAIL_CACHE_MS) {
+    return cached.detail;
+  }
+
+  if (now < dropboxSignRateLimitedUntilMs) {
+    if (cached) return cached.detail;
+    throw new Error(
+      "exceeded_rate: Too many requests. System limits for this type of request are 100 per minute.",
+    );
+  }
+
+  try {
+    const detail = await fetchSignatureRequestDetailFromApi(id);
+    signatureRequestDetailCache.set(id, { fetchedAt: now, detail });
+    return detail;
+  } catch (err) {
+    if (isDropboxSignRateLimitError(err) && cached) {
+      return cached.detail;
+    }
+    throw err;
+  }
 }
 
 export async function getSignatureRequestSummary(

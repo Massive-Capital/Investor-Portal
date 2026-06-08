@@ -16,7 +16,8 @@ import {
   MapPin,
   Phone,
   Shield,
-  UserPlus,
+  Plus,
+  Save,
   UserRound,
   X,
 } from "lucide-react"
@@ -450,7 +451,11 @@ export function AddBeneficiaryModal({
             </button>
             <div className="add_contact_modal_actions_trailing">
               <button type="submit" className="um_btn_primary">
-                <UserPlus size={18} strokeWidth={2} aria-hidden />
+                {isEdit ? (
+                  <Save size={18} strokeWidth={2} aria-hidden />
+                ) : (
+                  <Plus size={18} strokeWidth={2} aria-hidden />
+                )}
                 {isEdit ? "Save changes" : "Add beneficiary"}
               </button>
             </div>

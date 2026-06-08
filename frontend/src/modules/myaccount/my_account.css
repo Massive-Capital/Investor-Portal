@@ -80,13 +80,39 @@
   text-decoration: none;
 }
 
-/* Read-only account fields */
-.myaccount_page .um_field input:read-only {
+/* Non-editable account fields — match disabled inputs; default cursor (no pointer / I-beam) */
+.myaccount_page .um_field input:read-only,
+.myaccount_page .um_field input[readonly] {
+  opacity: 0.65;
+  cursor: default;
+  caret-color: transparent;
+  color: var(--portal-text-muted, #64748b);
+  background: var(--portal-surface-muted, #f8fafc);
+  border-color: var(--portal-border, #e2e8f0);
+  box-shadow: none;
+}
+
+.myaccount_page .um_field input:read-only:focus,
+.myaccount_page .um_field input:read-only:focus-visible,
+.myaccount_page .um_field input[readonly]:focus,
+.myaccount_page .um_field input[readonly]:focus-visible {
+  outline: none;
+  border-color: var(--portal-border, #e2e8f0);
+  box-shadow: none;
+}
+
+.myaccount_page .um_field:has(input:read-only) .um_field_label_row,
+.myaccount_page .um_field:has(input[readonly]) .um_field_label_row {
+  cursor: default;
+}
+
+:root[data-theme="dark"] .myaccount_page .um_field input:read-only,
+:root[data-theme="dark"] .myaccount_page .um_field input[readonly] {
   background: color-mix(
     in srgb,
-    var(--portal-surface-muted, #f8fafc) 88%,
-    var(--portal-surface, #fff)
+    var(--portal-surface, #1a1a1a) 88%,
+    var(--portal-surface-muted, #2a2a2a) 12%
   );
-  color: var(--portal-text-muted, #64748b);
-  cursor: default;
+  color: var(--portal-text-muted, #94a3b8);
+  border-color: var(--portal-border, #334155);
 }

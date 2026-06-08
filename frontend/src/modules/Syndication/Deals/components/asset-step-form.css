@@ -32,11 +32,11 @@
   box-shadow: none;
 }
 
-/* State / city — full border (country and address lines stay underline) */
+/* Country / state / city — same bordered control shell as deals_create_input */
 .asset_step_location_bordered {
   box-sizing: border-box;
   border: 1px solid var(--portal-border, #e5e5e5);
-  border-radius: var(--portal-pill-radius, 9999px);
+  border-radius: var(--portal-pill-radius, 4px);
   padding-left: var(--deals-control-padding-x, 0.75rem);
   padding-right: var(--deals-control-padding-x, 0.75rem);
   padding-top: var(--deals-control-padding-y, 0.5rem);
@@ -88,7 +88,7 @@
 .asset_step_existing_thumb_wrap {
   width: 5.5rem;
   height: 5.5rem;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   overflow: hidden;
   border: 1px solid var(--portal-border);
   background: color-mix(

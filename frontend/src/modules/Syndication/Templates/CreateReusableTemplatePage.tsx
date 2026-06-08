@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { DropboxSignEmbeddedEditor } from "@/common/components/dropbox-sign-embedded"
 import type { DropboxSignCreateTemplateEvent } from "@/common/components/dropbox-sign-embedded/dropboxSignEmbedded.types"
 import { toast } from "@/common/components/Toast"
+import { toastTemplateEditorOpenError } from "@/modules/Syndication/Deals/utils/esignTemplateDisplay"
 import "@/common/components/work_in_progress_page.css"
 import "../usermanagement/user_management.css"
 import "../Deals/deals-list.css"
@@ -50,7 +51,7 @@ export default function CreateReusableTemplatePage() {
         title: templateName,
       })
       if (!draft.ok) {
-        toast.error("Could not open template editor", draft.message)
+        toastTemplateEditorOpenError(draft.message)
         return false
       }
       setEmbeddedSession({

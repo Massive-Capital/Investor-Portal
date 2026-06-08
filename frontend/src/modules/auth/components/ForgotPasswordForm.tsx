@@ -65,11 +65,6 @@ const ForgotPasswordForm = () => {
   return (
     <>
       <form onSubmit={handleSubmit} autoComplete="off">
-        <p className="pwdCaption">
-          Enter your email and we&apos;ll send you a link to get back into your
-          account.
-        </p>
-
         <div className="emailData">
           <Input
             labelName="Email"
@@ -125,19 +120,12 @@ const ForgotPasswordForm = () => {
           </button>
         </div>
 
-        <div>
-          <p className="signinText">
-            Back to{" "}
-            <Link to="/signin" className="redirecting_links">
-              <span>Sign in</span>
-            </Link>
-          </p>
-        </div>
+        <p className="auth_footer_links">
+          Back to <Link to="/signin">Sign in</Link>
+        </p>
 
-        <div className="companyContent">
-          <div className="contentOne">
-            <FooterForm />
-          </div>
+        <div className="auth_help companyContent">
+          <FooterForm />
         </div>
       </form>
     </>

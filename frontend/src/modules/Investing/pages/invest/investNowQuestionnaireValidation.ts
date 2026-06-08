@@ -13,6 +13,18 @@ import type { VisibleQuestionnaireSection } from "./investNowEsignContext"
 
 export type InvestNowQuestionnaireAnswers = Record<string, string>
 
+export type InvestNowQuestionnaireFieldValidation = {
+  message: string
+  questionId: string
+}
+
+function fieldValidation(
+  question: InvestorQuestionnaireQuestion,
+  message: string,
+): InvestNowQuestionnaireFieldValidation {
+  return { message, questionId: question.id }
+}
+
 function validatePhoneAnswer(
   raw: string | undefined,
   required: boolean,
@@ -81,7 +93,7 @@ export function validateInvestNowQuestionnaireSection({
   config: InvestorQuestionnaireConfig | null | undefined
   sectionId: string
   answers: InvestNowQuestionnaireAnswers
-}): string | null {
+}): InvestNowQuestionnaireFieldValidation | string | null {
   if (!config) return "Questionnaire is not loaded yet"
 
   const questions = questionsForSection(config.questions, sectionId).map(
@@ -91,36 +103,71 @@ export function validateInvestNowQuestionnaireSection({
     if (question.fieldType === "phone") {
       const phoneErr = validatePhoneAnswer(answers[question.id], question.required)
       if (phoneErr === "required") {
-        return `Complete required field: ${question.label}`
+        return fieldValidation(
+          question,
+          `Complete required field: ${question.label}`,
+        )
       }
       if (phoneErr === "incomplete") {
-        return `${question.label}: enter a complete 10-digit U.S. phone number`
+        return fieldValidation(
+          question,
+          `${question.label}: enter a complete 10-digit U.S. phone number`,
+        )
       }
       if (phoneErr === "invalid") {
-        return `${question.label}: enter a valid U.S. phone number`
+        return fieldValidation(
+          question,
+          `${question.label}: enter a valid U.S. phone number`,
+        )
       }
       continue
     }
     if (isEinQuestion(question)) {
       const einErr = validateEinAnswer(answers[question.id], question.required)
       if (einErr === "required") {
-        return `Complete required field: ${question.label}`
+        return fieldValidation(
+          question,
+          `Complete required field: ${question.label}`,
+        )
       }
       if (einErr === "incomplete") {
-        return `${question.label}: enter a complete EIN (XX-XXXXXXX)`
+        return fieldValidation(
+          question,
+          `${question.label}: enter a complete EIN (XX-XXXXXXX)`,
+        )
       }
       if (einErr === "invalid") {
-        return `${question.label}: enter a valid U.S. EIN (XX-XXXXXXX)`
+        return fieldValidation(
+          question,
+          `${question.label}: enter a valid U.S. EIN (XX-XXXXXXX)`,
+        )
       }
       continue
     }
     if (!question.required) continue
     if (!isAnswered(question, answers)) {
-      return `Complete required field: ${question.label}`
+      return fieldValidation(
+        question,
+        `Complete required field: ${question.label}`,
+      )
     }
   }
 
   return null
+}
+
+export function questionnaireValidationMessage(
+  result: InvestNowQuestionnaireFieldValidation | string | null,
+): string | null {
+  if (!result) return null
+  return typeof result === "string" ? result : result.message
+}
+
+export function questionnaireValidationQuestionId(
+  result: InvestNowQuestionnaireFieldValidation | string | null,
+): string | null {
+  if (!result || typeof result === "string") return null
+  return result.questionId
 }
 
 export function validateInvestNowQuestionnaireAnswers({
@@ -131,7 +178,7 @@ export function validateInvestNowQuestionnaireAnswers({
   config: InvestorQuestionnaireConfig | null | undefined
   visibleSections: VisibleQuestionnaireSection[]
   answers: InvestNowQuestionnaireAnswers
-}): string | null {
+}): InvestNowQuestionnaireFieldValidation | string | null {
   if (!config || visibleSections.length === 0) return null
 
   for (const section of visibleSections) {

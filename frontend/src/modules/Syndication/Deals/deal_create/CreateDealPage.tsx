@@ -10,6 +10,7 @@ import {
   useState,
 } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
+import { FormHeadingWithInfo } from "../../../../common/components/form-heading/FormHeadingWithInfo"
 import { toast } from "../../../../common/components/Toast"
 import { focusFirstFormErrorAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
 import {
@@ -671,10 +672,13 @@ export function CreateDealPage() {
               <ArrowLeft size={20} strokeWidth={2} aria-hidden />
             </button>
             <div className="deals_add_deal_asset_title_stack">
-              <h1 id={titleId} className="deals_list_title">
-                {pageTitle}
-              </h1>
-              <p className="deals_create_subtitle">{stepSubtitle}</p>
+              <FormHeadingWithInfo
+                as="h1"
+                id={titleId}
+                className="deals_list_title"
+                title={pageTitle}
+                info={<p>{stepSubtitle}</p>}
+              />
             </div>
           </div>
           <div
@@ -756,7 +760,7 @@ export function CreateDealPage() {
             {step === 0 && !editDealId ? <DealStepBillingNote /> : null}
           </div>
 
-          <div className="um_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions">
+          <div className="um_modal_actions add_contact_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions">
             <button
               type="button"
               className="um_btn_secondary"

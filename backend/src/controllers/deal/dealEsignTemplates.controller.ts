@@ -24,7 +24,6 @@ import {
   updateDealEsignTemplateName,
 } from "../../services/deal/dealEsignTemplates.service.js";
 import {
-  findLatestInvestorFilledDocumentForTemplate,
   groupEsignFilesByCategoryWithInvestorFilled,
 } from "../../services/deal/dealEsignTemplateInvestorFilled.service.js";
 
@@ -98,7 +97,8 @@ function safeInlineFilename(raw: string): string {
 
 /**
  * GET /deals/:dealId/esign-templates/:fileId/view-url
- * Ensures W-9 is on disk when needed; returns a static /uploads URL for read-only preview.
+ * Returns the sponsor-uploaded template for read-only preview (not investor-signed copies).
+ * Ensures W-9 is on disk when needed for PDF templates.
  */
 export async function getDealEsignTemplateViewUrl(
   req: Request,
@@ -140,42 +140,15 @@ export async function getDealEsignTemplateViewUrl(
       return;
     }
 
-    const investorFilled = await findLatestInvestorFilledDocumentForTemplate(
-      dealId,
-      file,
-    );
-
     if (!isPdfEsignFile(file)) {
-      const rel =
-        investorFilled?.relativePath
-          ?.replace(/^\/+/, "")
-          .replace(/^uploads\//i, "") ||
-        file.relativePath?.replace(/^\/+/, "").replace(/^uploads\//i, "");
+      const rel = file.relativePath
+        ?.replace(/^\/+/, "")
+        .replace(/^uploads\//i, "");
       res.status(200).json({
         viewUrl: rel ? `/uploads/${rel}` : "",
         displayName:
           file.templateName?.trim() || file.originalName?.trim() || "Document",
         isPdf: false,
-        investorFilled: Boolean(investorFilled),
-        investorFilledSource: investorFilled?.source ?? null,
-      });
-      return;
-    }
-
-    if (investorFilled) {
-      const rel = investorFilled.relativePath
-        .replace(/^\/+/, "")
-        .replace(/^uploads\//i, "");
-      res.status(200).json({
-        viewUrl: `/uploads/${rel}`,
-        displayName:
-          file.templateName?.trim() ||
-          file.originalName?.trim() ||
-          "Document",
-        isPdf: true,
-        includesW9Appendix: Boolean(file.includesW9Appendix),
-        investorFilled: true,
-        investorFilledSource: investorFilled.source,
       });
       return;
     }
@@ -201,8 +174,6 @@ export async function getDealEsignTemplateViewUrl(
         "Document",
       isPdf: true,
       includesW9Appendix: Boolean(updated.includesW9Appendix),
-      investorFilled: false,
-      investorFilledSource: null,
     });
   } catch (err) {
     console.error("getDealEsignTemplateViewUrl:", err);

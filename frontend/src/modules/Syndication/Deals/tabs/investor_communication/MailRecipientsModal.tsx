@@ -187,7 +187,7 @@ export function MailRecipientsModal({
             aria-label="Mail recipients"
           >
             <div
-              className="um_toolbar deal_inv_table_um_toolbar"
+              className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search"
               role="toolbar"
               aria-label="Search mail recipients"
             >

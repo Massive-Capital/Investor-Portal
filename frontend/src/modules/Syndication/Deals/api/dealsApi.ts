@@ -19,7 +19,9 @@ import type {
   DealInvestorRow,
   DealInvestorsKpis,
   DealInvestorsPayload,
+  DealMembersPayload,
 } from "../types/deal-investors.types"
+import { emptyDealMembersPayload } from "../types/deal-investors.types"
 import type {
   DealInvestorClass,
   DealInvestorClassFormValues,
@@ -71,6 +73,8 @@ export interface DealDetailApi {
   galleryCoverImageUrl?: string
   /** JSON string: Key Highlights rows `{ id, metric, newClass, isPreset }[]`. */
   keyHighlightsJson?: string
+  /** JSON string: Funding Info (payment methods + investment fee). */
+  fundingInstructionsJson?: string
   /** Plain text; shown at top of deal detail for everyone with access. */
   dealAnnouncementTitle?: string
   dealAnnouncementMessage?: string
@@ -154,6 +158,21 @@ function pickKeyHighlightsJsonFromDealPayload(
   }
   if ("key_highlights_json" in raw && raw.key_highlights_json != null) {
     return String(raw.key_highlights_json)
+  }
+  return ""
+}
+
+function pickFundingInstructionsJsonFromDealPayload(
+  raw: Record<string, unknown>,
+): string {
+  if ("fundingInstructionsJson" in raw && raw.fundingInstructionsJson != null) {
+    return String(raw.fundingInstructionsJson)
+  }
+  if (
+    "funding_instructions_json" in raw &&
+    raw.funding_instructions_json != null
+  ) {
+    return String(raw.funding_instructions_json)
   }
   return ""
 }
@@ -410,6 +429,7 @@ export function normalizeDealDetailApi(
   const galleryCoverImageUrl =
     coverRaw != null ? str(coverRaw) : ""
   const keyHighlightsJson = pickKeyHighlightsJsonFromDealPayload(d)
+  const fundingInstructionsJson = pickFundingInstructionsJsonFromDealPayload(d)
   const dealAnnouncementTitle = pickDealAnnouncementField(
     d,
     "dealAnnouncementTitle",
@@ -558,6 +578,7 @@ export function normalizeDealDetailApi(
     investorSummaryHtml,
     galleryCoverImageUrl,
     keyHighlightsJson,
+    fundingInstructionsJson,
     dealAnnouncementTitle,
     dealAnnouncementMessage,
     offeringStatus,
@@ -918,6 +939,77 @@ export async function patchDealKeyHighlights(
   return {
     ok: false,
     message: data.message || `Could not save key highlights (${res.status})`,
+  }
+}
+
+export async function patchDealFundingInstructions(
+  dealId: string,
+  fundingInstructionsJson: string,
+): Promise<
+  { ok: true; deal: DealDetailApi } | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base)
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/funding-instructions`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        funding_instructions_json: fundingInstructionsJson,
+      }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    deal?: DealDetailApi & Record<string, unknown>
+    message?: string
+  }
+  if (res.status === 200 && data.deal) {
+    return { ok: true, deal: normalizeDealDetailApi(data.deal) }
+  }
+  return {
+    ok: false,
+    message:
+      data.message || `Could not save funding instructions (${res.status})`,
+  }
+}
+
+export async function syncCompletedEsignDocumentsToDocumentsTab(
+  dealId: string,
+): Promise<
+  | { ok: true; offeringInvestorPreviewJson: string | null }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base)
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/documents/sync-esign-completed`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      credentials: "include",
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    offeringInvestorPreviewJson?: string | null
+    message?: string
+  }
+  if (res.status === 200) {
+    return {
+      ok: true,
+      offeringInvestorPreviewJson: data.offeringInvestorPreviewJson ?? null,
+    }
+  }
+  return {
+    ok: false,
+    message:
+      data.message || `Could not sync esign documents (${res.status})`,
   }
 }
 
@@ -1912,6 +2004,19 @@ function normalizeInvestorRowApi(
       if (adder == null || !String(adder).trim()) return {}
       return { addedByUserId: String(adder).trim() }
     })(),
+    ...(() => {
+      const v = firstDefined(raw, [
+        "addedByIsCoSponsorOnDeal",
+        "added_by_is_co_sponsor_on_deal",
+      ])
+      if (v === true || v === "true" || v === 1 || v === "1") {
+        return { addedByIsCoSponsorOnDeal: true as const }
+      }
+      if (v === false || v === "false" || v === 0 || v === "0") {
+        return { addedByIsCoSponsorOnDeal: false as const }
+      }
+      return {}
+    })(),
     addedInvestorsCommitted: str(
       firstDefined(raw, [
         "addedInvestorsCommitted",
@@ -2040,19 +2145,28 @@ function normalizeDealInvestorsResponse(data: unknown): DealInvestorsPayload {
   }
 }
 
-function normalizeDealMembersResponse(data: unknown): DealInvestorRow[] {
-  if (!data || typeof data !== "object") return []
+function normalizeDealMembersResponse(data: unknown): DealMembersPayload {
+  if (!data || typeof data !== "object") return emptyDealMembersPayload()
   const d = data as Record<string, unknown>
   const raw = d.members ?? d.rows ?? d.investors
-  if (!Array.isArray(raw)) return []
-  return raw.map((item, i) =>
-    normalizeInvestorRowApi(
-      item != null && typeof item === "object"
-        ? (item as Record<string, unknown>)
-        : {},
-      i,
-    ),
-  )
+  const members = Array.isArray(raw)
+    ? raw.map((item, i) =>
+        normalizeInvestorRowApi(
+          item != null && typeof item === "object"
+            ? (item as Record<string, unknown>)
+            : {},
+          i,
+        ),
+      )
+    : []
+  const viewerDealMemberRole = firstDefined(d, [
+    "viewerDealMemberRole",
+    "viewer_deal_member_role",
+  ])
+  return {
+    members,
+    ...(viewerDealMemberRole !== undefined ? { viewerDealMemberRole } : {}),
+  }
 }
 
 /**
@@ -2167,9 +2281,11 @@ export async function fetchDealCommitmentAmount(
  * GET /deals/:dealId/members — roster from `deal_member` merged with investments
  * (commitment = sum of all `deal_investment` rows per contact on this deal).
  */
-export async function fetchDealMembers(dealId: string): Promise<DealInvestorRow[]> {
+export async function fetchDealMembers(
+  dealId: string,
+): Promise<DealMembersPayload> {
   const base = getApiV1Base()
-  if (!base) return []
+  if (!base) return emptyDealMembersPayload()
   try {
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/members`,
@@ -2179,10 +2295,10 @@ export async function fetchDealMembers(dealId: string): Promise<DealInvestorRow[
       },
     )
     const data = await res.json().catch(() => ({}))
-    if (!res.ok) return []
+    if (!res.ok) return emptyDealMembersPayload()
     return normalizeDealMembersResponse(data)
   } catch {
-    return []
+    return emptyDealMembersPayload()
   }
 }
 
@@ -2221,6 +2337,7 @@ export async function postDealMemberInvitationEmail(
     member_display_name?: string
     invitation_source?: "investor" | "deal_member"
     deal_member_role?: string
+    contact_member_id?: string
   },
 ): Promise<PostDealMemberInvitationEmailResult> {
   const base = getApiV1Base()
@@ -2242,6 +2359,9 @@ export async function postDealMemberInvitationEmail(
           member_display_name: input.member_display_name?.trim() ?? "",
           invitation_source: input.invitation_source ?? "investor",
           deal_member_role: input.deal_member_role?.trim() ?? "",
+          ...(input.contact_member_id?.trim()
+            ? { contact_member_id: input.contact_member_id.trim() }
+            : {}),
         }),
       },
     )
@@ -2379,7 +2499,9 @@ export async function postDealEsignEmbeddedDraft(
       return {
         ok: false,
         message:
-          data.message != null ? String(data.message) : "Could not open template editor",
+          data.message != null
+            ? String(data.message)
+            : "The server did not return a template editor session. Check Dropbox Sign configuration and try again.",
       }
     }
     const editUrl = typeof data.editUrl === "string" ? data.editUrl : ""
@@ -2942,19 +3064,39 @@ export type DealMyEsignSyncResult =
     }
   | { ok: false; message: string }
 
+export type DealMyEsignScopeQuery = {
+  userInvestorProfileId?: string
+  investmentId?: string
+  profileId?: string
+}
+
+function dealMyEsignScopeSearchParams(
+  scope?: DealMyEsignScopeQuery,
+): URLSearchParams {
+  const params = new URLSearchParams()
+  const uip = scope?.userInvestorProfileId?.trim()
+  const inv = scope?.investmentId?.trim()
+  const profile = scope?.profileId?.trim()
+  if (uip) params.set("user_investor_profile_id", uip)
+  if (inv) params.set("investment_id", inv)
+  if (profile) params.set("profile_id", profile)
+  return params
+}
+
 /** GET `/deals/:dealId/my-esign-sign-session` — fresh embedded sign URL for portal signing. */
 export async function fetchDealMyEsignSignSession(
   dealId: string,
   signatureRequestId?: string,
+  scope?: DealMyEsignScopeQuery,
 ): Promise<DealMyEsignSignSessionResult> {
   const base = getApiV1Base()
   if (!base) {
     return { ok: false, message: "API base URL is not configured" }
   }
   const sig = signatureRequestId?.trim()
-  const query = sig
-    ? `?signatureRequestId=${encodeURIComponent(sig)}`
-    : ""
+  const params = dealMyEsignScopeSearchParams(scope)
+  if (sig) params.set("signatureRequestId", sig)
+  const query = params.toString() ? `?${params.toString()}` : ""
   try {
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/my-esign-sign-session${query}`,
@@ -2996,7 +3138,7 @@ export async function fetchDealMyEsignSignSession(
 export async function postDealMyEsignSync(
   dealId: string,
   signatureRequestId?: string,
-  options?: { phase?: "sign" | "finish" },
+  options?: { phase?: "sign" | "finish" } & DealMyEsignScopeQuery,
 ): Promise<DealMyEsignSyncResult> {
   const base = getApiV1Base()
   if (!base) {
@@ -3017,6 +3159,17 @@ export async function postDealMyEsignSync(
         body: JSON.stringify({
           ...(sig ? { signatureRequestId: sig } : {}),
           phase,
+          ...(options?.userInvestorProfileId?.trim()
+            ? {
+                user_investor_profile_id: options.userInvestorProfileId.trim(),
+              }
+            : {}),
+          ...(options?.investmentId?.trim()
+            ? { investment_id: options.investmentId.trim() }
+            : {}),
+          ...(options?.profileId?.trim()
+            ? { profile_id: options.profileId.trim() }
+            : {}),
         }),
       },
     )
@@ -3080,6 +3233,7 @@ export async function postDealMyEsignMarkViewed(
 /** GET `/deals/:dealId/my-esign-documents` — signed PDFs after investor completes eSign. */
 export async function fetchDealMyEsignDocuments(
   dealId: string,
+  scope?: DealMyEsignScopeQuery,
 ): Promise<DealMyEsignDocumentsResult> {
   const base = getApiV1Base()
   if (!base) {
@@ -3090,9 +3244,11 @@ export async function fetchDealMyEsignDocuments(
       loadError: "API base URL is not configured",
     }
   }
+  const params = dealMyEsignScopeSearchParams(scope)
+  const query = params.toString() ? `?${params.toString()}` : ""
   try {
     const res = await fetch(
-      `${base}/deals/${encodeURIComponent(dealId)}/my-esign-documents`,
+      `${base}/deals/${encodeURIComponent(dealId)}/my-esign-documents${query}`,
       {
         headers: authHeaders(),
         credentials: "include",

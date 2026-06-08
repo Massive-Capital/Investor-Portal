@@ -4,9 +4,12 @@ import {
   Briefcase,
   ChevronDown,
   ChevronRight,
+  CircleCheck,
   DollarSign,
+  Download,
   Info,
   Layers,
+  LineChart,
   ListFilter,
   Loader2,
   Lock,
@@ -46,6 +49,8 @@ import {
   validateInvestorClassAllocationForSave,
   type InvestorClassAllocationTotals,
 } from "../../utils/investorClassAllocationTotals"
+import { FormHeadingWithInfo } from "../../../../../common/components/form-heading/FormHeadingWithInfo"
+import { CardCompactAmount } from "../../../../../common/components/card-compact-amount/CardCompactAmount"
 import { InfoIconPanel } from "./FieldInfoHeading"
 import {
   createDealInvestorClass,
@@ -87,6 +92,9 @@ import {
   formatNumberOfUnitsTypingInput,
   sanitizePercentTypingInput,
 } from "../../utils/offeringMoneyFormat"
+import { downloadInvestorClassesExportCsv } from "../../utils/offeringDetailsSectionExportCsv"
+import { ExportSelectableRowsModal } from "../../components/ExportSelectableRowsModal"
+import { toast } from "../../../../../common/components/Toast"
 import "../../../contacts/contacts.css"
 import "../../deal-investor-class.css"
 import "../../deals-create.css"
@@ -721,7 +729,7 @@ function InvestorClassCardFinBlock({
         <div className="deal_inv_class_fin_block_col">
           <span className="deal_inv_class_fin_block_label">Raise</span>
           <span className="deal_inv_class_fin_block_value deal_inv_class_fin_block_value_money">
-            {raiseValue}
+            <CardCompactAmount amount={raiseValue} />
           </span>
         </div>
         <div className="deal_inv_class_fin_block_col">
@@ -749,7 +757,7 @@ function InvestorClassCardRaiseOnlyBlock({
         <div className="deal_inv_class_fin_block_col">
           <span className="deal_inv_class_fin_block_label">Raise</span>
           <span className="deal_inv_class_fin_block_value deal_inv_class_fin_block_value_money">
-            {raiseValue}
+            <CardCompactAmount amount={raiseValue} />
           </span>
         </div>
       </div>
@@ -1510,6 +1518,7 @@ function MezzanineClassAdvancedFields({
             disabled={disabled}
             title="Manage unit price over time (coming soon)"
           >
+            <LineChart size={16} strokeWidth={2} aria-hidden />
             Manage unit price over time
           </button>
         </div>
@@ -3517,17 +3526,19 @@ function InvestorClassModalFormBody({
         >
           <div className="deals_add_deal_asset_additional_head">
             <div>
-              <h2
+              <FormHeadingWithInfo
+                as="h2"
                 id={`${idPrefix}-add-ic-additional-heading`}
                 className="deals_add_deal_asset_additional_subtitle"
-              >
-                Advanced
-              </h2>
-              <p className="deals_add_deal_asset_additional_hint">
-                {isMezzanineLayout
-                  ? "Investment type, unit pricing, target IRR, assets, and waitlist."
-                  : "Investment structure, economics, waitlist, and hurdle waterfalls when applicable."}
-              </p>
+                title="Advanced"
+                info={
+                  <p>
+                    {isMezzanineLayout
+                      ? "Investment type, unit pricing, target IRR, assets, and waitlist."
+                      : "Investment structure, economics, waitlist, and hurdle waterfalls when applicable."}
+                  </p>
+                }
+              />
             </div>
           </div>
         </div>
@@ -3577,10 +3588,14 @@ function InvestorClassModalFormBody({
           <div className="deal_inv_ic_advanced_um_grid">
             <section className="deal_inv_ic_adv_group">
               <div className="deal_inv_ic_adv_group_head">
-                <span className="deal_inv_ic_adv_group_title">Structure</span>
-                <p className="deal_inv_ic_adv_group_hint">
-                  Define class setup and investor workflow controls.
-                </p>
+                <FormHeadingWithInfo
+                  as="span"
+                  className="deal_inv_ic_adv_group_title"
+                  title="Structure"
+                  info={
+                    <p>Define class setup and investor workflow controls.</p>
+                  }
+                />
               </div>
               <div className="deal_inv_ic_adv_group_grid">
                 <div className="um_field add_contact_field_tight deal_inv_ic_adv_field">
@@ -3622,13 +3637,17 @@ function InvestorClassModalFormBody({
             {!isGpLayout ? (
               <section className="deal_inv_ic_adv_group">
                 <div className="deal_inv_ic_adv_group_head">
-                  <span className="deal_inv_ic_adv_group_title">
-                    Ownership & allocation
-                  </span>
-                  <p className="deal_inv_ic_adv_group_hint">
-                    Set percentages and optionally lock them with the freeze
-                    toggle.
-                  </p>
+                  <FormHeadingWithInfo
+                    as="span"
+                    className="deal_inv_ic_adv_group_title"
+                    title="Ownership & allocation"
+                    info={
+                      <p>
+                        Set percentages and optionally lock them with the freeze
+                        toggle.
+                      </p>
+                    }
+                  />
                 </div>
                 <div className="deal_inv_ic_adv_group_grid">
                   <div className="um_field add_contact_field_tight deal_inv_ic_pct_field deal_inv_ic_adv_field">
@@ -3822,11 +3841,17 @@ function InvestorClassModalFormBody({
 
             <section className="deal_inv_ic_adv_group">
               <div className="deal_inv_ic_adv_group_head">
-                <span className="deal_inv_ic_adv_group_title">Economics</span>
-                <p className="deal_inv_ic_adv_group_hint">
-                  Configure ticket size, units, pricing, and performance
-                  targets.
-                </p>
+                <FormHeadingWithInfo
+                  as="span"
+                  className="deal_inv_ic_adv_group_title"
+                  title="Economics"
+                  info={
+                    <p>
+                      Configure ticket size, units, pricing, and performance
+                      targets.
+                    </p>
+                  }
+                />
               </div>
               <div className="deal_inv_ic_adv_group_grid">
                 {/*
@@ -4002,10 +4027,17 @@ function InvestorClassModalFormBody({
 
             <section className="deal_inv_ic_adv_group">
               <div className="deal_inv_ic_adv_group_head">
-                <span className="deal_inv_ic_adv_group_title">Operations</span>
-                <p className="deal_inv_ic_adv_group_hint">
-                  Link assets and control waitlist availability for this class.
-                </p>
+                <FormHeadingWithInfo
+                  as="span"
+                  className="deal_inv_ic_adv_group_title"
+                  title="Operations"
+                  info={
+                    <p>
+                      Link assets and control waitlist availability for this
+                      class.
+                    </p>
+                  }
+                />
               </div>
               <div className="deal_inv_ic_adv_group_grid">
                 <div className="um_field add_contact_field_tight deal_inv_ic_adv_field deal_inv_ic_adv_field_assets">
@@ -4191,12 +4223,16 @@ function ReadOnlyInvestorClassCard({
         <dl className="deal_inv_class_detail_grid">
           <div className="deal_inv_class_detail_item">
             <dt>Min. investment</dt>
-            <dd>{formatMoneyFieldDisplay(row.minimumInvestment)}</dd>
+            <dd>
+              <CardCompactAmount amount={row.minimumInvestment} />
+            </dd>
           </div>
           {showMaxInvestment ? (
             <div className="deal_inv_class_detail_item">
               <dt>Max. investment</dt>
-              <dd>{formatMoneyFieldDisplay(maxInvestmentDisplay)}</dd>
+              <dd>
+                <CardCompactAmount amount={maxInvestmentDisplay} />
+              </dd>
             </div>
           ) : null}
           {showUnits ? (
@@ -4208,7 +4244,9 @@ function ReadOnlyInvestorClassCard({
           {showPrice ? (
             <div className="deal_inv_class_detail_item">
               <dt>Price / unit</dt>
-              <dd>{formatMoneyFieldDisplay(row.pricePerUnit)}</dd>
+              <dd>
+                <CardCompactAmount amount={row.pricePerUnit} />
+              </dd>
             </div>
           ) : null}
         </dl>
@@ -4518,7 +4556,7 @@ export function AddInvestorClassPanel({
                   </>
                 ) : (
                   <>
-                    <Save size={16} strokeWidth={2} aria-hidden />
+                    <Plus size={16} strokeWidth={2} aria-hidden />
                     Save
                   </>
                 )}
@@ -4848,23 +4886,36 @@ function InvestorClassConfirmDeleteModal({
             Delete &quot;{classLabel}&quot;? This cannot be undone.
           </p>
         </div>
-        <div className="um_modal_actions">
+        <div className="um_modal_actions add_contact_modal_actions">
           <button
             type="button"
             className="um_btn_secondary"
             onClick={onCancel}
             disabled={busy}
           >
+            <X size={16} strokeWidth={2} aria-hidden />
             Cancel
           </button>
-          <button
-            type="button"
-            className="um_btn_primary deal_ic_dialog_btn_danger"
-            onClick={onConfirm}
-            disabled={busy}
-          >
-            {busy ? "Deleting…" : "Delete"}
-          </button>
+          <div className="add_contact_modal_actions_trailing">
+            <button
+              type="button"
+              className="um_btn_primary deal_ic_dialog_btn_danger"
+              onClick={onConfirm}
+              disabled={busy}
+            >
+              {busy ? (
+                <>
+                  <Loader2 size={16} strokeWidth={2} aria-hidden />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} strokeWidth={2} aria-hidden />
+                  Delete
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -4925,6 +4976,7 @@ function InvestorClassMessageModal({
             className="um_btn_primary"
             onClick={onClose}
           >
+            <CircleCheck size={16} strokeWidth={2} aria-hidden />
             OK
           </button>
         </div>
@@ -5016,6 +5068,7 @@ export function OfferingInformationSection({
   )
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
 
   const dealStatusLabel = useMemo(
     () => offeringStatusLabelFromRaw(dealOfferingStatus),
@@ -5081,47 +5134,106 @@ export function OfferingInformationSection({
     }
   }
 
+  const canExportClasses = !loading && rows.length > 0
+
+  const exportModalRows = useMemo(
+    () =>
+      rows.map((row) => ({
+        key: row.id,
+        label: row.name?.trim() || "—",
+        meta: classTypeOptionLabel(row.subscriptionType) || undefined,
+        searchText: investorClassSearchBlob(
+          row,
+          dealStatusLabel,
+          dealVisibilityLabel,
+        ),
+      })),
+    [rows, dealStatusLabel, dealVisibilityLabel],
+  )
+
+  const handleExportClasses = useCallback(
+    (selectedKeys: string[]) => {
+      const keySet = new Set(selectedKeys)
+      const chosen = rows.filter((row) => keySet.has(row.id))
+      if (chosen.length === 0) return
+      const filename = downloadInvestorClassesExportCsv(
+        dealId,
+        chosen,
+        dealStatusLabel,
+        dealVisibilityLabel,
+      )
+      toast.success("Investor classes exported", `Saved as ${filename}`)
+    },
+    [dealId, rows, dealStatusLabel, dealVisibilityLabel],
+  )
+
   return (
     <div className="deal_offering_info">
+      <ExportSelectableRowsModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Export investor classes"
+        hint="Search and select classes, then export to Excel (CSV format)."
+        searchPlaceholder="Search classes…"
+        searchAriaLabel="Search classes in export list"
+        listAriaLabel="Investor classes to export"
+        rows={exportModalRows}
+        onExportExcel={handleExportClasses}
+      />
       <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_offering_info_panel">
         <div className="um_toolbar deal_inv_class_toolbar">
           <InvestorClassAllocationToolbarNotice totals={allocationTotals} />
-          <div className="deal_inv_class_toolbar_controls">
-            <div className="deal_inv_class_toolbar_main">
-              <div className="um_search_wrap deal_inv_class_toolbar_search">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search classes…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search investor classes"
-                  autoComplete="off"
-                />
-              </div>
+          <div
+            className="um_toolbar um_toolbar_export_then_search deal_offering_section_toolbar deal_inv_class_toolbar_row"
+            role="toolbar"
+            aria-label="Investor classes"
+          >
+            <div className="um_search_wrap deal_inv_class_toolbar_search">
+              <Search className="um_search_icon" size={18} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search classes…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search investor classes"
+                autoComplete="off"
+              />
             </div>
             <div className="um_toolbar_actions">
-            {allocationTotals.addDisabled ? (
-              <span
-                className="um_btn_primary deals_list_add_link deal_inv_class_add_btn_disabled"
-                role="link"
-                aria-disabled="true"
-                title={allocationTotals.messages.join(" ")}
+              <button
+                type="button"
+                className="um_toolbar_export_btn"
+                disabled={!canExportClasses}
+                onClick={() => setExportModalOpen(true)}
+                aria-label="Export all investor classes"
+                title={
+                  canExportClasses ? undefined : "No investor classes to export"
+                }
               >
-                <Plus size={18} aria-hidden />
-                Add Investor Class
-              </span>
-            ) : (
-              <Link
-                to={addInvestorClassHref}
-                state={OFFERING_DETAILS_CLASSES_RETURN}
-                className="um_btn_primary deals_list_add_link"
-              >
-                <Plus size={18} aria-hidden />
-                Add Investor Class
-              </Link>
-            )}
+                <Download size={18} strokeWidth={2} aria-hidden />
+                <span>Export All</span>
+              </button>
+              {allocationTotals.addDisabled ? (
+                <span
+                  className="um_btn_primary deals_list_add_link deal_inv_class_add_btn_disabled"
+                  role="link"
+                  aria-disabled="true"
+                  title={allocationTotals.messages.join(" ")}
+                >
+                  <Plus size={18} aria-hidden />
+                  Add Investor Class
+                </span>
+              ) : (
+                <Link
+                  to={addInvestorClassHref}
+                  state={OFFERING_DETAILS_CLASSES_RETURN}
+                  className="um_btn_primary deals_list_add_link"
+                >
+                  <Plus size={18} aria-hidden />
+                  Add Investor Class
+                </Link>
+              )}
             </div>
           </div>
         </div>

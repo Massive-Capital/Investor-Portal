@@ -8,7 +8,6 @@ import {
 } from "../../functions/dealMemberSendEsign.template.js";
 import { getAddDealFormById } from "./dealForm.service.js";
 import { buildDealMemberInviteLandingUrl } from "./dealMemberInviteToken.service.js";
-import { buildDealInvestorEsignSignPageUrl } from "./dealInvestorEsignSignPageUrl.service.js";
 
 const SENDER_DISPLAY_NAME =
   process.env.SENDER_DISPLAY_NAME?.trim() || "SyndicationX";
@@ -33,12 +32,9 @@ export async function sendDealMemberSendEsignEmail(
   const deal = await getAddDealFormById(params.dealId);
   const dealName = deal?.dealName?.trim() || "this deal";
   const memberDisplayName = params.memberDisplayName?.trim() || "";
+  /** Same deal-invite onboarding link as investor invitation emails (not the eSign document URL). */
   const portalUrl =
     (await buildDealMemberInviteLandingUrl(params.dealId, to)) || "";
-  const signPageUrl = await buildDealInvestorEsignSignPageUrl(
-    params.dealId,
-    to,
-  );
 
   try {
     const transporter = emailConfig();
@@ -65,7 +61,6 @@ export async function sendDealMemberSendEsignEmail(
       memberDisplayName,
       memberEmail: to,
       portalDealUrl: portalUrl,
-      signPageUrl: signPageUrl || portalUrl || undefined,
       senderBrand: SENDER_DISPLAY_NAME,
       documentNames,
     };

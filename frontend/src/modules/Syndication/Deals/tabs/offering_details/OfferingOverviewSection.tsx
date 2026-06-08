@@ -7,15 +7,19 @@ import {
   useRef,
   useState,
 } from "react"
+import { useNavigate } from "react-router-dom"
 import { toast } from "../../../../../common/components/Toast"
 import { focusFirstFormErrorAfterUpdate } from "../../../../../common/utils/scrollToFirstFormError"
 import {
+  DEAL_ESIGN_TEMPLATES_CHANGED_EVENT,
   fetchDealById,
+  fetchDealEsignTemplates,
   fetchDealInvestorClasses,
   patchDealOfferingOverview,
   updateDealInvestorClass,
   type DealDetailApi,
 } from "../../api/dealsApi"
+import { OpenInvestmentEsignRequiredModal } from "../../components/OpenInvestmentEsignRequiredModal"
 import {
   computeDealAssetRowsFromClientStorage,
   DEAL_ASSETS_STORAGE_CHANGED_EVENT,
@@ -39,7 +43,6 @@ import {
   isOfferingStatusFieldEditable,
   mapLegacyOfferingVisibility,
   offeringStatusFromApi,
-  offeringStatusLabelFromRaw,
   offeringStatusOptionsForOverview,
   OFFERING_VISIBILITY_OPTIONS,
   type OfferingVisibilityValue,
@@ -47,6 +50,10 @@ import {
 import { investorClassRowToFormValues } from "./OfferingInformationSection"
 import { OfferingOverviewAssetsMultiSelect } from "./OfferingOverviewAssetsMultiSelect"
 import { OfferingOverviewLocationMap } from "./OfferingOverviewLocationMap"
+import {
+  DealOfferingStatusReadonly,
+  DealOfferingStatusSelect,
+} from "./DealOfferingStatusSelect"
 import {
   computeMergedOverviewAssetSelection,
   consumeOverviewAssetsMergePending,
@@ -58,6 +65,9 @@ import {
   OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
   readOfferingPreviewInvestorVisibility,
 } from "../../utils/offeringPreviewInvestorVisibility"
+import { canActivateOpenInvestment } from "../../utils/canActivateOpenInvestment"
+import { areDealEsignTemplatesConfigured } from "../../utils/dealEsignTemplatesConfigured"
+import { DEAL_DETAIL_TAB_QUERY_PARAM } from "../../utils/offeringDetailsSectionNav"
 
 type OfferingOverviewSectionProps = {
   detail: DealDetailApi
@@ -209,7 +219,9 @@ export function OfferingOverviewSection({
   detail,
   onSaved,
 }: OfferingOverviewSectionProps) {
+  const navigate = useNavigate()
   const visibilityHintId = useId()
+  const statusHintId = useId()
 
   const [classes, setClasses] = useState<DealInvestorClass[]>([])
   const [draft, setDraft] = useState<OverviewDraft>(() =>
@@ -223,7 +235,73 @@ export function OfferingOverviewSection({
   const [classOfferingSizeError, setClassOfferingSizeError] = useState<
     string | undefined
   >()
+  const [esignTemplatesConfigured, setEsignTemplatesConfigured] = useState<
+    boolean | null
+  >(null)
+  const [esignRequiredModalOpen, setEsignRequiredModalOpen] = useState(false)
   const overviewRef = useRef<HTMLDivElement>(null)
+
+  const refreshEsignTemplatesConfigured = useCallback(async () => {
+    const result = await fetchDealEsignTemplates(detail.id)
+    if (!result.ok) {
+      setEsignTemplatesConfigured(false)
+      return false
+    }
+    const configured = areDealEsignTemplatesConfigured(result.filesByCategory)
+    setEsignTemplatesConfigured(configured)
+    return configured
+  }, [detail.id])
+
+  useEffect(() => {
+    void refreshEsignTemplatesConfigured()
+  }, [refreshEsignTemplatesConfigured])
+
+  useEffect(() => {
+    function onEsignTemplatesChanged(e: Event) {
+      const ev = e as CustomEvent<{ dealId?: string }>
+      if (ev.detail?.dealId && ev.detail.dealId !== detail.id) return
+      void refreshEsignTemplatesConfigured()
+    }
+    window.addEventListener(DEAL_ESIGN_TEMPLATES_CHANGED_EVENT, onEsignTemplatesChanged)
+    return () =>
+      window.removeEventListener(
+        DEAL_ESIGN_TEMPLATES_CHANGED_EVENT,
+        onEsignTemplatesChanged,
+      )
+  }, [detail.id, refreshEsignTemplatesConfigured])
+
+  const goToEsignTemplatesTab = useCallback(() => {
+    setEsignRequiredModalOpen(false)
+    const params = new URLSearchParams()
+    params.set(DEAL_DETAIL_TAB_QUERY_PARAM, "esign_templates")
+    navigate({
+      pathname: `/deals/${encodeURIComponent(detail.id)}`,
+      search: params.toString(),
+    })
+  }, [detail.id, navigate])
+
+  const tryApplyOfferingStatus = useCallback(
+    async (next: string): Promise<boolean> => {
+      let configured = esignTemplatesConfigured
+      if (configured === null) {
+        configured = await refreshEsignTemplatesConfigured()
+      }
+      const check = canActivateOpenInvestment(
+        {
+          offeringStatus: draft.offeringStatus,
+          esignTemplatesConfigured: configured ?? false,
+        },
+        next,
+      )
+      if (!check.ok) {
+        setEsignRequiredModalOpen(true)
+        return false
+      }
+      setDraft((d) => ({ ...d, offeringStatus: next }))
+      return true
+    },
+    [draft.offeringStatus, esignTemplatesConfigured, refreshEsignTemplatesConfigured],
+  )
 
   const selectedClassRow = useMemo(
     () => classes.find((c) => c.id === draft.selectedClassId),
@@ -444,6 +522,21 @@ export function OfferingOverviewSection({
             toast.error(statusCheck.message)
             return
           }
+          let configuredForOpenInvestment = esignTemplatesConfigured
+          if (configuredForOpenInvestment === null) {
+            configuredForOpenInvestment = await refreshEsignTemplatesConfigured()
+          }
+          const openInvestmentCheck = canActivateOpenInvestment(
+            {
+              offeringStatus: detail.offeringStatus,
+              esignTemplatesConfigured: configuredForOpenInvestment ?? false,
+            },
+            draft.offeringStatus,
+          )
+          if (!openInvestmentCheck.ok) {
+            setEsignRequiredModalOpen(true)
+            return
+          }
         }
         const res = await patchDealOfferingOverview(detail.id, {
           offeringStatus: draft.offeringStatus,
@@ -548,10 +641,14 @@ export function OfferingOverviewSection({
   }, [
     assetRows,
     classes,
+    detail.dealStage,
     detail.id,
+    detail.offeringStatus,
     draft,
+    esignTemplatesConfigured,
     focusOverviewField,
     onSaved,
+    refreshEsignTemplatesConfigured,
     savedSnapshot,
     saving,
   ])
@@ -562,26 +659,24 @@ export function OfferingOverviewSection({
     [detail.dealStage, draft.offeringStatus],
   )
 
-  const dealStatusDisplay = useMemo(
-    () => offeringStatusLabelFromRaw(detail.offeringStatus),
-    [detail.offeringStatus],
-  )
-
   const statusFieldEditable = isOfferingStatusFieldEditable(detail.dealStage)
 
   const statusFieldLockedHint = useMemo(() => {
-    if (statusFieldEditable) return undefined
-    const stage = String(detail.dealStage ?? "").trim().toLowerCase()
-    if (stage === "draft") {
-      return "Deal status is fixed while the deal is in Draft. Move the deal to Capital Raising to manage deal statuses."
+    if (statusFieldEditable) {
+      const stage = String(detail.dealStage ?? "").trim().toLowerCase()
+      if (stage === "draft") {
+        return "While the deal is in Draft, investors cannot access the offering. Move to Capital Raising when you are ready to go live."
+      }
+      return undefined
     }
+    const stage = String(detail.dealStage ?? "").trim().toLowerCase()
     if (stage === "asset_managing" || stage === "managing_asset") {
       return "Deal status is locked while the deal is Managing Asset (Closed only)."
     }
     if (stage === "liquidated") {
       return "Deal status is locked while the deal is Liquidated (Past only)."
     }
-    return "Deal status can only be changed while the deal is in Capital Raising."
+    return "Deal status can only be changed while the deal is in Draft or Capital Raising."
   }, [detail.dealStage, statusFieldEditable])
 
   const visibilityOptionHint = useMemo(() => {
@@ -594,6 +689,9 @@ export function OfferingOverviewSection({
   }, [draft.offeringVisibility])
 
   const id = detail.id
+  const statusControlDescribedBy = statusFieldLockedHint
+    ? statusHintId
+    : undefined
   const classFieldsDisabled = classes.length === 0
 
   const closeDateInputValue = useMemo(
@@ -609,13 +707,6 @@ export function OfferingOverviewSection({
 
   return (
     <div className="deal_offering_overview" ref={overviewRef}>
-      <p className="deal_offering_overview_hint">
-        Set how this offering appears to investors. Deal structure, linked
-        assets, and class economics can be edited here; full class setup stays
-        under <strong>Classes</strong>. Property location and entity details
-        remain on the main deal profile.
-      </p>
-
       <OfferingOverviewLocationMap detail={detail} />
 
       <div className="deal_kh">
@@ -648,39 +739,37 @@ export function OfferingOverviewSection({
               </div>
               <div className="deal_kh_td deal_kh_td_stack" role="cell">
                 {statusFieldEditable ? (
-                  <select
+                  <DealOfferingStatusSelect
                     id={`deal-ov-status-${id}`}
-                    className="deal_kh_select"
                     value={draft.offeringStatus}
-                    aria-required
-                    onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        offeringStatus: e.target.value,
-                      }))
-                    }
-                  >
-                    {!draft.offeringStatus.trim() ? (
-                      <option value="">—</option>
-                    ) : null}
-                    {statusOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={statusOptions}
+                    ariaDescribedBy={statusControlDescribedBy}
+                    onChange={(next) => {
+                      void tryApplyOfferingStatus(next)
+                    }}
+                  />
                 ) : (
-                  <span
+                  <div
                     id={`deal-ov-status-${id}`}
-                    className="deal_offering_overview_readonly_value"
+                    aria-describedby={statusControlDescribedBy}
                   >
-                    {dealStatusDisplay}
-                  </span>
+                    <DealOfferingStatusReadonly value={detail.offeringStatus} />
+                  </div>
                 )}
                 {statusFieldLockedHint ? (
-                  <p className="deal_offering_visibility_hint" role="note">
-                    {statusFieldLockedHint}
-                  </p>
+                  <div
+                    id={statusHintId}
+                    className="deal_offering_visibility_hint"
+                    role="note"
+                  >
+                    <Info
+                      size={15}
+                      strokeWidth={2}
+                      className="deal_offering_visibility_hint_icon"
+                      aria-hidden
+                    />
+                    <span>{statusFieldLockedHint}</span>
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -1217,41 +1306,49 @@ export function OfferingOverviewSection({
           </div>
         </div>
 
-        <div className="deal_kh_footer">
+        <div className="deal_kh_footer um_modal_actions add_contact_modal_actions">
           <button
             type="button"
-            className="deal_kh_btn_reset"
+            className="um_btn_secondary"
             disabled={!isDirty || saving}
             onClick={handleReset}
           >
             <RotateCcw size={17} strokeWidth={2} aria-hidden />
             Reset
           </button>
-          <button
-            type="button"
-            className="deal_kh_btn_save"
-            disabled={!isDirty || saving}
-            onClick={() => void handleSave()}
-          >
-            {saving ? (
-              <>
-                <Loader2
-                  size={18}
-                  strokeWidth={2}
-                  className="deal_kh_btn_save_spin"
-                  aria-hidden
-                />
-                Saving…
-              </>
-            ) : (
-              <>
-                <Save size={18} strokeWidth={2} aria-hidden />
-                Save
-              </>
-            )}
-          </button>
+          <div className="add_contact_modal_actions_trailing">
+            <button
+              type="button"
+              className="um_btn_primary"
+              disabled={!isDirty || saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? (
+                <>
+                  <Loader2
+                    size={18}
+                    strokeWidth={2}
+                    className="deal_offering_btn_spin"
+                    aria-hidden
+                  />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <Save size={18} strokeWidth={2} aria-hidden />
+                  Save
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
+
+      <OpenInvestmentEsignRequiredModal
+        open={esignRequiredModalOpen}
+        onCancel={() => setEsignRequiredModalOpen(false)}
+        onGoToEsignTemplates={goToEsignTemplatesTab}
+      />
     </div>
   )
 }

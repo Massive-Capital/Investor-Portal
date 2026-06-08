@@ -133,6 +133,7 @@ export function AddDealInvestorClassPage() {
             distribution share before adding another class.
           </p>
           <button type="button" className="um_btn_secondary" onClick={goBack}>
+            <ArrowLeft size={16} strokeWidth={2} aria-hidden />
             Back to classes
           </button>
         </section>

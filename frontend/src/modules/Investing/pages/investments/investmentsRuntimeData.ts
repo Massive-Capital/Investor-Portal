@@ -92,10 +92,7 @@ function mergeInvestmentLists(
     if (!k) continue
     const existing = byKey.get(k)
     if (!existing) {
-      byKey.set(k, {
-        ...l,
-        dealId: (l.dealId ?? "").trim() || (l.id ?? "").trim(),
-      })
+      /** Do not surface orphan local rows — only merge when the server already lists this deal. */
       continue
     }
     // Local / LP flow row wins for display fields; amounts stay on the local row

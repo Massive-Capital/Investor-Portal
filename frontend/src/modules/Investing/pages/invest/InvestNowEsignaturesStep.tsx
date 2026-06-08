@@ -1,15 +1,19 @@
-import { Download, Eye, FileSignature, Loader2 } from "lucide-react"
+import { Download, Eye, FileSignature, Loader2, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { DealEsignTemplateFileRecord } from "@/modules/Syndication/Deals/api/dealsApi"
 import {
   fetchDealEsignTemplateViewUrl,
   fetchDealMyEsignDocuments,
   postDealMyEsignMarkViewed,
+  type DealMyEsignScopeQuery,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import { esignCategoryLabel } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
 import { esignTemplateDisplayName } from "@/modules/Syndication/Deals/utils/esignTemplateDisplay"
 import { resolveEsignDocumentUrlForViewer } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
-import { InvestmentEsignSignModal } from "@/modules/Investing/pages/investments/InvestmentEsignSignModal"
+import {
+  InvestmentEsignSignModal,
+  type InvestmentEsignSignedResult,
+} from "@/modules/Investing/pages/investments/InvestmentEsignSignModal"
 import type { InvestmentSignStatusPayload } from "@/modules/Investing/api/investmentSignatureApi"
 import { InvestNowStepLayout } from "./InvestNowStepLayout"
 
@@ -24,6 +28,8 @@ export type InvestNowEsignDocRow = {
 
 export interface InvestNowEsignaturesStepProps {
   dealId: string
+  /** Pins eSign send/sign/sync to the selected saved profile commitment. */
+  esignScope?: DealMyEsignScopeQuery
   esignCategoryId: string
   profileTemplate: DealEsignTemplateFileRecord | undefined
   profileLabel: string
@@ -46,7 +52,9 @@ export interface InvestNowEsignaturesStepProps {
   fallbackSignatureRequestId?: string | null
   onRefreshDocuments: () => void | Promise<void>
   /** After Dropbox Sign finish — refresh docs and complete Invest Now flow. */
-  onSignedComplete?: () => void | Promise<void>
+  onSignedComplete?: (
+    result: InvestmentEsignSignedResult,
+  ) => void | Promise<void>
   disabled: boolean
   error?: string
 }
@@ -58,6 +66,7 @@ function safeDownloadFilename(name: string): string {
 
 export function InvestNowEsignaturesStep({
   dealId,
+  esignScope,
   esignCategoryId,
   profileTemplate,
   profileLabel,
@@ -199,6 +208,7 @@ export function InvestNowEsignaturesStep({
             disabled={disabled}
             onClick={() => onRefreshDocuments()}
           >
+            <RefreshCw size={16} strokeWidth={2} aria-hidden />
             Retry preparing documents
           </button>
         </div>
@@ -281,7 +291,8 @@ export function InvestNowEsignaturesStep({
       {profileTemplate &&
       profileTemplate.dropboxSignStatus !== "ready" &&
       !esignPending &&
-      !esignCompleted ? (
+      !esignCompleted &&
+      !sendError ? (
         <p className="deals_create_hint invest_now_step_desc_warn">
           The template for {profileLabel} is not ready for signing yet. Your
           sponsor must finish the Dropbox Sign setup on the eSign Templates tab.
@@ -397,14 +408,15 @@ export function InvestNowEsignaturesStep({
       <InvestmentEsignSignModal
         open={signModalOpen}
         dealId={dealId.trim()}
+        esignScope={esignScope}
         signatureRequestId={signModalSignatureRequestId}
         onClose={() => {
           setSignModalOpen(false)
           setSignModalSignatureRequestId(null)
         }}
-        onSignedComplete={async () => {
+        onSignedComplete={async (result) => {
           await onRefreshDocuments()
-          await onSignedComplete?.()
+          await onSignedComplete?.(result)
         }}
       />
     </InvestNowStepLayout>

@@ -16,15 +16,22 @@ import {
 } from "../../schema/deal.schema/add-deal-form.schema.js";
 import { companies } from "../../schema/schema.js";
 import { sanitizeInvestorSummaryHtml } from "../../utils/sanitizeInvestorSummaryHtml.js";
+import { sanitizeFundingInstructionsJson } from "../../utils/sanitizeFundingInstructionsJson.js";
+import { syncFundingInstructionsPdfToDocumentsTab } from "./dealFundingDocumentsWorkspaceSync.service.js";
 import { sanitizeKeyHighlightsJson } from "../../utils/sanitizeKeyHighlightsJson.js";
 import { encryptOfferingPreviewDealId } from "../../utils/offeringPreviewCrypto.js";
 import {
   isDealStatus,
   normalizeDealStageCanonical,
+  normalizeDealStatus,
   resolveOfferingStatusForStageChange,
   validateDealStageAndStatus,
   validateOfferingStatusChange,
 } from "../../constants/deal-lifecycle/index.js";
+import {
+  dealEsignTemplatesFullyConfigured,
+  getDealEsignTemplatesState,
+} from "./dealEsignTemplates.service.js";
 import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
@@ -611,14 +618,26 @@ function throwOfferingOverviewValidation(
   throw err;
 }
 
-function assertOfferingStatusChangeAllowed(params: {
+async function assertOfferingStatusChangeAllowed(params: {
+  dealId: string;
   dealStage: string;
   previousOfferingStatus: string;
   nextOfferingStatus: string;
-}): void {
+}): Promise<void> {
   const v = validateOfferingStatusChange(params);
   if (!v.ok) {
     throwOfferingOverviewValidation({ offering_status: v.message });
+  }
+  const prev = normalizeDealStatus(params.previousOfferingStatus);
+  const next = normalizeDealStatus(params.nextOfferingStatus);
+  if (next !== "open_investment" || prev === "open_investment") return;
+
+  const esignState = await getDealEsignTemplatesState(params.dealId);
+  if (!dealEsignTemplatesFullyConfigured(esignState)) {
+    throwOfferingOverviewValidation({
+      offering_status:
+        "E-sign templates are not configured for this deal. Create and complete e-sign setup before enabling Open to Investment.",
+    });
   }
 }
 
@@ -872,7 +891,8 @@ export async function updateDealOfferingOverviewById(
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
   if (patch.offeringStatus !== undefined) {
-    assertOfferingStatusChangeAllowed({
+    await assertOfferingStatusChangeAllowed({
+      dealId: id,
       dealStage: existing.dealStage,
       previousOfferingStatus: existing.offeringStatus,
       nextOfferingStatus: patch.offeringStatus,
@@ -980,6 +1000,27 @@ export async function updateDealKeyHighlightsById(
     .where(eq(addDealForm.id, id))
     .returning();
   return updated;
+}
+
+export async function updateDealFundingInstructionsById(
+  id: string,
+  rawJson: string,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const normalized = sanitizeFundingInstructionsJson(rawJson);
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ fundingInstructionsJson: normalized })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  if (!updated) return undefined;
+  await syncFundingInstructionsPdfToDocumentsTab({
+    dealId: id,
+    fundingInstructionsJson: normalized,
+    dealName: existing.dealName,
+  });
+  return getAddDealFormById(id) ?? updated;
 }
 
 export async function updateDealOfferingInvestorPreviewById(

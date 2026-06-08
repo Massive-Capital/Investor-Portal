@@ -24,7 +24,7 @@
   .add_profile_input_wrap
   input.deals_add_inv_input.deals_add_inv_field_control.deals_add_inv_field_pill {
   width: 100%;
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
 }
 
 .investing_pill_modal_form textarea.deals_add_inv_input.deals_add_inv_field_control.deals_add_inv_field_pill:not(
@@ -35,7 +35,7 @@
   textarea.deals_add_inv_input.deals_add_inv_field_control.deals_add_inv_field_pill:not(
     .investing_note_textarea
   ) {
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   resize: none;
 }
 
@@ -58,7 +58,7 @@
 .investing_add_address_form_panel
   .investing_pill_modal_form
   select.um_field_select.deals_add_inv_field_control.deals_add_inv_field_pill {
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   padding-left: 1rem;
   padding-right: 2.35rem;
 }
@@ -71,7 +71,7 @@
   .investing_pill_modal_form
   .deals_create_dropdown_select
   .portal_dropdown_select_trigger.deals_add_inv_field_control.deals_add_inv_field_pill {
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   justify-content: space-between;
   gap: 0.35rem;
 }
@@ -188,5 +188,5 @@
   text-align: left;
   cursor: pointer;
   color-scheme: light dark;
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
 }

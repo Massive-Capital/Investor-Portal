@@ -11,6 +11,7 @@ import {
   type DealStepDraft,
   type YesNo,
 } from "../types/deals.types"
+import { YesNoCardRadioGroup } from "../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
 import { RadioPillGroup } from "../../../../common/components/radio-pill-group/RadioPillGroup"
 import { FieldInfoHeading } from "../tabs/offering_details/FieldInfoHeading"
 import { DealsCreateDropdownSelect } from "./DealsCreateDropdownSelect"
@@ -67,27 +68,15 @@ function YesNoRadios({
         required={isRequired}
         infoContent={infoContent}
       />
-      <div className="deal_step_yesno" role="radiogroup" aria-labelledby={titleId}>
-        {(["yes", "no"] as const).map((v) => (
-          <label key={v} className="deal_step_yesno_label">
-            <input
-              type="radio"
-              name={name}
-              checked={value === v}
-              onChange={() => onChange(v)}
-            />
-            <span>
-              {v === "yes" ? "Yes" : "No"}
-              {v === "yes" && yesIsCommon ? (
-                <span className="deal_step_yesno_common"> (Standard)</span>
-              ) : null}
-              {v === "no" && noIsCommon ? (
-                <span className="deal_step_yesno_common"> (Standard)</span>
-              ) : null}
-            </span>
-          </label>
-        ))}
-      </div>
+      <YesNoCardRadioGroup
+        className="deal_step_yesno_cards"
+        name={name}
+        value={value}
+        onChange={onChange}
+        yesIsCommon={yesIsCommon}
+        noIsCommon={noIsCommon}
+        ariaLabelledBy={titleId}
+      />
       <FieldError message={error} />
     </fieldset>
   )

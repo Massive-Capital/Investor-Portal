@@ -8,21 +8,18 @@ import {
   postDealMyEsignSync,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import { useInvestmentEsignSigning } from "./useInvestmentEsignSigning"
+import type { InvestmentEsignSignModalProps } from "./investmentEsignSignModal.types"
 
-export interface InvestmentEsignSignModalProps {
-  open: boolean
-  dealId: string
-  /** When set, opens signing for this Dropbox Sign request (profile send). */
-  signatureRequestId?: string | null
-  onClose: () => void
-  /** Called after successful sign (refresh documents list). */
-  onSignedComplete?: () => void | Promise<void>
-}
+export type {
+  InvestmentEsignSignedResult,
+  InvestmentEsignSignModalProps,
+} from "./investmentEsignSignModal.types"
 
 export function InvestmentEsignSignModal({
   open,
   dealId,
   signatureRequestId,
+  esignScope,
   onClose,
   onSignedComplete,
 }: InvestmentEsignSignModalProps) {
@@ -37,7 +34,7 @@ export function InvestmentEsignSignModal({
     reset,
     clearEmbed,
     setError,
-  } = useInvestmentEsignSigning(dealIdTrimmed, sigRequestId)
+  } = useInvestmentEsignSigning(dealIdTrimmed, sigRequestId, esignScope)
 
   const signedHandledRef = useRef(false)
 
@@ -51,8 +48,11 @@ export function InvestmentEsignSignModal({
     const sigId =
       activeSession?.signatureRequestId?.trim() || sigRequestId || ""
     if (!sigId) return
-    void postDealMyEsignSync(dealIdTrimmed, sigId, { phase: "sign" })
-  }, [activeSession?.signatureRequestId, dealIdTrimmed, sigRequestId])
+    void postDealMyEsignSync(dealIdTrimmed, sigId, {
+      phase: "sign",
+      ...esignScope,
+    })
+  }, [activeSession?.signatureRequestId, dealIdTrimmed, esignScope, sigRequestId])
 
   const handleFinish = useCallback(() => {
     if (signedHandledRef.current) return
@@ -64,7 +64,12 @@ export function InvestmentEsignSignModal({
         undefined
       const syncRes = await postDealMyEsignSync(dealIdTrimmed, sigId, {
         phase: "finish",
+        ...esignScope,
       })
+      const workflowCompleted =
+        syncRes.ok &&
+        (syncRes.esignCompleted ||
+          syncRes.workflowLabel?.toLowerCase() === "completed")
       if (!syncRes.ok) {
         toast.error(
           "Signed, sync pending",
@@ -72,23 +77,27 @@ export function InvestmentEsignSignModal({
             "Your signature was recorded. Refresh this step if status does not update.",
         )
       } else {
-        const done =
-          syncRes.esignCompleted ||
-          syncRes.workflowLabel?.toLowerCase() === "completed"
         toast.success(
-          done ? "Documents completed" : "Signature received",
-          done
+          workflowCompleted ? "Documents completed" : "Signature received",
+          workflowCompleted
             ? "Your subscription documents are fully signed."
-            : "Finalizing your signed documents…",
+            : "Your signature was saved. Returning you to Investments…",
         )
       }
-      reset()
-      await onSignedComplete?.()
-      onClose()
+      try {
+        await onSignedComplete?.({
+          esignCompleted: syncRes.ok,
+          esignPending: syncRes.ok ? syncRes.esignPending : undefined,
+        })
+      } finally {
+        reset()
+        onClose()
+      }
     })()
   }, [
     activeSession?.signatureRequestId,
     dealIdTrimmed,
+    esignScope,
     onClose,
     onSignedComplete,
     reset,
@@ -220,6 +229,7 @@ export function InvestmentEsignSignModal({
 
         <div className="deal_esign_modal_foot deal_esign_modal_foot--compact">
           <button type="button" className="um_btn_secondary" onClick={handleClose}>
+            <X size={16} strokeWidth={2} aria-hidden />
             Close
           </button>
         </div>
@@ -227,3 +237,5 @@ export function InvestmentEsignSignModal({
     </div>
   )
 }
+
+export default InvestmentEsignSignModal

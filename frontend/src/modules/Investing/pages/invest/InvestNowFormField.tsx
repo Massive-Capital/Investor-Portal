@@ -1,10 +1,20 @@
 import type { ReactNode } from "react"
 
+export function InvestNowFieldError({ message }: { message?: string }) {
+  if (!message?.trim()) return null
+  return (
+    <p className="deals_create_field_error" role="alert">
+      {message}
+    </p>
+  )
+}
+
 export interface InvestNowFormFieldProps {
   id?: string
   label: string
   required?: boolean
   hint?: string
+  error?: string
   children: ReactNode
   className?: string
 }
@@ -14,6 +24,7 @@ export function InvestNowFormField({
   label,
   required = false,
   hint,
+  error,
   children,
   className = "",
 }: InvestNowFormFieldProps) {
@@ -35,6 +46,7 @@ export function InvestNowFormField({
         ) : null}
       </span>
       {children}
+      <InvestNowFieldError message={error} />
       {hint ? <p className="deals_create_hint invest_now_field_hint">{hint}</p> : null}
     </Tag>
   )
@@ -45,11 +57,13 @@ export function InvestNowReadonlyField({
   required = false,
   value,
   emphasis = false,
+  error,
 }: {
   label: string
   required?: boolean
   value: string
   emphasis?: boolean
+  error?: string
 }) {
   return (
     <div className="deals_create_label deals_create_label_full">
@@ -73,7 +87,9 @@ export function InvestNowReadonlyField({
         }
         value={value}
         aria-readonly="true"
+        aria-invalid={Boolean(error) || undefined}
       />
+      <InvestNowFieldError message={error} />
     </div>
   )
 }

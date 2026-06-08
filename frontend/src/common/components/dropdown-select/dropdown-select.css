@@ -28,7 +28,7 @@
   /* color: gray; */
   background: var(--portal-surface, #fff);
   border: 1px solid var(--portal-border, #e5e5e5);
-  border-radius: var(--portal-pill-radius, 9999px);
+  border-radius: var(--portal-pill-radius, 4px);
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -113,7 +113,7 @@
   list-style: none;
   background: var(--portal-surface, #fff);
   border: 1px solid var(--portal-border, #e5e5e5);
-  border-radius: var(--portal-card-radius, 10px);
+  border-radius: var(--portal-card-radius, 4px);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
@@ -149,7 +149,7 @@
 .portal_dropdown_select_search {
   display: block;
   width: 100%;
-  border-radius: 25px;
+  border-radius: var(--ui-button-border-radius, 4px);
   box-sizing: border-box;
   margin: 0;
   padding: 0.5333333em 0.8em;
@@ -206,7 +206,10 @@
 }
 
 .portal_dropdown_select_header_btn {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
   width: 100%;
   padding: 0.45em 0.65em;
   font-family: inherit;
@@ -216,7 +219,7 @@
   color: black;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   cursor: pointer;
   text-align: center;
 }
@@ -322,7 +325,10 @@
 }
 
 .portal_dropdown_select_footer_btn {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
   width: 100%;
   padding: 0.45em 0.65em;
   font-family: inherit;
@@ -332,7 +338,7 @@
   color: black;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   cursor: pointer;
   text-align: center;
 }

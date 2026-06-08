@@ -197,6 +197,8 @@ export function deriveSemanticAuditEvent(pathOnly: string, method: string): stri
     if (rest[0] === "investor-summary" && m === "PATCH") return "deal.investor_summary_patch";
     if (rest[0] === "deal-announcement" && m === "PATCH") return "deal.announcement_patch";
     if (rest[0] === "key-highlights" && m === "PATCH") return "deal.key_highlights_patch";
+    if (rest[0] === "funding-instructions" && m === "PATCH")
+      return "deal.funding_instructions_patch";
     if (rest[0] === "offering-investor-preview" && m === "PATCH")
       return "deal.offering_investor_preview_patch";
     if (rest[0] === "gallery-cover" && m === "PATCH") return "deal.gallery_cover_patch";

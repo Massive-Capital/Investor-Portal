@@ -46,12 +46,14 @@ import {
 } from "./EsignCreateTemplateModal"
 import { EsignProfileTemplateRow } from "./EsignProfileTemplateRow"
 import { EsignTemplateRenameModal } from "./EsignTemplateRenameModal"
-import { esignTemplateDisplayName } from "../../utils/esignTemplateDisplay"
+import { esignTemplateDisplayName, toastTemplateEditorOpenError } from "../../utils/esignTemplateDisplay"
 import { DealEsignTemplatesQuestionnaireTab } from "./DealEsignTemplatesQuestionnaireTab"
+import { EsignTemplateStageNotice } from "./EsignTemplateStageNotice"
 import {
   ESIGN_ENTITY_CATEGORIES,
   type EsignEntityCategory,
 } from "./esignEntityCategories"
+import { resolveEsignTemplateStageNoticeVariant } from "../../utils/esignTemplateStageNotice"
 import "./deal-esign-templates.css"
 
 export type { EsignEntityCategory }
@@ -70,6 +72,10 @@ interface DealEsignTemplatesTabProps {
   dealId: string
 
   offeringInvestorPreviewJson?: string | null
+
+  dealStage?: string | null
+
+  offeringStatus?: string | null
 
   /** When false, upload UI is hidden (lead or admin sponsor only). */
 
@@ -371,6 +377,14 @@ function DealEsignTemplatesProfilesTab({
 
       if (!canUploadDocuments) return
 
+      if (!dropboxSignConfigured) {
+        toast.error(
+          "Dropbox Sign not configured",
+          "Set DROPBOX_SIGN_API_KEY and DROPBOX_SIGN_CLIENT_ID in backend .env, then restart the API.",
+        )
+        return
+      }
+
       void (async () => {
 
         setSavingTemplateId(file.id)
@@ -385,7 +399,7 @@ function DealEsignTemplatesProfilesTab({
 
           if (!draft.ok) {
 
-            toast.error("Could not open template editor", draft.message)
+            toastTemplateEditorOpenError(draft.message)
 
             return
 
@@ -419,7 +433,7 @@ function DealEsignTemplatesProfilesTab({
 
     },
 
-    [canUploadDocuments, dealId],
+    [canUploadDocuments, dealId, dropboxSignConfigured],
 
   )
 
@@ -675,10 +689,17 @@ function DealEsignTemplatesProfilesTab({
 export function DealEsignTemplatesTab({
   dealId,
   offeringInvestorPreviewJson,
+  dealStage,
+  offeringStatus,
   canUploadDocuments = true,
 }: DealEsignTemplatesTabProps) {
   const [activeSubTab, setActiveSubTab] =
     useState<EsignTemplatesSubTab>("profiles")
+
+  const stageNoticeVariant = useMemo(
+    () => resolveEsignTemplateStageNoticeVariant(dealStage, offeringStatus),
+    [dealStage, offeringStatus],
+  )
 
   return (
     <div className="deal_esign_tab_shell">
@@ -734,6 +755,10 @@ export function DealEsignTemplatesTab({
           </div>
         </TabsScrollStrip>
       </div>
+
+      {stageNoticeVariant ? (
+        <EsignTemplateStageNotice variant={stageNoticeVariant} />
+      ) : null}
 
       <div
         id="deal-esign-panel-profiles"

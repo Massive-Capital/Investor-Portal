@@ -132,10 +132,17 @@ async function ensureInvestorQuestionnaireColumn(): Promise<void> {
   );
 }
 
+async function ensureDealInvestmentInvestNowColumns(): Promise<void> {
+  await pool.query(
+    `ALTER TABLE deal_investment ADD COLUMN IF NOT EXISTS funding_method text NOT NULL DEFAULT ''`,
+  );
+}
+
 async function runMigrations(): Promise<void> {
   const migrationsFolder = path.resolve(__dirname, "..", "migrations");
   await migrate(db, { migrationsFolder });
   await ensureInvestorQuestionnaireColumn();
+  await ensureDealInvestmentInvestNowColumns();
   console.log("Database migrations applied.");
 }
 

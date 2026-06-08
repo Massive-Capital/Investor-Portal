@@ -22,6 +22,7 @@ import {
   EMAIL_TEMPLATE_BODY_MAX,
   EMAIL_TEMPLATE_SUBJECT_MAX,
   attachmentToObjectUrl,
+  formatEmailAttachmentSize,
   updateEmailTemplate,
   type EmailTemplateAttachmentStored,
   type EmailTemplateRow,
@@ -363,16 +364,29 @@ export function SendMailEmailPreviewModal({
                     URL.revokeObjectURL(url)
                   }}
                 >
-                  <Paperclip
-                    className="email_preview_attachment_icon"
-                    size={18}
-                    strokeWidth={2}
+                  <span
+                    className="email_preview_attachment_icon_wrap"
                     aria-hidden
-                  />
-                  <span className="email_preview_attachment_name">
-                    {preview.attachment.fileName}
+                  >
+                    <Paperclip
+                      className="email_preview_attachment_icon"
+                      size={18}
+                      strokeWidth={2}
+                    />
                   </span>
-                  <span className="email_preview_attachment_action">Download</span>
+                  <span className="email_preview_attachment_meta">
+                    <span className="email_preview_attachment_name">
+                      {preview.attachment.fileName}
+                    </span>
+                    {formatEmailAttachmentSize(preview.attachment.size) ? (
+                      <span className="email_preview_attachment_size">
+                        {formatEmailAttachmentSize(preview.attachment.size)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="email_preview_attachment_action">
+                    Download
+                  </span>
                 </button>
               </div>
             ) : null}

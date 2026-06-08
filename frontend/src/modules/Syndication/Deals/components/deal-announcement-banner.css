@@ -11,7 +11,7 @@
   gap: 0.75rem;
   margin: 0;
   padding: 0.875rem 1rem 0.9rem 0.9rem;
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   border: 1px solid var(--deal-ann-border);
   border-left: 4px solid var(--deal-ann-accent);
   background: var(--deal-ann-surface);
@@ -53,7 +53,7 @@
   gap: 0.55rem;
   padding: 0.6rem 0.85rem;
   margin-bottom: 0.65rem;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
 }
 
 .deal_announcement_banner--preview .deal_announcement_banner_icon_wrap {
@@ -77,7 +77,7 @@
   width: 2.25rem;
   height: 2.25rem;
   margin-top: 0.05rem;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: color-mix(in srgb, var(--deal-ann-accent-soft) 22%, transparent);
   color: var(--deal-ann-accent);
 }

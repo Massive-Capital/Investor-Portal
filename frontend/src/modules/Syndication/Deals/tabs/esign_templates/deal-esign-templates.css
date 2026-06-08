@@ -18,6 +18,106 @@
   display: none;
 }
 
+/* eSign Templates tab — stage / status section notes */
+.deal_esign_stage_notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--portal-card-radius, 4px);
+  border: 1px solid var(--portal-border, #e2e8f0);
+}
+
+.deal_esign_stage_notice--info {
+  border-color: color-mix(in srgb, #2563eb 28%, var(--portal-border, #e2e8f0));
+  background: color-mix(in srgb, #3b82f6 8%, var(--portal-surface-muted, #f8fafc));
+}
+
+.deal_esign_stage_notice--active {
+  border-color: color-mix(in srgb, #059669 32%, var(--portal-border, #e2e8f0));
+  background: color-mix(in srgb, #10b981 10%, var(--portal-surface-muted, #f8fafc));
+}
+
+.deal_esign_stage_notice_icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-top: 0.05rem;
+  border-radius: var(--portal-card-radius, 4px);
+}
+
+.deal_esign_stage_notice--info .deal_esign_stage_notice_icon {
+  color: #1d4ed8;
+  background: color-mix(in srgb, #3b82f6 16%, transparent);
+}
+
+.deal_esign_stage_notice--active .deal_esign_stage_notice_icon {
+  color: #047857;
+  background: color-mix(in srgb, #10b981 18%, transparent);
+}
+
+.deal_esign_stage_notice_body {
+  flex: 1;
+  min-width: 0;
+}
+
+.deal_esign_stage_notice_lead {
+  margin: 0 0 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_esign_stage_notice_detail {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #475569);
+}
+
+.deal_esign_stage_notice_detail + .deal_esign_stage_notice_detail {
+  margin-top: 0.2rem;
+}
+
+.deal_esign_stage_notice_detail strong {
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+}
+
+:root[data-theme="dark"] .deal_esign_stage_notice--info {
+  border-color: color-mix(in srgb, #3b82f6 35%, var(--portal-border, #334155));
+  background: color-mix(in srgb, #2563eb 14%, var(--portal-surface, #1e293b));
+}
+
+:root[data-theme="dark"] .deal_esign_stage_notice--active {
+  border-color: color-mix(in srgb, #10b981 38%, var(--portal-border, #334155));
+  background: color-mix(in srgb, #059669 16%, var(--portal-surface, #1e293b));
+}
+
+:root[data-theme="dark"] .deal_esign_stage_notice--info .deal_esign_stage_notice_icon {
+  color: #93c5fd;
+  background: color-mix(in srgb, #2563eb 22%, transparent);
+}
+
+:root[data-theme="dark"] .deal_esign_stage_notice--active .deal_esign_stage_notice_icon {
+  color: #6ee7b7;
+  background: color-mix(in srgb, #059669 24%, transparent);
+}
+
+:root[data-theme="dark"] .deal_esign_stage_notice_lead,
+:root[data-theme="dark"] .deal_esign_stage_notice_detail strong {
+  color: var(--portal-text, #f1f5f9);
+}
+
+:root[data-theme="dark"] .deal_esign_stage_notice_detail {
+  color: var(--portal-text-muted, #94a3b8);
+}
+
 .deal_esign_questionnaire_toolbar {
   display: flex;
   justify-content: flex-end;
@@ -60,7 +160,7 @@
   color: var(--portal-text, #334155);
   background: var(--portal-surface, #fff);
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   cursor: pointer;
   transition:
     border-color 0.15s ease,
@@ -99,7 +199,7 @@
 .deal_esign_manage_q_scroll {
   padding: 0 1.25rem 1rem;
   border: 1px solid color-mix(in srgb, var(--portal-border, #e2e8f0) 86%, transparent);
-  border-radius: 12px;
+  border-radius: var(--portal-card-radius, 4px);
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--portal-surface, #fff) 94%, #f8fafc),
@@ -250,12 +350,12 @@
 }
 
 .deal_esign_manage_q_modal .deal_fi_toggle:focus-visible {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid var(--portal-primary, #2563eb);
   outline-offset: 2px;
 }
 
 .deal_esign_manage_q_modal .deal_fi_toggle:disabled {
-  opacity: 0.55;
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -270,7 +370,7 @@
 }
 
 .deal_esign_manage_q_modal .deal_fi_toggle_on .deal_fi_toggle_track {
-  background: #22c55e;
+  background: var(--portal-control-accent, var(--sidebar-bg-color, #131b2e));
 }
 
 .deal_esign_manage_q_modal .deal_fi_toggle_thumb {
@@ -294,7 +394,7 @@
 }
 
 :root[data-theme="dark"] .deal_esign_manage_q_modal .deal_fi_toggle_on .deal_fi_toggle_track {
-  background: #22c55e;
+  background: var(--portal-control-accent, var(--sidebar-bg-color, #0a0f1a));
 }
 
 .deal_esign_questionnaire_root {
@@ -308,7 +408,7 @@
   line-height: 1.5;
   color: var(--portal-text-muted, #64748b);
   background: rgba(0, 0, 0, 0.04);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
 }
 
 :root[data-theme="dark"] .deal_esign_questionnaire_empty {
@@ -342,14 +442,19 @@
   align-items: center;
   gap: 0.15rem;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
   overflow: hidden;
 }
 
 .deal_esign_questionnaire_section_tab_active {
-  border-color: var(--portal-focus, #2563eb);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--portal-focus, #2563eb) 25%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 38%,
+    var(--portal-border, #e2e8f0)
+  );
+  background: var(--portal-tab-active-bg);
+  box-shadow: none;
 }
 
 .deal_esign_questionnaire_section_tab_btn {
@@ -366,7 +471,22 @@
 }
 
 .deal_esign_questionnaire_section_tab_active .deal_esign_questionnaire_section_tab_btn {
-  color: var(--portal-focus, #2563eb);
+  color: var(--portal-tab-active-text, #131b2e);
+}
+
+:root[data-theme="dark"] .deal_esign_questionnaire_section_tab_active {
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 32%,
+    var(--portal-border, rgba(255, 255, 255, 0.14))
+  );
+  background: var(--portal-tab-active-bg);
+}
+
+:root[data-theme="dark"]
+  .deal_esign_questionnaire_section_tab_active
+  .deal_esign_questionnaire_section_tab_btn {
+  color: var(--portal-tab-active-text, #d4af37);
 }
 
 .deal_esign_questionnaire_section_edit_input {
@@ -411,7 +531,7 @@
   width: 2.25rem;
   min-height: 2.25rem;
   border: 1px dashed var(--portal-border, #cbd5e1);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
   color: var(--portal-text-muted, #64748b);
   cursor: pointer;
@@ -440,7 +560,7 @@
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
   border: 1px solid color-mix(in srgb, var(--portal-focus, #2563eb) 35%, var(--portal-border, #e2e8f0));
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: color-mix(in srgb, var(--portal-focus, #2563eb) 6%, var(--portal-surface, #fff));
 }
 
@@ -477,7 +597,7 @@
 .deal_esign_questionnaire_question_card {
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
   box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
 }
@@ -597,7 +717,7 @@
   color: var(--portal-text, #0f172a);
   background: var(--portal-surface, #fff);
   border: 1px solid var(--portal-border, #cbd5e1);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
 }
 
 .deal_esign_questionnaire_field_input::placeholder {
@@ -678,7 +798,7 @@
   color: var(--portal-text, #0f172a);
   background: color-mix(in srgb, var(--portal-border, #e2e8f0) 35%, transparent);
   border: 1px solid var(--portal-border, #cbd5e1);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
 }
 
 .deal_esign_questionnaire_option_remove {
@@ -734,7 +854,7 @@
   font-weight: 600;
   color: var(--portal-text, #334155);
   border: 1px solid var(--portal-border, #cbd5e1);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
   cursor: pointer;
   white-space: nowrap;
@@ -898,12 +1018,12 @@
 }
 
 .deal_esign_questionnaire_root .deal_fi_toggle:focus-visible {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid var(--portal-primary, #2563eb);
   outline-offset: 2px;
 }
 
 .deal_esign_questionnaire_root .deal_fi_toggle:disabled {
-  opacity: 0.6;
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -918,7 +1038,7 @@
 }
 
 .deal_esign_questionnaire_root .deal_fi_toggle_on .deal_fi_toggle_track {
-  background: #22c55e;
+  background: var(--portal-control-accent, var(--sidebar-bg-color, #131b2e));
 }
 
 .deal_esign_questionnaire_root .deal_fi_toggle_thumb {
@@ -958,7 +1078,7 @@
 }
 
 :root[data-theme="dark"] .deal_esign_questionnaire_root .deal_fi_toggle_on .deal_fi_toggle_track {
-  background: #22c55e;
+  background: var(--portal-control-accent, var(--sidebar-bg-color, #0a0f1a));
 }
 
 .deal_esign_empty {
@@ -972,7 +1092,7 @@
   padding: 2rem 1.25rem;
   text-align: center;
   border: 2px dashed var(--portal-border, #cbd5e1);
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
   background: color-mix(
     in srgb,
     var(--portal-surface-muted, #f8fafc) 70%,
@@ -1039,7 +1159,7 @@
   line-height: 1.45;
   color: var(--portal-text-muted, #64748b);
   background: rgba(0, 0, 0, 0.04);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
 }
 
 :root[data-theme="dark"] .deal_esign_readonly_banner {
@@ -1104,7 +1224,7 @@
   color: var(--portal-text, #334155);
   background: color-mix(in srgb, var(--portal-border, #e2e8f0) 55%, transparent);
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
 }
 
 .deal_esign_folder_pill_icon {
@@ -1115,7 +1235,7 @@
 .deal_esign_profiles_table_wrap {
   overflow-x: auto;
   border: 1px solid color-mix(in srgb, var(--portal-border, #e2e8f0) 86%, transparent);
-  border-radius: 12px;
+  border-radius: var(--portal-card-radius, 4px);
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--portal-surface, #fff) 94%, #f8fafc),
@@ -1243,7 +1363,7 @@
   padding: 0.65rem 0.85rem;
   min-height: 3rem;
   border: 1px dashed var(--portal-border, #cbd5e1);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   cursor: pointer;
   color: var(--portal-text-muted, #64748b);
   font-size: 0.8125rem;
@@ -1304,7 +1424,7 @@
   flex-direction: column;
   gap: 1rem;
   padding: 0.85rem 1rem;
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   background: color-mix(in srgb, var(--portal-border, #e2e8f0) 28%, var(--portal-surface, #fff));
   border: 1px solid color-mix(in srgb, var(--portal-border, #e2e8f0) 85%, transparent);
 }
@@ -1434,7 +1554,7 @@
   font-weight: 600;
   color: var(--portal-text-muted, #64748b);
   padding: 0.2rem 0.45rem;
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   background: color-mix(in srgb, var(--portal-border, #e2e8f0) 36%, transparent);
 }
 

@@ -1,4 +1,3 @@
-import { useId } from "react"
 import {
   blurFormatMoneyInputBare,
   formatCurrencyUsdTypeInputBare,
@@ -18,6 +17,7 @@ export interface InvestNowInvestmentStepProps {
   onAmountBlur?: () => void
   disabled: boolean
   error?: string
+  fieldErrors?: Partial<Record<"amount" | "fundingMethod", string>>
 }
 
 export function InvestNowInvestmentStep({
@@ -29,9 +29,10 @@ export function InvestNowInvestmentStep({
   onAmountBlur,
   disabled,
   error,
+  fieldErrors = {},
 }: InvestNowInvestmentStepProps) {
-  const amountId = useId()
-  const fundingId = useId()
+  const amountId = "invest-now-amount"
+  const fundingId = "invest-now-funding-method"
   const titleId = "invest-now-step-investment-title"
 
   return (
@@ -46,6 +47,7 @@ export function InvestNowInvestmentStep({
         label="Investment amount"
         required
         hint={minimumHint || undefined}
+        error={fieldErrors.amount}
       >
         <div className="invest_now_money_input_wrap">
           <span className="invest_now_money_prefix" aria-hidden>
@@ -70,11 +72,17 @@ export function InvestNowInvestmentStep({
               onAmountChange(blurFormatMoneyInputBare(amount))
               onAmountBlur?.()
             }}
+            aria-invalid={Boolean(fieldErrors.amount) || undefined}
           />
         </div>
       </InvestNowFormField>
 
-      <InvestNowFormField id={fundingId} label="Funding method" required>
+      <InvestNowFormField
+        id={fundingId}
+        label="Funding method"
+        required
+        error={fieldErrors.fundingMethod}
+      >
         <DealsCreateDropdownSelect
           id={fundingId}
           options={[...INVEST_NOW_FUNDING_METHOD_OPTIONS]}
@@ -82,6 +90,7 @@ export function InvestNowInvestmentStep({
           onChange={onFundingMethodChange}
           placeholder="Select funding method"
           ariaLabel="Funding method"
+          invalid={Boolean(fieldErrors.fundingMethod)}
           disabled={disabled}
         />
       </InvestNowFormField>

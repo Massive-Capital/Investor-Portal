@@ -95,7 +95,19 @@ export function previewFundedDisplay(payload: DealInvestorsPayload): string {
 
 export type OfferingMetricChip = { label: string; value: string }
 
-export type OfferingSidebarSummaryRow = { label: string; value: string }
+export type OfferingSidebarSummaryIconKey =
+  | "minimum"
+  | "offering_size"
+  | "deal_type"
+  | "sec_type"
+  | "investment_type"
+  | "close_date"
+
+export type OfferingSidebarSummaryRow = {
+  label: string
+  value: string
+  iconKey: OfferingSidebarSummaryIconKey
+}
 
 const INVESTMENT_TYPE_LABELS: Record<string, string> = {
   equity: "Equity",
@@ -197,21 +209,25 @@ export function buildOfferingSidebarSummaryRows(
     {
       label: "Minimum investment",
       value: previewMinimumInvestmentDisplay(classes),
+      iconKey: "minimum",
     },
-    { label: "Offering size", value: offeringSize },
+    { label: "Offering size", value: offeringSize, iconKey: "offering_size" },
     {
       label: "Deal type",
       value: dealTypeDisplayLabel(detail.dealType?.trim() ?? ""),
+      iconKey: "deal_type",
     },
     {
       label: "SEC type",
       value: secTypeDisplayLabel(detail.secType?.trim() ?? ""),
+      iconKey: "sec_type",
     },
     {
       label: "Investment type",
       value: investmentTypeDisplay(detail, classes),
+      iconKey: "investment_type",
     },
-    { label: "Close date", value: close },
+    { label: "Close date", value: close, iconKey: "close_date" },
   ]
 }
 

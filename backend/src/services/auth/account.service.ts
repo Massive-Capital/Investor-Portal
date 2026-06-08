@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import { eq, getTableColumns } from "drizzle-orm";
+import { and, eq, getTableColumns, ne, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { companies, users, type UserRow } from "../../schema/schema.js";
 import { enrichUserRecordForDealParticipant } from "../deal/dealParticipantProfile.service.js";
@@ -11,6 +11,32 @@ import { listUserCompanyMemberships } from "./userCompanyMembership.service.js";
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 16;
+/** Matches `users.username` varchar length; shown in UI as "Account name". */
+const ACCOUNT_NAME_MIN = 1;
+const ACCOUNT_NAME_MAX = 100;
+
+function validateOwnProfileUsername(
+  raw: string,
+):
+  | { ok: true; username: string }
+  | { ok: false; status: number; message: string } {
+  const username = String(raw ?? "").trim();
+  if (username.length < ACCOUNT_NAME_MIN || username.length > ACCOUNT_NAME_MAX) {
+    return {
+      ok: false,
+      status: 400,
+      message: `Account name must be between ${ACCOUNT_NAME_MIN} and ${ACCOUNT_NAME_MAX} characters`,
+    };
+  }
+  if (username.toLowerCase().startsWith("invited_")) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Account name is not available",
+    };
+  }
+  return { ok: true, username };
+}
 
 function userDetailsShape(u: Record<string, unknown>): Record<string, unknown> {
   return {
@@ -176,6 +202,7 @@ export type OwnProfilePatch = {
   lastName?: string;
   phone?: string;
   companyName?: string;
+  username?: string;
 };
 
 /** Current user profile for GET /auth/me (same shape as successful PATCH). */
@@ -218,7 +245,8 @@ export async function updateOwnProfile(
   const hasLast = patch.lastName !== undefined;
   const hasPhone = patch.phone !== undefined;
   const hasCompany = patch.companyName !== undefined;
-  if (!hasFirst && !hasLast && !hasPhone && !hasCompany) {
+  const hasUsername = patch.username !== undefined;
+  if (!hasFirst && !hasLast && !hasPhone && !hasCompany && !hasUsername) {
     return { ok: false, status: 400, message: "No profile fields to update" };
   }
 
@@ -245,16 +273,48 @@ export async function updateOwnProfile(
       .where(eq(companies.id, row.organizationId));
   }
 
-  const hasUserFieldUpdates = hasFirst || hasLast || hasPhone;
+  const hasUserFieldUpdates = hasFirst || hasLast || hasPhone || hasUsername;
   if (hasUserFieldUpdates) {
     const setObj: {
       updatedAt: Date;
       firstName?: string;
       lastName?: string;
       phone?: string;
+      username?: string;
     } = { updatedAt: new Date() };
     if (hasFirst) setObj.firstName = patch.firstName ?? "";
     if (hasLast) setObj.lastName = patch.lastName ?? "";
+    if (hasUsername) {
+      const validated = validateOwnProfileUsername(patch.username ?? "");
+      if (!validated.ok) {
+        return {
+          ok: false,
+          status: validated.status,
+          message: validated.message,
+        };
+      }
+      const current = String(row.username ?? "").trim();
+      if (validated.username.toLowerCase() !== current.toLowerCase()) {
+        const [existingUsername] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              sql`lower(${users.username}) = ${validated.username.toLowerCase()}`,
+              ne(users.id, userId),
+            ),
+          )
+          .limit(1);
+        if (existingUsername) {
+          return {
+            ok: false,
+            status: 409,
+            message: "This account name is already taken",
+          };
+        }
+        setObj.username = validated.username;
+      }
+    }
     if (hasPhone) {
       const raw = String(patch.phone ?? "").trim();
       if (!raw) {

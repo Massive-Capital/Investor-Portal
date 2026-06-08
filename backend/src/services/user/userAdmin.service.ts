@@ -1,4 +1,4 @@
-import { and, desc, eq, getTableColumns, or } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, or } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import {
   companies,
@@ -20,7 +20,10 @@ import {
   enrichSerializedUsersWithDealParticipantRoles,
   enrichUserRecordForDealParticipant,
 } from "../deal/dealParticipantProfile.service.js";
-import { enrichUserRowsWithMemberships } from "./userMemberships.service.js";
+import {
+  enrichUserRowsWithMemberships,
+  narrowUserRowsToCompanyScope,
+} from "./userMemberships.service.js";
 import { hasUserCompanyMembership } from "../auth/userCompanyMembership.service.js";
 
 const ALLOWED_USER_STATUS = new Set(["active", "inactive"]);
@@ -78,6 +81,9 @@ function isMissingMembershipTableError(err: unknown): boolean {
   return false;
 }
 
+/** Org Members UI: company_admin / company_user only — not investors (deal_participant) or LP contacts. */
+const COMPANY_ORG_STAFF_ROLES = [COMPANY_ADMIN, COMPANY_USER] as const;
+
 async function listUsersScopedToCompany(companyId: string): Promise<Record<string, unknown>[]> {
   const [scopeCompany] = await db
     .select({ name: companies.name })
@@ -85,6 +91,17 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
     .where(eq(companies.id, companyId))
     .limit(1);
   const scopeCompanyName = String(scopeCompany?.name ?? "").trim();
+
+  const companyStaffWhere = or(
+    and(
+      eq(userCompanyMembership.companyId, companyId),
+      inArray(userCompanyMembership.role, [...COMPANY_ORG_STAFF_ROLES]),
+    ),
+    and(
+      eq(users.organizationId, companyId),
+      inArray(users.role, [...COMPANY_ORG_STAFF_ROLES]),
+    ),
+  );
 
   type RowShape = {
     user: UserRow;
@@ -108,12 +125,7 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
           eq(userCompanyMembership.companyId, companyId),
         ),
       )
-      .where(
-        or(
-          eq(users.organizationId, companyId),
-          eq(userCompanyMembership.companyId, companyId),
-        ),
-      )
+      .where(companyStaffWhere)
       .orderBy(desc(users.createdAt));
   } catch (err) {
     if (!isMissingMembershipTableError(err)) throw err;
@@ -125,7 +137,12 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
       })
       .from(users)
       .leftJoin(companies, eq(users.organizationId, companies.id))
-      .where(eq(users.organizationId, companyId))
+      .where(
+        and(
+          eq(users.organizationId, companyId),
+          inArray(users.role, [...COMPANY_ORG_STAFF_ROLES]),
+        ),
+      )
       .orderBy(desc(users.createdAt));
     rows = fallbackRows.map((r) => ({
       user: r.user,
@@ -150,7 +167,12 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
     ),
   );
   const withDeal = await enrichSerializedUsersWithDealParticipantRoles(mapped);
-  return enrichUserRowsWithMemberships(withDeal);
+  const enriched = await enrichUserRowsWithMemberships(withDeal);
+  return narrowUserRowsToCompanyScope(
+    enriched,
+    companyId,
+    scopeCompanyName || "—",
+  );
 }
 
 export async function listUsersForAdmin(

@@ -10,6 +10,14 @@ export const EMAIL_TEMPLATE_BODY_HTML_MAX = 200_000
 /** Single attachment per template; max file size. */
 export const EMAIL_TEMPLATE_ATTACHMENT_MAX_BYTES = 1024 * 1024
 
+/** Human-readable attachment size for UI labels. */
+export function formatEmailAttachmentSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export type EmailTemplateAttachmentStored = {
   fileName: string
   mimeType: string

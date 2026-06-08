@@ -83,9 +83,16 @@ function viewFieldIconForLabel(label: string): LucideIcon {
   if (t.includes("date")) return Calendar
   if (t.includes("status") || t.includes("investment") || t.includes("added by"))
     return CircleCheck
-  if (t.includes("tax id") || t.includes("ssn") || t.includes("ein") || t.includes("routing") || t.includes("account number"))
+  if (
+    t.includes("tax id") ||
+    t.includes("ssn") ||
+    t.includes("ein") ||
+    t.includes("routing") ||
+    t.includes("account number")
+  )
     return Hash
-  if (t.includes("memo") || t.includes("note") || t.includes("distribution")) return FileText
+  if (t.includes("memo") || t.includes("note") || t.includes("distribution"))
+    return FileText
   return FileText
 }
 
@@ -97,7 +104,7 @@ function ViewFieldGrid({ rows }: { rows: DetailRow[] }) {
         const Icon = viewFieldIconForLabel(r.label)
         return (
           <ViewReadonlyField
-            key={`${r.label}-${i}`}
+            key={`${slugFromLabel(r.label)}-${i}`}
             Icon={Icon}
             label={r.label}
             value={v}
@@ -244,10 +251,7 @@ function ProfileWizardViewBody({
       </div>
 
       <div className="deals_add_inv_modal_scroll investing_profile_view_scroll">
-        <div
-          className="add_contact_section"
-          aria-labelledby={stepLabelId}
-        >
+        <div className="add_contact_section" aria-labelledby={stepLabelId}>
           <p id={stepLabelId} className="add_contact_section_eyebrow">
             {stepLabel}
           </p>
@@ -313,6 +317,24 @@ export function InvestingEntityViewModal({
   onEdit,
   editLabel = "Edit",
 }: InvestingEntityViewModalProps) {
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [open, onClose])
+
   if (!open) return null
 
   const isProfileWizard =
@@ -327,7 +349,7 @@ export function InvestingEntityViewModal({
 
   return createPortal(
     <div
-      className={`um_modal_overlay deals_add_inv_modal_overlay investing_ben_modal_overlay contacts_view_modal_overlay${
+      className={`um_modal_overlay portal_modal_z_boost deals_add_inv_modal_overlay investing_ben_modal_overlay contacts_view_modal_overlay${
         isProfileWizard ? " investing_profile_view_overlay" : ""
       }`}
       role="presentation"
@@ -339,11 +361,7 @@ export function InvestingEntityViewModal({
         className={
           isProfileWizard
             ? "um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel investing_add_profile_form_panel investing_entity_view_modal investing_entity_view_modal--profile investing_entity_view_modal--wizard"
-            : `um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel contacts_view_modal investing_entity_view_modal${
-                sections && sections.length > 0
-                  ? " investing_entity_view_modal--profile"
-                  : ""
-              }`
+            : "um_modal um_modal_view deals_add_inv_modal_panel contacts_view_modal investing_entity_view_modal"
         }
         role="dialog"
         aria-modal="true"
@@ -362,18 +380,10 @@ export function InvestingEntityViewModal({
           />
         ) : (
           <>
-            <div className="um_modal_head investing_entity_view_head">
+            <div className="um_modal_head">
               <h2 id="investing-view-modal-title" className="um_modal_title">
                 {title}
               </h2>
-              {description ? (
-                <p
-                  id="investing-view-modal-desc"
-                  className="investing_entity_view_sub"
-                >
-                  {description}
-                </p>
-              ) : null}
               <button
                 type="button"
                 className="um_modal_close"
@@ -384,6 +394,14 @@ export function InvestingEntityViewModal({
               </button>
             </div>
             <div className="deals_add_inv_modal_scroll">
+              {description ? (
+                <p
+                  id="investing-view-modal-desc"
+                  className="investing_entity_view_lead"
+                >
+                  {description}
+                </p>
+              ) : null}
               {sectionList.map((section, idx) => (
                 <section
                   key={section.heading || `section-${idx}`}
@@ -399,7 +417,7 @@ export function InvestingEntityViewModal({
                 </section>
               ))}
             </div>
-            <div className="um_modal_actions um_modal_actions_view contacts_view_modal_footer investing_entity_view_footer">
+            <div className="um_modal_actions um_modal_actions_view contacts_view_modal_footer">
               <button type="button" className="um_btn_secondary" onClick={onClose}>
                 <X size={16} strokeWidth={2} aria-hidden />
                 Close

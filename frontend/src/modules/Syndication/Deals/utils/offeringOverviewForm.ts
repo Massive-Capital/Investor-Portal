@@ -3,49 +3,30 @@
 import {
   allowedStatusesForStage,
   canEditFundraisingStatus,
-  CAPITAL_RAISING_FUNDRAISING_STATUSES,
   defaultStatusForStage,
   normalizeDealStageCanonical,
-  normalizeDealStatus,
   type DealStatus,
 } from "../constants/deal-lifecycle"
+import {
+  getOfferingStatusMeta,
+  OFFERING_STATUS_OPTIONS_LIST,
+} from "./offeringStatusCatalog"
 
-export const OFFERING_STATUS_OPTIONS = [
-  {
-    value: "draft_hidden",
-    label: "Draft (hidden to investors)",
-  },
-  {
-    value: "coming_soon",
-    label: "Coming soon (no new investments allowed)",
-  },
-  {
-    value: "open_soft_commitment",
-    label: "Open to soft commitment",
-  },
-  {
-    value: "open_hard_commitment",
-    label: "Open to hard commitment",
-  },
-  {
-    value: "open_investment",
-    label: "Open to investment",
-  },
-  {
-    value: "waitlist",
-    label: "Waitlist (new investments require approval)",
-  },
-  {
-    value: "closed",
-    label: "Closed (no new investments)",
-  },
-  {
-    value: "past",
-    label: "Past (fully hidden)",
-  },
-] as const
+export {
+  getOfferingStatusMeta,
+  OFFERING_STATUS_CATALOG,
+  OFFERING_STATUS_OPTIONS_LIST,
+  type OfferingStatusMeta,
+  type OfferingStatusTone,
+} from "./offeringStatusCatalog"
 
-export type OfferingStatusValue = (typeof OFFERING_STATUS_OPTIONS)[number]["value"]
+/** @deprecated Use `OFFERING_STATUS_OPTIONS_LIST` — kept for callers expecting `{ value, label }[]`. */
+export const OFFERING_STATUS_OPTIONS = OFFERING_STATUS_OPTIONS_LIST.map((m) => ({
+  value: m.value,
+  label: m.label,
+}))
+
+export type OfferingStatusValue = DealStatus
 
 export type OfferingStatusSelectOption = {
   value: OfferingStatusValue | string
@@ -62,7 +43,6 @@ export const OFFERING_VISIBILITY_OPTIONS = [
   {
     value: "show_on_deal_investors_dashboard",
     label: "Show on deal investors' dashboard",
-    /** Shown below the control when this value is selected (matches design tooltip copy). */
     optionHint:
       "Offering is only visible to existing investors on this deal.",
   },
@@ -78,35 +58,24 @@ export type OfferingVisibilityValue =
 export const DEFAULT_OFFERING_VISIBILITY: OfferingVisibilityValue =
   "show_on_dashboard"
 
-/** Status choices allowed for the deal's current stage (and forward steps when raising). */
+/** Status choices allowed for the deal's current stage (full list; no forward-only trimming). */
 export function offeringStatusOptionsForDealStage(
   dealStage: string | null | undefined,
-  currentOfferingStatus?: string | null,
 ): OfferingStatusSelectOption[] {
   const stage = normalizeDealStageCanonical(dealStage)
-  if (!stage) return [...OFFERING_STATUS_OPTIONS]
-  const allowed = new Set<DealStatus>(allowedStatusesForStage(stage))
-  let statuses = OFFERING_STATUS_OPTIONS.filter((o) =>
-    allowed.has(o.value as DealStatus),
-  )
-  if (stage === "capital_raising") {
-    const cur = normalizeDealStatus(currentOfferingStatus)
-    if (cur) {
-      const minIdx = CAPITAL_RAISING_FUNDRAISING_STATUSES.indexOf(cur)
-      if (minIdx >= 0) {
-        const forward = new Set(
-          CAPITAL_RAISING_FUNDRAISING_STATUSES.slice(minIdx),
-        )
-        statuses = statuses.filter((o) =>
-          forward.has(o.value as DealStatus),
-        )
-      }
-    }
+  if (!stage) {
+    return OFFERING_STATUS_OPTIONS_LIST.map((m) => ({
+      value: m.value,
+      label: m.label,
+    }))
   }
-  return statuses
+  const allowed = new Set<DealStatus>(allowedStatusesForStage(stage))
+  return OFFERING_STATUS_OPTIONS_LIST.filter((m) => allowed.has(m.value)).map(
+    (m) => ({ value: m.value, label: m.label }),
+  )
 }
 
-/** True when the overview status dropdown should be editable (capital raising only). */
+/** True when the overview status dropdown should be editable (draft or capital raising). */
 export function isOfferingStatusFieldEditable(
   dealStage: string | null | undefined,
 ): boolean {
@@ -119,8 +88,7 @@ export function offeringStatusLabelFromRaw(
 ): string {
   const v = String(raw ?? "").trim()
   if (!v) return "—"
-  const opt = OFFERING_STATUS_OPTIONS.find((o) => o.value === v)
-  return opt?.label ?? v
+  return getOfferingStatusMeta(v)?.label ?? v
 }
 
 /** Raw `offering_status` from the deal — no stage default injection. */
@@ -147,7 +115,7 @@ export function offeringStatusOptionsForOverview(
   currentOfferingStatus?: string | null,
 ): OfferingStatusSelectOption[] {
   const cur = offeringStatusFromApi(currentOfferingStatus)
-  const opts = offeringStatusOptionsForDealStage(dealStage, cur || null)
+  const opts = offeringStatusOptionsForDealStage(dealStage)
   if (!cur) return opts
   if (opts.some((o) => o.value === cur)) return opts
   return [{ value: cur, label: offeringStatusLabelFromRaw(cur) }, ...opts]
@@ -165,8 +133,8 @@ export function normalizeOfferingStatusForStage(
     if (allowed.includes(v as DealStatus)) return v as OfferingStatusValue
     return defaultStatusForStage(stage) as OfferingStatusValue
   }
-  const ok = OFFERING_STATUS_OPTIONS.some((o) => o.value === v)
-  return ok ? (v as OfferingStatusValue) : DEFAULT_OFFERING_STATUS
+  if (getOfferingStatusMeta(v)) return v as OfferingStatusValue
+  return DEFAULT_OFFERING_STATUS
 }
 
 /** Map pre–mockup API/DB values to current visibility codes. */
@@ -183,10 +151,6 @@ export function mapLegacyOfferingVisibility(raw: string): string {
   }
 }
 
-/**
- * True when Offering Details → Overview visibility is “Only visible with link”
- * (LPs reach the offering via the shared preview URL).
- */
 export function dealHasOfferingShareLink(
   detail: { offeringVisibility?: string | null } | null | undefined,
 ): boolean {

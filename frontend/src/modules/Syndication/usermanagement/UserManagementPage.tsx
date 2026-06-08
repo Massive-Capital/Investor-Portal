@@ -76,10 +76,12 @@ import {
   normalizeMemberStatusForEdit,
   organizationsSortValue,
   primaryRoleLabelFromRow,
+  resolveOrganizationDisplayScope,
   rowDisplayName,
   roleSortValue,
   syncSessionUserDetailsById,
   userStatusForUi,
+  type OrganizationDisplayScope,
 } from "./memberAdminShared";
 import { UserOrganizationsCell } from "./UserOrganizationsCell";
 import { ExportMembersModal } from "./ExportMembersModal";
@@ -100,8 +102,10 @@ import {
   loadEmailTemplates,
   type EmailTemplateRow,
 } from "../contacts/emailTemplatesStorage";
+import "../../../common/components/data-table/data-table.css";
 import "../contacts/contacts.css";
 import "./user_management.css";
+import "../Deals/deals-list.css";
 import "../Deals/tabs/investors/add-investment-modal.css";
 
 function initialsFromRow(row: Record<string, unknown>): string {
@@ -165,6 +169,7 @@ function rowStableId(row: Record<string, unknown>, index: number): string {
 function rowMatchesSearch(
   row: Record<string, unknown>,
   query: string,
+  organizationScope?: OrganizationDisplayScope | null,
 ): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -178,9 +183,9 @@ function rowMatchesSearch(
     roleBadgeLabel(row),
     primaryRoleLabelFromRow(row),
     membershipsSortValue(row),
-    organizationsSortValue(row),
+    organizationsSortValue(row, organizationScope),
     formatRoleCsvCell(row),
-    formatOrganizationsCsvCell(row),
+    formatOrganizationsCsvCell(row, organizationScope),
     formatValue(row.userStatus),
     accountStatusLabel(row),
   ]
@@ -199,6 +204,7 @@ type MemberSortKey =
 function memberSortValue(
   row: Record<string, unknown>,
   key: MemberSortKey,
+  organizationScope?: OrganizationDisplayScope | null,
 ): string {
   switch (key) {
     case "user":
@@ -206,7 +212,7 @@ function memberSortValue(
     case "role":
       return roleSortValue(row);
     case "organizations":
-      return organizationsSortValue(row);
+      return organizationsSortValue(row, organizationScope);
     case "status":
       return userStatusForUi(row).label;
     case "accountStatus":
@@ -216,14 +222,17 @@ function memberSortValue(
   }
 }
 
-function buildSortColumns(): {
+function buildSortColumns(organizationScoped = false): {
   key: MemberSortKey;
   label: string;
 }[] {
   return [
     { key: "user", label: "User" },
     { key: "role", label: "Roles" },
-    { key: "organizations", label: "Organizations" },
+    {
+      key: "organizations",
+      label: organizationScoped ? "Organization" : "Organizations",
+    },
     { key: "status", label: "User Status" },
     { key: "accountStatus", label: "Account status" },
     /* Deals: hidden on /members only; still shown on /customers/:companyId/members (CompanyMembersPage).
@@ -402,6 +411,8 @@ export type UserManagementPageProps = {
    * the org from session/workspace (same as this page embedded in Company settings).
    */
   membersOrganizationScope?: string | false;
+  /** Display name for the workspace company (Settings → Org Members embed). */
+  membersWorkspaceCompanyName?: string;
 };
 
 function usersListUrl(
@@ -421,6 +432,7 @@ function usersListUrl(
 
 export default function UserManagementPage({
   membersOrganizationScope,
+  membersWorkspaceCompanyName,
 }: UserManagementPageProps = {}) {
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   const apiV1 = getApiV1Base();
@@ -444,6 +456,16 @@ export default function UserManagementPage({
     if (active && ORG_UUID_RE.test(active)) return active;
     return undefined;
   }, [membersOrganizationScope, token, currentUserId]);
+
+  const organizationDisplayScope = useMemo((): OrganizationDisplayScope | undefined => {
+    if (typeof membersListScope !== "string" || !ORG_UUID_RE.test(membersListScope)) {
+      return undefined;
+    }
+    return resolveOrganizationDisplayScope(
+      membersListScope,
+      membersWorkspaceCompanyName,
+    );
+  }, [membersListScope, membersWorkspaceCompanyName]);
 
   const [memberRows, setMemberRows] =
     useState<Record<string, unknown>[]>(readSessionMemberRows);
@@ -470,29 +492,33 @@ export default function UserManagementPage({
     setMembersLoading(true);
     setMembersLoadError("");
     void (async () => {
-      const res = await fetch(listUrl, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        users?: unknown;
-        message?: string;
-      };
-      if (cancelled) return;
-      if (!res.ok) {
-        setMembersLoadError(data.message || "Could not load members.");
-        setMembersLoading(false);
-        return;
+      try {
+        const res = await fetch(listUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          users?: unknown;
+          message?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok) {
+          setMembersLoadError(data.message || "Could not load members.");
+          return;
+        }
+        const list = Array.isArray(data.users) ? data.users : [];
+        const normalized = list.filter(
+          (x): x is Record<string, unknown> =>
+            x !== null && typeof x === "object" && !Array.isArray(x),
+        );
+        setMemberRows(normalized);
+        setActionMenuRowId(null);
+        setActionMenuRow(null);
+        setMenuPos(null);
+      } catch {
+        if (!cancelled) setMembersLoadError("Unable to connect.");
+      } finally {
+        if (!cancelled) setMembersLoading(false);
       }
-      const list = Array.isArray(data.users) ? data.users : [];
-      const normalized = list.filter(
-        (x): x is Record<string, unknown> =>
-          x !== null && typeof x === "object" && !Array.isArray(x),
-      );
-      setMemberRows(normalized);
-      setActionMenuRowId(null);
-      setActionMenuRow(null);
-      setMenuPos(null);
-      setMembersLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -541,7 +567,11 @@ export default function UserManagementPage({
    */
   const showCompanyColumn = isPlatformAdmin();
   const showInviteRolePicker = showCompanyColumn || isCompanyAdmin();
-  const sortColumns = useMemo(() => buildSortColumns(), []);
+  const sortColumns = useMemo(
+    () => buildSortColumns(Boolean(organizationDisplayScope?.companyId)),
+    [organizationDisplayScope],
+  );
+  const membersTableColSpan = 1 + sortColumns.length + 1;
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -604,8 +634,11 @@ export default function UserManagementPage({
   }, []);
 
   const filteredRows = useMemo(
-    () => memberRows.filter((row) => rowMatchesSearch(row, searchQuery)),
-    [memberRows, searchQuery],
+    () =>
+      memberRows.filter((row) =>
+        rowMatchesSearch(row, searchQuery, organizationDisplayScope),
+      ),
+    [memberRows, searchQuery, organizationDisplayScope],
   );
 
   const sortedRows = useMemo(() => {
@@ -615,11 +648,11 @@ export default function UserManagementPage({
     }
     const mult = sortDir === "asc" ? 1 : -1;
     return [...filteredRows].sort((a, b) => {
-      const va = memberSortValue(a, sortKey).toLowerCase();
-      const vb = memberSortValue(b, sortKey).toLowerCase();
+      const va = memberSortValue(a, sortKey, organizationDisplayScope).toLowerCase();
+      const vb = memberSortValue(b, sortKey, organizationDisplayScope).toLowerCase();
       return va.localeCompare(vb, undefined, { sensitivity: "base" }) * mult;
     });
-  }, [filteredRows, sortKey, sortDir, sortColumns]);
+  }, [filteredRows, sortKey, sortDir, sortColumns, organizationDisplayScope]);
 
   useEffect(() => {
     setMembersPage(1);
@@ -862,12 +895,15 @@ export default function UserManagementPage({
   );
 
   function exportRowCsv(row: Record<string, unknown>) {
+    const orgHeader = organizationDisplayScope?.companyId
+      ? "Organization"
+      : "Organizations";
     const headers = [
       "Name",
       "Username",
       "Email",
       "Roles",
-      "Organizations",
+      orgHeader,
       "User Status",
       "Account status",
       "Assigned deals",
@@ -877,7 +913,7 @@ export default function UserManagementPage({
       formatMemberUsername(row.username),
       formatValue(row.email),
       formatRoleCsvCell(row),
-      formatOrganizationsCsvCell(row),
+      formatOrganizationsCsvCell(row, organizationDisplayScope),
       userStatusForUi(row).label,
       accountStatusForUi(row).label,
       String(assignedDealCountFromRow(row)),
@@ -1489,10 +1525,13 @@ export default function UserManagementPage({
 
       <div className="um_members_tab_content">
       <div
-        className="um_panel um_members_tab_panel deal_inv_table_panel"
+        className={`um_panel um_members_tab_panel deal_inv_table_panel deals_list_table_panel${
+          membersLoading ? " deals_list_table_panel_loading" : ""
+        }`}
         id="um-members-panel-users"
         role="tabpanel"
         aria-labelledby="um-members-tab-users"
+        aria-busy={membersLoading}
         hidden={membersTab !== "users"}
       >
         <div className="um_toolbar um_toolbar_export_then_search">
@@ -1501,7 +1540,7 @@ export default function UserManagementPage({
               type="button"
               className="um_btn_toolbar"
               onClick={openSendMailModal}
-              disabled={selectedMemberRows.length === 0}
+              disabled={membersLoading || selectedMemberRows.length === 0}
             >
               <Send size={18} strokeWidth={2} aria-hidden />
               Send mail
@@ -1510,6 +1549,7 @@ export default function UserManagementPage({
               type="button"
               className="um_btn_toolbar"
               onClick={handleSuspendAll}
+              disabled={membersLoading}
             >
               <Ban size={18} strokeWidth={2} aria-hidden />
               Suspend All
@@ -1518,6 +1558,7 @@ export default function UserManagementPage({
               type="button"
               className="um_toolbar_export_btn"
               onClick={() => setMembersExportOpen(true)}
+              disabled={membersLoading || memberRows.length === 0}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
               <span>Export All</span>
@@ -1534,6 +1575,7 @@ export default function UserManagementPage({
                 setSearchQuery(e.target.value);
                 setToolbarNotice("");
               }}
+              disabled={membersLoading}
               aria-label="Search members"
             />
           </div>
@@ -1543,17 +1585,12 @@ export default function UserManagementPage({
             {toolbarNotice}
           </p>
         ) : null}
-        {membersLoading ? (
-          <p className="um_hint">Loading members…</p>
-        ) : membersLoadError ? (
+        {membersLoadError ? (
           <p className="um_msg_error" role="alert">
             {membersLoadError}
           </p>
-        ) : memberRows.length === 0 ? (
-          <p className="um_hint">No members found.</p>
-        ) : filteredRows.length === 0 ? (
-          <p className="um_hint">No members match your search.</p>
-        ) : (
+        ) : null}
+        {!membersLoadError ? (
           <div className="um_table_wrap">
             <table className="um_table um_table_sortable um_table_members">
               <thead>
@@ -1565,7 +1602,7 @@ export default function UserManagementPage({
                       className="um_table_header_select_cb"
                       checked={allMembersFilteredSelected}
                       onChange={toggleSelectAllMembersFiltered}
-                      disabled={sortedRows.length === 0}
+                      disabled={membersLoading || sortedRows.length === 0}
                       aria-label="Select all members in this list"
                     />
                   </th>
@@ -1620,7 +1657,35 @@ export default function UserManagementPage({
                 </tr>
               </thead>
               <tbody>
-                {membersPaginatedRows.map((row, i) => {
+                {membersLoading ? (
+                  <tr>
+                    <td
+                      colSpan={membersTableColSpan}
+                      className="data_table_empty_members_cell data_table_members_loading_cell"
+                      role="status"
+                      aria-label="Loading"
+                    >
+                      <div
+                        className="data_table_loader_spinner"
+                        aria-hidden
+                      />
+                    </td>
+                  </tr>
+                ) : membersPaginatedRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={membersTableColSpan}
+                      className="data_table_empty_members_cell"
+                    >
+                      <p className="um_hint" role="status">
+                        {memberRows.length === 0
+                          ? ""
+                          : "No members match your search."}
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  membersPaginatedRows.map((row, i) => {
                   const globalIndex =
                     (membersPageSafe - 1) * membersPageSize + i;
                   const rowId = rowStableId(row, globalIndex);
@@ -1692,7 +1757,10 @@ export default function UserManagementPage({
                         </span>
                       </td>
                       <td className="um_td_memberships">
-                        <UserOrganizationsCell row={row} />
+                        <UserOrganizationsCell
+                          row={row}
+                          organizationScope={organizationDisplayScope}
+                        />
                       </td>
                       <td>
                         <StatusWithDot {...rowUserStatus} />
@@ -1740,19 +1808,22 @@ export default function UserManagementPage({
                       </td>
                     </tr>
                   );
-                })}
+                  })
+                )}
               </tbody>
             </table>
-            <DataTablePagination
-              page={membersPageSafe}
-              pageSize={membersPageSize}
-              totalItems={sortedRows.length}
-              onPageChange={setMembersPage}
-              onPageSizeChange={setMembersPageSize}
-              ariaLabel="Members table pagination"
-            />
+            {!membersLoading && sortedRows.length > 0 ? (
+              <DataTablePagination
+                page={membersPageSafe}
+                pageSize={membersPageSize}
+                totalItems={sortedRows.length}
+                onPageChange={setMembersPage}
+                onPageSizeChange={setMembersPageSize}
+                ariaLabel="Members table pagination"
+              />
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
 
       <div
@@ -1948,8 +2019,13 @@ export default function UserManagementPage({
               />
               <ViewReadonlyField
                 Icon={Building2}
-                label="Organizations"
-                value={<UserOrganizationsCell row={viewRow} />}
+                label={organizationDisplayScope ? "Organization" : "Organizations"}
+                value={
+                  <UserOrganizationsCell
+                    row={viewRow}
+                    organizationScope={organizationDisplayScope}
+                  />
+                }
                 fieldClassName="um_view_field_span_full"
               />
               <ViewReadonlyField
@@ -2127,7 +2203,7 @@ export default function UserManagementPage({
                   {editErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
@@ -2228,7 +2304,7 @@ export default function UserManagementPage({
                   {suspendErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
@@ -2369,7 +2445,7 @@ export default function UserManagementPage({
                   </p>
                 ) : null}
               </div>
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
@@ -2555,6 +2631,7 @@ export default function UserManagementPage({
         open={membersExportOpen}
         onClose={() => setMembersExportOpen(false)}
         members={sortedRows}
+        organizationScope={organizationDisplayScope}
       />
     </section>
   );

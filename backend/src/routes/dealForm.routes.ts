@@ -13,6 +13,7 @@ import {
   postDealOfferingDocumentUploads,
   patchDealInvestorSummary,
   patchDealKeyHighlights,
+  patchDealFundingInstructions,
   // getDealOfferingInvestorPreview,
   patchDealOfferingInvestorPreview,
   patchDealOfferingOverview,
@@ -32,6 +33,7 @@ import {
   putDealLpInvestor,
 } from "../controllers/deal/dealLpInvestor.controller.js";
 import { patchDealLpInvestorMyInvestNowAddon } from "../controllers/deal/dealLpInvestorMyInvestNow.addon.controller.js";
+import { getDealLpInvestorMyInvestNowCommitment } from "../controllers/deal/dealLpInvestorMyInvestNowCommitment.get.controller.js";
 import { postDealLpInvestorMyInvestNowEsignSend } from "../controllers/deal/dealLpInvestorMyInvestNowEsignSend.controller.js";
 import {
   deleteDealEsignTemplate,
@@ -114,6 +116,10 @@ router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
 router.patch(
   "/deals/:dealId/lp-investors/my-commitment",
   patchDealLpInvestorMyCommitment,
+);
+router.get(
+  "/deals/:dealId/lp-investors/my-invest-now-commitment",
+  getDealLpInvestorMyInvestNowCommitment,
 );
 router.patch(
   "/deals/:dealId/lp-investors/my-invest-now-commitment",
@@ -213,6 +219,10 @@ router.put(
 router.patch("/deals/:dealId/investor-summary", patchDealInvestorSummary);
 router.patch("/deals/:dealId/deal-announcement", patchDealAnnouncement);
 router.patch("/deals/:dealId/key-highlights", patchDealKeyHighlights);
+router.patch(
+  "/deals/:dealId/funding-instructions",
+  patchDealFundingInstructions,
+);
 router.get(
   "/deals/:dealId/offering-investor-preview",
   patchDealOfferingInvestorPreview,

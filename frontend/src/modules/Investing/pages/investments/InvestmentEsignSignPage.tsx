@@ -18,7 +18,11 @@ export function InvestmentEsignSignPage() {
     navigate(documentsPath, { replace: true })
   }
 
-  const handleSignedComplete = () => {
+  const handleSignedComplete = (result: { esignCompleted: boolean }) => {
+    if (result.esignCompleted) {
+      navigate("/investing/investments", { replace: true })
+      return
+    }
     navigate(documentsPath, { replace: true })
   }
 
@@ -47,6 +51,7 @@ export function InvestmentEsignSignPage() {
             className="um_btn_primary"
             onClick={() => setModalOpen(true)}
           >
+            <FileSignature size={16} strokeWidth={2} aria-hidden />
             Open signing
           </button>
         </div>

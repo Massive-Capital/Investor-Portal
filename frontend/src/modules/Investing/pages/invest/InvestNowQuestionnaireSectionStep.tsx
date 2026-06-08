@@ -16,6 +16,7 @@ export interface InvestNowQuestionnaireSectionStepProps {
   showIntro: boolean
   disabled?: boolean
   error?: string
+  fieldErrors?: Record<string, string>
   onAnswersChange: (answers: InvestNowQuestionnaireAnswers) => void
 }
 
@@ -26,6 +27,7 @@ export function InvestNowQuestionnaireSectionStep({
   showIntro,
   disabled = false,
   error,
+  fieldErrors = {},
   onAnswersChange,
 }: InvestNowQuestionnaireSectionStepProps) {
   const titleId = `invest-now-q-${step.sectionId}`
@@ -50,6 +52,8 @@ export function InvestNowQuestionnaireSectionStep({
           question={question}
           answers={answers}
           disabled={disabled}
+          invalid={Boolean(fieldErrors[question.id])}
+          error={fieldErrors[question.id]}
           onChange={onAnswersChange}
         />
       ))}

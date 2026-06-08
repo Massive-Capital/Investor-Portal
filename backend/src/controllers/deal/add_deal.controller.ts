@@ -40,6 +40,7 @@ import {
   updateDealAnnouncementById,
   updateDealGalleryCoverById,
   updateDealKeyHighlightsById,
+  updateDealFundingInstructionsById,
   updateDealOfferingInvestorPreviewById,
   updateDealOfferingOverviewById,
   type OfferingOverviewFieldErrors,
@@ -56,6 +57,10 @@ import {
   type DealMemoryUploadFile,
 } from "../../services/deal/dealForm.service.js";
 import { sanitizeDealAnnouncement } from "../../utils/sanitizeDealAnnouncement.js";
+import {
+  FundingInstructionsJsonInvalidError,
+  FundingInstructionsJsonTooLargeError,
+} from "../../utils/sanitizeFundingInstructionsJson.js";
 import {
   KeyHighlightsJsonInvalidError,
   KeyHighlightsJsonTooLargeError,
@@ -141,6 +146,7 @@ function mapRowToJson(
     investorSummaryHtml: row.investorSummaryHtml ?? "",
     galleryCoverImageUrl: row.galleryCoverImageUrl ?? "",
     keyHighlightsJson: row.keyHighlightsJson ?? "",
+    fundingInstructionsJson: row.fundingInstructionsJson ?? "",
     dealAnnouncementTitle: row.dealAnnouncementTitle ?? "",
     dealAnnouncementMessage: row.dealAnnouncementMessage ?? "",
     offeringStatus: row.offeringStatus ?? "draft_hidden",
@@ -671,6 +677,69 @@ export async function patchDealKeyHighlights(
     }
     console.error("patchDealKeyHighlights:", err);
     res.status(500).json({ message: "Could not update key highlights" });
+  }
+}
+
+export async function patchDealFundingInstructions(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = getJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const rawId = req.params.dealId;
+  const dealId = typeof rawId === "string" ? rawId : rawId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  const b = req.body as Record<string, unknown>;
+  const jsonRaw =
+    typeof b.funding_instructions_json === "string"
+      ? b.funding_instructions_json
+      : b.funding_instructions_json != null
+        ? String(b.funding_instructions_json)
+        : typeof b.fundingInstructionsJson === "string"
+          ? b.fundingInstructionsJson
+          : b.fundingInstructionsJson != null
+            ? String(b.fundingInstructionsJson)
+            : "";
+
+  try {
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    const visible = await getAddDealFormForViewer(dealId, scope);
+    if (!visible) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const updated = await updateDealFundingInstructionsById(dealId, jsonRaw);
+    if (!updated) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    res.status(200).json({
+      message: "Funding instructions updated",
+      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
+    });
+  } catch (err: unknown) {
+    if (err instanceof FundingInstructionsJsonInvalidError) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+    if (err instanceof FundingInstructionsJsonTooLargeError) {
+      res.status(400).json({
+        message: "Funding instructions payload is too large.",
+      });
+      return;
+    }
+    console.error("patchDealFundingInstructions:", err);
+    res.status(500).json({ message: "Could not update funding instructions" });
   }
 }
 

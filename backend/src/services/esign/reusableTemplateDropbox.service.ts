@@ -58,16 +58,21 @@ export async function startReusableTemplateEmbeddedDraft(params: {
 
   const storedTemplateId = row.dropboxSignTemplateId?.trim();
   if (storedTemplateId) {
-    let existing = await tryGetEmbeddedTemplateEditUrl(storedTemplateId);
-    if (!existing) {
-      try {
+    let existing: { editUrl: string; expiresAt: number } | null = null;
+    try {
+      existing = await tryGetEmbeddedTemplateEditUrl(storedTemplateId);
+      if (!existing) {
         existing = await waitForEmbeddedTemplateEditUrl(storedTemplateId, {
           maxAttempts: 5,
           delayMs: 1500,
-        });
-      } catch {
-        existing = null;
+        }).catch(() => null);
       }
+    } catch (err) {
+      console.warn(
+        `[esign] Could not resume Dropbox template ${storedTemplateId}; creating a new embedded draft:`,
+        err,
+      );
+      existing = null;
     }
     if (existing) {
       return {

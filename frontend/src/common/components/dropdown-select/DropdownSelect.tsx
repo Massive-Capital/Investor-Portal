@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react"
+import { ChevronDown, Plus } from "lucide-react"
 import {
   Fragment,
   useCallback,
@@ -14,6 +14,25 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import "./dropdown-select.css"
+
+function isAddActionLabel(label: string): boolean {
+  const trimmed = label.trim()
+  return /^(\+\s*)?Add\b/i.test(trimmed)
+}
+
+function dropdownActionLabelText(label: string): string {
+  return label.trim().replace(/^\+\s*/, "")
+}
+
+function DropdownActionLabel({ label }: { label: string }) {
+  if (!isAddActionLabel(label)) return label
+  return (
+    <>
+      <Plus size={16} strokeWidth={2} aria-hidden />
+      {dropdownActionLabelText(label)}
+    </>
+  )
+}
 
 export interface DropdownSelectOption {
   /** Plain text: trigger label, search, and accessibility when `labelContent` is used in the panel. */
@@ -58,6 +77,8 @@ export interface DropdownSelectProps {
   useFixedPanel?: boolean
   /** Visual error state (e.g. validation). */
   invalid?: boolean
+  /** Rich trigger content; `displayLabel` still comes from the selected option `label`. */
+  triggerContent?: ReactNode
   /** Show a filter field above options (long lists). Uses flat option list; section headings are omitted while active. */
   searchable?: boolean
   searchPlaceholder?: string
@@ -88,6 +109,7 @@ export function DropdownSelect({
   panelClassName,
   useFixedPanel = false,
   invalid = false,
+  triggerContent,
   searchable = false,
   searchPlaceholder = "Search…",
   searchAriaLabel,
@@ -408,7 +430,7 @@ export function DropdownSelect({
               close()
             }}
           >
-            {header.label}
+            <DropdownActionLabel label={header.label} />
           </button>
         </li>
       ) : null}
@@ -538,7 +560,7 @@ export function DropdownSelect({
               close()
             }}
           >
-            {footer.label}
+            <DropdownActionLabel label={footer.label} />
           </button>
         </li>
       ) : null}
@@ -582,12 +604,13 @@ export function DropdownSelect({
         <span
           className={[
             "portal_dropdown_select_trigger_label",
+            triggerContent ? "portal_dropdown_select_trigger_label--custom" : "",
             isPlaceholder ? "portal_dropdown_select_trigger_label_placeholder" : "",
           ]
             .filter(Boolean)
             .join(" ")}
         >
-          {displayLabel}
+          {triggerContent ?? displayLabel}
         </span>
         <span className="portal_dropdown_select_chevron" aria-hidden>
           <ChevronDown size={16} strokeWidth={2} />

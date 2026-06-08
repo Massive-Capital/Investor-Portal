@@ -2,10 +2,8 @@
   margin: 0;
   padding: 0.9em 0.3em 0.9em 0.3em;
   text-align: left;
-  /* background: var(--portal-surface); */
-  background-color: #f6f6f6;
-  border: 1px solid var(--portal-border);
-  border-radius: var(--portal-card-radius);
+  background-color: var(--portal-panel-bg, #f6f6f6);
+  border-radius: var(--portal-card-radius, 4px);
   display: flex;
   flex-direction: column;
   gap: 0.75em;
@@ -15,6 +13,65 @@
   font-style: normal;
   color: inherit;
   box-sizing: border-box;
+  border: 1px solid var(--portal-border);
+}
+
+/* Dashboard KPI — light.html glass-pill */
+.tool_style_card.tool_style_card--metric {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid var(--portal-gold-accent, #d4af37);
+  border-radius: var(--portal-card-radius, 4px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.03);
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0;
+  transition:
+    border-color 0.5s ease,
+    box-shadow 0.5s ease;
+}
+
+:root[data-theme="dark"] .tool_style_card--metric {
+  background: rgba(19, 27, 46, 0.6);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="dark"] .tool_style_card:not(.tool_style_card--metric) {
+  background-color: var(--portal-surface, rgba(255, 255, 255, 0.05));
+  box-shadow: none;
+}
+
+.tool_style_card--metric:hover {
+  border-color: var(--portal-gold-accent, #d4af37);
+}
+
+.tool_style_card--metric .tool_style_card_icon {
+  color: var(--portal-gold-accent, #d4af37);
+}
+
+.tool_style_card--metric .tool_style_card_label_inline {
+  color: var(--portal-outline, #76777d);
+}
+
+:root[data-theme="dark"] .tool_style_card--metric .tool_style_card_label_inline {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.tool_style_card--metric .tool_style_card_hint {
+  color: var(--portal-outline, #76777d);
+}
+
+:root[data-theme="dark"] .tool_style_card--metric .tool_style_card_hint {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.tool_style_card--metric .tool_style_card_value_lead {
+  color: var(--portal-text);
+}
+
+:root[data-theme="dark"] .tool_style_card--metric .tool_style_card_value_lead {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .tool_style_card_clickable {
@@ -29,6 +86,10 @@
   box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
 }
 
+.tool_style_card_clickable.tool_style_card--metric:hover {
+  border-color: var(--portal-gold-accent, #d4af37);
+}
+
 .tool_style_card_clickable:focus-visible {
   outline: none;
   border-color: var(--portal-text-muted);
@@ -39,12 +100,11 @@
   width: 2.5em;
   height: 2.5em;
   border-radius: var(--portal-icon-box-radius);
-  border: 1px solid var(--portal-border);
+  /* border: 1px solid var(--portal-border); */
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  /* background: var(--portal-surface); */
 }
 
 .tool_style_card_icon {
@@ -69,6 +129,9 @@
 
 .tool_style_card_hint {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
   color: var(--portal-text-muted);
   cursor: help;
   flex-shrink: 0;
@@ -97,20 +160,35 @@
   text-decoration: underline;
 }
 
-.tool_style_card_metric_top {
+/* light.html: label + icon on one row, value below */
+.tool_style_card_metric_header {
   display: flex;
-  /* align-items: flex-start; */
-  gap: 0.65em;
-  min-width: 0;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
 }
 
-.tool_style_card_metric_body {
+.tool_style_card--metric .tool_style_card_icon_box {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-  flex: 1;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.tool_style_card--metric .tool_style_card_icon {
+  opacity: 0.4;
+  transition: color 0.5s ease, opacity 0.5s ease;
+}
+
+.tool_style_card--metric:hover .tool_style_card_icon {
+  opacity: 1;
 }
 
 .tool_style_card_label_cluster {
@@ -119,13 +197,12 @@
   gap: 0.35em;
   flex-wrap: wrap;
   min-width: 0;
-  padding-top: 0.15em;
 }
 
 .tool_style_card_label_inline {
   font-size: 0.8125em;
-  font-weight: 500;
-  line-height: 1.35;
+  /* font-weight: 500; */
+  line-height: 1;
   color: var(--portal-text-muted);
 }
 
@@ -138,6 +215,83 @@
   color: var(--portal-text);
 }
 
-.tool_style_card_metric_body .tool_style_card_value_lead {
-  margin-top: 0.35em;
+.tool_style_card--metric .tool_style_card_value_lead {
+  margin-top: 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Shared KPI layout — Platform Metrics + sponsor_dash_metrics + deal investor KPIs */
+.portal_metric_kpi_card.tool_style_card--metric,
+.sponsor_dash_metrics > .tool_style_card--metric,
+.pm_kpi_grid > .portal_metric_kpi_card,
+.pm_kpi_grid > .pm_kpi_card {
+  min-width: min(100%, 10rem);
+  max-width: 100%;
+  min-height: 11rem;
+  margin: 0;
+  padding: 1.5rem 2rem;
+}
+
+.portal_metric_kpi_card .tool_style_card_label_inline,
+.pm_kpi_card .tool_style_card_label_inline {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.portal_metric_kpi_card .tool_style_card_value_lead,
+.pm_kpi_card .tool_style_card_value_lead {
+  font-size: clamp(1.5rem, 2.5vw, 1.875rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sponsor_dash_metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .sponsor_dash_metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .sponsor_dash_metrics {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.pm_kpi_grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .pm_kpi_grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .pm_kpi_grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .pm_kpi_grid {
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  }
 }

@@ -437,6 +437,25 @@ export function esignBundleIsAllCompleted(
   );
 }
 
+/** True when stored investment eSign workflow is fully completed (fund approval gate). */
+export function dealInvestmentEsignIsFullyCompleted(params: {
+  esignStatusJson?: string | null;
+  docSignedDate?: string | null;
+  profileId?: string | null;
+}): boolean {
+  const bundle = parseEsignStatusBundle(params.esignStatusJson);
+  if (bundle && bundle.sends.length > 0) {
+    return esignBundleIsAllCompleted(bundle);
+  }
+
+  const categoryId = esignCategoryFromCommitmentProfileId(params.profileId);
+  const api = parseEsignStatusJson(params.esignStatusJson, categoryId);
+  if (api?.completedAt?.trim()) return true;
+
+  const doc = String(params.docSignedDate ?? "").trim().toLowerCase();
+  return doc === "completed";
+}
+
 export function appendEsignSendToBundle(
   bundle: StoredDealInvestorEsignBundle,
   params: {

@@ -1,7 +1,6 @@
 import {
   // formatSsnItinInput,
   nineDigitsFromSsnItinInput,
-  ssnItinFieldError,
 } from "@/common/tax/usSsnItin"
 import type { SavedAddress } from "@/modules/Investing/pages/profiles/address.types"
 import type { InvestorProfileListRow } from "@/modules/Investing/pages/profiles/investor-profiles.types"
@@ -11,6 +10,10 @@ import {
   type InvestNowW9FormValues,
 } from "./investNowW9.types"
 import type { InvestNowQuestionnaireAnswers } from "./investNowQuestionnaireValidation"
+import {
+  firstInvestNowFieldError,
+  validateInvestNowW9Fields,
+} from "./investNowFieldValidation"
 
 export function formatInvestNowW9AddressLine(
   parts: Pick<
@@ -107,10 +110,6 @@ function hasStructuredAddress(values: InvestNowW9FormValues): boolean {
   )
 }
 
-function hasAnyAddress(values: InvestNowW9FormValues): boolean {
-  return Boolean(values.addressLine.trim()) || hasStructuredAddress(values)
-}
-
 /** Apply prefill without overwriting values the investor already entered. */
 export function mergeInvestNowW9Values(
   current: InvestNowW9FormValues,
@@ -118,17 +117,32 @@ export function mergeInvestNowW9Values(
 ): InvestNowW9FormValues {
   const next = { ...current }
   if (!next.name.trim() && prefill.name.trim()) next.name = prefill.name.trim()
-  if (!hasAnyAddress(next)) {
-    if (prefill.addressLine.trim()) next.addressLine = prefill.addressLine.trim()
-    if (prefill.street1.trim()) next.street1 = prefill.street1.trim()
-    if (prefill.street2.trim()) next.street2 = prefill.street2.trim()
-    if (prefill.city.trim()) next.city = prefill.city.trim()
-    if (prefill.state.trim()) next.state = prefill.state.trim()
-    if (prefill.zip.trim()) next.zip = prefill.zip.trim()
-    if (!next.addressLine.trim() && hasStructuredAddress(next)) {
+
+  const structuredMissing = !hasStructuredAddress(next)
+  const lineMissing = !next.addressLine.trim()
+
+  if (structuredMissing) {
+    if (!next.street1.trim() && prefill.street1.trim()) {
+      next.street1 = prefill.street1.trim()
+    }
+    if (!next.street2.trim() && prefill.street2.trim()) {
+      next.street2 = prefill.street2.trim()
+    }
+    if (!next.city.trim() && prefill.city.trim()) next.city = prefill.city.trim()
+    if (!next.state.trim() && prefill.state.trim()) next.state = prefill.state.trim()
+    if (!next.zip.trim() && prefill.zip.trim()) next.zip = prefill.zip.trim()
+  }
+
+  if (lineMissing) {
+    if (prefill.addressLine.trim()) {
+      next.addressLine = prefill.addressLine.trim()
+    } else if (hasStructuredAddress(next)) {
       next.addressLine = formatInvestNowW9AddressLine(next)
     }
+  } else if (structuredMissing && hasStructuredAddress(next)) {
+    next.addressLine = formatInvestNowW9AddressLine(next)
   }
+
   return next
 }
 
@@ -205,20 +219,5 @@ export function investNowW9FormApiPayload(
 export function validateInvestNowW9Form(
   values: InvestNowW9FormValues,
 ): string | null {
-  if (!values.name.trim()) {
-    return "Enter your name as shown on your income tax return"
-  }
-  const hasLine = Boolean(values.addressLine.trim())
-  const hasParts =
-    Boolean(values.street1.trim()) &&
-    Boolean(values.city.trim()) &&
-    Boolean(values.state.trim()) &&
-    Boolean(values.zip.trim())
-  if (!hasLine && !hasParts) return "Enter your address"
-  const ssnErr = ssnItinFieldError(values.ssn, {
-    required: true,
-    requiredMessage: "Enter your social security number",
-  })
-  if (ssnErr) return ssnErr
-  return null
+  return firstInvestNowFieldError(validateInvestNowW9Fields(values))
 }

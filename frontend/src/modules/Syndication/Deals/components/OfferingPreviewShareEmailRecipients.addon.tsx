@@ -39,10 +39,13 @@ export function OfferingPreviewShareEmailRecipientsAddon({
   const [directoryError, setDirectoryError] = useState<string | null>(null)
   const [directoryWarning, setDirectoryWarning] = useState<string | null>(null)
   const [manualDraft, setManualDraft] = useState("")
+  const contactSectionId = useId()
   const contactSelectId = useId()
   const memberSelectId = useId()
+  const manualSectionId = useId()
   const manualInputId = useId()
   const manualAddId = useId()
+  const recipientsSectionId = useId()
 
   useEffect(() => {
     let cancelled = false
@@ -131,159 +134,200 @@ export function OfferingPreviewShareEmailRecipientsAddon({
 
   return (
     <div className="deal_offer_pf_share_recipients">
-      <div className="deal_offer_pf_share_recipient_fields">
-        <label className="deal_offer_pf_share_modal_label" htmlFor={contactSelectId}>
-          Contacts (organization)
-        </label>
-        <select
-          id={contactSelectId}
-          className="um_field_select deal_offer_pf_share_recipient_select"
-          value=""
-          disabled={disabled || directoryLoading || contacts.length === 0}
-          aria-busy={directoryLoading}
-          onChange={(e) => {
-            const id = e.target.value
-            e.target.value = ""
-            if (!id) return
-            const opt = contacts.find((c) => c.id === id)
-            if (opt) addTag(opt.email, opt.label)
-          }}
+      <section
+        className="deal_offer_pf_share_recipient_section"
+        aria-labelledby={contactSectionId}
+      >
+        <h3
+          id={contactSectionId}
+          className="deal_offer_pf_share_recipient_section_title"
         >
-          <option value="">
-            {directoryLoading
-              ? "Loading contacts…"
-              : contacts.length === 0
-                ? "No contacts in directory"
-                : "Add contact by email…"}
-          </option>
-          {contacts.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+          From your organization
+        </h3>
+        <div className="deal_offer_pf_share_recipient_fields">
+          <div className="um_field deal_offer_pf_share_recipient_field">
+            <label htmlFor={contactSelectId}>Contacts</label>
+            <select
+              id={contactSelectId}
+              className="um_field_select deal_offer_pf_share_recipient_select"
+              value=""
+              disabled={disabled || directoryLoading || contacts.length === 0}
+              aria-busy={directoryLoading}
+              onChange={(e) => {
+                const id = e.target.value
+                e.target.value = ""
+                if (!id) return
+                const opt = contacts.find((c) => c.id === id)
+                if (opt) addTag(opt.email, opt.label)
+              }}
+            >
+              <option value="">
+                {directoryLoading
+                  ? "Loading contacts…"
+                  : contacts.length === 0
+                    ? "No contacts available"
+                    : "Select a contact…"}
+              </option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <label className="deal_offer_pf_share_modal_label" htmlFor={memberSelectId}>
-          Company members
-        </label>
-        <select
-          id={memberSelectId}
-          className="um_field_select deal_offer_pf_share_recipient_select"
-          value=""
-          disabled={disabled || directoryLoading || members.length === 0}
-          onChange={(e) => {
-            const id = e.target.value
-            e.target.value = ""
-            if (!id) return
-            const opt = members.find((m) => m.id === id)
-            if (opt) addTag(opt.email, opt.label)
-          }}
-        >
-          <option value="">
-            {directoryLoading
-              ? "Loading members…"
-              : members.length === 0
-                ? "No company members in directory"
-                : "Add member by email…"}
-          </option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </div>
+          <div className="um_field deal_offer_pf_share_recipient_field">
+            <label htmlFor={memberSelectId}>Company members</label>
+            <select
+              id={memberSelectId}
+              className="um_field_select deal_offer_pf_share_recipient_select"
+              value=""
+              disabled={disabled || directoryLoading || members.length === 0}
+              onChange={(e) => {
+                const id = e.target.value
+                e.target.value = ""
+                if (!id) return
+                const opt = members.find((m) => m.id === id)
+                if (opt) addTag(opt.email, opt.label)
+              }}
+            >
+              <option value="">
+                {directoryLoading
+                  ? "Loading members…"
+                  : members.length === 0
+                    ? "No members available"
+                    : "Select a member…"}
+              </option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-      {directoryLoading ? (
-        <p className="deal_offer_pf_share_recipient_dir_status" role="status">
-          <Loader2
-            size={14}
-            strokeWidth={2}
-            className="deal_offer_pf_share_loading_icon"
-            aria-hidden
+        {directoryLoading ? (
+          <p className="deal_offer_pf_share_recipient_dir_status" role="status">
+            <Loader2
+              size={14}
+              strokeWidth={2}
+              className="deal_offer_pf_share_loading_icon"
+              aria-hidden
+            />
+            Loading organization directory…
+          </p>
+        ) : null}
+        {directoryWarning ? (
+          <p
+            className="deal_offer_pf_share_modal_feedback deal_offer_pf_share_modal_feedback_warn"
+            role="status"
+          >
+            {directoryWarning}
+          </p>
+        ) : null}
+        {directoryError ? (
+          <p
+            className="deal_offer_pf_share_modal_feedback deal_offer_pf_share_modal_feedback_warn"
+            role="alert"
+          >
+            {directoryError} You can still add email addresses manually below.
+          </p>
+        ) : null}
+        {dirEmpty ? (
+          <p className="deal_offer_pf_share_recipient_dir_empty" role="status">
+            No contacts or company members are linked to this deal’s organization
+            yet. Add recipient emails below.
+          </p>
+        ) : null}
+      </section>
+
+      <section
+        className="deal_offer_pf_share_recipient_section"
+        aria-labelledby={manualSectionId}
+      >
+        <h3 id={manualSectionId} className="deal_offer_pf_share_recipient_section_title">
+          Add by email
+        </h3>
+        <div className="deal_offer_pf_share_recipient_manual_row">
+          <input
+            id={manualInputId}
+            type="email"
+            className="deal_offer_pf_share_recipient_manual_input"
+            value={manualDraft}
+            onChange={(e) => setManualDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                handleManualAdd()
+              }
+            }}
+            placeholder="name@company.com"
+            disabled={disabled}
+            autoComplete="off"
+            aria-label="Email address"
           />
-          Loading organization directory…
-        </p>
-      ) : null}
-      {directoryWarning ? (
-        <p
-          className="deal_offer_pf_share_modal_feedback deal_offer_pf_share_modal_feedback_warn"
-          role="status"
-        >
-          {directoryWarning}
-        </p>
-      ) : null}
-      {directoryError ? (
-        <p className="deal_offer_pf_share_modal_feedback deal_offer_pf_share_modal_feedback_warn" role="alert">
-          {directoryError} You can still add email addresses manually below.
-        </p>
-      ) : null}
-      {dirEmpty ? (
-        <p className="deal_offer_pf_share_recipient_dir_empty" role="status">
-          No contacts or company members are linked to this deal’s organization yet.
-          Add recipient emails manually.
-        </p>
-      ) : null}
+          <button
+            id={manualAddId}
+            type="button"
+            className="um_btn_secondary deal_offer_pf_share_recipient_manual_btn"
+            disabled={disabled || !manualDraft.trim()}
+            onClick={handleManualAdd}
+          >
+            <Plus size={16} strokeWidth={2} aria-hidden />
+            Add
+          </button>
+        </div>
+      </section>
 
-      <label className="deal_offer_pf_share_modal_label" htmlFor={manualInputId}>
-        Or enter an email
-      </label>
-      <div className="deal_offer_pf_share_recipient_manual_row">
-        <input
-          id={manualInputId}
-          type="email"
-          className="deal_offer_pf_share_recipient_manual_input"
-          value={manualDraft}
-          onChange={(e) => setManualDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              handleManualAdd()
-            }
-          }}
-          placeholder="name@company.com"
-          disabled={disabled}
-          autoComplete="off"
-        />
-        <button
-          id={manualAddId}
-          type="button"
-          className="um_btn_primary deal_offer_pf_share_recipient_manual_btn"
-          disabled={disabled || !manualDraft.trim()}
-          onClick={handleManualAdd}
-        >
-          <Plus size={16} strokeWidth={2} aria-hidden />
-          Add
-        </button>
-      </div>
-
-      <p className="deal_offer_pf_share_modal_label deal_offer_pf_share_recipient_tags_label">
-        Recipients ({tags.length})
-      </p>
-      {tags.length === 0 ? (
-        <p className="deal_offer_pf_share_recipient_tags_empty" role="status">
-          Choose contacts or members above, or add at least one email address.
-        </p>
-      ) : (
-        <ul className="deal_offer_pf_share_recipient_tags" aria-label="Selected recipients">
-          {tags.map((t) => (
-            <li key={t.email} className="deal_offer_pf_share_recipient_tag">
-              <span className="deal_offer_pf_share_recipient_tag_text" title={t.email}>
-                {t.label}
-              </span>
-              <button
-                type="button"
-                className="deal_offer_pf_share_recipient_tag_remove"
-                disabled={disabled}
-                aria-label={`Remove ${t.email}`}
-                onClick={() => removeTag(t.email)}
-              >
-                <X size={14} strokeWidth={2} aria-hidden />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <section
+        className="deal_offer_pf_share_recipient_section deal_offer_pf_share_recipient_section_tags"
+        aria-labelledby={recipientsSectionId}
+      >
+        <div className="deal_offer_pf_share_recipient_tags_head">
+          <h3
+            id={recipientsSectionId}
+            className="deal_offer_pf_share_recipient_tags_title"
+          >
+            Recipients
+          </h3>
+          <span className="deal_offer_pf_share_recipient_tags_count">
+            {tags.length}
+          </span>
+        </div>
+        <div className="deal_offer_pf_share_recipient_tags_panel">
+          {tags.length === 0 ? (
+            <p className="deal_offer_pf_share_recipient_tags_empty" role="status">
+              Add at least one recipient to send the preview link.
+            </p>
+          ) : (
+            <ul
+              className="deal_offer_pf_share_recipient_tags"
+              aria-label="Selected recipients"
+            >
+              {tags.map((t) => (
+                <li key={t.email} className="deal_offer_pf_share_recipient_tag">
+                  <span
+                    className="deal_offer_pf_share_recipient_tag_text"
+                    title={t.email}
+                  >
+                    {t.label}
+                  </span>
+                  <button
+                    type="button"
+                    className="deal_offer_pf_share_recipient_tag_remove"
+                    disabled={disabled}
+                    aria-label={`Remove ${t.email}`}
+                    onClick={() => removeTag(t.email)}
+                  >
+                    <X size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
     </div>
   )
 }

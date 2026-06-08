@@ -14,6 +14,7 @@ import {
   getLpInvestorsTabPayload,
 } from "../../services/deal/dealLpInvestor.service.js";
 import { applyMyInvestNowCommitmentAddon } from "../../services/deal/dealLpInvestorMyInvestNowCommitment.addon.service.js";
+import { readMyInvestNowCommitment } from "../../services/deal/dealLpInvestorMyInvestNowCommitment.read.service.js";
 import { evaluateLpInvestNowEligibility } from "../../services/deal/dealLpInvestNowEligibility.service.js";
 
 function bodyString(v: unknown): string {
@@ -49,15 +50,31 @@ export async function patchDealLpInvestorMyInvestNowAddon(
   }
 
   const b = req.body as Record<string, unknown>;
-  const raw =
-    bodyString(b.committed_amount ?? b.committedAmount).trim() ||
-    bodyString(b.amount).trim();
-  const n = Number(String(raw).replace(/[$,\s]/g, ""));
-  if (!Number.isFinite(n) || n <= 0) {
-    res.status(400).json({
-      message: "Committed amount must be a number greater than 0",
-    });
-    return;
+  const progressOnly =
+    b.progress_only === true ||
+    b.progressOnly === true ||
+    String(b.progress_only ?? b.progressOnly ?? "")
+      .trim()
+      .toLowerCase() === "true";
+  const hasCommittedKey =
+    Object.prototype.hasOwnProperty.call(b, "committed_amount") ||
+    Object.prototype.hasOwnProperty.call(b, "committedAmount") ||
+    Object.prototype.hasOwnProperty.call(b, "amount");
+  const skipCommittedAmount = progressOnly && !hasCommittedKey;
+  const raw = hasCommittedKey
+    ? bodyString(b.committed_amount ?? b.committedAmount).trim() ||
+      bodyString(b.amount).trim()
+    : "";
+  if (!skipCommittedAmount) {
+    const n = Number(String(raw).replace(/[$,\s]/g, ""));
+    if (!Number.isFinite(n) || (n <= 0 && !progressOnly)) {
+      res.status(400).json({
+        message: progressOnly
+          ? "Committed amount must be zero or greater"
+          : "Committed amount must be a number greater than 0",
+      });
+      return;
+    }
   }
 
   try {
@@ -119,12 +136,24 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     const hasW9FormKey =
       Object.prototype.hasOwnProperty.call(b, "w9_form") ||
       Object.prototype.hasOwnProperty.call(b, "w9Form");
+    const hasFundingMethodKey =
+      Object.prototype.hasOwnProperty.call(b, "funding_method") ||
+      Object.prototype.hasOwnProperty.call(b, "fundingMethod");
+    const replaceCommittedAmount =
+      b.replace_committed_amount === true ||
+      b.replaceCommittedAmount === true ||
+      String(b.replace_committed_amount ?? b.replaceCommittedAmount ?? "")
+        .trim()
+        .toLowerCase() === "true";
 
     const result = await applyMyInvestNowCommitmentAddon({
       dealId: dealId.trim(),
       viewerEmailNorm: emailNorm,
       viewerUserId: user.id,
-      committedAmount: raw,
+      committedAmount: skipCommittedAmount ? undefined : raw,
+      progressOnly,
+      skipCommittedAmount,
+      replaceCommittedAmount,
       profileId: profileRaw,
       userInvestorProfileInBody: hasUserInvestorProfileIdKey,
       userInvestorProfileId: hasUserInvestorProfileIdKey
@@ -138,6 +167,10 @@ export async function patchDealLpInvestorMyInvestNowAddon(
         : undefined,
       w9FormInBody: hasW9FormKey,
       w9Form: hasW9FormKey ? (b.w9_form ?? b.w9Form) : undefined,
+      fundingMethodInBody: hasFundingMethodKey,
+      fundingMethod: hasFundingMethodKey
+        ? bodyString(b.funding_method ?? b.fundingMethod)
+        : undefined,
     });
     if (!result.ok) {
       res.status(400).json({ message: result.message });
@@ -147,9 +180,19 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     await reconcileAssigningDealUsersForDeal(dealId.trim(), user.id);
 
     const payload = await getLpInvestorsTabPayload(dealId.trim(), user.id);
+    const savedRow = await readMyInvestNowCommitment({
+      dealId: dealId.trim(),
+      viewerEmailNorm: emailNorm,
+      viewerUserId: user.id,
+      userInvestorProfileId: hasUserInvestorProfileIdKey
+        ? userInvestorProfileRaw
+        : undefined,
+      profileId: profileRaw,
+    });
     res.status(200).json({
       message: "Committed amount saved",
       investorsPayload: payload,
+      investmentId: savedRow.ok ? savedRow.investmentId : null,
     });
   } catch (err) {
     console.error("patchDealLpInvestorMyInvestNowAddon:", err);

@@ -21,69 +21,248 @@ a.sponsor_dash_add_link.um_btn_secondary {
   text-decoration: none;
 }
 
-.sponsor_dash_metrics {
-  /* display: grid; */
-  /* grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); */
-  /* grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); */
+/* light.html hero — Portfolio Overview + display title */
+.sponsor_dash_hero {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: space-between;
-  gap: 1em;
-  /* margin-bottom: 0.3em; */
+  gap: 2rem;
+  margin-bottom: 4rem;
 }
-.sponsor_dash_metrics_investing_mode {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  /* grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); */
-  gap: 1em;
-  margin-bottom: 2em;
+
+@media (min-width: 768px) {
+  .sponsor_dash_hero {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+}
+
+.sponsor_dash_hero_copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.sponsor_dash_hero_eyebrow {
+  display: inline-block;
+  width: fit-content;
+  margin: 0;
+  padding: 0.375rem 1rem;
+  font-family: var(--portal-font-sans, "Inter", sans-serif);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--portal-gold-accent, #d4af37) 80%, transparent);
+  background: var(--portal-tab-active-bg);
+  border-radius: var(--portal-pill-radius, 4px);
+}
+
+.sponsor_dash_hero_title {
+  margin: 0;
+  font-family: var(--portal-font-display, "Playfair Display", Georgia, serif);
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--portal-primary, #000);
+}
+
+:root[data-theme="dark"] .sponsor_dash_hero_title {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.sponsor_dash_hero_actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.sponsor_dash_hero_actions .sponsor_dash_add_link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  border-radius: var(--portal-pill-radius, 4px);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* KPI grid: tool-style-card.css `.sponsor_dash_metrics` */
+.sponsor_dash_metrics {
+  margin-bottom: 4rem;
+}
+
+/* Investing dashboard has 4 KPIs — span full content width (not syndicating's 5-col grid). */
+@media (min-width: 1024px) {
+  .sponsor_dash_investing .sponsor_dash_metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* KPI help + metric icons match card border (gold accent). */
+.sponsor_dash_investing .sponsor_dash_metrics .tool_style_card--metric .tool_style_card_icon,
+.sponsor_dash_investing .sponsor_dash_metrics .tool_style_card--metric .tool_style_card_hint {
+  color: var(--portal-gold-accent, #d4af37);
+}
+
+.sponsor_dash_investing .sponsor_dash_metrics .tool_style_card--metric .tool_style_card_icon {
+  opacity: 1;
+}
+
+.sponsor_dash_investing .sponsor_dash_metrics .tool_style_card_metric_header {
+  align-items: center;
+}
+
+.sponsor_dash_investing .sponsor_dash_metrics .tool_style_card_label_cluster {
+  align-items: center;
+}
+
+.sponsor_dash_deals_section {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
 }
 
 .sponsor_dash_section_title {
   margin: 0;
-  font-size: 1.125em;
-  font-weight: 700;
-  color: var(--portal-text);
+  font-family: var(--portal-font-display, "Playfair Display", Georgia, serif);
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--portal-primary, #000);
+}
+
+:root[data-theme="dark"] .sponsor_dash_section_title {
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .sponsor_dash_deals_controls {
+  margin: 0;
+}
+
+.sponsor_dash_deals_header_row {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.75em;
-  margin:2em 0 1.25em 0;
+  justify-content: space-between;
+  gap: 2rem;
 }
 
-.sponsor_dash_deals_toolbar {
+@media (min-width: 768px) {
+  .sponsor_dash_deals_header_row {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+.sponsor_dash_deals_tools {
   display: flex;
-  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 1em;
+  gap: 1.5rem;
   width: 100%;
 }
 
-.sponsor_dash_deals_toolbar .sponsor_dash_deals_controls_right {
-  flex-shrink: 0;
+@media (min-width: 768px) {
+  .sponsor_dash_deals_tools {
+    width: auto;
+    justify-content: flex-end;
+  }
+}
+
+/* Deals toolbar: search + view/sort on one row (light.html), shared control height */
+.sponsor_dash_deals_toolbar {
+  --sponsor-dash-toolbar-control-h: 3rem;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+@media (min-width: 768px) {
+  .sponsor_dash_deals_header_row .sponsor_dash_deals_toolbar {
+    margin-left: auto;
+    flex-wrap: nowrap;
+  }
 }
 
 .sponsor_dash_deals_toolbar .sponsor_dash_search_row {
-  flex: 1 1 12rem;
-  min-width: 0;
-  margin-bottom: 0;
+  display: flex;
+  align-items: stretch;
   width: auto;
+  flex: 1 1 12rem;
+  min-width: min(100%, 14rem);
+  max-width: 20rem;
+  margin-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  .sponsor_dash_deals_toolbar .sponsor_dash_search_row {
+    flex: 0 1 20rem;
+    min-width: 14rem;
+    max-width: 20rem;
+  }
 }
 
 .sponsor_dash_deals_toolbar .sponsor_dash_search_wrap_full {
-  max-width: none;
+  display: inline-flex;
+  align-items: stretch;
   width: 100%;
+  max-width: 100%;
+  min-height: var(--sponsor-dash-toolbar-control-h);
+  height: var(--sponsor-dash-toolbar-control-h);
+}
+
+@media (min-width: 768px) {
+  .sponsor_dash_deals_toolbar .sponsor_dash_search_wrap_full {
+    min-width: 0;
+  }
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_search_input {
+  min-height: 0;
+  height: auto;
+  box-sizing: border-box;
+  padding: 0;
+  line-height: calc(var(--sponsor-dash-toolbar-control-h) - 2px);
 }
 
 .sponsor_dash_deals_controls_right {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  align-items: stretch;
   gap: 0.65em;
+  min-height: var(--sponsor-dash-toolbar-control-h, 3rem);
+}
+
+@media (max-width: 767px) {
+  .sponsor_dash_deals_toolbar .sponsor_dash_search_row {
+    width: 100%;
+    flex: 1 1 100%;
+    max-width: none;
+  }
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_view_toggle {
+  height: var(--sponsor-dash-toolbar-control-h);
+  box-sizing: border-box;
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_view_btn {
+  width: calc(var(--sponsor-dash-toolbar-control-h) - 0.75rem);
+  height: calc(var(--sponsor-dash-toolbar-control-h) - 0.75rem);
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_sort_wrap {
+  height: var(--sponsor-dash-toolbar-control-h);
+  min-height: var(--sponsor-dash-toolbar-control-h);
+}
+
+.sponsor_dash_deals_toolbar .sponsor_dash_sort_select {
+  line-height: calc(var(--sponsor-dash-toolbar-control-h) - 2px);
 }
 
 .sponsor_dash_view_type_label {
@@ -98,10 +277,25 @@ a.sponsor_dash_add_link.um_btn_secondary {
 }
 
 .sponsor_dash_search_wrap {
-  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0.45em;
+  padding: 0 0.75em;
+  box-sizing: border-box;
+  min-height: 40px;
+  height: 40px;
+  border: 1px solid var(--portal-border);
+  border-radius: var(--portal-pill-radius);
+  background: var(--portal-surface);
+  color: var(--portal-text);
   flex: 1;
   min-width: 180px;
   max-width: 320px;
+}
+
+.sponsor_dash_search_wrap:focus-within {
+  border-color: var(--portal-gold-accent, #d4af37);
+  box-shadow: none;
 }
 
 .sponsor_dash_search_wrap_full {
@@ -110,69 +304,94 @@ a.sponsor_dash_add_link.um_btn_secondary {
 }
 
 .sponsor_dash_search_icon {
-  position: absolute;
-  left: 0.85em;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--portal-text-muted, #94a3b8);
+  align-self: center;
+  color: var(--portal-text-muted);
   pointer-events: none;
   flex-shrink: 0;
 }
 
 .sponsor_dash_search_input {
+  flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
-  height: 40px;
-  /* left padding for icon; right padding for text */
-  padding: 0 0.9em 0 2.75em;
-  border: 1px solid var(--portal-border);
-  border-radius: var(--portal-pill-radius);
-  font-size: 0.9375em;
-  background: var(--portal-surface);
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  font-family: inherit;
+  font-style: normal;
+  font-size: 0.875em;
+  font-weight: 600;
+  line-height: calc(40px - 2px);
+  background: transparent;
   color: var(--portal-text);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
 }
 
+.sponsor_dash_search_input::placeholder {
+  color: var(--portal-text-muted);
+  font-weight: 400;
+}
+
+.sponsor_dash_search_input:focus,
 .sponsor_dash_search_input:focus-visible {
   outline: none;
-  border-color: var(--portal-text-muted);
-  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
+  border: none;
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .sponsor_dash_search_input:focus-visible {
-  box-shadow: var(--portal-field-focus-shadow-dark, 0 0 0 2px rgb(249 250 251 / 12%));
-}
-
+/* light.html: grid/list view toggle — surface-container-low track + luxury-shadow active */
 .sponsor_dash_view_toggle {
   display: inline-flex;
-  padding: 2px;
-  gap: 2px;
-  border-radius: var(--portal-pill-radius);
-  background: var(--portal-toggle-track);
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--portal-border, #c6c6cd) 10%, transparent);
+  /* border-radius: 9999px; */
+  background: var(--portal-surface-container-low, #f6f3f5);
+}
+
+:root[data-theme="dark"] .sponsor_dash_view_toggle {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .sponsor_dash_view_btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5em;
-  height: 2.5em;
+  width: 2.5rem;
+  height: 2.5rem;
   border: none;
-  border-radius: var(--portal-pill-radius);
+  border-radius: var(--portal-pill-radius, 4px);
   background: transparent;
   color: var(--portal-text-muted);
   cursor: pointer;
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
-.sponsor_dash_view_btn:hover {
+.sponsor_dash_view_btn:hover:not(.sponsor_dash_view_btn_active) {
   color: var(--portal-text);
+  background: color-mix(in srgb, var(--portal-surface, #fff) 50%, transparent);
+}
+
+:root[data-theme="dark"] .sponsor_dash_view_btn:hover:not(.sponsor_dash_view_btn_active) {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .sponsor_dash_view_btn_active {
-  background: var(--portal-surface);
-  color: var(--portal-text);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  background: var(--portal-surface, #ffffff);
+  color: var(--portal-gold-accent, #d4af37);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.03);
+}
+
+:root[data-theme="dark"] .sponsor_dash_view_btn_active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
 .sponsor_dash_sort_wrap {
@@ -241,22 +460,20 @@ a.sponsor_dash_add_link.um_btn_secondary {
   outline: none;
 }
 
+/* light.html: lg:grid-cols-2 gap-10 */
 .sponsor_dash_deals_grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: 2.5rem;
   width: 100%;
   box-sizing: border-box;
   align-content: start;
   align-items: start;
 }
 
-/* Two deal cards per row: matched row height + even gaps */
-@media (min-width: 700px) {
+@media (min-width: 1024px) {
   .sponsor_dash_deals_grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 1.25rem;
-    row-gap: 1.5rem;
     align-items: stretch;
   }
 
@@ -274,36 +491,16 @@ a.sponsor_dash_add_link.um_btn_secondary {
     height: 100%;
   }
 
-  /* Align card rows: reserve height on the name+location block, not the title alone (tighter gap) */
-  .sponsor_dash_deals_grid .deal_card_top_right .deal_card_top_text {
-    min-height: 3.4em;
-  }
-
-  .sponsor_dash_deals_grid .deal_card_title_text {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    line-clamp: 2;
-    overflow: hidden;
-    line-height: 1.25;
-  }
-
-  /* Top row: image + title/location; details section below */
-  .sponsor_dash_deals_grid .deal_card {
+  .sponsor_dash_deals_grid .deal_card--prestige {
     min-height: 100%;
   }
 
-  .sponsor_dash_deals_grid .deal_card_details {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    flex: 1 1 auto;
-    box-sizing: border-box;
+  .sponsor_dash_deals_grid .deal_card--prestige .deal_card_prestige_row {
+    min-height: 100%;
   }
 
-  .sponsor_dash_deals_grid .deal_card_metrics {
-    margin-top: auto;
+  .sponsor_dash_deals_grid .deal_card--prestige .deal_card_prestige_body {
+    min-height: 100%;
   }
 }
 
@@ -342,10 +539,144 @@ a.sponsor_dash_add_link.um_btn_secondary {
   text-decoration: underline;
 }
 
+.sponsor_dash_investing .investing_dash_deals_section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.sponsor_dash_investing .investing_dash_deals_header {
+  margin: 0;
+}
+
+.sponsor_dash_investing .investing_dash_deals_title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--portal-text, #0f172a);
+}
+
+.sponsor_dash_investing .investing_dash_deals_title_icon {
+  flex-shrink: 0;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.investing_dash_deals_block {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1.15rem 1.25rem 1.25rem;
+}
+
+.sponsor_dash_investing .investing_dash_deals_block.deals_list_card_surface {
+  background: var(--portal-panel-bg, #f6f6f6);
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 4px);
+}
+
+.sponsor_dash_investing .investing_dash_deals_tabs {
+  margin-bottom: 0.25rem;
+}
+
+.sponsor_dash_investing .investing_dash_deals_tabs .um_members_tabs_row {
+  min-height: 2.75rem;
+}
+
+.investing_dash_deals_panel .sponsor_dash_deals_section {
+  margin-top: 0;
+}
+
+.investing_dash_deals_panel .sponsor_dash_deals_controls {
+  margin-bottom: 0;
+}
+
+/* Search (deal-card width) + Export All + sort on one row. */
+.investing_dash_deals_toolbar_row {
+  width: 100%;
+  min-width: 0;
+}
+
+.sponsor_dash_investing .investing_dash_deals_unified_toolbar {
+  --sponsor-dash-toolbar-control-h: 2.5rem;
+  --investing-dash-deals-grid-gap: 2.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.65em 1em;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.sponsor_dash_investing .investing_dash_deals_unified_toolbar .um_search_wrap {
+  order: 1;
+  flex: 1 1 100%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+}
+
+.sponsor_dash_investing
+  .investing_dash_deals_unified_toolbar
+  .um_search_wrap
+  .um_search_input {
+  width: 100%;
+  max-width: 100%;
+}
+
+.sponsor_dash_investing .investing_dash_deals_unified_toolbar .investing_dash_deals_export_actions {
+  order: 2;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.sponsor_dash_investing .investing_dash_deals_unified_toolbar .investing_dash_deals_view_sort {
+  order: 3;
+  flex: 0 0 auto;
+  min-height: var(--sponsor-dash-toolbar-control-h);
+  margin-left: 0;
+}
+
+@media (min-width: 768px) {
+  .sponsor_dash_investing .investing_dash_deals_unified_toolbar {
+    flex-wrap: nowrap;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sponsor_dash_investing .investing_dash_deals_unified_toolbar .um_search_wrap {
+    flex: 0 0
+      calc((100% - var(--investing-dash-deals-grid-gap)) / 2);
+    width: calc((100% - var(--investing-dash-deals-grid-gap)) / 2);
+    max-width: calc((100% - var(--investing-dash-deals-grid-gap)) / 2);
+  }
+}
+
+
+.investing_dash_deals_panel .sponsor_dash_deals_header_row:has(.sponsor_dash_deals_controls_right:only-child) {
+  justify-content: flex-end;
+}
+
+.investing_dash_deals_panel .sponsor_dash_deals_toolbar:not(:has(.sponsor_dash_search_row)) {
+  justify-content: flex-end;
+  width: 100%;
+}
+
 a.deal_card_link {
   display: block;
   text-decoration: none;
   color: inherit;
+  /* border-radius: var(--portal-card-radius); */
   border-radius: var(--portal-card-radius);
 }
 
@@ -375,7 +706,7 @@ a.deal_card_link:focus-visible {
   text-align: center;
   color: var(--portal-text-muted);
   font-size: 0.9375em;
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
   border: 1px dashed var(--portal-border);
   border-radius: var(--portal-card-radius);
 }
@@ -391,7 +722,7 @@ a.deal_card_link:focus-visible {
   text-align: center;
   color: var(--portal-text-muted);
   font-size: 0.9375em;
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
   border: 1px dashed var(--portal-border);
   border-radius: var(--portal-card-radius);
   box-sizing: border-box;
@@ -431,33 +762,32 @@ a.deal_card_link:focus-visible {
   }
 }
 
-/* Syndicating dashboard: unified #f6f6f6 for metric cards, deal cards, and DataTable */
-.sponsor_dash_syndicating .tool_style_card {
-  background: #f6f6f6;
-}
-.sponsor_dash_metrics_investing_mode .tool_style_card {
-  background: #f6f6f6;
+/* Syndicating dashboard: #f6f6f6 for non-KPI cards + tables (KPI uses glass `.tool_style_card--metric`) */
+.sponsor_dash_syndicating .tool_style_card:not(.tool_style_card--metric) {
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
-.sponsor_dash_investing .tool_style_card_icon_box {
-  background: #f6f6f6;
+.sponsor_dash_investing .tool_style_card:not(.tool_style_card--metric) .tool_style_card_icon_box {
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
-.sponsor_dash_syndicating .tool_style_card_icon_box {
-  background: #f6f6f6;
+.sponsor_dash_syndicating .tool_style_card:not(.tool_style_card--metric) .tool_style_card_icon_box {
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
 .sponsor_dash_syndicating .deal_card {
-  background: #f6f6f6;
+background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  border: 2px solid #d4af37;
 }
 
 /* Investing dashboard: same deal card surface as syndicating */
 .sponsor_dash_investing .deal_card {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
 .sponsor_dash_syndicating .um_table_wrap.data_table_shell {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-card-radius);
   overflow: hidden;
@@ -465,15 +795,15 @@ a.deal_card_link:focus-visible {
 
 .sponsor_dash_syndicating .um_table th,
 .sponsor_dash_syndicating .um_table td {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
 .sponsor_dash_syndicating .um_table_pagination {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
 .sponsor_dash_investing .um_table_wrap.data_table_shell {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-card-radius);
   overflow: hidden;
@@ -481,17 +811,23 @@ a.deal_card_link:focus-visible {
 
 .sponsor_dash_investing .um_table th,
 .sponsor_dash_investing .um_table td {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
 .sponsor_dash_investing .um_table_pagination {
-  background: #f6f6f6;
+  background: var(--portal-panel-bg, #f6f6f6);
 }
 
-:root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card,
-:root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card_icon_box,
-:root[data-theme="dark"] .sponsor_dash_investing .tool_style_card,
-:root[data-theme="dark"] .sponsor_dash_investing .tool_style_card_icon_box,
+:root[data-theme="dark"] .sponsor_dash_syndicating .tool_style_card:not(.tool_style_card--metric),
+:root[data-theme="dark"]
+  .sponsor_dash_syndicating
+  .tool_style_card:not(.tool_style_card--metric)
+  .tool_style_card_icon_box,
+:root[data-theme="dark"] .sponsor_dash_investing .tool_style_card:not(.tool_style_card--metric),
+:root[data-theme="dark"]
+  .sponsor_dash_investing
+  .tool_style_card:not(.tool_style_card--metric)
+  .tool_style_card_icon_box,
 :root[data-theme="dark"] .sponsor_dash_syndicating .deal_card,
 :root[data-theme="dark"] .sponsor_dash_investing .deal_card,
 :root[data-theme="dark"] .sponsor_dash_syndicating .um_table_wrap.data_table_shell,

@@ -12,7 +12,16 @@ export function scrollToSection({
 }: ScrollToSectionParams): void {
   const el = document.getElementById(sectionId)
   if (!el) return
-  el.scrollIntoView({ behavior: "smooth", block: "start" })
+
+  const landingRoot = document.querySelector(".files2-landing")
+  if (landingRoot) {
+    landingRoot.dispatchEvent(
+      new CustomEvent("files2:scroll-to", { detail: { sectionId } }),
+    )
+  } else {
+    el.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
   onHighlight?.(sectionId)
 }
 

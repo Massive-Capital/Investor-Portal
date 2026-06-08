@@ -1,9 +1,12 @@
 import {
+  ArrowRightLeft,
   ChevronDown,
+  CircleCheck,
   Copy,
   Download,
   Eye,
   Link2,
+  ListChecks,
   Loader2,
   Pencil,
   Plus,
@@ -25,9 +28,11 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from "react"
 import { createPortal } from "react-dom"
 import { ConfirmDeleteModal } from "@/common/components/ConfirmDeleteModal"
+import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
 import {
   FormTooltip,
   type FormTooltipPanelAlign,
@@ -36,11 +41,13 @@ import { dealAssetRelativePathToUploadsUrl } from "../../../../../common/utils/a
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import "../../deals-list.css"
 import {
+  fetchDealById,
   fetchDealInvestorClasses,
   fetchDealInvestors,
   fetchDealMembers,
   isDealOfferingDocumentPdfFile,
   postDealOfferingDocumentUploads,
+  syncCompletedEsignDocumentsToDocumentsTab,
   type DealDetailApi,
 } from "../../api/dealsApi"
 import {
@@ -60,7 +67,13 @@ import {
   effectiveDocumentSharedWithScope,
   ensureDefaultDocumentSectionInList,
   isDefaultDocumentSection,
+  isAutoManagedDocumentsSection,
+  mergeAutoManagedDocumentSections,
+  OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
   orderDocumentSectionsWithDefaultFirst,
+  parseDocumentSectionsFromPreviewJson,
+  documentSectionsEqual,
+  documentSectionsSnapshot,
   readDealDocumentSectionsForWorkspace,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
@@ -82,6 +95,11 @@ interface DocumentsSectionProps {
   offeringInvestorPreviewJson?: string | null
   investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
+}
+
+type DocumentMoveItem = {
+  sectionId: string
+  docId: string
 }
 
 function DocumentsTableDocName({ name }: { name: string }) {
@@ -176,9 +194,13 @@ function safeDownloadFilename(name: string): string {
 
 function appendPdfFilesFromPicker(
   prev: File[],
-  input: FileList | null,
+  input: FileList | File[] | null | undefined,
 ): { next: File[]; rejectedNames: string[] } {
-  const picked = input ? Array.from(input) : []
+  const picked = input
+    ? Array.isArray(input)
+      ? input
+      : Array.from(input)
+    : []
   if (picked.length === 0) return { next: prev, rejectedNames: [] }
   const rejectedNames: string[] = []
   const accepted: File[] = []
@@ -187,6 +209,93 @@ function appendPdfFilesFromPicker(
     else rejectedNames.push(file.name)
   }
   return { next: [...prev, ...accepted], rejectedNames }
+}
+
+function formatPdfFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function DocumentsPdfUploadDropzone({
+  id,
+  disabled,
+  inputRef,
+  onPickClick,
+  onInputChange,
+  onFilesDropped,
+}: {
+  id: string
+  disabled?: boolean
+  inputRef: RefObject<HTMLInputElement | null>
+  onPickClick: () => void
+  onInputChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onFilesDropped: (files: FileList | File[]) => void
+}) {
+  const [dropFocus, setDropFocus] = useState(false)
+
+  function onDragOver(e: DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    if (disabled) return
+    setDropFocus(true)
+  }
+
+  function onDragLeave(e: DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    setDropFocus(false)
+  }
+
+  function onDrop(e: DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    setDropFocus(false)
+    if (disabled) return
+    const files = e.dataTransfer.files
+    if (files?.length) onFilesDropped(files)
+  }
+
+  return (
+    <div className="deal_docs_section_modal_upload">
+      <input
+        ref={inputRef}
+        id={id}
+        type="file"
+        className="visually_hidden"
+        multiple
+        accept="application/pdf,.pdf"
+        disabled={disabled}
+        onChange={onInputChange}
+      />
+      <button
+        type="button"
+        className={`deal_docs_section_modal_upload_zone${dropFocus ? " deal_docs_section_modal_upload_zone--focus" : ""}`}
+        disabled={disabled}
+        aria-labelledby={`${id}-label`}
+        onClick={onPickClick}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <span className="deal_docs_section_modal_upload_empty">
+          <span
+            className="deal_docs_section_modal_upload_icon_ring"
+            aria-hidden
+          >
+            <Plus size={22} strokeWidth={1.75} />
+          </span>
+          <span id={`${id}-label`} className="deal_docs_section_modal_upload_title">
+            Add PDF documents
+          </span>
+          <span className="deal_docs_section_modal_upload_sub">
+            Click to browse or drop files here
+          </span>
+          <span className="deal_docs_section_modal_upload_formats" aria-hidden>
+            <span className="deal_docs_section_modal_format_chip">PDF</span>
+          </span>
+        </span>
+      </button>
+    </div>
+  )
 }
 
 function ModalPendingDocumentFilesList({
@@ -256,6 +365,11 @@ function ModalPendingDocumentFilesList({
           <span className="deal_docs_modal_file_name" title={file.name}>
             {file.name}
           </span>
+          {formatPdfFileSize(file.size) ? (
+            <span className="deal_docs_modal_file_size">
+              {formatPdfFileSize(file.size)}
+            </span>
+          ) : null}
           <div
             className="deal_docs_modal_file_actions"
             role="group"
@@ -311,8 +425,13 @@ export function DocumentsSection({
 }: DocumentsSectionProps) {
   const dealIdTrim = dealId?.trim() ?? ""
   const addSectionTitleId = useId()
+  const sectionNameFieldId = useId()
+  const sectionUploadFieldId = useId()
+  const sectionFileInputRef = useRef<HTMLInputElement>(null)
   const uploadDocsTitleId = useId()
   const visibilityConfirmTitleId = useId()
+  const moveDocumentTitleId = useId()
+  const moveSelectRequiredTitleId = useId()
   const quickUploadInputRef = useRef<HTMLInputElement>(null)
   const [previewHydrated, setPreviewHydrated] = useState(false)
   const [sections, setSections] = useState<OfferingPreviewSection[]>([])
@@ -347,11 +466,36 @@ export function DocumentsSection({
     nextScope: SectionSharedWithScope
   } | null>(null)
   const [visibilitySaveBusy, setVisibilitySaveBusy] = useState(false)
+  const [moveDocumentPending, setMoveDocumentPending] = useState<{
+    items: DocumentMoveItem[]
+  } | null>(null)
+  const [moveTargetSectionId, setMoveTargetSectionId] = useState("")
+  const [moveSelectRequiredOpen, setMoveSelectRequiredOpen] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
   const [sponsorRosterRows, setSponsorRosterRows] = useState<DealInvestorRow[]>([])
   const onSyncedRef = useRef(onOfferingPreviewSynced)
   onSyncedRef.current = onOfferingPreviewSynced
+  const lastPersistedSectionsSnapshotRef = useRef("")
+
+  function resolveWorkspaceSections(): OfferingPreviewSection[] {
+    const fromServer = parseDocumentSectionsFromPreviewJson(
+      offeringInvestorPreviewJson,
+    )
+    const nextSections =
+      fromServer.length > 0
+        ? orderDocumentSectionsWithDefaultFirst(fromServer)
+        : readDealDocumentSectionsForWorkspace(dealIdTrim)
+    return mergeAutoManagedDocumentSections(
+      nextSections,
+      dealIdTrim,
+      offeringInvestorPreviewJson,
+    )
+  }
+
+  function setSectionsIfChanged(next: OfferingPreviewSection[]) {
+    setSections((prev) => (documentSectionsEqual(prev, next) ? prev : next))
+  }
 
   function countNestedDocumentsInPreviewJson(
     json: string | null | undefined,
@@ -373,13 +517,32 @@ export function DocumentsSection({
     if (!id) {
       setPreviewHydrated(false)
       setSections([])
+      lastPersistedSectionsSnapshotRef.current = ""
       return
     }
     applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson)
-    setSections(readDealDocumentSectionsForWorkspace(id))
+    setSectionsIfChanged(resolveWorkspaceSections())
     setPreviewHydrated(isOfferingPreviewHydrated(id))
     setExpandedSections({})
     setCheckedDocsBySection({})
+  }, [dealIdTrim, offeringInvestorPreviewJson])
+
+  useEffect(() => {
+    const id = dealIdTrim
+    if (!id) return
+    const onSectionsChanged = (e: Event) => {
+      const d = (e as CustomEvent<{ dealId?: string }>).detail
+      if (d?.dealId !== id) return
+      setSectionsIfChanged(resolveWorkspaceSections())
+      setPreviewHydrated(isOfferingPreviewHydrated(id))
+    }
+    window.addEventListener(OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT, onSectionsChanged)
+    return () => {
+      window.removeEventListener(
+        OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
+        onSectionsChanged,
+      )
+    }
   }, [dealIdTrim, offeringInvestorPreviewJson])
 
   useEffect(() => {
@@ -392,7 +555,7 @@ export function DocumentsSection({
     }
     let cancelled = false
     void (async () => {
-      const [classes, payload, roster] = await Promise.all([
+      const [classes, payload, membersResult] = await Promise.all([
         fetchDealInvestorClasses(id),
         fetchDealInvestors(id, { lpInvestorsOnly: true }),
         fetchDealMembers(id),
@@ -400,7 +563,30 @@ export function DocumentsSection({
       if (cancelled) return
       setDealClasses(classes)
       setInvestorRows(payload.investors)
-      setSponsorRosterRows(roster)
+      setSponsorRosterRows(membersResult.members)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [dealIdTrim, investorsListRefreshKey])
+
+  useEffect(() => {
+    const id = dealIdTrim
+    if (!id) return
+    let cancelled = false
+    void (async () => {
+      const sync = await syncCompletedEsignDocumentsToDocumentsTab(id)
+      if (cancelled || !sync.ok) return
+      if (sync.offeringInvestorPreviewJson != null) {
+        applyOfferingInvestorPreviewJsonFromServer(
+          id,
+          sync.offeringInvestorPreviewJson,
+        )
+        setSectionsIfChanged(readDealDocumentSectionsForWorkspace(id))
+        setPreviewHydrated(isOfferingPreviewHydrated(id))
+      }
+      const deal = await fetchDealById(id)
+      if (!cancelled && deal) onSyncedRef.current?.(deal)
     })()
     return () => {
       cancelled = true
@@ -441,11 +627,26 @@ export function DocumentsSection({
     })()
   }, [])
 
+  const sectionsForPersist = useMemo(
+    () =>
+      mergeAutoManagedDocumentSections(
+        sections,
+        dealIdTrim,
+        offeringInvestorPreviewJson,
+      ),
+    [sections, dealIdTrim, offeringInvestorPreviewJson],
+  )
+
   useEffect(() => {
     if (!previewHydrated || !dealIdTrim) return
-    writeOfferingPreviewSections(dealIdTrim, sections)
+    const snap = documentSectionsSnapshot(sectionsForPersist)
+    if (snap === lastPersistedSectionsSnapshotRef.current) return
+    lastPersistedSectionsSnapshotRef.current = snap
+    writeOfferingPreviewSections(dealIdTrim, sectionsForPersist, {
+      notify: false,
+    })
     scheduleOfferingInvestorPreviewServerSync(dealIdTrim, {
-      sections,
+      sections: sectionsForPersist,
       onSuccess: (d) => {
         applyOfferingInvestorPreviewJsonFromServer(
           d.id,
@@ -455,12 +656,12 @@ export function DocumentsSection({
         onSyncedRef.current?.(d)
       },
     })
-  }, [dealIdTrim, sections, previewHydrated])
+  }, [dealIdTrim, sectionsForPersist, previewHydrated])
 
   /** If the tab has more documents than the last server snapshot, push to DB. */
   useEffect(() => {
     if (!previewHydrated || !dealIdTrim) return
-    const localCount = sections.reduce(
+    const localCount = sectionsForPersist.reduce(
       (n, s) => n + s.nestedDocuments.length,
       0,
     )
@@ -470,14 +671,14 @@ export function DocumentsSection({
     )
     if (localCount <= serverCount) return
     void persistOfferingInvestorPreviewToServer(dealIdTrim, {
-      sections,
+      sections: sectionsForPersist,
       onSuccess: (d) => onSyncedRef.current?.(d),
     })
   }, [
     dealIdTrim,
     offeringInvestorPreviewJson,
     previewHydrated,
-    sections,
+    sectionsForPersist,
   ])
 
   const onAddSection = useCallback(() => {
@@ -493,13 +694,12 @@ export function DocumentsSection({
     setAddSectionError(null)
   }, [documentUploadBusy])
 
-  const onSectionFilesChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
+  const appendSectionFiles = useCallback(
+    (incoming: FileList | File[] | null | undefined) => {
       const { next, rejectedNames } = appendPdfFilesFromPicker(
         sectionFiles,
-        e.currentTarget.files,
+        incoming,
       )
-      e.currentTarget.value = ""
       setSectionFiles(next)
       if (rejectedNames.length > 0) {
         setAddSectionError(
@@ -512,6 +712,14 @@ export function DocumentsSection({
       }
     },
     [sectionFiles],
+  )
+
+  const onSectionFilesChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      appendSectionFiles(e.currentTarget.files)
+      e.currentTarget.value = ""
+    },
+    [appendSectionFiles],
   )
 
   const removeSectionFileAt = useCallback((index: number) => {
@@ -942,6 +1150,175 @@ export function DocumentsSection({
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [visibilityChangePending, visibilitySaveBusy, cancelVisibilityChange])
 
+  const collectMovableCheckedItems = useCallback(
+    (scopeSectionId?: string): DocumentMoveItem[] => {
+      const items: DocumentMoveItem[] = []
+      for (const section of sections) {
+        if (scopeSectionId && section.id !== scopeSectionId) continue
+        if (isAutoManagedDocumentsSection(section)) continue
+        const checks = checkedDocsBySection[section.id]
+        if (!checks) continue
+        for (const doc of section.nestedDocuments) {
+          if (checks[doc.id]) {
+            items.push({ sectionId: section.id, docId: doc.id })
+          }
+        }
+      }
+      return items
+    },
+    [sections, checkedDocsBySection],
+  )
+
+  const selectedMovableDocumentCount = useMemo(
+    () => collectMovableCheckedItems().length,
+    [collectMovableCheckedItems],
+  )
+
+  const moveTargetSectionOptions = useMemo(() => {
+    if (!moveDocumentPending?.items.length) return []
+    const fromIds = new Set(
+      moveDocumentPending.items.map((item) => item.sectionId),
+    )
+    if (fromIds.size === 1) {
+      const onlyFrom = [...fromIds][0]!
+      return sections.filter((s) => s.id !== onlyFrom)
+    }
+    return sections
+  }, [moveDocumentPending, sections])
+
+  const movableItemsForTarget = useMemo(() => {
+    if (!moveDocumentPending || !moveTargetSectionId.trim()) return []
+    const targetId = moveTargetSectionId.trim()
+    return moveDocumentPending.items.filter((item) => item.sectionId !== targetId)
+  }, [moveDocumentPending, moveTargetSectionId])
+
+  const cancelMoveDocument = useCallback(() => {
+    setMoveDocumentPending(null)
+    setMoveTargetSectionId("")
+  }, [])
+
+  const openMoveForItems = useCallback(
+    (items: DocumentMoveItem[]) => {
+      if (items.length === 0) {
+        setMoveSelectRequiredOpen(true)
+        return
+      }
+      const fromIds = new Set(items.map((item) => item.sectionId))
+      const targets =
+        fromIds.size === 1
+          ? sections.filter((s) => s.id !== [...fromIds][0])
+          : sections
+      if (targets.length === 0) return
+      setMoveTargetSectionId(targets[0]!.id)
+      setMoveDocumentPending({ items })
+    },
+    [sections],
+  )
+
+  const openMoveDocumentModal = useCallback(
+    (sectionId: string, doc: NestedPreviewDocument) => {
+      openMoveForItems([{ sectionId, docId: doc.id }])
+    },
+    [openMoveForItems],
+  )
+
+  const openMoveSelectedDocumentsModal = useCallback(
+    (scopeSectionId?: string) => {
+      openMoveForItems(collectMovableCheckedItems(scopeSectionId))
+    },
+    [collectMovableCheckedItems, openMoveForItems],
+  )
+
+  const moveNestedDocumentsToSection = useCallback(
+    (items: DocumentMoveItem[], toSectionId: string) => {
+      const pairs = items.filter(
+        (item) =>
+          item.sectionId &&
+          item.docId &&
+          item.sectionId !== toSectionId,
+      )
+      if (!pairs.length || !toSectionId) return
+
+      const keys = new Set(
+        pairs.map((item) => `${item.sectionId}:${item.docId}`),
+      )
+
+      setSections((prev) => {
+        const extracted: NestedPreviewDocument[] = []
+        const stripped = prev.map((section) => {
+          const keep: NestedPreviewDocument[] = []
+          for (const doc of section.nestedDocuments) {
+            if (keys.has(`${section.id}:${doc.id}`)) {
+              extracted.push({
+                ...doc,
+                lpDisplaySectionId: toSectionId,
+              })
+            } else {
+              keep.push(doc)
+            }
+          }
+          return { ...section, nestedDocuments: keep }
+        })
+        if (extracted.length === 0) return prev
+        return stripped.map((section) =>
+          section.id !== toSectionId
+            ? section
+            : {
+                ...section,
+                nestedDocuments: [...section.nestedDocuments, ...extracted],
+              },
+        )
+      })
+
+      setCheckedDocsBySection((prev) => {
+        let next = { ...prev }
+        for (const { sectionId, docId } of pairs) {
+          const sec = next[sectionId]
+          if (!sec || !(docId in sec)) continue
+          const nextSec = { ...sec }
+          delete nextSec[docId]
+          if (Object.keys(nextSec).length === 0) delete next[sectionId]
+          else next[sectionId] = nextSec
+        }
+        return next
+      })
+    },
+    [],
+  )
+
+  const confirmMoveDocument = useCallback(() => {
+    const pending = moveDocumentPending
+    const targetId = moveTargetSectionId.trim()
+    if (!pending?.items.length || !targetId) return
+    const toMove = pending.items.filter((item) => item.sectionId !== targetId)
+    if (toMove.length === 0) return
+    moveNestedDocumentsToSection(toMove, targetId)
+    cancelMoveDocument()
+  }, [
+    moveDocumentPending,
+    moveTargetSectionId,
+    moveNestedDocumentsToSection,
+    cancelMoveDocument,
+  ])
+
+  useEffect(() => {
+    if (!moveDocumentPending) return
+    function onKeyDown(ev: globalThis.KeyboardEvent) {
+      if (ev.key === "Escape") cancelMoveDocument()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [moveDocumentPending, cancelMoveDocument])
+
+  useEffect(() => {
+    if (!moveSelectRequiredOpen) return
+    function onKeyDown(ev: globalThis.KeyboardEvent) {
+      if (ev.key === "Escape") setMoveSelectRequiredOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [moveSelectRequiredOpen])
+
   const duplicateNestedDocument = useCallback(
     (sectionId: string, doc: NestedPreviewDocument) => {
       const nid = `dup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -1093,9 +1470,9 @@ export function DocumentsSection({
   return (
     <div className="deal_docs">
       <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_assets_datatable_panel">
-        <div className="um_toolbar deal_docs_toolbar" role="toolbar" aria-label="Document actions">
+        <div className="um_toolbar deal_docs_toolbar um_toolbar_export_then_search" role="toolbar" aria-label="Document actions">
           <div className="um_search_wrap">
-            <Search className="um_search_icon" size={16} strokeWidth={2} aria-hidden />
+            <Search className="um_search_icon" size={18} strokeWidth={2} aria-hidden />
             <input
               type="search"
               className="um_search_input"
@@ -1117,52 +1494,18 @@ export function DocumentsSection({
               aria-hidden
               tabIndex={-1}
             />
-            {/* <div
-              className={[
-                "deal_docs_toolbar_dropzone",
-                quickUploadDropFocus ? "deal_docs_toolbar_dropzone--focus" : "",
-                documentUploadBusy ? "deal_docs_toolbar_dropzone--busy" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              role="button"
-              tabIndex={0}
-              aria-label="Upload PDF documents to the General section"
-              aria-busy={documentUploadBusy}
-              onClick={() => {
-                if (!documentUploadBusy) quickUploadInputRef.current?.click()
-              }}
-              onKeyDown={onQuickUploadKeyDown}
-              onDragEnter={(e) => {
-                e.preventDefault()
-                setQuickUploadDropFocus(true)
-              }}
-              onDragOver={(e) => {
-                e.preventDefault()
-                setQuickUploadDropFocus(true)
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault()
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                  setQuickUploadDropFocus(false)
-                }
-              }}
-              onDrop={onQuickUploadDrop}
+            <button
+              type="button"
+              className="deal_docs_toolbar_btn"
+              disabled={sections.length < 2}
+              onClick={() => openMoveSelectedDocumentsModal()}
             >
-              {documentUploadBusy ? (
-                <Loader2
-                  size={16}
-                  strokeWidth={2}
-                  className="deals_deal_view_spinner"
-                  aria-hidden
-                />
-              ) : (
-                <Upload size={16} strokeWidth={2} aria-hidden />
-              )}
-              <span className="deal_docs_toolbar_dropzone_label">
-                Click or drag PDFs
-              </span>
-            </div> */}
+              <ArrowRightLeft size={16} strokeWidth={2} aria-hidden />
+              Move selected
+              {selectedMovableDocumentCount > 0
+                ? ` (${selectedMovableDocumentCount})`
+                : ""}
+            </button>
             <button
               type="button"
               className="deal_docs_toolbar_btn"
@@ -1186,13 +1529,25 @@ export function DocumentsSection({
           {emptySearchLabel ? (
             <p className="deal_docs_ui_empty">{emptySearchLabel}</p>
           ) : null}
+        </div>
+      </div>
+
+      <div className="deal_offering_stack deal_docs_sections_stack" role="list">
           {filteredSections.map((section) => {
               const isOpen = expandedSections[section.id] ?? true
               const n = section.nestedDocuments.length
               const panelId = `${section.id}-docs-panel`
               const isDefaultSection = isDefaultDocumentSection(section)
+              const isAutoManagedSection = isAutoManagedDocumentsSection(section)
+              const selectedInSection = section.nestedDocuments.filter((d) =>
+                Boolean(checkedDocsBySection[section.id]?.[d.id]),
+              ).length
               return (
-                <div key={section.id} className="deal_docs_ui_bundle">
+                <div
+                  key={section.id}
+                  className={`deal_docs_ui_bundle deal_offering_section${isOpen ? " deal_offering_section_expanded" : ""}`}
+                  role="listitem"
+                >
                   <div className="deal_docs_ui_banner" role="region" aria-label={section.sectionLabel}>
                     <div className="deal_docs_ui_banner_left">
                       <button
@@ -1210,31 +1565,73 @@ export function DocumentsSection({
                           className={`deal_docs_ui_banner_chevron${isOpen ? " deal_docs_ui_banner_chevron_open" : ""}`}
                         />
                       </button>
-                      <button
-                        type="button"
-                        className="deal_docs_ui_banner_link_btn"
-                        onClick={() =>
-                          checkAllInSection(
-                            section.id,
-                            section.nestedDocuments.map((d) => d.id),
-                          )
-                        }
-                        disabled={n === 0}
-                      >
-                        Select all
-                      </button>
-                      <span className="deal_docs_ui_banner_title">{section.sectionLabel}</span>
+                      <div className="deal_docs_ui_banner_heading">
+                        <span className="deal_docs_ui_banner_title">{section.sectionLabel}</span>
+                        {n > 0 ? (
+                          <div className="deal_docs_ui_banner_inline_actions">
+                            {selectedInSection > 0 ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="deal_docs_ui_banner_link_btn deal_docs_ui_banner_clear_btn"
+                                  onClick={() => clearChecksInSection(section.id)}
+                                >
+                                  <X size={14} strokeWidth={2} aria-hidden />
+                                  Clear selection
+                                </button>
+                                {!isAutoManagedSection && sections.length >= 2 ? (
+                                  <button
+                                    type="button"
+                                    className="deal_docs_ui_banner_link_btn"
+                                    onClick={() =>
+                                      openMoveSelectedDocumentsModal(section.id)
+                                    }
+                                  >
+                                    <ArrowRightLeft
+                                      size={14}
+                                      strokeWidth={2}
+                                      aria-hidden
+                                    />
+                                    Move selected ({selectedInSection})
+                                  </button>
+                                ) : null}
+                                <span
+                                  className="deal_docs_ui_banner_inline_sep"
+                                  aria-hidden
+                                >
+                                  ·
+                                </span>
+                              </>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="deal_docs_ui_banner_link_btn deal_docs_ui_banner_select_all_btn"
+                              onClick={() =>
+                                checkAllInSection(
+                                  section.id,
+                                  section.nestedDocuments.map((d) => d.id),
+                                )
+                              }
+                            >
+                              <ListChecks size={14} strokeWidth={2} aria-hidden />
+                              Select all
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="deal_docs_ui_banner_right">
-                      <button
-                        type="button"
-                        className="deal_docs_ui_banner_icon_btn"
-                        aria-label={`Add documents to ${section.sectionLabel}`}
-                        onClick={() => openUploadDocumentsModal(section)}
-                      >
-                        <Plus size={18} strokeWidth={2} aria-hidden />
-                      </button>
-                      {!isDefaultSection ? (
+                      {!isAutoManagedSection ? (
+                        <button
+                          type="button"
+                          className="deal_docs_ui_banner_icon_btn"
+                          aria-label={`Add documents to ${section.sectionLabel}`}
+                          onClick={() => openUploadDocumentsModal(section)}
+                        >
+                          <Plus size={18} strokeWidth={2} aria-hidden />
+                        </button>
+                      ) : null}
+                      {!isDefaultSection && !isAutoManagedSection ? (
                         <button
                           type="button"
                           className="deal_docs_ui_banner_icon_btn deal_docs_ui_banner_icon_btn_danger"
@@ -1527,6 +1924,7 @@ export function DocumentsSection({
                                             d,
                                             section,
                                           )}
+                                          disabled={isAutoManagedSection}
                                           onChange={(e) => {
                                             const v =
                                               e.target.value as SectionSharedWithScope
@@ -1603,12 +2001,33 @@ export function DocumentsSection({
                                         className="deal_docs_ui_row_icon_btn"
                                         title="Duplicate"
                                         aria-label={`Duplicate ${d.name}`}
+                                        disabled={isAutoManagedSection}
                                         onClick={() =>
                                           duplicateNestedDocument(section.id, d)
                                         }
                                       >
                                         <Copy size={16} strokeWidth={2} aria-hidden />
                                       </button>
+                                      <button
+                                        type="button"
+                                        className="deal_docs_ui_row_icon_btn"
+                                        title="Move to another section"
+                                        aria-label={`Move ${d.name} to another section`}
+                                        disabled={
+                                          isAutoManagedSection ||
+                                          sections.length < 2
+                                        }
+                                        onClick={() =>
+                                          openMoveDocumentModal(section.id, d)
+                                        }
+                                      >
+                                        <ArrowRightLeft
+                                          size={16}
+                                          strokeWidth={2}
+                                          aria-hidden
+                                        />
+                                      </button>
+                                      {!isAutoManagedSection ? (
                                       <button
                                         type="button"
                                         className="deal_docs_ui_row_icon_btn deal_docs_ui_row_icon_btn_danger"
@@ -1625,6 +2044,7 @@ export function DocumentsSection({
                                       >
                                         <Trash2 size={16} strokeWidth={2} aria-hidden />
                                       </button>
+                                      ) : null}
                                     </div>
                                   </td>
                                 </tr>
@@ -1634,42 +2054,45 @@ export function DocumentsSection({
                         </table>
                       </div>
                     )}
-                    {n > 0 ? (
-                      <div className="deal_docs_ui_panel_footer">
-                        <button
-                          type="button"
-                          className="deal_docs_ui_banner_link_btn"
-                          onClick={() => clearChecksInSection(section.id)}
-                        >
-                          Clear selection
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               )
             })}
-        </div>
       </div>
       {showAddSectionModal
         ? createPortal(
             <div
-              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_section_modal_overlay"
               role="presentation"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget && !documentUploadBusy) {
+                  closeAddSectionModal()
+                }
+              }}
             >
               <div
-                className="um_modal deals_add_inv_modal_panel add_contact_panel"
+                className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_docs_section_modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={addSectionTitleId}
+                onMouseDown={(e) => e.stopPropagation()}
               >
                 <div className="um_modal_head add_contact_modal_head">
-                  <h3
-                    id={addSectionTitleId}
-                    className="um_modal_title add_contact_modal_title"
-                  >
-                    Add section
-                  </h3>
+                  <div className="add_contact_modal_head_main">
+                    <FormHeadingWithInfo
+                      as="h2"
+                      id={addSectionTitleId}
+                      className="um_modal_title add_contact_modal_title"
+                      title="Add section"
+                      info={
+                        <p>
+                          Create a named section for offering documents. You can
+                          add PDFs now or upload them later from the section
+                          toolbar.
+                        </p>
+                      }
+                    />
+                  </div>
                   <button
                     type="button"
                     className="um_modal_close"
@@ -1680,52 +2103,76 @@ export function DocumentsSection({
                     <X size={20} strokeWidth={2} aria-hidden />
                   </button>
                 </div>
-                <form onSubmit={onSubmitAddSection} noValidate>
-                  <div className="deals_add_inv_modal_scroll">
-                    <label className="deals_create_label">
-                      Section name
-                      <input
-                        className="deals_create_input"
-                        value={sectionName}
-                        onChange={(e) => {
-                          setSectionName(e.target.value)
-                          setAddSectionError(null)
-                        }}
-                        placeholder="e.g. Offering Memorandum"
-                        aria-invalid={!sectionName.trim() && addSectionError != null}
-                        required
+                <form
+                  className="deals_add_inv_modal_form deal_docs_section_modal_form"
+                  onSubmit={onSubmitAddSection}
+                  noValidate
+                >
+                  <div className="deals_add_inv_modal_scroll deal_docs_section_modal_scroll">
+                    <div className="deal_docs_section_modal_fields">
+                      <div className="um_field deal_docs_section_modal_field">
+                        <label className="um_label" htmlFor={sectionNameFieldId}>
+                          Section name
+                        </label>
+                        <input
+                          id={sectionNameFieldId}
+                          type="text"
+                          className="um_input"
+                          value={sectionName}
+                          onChange={(e) => {
+                            setSectionName(e.target.value)
+                            setAddSectionError(null)
+                          }}
+                          placeholder="e.g. Offering Memorandum"
+                          aria-invalid={
+                            !sectionName.trim() && addSectionError != null
+                          }
+                          autoFocus
+                          required
+                        />
+                      </div>
+                      <div className="deal_docs_section_modal_upload_block">
+                        <span
+                          className="deal_docs_section_modal_upload_label"
+                          id={`${sectionUploadFieldId}-label`}
+                        >
+                          Upload documents
+                        </span>
+                        <DocumentsPdfUploadDropzone
+                          id={sectionUploadFieldId}
+                          disabled={documentUploadBusy}
+                          inputRef={sectionFileInputRef}
+                          onPickClick={() => sectionFileInputRef.current?.click()}
+                          onInputChange={onSectionFilesChange}
+                          onFilesDropped={appendSectionFiles}
+                        />
+                        <p className="deal_docs_section_modal_upload_hint">
+                          Optional. PDF only — select multiple files if needed.
+                        </p>
+                      </div>
+                      <ModalPendingDocumentFilesList
+                        files={sectionFiles}
+                        disabled={documentUploadBusy}
+                        onRemove={removeSectionFileAt}
                       />
-                    </label>
-                    <label className="deals_create_label">
-                      Upload documents
-                      <input
-                        type="file"
-                        className="deals_create_input"
-                        multiple
-                        accept="application/pdf,.pdf"
-                        onChange={onSectionFilesChange}
-                        aria-invalid={false}
-                      />
-                    </label>
-                    <ModalPendingDocumentFilesList
-                      files={sectionFiles}
-                      disabled={documentUploadBusy}
-                      onRemove={removeSectionFileAt}
-                    />
-                    {sectionFiles.length > 0 ? (
-                      <p className="deal_offering_muted">
-                        {sectionFiles.length}{" "}
-                        {sectionFiles.length === 1 ? "file" : "files"} will be
-                        added to this section when you save.
-                      </p>
-                    ) : null}
-                    {addSectionError ? (
-                      <p className="deals_create_error" role="alert">
-                        {addSectionError}
-                      </p>
-                    ) : null}
+                      {sectionFiles.length > 0 ? (
+                        <p className="deal_docs_section_modal_status" role="status">
+                          <strong>{sectionFiles.length}</strong>{" "}
+                          {sectionFiles.length === 1 ? "file" : "files"} ready to
+                          upload when you save.
+                        </p>
+                      ) : null}
+                      {addSectionError ? (
+                        <p
+                          className="deal_docs_section_modal_error"
+                          role="alert"
+                        >
+                          {addSectionError}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="um_modal_actions">
+                  <div className="um_modal_actions add_contact_modal_actions">
                     <button
                       type="button"
                       className="um_btn_secondary"
@@ -1830,7 +2277,7 @@ export function DocumentsSection({
                       </p>
                     ) : null}
                   </div>
-                  <div className="um_modal_actions">
+                  <div className="um_modal_actions add_contact_modal_actions">
                     <button
                       type="button"
                       className="um_btn_secondary"
@@ -1939,13 +2386,14 @@ export function DocumentsSection({
                     : "This file will appear on the public offering link, preview, and the Offering Documents tab for signed-in investors."}
                   </p>
                 </div>
-                <div className="um_modal_actions">
+                <div className="um_modal_actions add_contact_modal_actions">
                   <button
                     type="button"
                     className="um_btn_secondary"
                     disabled={visibilitySaveBusy}
                     onClick={cancelVisibilityChange}
                   >
+                    <X size={16} strokeWidth={2} aria-hidden />
                     Cancel
                   </button>
                   <button
@@ -1971,6 +2419,236 @@ export function DocumentsSection({
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {moveSelectRequiredOpen
+        ? createPortal(
+            <div
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_section_modal_overlay deal_docs_shared_notify_overlay"
+              role="presentation"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setMoveSelectRequiredOpen(false)
+              }}
+            >
+              <div
+                className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_docs_move_modal_shell deal_docs_move_hint_modal"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby={moveSelectRequiredTitleId}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="um_modal_head add_contact_modal_head">
+                  <div className="add_contact_modal_head_main">
+                    <FormHeadingWithInfo
+                      as="h2"
+                      id={moveSelectRequiredTitleId}
+                      className="um_modal_title add_contact_modal_title"
+                      title="Move selected"
+                      info={
+                        <p>
+                          Choose one or more documents in a section, then use
+                          Move selected.
+                        </p>
+                      }
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="um_modal_close"
+                    aria-label="Close"
+                    onClick={() => setMoveSelectRequiredOpen(false)}
+                  >
+                    <X size={20} strokeWidth={2} aria-hidden />
+                  </button>
+                </div>
+                <div className="deals_add_inv_modal_scroll deal_docs_move_modal_scroll">
+                  <p className="deal_docs_move_modal_message" role="status">
+                    Select document for moving.
+                  </p>
+                </div>
+                <div className="um_modal_actions add_contact_modal_actions">
+                  <button
+                    type="button"
+                    className="um_btn_secondary"
+                    onClick={() => setMoveSelectRequiredOpen(false)}
+                  >
+                    <X size={16} strokeWidth={2} aria-hidden />
+                    Cancel
+                  </button>
+                  <div className="add_contact_modal_actions_trailing">
+                    <button
+                      type="button"
+                      className="um_btn_primary"
+                      onClick={() => setMoveSelectRequiredOpen(false)}
+                    >
+                      <CircleCheck size={16} strokeWidth={2} aria-hidden />
+                      OK
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {moveDocumentPending
+        ? createPortal(
+            <div
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_section_modal_overlay deal_docs_shared_notify_overlay"
+              role="presentation"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) cancelMoveDocument()
+              }}
+            >
+              <div
+                className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_docs_move_modal_shell deal_docs_move_modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={moveDocumentTitleId}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="um_modal_head add_contact_modal_head">
+                  <div className="add_contact_modal_head_main">
+                    <FormHeadingWithInfo
+                      as="h2"
+                      id={moveDocumentTitleId}
+                      className="um_modal_title add_contact_modal_title"
+                      title={
+                        moveDocumentPending.items.length === 1
+                          ? "Move document"
+                          : `Move ${moveDocumentPending.items.length} documents`
+                      }
+                      info={
+                        <p>
+                          Choose a destination section. Documents already in that
+                          section are skipped.
+                        </p>
+                      }
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="um_modal_close"
+                    aria-label="Close"
+                    onClick={cancelMoveDocument}
+                  >
+                    <X size={20} strokeWidth={2} aria-hidden />
+                  </button>
+                </div>
+                <div className="deals_add_inv_modal_scroll deal_docs_move_modal_scroll">
+                  <p className="deal_docs_move_modal_summary">
+                    {moveDocumentPending.items.length === 1 ? (
+                      <>
+                        Move{" "}
+                        <strong>
+                          {(() => {
+                            const item = moveDocumentPending.items[0]!
+                            const from = sections.find(
+                              (s) => s.id === item.sectionId,
+                            )
+                            const doc = from?.nestedDocuments.find(
+                              (d) => d.id === item.docId,
+                            )
+                            return doc?.name.trim() || "this document"
+                          })()}
+                        </strong>{" "}
+                        from{" "}
+                        <strong>
+                          {(() => {
+                            const item = moveDocumentPending.items[0]!
+                            const from = sections.find(
+                              (s) => s.id === item.sectionId,
+                            )
+                            return from
+                              ? sectionDisplayLabel(from)
+                              : "this section"
+                          })()}
+                        </strong>{" "}
+                        to another section.
+                      </>
+                    ) : (
+                      <>
+                        Move <strong>{moveDocumentPending.items.length}</strong>{" "}
+                        selected documents to another section. Documents already
+                        in the destination section are skipped.
+                      </>
+                    )}
+                  </p>
+                  {moveDocumentPending.items.length > 1 &&
+                  movableItemsForTarget.length > 0 ? (
+                    <p className="deal_docs_move_modal_note" role="status">
+                      <strong>{movableItemsForTarget.length}</strong> document
+                      {movableItemsForTarget.length === 1 ? "" : "s"} will move to
+                      the section you choose below.
+                    </p>
+                  ) : null}
+                  {moveTargetSectionOptions.length === 0 ? (
+                    <p className="deal_docs_move_modal_note deal_docs_move_modal_note--warn" role="status">
+                      Add another section before moving documents.
+                    </p>
+                  ) : (
+                    <fieldset className="deal_docs_move_section_fieldset">
+                      <legend className="deal_docs_move_section_legend">
+                        Destination section
+                      </legend>
+                      <ul className="deal_docs_move_section_list" role="list">
+                        {moveTargetSectionOptions.map((target) => (
+                          <li key={target.id}>
+                            <label className="deal_docs_move_section_option">
+                              <input
+                                type="radio"
+                                name="deal-docs-move-target"
+                                className="deal_docs_move_section_radio"
+                                value={target.id}
+                                checked={moveTargetSectionId === target.id}
+                                onChange={() =>
+                                  setMoveTargetSectionId(target.id)
+                                }
+                              />
+                              <span className="deal_docs_move_section_option_label">
+                                {sectionDisplayLabel(target)}
+                              </span>
+                              <span className="deal_docs_move_section_option_meta">
+                                {target.nestedDocuments.length} document
+                                {target.nestedDocuments.length === 1 ? "" : "s"}
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </fieldset>
+                  )}
+                </div>
+                <div className="um_modal_actions add_contact_modal_actions">
+                  <button
+                    type="button"
+                    className="um_btn_secondary"
+                    onClick={cancelMoveDocument}
+                  >
+                    <X size={16} strokeWidth={2} aria-hidden />
+                    Cancel
+                  </button>
+                  <div className="add_contact_modal_actions_trailing">
+                    <button
+                      type="button"
+                      className="um_btn_primary"
+                      disabled={
+                        moveTargetSectionOptions.length === 0 ||
+                        !moveTargetSectionId ||
+                        movableItemsForTarget.length === 0
+                      }
+                      onClick={confirmMoveDocument}
+                    >
+                      <ArrowRightLeft size={16} strokeWidth={2} aria-hidden />
+                      Move
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>,

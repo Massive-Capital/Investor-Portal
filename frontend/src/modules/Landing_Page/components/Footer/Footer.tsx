@@ -1,5 +1,6 @@
 import "./Footer.css";
 import { Linkedin } from "lucide-react";
+import { Link } from "react-router-dom";
 import { SX_LOGO_SRC } from "@/assets/branding";
 import { footer } from "../../data/content";
 import { scrollToSection } from "../../utils/helpers";
@@ -76,7 +77,9 @@ export function Footer() {
         </div>
         <div className="sx-footer__bottom">
           <span>{footer.copyright}</span>
-          <span>Designed for institutional-grade syndication.</span>
+          <Link to="/" className="sx-footer__classic-link">
+            New experience
+          </Link>
         </div>
       </div>
     </footer>

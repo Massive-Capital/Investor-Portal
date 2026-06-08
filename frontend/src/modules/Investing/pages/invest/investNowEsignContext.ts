@@ -1,7 +1,42 @@
 import type { DealEsignTemplateFileRecord } from "@/modules/Syndication/Deals/api/dealsApi"
+import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import {
+  investorRowCommittedNumeric,
+} from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import type { InvestorQuestionnaireConfig } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
 import { sortSections } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
 import { isQuestionnaireSectionVisibleForProfile } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaireProfileVisibility"
+
+/** `deal_investment.id` for this saved profile commitment (multi-profile Invest Now). */
+export function investNowCommitmentRowIdForScope(
+  investors: DealInvestorRow[],
+  opts: {
+    email: string
+    profileId: string
+    userInvestorProfileId: string
+  },
+): string | null {
+  const em = opts.email.trim().toLowerCase()
+  const uip = opts.userInvestorProfileId.trim().toLowerCase()
+  const profileId = opts.profileId.trim()
+  const rows = investors.filter((r) => {
+    if (r.investorKind === "lp_roster") return false
+    if (em && String(r.userEmail ?? "").trim().toLowerCase() !== em) return false
+    if (
+      uip &&
+      String(r.userInvestorProfileId ?? "").trim().toLowerCase() !== uip
+    ) {
+      return false
+    }
+    if (profileId && String(r.profileId ?? "").trim() !== profileId) return false
+    if (uip || profileId) return true
+    return investorRowCommittedNumeric(r) > 0
+  })
+  if (rows.length === 0) return null
+  const portal = rows.filter((r) => r.investorKind !== "lp_roster")
+  const pick = (portal.length > 0 ? portal : rows)[0]
+  return pick?.id?.trim() || null
+}
 
 /** Maps commitment `profile_id` to eSign template `categoryId`. */
 export function esignCategoryIdFromCommitmentProfile(

@@ -1,6 +1,7 @@
 import {
   Eye,
   Info,
+  ListChecks,
   Loader2,
   Mail,
   Pencil,
@@ -94,7 +95,7 @@ export function DealSendMailModal({
         .filter((e) => e.includes("@")),
     )
     void (async () => {
-      const [templates, invPayload, members] = await Promise.all([
+      const [templates, invPayload, membersResult] = await Promise.all([
         loadEmailTemplates(),
         fetchDealInvestors(dealId.trim(), { lpInvestorsOnly: true }),
         fetchDealMembers(dealId.trim()),
@@ -102,7 +103,7 @@ export function DealSendMailModal({
       if (cancelled) return
       const merged = mergeDealInvestorsAndMembersToRecipients(
         invPayload.investors,
-        members,
+        membersResult.members,
       )
       setRecipients(merged)
       const ids =
@@ -353,7 +354,10 @@ export function DealSendMailModal({
                     onChange={toggleSelectAllRecipients}
                     aria-label="Select all recipients on this deal"
                   />
-                  <span>Select all</span>
+                  <span>
+                    <ListChecks size={14} strokeWidth={2} aria-hidden />
+                    Select all
+                  </span>
                 </label>
                 <ul
                   className="deal_inv_comm_recipient_list"

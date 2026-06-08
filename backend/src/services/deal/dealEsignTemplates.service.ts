@@ -114,6 +114,14 @@ export function dealHasEsignTemplateDocuments(state: EsignTemplatesJson): boolea
   return state.files.length > 0;
 }
 
+/** At least one template uploaded and every template finished in Dropbox Sign. */
+export function dealEsignTemplatesFullyConfigured(
+  state: EsignTemplatesJson,
+): boolean {
+  if (state.files.length === 0) return false;
+  return state.files.every((f) => f.dropboxSignStatus === "ready");
+}
+
 export function isPdfEsignFile(record: EsignTemplateFileRecord): boolean {
   return (
     isPdfFileName(record.originalName) ||

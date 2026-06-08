@@ -77,12 +77,14 @@ export interface DealInvestorRow {
   docSignedDateIso?: string
   /** Timestamp when this investment row was first created (invested). */
   investedAtIso?: string
-  /** Portal user who added this member (`deal_member.added_by` → `users` display name). */
+  /** Portal user who added this investor (`deal_lp_investor` / `deal_member.added_by`). */
   addedByDisplayName?: string
   /** `users.id` of the sponsor who added this investor (when API sends it). */
   addedByUserId?: string
   /** True when `addedByUserId` is a Lead / Admin / Co-sponsor on this deal’s roster. */
   addedByIsSponsorOnDeal?: boolean
+  /** True when `addedByUserId` is a Co-sponsor on this deal (lead/admin email redaction). */
+  addedByIsCoSponsorOnDeal?: boolean
   /**
    * Deal Members tab: total committed (USD) on other investors this member added to the
    * roster (excludes their own commitment). From API `addedInvestorsCommitted`.
@@ -130,4 +132,15 @@ export interface DealInvestorEsignSendStatus {
 export interface DealInvestorsPayload {
   kpis: DealInvestorsKpis
   investors: DealInvestorRow[]
+}
+
+/** GET `/deals/:dealId/members` — roster rows plus optional viewer role hint. */
+export interface DealMembersPayload {
+  members: DealInvestorRow[]
+  /** API `viewerDealMemberRole` / `viewer_deal_member_role` for the signed-in user. */
+  viewerDealMemberRole?: unknown
+}
+
+export function emptyDealMembersPayload(): DealMembersPayload {
+  return { members: [] }
 }

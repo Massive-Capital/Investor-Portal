@@ -181,6 +181,7 @@ const SigninForm = () => {
             icon={<Mail width={20} strokeWidth={1.5} aria-hidden />}
             type="email"
             name="email"
+            placeholder="johndoe@domain.com"
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
@@ -234,6 +235,12 @@ const SigninForm = () => {
           />
         </div>
 
+        <p className="auth_row_forgot">
+          <Link to="/forgotPassword" className="auth_link">
+            Forgot password?
+          </Link>
+        </p>
+
         {resetSuccess && (
           <div className="authMessage authMessage--success">
             <CheckCircle className="authMessage__icon" size={16} aria-hidden />
@@ -273,39 +280,18 @@ const SigninForm = () => {
           </button>
         </div>
 
-        {/* <div>
-          <p className="forgotPassword">
-            <Link to="/forgotPassword">
-              <span>Forgot Password?</span>
-            </Link>
-          </p>
-        </div> */}
-        <div>
-          <p className="forgotPassword">
-            Don't have an account?
-            <Link to="/signup">
-              <span> Sign up</span>
-            </Link>
-          </p>
-        </div>
+        <p className="auth_footer_links">
+          Don&apos;t have an account?{" "}
+          <Link to="/signup">Sign up</Link>
+        </p>
 
-        <div className="companyContent">
-          <div className="contentOne">
-            <p>
-              Welcome to the SyndicationX Investor Portal where you can
-              access a wide range of investor information and documentation.
-            </p>
-            <p className="contentTwo">
-              Please log in to the Investor Portal using your email address and
-              password. If you have trouble logging in, you can reset your
-              password using the{" "}
-              <Link to="/forgotPassword" className="forgot-password">
-                <span>Forgot Password?</span>
-              </Link>{" "}
-              link.
-            </p>
-            <FooterForm />
-          </div>
+        <div className="auth_help companyContent">
+          {/* <p>
+            Use the email and password provided by your sponsor or
+            administrator. Need help? Contact your deal team or reset your
+            password above.
+          </p> */}
+          <FooterForm />
         </div>
       </form>
     </>

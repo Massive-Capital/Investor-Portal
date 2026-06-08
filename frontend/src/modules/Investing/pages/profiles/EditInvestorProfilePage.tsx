@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "@/common/components/Toast"
@@ -126,6 +126,7 @@ export function EditInvestorProfilePage() {
         </div>
         <div style={{ margin: "0 1rem 1rem" }}>
           <button type="button" className="um_btn_secondary" onClick={goBack}>
+            <ArrowLeft size={16} strokeWidth={2} aria-hidden />
             Back to profiles
           </button>
         </div>

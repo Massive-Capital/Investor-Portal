@@ -416,14 +416,13 @@ export default function CompanyDealsPage() {
             columns={columns}
             rows={loading ? [] : filteredDeals}
             getRowKey={(row, i) => row.id || `deal-${i}`}
+            isLoading={loading}
             emptyLabel={
-              loading
-                ? "Loading deals…"
-                : deals.length === 0
-                  ? "No deals for this company yet."
-                  : query.trim()
-                    ? "No deals match your search."
-                    : "No rows."
+              deals.length === 0
+                ? ""
+                : query.trim()
+                  ? "No deals match your search."
+                  : "No rows."
             }
             emptyStateRole={loading ? "status" : undefined}
             pagination={

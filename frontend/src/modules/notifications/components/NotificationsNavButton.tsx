@@ -9,8 +9,8 @@ export function NotificationsNavButton() {
   const [open, setOpen] = useState(false)
   const { unreadCount } = useNotifications()
 
-  const badgeLabel =
-    unreadCount > 99 ? "99+" : unreadCount > 0 ? String(unreadCount) : null
+  const badgeLabel = unreadCount > 99 ? "99+" : String(unreadCount)
+  const hasUnread = unreadCount > 0
 
   const close = useCallback(() => setOpen(false), [])
   const toggle = useCallback(() => setOpen((v) => !v), [])
@@ -19,9 +19,15 @@ export function NotificationsNavButton() {
     <div className="notifications_nav_root" ref={anchorRef}>
       <button
         type="button"
-        className={`notifications_nav_btn${open ? " notifications_nav_btn--open" : ""}`}
+        className={[
+          "notifications_nav_btn",
+          open ? "notifications_nav_btn--open" : "",
+          hasUnread ? "notifications_nav_btn--has-unread" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         aria-label={
-          unreadCount > 0
+          hasUnread
             ? `Notifications, ${unreadCount} unread`
             : "Notifications"
         }
@@ -29,8 +35,10 @@ export function NotificationsNavButton() {
         aria-haspopup="dialog"
         onClick={toggle}
       >
-        <Bell size={20} strokeWidth={2} aria-hidden />
-        {badgeLabel ? (
+        <span className="notifications_nav_icon" aria-hidden>
+          <Bell size={20} strokeWidth={2} />
+        </span>
+        {hasUnread ? (
           <span className="notifications_nav_badge" aria-hidden>
             {badgeLabel}
           </span>

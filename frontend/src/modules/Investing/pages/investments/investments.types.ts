@@ -1,3 +1,5 @@
+import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/investNowDraftProgress"
+
 /** Investments list tab: active commitment vs invited but not onboarded. */
 export type InvestmentOnboardingBucket = "in_progress" | "pending"
 
@@ -32,10 +34,23 @@ export type InvestmentListRow = {
   offeringStatus?: string
   actionRequired: string
   /**
-   * Drives In progress vs Pending tabs on the investments page.
-   * `pending` = invited LP who has not started Invest Now; `in_progress` = committed and/or eSign started.
+   * Drives Active vs Pending tabs on the investments page.
+   * `pending` = invited or draft, and no profile has fully completed e-sign yet.
+   * `in_progress` = at least one profile fully completed e-sign (Active only).
    */
   onboardingBucket?: InvestmentOnboardingBucket
+  /** Tab membership; a deal is on Active OR Pending, not both. */
+  onboardingBuckets?: InvestmentOnboardingBucket[]
+  /** True when the viewer has a per-profile Invest Now draft on this deal. */
+  hasInvestNowDraft?: boolean
+  /** Scope for Resume investing from the list (first draft profile). */
+  investNowResumeScope?: {
+    investmentId?: string
+    userInvestorProfileId?: string
+    profileId?: string
+  }
+  /** Estimated Invest Now wizard completion for draft deals. */
+  investNowDraftProgress?: InvestNowDraftProgress
   /** When true, row appears under Archives tab (same pattern as deals list). */
   archived?: boolean
   /** Former Deals tab columns (from `DealListRow`). */
@@ -43,12 +58,18 @@ export type InvestmentListRow = {
   secType?: string
   propertyName?: string
   owningEntityName?: string
+  /** Lead sponsor (or owning entity / org) for this deal — same as Invest now “Sponsor”. */
+  dealSponsorName?: string
   startDateDisplay?: string
   viewerRolesLabel?: string
 }
 
 /** One line on the investment detail: a My Profile (or an unbooked commitment), type(s), and amount. */
 export type InvestmentBreakdownLine = {
+  /** `deal_investment.id` for this commitment line. */
+  investmentRowId?: string
+  userInvestorProfileId?: string
+  commitmentProfileId?: string
   /**
    * Book profile name when available; else a non-duplicate `entitySubtitle` or id hint
    * so the same investor type (e.g. Individual) on multiple rows can still be distinguished.

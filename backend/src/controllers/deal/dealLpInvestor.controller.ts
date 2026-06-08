@@ -16,8 +16,10 @@ import {
 import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import {
+  findDealLpInvestorByDealAndContact,
   getDealLpInvestorById,
   getLpInvestorsTabPayload,
+  LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE,
   updateDealLpInvestorById,
   updateMyCommittedAmountForLpDeal,
   upsertDealLpInvestor,
@@ -105,6 +107,17 @@ export async function postDealLpInvestor(
     if (!classResolution.ok) {
       res.status(400).json({ message: classResolution.message });
       return;
+    }
+
+    if (!autosave) {
+      const duplicate = await findDealLpInvestorByDealAndContact(
+        dealId,
+        contactId,
+      );
+      if (duplicate) {
+        res.status(409).json({ message: LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE });
+        return;
+      }
     }
 
     const row = await upsertDealLpInvestor(dealId, {
@@ -220,6 +233,21 @@ export async function putDealLpInvestor(
     if (!classResolution.ok) {
       res.status(400).json({ message: classResolution.message });
       return;
+    }
+
+    if (!autosave) {
+      const duplicate = await findDealLpInvestorByDealAndContact(
+        dealId,
+        contactId,
+      );
+      if (
+        duplicate &&
+        String(duplicate.id).toLowerCase() !==
+          String(lpInvestorId).trim().toLowerCase()
+      ) {
+        res.status(409).json({ message: LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE });
+        return;
+      }
     }
 
     const row = await updateDealLpInvestorById(dealId, lpInvestorId, {

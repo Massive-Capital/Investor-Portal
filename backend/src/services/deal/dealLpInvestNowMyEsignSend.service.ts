@@ -99,6 +99,8 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
   viewerEmail: string;
   viewerUserId: string;
   profileId: string;
+  userInvestorProfileId?: string | null;
+  investmentId?: string | null;
   memberDisplayName?: string;
   questionnaireAnswers?: Record<string, string> | null;
   w9Form?: unknown;
@@ -139,6 +141,9 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
   const target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
     email,
     userId: params.viewerUserId,
+    profileId: params.profileId,
+    userInvestorProfileId: params.userInvestorProfileId,
+    investmentId: params.investmentId,
   });
   if (!target) {
     return {
@@ -227,6 +232,7 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
   }
 
   await markDealInvestorEsignPending(dealId, {
+    target,
     rosterId,
     toEmail: email,
     documents: applyInvestorPreviewToEsignDocuments(

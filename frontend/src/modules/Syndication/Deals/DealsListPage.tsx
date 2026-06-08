@@ -9,8 +9,13 @@ import {
   Search,
   X,
 } from "lucide-react"
+import { AvatarInitialsRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useSearchParams } from "react-router-dom"
+import {
+  applyDealsSearchToParams,
+  readDealsSearchQuery,
+} from "@/common/deals/dealsSearchQuery"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import {
   filterDealListToInvestingDealsPage,
@@ -137,11 +142,11 @@ function DealListNameCell({ row }: { row: DealListRow }) {
     </Link>
   )
 
+  const dealLabel = row.dealName?.trim() || "Deal"
+
   return (
     <div className="deals_list_name_cell">
-      <div className="deals_list_deal_avatar" aria-hidden>
-        <Briefcase size={18} strokeWidth={1.75} />
-      </div>
+      <AvatarInitialsRing name={dealLabel} />
       <div className="deals_list_name_text">
         <div className="deals_list_name_primary">{nameLink}</div>
         {showDraftMarker ? (
@@ -214,12 +219,13 @@ function DealsSuspendAllConfirmModal({
             from the Archives tab.
           </p>
         </div>
-        <div className="um_modal_actions">
+        <div className="um_modal_actions add_contact_modal_actions">
           <button
             type="button"
             className="um_btn_secondary"
             onClick={onCancel}
           >
+            <X size={16} strokeWidth={2} aria-hidden />
             Cancel
           </button>
           <button
@@ -227,6 +233,7 @@ function DealsSuspendAllConfirmModal({
             className="um_btn_primary"
             onClick={onConfirm}
           >
+            <Archive size={16} strokeWidth={2} aria-hidden />
             Move to Archives
           </button>
         </div>
@@ -267,10 +274,28 @@ export function DealsListPage({
 }: DealsListPageProps = {}) {
   const { mode } = usePortalMode()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const hideCreateDraftRow =
     location.pathname === "/deals/create" ||
     dealsListContext === "investing"
-  const [query, setQuery] = useState("")
+  const urlDealsQuery =
+    dealsListContext === "syndicating" && !embedded
+      ? readDealsSearchQuery(searchParams)
+      : ""
+  const [query, setQuery] = useState(urlDealsQuery)
+
+  useEffect(() => {
+    if (dealsListContext !== "syndicating" || embedded) return
+    setQuery(urlDealsQuery)
+  }, [dealsListContext, embedded, urlDealsQuery])
+
+  function handleDealsQueryChange(value: string) {
+    setQuery(value)
+    if (dealsListContext !== "syndicating" || embedded) return
+    setSearchParams(applyDealsSearchToParams(searchParams, value), {
+      replace: true,
+    })
+  }
   const [activeTab, setActiveTab] = useState<DealsListTab>("deals")
   const [dealsPage, setDealsPage] = useState(1)
   const [dealsPageSize, setDealsPageSize] = useState(10)
@@ -422,7 +447,7 @@ export function DealsListPage({
       const entries = await Promise.all(
         ids.map(async (id) => {
           try {
-            const [{ kpis, investors }, classes, membersRoster] =
+            const [{ kpis, investors }, classes, membersResult] =
               await Promise.all([
                 fetchDealInvestors(id, investFetchOpts),
                 dealsListContext === "investing"
@@ -432,6 +457,7 @@ export function DealsListPage({
                   : fetchDealInvestorClasses(id),
                 fetchDealMembers(id),
               ])
+            const membersRoster = membersResult.members
             const investorClassesLine = classes
               .map((c) => String(c.name ?? "").trim())
               .filter(Boolean)
@@ -932,7 +958,7 @@ export function DealsListPage({
             ? "deals-tab-deals"
             : "deals-tab-archives"
       }
-      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading && rows.length === 0 ? " deals_list_table_panel_loading" : ""}`}
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${loading ? " deals_list_table_panel_loading" : ""}`}
       aria-busy={loading}
     >
       <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
@@ -963,7 +989,8 @@ export function DealsListPage({
             className="um_search_input"
             placeholder="Search deals…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => handleDealsQueryChange(e.target.value)}
+            disabled={loading}
             aria-label="Search deals"
           />
         </div>
@@ -980,14 +1007,14 @@ export function DealsListPage({
             ? "deals_list_row_draft"
             : undefined
         }
+        isLoading={loading && rows.length === 0}
         emptyLabel={
-          loading && rows.length === 0
-            ? "Loading deals…"
-            : query.trim()
-              ? "No deals match your search."
-              : emptyMessage
+          query.trim() ? "No deals match your search." : emptyMessage
         }
-        pagination={displayRows.length > 0 ? dealsPagination : undefined}
+        emptyStateRole={loading ? "status" : undefined}
+        pagination={
+          !loading && displayRows.length > 0 ? dealsPagination : undefined
+        }
       />
     </div>
   )

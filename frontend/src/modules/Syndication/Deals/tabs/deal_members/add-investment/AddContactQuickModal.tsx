@@ -1,4 +1,4 @@
-import { Loader2, X } from "lucide-react"
+import { Loader2, Plus, X } from "lucide-react"
 import { UsPhoneInput } from "../../../../../../common/components/UsPhoneInput"
 import {
   isValidUsNanp10,
@@ -177,29 +177,31 @@ export function AddContactQuickModal({
                 required
               />
             </label>
-            <label className="add_contact_quick_label">
-              Email
-              <input
-                type="email"
-                className="add_contact_quick_input deals_add_inv_field_pill"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                disabled={submitting}
-                required
-              />
-            </label>
-            <label className="add_contact_quick_label">
-              Phone <span className="add_contact_quick_optional">(optional)</span>
-              <UsPhoneInput
-                id={`${titleId}-phone`}
-                name="phone"
-                nationalDigits={phoneNationalDigits}
-                onNationalDigitsChange={setPhoneNationalDigits}
-                disabled={submitting}
-                className="add_contact_quick_input deals_add_inv_field_pill"
-              />
-            </label>
+            <div className="add_contact_quick_contact_grid">
+              <label className="add_contact_quick_label">
+                Email
+                <input
+                  type="email"
+                  className="add_contact_quick_input deals_add_inv_field_pill"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  disabled={submitting}
+                  required
+                />
+              </label>
+              <label className="add_contact_quick_label">
+                Phone <span className="add_contact_quick_optional">(optional)</span>
+                <UsPhoneInput
+                  id={`${titleId}-phone`}
+                  name="phone"
+                  nationalDigits={phoneNationalDigits}
+                  onNationalDigitsChange={setPhoneNationalDigits}
+                  disabled={submitting}
+                  className="add_contact_quick_input deals_add_inv_field_pill"
+                />
+              </label>
+            </div>
           </div>
           <div className="add_contact_quick_actions">
             <button
@@ -208,6 +210,7 @@ export function AddContactQuickModal({
               disabled={submitting}
               onClick={handleClose}
             >
+              <X size={16} strokeWidth={2} aria-hidden />
               Cancel
             </button>
             <button
@@ -226,7 +229,10 @@ export function AddContactQuickModal({
                   Saving…
                 </>
               ) : (
-                "Save contact"
+                <>
+                  <Plus size={16} strokeWidth={2} aria-hidden />
+                  Save contact
+                </>
               )}
             </button>
           </div>

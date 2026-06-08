@@ -31,7 +31,6 @@ import {
 } from "../../services/deal/dealMemberEsignCompletion.service.js";
 import {
   findInvestorEsignTargetByMetadata,
-  investorEsignTargetHasPositiveCommitment,
   markDealInvestorEsignPending,
   readInvestorEsignStatusJson,
   resolveEsignTargetForInvestorRowId,
@@ -43,6 +42,7 @@ import {
   esignTemplateDisplayNameForFile,
 } from "../../services/deal/dealMemberSendEsignDropbox.service.js";
 import { sendDealMemberSendEsignEmail } from "../../services/deal/dealMemberSendEsign.service.js";
+import { resolveViewerDealMemberRoleOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 
 /**
@@ -77,7 +77,10 @@ export async function getDealMembers(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    const members = await listDealMembersMappedToInvestorApi(dealId, user.id);
+    const [members, viewerDealMemberRole] = await Promise.all([
+      listDealMembersMappedToInvestorApi(dealId, user.id),
+      resolveViewerDealMemberRoleOnDeal(dealId, user.id),
+    ]);
     if (process.env.DEAL_MEMBERS_COMMIT_DEBUG === "1") {
       console.log(
         `[deal members commit debug] dealId=${dealId} rows=${members.length}`,
@@ -88,7 +91,7 @@ export async function getDealMembers(
         );
       }
     }
-    res.status(200).json({ members });
+    res.status(200).json({ members, viewerDealMemberRole });
   } catch (err) {
     console.error("getDealMembers:", err);
     res.status(500).json({ message: "Could not load deal members" });
@@ -142,6 +145,9 @@ export async function postDealMemberInvitationEmail(
   const invitationSource: "investor" | "deal_member" =
     sourceRaw === "deal_member" || sourceRaw === "member" ? "deal_member" : "investor";
   const dealMemberRole = bodyString(b.deal_member_role ?? b.dealMemberRole);
+  const contactMemberId = bodyString(
+    b.contact_member_id ?? b.contactMemberId ?? b.roster_id ?? b.rosterId,
+  );
 
   if (!toEmail.trim() || !toEmail.includes("@")) {
     res.status(400).json({ message: "Valid to_email is required" });
@@ -176,7 +182,10 @@ export async function postDealMemberInvitationEmail(
       res.status(502).json({ message: msg });
       return;
     }
-await markDealMemberInvitationMailSent(dealId, { toEmail: toEmail.trim() });
+    await markDealMemberInvitationMailSent(dealId, {
+      toEmail: toEmail.trim(),
+      ...(contactMemberId ? { contactMemberId } : {}),
+    });
     logSocDealMemberInvitationSent({
       actorUserId: user.id,
       dealId: dealId.trim(),
@@ -298,13 +307,6 @@ export async function postDealMemberSendEsign(
       (await findInvestorEsignTargetByMetadata(dealId, resolvedRosterId));
     if (!esignTarget) {
       res.status(400).json({ message: "Investor roster entry not found on this deal" });
-      return;
-    }
-    if (!(await investorEsignTargetHasPositiveCommitment(dealId, esignTarget))) {
-      res.status(400).json({
-        message:
-          "This investor must have a committed investment amount before you can send eSign documents",
-      });
       return;
     }
 

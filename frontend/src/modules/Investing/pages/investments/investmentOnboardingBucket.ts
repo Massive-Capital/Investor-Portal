@@ -12,3 +12,12 @@ export function resolveInvestmentOnboardingBucket(
   if (row.investedAmount > 0) return "in_progress"
   return "pending"
 }
+
+export function investmentRowMatchesOnboardingTab(
+  row: InvestmentListRow,
+  tab: InvestmentOnboardingBucket,
+): boolean {
+  const buckets = row.onboardingBuckets
+  if (buckets?.length) return buckets.includes(tab)
+  return resolveInvestmentOnboardingBucket(row) === tab
+}

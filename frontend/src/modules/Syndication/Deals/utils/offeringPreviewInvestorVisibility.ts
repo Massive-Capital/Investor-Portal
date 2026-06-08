@@ -29,14 +29,14 @@ export const OFFERING_DETAILS_SECTION_ORDER: {
   label: string
 }[] = [
   { id: "make_announcement", label: "Make announcement" },
-  { id: "overview", label: "Overview" },
+  { id: "overview", label: "Offering Details" },
   { id: "offering_information", label: "Classes" },
   { id: "gallery", label: "Gallery" },
   { id: "summary", label: "Summary" },
   { id: "documents", label: "Documents" },
   { id: "assets", label: "Assets" },
   { id: "key_highlights", label: "Key Highlights" },
-  { id: "funding_instructions", label: "Funding Info" },
+  { id: "funding_instructions", label: "Funding Information" },
 ]
 
 /** Offering Details tab accordion only (documents live under the deal Documents tab). */

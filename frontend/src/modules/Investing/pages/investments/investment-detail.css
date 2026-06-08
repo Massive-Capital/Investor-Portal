@@ -48,13 +48,15 @@
   justify-content: center;
   min-width: 1.125rem;
   margin-left: 0.35rem;
-  padding: 0.05rem 0.35rem;
+  padding: 0.08rem 0.4rem;
   font-size: 0.6875rem;
-  font-weight: 700;
+  font-weight: inherit;
+  font-variant-numeric: tabular-nums;
   line-height: 1.2;
-  border-radius: 999px;
-  color: var(--portal-primary, #2563eb);
-  background: color-mix(in srgb, var(--portal-primary, #2563eb) 12%, transparent);
+  border-radius: var(--portal-pill-radius, 4px);
+  color: inherit;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
   vertical-align: middle;
 }
 
@@ -80,7 +82,7 @@
   gap: 0.65rem 1rem;
   margin: 0 0 1rem;
   padding: 0.75rem 0.9rem;
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
   border: 1px solid color-mix(in srgb, var(--portal-primary, #2563eb) 28%, #e2e8f0);
   background: color-mix(in srgb, var(--portal-primary, #2563eb) 6%, #fff);
 }
@@ -168,49 +170,77 @@
   border-top: none;
 }
 
-.investment_detail_esign_card_doc_name {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.45rem;
+.investment_detail_esign_card_doc_list {
+  list-style: none;
   margin: 0;
-  width: 100%;
-  min-width: 0;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--portal-text, #0f172a);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.investment_detail_esign_card_doc_name > span {
+.investment_detail_esign_card_doc_item + .investment_detail_esign_card_doc_item {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--portal-border, #e2e8f0);
+}
+
+.investment_detail_esign_card_doc_row {
+  width: 100%;
+}
+
+.investment_detail_esign_card_doc_name_wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
   min-width: 0;
-  flex: 1 1 auto;
+}
+
+.investment_detail_esign_card_doc_name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+}
+
+.investment_detail_esign_card_doc_status {
+  flex-shrink: 0;
 }
 
 .investment_detail_esign_card_doc_icon {
   flex-shrink: 0;
-  margin-top: 0.12rem;
   color: var(--portal-primary, #00477a);
 }
 
 .investment_detail_esign_card_doc_actions {
-  display: flex;
-  flex-wrap: wrap;
+  flex-shrink: 0;
   align-items: center;
-  gap: 0.5rem 0.85rem;
-  width: 100%;
-  min-width: 0;
-  padding-top: 0.15rem;
-  border-top: 1px solid var(--portal-border, #e2e8f0);
+  gap: 0.15rem 0.35rem;
 }
 
-.investment_detail_esign_card_doc_actions .lpd_doc_action {
+.investment_detail_esign_card_doc_sign_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0 0.15rem 0 0;
+  padding: 0.15rem 0.45rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
   font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--portal-primary, #2563eb);
+  cursor: pointer;
   white-space: nowrap;
+}
+
+.investment_detail_esign_card_doc_sign_btn:hover {
+  background: color-mix(in srgb, var(--portal-primary, #2563eb) 10%, transparent);
 }
 
 .investment_detail_documents_group_hint {
@@ -238,34 +268,19 @@
 .investment_detail_offering_docs_panel .deal_docs_ui_root {
   margin-top: 0;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
   overflow: hidden;
   background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+}
+
+.investment_detail_offering_docs_panel .deal_docs_ui_bundle:last-child .deal_docs_ui_tr:last-child .deal_docs_ui_td {
+  border-bottom: none;
 }
 
 .investment_detail_offering_docs_table {
   min-width: 0;
   width: 100%;
-}
-
-.investment_detail_offering_section_title_btn {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--portal-primary, #2563eb);
-  text-align: left;
-  cursor: pointer;
-  word-break: break-word;
-}
-
-.investment_detail_offering_section_title_btn:hover {
-  text-decoration: underline;
-  text-underline-offset: 0.12em;
 }
 
 .investment_detail_offering_doc_unavailable {
@@ -293,25 +308,17 @@
   box-sizing: border-box;
 }
 
+.investment_detail_esign_docs_toolbar .um_toolbar_actions {
+  order: 1;
+  margin-left: auto;
+}
+
 .investment_detail_esign_docs_toolbar .um_search_wrap {
-  flex: 1 1 180px;
-  min-width: min(100%, 160px);
-  max-width: min(22em, 100%);
-}
-
-.investment_detail_esign_docs_toolbar .um_search_input {
-  width: 100%;
-  min-height: 34px;
-  padding: 0.35em 0.65em 0.35em 2.1em;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  box-sizing: border-box;
-}
-
-.investment_detail_esign_docs_toolbar .um_search_icon {
-  left: 0.65rem;
-  width: 1rem;
-  height: 1rem;
+  order: 2;
+  margin-left: 0;
+  flex: 0 1 22em;
+  min-width: min(100%, 12rem);
+  max-width: 22em;
 }
 
 .investment_detail_documents_status--alert {
@@ -468,7 +475,7 @@
   justify-content: center;
   margin: 0;
   padding: 0.4em 0.9em;
-  border-radius: var(--portal-pill-radius, 9999px);
+  border-radius: var(--portal-pill-radius, 4px);
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.3;
@@ -578,7 +585,7 @@
   z-index: 30;
   max-width: min(18rem, 70vw);
   padding: 0.45em 0.7em;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.35;

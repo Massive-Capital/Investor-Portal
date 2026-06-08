@@ -14,18 +14,41 @@ import {
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import {
   listMyEsignDocumentsForInvestor,
+  maybeSyncDealInvestorEsignByTarget,
   syncDealInvestorEsignAfterEmbeddedSign,
-  syncDealInvestorEsignByTarget,
   syncDealInvestorEsignSignProgress,
 } from "../../services/deal/dealMemberEsignCompletion.service.js";
 import {
-  findInvestorEsignTargetForInvestNowCommitment,
-  findInvestorEsignTargetForPortalUser,
   investorEsignTargetHasPositiveCommitment,
   markDealInvestorEsignViewed,
   readInvestorEsignStatusJson,
+  resolveInvestorEsignTargetForSignedInInvestor,
+  type InvestNowEsignTargetOpts,
 } from "../../services/deal/dealMemberEsignStatus.service.js";
 import { getDealMyEsignSignSession } from "../../services/deal/dealMemberEsignSignSession.service.js";
+
+function queryString(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  if (Array.isArray(v) && v.length > 0) return queryString(v[v.length - 1]);
+  return "";
+}
+
+function investNowEsignScopeFromRequest(
+  req: Request,
+  email: string,
+  userId: string,
+): InvestNowEsignTargetOpts {
+  const q = req.query as Record<string, unknown>;
+  return {
+    email,
+    userId,
+    investmentId: queryString(q.investment_id ?? q.investmentId),
+    userInvestorProfileId: queryString(
+      q.user_investor_profile_id ?? q.userInvestorProfileId,
+    ),
+    profileId: queryString(q.profile_id ?? q.profileId),
+  };
+}
 
 /**
  * GET /deals/:dealId/my-esign-documents
@@ -58,26 +81,21 @@ export async function getDealMyEsignDocuments(
   }
 
   try {
-    const scope = await resolveDealViewerScope(
+    const viewerScope = await resolveDealViewerScope(
       user.id,
       user.userRole,
       requestedOrganizationIdFromRequest(req),
     );
-    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, viewerScope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
 
-    let target = await findInvestorEsignTargetForPortalUser(dealId, {
-      email,
-      userId: user.id,
-    });
-    if (!target) {
-      target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
-        email,
-        userId: user.id,
-      });
-    }
+    const esignScope = investNowEsignScopeFromRequest(req, email, user.id);
+    const target = await resolveInvestorEsignTargetForSignedInInvestor(
+      dealId,
+      esignScope,
+    );
     if (!target) {
       res.status(200).json({
         documents: [],
@@ -96,7 +114,7 @@ export async function getDealMyEsignDocuments(
       return;
     }
 
-    await syncDealInvestorEsignByTarget(dealId, target);
+    await maybeSyncDealInvestorEsignByTarget(dealId, target);
 
     const raw = await readInvestorEsignStatusJson(dealId, target);
     const bundle = parseEsignStatusBundle(raw);
@@ -149,12 +167,12 @@ export async function getDealMyEsignSignSessionHandler(
   }
 
   try {
-    const scope = await resolveDealViewerScope(
+    const viewerScope = await resolveDealViewerScope(
       user.id,
       user.userRole,
       requestedOrganizationIdFromRequest(req),
     );
-    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, viewerScope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -166,11 +184,15 @@ export async function getDealMyEsignSignSessionHandler(
           ? req.query.signature_request_id
           : undefined;
 
+    const esignScope = investNowEsignScopeFromRequest(req, email, user.id);
     const result = await getDealMyEsignSignSession({
       dealId,
       email,
       userId: user.id,
       signatureRequestId,
+      userInvestorProfileId: esignScope.userInvestorProfileId,
+      investmentId: esignScope.investmentId,
+      profileId: esignScope.profileId,
     });
     if (!result.ok) {
       const status =
@@ -237,26 +259,33 @@ export async function postDealMyEsignSync(
       .toLowerCase();
 
     try {
-    const scope = await resolveDealViewerScope(
+    const viewerScope = await resolveDealViewerScope(
       user.id,
       user.userRole,
       requestedOrganizationIdFromRequest(req),
     );
-    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, viewerScope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
 
-    let target = await findInvestorEsignTargetForPortalUser(dealId, {
-      email,
-      userId: user.id,
-    });
-    if (!target) {
-      target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
-        email,
-        userId: user.id,
-      });
+    const esignScope = investNowEsignScopeFromRequest(req, email, user.id);
+    if (body) {
+      const fromBody = queryString(
+        body.investment_id ?? body.investmentId,
+      );
+      const fromBodyUip = queryString(
+        body.user_investor_profile_id ?? body.userInvestorProfileId,
+      );
+      const fromBodyProfile = queryString(body.profile_id ?? body.profileId);
+      if (fromBody) esignScope.investmentId = fromBody;
+      if (fromBodyUip) esignScope.userInvestorProfileId = fromBodyUip;
+      if (fromBodyProfile) esignScope.profileId = fromBodyProfile;
     }
+    const target = await resolveInvestorEsignTargetForSignedInInvestor(
+      dealId,
+      esignScope,
+    );
     if (!target) {
       res.status(200).json({
         esignStatus: null,
@@ -309,18 +338,16 @@ async function resolveMyEsignTargetForUser(
   dealId: string,
   userId: string,
   email: string,
+  scope?: Pick<
+    InvestNowEsignTargetOpts,
+    "userInvestorProfileId" | "investmentId" | "profileId"
+  >,
 ) {
-  let target = await findInvestorEsignTargetForPortalUser(dealId, {
+  return resolveInvestorEsignTargetForSignedInInvestor(dealId, {
     email,
     userId,
+    ...scope,
   });
-  if (!target) {
-    target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
-      email,
-      userId,
-    });
-  }
-  return target;
 }
 
 /**

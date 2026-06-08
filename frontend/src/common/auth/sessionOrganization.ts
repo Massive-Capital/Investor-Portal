@@ -5,6 +5,7 @@ import {
 import { isPlatformAdmin } from "./roleUtils"
 import {
   getSessionAccessibleCompanies,
+  getSessionPrimaryCompanyName,
   isAccessibleCompanyId,
 } from "./sessionMemberships"
 
@@ -90,6 +91,22 @@ export function getSessionOrganizationCompanyId(): string | null {
   if (orgFromUser) return orgFromUser
   if (workspaceKey && isAccessibleCompanyId(workspaceKey)) return workspaceKey
   return null
+}
+
+/**
+ * Display name for the active workspace company (selected org / logged-in scope),
+ * not every membership the user belongs to.
+ */
+export function getActiveWorkspaceCompanyName(): string {
+  const companyId = getSessionOrganizationCompanyId()
+  if (companyId) {
+    const normalized = companyId.trim().toLowerCase()
+    const match = getSessionAccessibleCompanies().find(
+      (c) => c.companyId === normalized,
+    )
+    if (match?.companyName?.trim()) return match.companyName.trim()
+  }
+  return getSessionPrimaryCompanyName()
 }
 
 const ORG_UUID_RE =

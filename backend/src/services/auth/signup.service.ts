@@ -29,6 +29,9 @@ import {
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 16;
+/** Matches `users.username` varchar length; shown in UI as "Account name". */
+const ACCOUNT_NAME_MIN = 1;
+const ACCOUNT_NAME_MAX = 100;
 
 export type SignupBody = {
   email?: unknown;
@@ -79,25 +82,18 @@ function resolveSignupUsername(
   if (!userNameRaw) {
     return { userName: deriveSignupUsername(emailNorm), userProvided: false };
   }
-  if (userNameRaw.length < 3 || userNameRaw.length > 80) {
+  if (userNameRaw.length < ACCOUNT_NAME_MIN || userNameRaw.length > ACCOUNT_NAME_MAX) {
     return {
       ok: false,
       status: 400,
-      message: "Username must be between 3 and 80 characters",
-    };
-  }
-  if (!/^[a-zA-Z0-9_]+$/.test(userNameRaw)) {
-    return {
-      ok: false,
-      status: 400,
-      message: "Username may only contain letters, numbers, and underscores",
+      message: `Account name must be between ${ACCOUNT_NAME_MIN} and ${ACCOUNT_NAME_MAX} characters`,
     };
   }
   if (userNameRaw.toLowerCase().startsWith("invited_")) {
     return {
       ok: false,
       status: 400,
-      message: "Username is not available",
+      message: "Account name is not available",
     };
   }
   return { userName: userNameRaw, userProvided: true };
@@ -337,7 +333,7 @@ export async function registerUser(
         return {
           ok: false,
           status: 409,
-          message: "This user name is already taken",
+          message: "This account name is already taken",
         };
       }
     }

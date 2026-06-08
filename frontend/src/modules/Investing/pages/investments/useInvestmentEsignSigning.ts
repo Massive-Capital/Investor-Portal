@@ -1,5 +1,8 @@
 import { useCallback, useRef, useState } from "react"
-import { fetchDealMyEsignSignSession } from "@/modules/Syndication/Deals/api/dealsApi"
+import {
+  fetchDealMyEsignSignSession,
+  type DealMyEsignScopeQuery,
+} from "@/modules/Syndication/Deals/api/dealsApi"
 
 export interface InvestmentEsignActiveSession {
   signUrl: string
@@ -18,6 +21,7 @@ export type InvestmentEsignSignPhase =
 export function useInvestmentEsignSigning(
   dealId: string,
   signatureRequestId?: string,
+  esignScope?: DealMyEsignScopeQuery,
 ) {
   const [phase, setPhase] = useState<InvestmentEsignSignPhase>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -38,6 +42,7 @@ export function useInvestmentEsignSigning(
     const result = await fetchDealMyEsignSignSession(
       id,
       signatureRequestId?.trim() || undefined,
+      esignScope,
     )
 
     if (gen !== loadGenRef.current) {
@@ -85,7 +90,7 @@ export function useInvestmentEsignSigning(
     setEmbedKey((k) => k + 1)
     setPhase("embed")
     return true
-  }, [dealId, signatureRequestId])
+  }, [dealId, signatureRequestId, esignScope])
 
   const reset = useCallback(() => {
     loadGenRef.current += 1

@@ -7,6 +7,7 @@ export interface InvestNowW9StepProps {
   onW9Change: (v: InvestNowW9FormValues) => void
   disabled: boolean
   error?: string
+  fieldErrors?: Partial<Record<"w9-name" | "w9-address" | "w9-ssn", string>>
 }
 
 export function InvestNowW9Step({
@@ -14,6 +15,7 @@ export function InvestNowW9Step({
   onW9Change,
   disabled,
   error,
+  fieldErrors,
 }: InvestNowW9StepProps) {
   return (
     <InvestNowStepLayout
@@ -26,6 +28,7 @@ export function InvestNowW9Step({
         values={w9Values}
         onChange={onW9Change}
         disabled={disabled}
+        fieldErrors={fieldErrors}
       />
     </InvestNowStepLayout>
   )

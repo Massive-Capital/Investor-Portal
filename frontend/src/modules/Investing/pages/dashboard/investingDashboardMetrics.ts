@@ -1,11 +1,9 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
+import { inProgressNotCountersignedForViewer } from "@/modules/Investing/pages/dashboard/investingDashboardDealBucket"
 import { applyLpSessionDealIdScope } from "@/modules/Investing/utils/investingViewerDealScope"
 import { fetchDealInvestors, fetchDealsList } from "@/modules/Syndication/Deals/api/dealsApi"
 import { formatUsdDashboardAmount } from "@/modules/Syndication/Deals/dealsDashboardMoney"
-import type {
-  DealInvestorRow,
-  DealInvestorsPayload,
-} from "@/modules/Syndication/Deals/types/deal-investors.types"
+import type { DealInvestorsPayload } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 
 export interface InvestingDashboardMetrics {
@@ -25,50 +23,6 @@ function formatInvestingMoney(n: number): string {
   const x = Number.isFinite(n) ? n : 0
   if (x === 0) return "$0"
   return formatUsdDashboardAmount(x)
-}
-
-/** Not yet GP countersigned or complete; not inactive / draft / past / closed. */
-const EXCLUDE_FROM_IN_PROGRESS: ReadonlySet<string> = new Set([
-  "Counter-signed",
-  "Funding instructions sent",
-  "Funds fully received (complete)",
-  "Inactive (bought out, assigned, or sold)",
-  "Canceled (did not complete)",
-  "Draft (hidden to investors)",
-  "Past (hidden)",
-  "Closed (no new investments allowed)",
-  "Coming soon (no new investments allowed)",
-])
-
-/**
- * Committed $ on one row when the investment is “active” and the GP has not
- * countersigned yet (matches the Total in-progress dashboard hint).
- */
-function inProgressNotCountersignedCommittedOnRow(row: DealInvestorRow): number {
-  const status = String(row.status ?? "").trim()
-  if (!status || status === "—" || EXCLUDE_FROM_IN_PROGRESS.has(status))
-    return 0
-  const n = parseMoneyDigits(String(row.committed ?? ""))
-  if (!Number.isFinite(n) || n <= 0) return 0
-  return n
-}
-
-/**
- * For the signed-in LP, sum committed amounts on rows that are active and
- * not yet counter-signed.
- */
-function inProgressNotCountersignedForViewer(
-  payload: DealInvestorsPayload,
-  viewerEmailNorm: string,
-): number {
-  if (!viewerEmailNorm) return 0
-  let sum = 0
-  for (const inv of payload.investors) {
-    const em = String(inv.userEmail ?? "").trim().toLowerCase()
-    if (!em || em === "—" || em !== viewerEmailNorm) continue
-    sum += inProgressNotCountersignedCommittedOnRow(inv)
-  }
-  return sum
 }
 
 /** Treated as “your” distributed amount: rows with a funded date use committed. */

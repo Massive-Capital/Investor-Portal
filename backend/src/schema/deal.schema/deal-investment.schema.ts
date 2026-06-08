@@ -45,6 +45,8 @@ export const dealInvestment = pgTable("deal_investment", {
   investorQuestionnaireAnswersJson: text("investor_questionnaire_answers_json"),
   /** JSON: Invest Now W-9 step (name, address, SSN) for eSign W-9 appendix prefill. */
   investorW9FormJson: text("investor_w9_form_json"),
+  /** Invest Now funding method (`wire_transfer`, `ach`, `check`). */
+  fundingMethod: text("funding_method").notNull().default(""),
   commitmentAmount: text("commitment_amount").notNull().default(""),
   extraContributionAmounts: jsonb("extra_contribution_amounts")
     .$type<string[]>()

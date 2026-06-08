@@ -46,11 +46,14 @@ function filterOfferingDocumentSections(
 
 type LpDealOfferingDocumentsPanelProps = {
   dealId: string
+  /** Inside offering preview wireframe — matches portfolio Documents block. */
+  embedded?: boolean
 }
 
 /** Sectioned offering documents for the investing deal workspace (deal scope). */
 export function LpDealOfferingDocumentsPanel({
   dealId,
+  embedded = false,
 }: LpDealOfferingDocumentsPanelProps) {
   const [query, setQuery] = useState("")
   const [loadPending, setLoadPending] = useState(true)
@@ -143,14 +146,31 @@ export function LpDealOfferingDocumentsPanel({
     (hasSectionsOnDeal || hasVisibleDocs) &&
     !(query.trim() && !hasSearchMatches)
 
+  const sectionClassName = [
+    "lpdd_offering_docs",
+    "lpdd_offering_docs_panel",
+    embedded
+      ? "deal_offer_pf_wireframe_block deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_bento_full lpdd_offering_docs--embedded"
+      : "",
+  ]
+    .join(" ")
+    .trim()
+
+  const headingClassName = embedded
+    ? "deal_offer_pf_section_heading"
+    : "lpdd_section_heading"
+
+  const headingId = embedded ? "deal-pf-documents" : "lpdd-offering-documents-heading"
+  const headingLabel = embedded ? "Documents" : "Offering documents"
+
   if (loadPending) {
     return (
       <section
-        className="lpdd_offering_docs lpdd_offering_docs_panel"
-        aria-labelledby="lpdd-offering-documents-heading"
+        className={sectionClassName}
+        aria-labelledby={headingId}
       >
-        <h2 id="lpdd-offering-documents-heading" className="lpdd_section_heading">
-          Offering documents
+        <h2 id={headingId} className={headingClassName}>
+          {headingLabel}
         </h2>
         <p className="lpdd_offering_docs_status" role="status">
           Loading documents…
@@ -161,11 +181,11 @@ export function LpDealOfferingDocumentsPanel({
 
   return (
     <section
-      className="lpdd_offering_docs lpdd_offering_docs_panel"
-      aria-labelledby="lpdd-offering-documents-heading"
+      className={sectionClassName}
+      aria-labelledby={headingId}
     >
-      <h2 id="lpdd-offering-documents-heading" className="lpdd_section_heading">
-        Offering documents
+      <h2 id={headingId} className={headingClassName}>
+        {headingLabel}
       </h2>
 
       <div className="deal_docs investment_detail_offering_docs">

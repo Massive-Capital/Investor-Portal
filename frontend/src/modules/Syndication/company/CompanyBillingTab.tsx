@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, Check, CreditCard, Receipt } from "lucide-react";
+import { Calendar, Check, CreditCard, Receipt, Search } from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
@@ -546,6 +546,7 @@ function BillingPaymentHistoryPanel() {
           className="um_btn_primary cp_billing_search_btn"
           onClick={handleSearch}
         >
+          <Search size={16} strokeWidth={2} aria-hidden />
           Search
         </button>
       </div>

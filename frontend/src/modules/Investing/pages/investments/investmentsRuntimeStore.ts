@@ -24,7 +24,7 @@ function isStoredRowVisibleToCurrentSession(s: StoredRow): boolean {
   if (!me) return false
   const owner = (s.ownerEmail ?? "").trim().toLowerCase()
   if (owner) return owner === me
-  if (!shouldFilterInvestmentsToCurrentOwner()) return true
+  if (!shouldFilterInvestmentsToCurrentOwner()) return false
   const lpDeals = new Set(
     getLpInvestorDealIdsFromSession().map((id) => id.trim()),
   )

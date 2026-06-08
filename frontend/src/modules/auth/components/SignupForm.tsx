@@ -508,6 +508,7 @@ export default function SignupForm() {
                 icon={<Mail width={20} strokeWidth={1.5} aria-hidden />}
                 type="email"
                 name="email"
+                placeholder="johndoe@domain.com"
                 value={signUpFormData.email}
                 onChange={handleChange}
                 readOnly={Boolean(token && resolvedInviteEmail)}
@@ -523,6 +524,7 @@ export default function SignupForm() {
                 icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
                 type="text"
                 name="companyName"
+                placeholder="Acme Capital LLC"
                 value={signUpFormData.companyName}
                 onChange={handleChange}
                 readOnly={Boolean(token && resolvedInviteCompanyName)}
@@ -541,6 +543,7 @@ export default function SignupForm() {
                 icon={<User width={20} strokeWidth={1.5} aria-hidden />}
                 type="text"
                 name="userName"
+                placeholder="John Smith"
                 value={signUpFormData.userName}
                 onChange={handleChange}
                 disabled={isLoading}
@@ -578,6 +581,7 @@ export default function SignupForm() {
                 <UsPhoneInput
                   id="signup-phone"
                   name="phone"
+                  placeholder="(555) 123-4567"
                   nationalDigits={signUpFormData.phone}
                   onNationalDigitsChange={(digits) => {
                     setSignUpFormData((prev) => ({ ...prev, phone: digits }));
@@ -600,6 +604,7 @@ export default function SignupForm() {
                 icon={<User width={20} strokeWidth={1.5} aria-hidden />}
                 type="text"
                 name="firstName"
+                placeholder="John"
                 value={signUpFormData.firstName}
                 onChange={handleChange}
                 readOnly={lockedPrefill.firstName}
@@ -615,6 +620,7 @@ export default function SignupForm() {
                 icon={<User width={20} strokeWidth={1.5} aria-hidden />}
                 type="text"
                 name="lastName"
+                placeholder="Doe"
                 value={signUpFormData.lastName}
                 onChange={handleChange}
                 readOnly={lockedPrefill.lastName}
@@ -766,19 +772,12 @@ export default function SignupForm() {
             )}
           </button>
         </div>
-          <div>
-                  <p className="forgotPassword">
-                    Already have an account!{" "}
-                    <Link to="/signin">
-                      <span>Signin</span>
-                    </Link>
-                  </p>
-                </div>
+        <p className="auth_footer_links">
+          Already have an account? <Link to="/signin">Sign in</Link>
+        </p>
 
-        <div className="companyContent">
-          <div className="contentOne">
-            <FooterForm />
-          </div>
+        <div className="auth_help companyContent">
+          <FooterForm />
         </div>
           </form>
         </div>

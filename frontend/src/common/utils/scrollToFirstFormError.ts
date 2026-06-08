@@ -11,7 +11,9 @@ const INVALID_CONTROL_SELECTOR = [
   "select[aria-invalid='true']",
   "textarea[aria-invalid='true']",
   "button.portal_dropdown_select_trigger[aria-invalid='true']",
+  "button.portal_dropdown_select_trigger_invalid",
   "button[aria-haspopup='listbox'][aria-invalid='true']",
+  "fieldset.invest_now_questionnaire_fieldset_invalid",
 ].join(", ")
 
 function focusAndScroll(el: HTMLElement) {

@@ -26,11 +26,13 @@ import {
   MapPin,
   Phone,
   Search,
+  Plus,
   UserPlus,
   UserRound,
   X,
   Save,
 } from "lucide-react"
+import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
 import { UsPhoneInput } from "@/common/components/UsPhoneInput"
 import { toast } from "@/common/components/Toast"
 import {
@@ -3039,7 +3041,7 @@ export function AddInvestorProfileModal({
                 className="um_btn_primary"
                 onClick={() => void handleSubmit()}
               >
-                <UserPlus size={18} strokeWidth={2} aria-hidden />
+                <Plus size={18} strokeWidth={2} aria-hidden />
                 Add profile
               </button>
             )}
@@ -3113,10 +3115,13 @@ export function AddInvestorProfileModal({
                   <ArrowLeft size={20} strokeWidth={2} aria-hidden />
                 </button>
                 <div className="deals_add_deal_asset_title_stack">
-                  <h1 id={addProfilePageTitleId} className="deals_list_title">
-                    {isEdit ? "Edit profile" : "Add profile"}
-                  </h1>
-                  <p className="deals_create_subtitle">{addProfilePageSubtitle}</p>
+                  <FormHeadingWithInfo
+                    as="h1"
+                    id={addProfilePageTitleId}
+                    className="deals_list_title"
+                    title={isEdit ? "Edit profile" : "Add profile"}
+                    info={<p>{addProfilePageSubtitle}</p>}
+                  />
                 </div>
               </div>
               <div

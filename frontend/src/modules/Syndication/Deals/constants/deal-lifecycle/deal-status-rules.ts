@@ -201,7 +201,7 @@ function statusForFundraisingProgression(
   status: DealStatus,
 ): DealStatus {
   const stage = normalizeDealStageCanonical(rawStage)
-  if (stage !== "capital_raising") return status
+  if (stage !== "capital_raising" && stage !== "draft") return status
   if (fundraisingStatusIndex(status) >= 0) return status
   return defaultStatusForStage("capital_raising")
 }
@@ -228,23 +228,14 @@ export function validateOfferingStatusChange(params: {
     return {
       ok: false,
       message:
-        "Offering status can only be changed while the deal is in the Capital Raising stage.",
+        "Offering status can only be changed while the deal is in Draft or Capital Raising.",
     }
   }
 
-  const prevForProgress = statusForFundraisingProgression(params.dealStage, prev)
   const nextForProgress = statusForFundraisingProgression(params.dealStage, next)
-  const prevIdx = fundraisingStatusIndex(prevForProgress)
   const nextIdx = fundraisingStatusIndex(nextForProgress)
-  if (prevIdx < 0 || nextIdx < 0) {
+  if (nextIdx < 0) {
     return { ok: false, message: "Invalid fundraising status." }
-  }
-  if (nextIdx < prevIdx) {
-    return {
-      ok: false,
-      message:
-        "Fundraising status cannot move backward. Use the next step in the capital raising workflow.",
-    }
   }
 
   return { ok: true }

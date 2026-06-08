@@ -11,9 +11,8 @@ export interface DealMemberSendEsignTemplateVars {
   dealName: string;
   memberDisplayName: string;
   memberEmail: string;
+  /** Deal-invite onboarding URL (`/deal-invite?token=…`) — same as investor invitation emails. */
   portalDealUrl: string;
-  /** Portal route that opens hellosign-embedded with client_id (required for signing). */
-  signPageUrl?: string;
   senderBrand: string;
   documentNames?: string[];
 }
@@ -31,14 +30,12 @@ export function buildDealMemberSendEsignEmailHtml(
 ): string {
   const name = v.memberDisplayName.trim() || "there";
   const deal = escHtml(v.dealName.trim() || "this deal");
-  const signPageUrl = escHtml(v.signPageUrl?.trim() ?? "");
   const portalUrl = escHtml(v.portalDealUrl.trim());
   const brandPlain = v.senderBrand.trim() || "SyndicationX";
   const brand = escHtml(brandPlain);
-  const ctaHref = signPageUrl || portalUrl;
-  const cta = ctaHref
+  const cta = portalUrl
     ? `<p style="margin:24px 0 0;text-align:center;">
-         <a href="${ctaHref}" style="${SX_EMAIL_BUTTON_STYLE}">Sign documents</a>
+         <a href="${portalUrl}" style="${SX_EMAIL_BUTTON_STYLE}">Continue investor onboarding</a>
        </p>`
     : "";
   const docNames = (v.documentNames ?? []).map((n) => n.trim()).filter(Boolean);
@@ -58,12 +55,12 @@ export function buildDealMemberSendEsignEmailHtml(
         <tr><td style="padding:28px 32px;color:${SX_EMAIL_PRIMARY};font-size:15px;line-height:1.55;">
           <p style="margin:0 0 16px;">Hi ${escHtml(name)},</p>
           <p style="margin:0 0 16px;">
-            Your eSign documents for <strong>${deal}</strong> are ready. Sign in to ${brand} to review and complete signing.
+            Your eSign documents for <strong>${deal}</strong> are ready. Sign in to ${brand} to continue investor onboarding — review your commitment, complete questionnaires, and sign when you reach the documents step.
           </p>
           ${docsBlock}
           ${cta}
           <p style="margin:24px 0 0;font-size:13px;color:${SX_EMAIL_MUTED};">
-            If you have questions, contact your deal sponsor.
+            If you have questions, contact your sponsor.
           </p>
         </td></tr>
         ${buildSyndicationXEmailFooterHtml(brandPlain)}
@@ -84,15 +81,13 @@ export function buildDealMemberSendEsignEmailText(
   const lines = [
     `Hi ${name},`,
     "",
-    `Your eSign documents for ${deal} are ready. Sign in to ${v.senderBrand.trim() || "SyndicationX"} to review and complete signing.`,
+    `Your eSign documents for ${deal} are ready. Sign in to ${v.senderBrand.trim() || "SyndicationX"} to continue investor onboarding and complete signing when you reach the documents step.`,
   ];
   if (docNames.length > 0) {
     lines.push("", "Documents:");
     for (const n of docNames) lines.push(`- ${n}`);
   }
-  const signPage = v.signPageUrl?.trim();
-  if (signPage) lines.push("", `Sign documents: ${signPage}`);
-  else if (url) lines.push("", `Open deal: ${url}`);
-  lines.push("", "If you have questions, contact your deal sponsor.");
+  if (url) lines.push("", `Continue investor onboarding: ${url}`);
+  lines.push("", "If you have questions, contact your sponsor.");
   return lines.join("\n");
 }

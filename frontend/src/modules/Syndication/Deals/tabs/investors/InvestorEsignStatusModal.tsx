@@ -504,6 +504,7 @@ export function InvestorEsignStatusModal({
 
         <div className="deal_esign_modal_foot">
           <button type="button" className="um_btn_secondary" onClick={onClose}>
+            <X size={16} strokeWidth={2} aria-hidden />
             Close
           </button>
         </div>

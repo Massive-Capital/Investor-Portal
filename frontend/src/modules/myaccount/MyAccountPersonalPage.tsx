@@ -1,5 +1,5 @@
 import type { FormEvent } from "react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { AtSign, Loader2, Mail, Phone, Save, User } from "lucide-react"
 import { UsPhoneInput } from "../../common/components/UsPhoneInput"
@@ -9,14 +9,37 @@ import {
   nationalTenDigitsFromRawInput,
 } from "../../common/phone/usPhoneNumber"
 import { toast } from "../../common/components/Toast"
+import { focusFirstFormErrorAfterUpdate } from "../../common/utils/scrollToFirstFormError"
+import { isInvitedPlaceholderUsername } from "../Syndication/usermanagement/memberAdminShared"
 import { fetchMyProfile, patchMyProfile } from "./accountApi"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
+
+const ACCOUNT_NAME_MIN = 1
+const ACCOUNT_NAME_MAX = 100
 
 function str(u: Record<string, unknown>, key: string): string {
   return String(u[key] ?? "").trim()
 }
 
+function accountNameForForm(rawUsername: string): string {
+  const s = rawUsername.trim()
+  if (!s || isInvitedPlaceholderUsername(s)) return ""
+  return s
+}
+
+function validateAccountName(value: string): string | null {
+  const trimmed = value.trim()
+  if (trimmed.length < ACCOUNT_NAME_MIN || trimmed.length > ACCOUNT_NAME_MAX) {
+    return `Account name must be between ${ACCOUNT_NAME_MIN} and ${ACCOUNT_NAME_MAX} characters.`
+  }
+  if (trimmed.toLowerCase().startsWith("invited_")) {
+    return "Account name is not available."
+  }
+  return null
+}
+
 export function MyAccountPersonalPage() {
+  const personalFormRef = useRef<HTMLFormElement>(null)
   const location = useLocation()
   const [firstName, setFirstName] = useState("")
   const [lastName, setLastName] = useState("")
@@ -29,6 +52,7 @@ export function MyAccountPersonalPage() {
     firstName: "",
     lastName: "",
     phoneNationalDigits: "",
+    username: "",
   })
 
   const loadFromSession = useCallback(() => {
@@ -37,16 +61,18 @@ export function MyAccountPersonalPage() {
     const first = str(u, "firstName")
     const last = str(u, "lastName")
     const phoneNat = nationalDigitsFromStoredPhone(str(u, "phone"))
+    const accountName = accountNameForForm(str(u, "username"))
     setFirstName(first)
     setLastName(last)
     setPhoneNationalDigits(phoneNat)
+    setUsername(accountName)
     setInitialValues({
       firstName: first,
       lastName: last,
       phoneNationalDigits: phoneNat,
+      username: accountName,
     })
     setEmail(str(u, "email"))
-    setUsername(str(u, "username"))
   }, [])
 
   const hasChanges = useMemo(() => {
@@ -57,14 +83,17 @@ export function MyAccountPersonalPage() {
     return (
       firstName.trim() !== initialValues.firstName ||
       lastName.trim() !== initialValues.lastName ||
+      username.trim() !== initialValues.username ||
       phoneNow !== phoneInitial
     )
   }, [
     firstName,
     lastName,
+    username,
     phoneNationalDigits,
     initialValues.firstName,
     initialValues.lastName,
+    initialValues.username,
     initialValues.phoneNationalDigits,
   ])
 
@@ -80,6 +109,17 @@ export function MyAccountPersonalPage() {
     e.preventDefault()
     if (!hasChanges || isSaving) return
     setError("")
+
+    const usernameChanged = username.trim() !== initialValues.username
+    if (usernameChanged) {
+      const accountNameError = validateAccountName(username)
+      if (accountNameError) {
+        setError(accountNameError)
+        focusFirstFormErrorAfterUpdate({ container: personalFormRef.current })
+        return
+      }
+    }
+
     const d = nationalTenDigitsFromRawInput(phoneNationalDigits)
     const phoneChanged =
       d !==
@@ -88,6 +128,7 @@ export function MyAccountPersonalPage() {
     if (phoneChanged) {
       if (d.length > 0 && d.length < 10) {
         setError("Enter a complete 10-digit U.S. phone number.")
+        focusFirstFormErrorAfterUpdate({ container: personalFormRef.current })
         return
       }
       if (d.length === 10) {
@@ -96,6 +137,7 @@ export function MyAccountPersonalPage() {
           setError(
             "Enter a valid U.S. phone number. The area code and next three digits cannot start with 0 or 1, or clear the field.",
           )
+          focusFirstFormErrorAfterUpdate({ container: personalFormRef.current })
           return
         }
       }
@@ -107,10 +149,14 @@ export function MyAccountPersonalPage() {
         firstName: string
         lastName: string
         phone?: string
+        username?: string
       } = { firstName, lastName }
       if (phoneChanged) {
         patch.phone =
           d.length === 0 ? "" : national10ToE164(phoneNationalDigits) ?? ""
+      }
+      if (usernameChanged) {
+        patch.username = username.trim()
       }
       const { user } = await patchMyProfile(patch)
       mergeSessionUserDetails(user)
@@ -127,17 +173,17 @@ export function MyAccountPersonalPage() {
 
   return (
     <div className="myaccount_form_body">
-      <p className="myaccount_readonly_note">
+      {/* <p className="myaccount_readonly_note">
         Email and account name are managed by your administrator and cannot be
-        changed here. Use Save changes to update your first name, last name,
-        and phone in your profile (stored on the server).
-      </p>
+        changed here. Use Save changes to update your first name, last name, and
+        phone in your profile (stored on the server).
+      </p> */}
       {error ? (
         <p className="um_msg_error" role="alert">
           {error}
         </p>
       ) : null}
-      <form onSubmit={handleSubmit}>
+      <form ref={personalFormRef} onSubmit={handleSubmit} noValidate>
         <div className="um_field">
           <label htmlFor="myaccount-email" className="um_field_label_row">
             <Mail className="um_field_label_icon" size={17} aria-hidden />
@@ -163,8 +209,15 @@ export function MyAccountPersonalPage() {
             name="username"
             type="text"
             value={username}
-            onChange={() => {}}
-            readOnly
+            onChange={(e) => {
+              setUsername(e.target.value)
+              if (error) setError("")
+            }}
+            placeholder="Your account name"
+            disabled={isSaving}
+            autoComplete="username"
+            maxLength={ACCOUNT_NAME_MAX}
+            aria-invalid={!!error}
           />
         </div>
         <div className="um_field">

@@ -8,6 +8,7 @@ import {
   DollarSign,
   IdCard,
   Loader2,
+  Plus,
   Save,
   Shield,
   Tag,
@@ -848,7 +849,8 @@ export function AddInvestmentModal({
                       onClick={handleAddContribution}
                       disabled={submitting}
                     >
-                      + Add contribution
+                      <Plus size={16} strokeWidth={2} aria-hidden />
+                      Add contribution
                     </button>
                   </div>
 
@@ -961,7 +963,11 @@ export function AddInvestmentModal({
                     </>
                   ) : (
                     <>
-                      <Save size={16} strokeWidth={2} aria-hidden />
+                      {mode === "edit" ? (
+                        <Save size={16} strokeWidth={2} aria-hidden />
+                      ) : (
+                        <Plus size={16} strokeWidth={2} aria-hidden />
+                      )}
                       Save
                     </>
                   )}

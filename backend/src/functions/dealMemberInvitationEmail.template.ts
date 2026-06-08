@@ -102,7 +102,7 @@ export function buildDealMemberInvitationEmailHtml(
   const existingDealMember = Boolean(v.accountExists) && !isInvestor;
   const pageTitle = isInvestor ? "Invitation — Invest" : "Invitation — Deal team";
   const h1 = existingDealMember
-    ? "Your account is already on this deal"
+    ? "Sign in to open this deal"
     : isInvestor
       ? "You’re invited to invest"
       : "You’re invited to the deal team";

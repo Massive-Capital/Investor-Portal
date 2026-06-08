@@ -218,3 +218,52 @@ export async function enrichUserRowsWithMemberships(
     return { ...row, memberships: list };
   });
 }
+
+function membershipCompanyLabel(item: Record<string, unknown>): string {
+  return (
+    String(
+      item.company ?? item.companyName ?? item.company_name ?? "",
+    ).trim() || "—"
+  );
+}
+
+/**
+ * Company-scoped member lists (Settings → Org Members): keep only memberships for
+ * the active organization so admins do not see every company a user belongs to.
+ */
+export function narrowUserRowsToCompanyScope(
+  rows: Record<string, unknown>[],
+  companyId: string,
+  companyName: string,
+): Record<string, unknown>[] {
+  const scopeName = String(companyName ?? "").trim() || "—";
+  const scopeNameKey = scopeName.toLowerCase();
+
+  return rows.map((row) => {
+    const raw = row.memberships;
+    const list = Array.isArray(raw) ? raw : [];
+    const filtered = list.filter((item) => {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        return false;
+      }
+      const rec = item as Record<string, unknown>;
+      const companyKey = membershipCompanyLabel(rec).toLowerCase();
+      return companyKey === scopeNameKey;
+    });
+
+    const portalRole = displayPortalRole(String(row.role ?? ""));
+    const scopedMemberships =
+      filtered.length > 0
+        ? filtered
+        : portalRole && portalRole !== "—"
+          ? [{ company: scopeName, role: portalRole }]
+          : [];
+
+    return {
+      ...row,
+      companyName: scopeName,
+      organization_id: companyId,
+      memberships: scopedMemberships,
+    };
+  });
+}

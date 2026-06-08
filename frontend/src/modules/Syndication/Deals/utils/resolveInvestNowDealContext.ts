@@ -3,7 +3,6 @@ import {
   investorProfileLabel,
   isLeadSponsorRole,
 } from "../constants/investor-profile"
-import type { DealDetailApi } from "../api/dealsApi"
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../types/deal-investors.types"
 import { isLpInvestorClass } from "./investorClassOverviewFields"
@@ -29,7 +28,7 @@ function readSessionCompanyName(): string {
 
 /** Primary sponsor label shown read-only on Invest now step 1. */
 export function resolveInvestNowSponsorLabel(
-  deal: Pick<DealDetailApi, "owningEntityName"> | null | undefined,
+  deal: { owningEntityName?: string | null } | null | undefined,
   members: DealInvestorRow[],
 ): string {
   const lead = members.find(

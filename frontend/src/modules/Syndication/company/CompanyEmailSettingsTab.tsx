@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { CircleHelp, Mail, PenLine } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AtSign,
+  Languages,
+  Mail,
+  PenLine,
+  Pencil,
+  Send,
+  Signature,
+  Trash2,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { FormHeadingWithInfo } from "../../../common/components/form-heading/FormHeadingWithInfo";
 import { fetchWorkspaceTabSettings } from "./companyWorkspaceSettingsApi";
 import { useDebouncedWorkspaceTabPersist } from "./useWorkspaceTabPersistence";
+import "./company-settings-tab.css";
+import "./company-email-settings-tab.css";
 
 type Props = {
   companyName: string;
@@ -12,16 +25,37 @@ type Props = {
 /** Shown for From / Reply-to / Notification addresses in the email settings UI */
 const PLATFORM_DISPLAY_EMAIL = "platform.admin@example.com";
 
-function HelpTip({ label }: { label: string }) {
+function EmailSectionHeading({
+  id,
+  Icon,
+  children,
+  description,
+}: {
+  id: string;
+  Icon: LucideIcon;
+  children: ReactNode;
+  description?: string;
+}) {
   return (
-    <button
-      type="button"
-      className="cp_email_help_btn"
-      aria-label={label}
-      title={label}
-    >
-      <CircleHelp size={14} strokeWidth={2} aria-hidden />
-    </button>
+    <div className="cp_settings_section_head">
+      <FormHeadingWithInfo
+        as="h3"
+        id={id}
+        className="cp_settings_h3 cp_settings_h3_with_icon"
+        leadingIcon={Icon}
+        leadingIconClassName="cp_settings_h3_icon"
+        title={children}
+        info={description ? <p>{description}</p> : undefined}
+      />
+    </div>
+  );
+}
+
+function EmailFieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="cp_settings_field_label um_view_field_head cp_settings_field_head">
+      <span className="um_view_field_label">{children}</span>
+    </div>
   );
 }
 
@@ -69,230 +103,232 @@ export function CompanyEmailSettingsTab(props: Props) {
   );
 
   return (
-    <div className="cp_email_layout cp_email_layout_single">
-      <fieldset
-        disabled={readOnly}
-        className="cp_email_main_fieldset"
-      >
+    <div className="cp_settings_root cp_email_root">
+      <header className="cp_settings_header">
+        <h2 className="cp_settings_title">Email settings</h2>
+        <p className="cp_settings_page_lead">
+          Configure automated investor emails, signatures, sending addresses, and editor
+          defaults for this workspace.
+        </p>
+      </header>
+
+      <fieldset disabled={readOnly} className="cp_email_main_fieldset">
         <legend className="cp_sr_only">Email settings</legend>
-        <div className="cp_email_main">
-        <section className="cp_email_section" aria-labelledby="cp-email-auto">
-          <h3 id="cp-email-auto" className="cp_email_section_title">
-            Investor automated emails
-          </h3>
-          <p className="cp_email_section_desc">
-            Customize the email notifications sent to your company&apos;s investors.
-          </p>
-          <button type="button" className="cp_btn_customize">
-            Customize email notifications
-          </button>
-        </section>
-
-        <section className="cp_email_section" aria-labelledby="cp-email-sig">
-          <h3 id="cp-email-sig" className="cp_email_section_title">
-            Email signatures
-          </h3>
-          <p className="cp_email_section_desc">
-            Customize the email signatures that will be included in your emails.
-          </p>
-          <button type="button" className="cp_btn_customize">
-            Customize email signatures
-          </button>
-        </section>
-
-        <section className="cp_email_section" aria-labelledby="cp-email-deliver">
-          <h3 id="cp-email-deliver" className="cp_email_section_title">
-            Email sending &amp; deliverability
-          </h3>
-          <div className="cp_email_row">
-            <div className="cp_email_row_label">
-              <span>Custom sending domain</span>
-              <HelpTip label="Help: custom sending domain" />
-            </div>
-            <div className="cp_email_row_actions">
-              <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                Manage
-              </button>
-              <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                Delete
-              </button>
-            </div>
-          </div>
-          {/* Personal inbox integration — Marketing plan upsell (hidden)
-          <div className="cp_email_row">
-            <div className="cp_email_row_label">
-              <span>Personal inbox integration</span>
-              <HelpTip label="Help: personal inbox integration" />
-            </div>
-            <div className="cp_email_row_value">
-              <p className="cp_email_muted_line">
-                Available in Marketing plan or higher.{" "}
-                <button type="button" className="cp_email_link_btn">
-                  View all CRM plans
-                </button>
-              </p>
-            </div>
-          </div>
-          <div className="cp_email_row">
-            <div className="cp_email_row_label">
-              <span>Company inbox integration</span>
-              <HelpTip label="Help: company inbox integration" />
-            </div>
-            <div className="cp_email_row_value">
-              <p className="cp_email_muted_line">
-                Available in Marketing plan or higher.{" "}
-                <button type="button" className="cp_email_link_btn">
-                  View all CRM plans
-                </button>
-              </p>
-            </div>
-          </div>
-          */}
-        </section>
-
-        <section className="cp_email_section" aria-labelledby="cp-email-addresses">
-          <h3 id="cp-email-addresses" className="cp_email_section_title">
-            Email addresses
-          </h3>
-
-          <div className="cp_email_address_block">
-            <div className="cp_email_address_row">
-              <div className="cp_email_row_label">
-                <span>&apos;From&apos; email address</span>
-                <HelpTip label="Help: From email address" />
-              </div>
-              <div className="cp_email_address_body">
-                <div className="cp_email_address_value">
-                  <Mail size={16} strokeWidth={1.75} className="cp_email_address_icon" aria-hidden />
-                  {PLATFORM_DISPLAY_EMAIL}
-                </div>
-                <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                  Preview company email
-                </button>
-              </div>
-            </div>
-
-            <div className="cp_email_address_row">
-              <div className="cp_email_row_label">
-                <span>&apos;Reply-to&apos; email address</span>
-                <HelpTip label="Help: Reply-to email address" />
-              </div>
-              <div className="cp_email_address_body">
-                <div className="cp_email_address_value">
-                  <Mail size={16} strokeWidth={1.75} className="cp_email_address_icon" aria-hidden />
-                  {PLATFORM_DISPLAY_EMAIL}
-                </div>
-                <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                  <PenLine size={14} strokeWidth={2} aria-hidden />
-                  Edit
-                </button>
-              </div>
-            </div>
-
-            <div className="cp_email_address_row">
-              <div className="cp_email_row_label">
-                <span>Notification email address</span>
-                <HelpTip label="Help: notification email address" />
-              </div>
-              <div className="cp_email_address_body">
-                <div className="cp_email_address_value">
-                  <Mail size={16} strokeWidth={1.75} className="cp_email_address_icon" aria-hidden />
-                  {PLATFORM_DISPLAY_EMAIL}
-                </div>
-                <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                  <PenLine size={14} strokeWidth={2} aria-hidden />
-                  Edit
-                </button>
-              </div>
-            </div>
-
-            <div className="cp_email_address_row cp_email_address_row_last">
-              <div className="cp_email_row_label">
-                <span>Preferred test email recipient address</span>
-                <HelpTip label="Help: test email recipient" />
-              </div>
-              <div className="cp_email_address_body">
-                <p className="cp_email_test_hint">
-                  Test emails will be sent to the user who initiates them.
-                </p>
-                <div className="cp_email_row_actions">
-                  <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                    <PenLine size={14} strokeWidth={2} aria-hidden />
-                    Edit
-                  </button>
-                  <button type="button" className="cp_email_btn_outline cp_email_btn_sm">
-                    Clear
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="cp_email_section" aria-labelledby="cp-email-editor">
-          <h3 id="cp-email-editor" className="cp_email_section_title">
-            Editor settings
-          </h3>
-          <div className="cp_email_row cp_email_row_editor">
-            <div className="cp_email_row_label">
-              <span>Editor text direction</span>
-              <HelpTip label="Help: editor text direction" />
-            </div>
-            <div className="cp_email_row_value">
-              <select
-                className="cp_email_select"
-                value={textDirection}
-                onChange={(e) => setTextDirection(e.target.value)}
-                aria-label="Editor text direction"
+        <div className="cp_settings_stack">
+          <div className="cp_email_section_row cp_email_section_row_customize">
+            <section
+              className="cp_settings_section cp_email_action_card"
+              aria-labelledby="cp-email-auto"
+            >
+              <EmailSectionHeading
+                id="cp-email-auto"
+                Icon={Mail}
+                description="Customize the email notifications sent to your company's investors."
               >
-                <option value="ltr">Left to right (most common)</option>
-                <option value="rtl">Right to left</option>
-              </select>
-            </div>
+                Investor automated emails
+              </EmailSectionHeading>
+              <div className="cp_email_action_card_body">
+                <p className="cp_email_action_card_desc">
+                  Configure automated messages investors receive for registrations, investments,
+                  and account updates.
+                </p>
+                <button type="button" className="cp_btn_customize">
+                  <Pencil size={16} strokeWidth={2} aria-hidden />
+                  Customize email notifications
+                </button>
+              </div>
+            </section>
+
+            <section
+              className="cp_settings_section cp_email_action_card"
+              aria-labelledby="cp-email-sig"
+            >
+              <EmailSectionHeading
+                id="cp-email-sig"
+                Icon={Signature}
+                description="Customize the email signatures included in your outbound messages."
+              >
+                Email signatures
+              </EmailSectionHeading>
+              <div className="cp_email_action_card_body">
+                <p className="cp_email_action_card_desc">
+                  Set the signature block appended to outbound workspace emails and notifications.
+                </p>
+                <button type="button" className="cp_btn_customize">
+                  <Pencil size={16} strokeWidth={2} aria-hidden />
+                  Customize email signatures
+                </button>
+              </div>
+            </section>
           </div>
-        </section>
+
+          <section
+            className="cp_settings_section cp_email_addresses_section"
+            aria-labelledby="cp-email-addresses"
+          >
+            <EmailSectionHeading
+              id="cp-email-addresses"
+              Icon={AtSign}
+              description="From, reply-to, and notification addresses used for workspace email."
+            >
+              Email addresses
+            </EmailSectionHeading>
+            <div className="cp_settings_fields">
+              <div className="cp_settings_row">
+                <div className="cp_settings_label_col">
+                  <EmailFieldLabel>&apos;From&apos; email address</EmailFieldLabel>
+                </div>
+                <div className="cp_settings_control">
+                  <div className="cp_settings_value_row">
+                    <div className="um_view_field_box cp_settings_readonly_pill cp_email_value_pill">
+                      <Mail
+                        size={16}
+                        strokeWidth={1.75}
+                        className="cp_email_value_pill_icon"
+                        aria-hidden
+                      />
+                      {PLATFORM_DISPLAY_EMAIL}
+                    </div>
+                    <button type="button" className="um_btn_secondary">
+                      Preview company email
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="cp_settings_row">
+                <div className="cp_settings_label_col">
+                  <EmailFieldLabel>&apos;Reply-to&apos; email address</EmailFieldLabel>
+                </div>
+                <div className="cp_settings_control">
+                  <div className="cp_settings_value_row">
+                    <div className="um_view_field_box cp_settings_readonly_pill cp_email_value_pill">
+                      <Mail
+                        size={16}
+                        strokeWidth={1.75}
+                        className="cp_email_value_pill_icon"
+                        aria-hidden
+                      />
+                      {PLATFORM_DISPLAY_EMAIL}
+                    </div>
+                    <button type="button" className="um_btn_secondary cp_settings_edit_btn">
+                      <PenLine size={16} strokeWidth={2} aria-hidden />
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="cp_settings_row">
+                <div className="cp_settings_label_col">
+                  <EmailFieldLabel>Notification email address</EmailFieldLabel>
+                </div>
+                <div className="cp_settings_control">
+                  <div className="cp_settings_value_row">
+                    <div className="um_view_field_box cp_settings_readonly_pill cp_email_value_pill">
+                      <Mail
+                        size={16}
+                        strokeWidth={1.75}
+                        className="cp_email_value_pill_icon"
+                        aria-hidden
+                      />
+                      {PLATFORM_DISPLAY_EMAIL}
+                    </div>
+                    <button type="button" className="um_btn_secondary cp_settings_edit_btn">
+                      <PenLine size={16} strokeWidth={2} aria-hidden />
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="cp_settings_row">
+                <div className="cp_settings_label_col">
+                  <EmailFieldLabel>Preferred test email recipient address</EmailFieldLabel>
+                </div>
+                <div className="cp_settings_control">
+                  <p className="cp_email_hint">
+                    Test emails will be sent to the user who initiates them.
+                  </p>
+                  <div className="cp_settings_value_row">
+                    <div className="cp_media_actions">
+                      <button type="button" className="um_btn_secondary cp_settings_edit_btn">
+                        <PenLine size={16} strokeWidth={2} aria-hidden />
+                        Edit
+                      </button>
+                      <button type="button" className="um_btn_secondary">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="cp_email_section_row">
+            <section className="cp_settings_section" aria-labelledby="cp-email-deliver">
+              <EmailSectionHeading
+                id="cp-email-deliver"
+                Icon={Send}
+                description="Manage your custom sending domain and deliverability options."
+              >
+                Email sending &amp; deliverability
+              </EmailSectionHeading>
+              <div className="cp_settings_fields">
+                <div className="cp_settings_row">
+                  <div className="cp_settings_label_col">
+                    <EmailFieldLabel>Custom sending domain</EmailFieldLabel>
+                  </div>
+                  <div className="cp_settings_control">
+                    <div className="cp_settings_value_row">
+                      <div className="cp_media_actions">
+                        <button type="button" className="um_btn_secondary">
+                          Manage
+                        </button>
+                        <button type="button" className="um_btn_secondary">
+                          <Trash2 size={16} strokeWidth={2} aria-hidden />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="cp_settings_section" aria-labelledby="cp-email-editor">
+              <EmailSectionHeading
+                id="cp-email-editor"
+                Icon={Languages}
+                description="Defaults for the rich-text email editor in this workspace."
+              >
+                Editor settings
+              </EmailSectionHeading>
+              <div className="cp_settings_fields">
+                <div className="cp_settings_row">
+                  <div className="cp_settings_label_col">
+                    <EmailFieldLabel>Editor text direction</EmailFieldLabel>
+                  </div>
+                  <div className="cp_settings_control">
+                    <div className="cp_settings_value_row">
+                      <select
+                        className="um_field_select cp_settings_select cp_settings_input_pill"
+                        value={textDirection}
+                        onChange={(e) => setTextDirection(e.target.value)}
+                        aria-label="Editor text direction"
+                      >
+                        <option value="ltr">Left to right (most common)</option>
+                        <option value="rtl">Right to left</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </fieldset>
-
-      {/* Setup checklist sidebar (hidden)
-      <aside className="cp_email_checklist" aria-label="Email setup checklist">
-        <div className="cp_email_checklist_head">
-          <span className="cp_email_checklist_title">Setup checklist</span>
-          <button
-            type="button"
-            className="cp_email_checklist_toggle"
-            aria-expanded={checklistOpen}
-            onClick={() => setChecklistOpen((o) => !o)}
-            aria-label={checklistOpen ? "Collapse checklist" : "Expand checklist"}
-          >
-            <Minus size={16} strokeWidth={2} aria-hidden />
-          </button>
-        </div>
-        {checklistOpen ? (
-          <div className="cp_email_checklist_body">
-            <p className="cp_email_checklist_intro">
-              Optimize your email deliverability and open rate by completing the following
-              items:
-            </p>
-            <ul className="cp_email_checklist_list">
-              <li className="cp_email_checklist_item cp_email_checklist_item_incomplete">
-                <span className="cp_email_checklist_badge" aria-hidden>
-                  <X size={12} strokeWidth={3} />
-                </span>
-                <span>Set up your custom sending domain</span>
-                <HelpTip label="Help: custom sending domain setup" />
-              </li>
-            </ul>
-            <div className="cp_email_progress">
-              <div className="cp_email_progress_track" aria-hidden>
-                <div className="cp_email_progress_fill" style={{ width: "0%" }} />
-              </div>
-              <span className="cp_email_progress_label">0% complete</span>
-            </div>
-          </div>
-        ) : null}
-      </aside>
-      */}
     </div>
   );
 }

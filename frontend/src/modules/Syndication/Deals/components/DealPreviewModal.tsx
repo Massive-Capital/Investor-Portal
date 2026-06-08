@@ -1,4 +1,4 @@
-import { Loader2, Pencil, X } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
@@ -90,13 +90,13 @@ export function DealPreviewModal({
     setViewerDealInvestorRoleRaw(null)
     void (async () => {
       try {
-        const [{ investors }, membersRoster] = await Promise.all([
+        const [{ investors }, membersResult] = await Promise.all([
           fetchDealInvestors(dealId),
           fetchDealMembers(dealId),
         ])
         if (cancelled) return
         setViewerDealInvestorRoleRaw(
-          resolveViewerDealInvestorRoleRaw(membersRoster, email) ??
+          resolveViewerDealInvestorRoleRaw(membersResult.members, email) ??
             resolveViewerDealInvestorRoleRaw(investors, email),
         )
       } catch {
@@ -200,6 +200,7 @@ export function DealPreviewModal({
               onClick={handleOpenDeal}
               disabled={!detail || Boolean(loading)}
             >
+              <ExternalLink size={16} strokeWidth={2} aria-hidden />
               Open deal
             </button>
           ) : (

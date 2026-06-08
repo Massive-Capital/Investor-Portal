@@ -1,4 +1,4 @@
-import { Plus, Search, X } from "lucide-react"
+import { Download, Plus, Search, X } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -8,6 +8,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import { Link, useLocation, useNavigate } from "react-router-dom"
+import { toast } from "../../../../../common/components/Toast"
 import {
   DataTable,
   type DataTableColumn,
@@ -24,6 +25,8 @@ import {
   type DealAssetRow,
 } from "../../types/deal-asset.types"
 import { AssetRowActions } from "../../components/AssetRowActions"
+import { ExportSelectableRowsModal } from "../../components/ExportSelectableRowsModal"
+import { downloadDealAssetsExportCsv } from "../../utils/offeringDetailsSectionExportCsv"
 import "../deal_members/add-investment/add_deal_modal.css"
 import "../../deal-investors-tab.css"
 import "../../../usermanagement/user_management.css"
@@ -100,6 +103,7 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
   )
   const [viewRow, setViewRow] = useState<DealAssetRow | null>(null)
   const [query, setQuery] = useState("")
+  const [exportModalOpen, setExportModalOpen] = useState(false)
 
   useEffect(() => {
     setRows((prev) =>
@@ -157,6 +161,30 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
   )
 
   const addAssetHref = `/deals/${encodeURIComponent(detail.id)}/assets/new`
+
+  const canExportAssets = rows.length > 0
+
+  const exportModalRows = useMemo(
+    () =>
+      rows.map((row) => ({
+        key: row.id,
+        label: row.name?.trim() || "—",
+        meta: row.assetType?.trim() || row.address?.trim() || undefined,
+        searchText: `${row.name} ${row.address} ${row.assetType}`.toLowerCase(),
+      })),
+    [rows],
+  )
+
+  const handleExportAssets = useCallback(
+    (selectedKeys: string[]) => {
+      const keySet = new Set(selectedKeys)
+      const chosen = rows.filter((row) => keySet.has(row.id))
+      if (chosen.length === 0) return
+      const filename = downloadDealAssetsExportCsv(detail.id, chosen)
+      toast.success("Assets exported", `Saved as ${filename}`)
+    },
+    [detail.id, rows],
+  )
 
   const columns: DataTableColumn<DealAssetRow>[] = useMemo(
     () => [
@@ -268,8 +296,19 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
 
   return (
     <div className="deal_assets">
+      <ExportSelectableRowsModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        title="Export assets"
+        hint="Search and select assets, then export to Excel (CSV format)."
+        searchPlaceholder="Search assets…"
+        searchAriaLabel="Search assets in export list"
+        listAriaLabel="Assets to export"
+        rows={exportModalRows}
+        onExportExcel={handleExportAssets}
+      />
       <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_assets_datatable_panel">
-        <div className="um_toolbar">
+        <div className="um_toolbar um_toolbar_export_then_search deal_offering_section_toolbar">
           <div className="um_search_wrap">
             <Search className="um_search_icon" size={18} aria-hidden />
             <input
@@ -283,6 +322,17 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
             />
           </div>
           <div className="um_toolbar_actions">
+            <button
+              type="button"
+              className="um_toolbar_export_btn"
+              disabled={!canExportAssets}
+              onClick={() => setExportModalOpen(true)}
+              aria-label="Export all assets"
+              title={canExportAssets ? undefined : "No assets to export"}
+            >
+              <Download size={18} strokeWidth={2} aria-hidden />
+              <span>Export All</span>
+            </button>
             <Link
               to={addAssetHref}
               state={OFFERING_DETAILS_ASSETS_RETURN}
@@ -382,6 +432,7 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
                     className="um_btn_primary"
                     onClick={() => setViewRow(null)}
                   >
+                    <X size={16} strokeWidth={2} aria-hidden />
                     Close
                   </button>
                 </div>

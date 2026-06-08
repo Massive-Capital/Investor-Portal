@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   AlignLeft,
-  Archive,
   Ban,
   Check,
   CheckCircle2,
@@ -38,6 +37,7 @@ import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
 } from "../../../common/phone/usPhoneNumber"
+import { ActiveArchivedTabs } from "../../../common/components/active-archived-tabs/ActiveArchivedTabs"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
@@ -1403,52 +1403,19 @@ function ContactsPage() {
         <>
           <div className="um_members_header_block contacts_inner_header">
             <div className="contacts_toolbar_filters_row">
-              <div
-                className="contacts_filter_button_group"
-                role="group"
-                aria-label="Filter contacts by status"
-              >
-                <button
-                  type="button"
-                  id="contacts-filter-active"
-                  aria-pressed={contactsListTab === "active"}
-                  className={`contacts_filter_btn${
-                    contactsListTab === "active"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => {
-                    setContactsListTab("active")
-                    setToolbarNotice("")
-                  }}
-                >
-                  <ContactRound size={16} strokeWidth={1.75} aria-hidden />
-                  <span>Active</span>
-                  <span className="contacts_filter_btn_count">
-                    ({activeCount})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  id="contacts-filter-archived"
-                  aria-pressed={contactsListTab === "archived"}
-                  className={`contacts_filter_btn${
-                    contactsListTab === "archived"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => {
-                    setContactsListTab("archived")
-                    setToolbarNotice("")
-                  }}
-                >
-                  <Archive size={16} strokeWidth={1.75} aria-hidden />
-                  <span>Archived</span>
-                  <span className="contacts_filter_btn_count">
-                    ({archivedCount})
-                  </span>
-                </button>
-              </div>
+              <ActiveArchivedTabs
+                value={contactsListTab}
+                onChange={(tab) => {
+                  setContactsListTab(tab)
+                  setToolbarNotice("")
+                }}
+                activeCount={activeCount}
+                archivedCount={archivedCount}
+                idPrefix="contacts-filter"
+                ariaLabel="Filter contacts by status"
+                activeIcon={ContactRound}
+                activePanelId="contacts-main-panel-contacts"
+              />
               <button
                 type="button"
                 className="um_btn_primary contacts_toolbar_add_btn"

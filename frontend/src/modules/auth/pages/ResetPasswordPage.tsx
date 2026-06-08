@@ -4,8 +4,9 @@ import ResetPasswordForm from "../components/ResetPasswordForm";
 export default function ResetPasswordPage() {
   return (
     <AuthLayout
-      title="Reset Password"
-      caption="Reset Password"
+      title="Reset password"
+      caption="Reset password"
+      subtitle="Choose a strong password for your investor account."
       authPageClassName="authPage--resetPassword"
     >
       <ResetPasswordForm />

@@ -80,11 +80,16 @@ export async function patchMyProfile(req: Request, res: Response): Promise<void>
       lastName?: string;
       phone?: string;
       companyName?: string;
+      username?: string;
     } = {};
     if (typeof body.firstName === "string") patch.firstName = body.firstName;
     if (typeof body.lastName === "string") patch.lastName = body.lastName;
     if (typeof body.phone === "string") patch.phone = body.phone;
     if (typeof body.companyName === "string") patch.companyName = body.companyName;
+    if (typeof body.username === "string") patch.username = body.username;
+    if (typeof body.userName === "string" && patch.username === undefined) {
+      patch.username = body.userName;
+    }
 
     const result = await updateOwnProfile(jwtUser.id, patch);
 

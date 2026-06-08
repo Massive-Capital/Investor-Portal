@@ -8,6 +8,8 @@ import {
   Globe,
   Hash,
   Info,
+  Plus,
+  Save,
   MapPin,
   MapPinned,
   MessageSquare,
@@ -733,7 +735,11 @@ export function AddAddressModal({
                 </button>
               ) : (
               <button type="submit" className="um_btn_primary">
-                <MapPin size={18} strokeWidth={2} aria-hidden />
+                {isEdit ? (
+                  <Save size={18} strokeWidth={2} aria-hidden />
+                ) : (
+                  <Plus size={18} strokeWidth={2} aria-hidden />
+                )}
                 {isEdit ? "Save changes" : "Add address"}
               </button>
               )}

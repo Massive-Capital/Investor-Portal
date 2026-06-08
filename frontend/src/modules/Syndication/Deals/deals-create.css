@@ -198,13 +198,15 @@
 }
 
 .deals_create_input[aria-invalid="true"],
-.deals_create_select[aria-invalid="true"] {
+.deals_create_select[aria-invalid="true"],
+.deals_create_textarea[aria-invalid="true"] {
   border-color: #b91c1c;
+  box-shadow: 0 0 0 1px rgb(185 28 28 / 12%);
 }
 
 .deals_create_textarea {
   resize: none;
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   min-height: 6.5rem;
   padding-top: 0.65rem;
   padding-bottom: 0.65rem;
@@ -241,7 +243,7 @@
   padding-bottom: 0.65rem;
   padding-left: var(--deals-control-padding-x, 0.75rem);
   padding-right: var(--deals-control-padding-x, 0.75rem);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   resize: none;
 }
 
@@ -620,13 +622,16 @@
   gap: 1rem;
 }
 
-.deals_add_deal_asset_title_stack .deals_create_subtitle {
-  margin: 0.35rem 0 0;
-  max-width: 36rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  line-height: 1.45;
-  color: var(--portal-text-muted, #64748b);
+.deals_add_deal_asset_title_stack .deals_list_title.form_heading_with_info {
+  max-width: 100%;
+}
+
+.deals_add_deal_asset_title_stack
+  .deals_list_title.form_heading_with_info
+  .form_heading_with_info_row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .deals_add_investor_class_page.deals_create_flow
@@ -648,7 +653,7 @@
   margin: 2rem auto 1.5rem;
   padding: 2rem 1.5rem;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 12px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
   box-sizing: border-box;
 }
@@ -772,7 +777,7 @@
 .deals_add_deal_asset_page.deals_create_flow .deals_create_billing_wrap .deals_create_billing_info {
   margin: 0;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   border: 1px solid color-mix(in srgb, var(--portal-border) 85%, transparent);
   background: color-mix(in srgb, var(--portal-primary-soft, #e8eef8) 55%, transparent);
 }
@@ -800,65 +805,7 @@
   background: transparent;
 }
 
-/* Footer actions: no filled white pills — outline / ghost on page bg */
-.deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_secondary {
-  background: transparent;
-  color: var(--portal-text, #334155);
-  border-color: color-mix(in srgb, var(--portal-border, #e2e8f0) 92%, var(--portal-text, #0f172a));
-}
-
-.deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_secondary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--portal-text, #0f172a) 6%, transparent);
-}
-
-.deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_primary {
-  background: var(--ui-button-background-add);
-  color: #fff;
-  border: 1px solid transparent;
-}
-
-.deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_primary:hover:not(:disabled) {
-  background: var(--ui-button-hover);
-}
-
-:root[data-theme="dark"]
-  .deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_secondary {
-  border-color: rgba(255, 255, 255, 0.22);
-  color: var(--portal-text, #f1f5f9);
-}
-
-:root[data-theme="dark"]
-  .deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-:root[data-theme="dark"]
-  .deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_primary {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-:root[data-theme="dark"]
-  .deals_add_deal_asset_page.deals_create_flow
-  .deals_add_deal_asset_footer_actions.um_modal_actions
-  .um_btn_primary:hover:not(:disabled) {
-  background: #e2e8f0;
-  color: #0f172a;
-}
+/* Footer actions use shared um_btn tokens (sidebar bg + gold label). */
 
 .deals_add_deal_asset_panel .deals_create_assets .deals_create_section_title {
   margin: 0 0 0.9em;
@@ -998,7 +945,7 @@
   box-sizing: border-box;
   padding: 1.5em 1.75em 1.65em;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-pill-radius, 4px);
   background: var(--portal-surface, #fff);
   box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
 }

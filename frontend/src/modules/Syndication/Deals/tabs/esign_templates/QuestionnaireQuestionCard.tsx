@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, Clock, Pencil, Trash2 } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, Clock, Pencil, Plus, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useId, useState } from "react"
 import {
   resolveQuestionForDisplay,
@@ -396,7 +396,8 @@ export function QuestionnaireQuestionCard({
                       }
                     }}
                   >
-                    + Add option
+                    <Plus size={16} strokeWidth={2} aria-hidden />
+                    Add option
                   </button>
                 ) : null}
               </div>

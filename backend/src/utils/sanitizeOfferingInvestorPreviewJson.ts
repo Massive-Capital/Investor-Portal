@@ -75,6 +75,7 @@ function normalizeNested(
     ? []
     : parseIdListField(raw.sharedInvestorIds);
   const sharedSponsorUserIds = parseIdListField(raw.sharedSponsorUserIds);
+  const requiresProfileInvestment = Boolean(raw.requiresProfileInvestment);
   return {
     id,
     name,
@@ -86,6 +87,7 @@ function normalizeNested(
     sharedInvestorIds,
     sharedWithAllInvestors,
     sharedSponsorUserIds,
+    ...(requiresProfileInvestment ? { requiresProfileInvestment: true } : {}),
   };
 }
 

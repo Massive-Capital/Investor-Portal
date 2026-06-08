@@ -1,10 +1,41 @@
 -- =============================================================================
--- Clear DATA from all application tables (rows only — tables are NOT dropped).
+-- Clear DATA from application tables (rows only — tables are NOT dropped).
+--
+-- TABLES (public schema, 27 — all cleared except where noted):
+--   1.  add_deal_form
+--   2.  assigning_deal_user
+--   3.  companies                    KEEP: platform admin org (Massive Capital)
+--   4.  company_admin_audit_logs
+--   5.  company_workspace_tab_settings
+--   6.  contact
+--   7.  contact_email_template
+--   8.  deal_investment
+--   9.  deal_investor_class
+--   10. deal_lp_investor
+--   11. deal_member
+--   12. deals
+--   13. esign_reusable_template
+--   14. investment_signatures
+--   15. investor_communication_logs
+--   16. member_admin_audit_logs
+--   17. organization_contact_list
+--   18. organization_contact_tag
+--   19. soc_auth_audit_logs
+--   20. user_beneficiaries
+--   21. user_company_membership
+--   22. user_investor_profiles
+--   23. user_page_navigations
+--   24. user_portal_sessions
+--   25. user_saved_addresses
+--   26. users                        KEEP: platform.admin@example.com
+--   (drizzle.__drizzle_migrations is NOT touched)
 --
 -- IMPORTANT: Do not use TRUNCATE ... CASCADE on companies — users.organization_id
--- references companies, so PostgreSQL would truncate users too and delete platform admin.
+-- references companies, so PostgreSQL could truncate users and remove platform admin.
 --
--- Kept user: platform.admin@example.com (seed id b2c15cb6-1678-4819-9d24-6fdd8d192064)
+-- Kept user:  platform.admin@example.com (role platform_admin)
+-- Kept company: organization_id on that user, or seeded Massive Capital
+--   (3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d from migration 0029)
 --
 -- Run from backend/:
 --   psql -h localhost -p 5432 -U postgres -d investor_portal_db -f scripts/clear-application-data-keep-platform-admin.sql
@@ -15,15 +46,38 @@
 \set ON_ERROR_STOP on
 
 DO $$
+DECLARE
+  v_admin_email constant text := 'platform.admin@example.com';
+  v_seed_company_id constant uuid := '3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d';
+  v_keep_company_id uuid;
 BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM public.users u
-    WHERE lower(trim(u.email)) = lower('platform.admin@example.com')
+    WHERE lower(trim(u.email)) = lower(v_admin_email)
   ) THEN
     RAISE EXCEPTION
-      'Platform admin not found (platform.admin@example.com). Run migrations/seeds first.';
+      'Platform admin not found (%). Run migrations/seeds first.', v_admin_email;
   END IF;
+
+  SELECT COALESCE(u.organization_id, v_seed_company_id)
+  INTO v_keep_company_id
+  FROM public.users u
+  WHERE lower(trim(u.email)) = lower(v_admin_email);
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.companies c WHERE c.id = v_keep_company_id
+  ) THEN
+    RAISE EXCEPTION
+      'Platform admin company % not found in public.companies.', v_keep_company_id;
+  END IF;
+
+  UPDATE public.users
+  SET
+    organization_id = v_keep_company_id,
+    updated_at = now()
+  WHERE lower(trim(email)) = lower(v_admin_email)
+    AND organization_id IS DISTINCT FROM v_keep_company_id;
 END $$;
 
 BEGIN;
@@ -65,26 +119,32 @@ DELETE FROM public.assigning_deal_user;
 DELETE FROM public.add_deal_form;
 DELETE FROM public.deals;
 
--- Company settings
+-- Company settings (all orgs; platform admin company row stays in companies)
 DELETE FROM public.company_workspace_tab_settings;
 
--- Detach ALL users from companies before deleting companies (avoids FK issues)
-UPDATE public.users
-SET organization_id = NULL,
-    updated_at = now();
-
--- Table 24: users — remove everyone except platform.admin@example.com
+-- users — remove everyone except platform admin
 DELETE FROM public.users u
 WHERE lower(trim(u.email)) <> lower('platform.admin@example.com');
 
--- Companies (all rows — platform admin org_id already NULL)
-DELETE FROM public.companies;
+-- companies — remove every org except platform admin's company
+DELETE FROM public.companies c
+WHERE c.id <> (
+  SELECT COALESCE(
+    u.organization_id,
+    '3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d'::uuid
+  )
+  FROM public.users u
+  WHERE lower(trim(u.email)) = lower('platform.admin@example.com')
+);
 
 COMMIT;
 
 -- Verify
 SELECT id, email, username, role, organization_id
 FROM public.users;
+
+SELECT id, name, status
+FROM public.companies;
 
 SELECT 'add_deal_form' AS table_name, count(*)::int AS rows FROM public.add_deal_form
 UNION ALL SELECT 'assigning_deal_user', count(*)::int FROM public.assigning_deal_user

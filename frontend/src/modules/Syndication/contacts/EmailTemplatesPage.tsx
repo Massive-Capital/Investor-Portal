@@ -1,5 +1,5 @@
 import {
-  Archive,
+  Ban,
   ContactRound,
   // FilePenLine,
   LayoutTemplate,
@@ -19,6 +19,7 @@ import {
 } from "react"
 import { BulkDeleteReasonModal } from "../../../common/components/bulk-delete-reason-modal/BulkDeleteReasonModal"
 import "../../../common/components/bulk-delete-reason-modal/bulk-delete-reason-modal.css"
+import { ConfirmDeleteModal } from "../../../common/components/ConfirmDeleteModal"
 import { toast } from "../../../common/components/Toast"
 import { useDataTableRowSelection } from "../../../common/hooks/useDataTableRowSelection"
 import { useNavigate } from "react-router-dom"
@@ -27,7 +28,7 @@ import {
   DataTable,
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
-// import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
+import { ActiveArchivedTabs } from "../../../common/components/active-archived-tabs/ActiveArchivedTabs"
 import { formatDateDdMmmYyyy } from "../../../common/utils/formatDateDisplay"
 import "../../../common/components/work_in_progress_page.css"
 import "../usermanagement/user_management.css"
@@ -38,6 +39,7 @@ import { EmailTemplateRowActions } from "./components/EmailTemplateRowActions"
 import {
   attachmentToObjectUrl,
   deleteEmailTemplate,
+  formatEmailAttachmentSize,
   loadEmailTemplates,
   updateEmailTemplate,
   type EmailTemplateRow,
@@ -74,6 +76,8 @@ function EmailTemplatesTemplatesTabContent() {
   const [viewRow, setViewRow] = useState<EmailTemplateRow | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkDeleteBusy, setBulkDeleteBusy] = useState(false)
+  const [suspendAllOpen, setSuspendAllOpen] = useState(false)
+  const [suspendAllBusy, setSuspendAllBusy] = useState(false)
 
   const getRowId = useCallback((row: EmailTemplateRow) => row.id, [])
 
@@ -223,6 +227,53 @@ function EmailTemplatesTemplatesTabContent() {
     )
   }, [])
 
+  const confirmSuspendAll = useCallback(async () => {
+    const toArchive = rows.filter((r) => !r.archived)
+    if (toArchive.length === 0) {
+      setSuspendAllOpen(false)
+      return
+    }
+    setSuspendAllBusy(true)
+    try {
+      const results = await Promise.all(
+        toArchive.map((row) =>
+          updateEmailTemplate({ ...row, archived: true }),
+        ),
+      )
+      const succeededIds = new Set(
+        toArchive.filter((_, i) => results[i]).map((r) => r.id),
+      )
+      const failed = toArchive.length - succeededIds.size
+      const succeeded = succeededIds.size
+      if (succeeded > 0) {
+        setRows((prev) =>
+          prev.map((r) =>
+            succeededIds.has(r.id) ? { ...r, archived: true } : r,
+          ),
+        )
+        clearSelection()
+      }
+      if (failed > 0 && succeeded > 0) {
+        toast.error(
+          "Some templates could not be suspended",
+          `${succeeded} archived, ${failed} failed.`,
+        )
+      } else if (failed > 0) {
+        toast.error("Could not suspend templates", "Try again later.")
+      } else {
+        toast.success(
+          toArchive.length === 1 ? "Template suspended" : "Templates suspended",
+          toArchive.length === 1
+            ? toArchive[0]?.name ?? ""
+            : `${toArchive.length} templates moved to Archived.`,
+        )
+      }
+      setSuspendAllOpen(false)
+    } finally {
+      setSuspendAllBusy(false)
+    }
+  }, [clearSelection, rows])
+
   const columns = useMemo((): DataTableColumn<EmailTemplateRow>[] => {
     return [
       {
@@ -346,48 +397,30 @@ function EmailTemplatesTemplatesTabContent() {
         onClose={() => !bulkDeleteBusy && setBulkDeleteOpen(false)}
         onConfirm={confirmBulkDelete}
       />
+      <ConfirmDeleteModal
+        open={suspendAllOpen}
+        title="Suspend all templates?"
+        message={
+          activeCount === 1
+            ? "Archive the only active template? It will move to the Archived tab."
+            : `Archive all ${activeCount} active templates? They will move to the Archived tab.`
+        }
+        confirmLabel="Suspend all"
+        busy={suspendAllBusy}
+        onCancel={() => !suspendAllBusy && setSuspendAllOpen(false)}
+        onConfirm={() => void confirmSuspendAll()}
+      />
       <div className="um_members_header_block contacts_inner_header">
         <div className="contacts_toolbar_filters_row">
-          <div
-            className="contacts_filter_button_group"
-            role="group"
-            aria-label="Filter templates by status"
-          >
-            <button
-              type="button"
-              id="email-templates-filter-active"
-              aria-pressed={templatesListTab === "active"}
-              className={`contacts_filter_btn${
-                templatesListTab === "active"
-                  ? " contacts_filter_btn_active"
-                  : ""
-              }`}
-              onClick={() => setTemplatesListTab("active")}
-            >
-              <ContactRound size={16} strokeWidth={1.75} aria-hidden />
-              <span>Active</span>
-              <span className="contacts_filter_btn_count">
-                ({activeCount})
-              </span>
-            </button>
-            <button
-              type="button"
-              id="email-templates-filter-archived"
-              aria-pressed={templatesListTab === "archived"}
-              className={`contacts_filter_btn${
-                templatesListTab === "archived"
-                  ? " contacts_filter_btn_active"
-                  : ""
-              }`}
-              onClick={() => setTemplatesListTab("archived")}
-            >
-              <Archive size={16} strokeWidth={1.75} aria-hidden />
-              <span>Archived</span>
-              <span className="contacts_filter_btn_count">
-                ({archivedCount})
-              </span>
-            </button>
-          </div>
+          <ActiveArchivedTabs
+            value={templatesListTab}
+            onChange={setTemplatesListTab}
+            activeCount={activeCount}
+            archivedCount={archivedCount}
+            idPrefix="email-templates-filter"
+            ariaLabel="Filter templates by status"
+            activeIcon={ContactRound}
+          />
           <button
             type="button"
             className="um_btn_primary contacts_toolbar_add_btn"
@@ -411,7 +444,29 @@ function EmailTemplatesTemplatesTabContent() {
             }
           >
             <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+              <div className="um_search_wrap">
+                <Search className="um_search_icon" size={18} aria-hidden />
+                <input
+                  type="search"
+                  className="um_search_input"
+                  placeholder="Search…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Search templates"
+                />
+              </div>
               <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
+                <button
+                  type="button"
+                  className="um_btn_toolbar"
+                  onClick={() => setSuspendAllOpen(true)}
+                  disabled={
+                    templatesListTab === "archived" || activeCount === 0
+                  }
+                >
+                  <Ban size={18} strokeWidth={2} aria-hidden />
+                  Suspend All
+                </button>
                 {selectedIds.size > 0 ? (
                   <button
                     type="button"
@@ -423,17 +478,6 @@ function EmailTemplatesTemplatesTabContent() {
                     <Trash2 size={18} strokeWidth={2} aria-hidden />
                   </button>
                 ) : null}
-              </div>
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  aria-label="Search templates"
-                />
               </div>
             </div>
             <DataTable<EmailTemplateRow>
@@ -555,16 +599,29 @@ function EmailTemplatesTemplatesTabContent() {
                         URL.revokeObjectURL(url)
                       }}
                     >
-                      <Paperclip
-                        className="email_preview_attachment_icon"
-                        size={18}
-                        strokeWidth={2}
+                      <span
+                        className="email_preview_attachment_icon_wrap"
                         aria-hidden
-                      />
-                      <span className="email_preview_attachment_name">
-                        {viewRow.attachment.fileName}
+                      >
+                        <Paperclip
+                          className="email_preview_attachment_icon"
+                          size={18}
+                          strokeWidth={2}
+                        />
                       </span>
-                      <span className="email_preview_attachment_action">Download</span>
+                      <span className="email_preview_attachment_meta">
+                        <span className="email_preview_attachment_name">
+                          {viewRow.attachment.fileName}
+                        </span>
+                        {formatEmailAttachmentSize(viewRow.attachment.size) ? (
+                          <span className="email_preview_attachment_size">
+                            {formatEmailAttachmentSize(viewRow.attachment.size)}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="email_preview_attachment_action">
+                        Download
+                      </span>
                     </button>
                   </div>
                 ) : null}

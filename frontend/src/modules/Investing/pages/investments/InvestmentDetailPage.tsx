@@ -12,7 +12,17 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
-import { Link, useParams, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
+import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
+import type { InvestNowLocationState } from "@/modules/Investing/pages/invest/investNowLocationState"
+import {
+  findInvestorRowForInvestNowScope,
+  isInvestNowDraftInvestorRow,
+} from "@/modules/Investing/pages/invest/investNowDraftUtils"
+import { fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
+import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
+import { EntityAvatarNameCell } from "@/common/components/entity-avatar/EntityAvatarNameCell"
 import { ViewReadonlyField } from "@/common/components/ViewReadonlyField"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
@@ -38,6 +48,7 @@ import type {
   InvestmentDetailRecord,
 } from "./investments.types"
 import { InvestmentDetailDocumentsTab } from "./InvestmentDetailDocumentsTab"
+import { InvestmentProfileBreakdownRowActions } from "./InvestmentProfileBreakdownRowActions"
 import { resolveInvestmentDealId } from "./utils/resolveInvestmentDealId"
 import "./investment-detail.css"
 
@@ -392,6 +403,8 @@ function DetailEditablePct({
 }
 
 function DetailForm({ d }: { d: InvestmentDetailRecord }) {
+  const navigate = useNavigate()
+  const { switchToInvesting } = usePortalMode()
   const list = d.list
   const investedDisplay = new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -496,7 +509,12 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
         header: "Profile name",
         sortValue: (r) => (r.profileName ?? "").toLowerCase(),
         tdClassName: "um_td_user",
-        cell: (r) => r.profileName?.trim() || "—",
+        cell: (r) => (
+          <EntityAvatarNameCell
+            displayName={r.profileName ?? ""}
+            linkClassName="um_user_meta_username"
+          />
+        ),
       },
       {
         id: "investorType",
@@ -582,6 +600,82 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
   }
   const profileLineCount = d.investedAsBreakdown?.length ?? 0
   const dealId = resolveInvestmentDealId(d)
+  const [dealInvestorRows, setDealInvestorRows] = useState<
+    import("@/modules/Syndication/Deals/types/deal-investors.types").DealInvestorRow[]
+  >([])
+
+  useEffect(() => {
+    if (!dealId) return
+    let cancelled = false
+    void fetchDealInvestors(dealId, { lpInvestorsOnly: false })
+      .then((payload) => {
+        if (!cancelled) setDealInvestorRows(payload.investors ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setDealInvestorRows([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [dealId])
+
+  const openResumeForLine = useCallback(
+    (line: InvestmentBreakdownLine) => {
+      const id = dealId?.trim()
+      if (!id) return
+      switchToInvesting()
+      navigate(dealInvestNowPath(id), {
+        state: {
+          returnTo: `/investing/investments/${encodeURIComponent(d.id)}?tab=profile`,
+          mode: "resume",
+          investmentId: line.investmentRowId,
+          userInvestorProfileId: line.userInvestorProfileId,
+          profileId: line.commitmentProfileId,
+        } satisfies InvestNowLocationState,
+      })
+    },
+    [dealId, d.id, navigate, switchToInvesting],
+  )
+
+  const profileBreakdownColumnsWithActions: DataTableColumn<InvestmentBreakdownLine>[] =
+    useMemo(() => {
+      const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
+      return [
+        ...profileBreakdownColumns,
+        {
+          id: "actions",
+          header: "Actions",
+          align: "center",
+          thClassName: "um_th_actions deals_th_actions_head",
+          tdClassName: "um_td_actions deal_inv_td_actions",
+          cell: (line) => {
+            const row =
+              dealInvestorRows.find(
+                (r) => String(r.id ?? "") === String(line.investmentRowId ?? ""),
+              ) ??
+              (em
+                ? findInvestorRowForInvestNowScope(dealInvestorRows, {
+                    email: em,
+                    investmentId: line.investmentRowId,
+                    userInvestorProfileId: line.userInvestorProfileId,
+                    profileId: line.commitmentProfileId,
+                  })
+                : undefined)
+            const canResume =
+              Boolean(row && em && isInvestNowDraftInvestorRow(row, em))
+            return (
+              <InvestmentProfileBreakdownRowActions
+                profileLabel={line.profileName?.trim() || "Profile"}
+                disabled={!canResume}
+                onResumeInvesting={
+                  canResume ? () => openResumeForLine(line) : undefined
+                }
+              />
+            )
+          },
+        },
+      ]
+    }, [profileBreakdownColumns, dealInvestorRows, openResumeForLine])
 
   return (
     <>
@@ -868,7 +962,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                   <DataTable<InvestmentBreakdownLine>
                     visualVariant="members"
                     membersTableClassName="um_table_members deal_inv_table"
-                    columns={profileBreakdownColumns}
+                    columns={profileBreakdownColumnsWithActions}
                     rows={filteredProfileBreakdown}
                     getRowKey={(_r, i) => `inv-breakdown-${i}`}
                     emptyLabel={

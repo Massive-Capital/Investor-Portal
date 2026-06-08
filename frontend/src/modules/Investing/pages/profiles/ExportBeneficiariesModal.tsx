@@ -1,4 +1,5 @@
 import { Download, Search, X } from "lucide-react"
+import { ExportModalFooter } from "../../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
 import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
@@ -225,15 +226,7 @@ export function ExportBeneficiariesModal({
           )}
         </ul>
 
-        <footer className="deals_export_modal_footer">
-          <button
-            type="button"
-            className="deals_export_modal_btn_secondary"
-            onClick={onClose}
-          >
-            <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
-          </button>
+        <ExportModalFooter onClose={onClose}>
           <button
             type="button"
             className="deals_export_modal_btn_secondary"
@@ -251,7 +244,7 @@ export function ExportBeneficiariesModal({
             <Download size={16} strokeWidth={2} aria-hidden />
             Export all
           </button>
-        </footer>
+        </ExportModalFooter>
       </div>
     </div>
   )

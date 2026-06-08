@@ -34,12 +34,6 @@
   min-width: 0;
 }
 
-/* Add Member: right-aligned; drop global .um_header_row bottom margin (spacing uses .deal_members_tab gap) */
-.deal_members_tab .deal_members_header_row.um_header_row {
-  justify-content: flex-end;
-  margin-bottom: 0;
-}
-
 /* Investors tab uses the same shell spacing as Deal Members when both classes apply */
 .deal_inv_populated.deal_members_tab {
   gap: 1.25em;

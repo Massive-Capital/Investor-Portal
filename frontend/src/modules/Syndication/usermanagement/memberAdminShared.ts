@@ -1,4 +1,15 @@
 import { SESSION_USER_DETAILS_KEY } from "../../../common/auth/sessionKeys";
+import {
+  getActiveWorkspaceCompanyName,
+  getSessionOrganizationCompanyId,
+} from "../../../common/auth/sessionOrganization";
+import {
+  getSessionAccessibleCompanies,
+  getSessionPrimaryCompanyName,
+} from "../../../common/auth/sessionMemberships";
+
+const ORG_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -343,22 +354,79 @@ export function parseOrganizationLabelsFromRow(
   return out;
 }
 
-export function organizationsLabelsPlain(row: Record<string, unknown>): string {
-  const list = parseOrganizationLabelsFromRow(row);
+/** Active workspace company when listing members for one organization (Settings → Org Members). */
+export type OrganizationDisplayScope = {
+  companyId: string;
+  companyName?: string;
+};
+
+export function resolveOrganizationDisplayScope(
+  companyId: string,
+  companyNameHint?: string,
+): OrganizationDisplayScope | undefined {
+  const id = companyId.trim().toLowerCase();
+  if (!ORG_UUID_RE.test(id)) return undefined;
+  const fromSession = getSessionAccessibleCompanies().find(
+    (c) => c.companyId === id,
+  )?.companyName;
+  const name =
+    String(companyNameHint ?? fromSession ?? "").trim() ||
+    (getSessionOrganizationCompanyId() === id
+      ? getActiveWorkspaceCompanyName().trim()
+      : "");
+  return { companyId: id, companyName: name || undefined };
+}
+
+function scopedCompanyDisplayName(
+  row: Record<string, unknown>,
+  scope: OrganizationDisplayScope,
+): string {
+  const hinted = scope.companyName?.trim();
+  if (hinted) return hinted;
+  const fromRow = companyCellValue(row);
+  if (fromRow !== "—") return fromRow;
+  const fromSession = getSessionAccessibleCompanies().find(
+    (c) => c.companyId === scope.companyId,
+  )?.companyName;
+  if (fromSession?.trim()) return fromSession.trim();
+  return getSessionPrimaryCompanyName().trim() || "Company";
+}
+
+/** One organization label when the members list is company-scoped. */
+export function organizationLabelsForCompanyScope(
+  row: Record<string, unknown>,
+  scope?: OrganizationDisplayScope | null,
+): string[] {
+  if (!scope?.companyId) return parseOrganizationLabelsFromRow(row);
+  const name = scopedCompanyDisplayName(row, scope);
+  return name ? [name] : [];
+}
+
+export function organizationsLabelsPlain(
+  row: Record<string, unknown>,
+  scope?: OrganizationDisplayScope | null,
+): string {
+  const list = organizationLabelsForCompanyScope(row, scope);
   if (list.length === 0) return "—";
   return list.join(", ");
 }
 
-export function organizationsSortValue(row: Record<string, unknown>): string {
-  return parseOrganizationLabelsFromRow(row).join(" ");
+export function organizationsSortValue(
+  row: Record<string, unknown>,
+  scope?: OrganizationDisplayScope | null,
+): string {
+  return organizationLabelsForCompanyScope(row, scope).join(" ");
 }
 
 export function formatRoleCsvCell(row: Record<string, unknown>): string {
   return primaryRoleLabelFromRow(row);
 }
 
-export function formatOrganizationsCsvCell(row: Record<string, unknown>): string {
-  return organizationsLabelsPlain(row);
+export function formatOrganizationsCsvCell(
+  row: Record<string, unknown>,
+  scope?: OrganizationDisplayScope | null,
+): string {
+  return organizationsLabelsPlain(row, scope);
 }
 
 /** Multi-line plain text for view/export previews. */

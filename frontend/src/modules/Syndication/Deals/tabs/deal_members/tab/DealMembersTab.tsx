@@ -49,6 +49,7 @@ import {
   exportAuditLinesForDealInvestorRows,
 } from "../../../utils/dealInvestorExportCsv"
 import { dealInvestorStatusDisplayLabel } from "../../../utils/dealInvestorTableDisplay"
+import { applyInvitationMailSentMarks } from "../../../utils/dealInvitationMailStatus"
 import {
   displayAddedInvestorsCommittedAmount,
   displayInvestorCommittedAmount,
@@ -58,7 +59,7 @@ import {
 import { DealInvestorCommittedAmountCell } from "../../investors/DealInvestorCommittedAmountCell"
 import { InviteMailStatusBadge } from "../../investors/InviteMailStatusBadge"
 import { DealInvestorRoleCell } from "../../investors/DealInvestorRoleBadge"
-import { InvestorClassPillsDisplay } from "../../investors/InvestorClassPillsDisplay"
+// import { InvestorClassPillsDisplay } from "../../investors/InvestorClassPillsDisplay"
 import { DealMemberRowActions } from "../components/DealMemberRowActions"
 import {
   loadEmailTemplates,
@@ -161,7 +162,7 @@ export function DealMembersTab({
     const showFullPageLoading = rowsRef.current.length === 0
     if (showFullPageLoading) setLoading(true)
     try {
-      const members = await fetchDealMembers(dealId)
+      const { members } = await fetchDealMembers(dealId)
       setRows(members)
     } finally {
       setLoading(false)
@@ -175,7 +176,7 @@ export function DealMembersTab({
         return
       }
       try {
-        const list = await fetchDealMembers(dealId)
+        const { members: list } = await fetchDealMembers(dealId)
         const fresh = list.find((r) => r.id === row.id)
         onViewMember(fresh ?? row)
       } catch {
@@ -252,24 +253,27 @@ export function DealMembersTab({
     addMemberDraftTick,
   ])
 
-  const dealAllClassNamesLine = useMemo(
-    () =>
-      investorClasses
-        .map((c) => String(c.name ?? "").trim())
-        .filter(Boolean)
-        .join(", "),
-    [investorClasses],
+  // const dealAllClassNamesLine = useMemo(
+  //   () =>
+  //     investorClasses
+  //       .map((c) => String(c.name ?? "").trim())
+  //       .filter(Boolean)
+  //       .join(", "),
+  //   [investorClasses],
+  // )
+
+  const displayRowsWithMail = useMemo(
+    () => applyInvitationMailSentMarks(displayRows, invitationMailStatusByRowId),
+    [displayRows, invitationMailStatusByRowId],
   )
 
-  const displayRowsWithMail = useMemo(() => {
-    const o = invitationMailStatusByRowId
-    if (!o || Object.keys(o).length === 0) return displayRows
-    return displayRows.map((r) => {
-      if (!o[r.id]) return r
-      if (r.invitationMailSent === true) return r
-      return { ...r, invitationMailSent: true }
-    })
-  }, [displayRows, invitationMailStatusByRowId])
+  useEffect(() => {
+    if (!invitationMailStatusByRowId) return
+    if (Object.keys(invitationMailStatusByRowId).length === 0) return
+    setRows((prev) =>
+      applyInvitationMailSentMarks(prev, invitationMailStatusByRowId),
+    )
+  }, [invitationMailStatusByRowId])
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -491,55 +495,55 @@ export function DealMembersTab({
         tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
         cell: (r) => <DealInvestorRoleCell row={r} />,
       },
-      {
-        id: "class",
-        align: "center",
-        header: (
-          <span className="deal_inv_th_investor_class_head">
-            <span>Class</span>
-            {investorClasses.length === 0 ? (
-              <FormTooltip
-                label="Please complete the Offering Details section to assign an investor class."
-                content={
-                  <p className="deal_inv_class_tooltip_p">
-                    Please complete the Offering Details section to assign an
-                    investor class.
-                  </p>
-                }
-                placement="bottom"
-                panelAlign="start"
-                openOnHover={false}
-                nativeButtonTrigger={false}
-              />
-            ) : null}
-          </span>
-        ),
-        thClassName: "deals_th_align_center",
-        sortValue: (r) => {
-          const a = (r.investorClass ?? "").trim()
-          if (a) return a.toLowerCase()
-          return dealAllClassNamesLine.toLowerCase()
-        },
-        tdClassName:
-          "deal_inv_td_investor_class deal_inv_td_investor_class_cell deal_inv_td_investor_class_center",
-        cell: (r) => {
-          const assignedRaw = (r.investorClass ?? "").trim()
-          const dealLine = dealAllClassNamesLine.trim()
-          const pillSource = assignedRaw || dealLine
-          if (!pillSource.trim())
-            return <span className="deal_inv_class_pill_muted">—</span>
-          const titleForTooltip =
-            assignedRaw && dealLine && assignedRaw !== dealLine
-              ? `${assignedRaw} · Deal: ${dealLine}`
-              : pillSource
-          return (
-            <InvestorClassPillsDisplay
-              pillSource={pillSource}
-              titleForTooltip={titleForTooltip}
-            />
-          )
-        },
-      },
+      // {
+      //   id: "class",
+      //   align: "center",
+      //   header: (
+      //     <span className="deal_inv_th_investor_class_head">
+      //       <span>Class</span>
+      //       {investorClasses.length === 0 ? (
+      //         <FormTooltip
+      //           label="Please complete the Offering Details section to assign an investor class."
+      //           content={
+      //             <p className="deal_inv_class_tooltip_p">
+      //               Please complete the Offering Details section to assign an
+      //               investor class.
+      //             </p>
+      //           }
+      //           placement="bottom"
+      //           panelAlign="start"
+      //           openOnHover={false}
+      //           nativeButtonTrigger={false}
+      //         />
+      //       ) : null}
+      //     </span>
+      //   ),
+      //   thClassName: "deals_th_align_center",
+      //   sortValue: (r) => {
+      //     const a = (r.investorClass ?? "").trim()
+      //     if (a) return a.toLowerCase()
+      //     return dealAllClassNamesLine.toLowerCase()
+      //   },
+      //   tdClassName:
+      //     "deal_inv_td_investor_class deal_inv_td_investor_class_cell deal_inv_td_investor_class_center",
+      //   cell: (r) => {
+      //     const assignedRaw = (r.investorClass ?? "").trim()
+      //     const dealLine = dealAllClassNamesLine.trim()
+      //     const pillSource = assignedRaw || dealLine
+      //     if (!pillSource.trim())
+      //       return <span className="deal_inv_class_pill_muted">—</span>
+      //     const titleForTooltip =
+      //       assignedRaw && dealLine && assignedRaw !== dealLine
+      //         ? `${assignedRaw} · Deal: ${dealLine}`
+      //         : pillSource
+      //     return (
+      //       <InvestorClassPillsDisplay
+      //         pillSource={pillSource}
+      //         titleForTooltip={titleForTooltip}
+      //       />
+      //     )
+      //   },
+      // },
       {
         id: "commitment",
         align: "right",
@@ -673,8 +677,6 @@ export function DealMembersTab({
     filteredRows.length,
     selectedMemberIds,
     toggleSelectMember,
-    dealAllClassNamesLine,
-    investorClasses.length,
     onEditMember,
     offeringLinkAvailable,
     onCopyMemberOfferingLink,
@@ -735,10 +737,10 @@ export function DealMembersTab({
 
   return (
     <div className="deal_members_tab">
-      <div className="um_header_row deal_members_header_row">
+      <div className="deal_inv_panel_add_row">
         <button
           type="button"
-          className="deals_list_add_btn"
+          className="um_btn_primary"
           onClick={onAddMember}
         >
           <Plus size={18} strokeWidth={2} aria-hidden />
@@ -930,6 +932,17 @@ export function DealMembersTab({
         ) : (
           <>
             <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+              <div className="um_search_wrap">
+                <Search className="um_search_icon" size={18} aria-hidden />
+                <input
+                  type="search"
+                  className="um_search_input"
+                  placeholder="Search deal members…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Search deal members"
+                />
+              </div>
               <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
                 <button
                   type="button"
@@ -948,17 +961,6 @@ export function DealMembersTab({
                   <Download size={18} strokeWidth={2} aria-hidden />
                   <span>Export All</span>
                 </button>
-              </div>
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search deal members…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search deal members"
-                />
               </div>
             </div>
 

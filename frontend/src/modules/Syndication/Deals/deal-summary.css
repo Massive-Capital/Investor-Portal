@@ -174,7 +174,8 @@
 }
 
 .deal_summary_btn_toolbar {
-  height: 40px;
+  height: var(--top-navbar-control-height, 2.25rem);
+  min-height: var(--top-navbar-control-height, 2.25rem);
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;

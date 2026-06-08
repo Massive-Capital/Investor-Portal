@@ -71,18 +71,46 @@ export type ApplyMyInvestNowCommitmentInput = {
   /** When true, apply `w9Form` to the commitment investment row. */
   w9FormInBody?: boolean;
   w9Form?: unknown;
+  /** When true, `committed_amount` is optional (profile / questionnaire progress saves). */
+  progressOnly?: boolean;
+  /** When true, do not read or update `commitment_amount`. */
+  skipCommittedAmount?: boolean;
+  /** When true, set commitment to the posted value instead of adding to the existing total. */
+  replaceCommittedAmount?: boolean;
+  fundingMethodInBody?: boolean;
+  fundingMethod?: string;
 };
 
-function normalizeCommittedAmountStored(raw: unknown) {
+function normalizeCommittedAmountStored(
+    raw: unknown,
+    opts?: { allowZero?: boolean },
+) {
     const t = String(raw ?? "")
         .trim()
         .replace(/[$,\s]/g, "");
     if (!t)
         return "";
     const n = Number(t);
-    if (!Number.isFinite(n) || n <= 0)
+    if (!Number.isFinite(n) || n < 0)
+        return "";
+    if (n === 0 && !opts?.allowZero)
+        return "";
+    if (n <= 0 && !opts?.allowZero)
         return "";
     return String(n);
+}
+
+const INVEST_NOW_FUNDING_METHODS = new Set([
+    "wire_transfer",
+    "ach",
+    "check",
+]);
+
+function normalizeFundingMethodParam(raw: unknown) {
+    const s = String(raw ?? "").trim();
+    if (!s)
+        return "";
+    return INVEST_NOW_FUNDING_METHODS.has(s) ? s : "";
 }
 /** Persist cumulative commitment as a plain numeric string (avoids float noise). */
 function formatCumulativeCommitmentStored(total: number) {
@@ -215,19 +243,41 @@ export async function applyMyInvestNowCommitmentAddon(
     const e = String(params.viewerEmailNorm ?? "").trim().toLowerCase();
     if (!e.includes("@"))
         return { ok: false, message: "Invalid viewer email" };
-    const incrementStr = normalizeCommittedAmountStored(params.committedAmount);
-    if (!incrementStr) {
+    const skipAmount = Boolean(params.skipCommittedAmount);
+    const allowZero = Boolean(params.progressOnly);
+    const incrementStr = skipAmount
+        ? ""
+        : normalizeCommittedAmountStored(params.committedAmount, {
+              allowZero,
+          });
+    if (!skipAmount && !incrementStr) {
+        return {
+            ok: false,
+            message: params.progressOnly
+                ? "Committed amount must be zero or greater"
+                : "Committed amount must be a number greater than 0",
+        };
+    }
+    const increment = incrementStr ? Number(incrementStr) : 0;
+    if (
+        !skipAmount &&
+        (!Number.isFinite(increment) ||
+            (increment <= 0 && !allowZero))
+    ) {
         return {
             ok: false,
             message: "Committed amount must be a number greater than 0",
         };
     }
-    const increment = Number(incrementStr);
-    if (!Number.isFinite(increment) || increment <= 0) {
-        return {
-            ok: false,
-            message: "Committed amount must be a number greater than 0",
-        };
+    const fundingMethodPatch = params.fundingMethodInBody
+        ? normalizeFundingMethodParam(params.fundingMethod)
+        : undefined;
+    if (
+        params.fundingMethodInBody &&
+        String(params.fundingMethod ?? "").trim() &&
+        !fundingMethodPatch
+    ) {
+        return { ok: false, message: "Invalid funding method." };
     }
     const rawProfile = String(params.profileId ?? "").trim();
     const profileOpt = normalizeLpCommitmentProfileId(rawProfile ? rawProfile : undefined);
@@ -331,11 +381,30 @@ export async function applyMyInvestNowCommitmentAddon(
         .from(dealInvestment)
         .where(and(eq(dealInvestment.dealId, params.dealId), eq(dealInvestment.contactId, targetContactMemberId)))
         .orderBy(desc(dealInvestment.createdAt));
-    let inv;
+    const scopedUip = String(params.userInvestorProfileId ?? "").trim();
+    const scopedProfile = profileOpt ?? "";
+    let inv: (typeof invCandidates)[number] | undefined;
     for (const row of invCandidates) {
-        if (isLpInvestorRole(row.investor_role)) {
-            inv = row;
-            break;
+        if (!isLpInvestorRole(row.investor_role))
+            continue;
+        if (scopedUip) {
+            const rowUip = String(row.userInvestorProfileId ?? "").trim();
+            if (!rowUip || rowUip.toLowerCase() !== scopedUip.toLowerCase())
+                continue;
+        }
+        else if (scopedProfile) {
+            if (String(row.profileId ?? "").trim() !== scopedProfile)
+                continue;
+        }
+        inv = row;
+        break;
+    }
+    if (!inv && !scopedUip && !scopedProfile) {
+        for (const row of invCandidates) {
+            if (isLpInvestorRole(row.investor_role)) {
+                inv = row;
+                break;
+            }
         }
     }
     const inBodyUip = Boolean(params.userInvestorProfileInBody);
@@ -385,9 +454,10 @@ export async function applyMyInvestNowCommitmentAddon(
                 status: statusOpt !== undefined ? statusOpt : "",
                 investorClass: classRes.storedInvestorClass,
                 docSignedDate: docNorm.value === undefined ? null : docNorm.value,
-                commitmentAmount: incrementStr,
+                commitmentAmount: incrementStr || "0",
                 extraContributionAmounts: [],
                 documentStoragePath: null,
+                fundingMethod: fundingMethodPatch ?? "",
             },
         });
         if (params.questionnaireAnswersInBody || params.w9FormInBody) {
@@ -513,9 +583,10 @@ export async function applyMyInvestNowCommitmentAddon(
             investorClass: String(inv.investorClass ?? "").trim() || "",
             docSignedDate:
                 docNorm.value === undefined ? null : docNorm.value,
-            commitmentAmount: incrementStr,
+            commitmentAmount: incrementStr || "0",
             extraContributionAmounts: [],
             documentStoragePath: null,
+            fundingMethod: fundingMethodPatch ?? "",
             ...(params.questionnaireAnswersInBody
               ? { investorQuestionnaireAnswersJson: questionnaireAnswersJson }
               : {}),
@@ -557,7 +628,9 @@ export async function applyMyInvestNowCommitmentAddon(
             if (!fresh)
                 throw new Error("LP_COMMITMENT_ROW_MISSING");
             const previous = committedNumericFromDealInvestmentRow(fresh);
-            const newTotal = previous + increment;
+            const newTotal = params.replaceCommittedAmount
+                ? increment
+                : previous + increment;
             const wasFundApproved = Boolean(fresh.fundApproved);
             const invPatch: Pick<
                 DealInvestmentInsert,
@@ -565,14 +638,21 @@ export async function applyMyInvestNowCommitmentAddon(
                 | "extraContributionAmounts"
                 | "userInvestorProfileId"
                 | "fundApproved"
+                | "fundingMethod"
             > & {
                 profileId?: string;
                 status?: string;
                 docSignedDate?: string | null;
             } = {
-                commitmentAmount: formatCumulativeCommitmentStored(newTotal),
                 extraContributionAmounts: [],
             };
+            if (!skipAmount) {
+                invPatch.commitmentAmount =
+                    formatCumulativeCommitmentStored(newTotal);
+            }
+            if (params.fundingMethodInBody) {
+                invPatch.fundingMethod = fundingMethodPatch ?? "";
+            }
             // Further LP commitment after sponsor approval requires re-approval; committed total is prior + new increment.
             if (wasFundApproved) {
                 invPatch.fundApproved = false;

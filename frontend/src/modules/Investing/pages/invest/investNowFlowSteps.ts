@@ -98,3 +98,28 @@ export function investNowStepperPhaseIndex(
 ): number {
   return phases.findIndex((p) => p.id === phaseId)
 }
+
+/** First wizard step index for a stepper phase (respects questionnaire sections in flow). */
+export function investNowStepIndexForPhaseId(
+  phaseId: InvestNowStepperPhase["id"],
+  flowSteps: InvestNowFlowStep[],
+): number {
+  if (flowSteps.length === 0) return 0
+  if (phaseId === "investor") return 0
+  if (phaseId === "investment") {
+    const idx = flowSteps.findIndex((s) => s.kind === "investment")
+    return idx >= 0 ? idx : 0
+  }
+  if (phaseId === "questionnaire") {
+    const idx = flowSteps.findIndex((s) => s.kind === "questionnaire")
+    if (idx >= 0) return idx
+    const w9 = flowSteps.findIndex((s) => s.kind === "w9")
+    return w9 >= 0 ? w9 : 0
+  }
+  if (phaseId === "w9") {
+    const idx = flowSteps.findIndex((s) => s.kind === "w9")
+    return idx >= 0 ? idx : 0
+  }
+  const idx = flowSteps.findIndex((s) => s.kind === "esignatures")
+  return idx >= 0 ? idx : flowSteps.length - 1
+}

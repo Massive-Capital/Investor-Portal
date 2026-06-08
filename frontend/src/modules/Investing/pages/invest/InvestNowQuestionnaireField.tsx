@@ -1,5 +1,5 @@
-import { useId } from "react"
 import { UsPhoneInput } from "@/common/components/UsPhoneInput"
+import { questionnaireFieldSelector } from "@/common/utils/formValidationFocus"
 import "@/common/components/us-phone-input.css"
 import {
   nationalDigitsFromStoredPhone,
@@ -10,14 +10,20 @@ import {
   resolveQuestionForDisplay,
   type InvestorQuestionnaireQuestion,
 } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
-import { InvestNowFormField } from "./InvestNowFormField"
+import { InvestNowFormField, InvestNowFieldError } from "./InvestNowFormField"
 import type { InvestNowQuestionnaireAnswers } from "./investNowQuestionnaireValidation"
 
 export interface InvestNowQuestionnaireFieldProps {
   question: InvestorQuestionnaireQuestion
   answers: InvestNowQuestionnaireAnswers
   disabled?: boolean
+  invalid?: boolean
+  error?: string
   onChange: (answers: InvestNowQuestionnaireAnswers) => void
+}
+
+function questionFieldId(questionId: string): string {
+  return questionnaireFieldSelector(questionId).replace(/^#/, "")
 }
 
 function readCheckboxValues(raw: string | undefined): string[] {
@@ -35,11 +41,14 @@ export function InvestNowQuestionnaireField({
   question: rawQuestion,
   answers,
   disabled = false,
+  invalid = false,
+  error,
   onChange,
 }: InvestNowQuestionnaireFieldProps) {
   const question = resolveQuestionForDisplay(rawQuestion)
-  const fieldId = useId()
+  const fieldId = questionFieldId(question.id)
   const value = answers[question.id] ?? ""
+  const ariaInvalid = invalid || undefined
 
   function patch(nextValue: string) {
     onChange({ ...answers, [question.id]: nextValue })
@@ -60,6 +69,7 @@ export function InvestNowQuestionnaireField({
         label={question.label}
         required={question.required}
         hint={question.subtext}
+        error={error}
       >
         <textarea
           id={fieldId}
@@ -67,6 +77,7 @@ export function InvestNowQuestionnaireField({
           rows={question.fieldType === "paragraph" ? 4 : 3}
           value={value}
           disabled={disabled}
+          aria-invalid={ariaInvalid}
           onChange={(e) => patch(e.target.value)}
         />
       </InvestNowFormField>
@@ -75,12 +86,18 @@ export function InvestNowQuestionnaireField({
 
   if (question.fieldType === "boolean") {
     return (
-      <InvestNowFormField id={fieldId} label={question.label} required={question.required}>
+      <InvestNowFormField
+        id={fieldId}
+        label={question.label}
+        required={question.required}
+        error={error}
+      >
         <select
           id={fieldId}
           className="deals_create_select"
           value={value}
           disabled={disabled}
+          aria-invalid={ariaInvalid}
           onChange={(e) => patch(e.target.value)}
         >
           <option value="">Select…</option>
@@ -94,7 +111,11 @@ export function InvestNowQuestionnaireField({
   if (question.fieldType === "radio") {
     const options = question.options ?? []
     return (
-      <fieldset className="invest_now_questionnaire_fieldset">
+      <fieldset
+        id={fieldId}
+        className={`invest_now_questionnaire_fieldset${invalid ? " invest_now_questionnaire_fieldset_invalid" : ""}`}
+        aria-invalid={ariaInvalid}
+      >
         <legend className="deals_create_label_text">
           {question.label}
           {question.required ? (
@@ -113,12 +134,14 @@ export function InvestNowQuestionnaireField({
                 value={option}
                 checked={value === option}
                 disabled={disabled}
+                aria-invalid={ariaInvalid}
                 onChange={() => patch(option)}
               />
               <span>{option}</span>
             </label>
           ))}
         </div>
+        <InvestNowFieldError message={error} />
       </fieldset>
     )
   }
@@ -127,7 +150,11 @@ export function InvestNowQuestionnaireField({
     const options = question.options ?? []
     const selected = readCheckboxValues(value)
     return (
-      <fieldset className="invest_now_questionnaire_fieldset">
+      <fieldset
+        id={fieldId}
+        className={`invest_now_questionnaire_fieldset${invalid ? " invest_now_questionnaire_fieldset_invalid" : ""}`}
+        aria-invalid={ariaInvalid}
+      >
         <legend className="deals_create_label_text">
           {question.label}
           {question.required ? (
@@ -144,12 +171,14 @@ export function InvestNowQuestionnaireField({
                 type="checkbox"
                 checked={selected.includes(option)}
                 disabled={disabled}
+                aria-invalid={ariaInvalid}
                 onChange={(e) => toggleCheckbox(option, e.target.checked)}
               />
               <span>{option}</span>
             </label>
           ))}
         </div>
+        <InvestNowFieldError message={error} />
       </fieldset>
     )
   }
@@ -162,6 +191,7 @@ export function InvestNowQuestionnaireField({
         label={question.label}
         required={question.required}
         hint={question.subtext}
+        error={error}
       >
         <UsPhoneInput
           id={fieldId}
@@ -171,6 +201,8 @@ export function InvestNowQuestionnaireField({
           className="deals_create_input"
           autoComplete="tel"
           validationMode="tenDigits"
+          aria-invalid={ariaInvalid}
+          invalidClassName="um_field_input_invalid"
         />
       </InvestNowFormField>
     )
@@ -189,6 +221,7 @@ export function InvestNowQuestionnaireField({
       label={question.label}
       required={question.required}
       hint={question.subtext}
+      error={error}
     >
       <input
         id={fieldId}
@@ -196,6 +229,7 @@ export function InvestNowQuestionnaireField({
         className="deals_create_input"
         value={value}
         disabled={disabled}
+        aria-invalid={ariaInvalid}
         autoComplete="off"
         inputMode={isEinField || isSsnField ? "numeric" : undefined}
         placeholder={isEinField ? "XX-XXXXXXX" : undefined}

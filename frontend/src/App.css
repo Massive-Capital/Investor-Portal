@@ -1,4 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap");
+@import "./common/theme/portal-theme.css";
 @import "./common/styles/portal-tables.css";
 
 /* Prevent horizontal scroll: full-width chain + clip (focus rings, vw quirks) */
@@ -35,73 +37,8 @@ body {
 }
 
 :root {
-  /* ===== PRIMARY (LOCKED) ===== */
-  --main-auth-button-color: #155abf;
-
-  --portal-primary: #00477a;
-  --portal-primary-hover: #00365e;
-  --portal-primary-soft: #e6f0ff;
-
-  /* ===== ACCENT (optional but recommended) ===== */
-  --color-accent: #f4b740;
-  --color-accent-hover: #d99c2f;
-
-  /* ===== BACKGROUNDS ===== */
-  --background-color-onboarding: #f5f9ff;
-  --card-onboarding-bg-color: #ffffff;
-
-  --page-background: #f5f7fa;
-  --bg-colour-main: #eef2f6;
-
-  --portal-page-bg: #eef2f6;
-  --portal-chrome-bg: #f5f7fa;
-  --portal-surface: #ffffff;
-
-  /* ===== SIDEBAR ===== */
-  /* --sidebar-bg-color: #ffffff; */
-  --sidebar-bg-color: #D29E2CB8;
-  /* --sidebar-aside-bg: #f5f7fa; */
-  --sidebar-aside-bg: #D29E2CB8;
-  --sidebar-text-color: #1a1a1a;
-  --sidebar-active: #e6f0ff;
-
-  /* ===== TEXT ===== */
-  --portal-text: #00477a;
-  --portal-text-secondary: #4f4f4f;
-  --portal-text-muted: #64748b;
-
-  --light-gray-color: #64748b;
-
-  /* ===== BORDERS ===== */
-  --portal-border: #e5e7eb;
-
-  /* ===== BUTTONS ===== */
-  --ui-button-border-radius: 25px;
-  --ui-button-background-add: #00477a;
-  --ui-button-hover: #00365e;
-
-  --edit-button-background: #e6f0ff;
-  /* --edit-button-color: #155abf; */
-  --edit-button-color: #D29E2CB8;
-
-  --delete-button-background: #fee2e2;
-
-  /* ===== STATUS ===== */
-  --active-status-background: #dcfce7;
-  --inactive-status-background: #fee2e2;
-
-  --portal-status-raising-text: #166534;
-  --portal-status-raising-bg: #dcfce7;
-  --portal-danger: #b91c1c;
-
-  /* ===== UI ===== */
-  --ui-border-radius: 6px;
-  --portal-card-radius: 8px;
-  --portal-pill-radius: 9999px;
   /** Custom dropdown — unified pill shell (reference: white field + gray footer strip). */
   --portal-dropdown-shell-radius: 22px;
-  --portal-dropdown-shell-border: rgba(0, 0, 0, 0.08);
-  --portal-dropdown-shell-muted: #f4f4f5;
   --portal-dropdown-trigger-min-height: 2.5rem;
   --portal-dropdown-trigger-padding-block: 0.45rem;
   --portal-dropdown-trigger-padding-inline: 0.875rem;
@@ -113,16 +50,9 @@ body {
   --portal-dropdown-panel-shadow:
     0 8px 30px rgba(0, 0, 0, 0.08),
     0 2px 8px rgba(0, 0, 0, 0.04);
-  --portal-dropdown-action-pill-bg: #f3f4f6;
-  --portal-icon-box-radius: 10px;
 
-  /* ===== INPUTS / FOCUS ===== */
-  --portal-toggle-track: #e5e7eb;
-
-  --portal-field-focus-shadow: 0 0 0 2px rgba(21, 90, 191, 0.2);
   --portal-field-focus-shadow-dark: 0 0 0 2px rgba(255, 255, 255, 0.12);
 
-  /* ===== TYPOGRAPHY ===== */
   --font-size: 14px;
 
   /** Form field labels — logged-in shell only (see `.app_shell label`); auth uses `auth_forms.css` */
@@ -130,11 +60,14 @@ body {
   --portal-form-label-font-weight: 600;
   --portal-form-label-letter-spacing: -0.01em;
   --portal-form-label-color: var(--portal-text-muted, #64748b);
+}
 
-  /* ===== TITLE ===== */
-  --font-color-title: #003c66;
-  --icon-color: #003c66;
-
+.app_shell h1,
+.app_shell h2,
+.app_shell h3,
+.app_shell .page_title,
+.app_shell .sponsor_dash_title {
+  font-family: var(--portal-font-display, "Playfair Display", Georgia, serif);
 }
 button {
   font-family: "Inter", sans-serif;
@@ -186,12 +119,12 @@ button {
   /* 2.5rem / 0.9375rem font ≈ 2.6667em; padding 0.5/0.75 rem as fraction of field font */
   /* min-height: 2.6666667em; */
   padding: 0.5333333em 0.8em;
-  border: 1px solid #d1d5db;
+  /* border: 1px solid #d1d5db; */
 }
 
 .app_shell textarea {
-  resize: vertical;
-  border-radius: 10px;
+  resize: none;
+  border-radius: var(--portal-card-radius, 4px);
 }
 
 /* Global native dropdown style — matches Add Deal form select UI. */
@@ -202,7 +135,7 @@ select {
   color: var(--portal-text, #0f172a);
   background: var(--portal-surface, #fff);
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: var(--ui-button-border-radius, 25px);
+  border-radius: var(--ui-button-border-radius, 4px);
   display: block;
   width: 100%;
   max-width: 100%;
@@ -250,7 +183,9 @@ select:hover:not(:disabled) {
     [type="submit"]
   ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not(
     [type="color"]
-  ):not(.deal_assets_search):focus-visible,
+  ):not(.deal_assets_search):not(.sponsor_dash_search_input):not(
+    .top_navbar_deals_search_input
+  ):focus-visible,
 .app_shell textarea:focus-visible,
 .app_shell select:focus-visible,
 select:focus-visible {
@@ -265,7 +200,9 @@ select:focus-visible {
     [type="submit"]
   ):not([type="button"]):not([type="reset"]):not([type="image"]):not([type="range"]):not(
     [type="color"]
-  ):not(.deal_assets_search):focus-visible,
+  ):not(.deal_assets_search):not(.sponsor_dash_search_input):not(
+    .top_navbar_deals_search_input
+  ):focus-visible,
 :root[data-theme="dark"] .app_shell textarea:focus-visible,
 :root[data-theme="dark"] .app_shell select:focus-visible {
   box-shadow: var(--portal-field-focus-shadow-dark);
@@ -286,13 +223,17 @@ select:focus-visible {
  * Minimal defaults outside `.app_shell` (legacy / static content). Logged-in fields use `.app_shell`
  * rules; auth inputs use `.loginForm .input_field` in auth_forms.css.
  */
+textarea {
+  resize: none;
+}
+
 body textarea {
   box-sizing: border-box;
   border: 1px solid var(--portal-border, #e5e5e5);
-  border-radius: 10px;
+  border-radius: var(--portal-card-radius, 4px);
   padding: 0.5em 0.75em;
   font-size: 16px;
-  resize: vertical;
+  resize: none;
   min-height: 2.5em;
 }
 
@@ -301,7 +242,7 @@ body select {
   max-width: 100%;
   box-sizing: border-box;
   border: 1px solid #d1d5db;
-  border-radius: var(--portal-card-radius, 8px);
+  border-radius: var(--portal-card-radius, 4px);
   /* Match former rem padding at 0.9375×16px field font */
   padding: 0.5333333em 2.1333333em 0.5333333em 0.8em;
   font-size: 0.9375em;
@@ -317,14 +258,14 @@ body select {
 }
 
 .invite_user_btn {
-  border: 1px solid var(--main-auth-button-color);
+  border: 1px solid var(--ui-button-border, var(--sidebar-active-text));
   padding: 7px 10px;
   width: 8em;
-  background-color: var(--main-auth-button-color);
+  background-color: var(--ui-button-background-add, var(--sidebar-bg-color));
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  color: white;
+  color: var(--ui-button-text, var(--sidebar-active-text));
   width: fit-content;
   border-radius: var(--ui-button-border-radius);
   display: flex;
@@ -449,7 +390,7 @@ select option {
   border-radius: var(--ui-border-radius) !important;
 }
 
-/* All buttons: pill radius (includes class-based controls e.g. *_btn, login-btn) */
+/* All buttons: rectangular control radius (includes class-based controls e.g. *_btn, login-btn) */
 button,
 input[type="submit"],
 input[type="button"],
@@ -461,11 +402,11 @@ input[type="reset"],
   border-radius: var(--ui-button-border-radius) !important;
 }
 
-/* Toggles: 25px border radius (switch track only) */
+/* Toggles: rectangular track */
 .vendor_overview_toggle,
 .product_profile_toggle,
 .product_profile_product_toggle {
-  border-radius: 25px !important;
+  border-radius: var(--ui-button-border-radius, 4px) !important;
 }
 
 /* Modal/page close button (CircleX) – same across the application */

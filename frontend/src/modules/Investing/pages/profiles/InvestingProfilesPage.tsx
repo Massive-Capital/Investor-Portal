@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, MapPin, Plus, UserCircle, Users } from "lucide-react"
+import { MapPin, Plus, UserCircle, Users } from "lucide-react"
+import { EntityAvatarNameCell } from "@/common/components/entity-avatar/EntityAvatarNameCell"
+import { ActiveArchivedTabs } from "@/common/components/active-archived-tabs/ActiveArchivedTabs"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "@/common/components/Toast"
 import {
@@ -560,18 +562,13 @@ export default function InvestingProfilesPage() {
         header: "Profile name",
         sortValue: (r) => (r.profileName ?? "").toLowerCase(),
         tdClassName: "um_td_user",
-        cell: (r) => {
-          const name = r.profileName?.trim() || "—"
-          return (
-            <button
-              type="button"
-              className="deals_table_name_link investing_profiles_name_link"
-              onClick={() => openProfileView(r)}
-            >
-              {name}
-            </button>
-          )
-        },
+        cell: (r) => (
+          <EntityAvatarNameCell
+            displayName={r.profileName ?? ""}
+            onClick={() => openProfileView(r)}
+            linkClassName="deals_table_name_link investing_profiles_name_link um_user_meta_username"
+          />
+        ),
       },
       {
         id: "profileType",
@@ -631,7 +628,12 @@ export default function InvestingProfilesPage() {
         header: "Name",
         sortValue: (r) => (r.fullName ?? "").toLowerCase(),
         tdClassName: "um_td_user",
-        cell: (r) => r.fullName?.trim() || "—",
+        cell: (r) => (
+          <EntityAvatarNameCell
+            displayName={r.fullName ?? ""}
+            linkClassName="um_user_meta_username"
+          />
+        ),
       },
       {
         id: "relationship",
@@ -691,7 +693,12 @@ export default function InvestingProfilesPage() {
         header: "Name / company",
         sortValue: (r) => (r.fullNameOrCompany ?? "").toLowerCase(),
         tdClassName: "um_td_user",
-        cell: (r) => r.fullNameOrCompany?.trim() || "—",
+        cell: (r) => (
+          <EntityAvatarNameCell
+            displayName={r.fullNameOrCompany ?? ""}
+            linkClassName="um_user_meta_username"
+          />
+        ),
       },
       {
         id: "address",
@@ -855,38 +862,16 @@ export default function InvestingProfilesPage() {
         <>
           <div className="um_members_header_block contacts_inner_header">
               <div className="contacts_toolbar_filters_row">
-                <div
-                  className="contacts_filter_button_group"
-                  role="group"
-                  aria-label="Filter profiles by status"
-                >
-                  <button
-                    type="button"
-                    id="investing-profiles-filter-active"
-                    aria-pressed={profilesStatusTab === "active"}
-                    className={`contacts_filter_btn${
-                      profilesStatusTab === "active" ? " contacts_filter_btn_active" : ""
-                    }`}
-                    onClick={() => setProfilesStatusTab("active")}
-                  >
-                    <UserCircle size={16} strokeWidth={1.75} aria-hidden />
-                    <span>Active</span>
-                    <span className="contacts_filter_btn_count">({profileActiveCount})</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="investing-profiles-filter-archived"
-                    aria-pressed={profilesStatusTab === "archived"}
-                    className={`contacts_filter_btn${
-                      profilesStatusTab === "archived" ? " contacts_filter_btn_active" : ""
-                    }`}
-                    onClick={() => setProfilesStatusTab("archived")}
-                  >
-                    <Archive size={16} strokeWidth={1.75} aria-hidden />
-                    <span>Archived</span>
-                    <span className="contacts_filter_btn_count">({profileArchivedCount})</span>
-                  </button>
-                </div>
+                <ActiveArchivedTabs
+                  value={profilesStatusTab}
+                  onChange={setProfilesStatusTab}
+                  activeCount={profileActiveCount}
+                  archivedCount={profileArchivedCount}
+                  idPrefix="investing-profiles-filter"
+                  ariaLabel="Filter profiles by status"
+                  activeIcon={UserCircle}
+                  activePanelId="profiles-panel-my-profiles"
+                />
                 <button
                   type="button"
                   className="um_btn_primary contacts_toolbar_add_btn"
@@ -939,38 +924,16 @@ export default function InvestingProfilesPage() {
           <>
             <div className="um_members_header_block contacts_inner_header">
               <div className="contacts_toolbar_filters_row">
-                <div
-                  className="contacts_filter_button_group"
-                  role="group"
-                  aria-label="Filter beneficiaries by status"
-                >
-                  <button
-                    type="button"
-                    id="investing-bene-filter-active"
-                    aria-pressed={beneStatusTab === "active"}
-                    className={`contacts_filter_btn${
-                      beneStatusTab === "active" ? " contacts_filter_btn_active" : ""
-                    }`}
-                    onClick={() => setBeneStatusTab("active")}
-                  >
-                    <Users size={16} strokeWidth={1.75} aria-hidden />
-                    <span>Active</span>
-                    <span className="contacts_filter_btn_count">({beneActiveCount})</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="investing-bene-filter-archived"
-                    aria-pressed={beneStatusTab === "archived"}
-                    className={`contacts_filter_btn${
-                      beneStatusTab === "archived" ? " contacts_filter_btn_active" : ""
-                    }`}
-                    onClick={() => setBeneStatusTab("archived")}
-                  >
-                    <Archive size={16} strokeWidth={1.75} aria-hidden />
-                    <span>Archived</span>
-                    <span className="contacts_filter_btn_count">({beneArchivedCount})</span>
-                  </button>
-                </div>
+                <ActiveArchivedTabs
+                  value={beneStatusTab}
+                  onChange={setBeneStatusTab}
+                  activeCount={beneActiveCount}
+                  archivedCount={beneArchivedCount}
+                  idPrefix="investing-bene-filter"
+                  ariaLabel="Filter beneficiaries by status"
+                  activeIcon={Users}
+                  activePanelId="profiles-panel-beneficiaries"
+                />
                 <button
                   type="button"
                   className="um_btn_primary contacts_toolbar_add_btn"
@@ -1026,38 +989,16 @@ export default function InvestingProfilesPage() {
           <>
             <div className="um_members_header_block contacts_inner_header">
               <div className="contacts_toolbar_filters_row">
-                <div
-                  className="contacts_filter_button_group"
-                  role="group"
-                  aria-label="Filter addresses by status"
-                >
-                  <button
-                    type="button"
-                    id="investing-addr-filter-active"
-                    aria-pressed={addrStatusTab === "active"}
-                    className={`contacts_filter_btn${
-                      addrStatusTab === "active" ? " contacts_filter_btn_active" : ""
-                    }`}
-                    onClick={() => setAddrStatusTab("active")}
-                  >
-                    <MapPin size={16} strokeWidth={1.75} aria-hidden />
-                    <span>Active</span>
-                    <span className="contacts_filter_btn_count">({addrActiveCount})</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="investing-addr-filter-archived"
-                    aria-pressed={addrStatusTab === "archived"}
-                    className={`contacts_filter_btn${
-                      addrStatusTab === "archived" ? " contacts_filter_btn_active" : ""
-                    }`}
-                    onClick={() => setAddrStatusTab("archived")}
-                  >
-                    <Archive size={16} strokeWidth={1.75} aria-hidden />
-                    <span>Archived</span>
-                    <span className="contacts_filter_btn_count">({addrArchivedCount})</span>
-                  </button>
-                </div>
+                <ActiveArchivedTabs
+                  value={addrStatusTab}
+                  onChange={setAddrStatusTab}
+                  activeCount={addrActiveCount}
+                  archivedCount={addrArchivedCount}
+                  idPrefix="investing-addr-filter"
+                  ariaLabel="Filter addresses by status"
+                  activeIcon={MapPin}
+                  activePanelId="profiles-panel-addresses"
+                />
                 <button
                   type="button"
                   className="um_btn_primary contacts_toolbar_add_btn"

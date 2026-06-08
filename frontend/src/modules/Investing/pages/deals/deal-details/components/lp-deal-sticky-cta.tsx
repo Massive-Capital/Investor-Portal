@@ -1,3 +1,5 @@
+import { TrendingUp } from "lucide-react"
+
 interface LpDealStickyCtaProps {
   label: string
   onInvest: () => void
@@ -14,10 +16,11 @@ export function LpDealStickyCta({
       <div className="lpdd_sticky_cta_inner">
         <button
           type="button"
-          className="lpdd_btn_primary lpdd_sticky_cta_btn"
+          className="um_btn_primary lpdd_btn_primary lpdd_sticky_cta_btn"
           onClick={onInvest}
           disabled={busy}
         >
+          <TrendingUp size={16} strokeWidth={2} aria-hidden />
           {label}
         </button>
       </div>

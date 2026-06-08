@@ -1,11 +1,51 @@
+import {
+  Briefcase,
+  Calendar,
+  CircleDollarSign,
+  DollarSign,
+  Shield,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react"
 import type { ReactNode } from "react"
-import type { OfferingSidebarSummaryRow } from "../dealOfferingPreviewShared"
+import type {
+  OfferingSidebarSummaryIconKey,
+  OfferingSidebarSummaryRow,
+} from "../dealOfferingPreviewShared"
 
-function SidebarSummaryRow({ label, value }: OfferingSidebarSummaryRow) {
+const SIDEBAR_SUMMARY_ICONS: Record<
+  OfferingSidebarSummaryIconKey,
+  LucideIcon
+> = {
+  minimum: DollarSign,
+  offering_size: CircleDollarSign,
+  deal_type: Briefcase,
+  sec_type: Shield,
+  investment_type: TrendingUp,
+  close_date: Calendar,
+}
+
+function SidebarSummaryRow({ label, value, iconKey }: OfferingSidebarSummaryRow) {
+  const Icon = SIDEBAR_SUMMARY_ICONS[iconKey]
+  const isDate = iconKey === "close_date"
   return (
     <div className="deal_offer_pf_sidebar_row">
-      <dt className="deal_offer_pf_sidebar_label">{label}</dt>
-      <dd className="deal_offer_pf_sidebar_value">{value}</dd>
+      <span className="deal_offer_pf_sidebar_icon_box" aria-hidden>
+        <Icon size={16} strokeWidth={2} className="deal_offer_pf_sidebar_icon" />
+      </span>
+      <div className="deal_offer_pf_sidebar_row_body">
+        <dt className="deal_offer_pf_sidebar_label">{label}</dt>
+        <dd
+          className={[
+            "deal_offer_pf_sidebar_value",
+            isDate ? "deal_offer_pf_sidebar_value--date" : "",
+          ]
+            .join(" ")
+            .trim()}
+        >
+          {value}
+        </dd>
+      </div>
     </div>
   )
 }
@@ -24,8 +64,8 @@ export interface DealOfferingPreviewBentoLayoutProps {
 }
 
 /**
- * Responsive grid: gallery → sticky metrics → rest on narrow screens;
- * metrics column stays sticky beside gallery + body from ~36rem up.
+ * Responsive grid: gallery → sidebar → rest on narrow screens;
+ * sidebar card + invest CTA stay sticky beside gallery + body from ~36rem up.
  */
 export function DealOfferingPreviewBentoLayout({
   gallery,
@@ -76,6 +116,7 @@ export function DealOfferingPreviewBentoLayout({
                       key={row.label}
                       label={row.label}
                       value={row.value}
+                      iconKey={row.iconKey}
                     />
                   ))}
                 </dl>

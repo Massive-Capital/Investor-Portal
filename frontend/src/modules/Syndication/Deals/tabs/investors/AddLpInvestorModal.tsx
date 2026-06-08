@@ -3,6 +3,7 @@ import {
   IdCard,
   Loader2,
   Mail,
+  Plus,
   Save,
   Tag,
   UserRound,
@@ -35,6 +36,12 @@ import {
 import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
 import type { AddInvestmentFormValues } from "../deal_members/add-investment/add_deal_member_types"
 import { loadAddMemberDraft } from "../deal_members/add-investment/addMemberFormDraftStorage"
+import {
+  alreadyAddedOptionLabel,
+  INVESTOR_ALREADY_ON_DEAL_MESSAGE,
+  isContactAlreadyOnDealRoster,
+  type RosterRowForDuplicateCheck,
+} from "../deal_members/add-investment/dealRosterContactDuplicate"
 import { MEMBER_SELECT_OPTIONS } from "../../constants/member-options"
 import {
   INVESTOR_PROFILE_SELECT_OPTIONS,
@@ -47,12 +54,16 @@ import type { DealInvestorRow } from "../../types/deal-investors.types"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import { rowDisplayName } from "../../../usermanagement/memberAdminShared"
 import { InfoIconPanel } from "../offering_details/FieldInfoHeading"
+import { YesNoCardRadioGroup } from "../../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
 import "../../../usermanagement/user_management.css"
 import "../../components/deal-step-form.css"
 import "../deal_members/add-investment/add_deal_modal.css"
 
 const INVESTOR_CLASS_UNAVAILABLE_HINT =
   "Please complete the Classes section to assign an investor class."
+
+const INVITATION_EMAILS_UNAVAILABLE_HINT =
+  "Invitation emails are unavailable while the deal is in draft or required deal details are incomplete. Finalize the deal before sending invitations. You can still choose No below."
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
@@ -149,6 +160,8 @@ export interface AddLpInvestorModalProps {
    * autosaved LP id from `portal_add_member_*` draft (same storage as the full add modal).
    */
   resumeAddMemberDraft?: boolean
+  /** Current Investors tab rows — used to block duplicate adds and mark dropdown options. */
+  existingInvestorRows?: DealInvestorRow[]
 }
 
 function resolveLpInvestorClassId(
@@ -177,6 +190,7 @@ export function AddLpInvestorModal({
   editRow = null,
   dealBlocksInvitationEmails = false,
   resumeAddMemberDraft = false,
+  existingInvestorRows = [],
 }: AddLpInvestorModalProps) {
   const isEditMode = mode === "edit" && editRow != null
   const titleId = useId()
@@ -198,6 +212,39 @@ export function AddLpInvestorModal({
   const [backendLpRosterId, setBackendLpRosterId] = useState<string | null>(null)
   const backendLpRosterIdRef = useRef<string | null>(null)
   const lpAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const investorRosterForGate = useMemo((): RosterRowForDuplicateCheck[] => {
+    return existingInvestorRows.map((r) => ({
+      id: r.id,
+      contactId: r.contactId,
+      userEmail: r.userEmail,
+    }))
+  }, [existingInvestorRows])
+
+  const excludeRowIdForDuplicateGate = useMemo(() => {
+    if (isEditMode && editRow?.id) return editRow.id.trim()
+    const lp = backendLpRosterId?.trim() || loadLpRosterId(dealId)?.trim()
+    return lp || null
+  }, [isEditMode, editRow?.id, backendLpRosterId, dealId])
+
+  const selectedContactAlreadyOnDeal = useMemo(
+    () =>
+      !isEditMode &&
+      Boolean(contactId.trim()) &&
+      isContactAlreadyOnDealRoster(
+        investorRosterForGate,
+        contactId.trim(),
+        contactEmail,
+        excludeRowIdForDuplicateGate,
+      ),
+    [
+      isEditMode,
+      contactId,
+      contactEmail,
+      investorRosterForGate,
+      excludeRowIdForDuplicateGate,
+    ],
+  )
   const lpPostInFlightRef = useRef(false)
   const lpAutosaveInFlightRef = useRef(false)
 
@@ -359,16 +406,32 @@ export function AddLpInvestorModal({
         setContactId("")
         setContactDisplayName("")
         setContactEmail("")
+        setError(null)
         return
       }
       if (raw.startsWith(PREFIX_CONTACT)) {
         const id = raw.slice(PREFIX_CONTACT.length)
         const c = contactRows.find((x) => x.id === id)
         if (c) {
+          const email = c.email.trim()
+          if (
+            !isEditMode &&
+            isContactAlreadyOnDealRoster(
+              investorRosterForGate,
+              id,
+              email,
+              excludeRowIdForDuplicateGate,
+            )
+          ) {
+            setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+            toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+            return
+          }
           const display = contactOptionLabel(c)
           setContactId(id)
           setContactDisplayName(display.split(" — ")[0]?.trim() || display)
-          setContactEmail(c.email.trim())
+          setContactEmail(email)
+          setError(null)
         }
         return
       }
@@ -377,28 +440,65 @@ export function AddLpInvestorModal({
         : raw
       const u = memberRows.find((x) => String(x.id) === userId)
       if (u) {
+        const email = String(u.email ?? "").trim()
+        if (
+          !isEditMode &&
+          isContactAlreadyOnDealRoster(
+            investorRosterForGate,
+            userId,
+            email,
+            excludeRowIdForDuplicateGate,
+          )
+        ) {
+          setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+          toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+          return
+        }
         const display =
           rowDisplayName(u) !== "—"
             ? rowDisplayName(u)
-            : String(u.email ?? "").trim() || "—"
+            : email || "—"
         setContactId(userId)
         setContactDisplayName(display)
-        setContactEmail(String(u.email ?? "").trim())
+        setContactEmail(email)
+        setError(null)
         return
       }
       const fallbackOpt = MEMBER_SELECT_OPTIONS.find((o) => o.value === userId)
       if (fallbackOpt?.value) {
         const parts = fallbackOpt.label.split(" — ")
+        const email = parts[1]?.trim() ?? ""
+        if (
+          !isEditMode &&
+          isContactAlreadyOnDealRoster(
+            investorRosterForGate,
+            userId,
+            email,
+            excludeRowIdForDuplicateGate,
+          )
+        ) {
+          setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+          toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+          return
+        }
         setContactId(userId)
         setContactDisplayName(parts[0]?.trim() || userId)
-        setContactEmail(parts[1]?.trim() ?? "")
+        setContactEmail(email)
+        setError(null)
         return
       }
       setContactId(userId)
       setContactDisplayName("")
       setContactEmail("")
+      setError(null)
     },
-    [contactRows, memberRows],
+    [
+      contactRows,
+      memberRows,
+      isEditMode,
+      investorRosterForGate,
+      excludeRowIdForDuplicateGate,
+    ],
   )
 
   const memberSelectValue = useMemo(() => {
@@ -413,14 +513,33 @@ export function AddLpInvestorModal({
   }, [contactId, contactRows, memberRows])
 
   const memberDropdownSections = useMemo((): DropdownSelectSection[] => {
+    function isAlreadyOnInvestorsList(
+      contactOrUserId: string,
+      email: string,
+    ): boolean {
+      return isContactAlreadyOnDealRoster(
+        investorRosterForGate,
+        contactOrUserId,
+        email,
+        excludeRowIdForDuplicateGate,
+      )
+    }
+
     const sections: DropdownSelectSection[] = []
     if (contactRows.length > 0) {
       sections.push({
         heading: "Contacts",
-        options: contactRows.map((c) => ({
-          value: `${PREFIX_CONTACT}${c.id}`,
-          label: contactOptionLabel(c),
-        })),
+        options: contactRows.map((c) => {
+          const value = `${PREFIX_CONTACT}${c.id}`
+          const baseLabel = contactOptionLabel(c)
+          const onDeal = isAlreadyOnInvestorsList(c.id, c.email ?? "")
+          return {
+            value,
+            label: baseLabel,
+            disabled: onDeal,
+            ...(onDeal ? { labelContent: alreadyAddedOptionLabel(baseLabel) } : {}),
+          }
+        }),
       })
     }
     if (memberRows.length > 0) {
@@ -429,14 +548,29 @@ export function AddLpInvestorModal({
         options: memberRows
           .map((u) => memberOptionFromUser(u))
           .filter((o): o is { value: string; label: string } => Boolean(o))
-          .map((o) => ({
-            value: `${PREFIX_USER}${o.value}`,
-            label: o.label,
-          })),
+          .map((o) => {
+            const value = `${PREFIX_USER}${o.value}`
+            const dirRow = memberRows.find((x) => String(x.id) === o.value)
+            const email = dirRow ? String(dirRow.email ?? "").trim() : ""
+            const onDeal = isAlreadyOnInvestorsList(o.value, email)
+            return {
+              value,
+              label: o.label,
+              disabled: onDeal,
+              ...(onDeal
+                ? { labelContent: alreadyAddedOptionLabel(o.label) }
+                : {}),
+            }
+          }),
       })
     }
     return sections
-  }, [contactRows, memberRows])
+  }, [
+    contactRows,
+    memberRows,
+    investorRosterForGate,
+    excludeRowIdForDuplicateGate,
+  ])
 
   const handleContactCreated = useCallback((contact: ContactRow) => {
     setContactRows((prev) => {
@@ -471,6 +605,7 @@ export function AddLpInvestorModal({
     const hasContent =
       contactId.trim().length > 0 || sendInvitationMail === "yes"
     if (!hasContent) return
+    if (selectedContactAlreadyOnDeal) return
 
     if (lpAutosaveTimerRef.current)
       clearTimeout(lpAutosaveTimerRef.current)
@@ -567,6 +702,7 @@ export function AddLpInvestorModal({
     isEditMode,
     dealBlocksInvitationEmails,
     profileId,
+    selectedContactAlreadyOnDeal,
   ])
 
   async function handleSubmit(e: FormEvent) {
@@ -574,6 +710,11 @@ export function AddLpInvestorModal({
     setError(null)
     if (!contactId.trim()) {
       setError("Select an investor.")
+      return
+    }
+    if (selectedContactAlreadyOnDeal) {
+      setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+      toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
       return
     }
     if (dealClasses.length === 0) {
@@ -722,6 +863,11 @@ export function AddLpInvestorModal({
                   }}
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
+                {selectedContactAlreadyOnDeal ? (
+                  <p className="um_msg_error deals_add_inv_field_hint" role="alert">
+                    {INVESTOR_ALREADY_ON_DEAL_MESSAGE}
+                  </p>
+                ) : null}
               </div>
 
               <div className="um_field">
@@ -816,54 +962,42 @@ export function AddLpInvestorModal({
                     Would you like to notify the investor about their addition to
                     the deal?
                   </span>
+                  {dealBlocksInvitationEmails ? (
+                    <span className="deals_add_inv_label_info">
+                      <InfoIconPanel
+                        ariaLabel="More information: Invitation emails"
+                        infoContent={
+                          <>
+                            Invitation emails are unavailable while the deal is in
+                            draft or required deal details are incomplete. Finalize
+                            the deal before sending invitations. You can still choose{" "}
+                            <strong>No</strong> below.
+                          </>
+                        }
+                      />
+                    </span>
+                  ) : null}
                 </div>
                 {dealBlocksInvitationEmails ? (
-                  <p className="deals_create_field_hint" role="status">
-                    Invitation emails are unavailable while the deal is in draft or
-                    required deal details are incomplete. Finalize the deal before
-                    sending invitations. You can still choose <strong>No</strong>{" "}
-                    below.
+                  <p id="lp-inv-send-invite-hint" className="visually_hidden">
+                    {INVITATION_EMAILS_UNAVAILABLE_HINT}
                   </p>
                 ) : null}
-                <div
-                  className="deal_step_yesno"
-                  role="radiogroup"
-                  aria-labelledby="lp-inv-send-invite-label"
-                >
-                  <label className="deal_step_yesno_label">
-                    <input
-                      type="radio"
-                      name="lp-inv-send-invitation"
-                      value="yes"
-                      checked={sendInvitationMail === "yes"}
-                      disabled={dealBlocksInvitationEmails}
-                      title={
-                        dealBlocksInvitationEmails
-                          ? "Unavailable until the deal is finalized"
-                          : undefined
-                      }
-                      onChange={() => setSendInvitationMail("yes")}
-                    />
-                    <span>Yes</span>
-                     <span className="deal_step_yesno_common">
-                        {" "}
-                        (Standard)
-                      </span>
-                  </label>
-                  <label className="deal_step_yesno_label">
-                    <input
-                      type="radio"
-                      name="lp-inv-send-invitation"
-                      value="no"
-                      checked={sendInvitationMail === "no"}
-                      onChange={() => setSendInvitationMail("no")}
-                    />
-                    <span>
-                      No
-                     
-                    </span>
-                  </label>
-                </div>
+                <YesNoCardRadioGroup
+                  className="deal_step_yesno_cards"
+                  name="lp-inv-send-invitation"
+                  value={sendInvitationMail}
+                  onChange={setSendInvitationMail}
+                  yesIsCommon
+                  variant="mail"
+                  disabled={dealBlocksInvitationEmails}
+                  ariaLabelledBy="lp-inv-send-invite-label"
+                  ariaDescribedBy={
+                    dealBlocksInvitationEmails
+                      ? "lp-inv-send-invite-hint"
+                      : undefined
+                  }
+                />
               </div>
             </div>
           </div>
@@ -881,7 +1015,7 @@ export function AddLpInvestorModal({
             <button
               type="submit"
               className="um_btn_primary"
-              disabled={submitting}
+              disabled={submitting || selectedContactAlreadyOnDeal}
             >
               {submitting ? (
                 <>
@@ -891,12 +1025,16 @@ export function AddLpInvestorModal({
                     className="add_contact_modal_btn_spin"
                     aria-hidden
                   />
-                  Saving…
+                  {isEditMode ? "Saving…" : "Adding…"}
                 </>
               ) : (
                 <>
-                  <Save size={16} strokeWidth={2} aria-hidden />
-                  Save
+                  {isEditMode ? (
+                    <Save size={16} strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Plus size={16} strokeWidth={2} aria-hidden />
+                  )}
+                  {isEditMode ? "Save" : "Add"}
                 </>
               )}
             </button>

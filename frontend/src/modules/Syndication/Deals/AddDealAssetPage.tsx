@@ -20,6 +20,7 @@ import {
   buildDealDetailReturnSearch,
   type DealDetailReturnState,
 } from "./utils/offeringDetailsSectionNav"
+import { FormHeadingWithInfo } from "../../../common/components/form-heading/FormHeadingWithInfo"
 import { toast } from "../../../common/components/Toast"
 import { assetImagePathsToUrls } from "../../../common/utils/apiBaseUrl"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
@@ -422,16 +423,18 @@ export function AddDealAssetPage() {
               >
                 <div className="deals_add_deal_asset_additional_head">
                   <div>
-                    <h2
+                    <FormHeadingWithInfo
+                      as="h2"
                       id="deal-add-asset-additional-heading"
                       className="deals_add_deal_asset_additional_subtitle"
-                    >
-                      Additional information
-                    </h2>
-                    <p className="deals_add_deal_asset_additional_hint">
-                      Drag the dots to reorder. Attributes without a value will
-                      be hidden from LPs.
-                    </p>
+                      title="Additional information"
+                      info={
+                        <p>
+                          Drag the dots to reorder. Attributes without a value
+                          will be hidden from LPs.
+                        </p>
+                      }
+                    />
                   </div>
                   <button
                     type="button"
@@ -451,7 +454,7 @@ export function AddDealAssetPage() {
             )}
           </div>
 
-          <div className="um_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions">
+          <div className="um_modal_actions add_contact_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions">
             <button type="button" className="um_btn_secondary" onClick={goBack}>
               <X size={16} strokeWidth={2} aria-hidden />
               Cancel
@@ -474,7 +477,11 @@ export function AddDealAssetPage() {
                 </button>
               ) : (
                 <button type="submit" className="um_btn_primary">
-                  <Save size={16} strokeWidth={2} aria-hidden />
+                  {isEdit ? (
+                    <Save size={16} strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Plus size={16} strokeWidth={2} aria-hidden />
+                  )}
                   {isEdit ? "Save changes" : "Save asset"}
                 </button>
               )}

@@ -2,13 +2,22 @@ import { Download, Eye, FileSignature, FileText, Search } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { InvestmentEsignSignModal } from "./InvestmentEsignSignModal"
 import { InvestorOfferingDocumentsList } from "./components/InvestorOfferingDocumentsList"
-import { fetchDealMyEsignDocuments } from "@/modules/Syndication/Deals/api/dealsApi"
+import {
+  fetchDealMyEsignDocuments,
+  type DealMyEsignScopeQuery,
+} from "@/modules/Syndication/Deals/api/dealsApi"
 import "@/modules/Syndication/Deals/deal-offering-details.css"
 import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
+import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import {
-  ESIGN_TEMPLATE_CATEGORIES,
   esignCategoryLabel,
+  resolveInvestorEsignCategoryId,
 } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
+import {
+  fetchUserInvestorProfileNameMap,
+  profileNameForInvestmentBreakdown,
+} from "./investedAsDisplay"
 import { resolveEsignDocumentUrlForViewer } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deals-list.css"
@@ -78,43 +87,166 @@ function filterOfferingDocumentSections(
 }
 
 type EsignProfileCardData = {
+  cardKey: string
   categoryId: string
   label: string
-  /** One shared e-sign template document per investor profile type. */
-  document: InvestmentDetailDocumentRow
+  /** Saved My Profiles name for this commitment (when known). */
+  profileName?: string
+  /** Pins sign session / sync to this commitment row. */
+  esignScope: DealMyEsignScopeQuery
+  /** Documents for this profile only (not merged across names). */
+  documents: InvestmentDetailDocumentRow[]
 }
 
-/** One card per profile type that has a shared e-sign document for this investor. */
-function buildEsignProfileCards(
+type EsignCommitmentSlot = {
+  cardKey: string
+  categoryId: string
+  label: string
+  profileName: string
+  userInvestorProfileId: string
+  commitmentProfileId: string
+  investmentRowId: string
+  investorKind?: DealInvestorRow["investorKind"]
+}
+
+function isPositiveCommitment(committed: string | undefined): boolean {
+  const n = parseMoneyDigits(String(committed ?? "").trim())
+  return Number.isFinite(n) && n > 0
+}
+
+function buildEsignCommitmentSlots(
+  viewerRows: DealInvestorRow[],
+  nameByUserProfileId: ReadonlyMap<string, string>,
+): EsignCommitmentSlot[] {
+  const slots: EsignCommitmentSlot[] = []
+  const seen = new Set<string>()
+  for (const row of viewerRows) {
+    if (!isPositiveCommitment(row.committed)) continue
+    const categoryId = resolveInvestorEsignCategoryId(row)
+    if (!categoryId) continue
+    const uip = String(row.userInvestorProfileId ?? "").trim()
+    const cardKey = `${categoryId}|${uip || row.id}`
+    if (seen.has(cardKey)) continue
+    seen.add(cardKey)
+    const name = profileNameForInvestmentBreakdown(row, nameByUserProfileId)
+    slots.push({
+      cardKey,
+      categoryId,
+      label: esignCategoryLabel(categoryId),
+      profileName: name !== "—" ? name : "",
+      userInvestorProfileId: uip,
+      commitmentProfileId: String(row.profileId ?? "").trim(),
+      investmentRowId: row.id,
+      investorKind: row.investorKind,
+    })
+  }
+  return slots
+}
+
+function mapMyEsignApiDocuments(
+  docs: Awaited<ReturnType<typeof fetchDealMyEsignDocuments>>["documents"],
+  cardKey: string,
+): InvestmentDetailDocumentRow[] {
+  return docs.map((d) => {
+    const categoryId = d.categoryId?.trim() || ""
+    return {
+      id: `esign-${cardKey}-${d.fileId}`,
+      name: d.name,
+      url: resolveEsignDocumentUrlForViewer(d.url),
+      dateAdded: "—",
+      sectionLabel: categoryId ? esignCategoryLabel(categoryId) : "E-signatures",
+      visibilityLabel: investmentEsignStatusLabel(d.status),
+      esignStatus: d.status,
+      source: "esign",
+      canSign: d.status === "pending",
+      signatureRequestId: d.signatureRequestId?.trim() || undefined,
+      categoryId: categoryId || undefined,
+    }
+  })
+}
+
+function esignScopeForSlot(slot: EsignCommitmentSlot): DealMyEsignScopeQuery {
+  return {
+    ...(slot.investorKind !== "lp_roster"
+      ? { investmentId: slot.investmentRowId }
+      : {}),
+    userInvestorProfileId: slot.userInvestorProfileId || undefined,
+    profileId: slot.commitmentProfileId || undefined,
+  }
+}
+
+function cardAggregateEsignStatus(
   documents: InvestmentDetailDocumentRow[],
-): EsignProfileCardData[] {
+): "pending" | "signed" | null {
+  if (documents.length === 0) return null
+  if (documents.every((d) => d.esignStatus === "signed")) return "signed"
+  if (documents.some((d) => d.esignStatus === "pending")) return "pending"
+  return null
+}
+
+/** One card per saved profile commitment that has e-sign on this deal. */
+async function fetchEsignProfileCardsForDeal(
+  dealId: string,
+  viewerRows: DealInvestorRow[],
+  nameByUserProfileId: ReadonlyMap<string, string>,
+): Promise<{
+  cards: EsignProfileCardData[]
+  pending: boolean
+  loadError: string | null
+}> {
+  const slots = buildEsignCommitmentSlots(viewerRows, nameByUserProfileId)
+
+  const results: Array<{
+    slot: EsignCommitmentSlot
+    esign: Awaited<ReturnType<typeof fetchDealMyEsignDocuments>>
+    esignScope: DealMyEsignScopeQuery
+  }> = []
+  for (const slot of slots) {
+    const esignScope = esignScopeForSlot(slot)
+    const esign = await fetchDealMyEsignDocuments(dealId, esignScope)
+    results.push({ slot, esign, esignScope })
+  }
+
+  let pending = false
+  let loadError: string | null = null
   const cards: EsignProfileCardData[] = []
 
-  for (const cat of ESIGN_TEMPLATE_CATEGORIES) {
-    const document = documents.find(
-      (d) => (d.categoryId?.trim() || "") === cat.id,
-    )
-    if (!document) continue
+  for (const { slot, esign, esignScope } of results) {
+    if (esign.loadError && !loadError) loadError = esign.loadError
+    if (esign.esignPending) pending = true
+    if (esign.documents.length === 0) continue
     cards.push({
-      categoryId: cat.id,
-      label: cat.label,
-      document,
+      cardKey: slot.cardKey,
+      categoryId: slot.categoryId,
+      label: slot.label,
+      ...(slot.profileName ? { profileName: slot.profileName } : {}),
+      esignScope,
+      documents: mapMyEsignApiDocuments(esign.documents, slot.cardKey),
     })
   }
 
-  const otherDocument = documents.find((d) => {
-    const cid = d.categoryId?.trim() || ""
-    return !cid || !ESIGN_TEMPLATE_CATEGORIES.some((c) => c.id === cid)
-  })
-  if (otherDocument) {
-    cards.push({
-      categoryId: "_other",
-      label: "Other",
-      document: otherDocument,
-    })
+  if (cards.length === 0 && slots.length === 0) {
+    const esign = await fetchDealMyEsignDocuments(dealId)
+    if (esign.loadError) loadError = esign.loadError
+    if (esign.esignPending) pending = true
+    if (esign.documents.length > 0) {
+      cards.push({
+        cardKey: "unscoped",
+        categoryId: "",
+        label: "E-signatures",
+        esignScope: {},
+        documents: mapMyEsignApiDocuments(esign.documents, "unscoped"),
+      })
+    }
   }
 
-  return cards
+  return { cards, pending, loadError }
+}
+
+function esignProfileCardTitle(card: EsignProfileCardData): string {
+  const name = card.profileName?.trim()
+  if (name) return `${name} — ${card.label}`
+  return card.label
 }
 
 function esignProfileCardMatchesQuery(
@@ -123,8 +255,15 @@ function esignProfileCardMatchesQuery(
 ): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  const d = card.document
-  const blob = [card.label, d.name, d.sectionLabel, d.visibilityLabel]
+  const blob = [
+    card.profileName,
+    card.label,
+    ...card.documents.flatMap((d) => [
+      d.name,
+      d.sectionLabel,
+      d.visibilityLabel,
+    ]),
+  ]
     .join(" ")
     .toLowerCase()
   return blob.includes(q)
@@ -141,52 +280,57 @@ export function InvestmentDetailDocumentsTab({
   const [sectionsRevision, setSectionsRevision] = useState(0)
   const [previewSyncFailed, setPreviewSyncFailed] = useState(false)
   const [dealHasDocumentSections, setDealHasDocumentSections] = useState(false)
-  const [esignDocuments, setEsignDocuments] = useState<
-    InvestmentDetailDocumentRow[]
+  const [esignProfileCards, setEsignProfileCards] = useState<
+    EsignProfileCardData[]
   >([])
   const [esignPending, setEsignPending] = useState(false)
   const [esignLoadError, setEsignLoadError] = useState<string | null>(null)
+  const [profileNameByBookId, setProfileNameByBookId] = useState<
+    ReadonlyMap<string, string>
+  >(() => new Map())
   const [signModalOpen, setSignModalOpen] = useState(false)
   const [signModalSignatureRequestId, setSignModalSignatureRequestId] = useState<
     string | null
   >(null)
+  const [signModalEsignScope, setSignModalEsignScope] = useState<
+    DealMyEsignScopeQuery | undefined
+  >(undefined)
   const fetchGenRef = useRef(0)
   const autoEsignTabRef = useRef(false)
 
-  const openSignModal = useCallback((signatureRequestId?: string | null) => {
-    setSignModalSignatureRequestId(signatureRequestId?.trim() || null)
-    setSignModalOpen(true)
-  }, [])
+  const openSignModal = useCallback(
+    (
+      signatureRequestId?: string | null,
+      esignScope?: DealMyEsignScopeQuery,
+    ) => {
+      setSignModalSignatureRequestId(signatureRequestId?.trim() || null)
+      setSignModalEsignScope(esignScope)
+      setSignModalOpen(true)
+    },
+    [],
+  )
 
-  const loadEsignDocuments = useCallback(async (id: string) => {
-    const esign = await fetchDealMyEsignDocuments(id)
-    setEsignPending(esign.esignPending)
-    setEsignLoadError(esign.loadError ?? null)
-    setEsignDocuments(
-      esign.documents.map((d) => {
-        const categoryId = d.categoryId?.trim() || ""
-        return {
-          id: `esign-${d.fileId}`,
-          name: d.name,
-          url: resolveEsignDocumentUrlForViewer(d.url),
-          dateAdded: "—",
-          sectionLabel: categoryId
-            ? esignCategoryLabel(categoryId)
-            : "E-signatures",
-          visibilityLabel: investmentEsignStatusLabel(d.status),
-          esignStatus: d.status,
-          source: "esign" as const,
-          canSign: d.status === "pending",
-          signatureRequestId: d.signatureRequestId?.trim() || undefined,
-          categoryId: categoryId || undefined,
-        }
-      }),
-    )
-    if (esign.esignPending && !autoEsignTabRef.current) {
-      autoEsignTabRef.current = true
-      setActiveSubTab("esignatures")
-    }
-  }, [])
+  const reloadEsignProfileCards = useCallback(
+    async (
+      id: string,
+      viewerRows: DealInvestorRow[],
+      nameMap: ReadonlyMap<string, string>,
+    ) => {
+      const result = await fetchEsignProfileCardsForDeal(
+        id,
+        viewerRows,
+        nameMap,
+      )
+      setEsignProfileCards(result.cards)
+      setEsignPending(result.pending)
+      setEsignLoadError(result.loadError)
+      if (result.pending && !autoEsignTabRef.current) {
+        autoEsignTabRef.current = true
+        setActiveSubTab("esignatures")
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     const id = dealId.trim()
@@ -216,13 +360,17 @@ export function InvestmentDetailDocumentsTab({
       if (fetchGenRef.current !== gen) return
       setAudience(aud)
 
-      await loadEsignDocuments(id)
+      const nameMap = await fetchUserInvestorProfileNameMap()
+      if (fetchGenRef.current !== gen) return
+      setProfileNameByBookId(nameMap)
+
+      await reloadEsignProfileCards(id, aud.viewerRows, nameMap)
       if (fetchGenRef.current !== gen) return
 
       setSectionsRevision((n) => n + 1)
       setLoadPending(false)
     })()
-  }, [dealId, loadEsignDocuments])
+  }, [dealId, reloadEsignProfileCards])
 
   useEffect(() => {
     const id = dealId.trim()
@@ -264,24 +412,32 @@ export function InvestmentDetailDocumentsTab({
     [offeringDocumentSections, query],
   )
 
-  const esignProfileCards = useMemo(() => {
-    const built = buildEsignProfileCards(esignDocuments)
-    return built.filter((card) => esignProfileCardMatchesQuery(card, query))
-  }, [esignDocuments, query])
+  const filteredEsignProfileCards = useMemo(
+    () =>
+      esignProfileCards.filter((card) =>
+        esignProfileCardMatchesQuery(card, query),
+      ),
+    [esignProfileCards, query],
+  )
 
-  const firstPendingSignatureRequestId = useMemo(() => {
-    const pending = esignDocuments.find(
-      (d) => d.canSign && d.signatureRequestId?.trim(),
-    )
-    return pending?.signatureRequestId?.trim() ?? null
-  }, [esignDocuments])
+  const firstPendingSign = useMemo(() => {
+    for (const card of esignProfileCards) {
+      for (const doc of card.documents) {
+        const sig = doc.signatureRequestId?.trim()
+        if (doc.canSign && sig) {
+          return { signatureRequestId: sig, esignScope: card.esignScope }
+        }
+      }
+    }
+    return null
+  }, [esignProfileCards])
 
   const showAudienceGate =
     previewSyncFailed &&
     !dealHasDocumentSections &&
     !dealHasOfferingDocumentSections(dealId) &&
     offeringDocuments.length === 0 &&
-    esignDocuments.length === 0 &&
+    esignProfileCards.length === 0 &&
     activeSubTab === "offering"
 
   return (
@@ -353,9 +509,9 @@ export function InvestmentDetailDocumentsTab({
               />
               <span className="deals_tabs_label um_segmented_tab_label">
                 E-signatures
-                {esignDocuments.length > 0 ? (
+                {esignProfileCards.length > 0 ? (
                   <span className="investment_detail_docs_tab_count">
-                    {esignDocuments.length}
+                    {esignProfileCards.length}
                   </span>
                 ) : null}
               </span>
@@ -386,11 +542,10 @@ export function InvestmentDetailDocumentsTab({
             <EsignaturesDocumentsPanel
               esignPending={esignPending}
               esignLoadError={esignLoadError}
-              esignDocuments={esignDocuments}
-              esignProfileCards={esignProfileCards}
+              esignProfileCards={filteredEsignProfileCards}
               searchQuery={query}
               onSearchQueryChange={setQuery}
-              firstPendingSignatureRequestId={firstPendingSignatureRequestId}
+              firstPendingSign={firstPendingSign}
               onOpenSignModal={openSignModal}
             />
           )}
@@ -401,11 +556,26 @@ export function InvestmentDetailDocumentsTab({
         open={signModalOpen}
         dealId={dealId.trim()}
         signatureRequestId={signModalSignatureRequestId}
+        esignScope={signModalEsignScope}
         onClose={() => {
           setSignModalOpen(false)
           setSignModalSignatureRequestId(null)
+          setSignModalEsignScope(undefined)
         }}
-        onSignedComplete={() => void loadEsignDocuments(dealId.trim())}
+        onSignedComplete={() => {
+          const id = dealId.trim()
+          void (async () => {
+            let aud = audience
+            try {
+              aud = await buildInvestmentDocumentAudience(id)
+              setAudience(aud)
+            } catch {
+              /* keep prior audience */
+            }
+            await reloadEsignProfileCards(id, aud.viewerRows, profileNameByBookId)
+            setSectionsRevision((n) => n + 1)
+          })()
+        }}
       />
     </div>
   )
@@ -510,7 +680,10 @@ function EsignProfileTypeCardsGrid({
   onOpenSignModal,
 }: {
   cards: EsignProfileCardData[]
-  onOpenSignModal: (signatureRequestId?: string | null) => void
+  onOpenSignModal: (
+    signatureRequestId?: string | null,
+    esignScope?: DealMyEsignScopeQuery,
+  ) => void
 }) {
   return (
     <div
@@ -518,28 +691,26 @@ function EsignProfileTypeCardsGrid({
         cards.length === 1 ? " investment_detail_esign_profile_cards--single" : ""
       }`}
       role="list"
-      aria-label="E-sign documents by profile type"
+      aria-label="E-sign documents by investor profile"
     >
       {cards.map((card) => {
-        const doc = card.document
-        const url = doc.url?.trim() || ""
-        const canSign = Boolean(doc.canSign)
-        const status = doc.esignStatus
+        const status = cardAggregateEsignStatus(card.documents)
 
         return (
           <article
-            key={card.categoryId}
+            key={card.cardKey}
             className="deal_esign_profile_card investment_detail_esign_profile_card"
             role="listitem"
-            aria-labelledby={`inv-esign-card-${card.categoryId}`}
+            aria-labelledby={`inv-esign-card-${card.cardKey}`}
           >
             <header className="deal_esign_profile_card_head">
               <div className="investment_detail_esign_profile_card_head_row">
                 <h3
-                  id={`inv-esign-card-${card.categoryId}`}
+                  id={`inv-esign-card-${card.cardKey}`}
                   className="deal_esign_profile_card_title"
+                  title={esignProfileCardTitle(card)}
                 >
-                  {card.label}
+                  {esignProfileCardTitle(card)}
                 </h3>
                 {status ? (
                   <span
@@ -551,63 +722,103 @@ function EsignProfileTypeCardsGrid({
               </div>
             </header>
             <div className="investment_detail_esign_profile_card_body">
-              <p
-                className="investment_detail_esign_card_doc_name"
-                title={doc.name}
+              <ul
+                className="investment_detail_esign_card_doc_list"
+                aria-label={`Documents for ${esignProfileCardTitle(card)}`}
               >
-                <FileSignature
-                  className="investment_detail_esign_card_doc_icon"
-                  size={16}
-                  strokeWidth={2}
-                  aria-hidden
-                />
-                <span>{doc.name}</span>
-              </p>
-              {url || canSign ? (
-                <div
-                  className="investment_detail_esign_card_doc_actions"
-                  role="group"
-                  aria-label={`${doc.name} actions`}
-                >
-                  {canSign ? (
-                    <button
-                      type="button"
-                      className="lpd_doc_action lpd_link lpd_doc_action_sign"
-                      aria-label={`Sign ${doc.name}`}
-                      onClick={() =>
-                        onOpenSignModal(doc.signatureRequestId ?? null)
-                      }
+                {card.documents.map((doc) => {
+                  const url = doc.url?.trim() || ""
+                  const canSign = Boolean(doc.canSign)
+                  // const docStatus = doc.esignStatus
+
+                  return (
+                    <li
+                      key={doc.id}
+                      className="investment_detail_esign_card_doc_item"
                     >
-                      <FileSignature size={15} strokeWidth={2} aria-hidden />
-                      Sign
-                    </button>
-                  ) : null}
-                  {url ? (
-                    <>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="lpd_doc_action lpd_link"
-                        aria-label={`View ${doc.name}`}
-                      >
-                        <Eye size={15} strokeWidth={2} aria-hidden />
-                        View
-                      </a>
-                      <a
-                        href={url}
-                        download={safeDownloadFilename(doc.name)}
-                        rel="noopener noreferrer"
-                        className="lpd_doc_action lpd_link"
-                        aria-label={`Download ${doc.name}`}
-                      >
-                        <Download size={15} strokeWidth={2} aria-hidden />
-                        Download
-                      </a>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
+                      <div className="deal_docs_ui_doc_cell investment_detail_esign_card_doc_row">
+                        <div className="deal_docs_ui_doc_name_wrap investment_detail_esign_card_doc_name_wrap">
+                          <span
+                            className="deal_docs_ui_doc_name_text investment_detail_esign_card_doc_name"
+                            title={doc.name}
+                          >
+                            <FileSignature
+                              className="investment_detail_esign_card_doc_icon"
+                              size={15}
+                              strokeWidth={2}
+                              aria-hidden
+                            />
+                            {doc.name}
+                          </span>
+                          {/* {docStatus ? (
+                            <span
+                              className={`${investmentEsignStatusClassName(docStatus)} investment_detail_esign_card_doc_status`}
+                            >
+                              {investmentEsignStatusLabel(docStatus)}
+                            </span>
+                          ) : null} */}
+                        </div>
+                        {url || canSign ? (
+                          <div
+                            className="deal_docs_ui_doc_quick investment_detail_esign_card_doc_actions"
+                            role="group"
+                            aria-label={`${doc.name} actions`}
+                          >
+                            {canSign ? (
+                              <button
+                                type="button"
+                                className="investment_detail_esign_card_doc_sign_btn"
+                                aria-label={`Sign ${doc.name}`}
+                                onClick={() =>
+                                  onOpenSignModal(
+                                    doc.signatureRequestId ?? null,
+                                    card.esignScope,
+                                  )
+                                }
+                              >
+                                <FileSignature
+                                  size={15}
+                                  strokeWidth={2}
+                                  aria-hidden
+                                />
+                                Sign
+                              </button>
+                            ) : null}
+                            {url ? (
+                              <>
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
+                                  title="View"
+                                  aria-label={`View ${doc.name}`}
+                                >
+                                  <Eye size={16} strokeWidth={2} aria-hidden />
+                                </a>
+                                <a
+                                  href={url}
+                                  download={safeDownloadFilename(doc.name)}
+                                  rel="noopener noreferrer"
+                                  className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
+                                  title="Download"
+                                  aria-label={`Download ${doc.name}`}
+                                >
+                                  <Download
+                                    size={16}
+                                    strokeWidth={2}
+                                    aria-hidden
+                                  />
+                                </a>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
             </div>
           </article>
         )
@@ -619,23 +830,27 @@ function EsignProfileTypeCardsGrid({
 function EsignaturesDocumentsPanel({
   esignPending,
   esignLoadError,
-  esignDocuments,
   esignProfileCards,
   searchQuery,
   onSearchQueryChange,
-  firstPendingSignatureRequestId,
+  firstPendingSign,
   onOpenSignModal,
 }: {
   esignPending: boolean
   esignLoadError: string | null
-  esignDocuments: InvestmentDetailDocumentRow[]
   esignProfileCards: EsignProfileCardData[]
   searchQuery: string
   onSearchQueryChange: (value: string) => void
-  firstPendingSignatureRequestId: string | null
-  onOpenSignModal: (signatureRequestId?: string | null) => void
+  firstPendingSign: {
+    signatureRequestId: string
+    esignScope: DealMyEsignScopeQuery
+  } | null
+  onOpenSignModal: (
+    signatureRequestId?: string | null,
+    esignScope?: DealMyEsignScopeQuery,
+  ) => void
 }) {
-  const hasAny = esignDocuments.length > 0
+  const hasAny = esignProfileCards.length > 0
   const hasVisibleCards = esignProfileCards.length > 0
 
   return (
@@ -658,7 +873,12 @@ function EsignaturesDocumentsPanel({
               <button
                 type="button"
                 className="um_btn_primary investment_detail_esign_pending_banner_btn"
-                onClick={() => onOpenSignModal(firstPendingSignatureRequestId)}
+                onClick={() =>
+                  onOpenSignModal(
+                    firstPendingSign?.signatureRequestId,
+                    firstPendingSign?.esignScope,
+                  )
+                }
               >
                 <FileSignature size={16} strokeWidth={2} aria-hidden />
                 Sign now
@@ -708,10 +928,22 @@ function EsignaturesDocumentsPanel({
                 : "No e-sign documents are available for your profile types on this deal."}
             </p>
           ) : (
-            <EsignProfileTypeCardsGrid
-              cards={esignProfileCards}
-              onOpenSignModal={onOpenSignModal}
-            />
+            <>
+              {/* {esignProfileCards.length > 1 ? (
+                <p
+                  className="investment_detail_documents_group_hint"
+                  role="note"
+                >
+                  Each saved profile has its own e-sign packet. Sign and view
+                  documents separately — they are not shared across profile
+                  names.
+                </p>
+              ) : null} */}
+              <EsignProfileTypeCardsGrid
+                cards={esignProfileCards}
+                onOpenSignModal={onOpenSignModal}
+              />
+            </>
           )}
         </div>
       </div>

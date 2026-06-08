@@ -11,6 +11,24 @@ export type ViewerDealMemberRole =
   | "lp_investor"
   | null
 
+const VIEWER_DEAL_MEMBER_ROLE_VALUES = new Set<string>([
+  "lead_sponsor",
+  "admin_sponsor",
+  "co_sponsor",
+  "lp_investor",
+])
+
+/** API `viewerDealMemberRole` from GET `/deals/:id/members`. */
+export function parseViewerDealMemberRoleFromApi(
+  raw: unknown,
+): ViewerDealMemberRole {
+  const t = String(raw ?? "").trim()
+  if (VIEWER_DEAL_MEMBER_ROLE_VALUES.has(t)) {
+    return t as ViewerDealMemberRole
+  }
+  return null
+}
+
 /** Lead, admin, and co-sponsor on the deal roster (deal Documents tab / workspace). */
 export function viewerIsDealSponsorRole(
   role: ViewerDealMemberRole,
@@ -182,14 +200,15 @@ export function resolveViewerSponsorInvestorRoleRaw(
   )
 }
 
-const CO_SPONSOR_HIDDEN_TABS = new Set([
-  "deal_members",
-  "investor_communication",
-  "distributions",
-])
-
 /** eSign Templates tab: upload / edit / delete templates — lead or admin sponsor. */
 export function viewerCanUploadDealEsignTemplates(
+  role: ViewerDealMemberRole,
+): boolean {
+  return role === "lead_sponsor" || role === "admin_sponsor"
+}
+
+/** Investors tab: approve fund — lead or admin sponsor only. */
+export function viewerCanApproveDealFund(
   role: ViewerDealMemberRole,
 ): boolean {
   return role === "lead_sponsor" || role === "admin_sponsor"
@@ -206,6 +225,60 @@ export function viewerCanSendDealEsignTemplates(
   )
 }
 
+/** True when the Investors tab must list only investors this viewer added. */
+export function viewerShouldSeeOnlyOwnAddedInvestors(
+  role: ViewerDealMemberRole,
+): boolean {
+  return role === "co_sponsor"
+}
+
+/** Investors tab: co-sponsors only see rows they added (`addedByUserId`). */
+export function filterDealInvestorRowsForCoSponsorViewer(
+  rows: DealInvestorRow[],
+  sessionUserId: string,
+): DealInvestorRow[] {
+  const uid = sessionUserId.trim().toLowerCase()
+  if (!uid) return []
+  return rows.filter((row) => {
+    const adderId = String(row.addedByUserId ?? "").trim().toLowerCase()
+    return adderId === uid
+  })
+}
+
+/**
+ * Investors tab row scope: co-sponsor → own adds only; lead/admin → full roster with
+ * co-sponsor-added emails hidden; everyone else → unchanged.
+ */
+export function scopeDealInvestorRowsForViewer(
+  rows: DealInvestorRow[],
+  viewerRole: ViewerDealMemberRole,
+  sessionUserId: string,
+): DealInvestorRow[] {
+  if (viewerShouldSeeOnlyOwnAddedInvestors(viewerRole)) {
+    return filterDealInvestorRowsForCoSponsorViewer(rows, sessionUserId)
+  }
+  return redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(rows, viewerRole)
+}
+
+/**
+ * Lead / admin sponsors see the full roster; hide email on rows a co-sponsor added.
+ * Uses API `addedByIsCoSponsorOnDeal` when present (matches backend redaction).
+ */
+export function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
+  rows: DealInvestorRow[],
+  viewerRole: ViewerDealMemberRole,
+): DealInvestorRow[] {
+  if (viewerRole !== "lead_sponsor" && viewerRole !== "admin_sponsor") {
+    return rows
+  }
+  return rows.map((row) => {
+    if (row.addedByIsCoSponsorOnDeal !== true) return row
+    const em = String(row.userEmail ?? "").trim()
+    if (!em || em === "—" || !em.includes("@")) return row
+    return { ...row, userEmail: "—" }
+  })
+}
+
 /** Which deal detail tab ids the viewer may open, based on roster role. */
 export function visibleDealDetailTabIds(
   role: ViewerDealMemberRole,
@@ -220,15 +293,16 @@ export function visibleDealDetailTabIds(
     "deal_members",
   ])
   if (role === null) return all
-  if (role === "lead_sponsor" || role === "admin_sponsor") return all
+  if (
+    role === "lead_sponsor" ||
+    role === "admin_sponsor" ||
+    role === "co_sponsor"
+  ) {
+    return all
+  }
   if (role === "lp_investor") {
     const s = new Set(all)
     s.delete("deal_members")
-    return s
-  }
-  if (role === "co_sponsor") {
-    const s = new Set(all)
-    for (const id of CO_SPONSOR_HIDDEN_TABS) s.delete(id)
     return s
   }
   return all

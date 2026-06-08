@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql, type AnyColumn } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import {
   dealMember,
@@ -18,13 +18,13 @@ import {
   groupDealInvestmentsByCanonicalKey,
   listDealInvestmentsByDealId,
   mapContactIdsToCanonicalCommitmentKeys,
+  loadInvitationMailSentFlags,
   mapRowToInvestorApi,
   resolveUserDisplayNamesByIds,
   resolveUsersByContactIds,
   sumCommittedFromInvestorsAddedByMemberContacts,
   totalCommittedByCanonicalKeyFromRows,
 } from "./dealInvestment.service.js";
-import { isViewerCoSponsorOnDeal } from "./dealLpInvestor.service.js";
 
 export type UpsertDealMemberInput = {
   contactMemberId: string;
@@ -41,16 +41,26 @@ function normalizeContactKey(raw: string): string {
   return String(raw ?? "").trim().toLowerCase();
 }
 
-/**
- * Sets `send_invitation_mail = yes` on matching `deal_member` rows after a successful invite.
- */
-export async function markDealMemberInvitationMailSent(
-  dealId: string,
-  input: { contactMemberId?: string; toEmail?: string },
-): Promise<void> {
-  const did = dealId.trim();
-  if (!did) return;
+function sendInvitationYesFromInput(raw: string | null | undefined): "yes" | "no" {
+  return String(raw ?? "").toLowerCase() === "yes" ? "yes" : "no";
+}
 
+/**
+ * On upsert, keep `send_invitation_mail = yes` when the client sends `no` (edit/autosave
+ * default) so a prior successful invite is not cleared.
+ */
+export function sqlPreserveSendInvitationMailOnUpsert(
+  incoming: string | null | undefined,
+  existingColumn: AnyColumn,
+) {
+  const send = sendInvitationYesFromInput(incoming);
+  return sql<string>`CASE WHEN ${send} = 'yes' THEN 'yes' WHEN lower(trim(coalesce(${existingColumn}, ''))) = 'yes' THEN 'yes' ELSE 'no' END`;
+}
+
+async function resolveInvitationMailContactKeys(input: {
+  contactMemberId?: string;
+  toEmail?: string;
+}): Promise<string[]> {
   const contactKeys = new Set<string>();
   const cid = String(input.contactMemberId ?? "").trim();
   if (cid) contactKeys.add(normalizeContactKey(cid));
@@ -74,20 +84,47 @@ export async function markDealMemberInvitationMailSent(
     if (c?.id) contactKeys.add(normalizeContactKey(String(c.id)));
   }
 
-  const keys = [...contactKeys].filter(Boolean);
+  return [...contactKeys].filter(Boolean);
+}
+
+/**
+ * Sets `send_invitation_mail = yes` on matching `deal_member` and `deal_lp_investor` rows
+ * after a successful invite.
+ */
+export async function markDealMemberInvitationMailSent(
+  dealId: string,
+  input: { contactMemberId?: string; toEmail?: string },
+): Promise<void> {
+  const did = dealId.trim();
+  if (!did) return;
+
+  const keys = await resolveInvitationMailContactKeys(input);
   if (keys.length === 0) return;
 
-  const contactMatch = or(
+  const now = new Date();
+  const memberContactMatch = or(
     ...keys.map(
       (k) => sql`lower(trim(${dealMember.contactMemberId})) = ${k}`,
     ),
   );
-  if (!contactMatch) return;
+  if (memberContactMatch) {
+    await db
+      .update(dealMember)
+      .set({ sendInvitationMail: "yes", updatedAt: now })
+      .where(and(eq(dealMember.dealId, did), memberContactMatch));
+  }
 
-  await db
-    .update(dealMember)
-    .set({ sendInvitationMail: "yes", updatedAt: new Date() })
-    .where(and(eq(dealMember.dealId, did), contactMatch));
+  const lpContactMatch = or(
+    ...keys.map(
+      (k) => sql`lower(trim(${dealLpInvestor.contactMemberId})) = ${k}`,
+    ),
+  );
+  if (lpContactMatch) {
+    await db
+      .update(dealLpInvestor)
+      .set({ sendInvitationMail: "yes", updatedAt: now })
+      .where(and(eq(dealLpInvestor.dealId, did), lpContactMatch));
+  }
 }
 
 /** Canonical row for labels / ids when a contact has multiple investments (newest wins). */
@@ -121,6 +158,7 @@ function syntheticInvestmentFromDealMember(m: DealMemberRow): DealInvestmentRow 
     esignStatusJson: null,
     investorQuestionnaireAnswersJson: null,
     investorW9FormJson: null,
+    fundingMethod: "",
     commitmentAmount: "",
     extraContributionAmounts: [],
     documentStoragePath: null,
@@ -139,10 +177,7 @@ export async function upsertDealMemberForDeal(
   const cid = input.contactMemberId.trim();
   if (!cid) return;
 
-  const send =
-    String(input.sendInvitationMail ?? "").toLowerCase() === "yes"
-      ? "yes"
-      : "no";
+  const send = sendInvitationYesFromInput(input.sendInvitationMail);
   const now = new Date();
   const role = input.dealMemberRole?.trim() ?? "";
 
@@ -159,8 +194,12 @@ export async function upsertDealMemberForDeal(
     .onConflictDoUpdate({
       target: [dealMember.dealId, dealMember.contactMemberId],
       set: {
+        addedBy: sql`COALESCE(${dealMember.addedBy}, ${input.addedByUserId}::uuid)`,
         dealMemberRole: role,
-        sendInvitationMail: send,
+        sendInvitationMail: sqlPreserveSendInvitationMailOnUpsert(
+          input.sendInvitationMail,
+          dealMember.sendInvitationMail,
+        ),
         updatedAt: now,
       },
     });
@@ -208,26 +247,17 @@ export async function assignCreatorAsLeadSponsorOnDeal(
  * commitment = **sum** of all `deal_investment` rows for that contact on this deal,
  * and other fields from the **newest** matching investment when present.
  *
- * When `viewerUserId` is a Co-sponsor on this deal, only roster rows they added
- * (`deal_member.added_by`) are returned.
+ * Co-sponsors see the full deal member roster (Investors tab is scoped separately).
  */
 export async function listDealMembersMappedToInvestorApi(
   dealId: string,
-  viewerUserId?: string | null,
+  _viewerUserId?: string | null,
 ): Promise<ReturnType<typeof mapRowToInvestorApi>[]> {
-  let members = await db
+  const members = await db
     .select()
     .from(dealMember)
     .where(eq(dealMember.dealId, dealId))
     .orderBy(desc(dealMember.updatedAt));
-
-  const uid = viewerUserId?.trim();
-  if (uid && (await isViewerCoSponsorOnDeal(dealId, uid))) {
-    const v = uid.toLowerCase();
-    members = members.filter(
-      (m) => m.addedBy && String(m.addedBy).toLowerCase() === v,
-    );
-  }
 
   const investments = await listDealInvestmentsByDealId(dealId);
   const allContactIdsForCanonical = [
@@ -293,10 +323,15 @@ export async function listDealMembersMappedToInvestorApi(
       memberContactKeys,
     );
 
+  const invitationMailFlags = await loadInvitationMailSentFlags(
+    dealId,
+    patched,
+    new Set<string>(),
+  );
+
   return patched.map((r, i) => {
     const m = members[i];
-    const invitationMailSent =
-      String(m?.sendInvitationMail ?? "").toLowerCase().trim() === "yes";
+    const invitationMailSent = invitationMailFlags[i] === true;
     const base = mapRowToInvestorApi(r, resolved, { invitationMailSent });
     const addedByRaw = m?.addedBy;
     const key = addedByRaw ? String(addedByRaw).toLowerCase() : "";

@@ -1,9 +1,9 @@
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
+import { CardCompactAmount } from "../../../../common/components/card-compact-amount/CardCompactAmount"
 import {
   investorClassStatusLabel,
   investorClassVisibilityLabel,
 } from "../utils/offeringDisplayLabels"
-import { formatMoneyFieldDisplay } from "../utils/offeringMoneyFormat"
 
 export interface OfferingPreviewClassBentoCardProps {
   investorClass: DealInvestorClass
@@ -13,7 +13,6 @@ export function OfferingPreviewClassBentoCard({
   investorClass,
 }: OfferingPreviewClassBentoCardProps) {
   const name = investorClass.name?.trim() || "Untitled class"
-  const minimum = formatMoneyFieldDisplay(investorClass.minimumInvestment)
   const status = investorClassStatusLabel(investorClass.status ?? "")
   const visibility = investorClassVisibilityLabel(investorClass.visibility ?? "")
 
@@ -23,7 +22,9 @@ export function OfferingPreviewClassBentoCard({
       <dl className="deal_offer_pf_bento_class_card_meta">
         <div className="deal_offer_pf_bento_class_card_row">
           <dt>Minimum investment</dt>
-          <dd>{minimum}</dd>
+          <dd>
+            <CardCompactAmount amount={investorClass.minimumInvestment} />
+          </dd>
         </div>
         <div className="deal_offer_pf_bento_class_card_row">
           <dt>Status</dt>

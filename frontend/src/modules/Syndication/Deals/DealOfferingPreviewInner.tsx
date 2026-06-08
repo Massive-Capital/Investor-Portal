@@ -2,6 +2,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
+  Download,
+  Eye,
   FileText,
   Map,
   TrendingUp,
@@ -15,6 +17,7 @@ import {
   useRef,
   useState,
   type TouchEvent,
+  type ReactNode,
 } from "react"
 import DOMPurify from "dompurify"
 import { createPortal } from "react-dom"
@@ -55,6 +58,9 @@ import { DealOfferingGalleryImage } from "./components/DealOfferingGalleryImage"
 import { DealOfferingPreviewBentoLayout } from "./components/DealOfferingPreviewBentoLayout"
 import { DealOfferingPreviewBentoAdaptiveGrid } from "./components/DealOfferingPreviewBentoAdaptiveGrid"
 import { OfferingPreviewAssetBentoCard } from "./components/OfferingPreviewAssetBentoCard"
+import { InvestNowDraftProgressBar } from "@/modules/Investing/pages/invest/InvestNowDraftProgressBar"
+import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/investNowDraftProgress"
+import type { InvestNowStepperPhase } from "@/modules/Investing/pages/invest/investNowFlowSteps"
 import "./tabs/deal_members/add-investment/add_deal_modal.css"
 import "./deal-offering-portfolio.css"
 import "./deal-offering-details.css"
@@ -81,6 +87,10 @@ export type DealOfferingPreviewInnerProps = {
    * in-page anchor navigation — e.g. LP commitment modal on the investing deal page.
    */
   onInvestNow?: () => void
+  /** Saved Invest Now wizard progress for the signed-in LP (investing deal workspace). */
+  investNowDraftProgress?: InvestNowDraftProgress | null
+  /** Navigate to a specific Invest Now onboarding phase (resume mode). */
+  onInvestNowPhaseClick?: (phaseId: InvestNowStepperPhase["id"]) => void
   /** Public shared link: sign-in redirect preserves offering URL and opens Invest now after login. */
   publicInvestNowSignInState?: { from: string; investNow: true }
   /** When omitted, derived from `detail.offeringStatus`. */
@@ -92,6 +102,10 @@ export type DealOfferingPreviewInnerProps = {
   galleryUsesPersistedSourcesOnly?: boolean
   /** When false, the bento Documents block is omitted (e.g. sectioned list shown elsewhere). */
   showDocumentsSection?: boolean
+  /** Replaces the default bento Documents block (e.g. LP investing sectioned list). */
+  documentsSection?: ReactNode
+  /** Parent page renders Portfolio Overview–style hero (deal name + eyebrow). */
+  suppressTitlebar?: boolean
 }
 
 export function DealOfferingPreviewInner({
@@ -103,10 +117,14 @@ export function DealOfferingPreviewInner({
   isLpDealWorkspace = false,
   showInvestNowCta,
   onInvestNow,
+  investNowDraftProgress = null,
+  onInvestNowPhaseClick,
   publicInvestNowSignInState,
   galleryUsesPersistedSourcesOnly = false,
   offeringStatusRules: offeringStatusRulesProp,
   showDocumentsSection = true,
+  documentsSection,
+  suppressTitlebar = false,
 }: DealOfferingPreviewInnerProps) {
   const statusRules = useMemo(
     () =>
@@ -121,12 +139,15 @@ export function DealOfferingPreviewInner({
     setGalleryOpen(false)
   }, [detail.id])
 
-  /* `overflow-x: hidden` on html/body (App.css) breaks `position: sticky` on public preview tabs */
+  /* `overflow-x: hidden` on html/body and `.app_main_section` breaks sidebar `position: sticky` */
   useEffect(() => {
     const html = document.documentElement
+    const appMain = document.querySelector(".app_main_section")
     html.classList.add("deal_offer_pf_sticky_scroll")
+    appMain?.classList.add("deal_offer_pf_sticky_scroll")
     return () => {
       html.classList.remove("deal_offer_pf_sticky_scroll")
+      appMain?.classList.remove("deal_offer_pf_sticky_scroll")
     }
   }, [])
 
@@ -478,19 +499,50 @@ export function DealOfferingPreviewInner({
   return (
     <>
         <div className="deal_offer_pf_card" id="deal-offer-pf-card">
-          <div className="deal_offer_pf_titlebar">
-            <div className="deal_offer_pf_titlebar_main">
-              <h1 className="deal_offer_pf_page_title">{title}</h1>
-              <p className="deal_offer_pf_property_line">{dealLocationLine}</p>
+          {suppressTitlebar ? null : (
+            <div
+              className={[
+                "deal_offer_pf_titlebar",
+                investNowDraftProgress && onInvestNowPhaseClick
+                  ? " deal_offer_pf_titlebar--with_onboarding"
+                  : "",
+              ]
+                .join("")
+                .trim()}
+            >
+              <div className="deal_offer_pf_titlebar_main">
+                <h1 className="deal_offer_pf_page_title">{title}</h1>
+                <p className="deal_offer_pf_property_line">{dealLocationLine}</p>
+              </div>
+              {investNowDraftProgress && onInvestNowPhaseClick ? (
+                <div
+                  className="deal_offer_pf_titlebar_onboarding"
+                  aria-label="Onboarding progress"
+                >
+                  <div className="invest_now_onboarding_panel deal_offer_pf_onboarding_panel deal_offer_pf_onboarding_panel--compact">
+                    <div className="invest_now_onboarding_panel_body">
+                      <InvestNowDraftProgressBar
+                        embedded
+                        cardHead
+                        progress={investNowDraftProgress}
+                        phaseNav={{
+                          onPhaseClick: onInvestNowPhaseClick,
+                          currentStepOnly: true,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {/* {detail.dealStage?.trim() ? (
+                <span
+                  className={`deal_offer_pf_stage_badge ${dealStageChipCompactClassName(detail.dealStage)}`}
+                >
+                  {dealStageLabel(detail.dealStage)}
+                </span>
+              ) : null} */}
             </div>
-            {/* {detail.dealStage?.trim() ? (
-              <span
-                className={`deal_offer_pf_stage_badge ${dealStageChipCompactClassName(detail.dealStage)}`}
-              >
-                {dealStageLabel(detail.dealStage)}
-              </span>
-            ) : null} */}
-          </div>
+          )}
 
           {statusRules.showClosedBanner ? (
             <p
@@ -683,11 +735,11 @@ export function DealOfferingPreviewInner({
                     onInvestNow ? (
                       <button
                         type="button"
-                        className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                        className="um_btn_primary deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
                         onClick={onInvestNow}
                       >
-                        <span>Invest now</span>
                         <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                        <span>Invest now</span>
                       </button>
                     ) : (
                       <Link
@@ -702,20 +754,20 @@ export function DealOfferingPreviewInner({
                           const id = detail.id?.trim()
                           if (id) writeInvestNowIntent(id)
                         }}
-                        className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                        className="um_btn_primary deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
                       >
-                        <span>Invest now</span>
                         <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                        <span>Invest now</span>
                       </Link>
                     )
                   ) : onInvestNow ? (
                     <button
                       type="button"
-                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                      className="um_btn_primary deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
                       onClick={onInvestNow}
                     >
-                      <span>Invest now</span>
                       <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                      <span>Invest now</span>
                     </button>
                   ) : (
                     <a
@@ -725,10 +777,10 @@ export function DealOfferingPreviewInner({
                           ? "#deal-offer-pf-card"
                           : "#deal-pf-assets"
                       }
-                      className="deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
+                      className="um_btn_primary deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
                     >
-                      <span>Invest now</span>
                       <TrendingUp size={18} strokeWidth={2} aria-hidden />
+                      <span>Invest now</span>
                     </a>
                   )}
                 </div>
@@ -794,10 +846,16 @@ export function DealOfferingPreviewInner({
             //   ) : null
             // }
             documents={
-              showDocumentsSection &&
-              (!applyInvestorLinkVisibility ||
-                investorPreviewVisibility.documents !== false ||
-                isLpDealWorkspace) ? (
+              documentsSection != null
+                ? !applyInvestorLinkVisibility ||
+                  investorPreviewVisibility.documents !== false ||
+                  isLpDealWorkspace
+                  ? documentsSection
+                  : null
+                : showDocumentsSection &&
+                    (!applyInvestorLinkVisibility ||
+                      investorPreviewVisibility.documents !== false ||
+                      isLpDealWorkspace) ? (
                 <section
                   className="deal_offer_pf_wireframe_block deal_offer_pf_documents_section deal_offer_pf_panel deal_offer_pf_bento_full"
                   aria-labelledby="deal-pf-documents"
@@ -844,7 +902,13 @@ export function DealOfferingPreviewInner({
                                     className="deal_offer_pf_documents_action"
                                     aria-label={`View ${doc.name} (opens in a new tab)`}
                                   >
-                                    View
+                                    <Eye
+                                      size={16}
+                                      strokeWidth={2}
+                                      className="deal_offer_pf_documents_action_icon"
+                                      aria-hidden
+                                    />
+                                    <span>View</span>
                                   </a>
                                   <a
                                     href={doc.url}
@@ -853,7 +917,13 @@ export function DealOfferingPreviewInner({
                                     className="deal_offer_pf_documents_action"
                                     aria-label={`Download ${doc.name}`}
                                   >
-                                    Download
+                                    <Download
+                                      size={16}
+                                      strokeWidth={2}
+                                      className="deal_offer_pf_documents_action_icon"
+                                      aria-hidden
+                                    />
+                                    <span>Download</span>
                                   </a>
                                 </div>
                               ) : (
@@ -1023,6 +1093,7 @@ export function DealOfferingPreviewInner({
                       className="um_btn_primary"
                       onClick={closeGallery}
                     >
+                      <X size={16} strokeWidth={2} aria-hidden />
                       Close
                     </button>
                   </div>

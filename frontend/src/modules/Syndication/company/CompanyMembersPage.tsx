@@ -72,6 +72,7 @@ import {
   organizationsSortValue,
   primaryRoleLabelFromRow,
   normalizeMemberStatusForEdit,
+  resolveOrganizationDisplayScope,
   roleSortValue,
   syncSessionUserDetailsById,
   userStatusForUi,
@@ -174,6 +175,8 @@ export default function CompanyMembersPage() {
     () => new Set(),
   )
   const [sendMailModalOpen, setSendMailModalOpen] = useState(false)
+  const [sendMailConfirmOpen, setSendMailConfirmOpen] = useState(false)
+  const [sendMailSending, setSendMailSending] = useState(false)
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRow[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const [sendMailCc, setSendMailCc] = useState("")
@@ -362,12 +365,14 @@ export default function CompanyMembersPage() {
   )
 
   function exportRowCsv(row: Record<string, unknown>) {
+    const orgScope = resolveOrganizationDisplayScope(companyId, companyDisplayName)
+    const orgHeader = orgScope ? "Organization" : "Organizations"
     const headers = [
       "Name",
       "Username",
       "Email",
       "Roles",
-      "Organizations",
+      orgHeader,
       "User Status",
       "Account status",
       "Assigned deals",
@@ -377,7 +382,7 @@ export default function CompanyMembersPage() {
       formatMemberUsername(row.username),
       formatValue(row.email),
       formatRoleCsvCell(row),
-      formatOrganizationsCsvCell(row),
+      formatOrganizationsCsvCell(row, orgScope),
       userStatusForUi(row).label,
       accountStatusForUi(row).label,
       String(assignedDealCountFromRow(row)),
@@ -678,29 +683,27 @@ export default function CompanyMembersPage() {
     () => members.filter((r) => selectedMemberIds.has(rowSelectionId(r))),
     [members, selectedMemberIds],
   )
+  const selectedRecipientEmails = useMemo(
+    () => [
+      ...new Set(
+        selectedMemberRows
+          .map((r) => String(r.email ?? "").trim())
+          .filter((e) => e.includes("@")),
+      ),
+    ],
+    [selectedMemberRows],
+  )
   const senderEmail = useMemo(() => getCurrentSessionUserEmail(), [])
   const selectedTemplate = useMemo(
     () => emailTemplates.find((t) => t.id === selectedTemplateId) ?? null,
     [emailTemplates, selectedTemplateId],
   )
-  const toggleSelectMember = useCallback((id: string) => {
-    if (!id) return
-    setSelectedMemberIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const closeSendMailModal = useCallback(() => {
+    setSendMailModalOpen(false)
+    setSendMailConfirmOpen(false)
+    setSendMailSending(false)
+    setSendMailEmailPreview(null)
   }, [])
-
-  const toggleSelectAllMembers = useCallback(() => {
-    if (selectableMemberIds.length === 0) return
-    if (allMembersSelected) {
-      setSelectedMemberIds(new Set())
-      return
-    }
-    setSelectedMemberIds(new Set(selectableMemberIds))
-  }, [selectableMemberIds, allMembersSelected])
 
   const openSendMailModal = useCallback(() => {
     void (async () => {
@@ -712,14 +715,53 @@ export default function CompanyMembersPage() {
           : (templates[0]?.id ?? ""),
       )
       setSendMailCc("")
+      setSendMailConfirmOpen(false)
       setSendMailModalOpen(true)
     })()
   }, [])
 
-  const closeSendMailModal = useCallback(() => {
-    setSendMailModalOpen(false)
-    setSendMailEmailPreview(null)
-  }, [])
+  useEffect(() => {
+    if (!sendMailModalOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape" || sendMailSending) return
+      if (sendMailConfirmOpen) {
+        setSendMailConfirmOpen(false)
+        return
+      }
+      closeSendMailModal()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [
+    sendMailModalOpen,
+    sendMailConfirmOpen,
+    sendMailSending,
+    closeSendMailModal,
+  ])
+
+  const openSendMailConfirm = useCallback(() => {
+    if (selectedMemberRows.length === 0) {
+      toast.error("No members selected", "Select at least one member using the checkboxes.")
+      return
+    }
+    if (selectedRecipientEmails.length === 0) {
+      toast.error(
+        "No email recipients",
+        "Selected members do not have a valid email address on file.",
+      )
+      return
+    }
+    if (!selectedTemplateId) {
+      toast.error("Template required", "Choose an email template first.")
+      return
+    }
+    setSendMailConfirmOpen(true)
+  }, [selectedMemberRows.length, selectedRecipientEmails.length, selectedTemplateId])
 
   const goNewTemplateFromSendMail = useCallback(() => {
     navigate("/contacts/email-templates/new")
@@ -773,43 +815,78 @@ export default function CompanyMembersPage() {
   )
 
   const handleSendMailToSelectedMembers = useCallback(async () => {
-    const emails = [
-      ...new Set(
-        selectedMemberRows
-          .map((r) => String(r.email ?? "").trim())
-          .filter((e) => e.includes("@")),
-      ),
-    ]
-    if (emails.length === 0) {
-      toast.error("No email recipients", "Selected members have no valid email.")
-      return
-    }
     const template = emailTemplates.find((t) => t.id === selectedTemplateId)
     if (!template) {
       toast.error("Template required", "Choose an email template first.")
       return
     }
-    const result = await openSendMailDraft({
-      to: emails,
-      ccRaw: sendMailCc,
-      templateSubject: template.subject,
-      templateBodyHtml: template.body,
-      senderEmail,
-    })
-    if (!result.ok) {
-      toast.error("Could not send email", result.message)
-      return
+    setSendMailSending(true)
+    try {
+      const result = await openSendMailDraft({
+        to: selectedRecipientEmails,
+        ccRaw: sendMailCc,
+        templateSubject: template.subject,
+        templateBodyHtml: template.body,
+        senderEmail,
+      })
+      if (!result.ok) {
+        toast.error("Could not send email", result.message)
+        return
+      }
+      toast.success("Email sent", "Message was sent from the portal.")
+      setSelectedMemberIds(new Set())
+      closeSendMailModal()
+    } finally {
+      setSendMailSending(false)
     }
-    toast.success("Email sent", "Message was sent from server.")
-    closeSendMailModal()
   }, [
     emailTemplates,
-    selectedMemberRows,
+    selectedRecipientEmails,
     selectedTemplateId,
     sendMailCc,
     senderEmail,
     closeSendMailModal,
   ])
+
+  const toggleSelectMember = useCallback(
+    (id: string) => {
+      if (!id) return
+      const wasSelected = selectedMemberIds.has(id)
+      setSelectedMemberIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      if (!wasSelected) {
+        openSendMailModal()
+        return
+      }
+      if (selectedMemberIds.size <= 1) closeSendMailModal()
+    },
+    [selectedMemberIds, openSendMailModal, closeSendMailModal],
+  )
+
+  const toggleSelectAllMembers = useCallback(() => {
+    if (selectableMemberIds.length === 0) return
+    if (allMembersSelected) {
+      setSelectedMemberIds(new Set())
+      closeSendMailModal()
+      return
+    }
+    setSelectedMemberIds(new Set(selectableMemberIds))
+    openSendMailModal()
+  }, [
+    selectableMemberIds,
+    allMembersSelected,
+    openSendMailModal,
+    closeSendMailModal,
+  ])
+
+  const organizationDisplayScope = useMemo(
+    () => resolveOrganizationDisplayScope(companyId, companyDisplayName),
+    [companyId, companyDisplayName],
+  )
 
   const columns: DataTableColumn<Record<string, unknown>>[] = useMemo(
     () => [
@@ -902,10 +979,16 @@ export default function CompanyMembersPage() {
       },
       {
         id: "organizations",
-        header: "Organizations",
-        sortValue: (row) => organizationsSortValue(row).toLowerCase(),
+        header: organizationDisplayScope ? "Organization" : "Organizations",
+        sortValue: (row) =>
+          organizationsSortValue(row, organizationDisplayScope).toLowerCase(),
         tdClassName: "um_td_memberships",
-        cell: (row) => <UserOrganizationsCell row={row} />,
+        cell: (row) => (
+          <UserOrganizationsCell
+            row={row}
+            organizationScope={organizationDisplayScope}
+          />
+        ),
       },
       {
         id: "status",
@@ -984,6 +1067,7 @@ export default function CompanyMembersPage() {
       allMembersSelected,
       toggleSelectAllMembers,
       loading,
+      organizationDisplayScope,
       selectableMemberIds.length,
       selectedMemberIds,
       toggleSelectMember,
@@ -1022,7 +1106,16 @@ export default function CompanyMembersPage() {
             type="button"
             className="um_btn_toolbar"
             disabled={loading || selectedMemberRows.length === 0}
-            onClick={openSendMailModal}
+            onClick={() => {
+              if (selectedMemberRows.length === 0) {
+                toast.error(
+                  "No members selected",
+                  "Select one or more members using the checkboxes in the table.",
+                )
+                return
+              }
+              openSendMailModal()
+            }}
           >
             <Send size={18} strokeWidth={2} aria-hidden />
             Send mail
@@ -1041,6 +1134,15 @@ export default function CompanyMembersPage() {
         {error ? (
           <p className="um_msg_error" role="alert">
             {error}
+          </p>
+        ) : null}
+
+        {!loading && selectedMemberRows.length > 0 ? (
+          <p className="um_toolbar_notice cp_company_members_selection_notice" role="status">
+            {selectedMemberRows.length} member
+            {selectedMemberRows.length === 1 ? "" : "s"} selected. Click{" "}
+            <strong>Send mail</strong> to compose a message for{" "}
+            <strong>{titleCompany}</strong>.
           </p>
         ) : null}
 
@@ -1269,8 +1371,13 @@ export default function CompanyMembersPage() {
               />
               <ViewReadonlyField
                 Icon={Building2}
-                label="Organizations"
-                value={<UserOrganizationsCell row={viewRow} />}
+                label={organizationDisplayScope ? "Organization" : "Organizations"}
+                value={
+                  <UserOrganizationsCell
+                    row={viewRow}
+                    organizationScope={organizationDisplayScope}
+                  />
+                }
                 fieldClassName="um_view_field_span_full"
               />
               <ViewReadonlyField
@@ -1303,13 +1410,23 @@ export default function CompanyMembersPage() {
         </div>
       ) : null}
 
-      {sendMailModalOpen ? (
-        <div className="um_modal_overlay contacts_suspend_overlay" role="presentation">
+      {sendMailModalOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="um_modal_overlay contacts_suspend_overlay portal_modal_z_boost"
+              role="presentation"
+              onClick={(e) => {
+                if (e.target === e.currentTarget && !sendMailSending) {
+                  closeSendMailModal()
+                }
+              }}
+            >
           <div
-            className="um_modal contacts_suspend_modal"
+            className="um_modal contacts_suspend_modal cp_company_members_send_mail_modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="org-members-send-mail-title"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="um_modal_head">
               <h3
@@ -1322,13 +1439,14 @@ export default function CompanyMembersPage() {
                   strokeWidth={2}
                   aria-hidden
                 />
-                <span>Send mail</span>
+                <span>Send mail to selected members</span>
               </h3>
               <button
                 type="button"
                 className="um_modal_close"
                 aria-label="Close"
                 onClick={closeSendMailModal}
+                disabled={sendMailSending}
               >
                 <X size={20} strokeWidth={2} aria-hidden />
               </button>
@@ -1341,9 +1459,19 @@ export default function CompanyMembersPage() {
                 aria-hidden
               />
               <span>
-                Sending to {selectedMemberRows.length} selected member
-                {selectedMemberRows.length === 1 ? "" : "s"}.
+                Use the row checkboxes to choose recipients, then send from here.
+                You selected <strong>{selectedMemberRows.length}</strong> member
+                {selectedMemberRows.length === 1 ? "" : "s"} at{" "}
+                <strong>{titleCompany}</strong>
+                {selectedRecipientEmails.length < selectedMemberRows.length
+                  ? ` (${selectedRecipientEmails.length} with a valid email on file).`
+                  : "."}
               </span>
+            </p>
+            <p className="cp_company_members_send_mail_help um_hint">
+              Choose an email template and optional CC addresses. When you click
+              Send, you will be asked to confirm before the message is delivered
+              from the portal.
             </p>
             {/* <div className="um_field contacts_suspend_reason_field">
               <label
@@ -1444,6 +1572,7 @@ export default function CompanyMembersPage() {
                 type="button"
                 className="um_btn_secondary"
                 onClick={closeSendMailModal}
+                disabled={sendMailSending}
               >
                 <X size={16} strokeWidth={2} aria-hidden />
                 Cancel
@@ -1451,16 +1580,97 @@ export default function CompanyMembersPage() {
               <button
                 type="button"
                 className="um_btn_primary"
-                disabled={!selectedTemplateId || selectedMemberRows.length === 0}
-                onClick={handleSendMailToSelectedMembers}
+                disabled={
+                  !selectedTemplateId ||
+                  selectedMemberRows.length === 0 ||
+                  selectedRecipientEmails.length === 0 ||
+                  sendMailSending
+                }
+                onClick={openSendMailConfirm}
               >
                 <Send size={16} strokeWidth={2} aria-hidden />
                 Send
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+
+          {sendMailConfirmOpen ? (
+            <div
+              className="um_modal cp_company_members_send_mail_confirm_modal"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="org-members-send-mail-confirm-title"
+              aria-describedby="org-members-send-mail-confirm-desc"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="um_modal_head">
+                <h3
+                  id="org-members-send-mail-confirm-title"
+                  className="um_modal_title um_title_with_icon"
+                >
+                  <Send
+                    className="um_title_icon contacts_suspend_title_icon contacts_suspend_title_icon_info"
+                    size={22}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span>Confirm send</span>
+                </h3>
+                <button
+                  type="button"
+                  className="um_modal_close"
+                  aria-label="Close"
+                  onClick={() => setSendMailConfirmOpen(false)}
+                  disabled={sendMailSending}
+                >
+                  <X size={20} strokeWidth={2} aria-hidden />
+                </button>
+              </div>
+              <p
+                id="org-members-send-mail-confirm-desc"
+                className="contacts_suspend_modal_desc contacts_suspend_modal_desc_info"
+              >
+                <Info
+                  className="contacts_suspend_modal_desc_icon"
+                  size={18}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span>
+                  Send the <strong>{selectedTemplate?.name ?? "selected"}</strong>{" "}
+                  template to <strong>{selectedRecipientEmails.length}</strong>{" "}
+                  recipient
+                  {selectedRecipientEmails.length === 1 ? "" : "s"} at{" "}
+                  <strong>{titleCompany}</strong>? This action delivers email from
+                  the portal and cannot be undone.
+                </span>
+              </p>
+              <div className="um_modal_actions contacts_suspend_modal_actions">
+                <button
+                  type="button"
+                  className="um_btn_secondary"
+                  onClick={() => setSendMailConfirmOpen(false)}
+                  disabled={sendMailSending}
+                >
+                  <X size={16} strokeWidth={2} aria-hidden />
+                  Go back
+                </button>
+                <button
+                  type="button"
+                  className="um_btn_primary"
+                  disabled={sendMailSending}
+                  onClick={() => void handleSendMailToSelectedMembers()}
+                >
+                  <Send size={16} strokeWidth={2} aria-hidden />
+                  {sendMailSending ? "Sending…" : "Confirm send"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
 
       <SendMailEmailPreviewModal
         preview={sendMailEmailPreview}
@@ -1582,7 +1792,7 @@ export default function CompanyMembersPage() {
                   {editErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"
@@ -1678,7 +1888,7 @@ export default function CompanyMembersPage() {
                   {suspendErr}
                 </p>
               ) : null}
-              <div className="um_modal_actions">
+              <div className="um_modal_actions add_contact_modal_actions">
                 <button
                   type="button"
                   className="um_btn_secondary"

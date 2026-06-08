@@ -1,4 +1,5 @@
 import { ChevronDown, Eye } from "lucide-react"
+import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import { useCallback, useEffect, useId, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import type { DealDetailApi } from "../../api/dealsApi"
@@ -9,6 +10,7 @@ import {
   writeOfferingPreviewInvestorVisibility,
   type OfferingDetailsSectionId,
 } from "../../utils/offeringPreviewInvestorVisibility"
+import { OFFERING_DETAILS_SECTION_INFO } from "../../utils/offeringDetailsSectionInfo"
 import {
   applyOfferingInvestorPreviewJsonFromServer,
   scheduleOfferingInvestorPreviewServerSync,
@@ -194,7 +196,13 @@ export function DealOfferingDetailsTab({
           />
         )
       case "funding_instructions":
-        return <FundingInfoSection />
+        return (
+          <FundingInfoSection
+            dealId={detail.id}
+            initialStoredJson={detail.fundingInstructionsJson}
+            onSaved={(d) => handleSectionSaved("funding_instructions", d)}
+          />
+        )
       default:
         return null
     }
@@ -217,7 +225,7 @@ export function DealOfferingDetailsTab({
           </div>
           <button
             type="button"
-            className="deal_offering_preview_btn"
+            className="um_btn_primary deal_offering_preview_btn"
             onClick={() =>
               navigate(
                 `/deals/${encodeURIComponent(detail.id)}/offering-portfolio`,
@@ -256,6 +264,7 @@ export function DealOfferingDetailsTab({
         {OFFERING_DETAILS_ACCORDION_SECTION_ORDER.map(({ id, label }) => {
           const expanded = Boolean(openSections[id])
           const panelId = `${baseId}-${id}`
+          const sectionInfo = OFFERING_DETAILS_SECTION_INFO[id]
           const investorToggle = (
             <label
               className={`deal_offering_investor_preview_toggle${offeringSectionHasInvestorPreviewTarget(id) ? "" : " deal_offering_investor_preview_toggle--muted"}`}
@@ -301,7 +310,28 @@ export function DealOfferingDetailsTab({
                   aria-controls={panelId}
                   onClick={() => setSectionExpanded(id, !expanded)}
                 >
-                  <span className="deal_offering_trigger_label">{label}</span>
+                  <span className="deal_offering_trigger_label_row">
+                    <span className="deal_offering_trigger_label">{label}</span>
+                    {sectionInfo ? (
+                      <span
+                        className="deal_offering_trigger_info"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <FormTooltip
+                          label={`More information: ${label}`}
+                          content={
+                            <p className="form_heading_with_info_tooltip_inner">
+                              {sectionInfo}
+                            </p>
+                          }
+                          panelAlign="start"
+                          nativeButtonTrigger={false}
+                          openOnHover={false}
+                        />
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
                 {investorToggle}
                 <button

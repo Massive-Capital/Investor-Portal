@@ -7,6 +7,7 @@ import {
   formatValue,
   rowDisplayName,
   userStatusForUi,
+  type OrganizationDisplayScope,
 } from "./memberAdminShared"
 
 export function escapeCsvCell(value: string): string {
@@ -16,13 +17,17 @@ export function escapeCsvCell(value: string): string {
   return value
 }
 
-export function buildMembersCsv(rows: Record<string, unknown>[]): string {
+export function buildMembersCsv(
+  rows: Record<string, unknown>[],
+  organizationScope?: OrganizationDisplayScope | null,
+): string {
+  const orgHeader = organizationScope?.companyId ? "Organization" : "Organizations"
   const headers = [
     "Name",
     "Username",
     "Email",
     "Roles",
-    "Organizations",
+    orgHeader,
     "User Status",
     "Account status",
     "Assigned deals",
@@ -35,7 +40,7 @@ export function buildMembersCsv(rows: Record<string, unknown>[]): string {
         formatMemberUsername(row.username),
         formatValue(row.email),
         formatRoleCsvCell(row),
-        formatOrganizationsCsvCell(row),
+        formatOrganizationsCsvCell(row, organizationScope),
         userStatusForUi(row).label,
         accountStatusForUi(row).label,
         String(assignedDealCountFromRow(row)),

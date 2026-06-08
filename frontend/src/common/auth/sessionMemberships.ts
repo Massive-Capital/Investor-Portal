@@ -43,8 +43,17 @@ function primaryOrganizationIdFromUser(
 function companyNameFromUser(o: Record<string, unknown> | null): string {
   if (!o) return ""
   return String(
-    o.companyName ?? o.company_name ?? o.organization_name ?? "",
+    o.companyName ??
+      o.company_name ??
+      o.organizationName ??
+      o.organization_name ??
+      "",
   ).trim()
+}
+
+/** Primary org display name from sign-in `userDetails` (not workspace-selected). */
+export function getSessionPrimaryCompanyName(): string {
+  return companyNameFromUser(readSessionUserRoot())
 }
 
 /** Distinct companies the signed-in user may work in (primary org + junction memberships). */

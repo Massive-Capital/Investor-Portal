@@ -1,7 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
 import {
   createEmbeddedTemplateDraft,
+  type EmbeddedTemplateDraftResult,
   tryGetEmbeddedTemplateEditUrl,
   waitForEmbeddedTemplateEditUrl,
 } from "../esign/dropboxSign.service.js";
@@ -26,6 +28,71 @@ async function persistEsignTemplatesJson(
     .update(addDealForm)
     .set({ esignTemplatesJson: JSON.stringify(state) })
     .where(eq(addDealForm.id, dealId));
+}
+
+async function clearStoredDropboxTemplateId(
+  dealId: string,
+  file: EsignTemplateFileRecord,
+  state: EsignTemplatesJson,
+): Promise<void> {
+  delete file.dropboxSignTemplateId;
+  delete file.dropboxSignStatus;
+  delete file.dropboxSignSavedAt;
+  await persistEsignTemplatesJson(dealId, state);
+}
+
+/** Resume an existing embedded draft, or null when the stored id is stale/unusable. */
+async function tryResumeEmbeddedTemplateEdit(
+  storedTemplateId: string,
+): Promise<{ editUrl: string; expiresAt: number } | null> {
+  try {
+    let existing = await tryGetEmbeddedTemplateEditUrl(storedTemplateId);
+    if (!existing) {
+      existing = await waitForEmbeddedTemplateEditUrl(storedTemplateId, {
+        maxAttempts: 5,
+        delayMs: 1500,
+      }).catch(() => null);
+    }
+    return existing;
+  } catch (err) {
+    console.warn(
+      `[esign] Could not resume Dropbox template ${storedTemplateId}; creating a new embedded draft:`,
+      err,
+    );
+    return null;
+  }
+}
+
+async function createDealEmbeddedTemplateDraft(params: {
+  title: string;
+  fileBuffer: Buffer;
+  fileName: string;
+  includeQuestionnaire: boolean;
+}): Promise<EmbeddedTemplateDraftResult> {
+  const base = {
+    title: params.title,
+    fileBuffer: params.fileBuffer,
+    fileName: params.fileName,
+    subject: "Please review and sign",
+    message: "Documents for your investment",
+  };
+
+  if (!params.includeQuestionnaire) {
+    return createEmbeddedTemplateDraft(base);
+  }
+
+  try {
+    return await createEmbeddedTemplateDraft({
+      ...base,
+      formFieldsPerDocument: getInvestorQuestionnaireSignatureFormFields(),
+    });
+  } catch (err) {
+    console.warn(
+      "[esign] embedded draft with questionnaire preset fields failed; retrying without preset fields:",
+      err,
+    );
+    return createEmbeddedTemplateDraft(base);
+  }
 }
 
 /**
@@ -68,6 +135,13 @@ export async function startDealEsignEmbeddedTemplateDraft(params: {
     file,
     state,
   );
+  try {
+    await access(absPath, fsConstants.R_OK);
+  } catch {
+    throw new Error(
+      "Template PDF was not found on the server. Remove this template and upload it again.",
+    );
+  }
   const fileBuffer = await readFile(absPath);
 
   const title =
@@ -79,17 +153,7 @@ export async function startDealEsignEmbeddedTemplateDraft(params: {
 
   const storedTemplateId = file.dropboxSignTemplateId?.trim();
   if (storedTemplateId) {
-    let existing = await tryGetEmbeddedTemplateEditUrl(storedTemplateId);
-    if (!existing) {
-      try {
-        existing = await waitForEmbeddedTemplateEditUrl(storedTemplateId, {
-          maxAttempts: 5,
-          delayMs: 1500,
-        });
-      } catch {
-        existing = null;
-      }
-    }
+    const existing = await tryResumeEmbeddedTemplateEdit(storedTemplateId);
     if (existing) {
       return {
         file,
@@ -103,22 +167,14 @@ export async function startDealEsignEmbeddedTemplateDraft(params: {
     console.warn(
       `[esign] Dropbox template ${storedTemplateId} not found for deal ${params.dealId} file ${params.fileId}; creating new embedded draft`,
     );
-    delete file.dropboxSignTemplateId;
-    delete file.dropboxSignStatus;
-    delete file.dropboxSignSavedAt;
-    await persistEsignTemplatesJson(params.dealId, state);
+    await clearStoredDropboxTemplateId(params.dealId, file, state);
   }
 
-  const draft = await createEmbeddedTemplateDraft({
+  const draft = await createDealEmbeddedTemplateDraft({
     title,
     fileBuffer,
     fileName: file.originalName,
-    subject: "Please review and sign",
-    message: "Documents for your investment",
-    /** Fields sit on printed signature lines on questionnaire page 1 (when enabled). */
-    formFieldsPerDocument: file.includeQuestionnaire
-      ? getInvestorQuestionnaireSignatureFormFields()
-      : undefined,
+    includeQuestionnaire: Boolean(file.includeQuestionnaire),
   });
 
   file.dropboxSignTemplateId = draft.templateId;

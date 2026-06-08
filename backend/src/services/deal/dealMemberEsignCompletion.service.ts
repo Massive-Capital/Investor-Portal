@@ -26,6 +26,7 @@ import {
 import {
   downloadSignatureRequestPdfBuffer,
   getSignatureRequestDetail,
+  isDropboxSignRateLimitError,
   type DropboxSignatureRequestDetail,
   type DropboxSignatureSignerDetail,
 } from "../esign/dropboxSign.service.js";
@@ -291,6 +292,9 @@ async function ensureSignedPdfStoredForCompletedRequest(
   }
 }
 
+/** Cap Dropbox polls per HTTP request (deal-wide investor list + portal loads). */
+const MAX_ESIGN_SYNC_TARGETS_PER_REQUEST = 12;
+
 /**
  * Refresh pending eSign rows from Dropbox before building the Investors tab list.
  */
@@ -299,6 +303,8 @@ export async function syncDealInvestorEsignStatusesForDeal(
 ): Promise<void> {
   const id = dealId.trim();
   if (!id) return;
+
+  let synced = 0;
 
   const investments = await db
     .select({
@@ -309,12 +315,19 @@ export async function syncDealInvestorEsignStatusesForDeal(
     .where(eq(dealInvestment.dealId, id));
 
   for (const row of investments) {
+    if (synced >= MAX_ESIGN_SYNC_TARGETS_PER_REQUEST) return;
     const bundle = parseEsignStatusBundle(row.esignStatusJson);
     if (!bundle || !esignBundleNeedsDropboxSync(bundle)) continue;
-    await syncDealInvestorEsignByTarget(id, {
-      table: "investment",
-      id: row.id,
-    });
+    try {
+      await syncDealInvestorEsignByTarget(id, {
+        table: "investment",
+        id: row.id,
+      });
+      synced += 1;
+    } catch (err) {
+      if (isDropboxSignRateLimitError(err)) return;
+      throw err;
+    }
   }
 
   const roster = await db
@@ -326,9 +339,40 @@ export async function syncDealInvestorEsignStatusesForDeal(
     .where(eq(dealLpInvestor.dealId, id));
 
   for (const row of roster) {
+    if (synced >= MAX_ESIGN_SYNC_TARGETS_PER_REQUEST) return;
     const bundle = parseEsignStatusBundle(row.esignStatusJson);
     if (!bundle || !esignBundleNeedsDropboxSync(bundle)) continue;
-    await syncDealInvestorEsignByTarget(id, { table: "lp", id: row.id });
+    try {
+      await syncDealInvestorEsignByTarget(id, { table: "lp", id: row.id });
+      synced += 1;
+    } catch (err) {
+      if (isDropboxSignRateLimitError(err)) return;
+      throw err;
+    }
+  }
+}
+
+/**
+ * Poll Dropbox only when this commitment still has incomplete sends.
+ * Safe to call from read-only document routes (uses cache + skips completed bundles).
+ */
+export async function maybeSyncDealInvestorEsignByTarget(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+): Promise<void> {
+  const raw = await readInvestorEsignStatusJson(dealId, target);
+  const bundle = parseEsignStatusBundle(raw);
+  if (!bundle || !esignBundleNeedsDropboxSync(bundle)) return;
+  if (!getDropboxSignConfig()) return;
+
+  try {
+    await syncDealInvestorEsignByTarget(dealId, target);
+  } catch (err) {
+    if (isDropboxSignRateLimitError(err)) {
+      console.warn("maybeSyncDealInvestorEsignByTarget: rate limited");
+      return;
+    }
+    throw err;
   }
 }
 

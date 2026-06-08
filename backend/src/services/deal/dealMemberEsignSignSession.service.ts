@@ -14,10 +14,11 @@ import {
 } from "../esign/dropboxSign.service.js";
 import {
   findInvestorEsignTargetForInvestNowCommitment,
-  findInvestorEsignTargetForPortalUser,
   investorEsignTargetHasPositiveCommitment,
   markDealInvestorEsignViewed,
   readInvestorEsignStatusJson,
+  resolveInvestorEsignTargetForSignedInInvestor,
+  type InvestNowEsignTargetOpts,
   type InvestorEsignRowTarget,
 } from "./dealMemberEsignStatus.service.js";
 import { sendMyInvestNowEsignIfNeeded } from "./dealLpInvestNowMyEsignSend.service.js";
@@ -53,7 +54,10 @@ export async function getDealMyEsignSignSession(params: {
   email: string;
   userId: string;
   signatureRequestId?: string;
-}): Promise<DealMyEsignSignSessionResult> {
+} & Pick<
+  InvestNowEsignTargetOpts,
+  "userInvestorProfileId" | "investmentId" | "profileId"
+>): Promise<DealMyEsignSignSessionResult> {
   const publicCfg = getDealEsignDropboxSignPublicConfig();
   if (!getDropboxSignConfig()) {
     return {
@@ -67,15 +71,21 @@ export async function getDealMyEsignSignSession(params: {
   const email = params.email.trim().toLowerCase();
   const userId = params.userId;
 
+  const scopeOpts: InvestNowEsignTargetOpts = {
+    email,
+    userId,
+    userInvestorProfileId: params.userInvestorProfileId,
+    investmentId: params.investmentId,
+    profileId: params.profileId,
+  };
+
   let target: InvestorEsignRowTarget | null =
-    await findInvestorEsignTargetForPortalUser(dealId, { email, userId });
+    await resolveInvestorEsignTargetForSignedInInvestor(dealId, scopeOpts);
 
   const commitmentTarget = await findInvestorEsignTargetForInvestNowCommitment(
     dealId,
-    { email, userId },
+    scopeOpts,
   );
-
-  if (!target) target = commitmentTarget;
 
   if (!target) {
     return {
@@ -97,10 +107,16 @@ export async function getDealMyEsignSignSession(params: {
   let raw = await readInvestorEsignStatusJson(dealId, target);
   let bundle = parseEsignStatusBundle(raw);
   if (!bundle?.sends.length && commitmentTarget) {
-    let profileId = "";
+    let profileId = String(params.profileId ?? "").trim();
+    let userInvestorProfileId = String(
+      params.userInvestorProfileId ?? "",
+    ).trim();
     if (commitmentTarget.table === "investment") {
       const [invProfile] = await db
-        .select({ profileId: dealInvestment.profileId })
+        .select({
+          profileId: dealInvestment.profileId,
+          userInvestorProfileId: dealInvestment.userInvestorProfileId,
+        })
         .from(dealInvestment)
         .where(
           and(
@@ -109,7 +125,14 @@ export async function getDealMyEsignSignSession(params: {
           ),
         )
         .limit(1);
-      profileId = String(invProfile?.profileId ?? "").trim();
+      if (!profileId) {
+        profileId = String(invProfile?.profileId ?? "").trim();
+      }
+      if (!userInvestorProfileId) {
+        userInvestorProfileId = String(
+          invProfile?.userInvestorProfileId ?? "",
+        ).trim();
+      }
     }
     if (profileId) {
       const sent = await sendMyInvestNowEsignIfNeeded({
@@ -117,13 +140,14 @@ export async function getDealMyEsignSignSession(params: {
         viewerEmail: email,
         viewerUserId: userId,
         profileId,
+        userInvestorProfileId: userInvestorProfileId || undefined,
+        investmentId:
+          commitmentTarget.table === "investment"
+            ? commitmentTarget.id
+            : undefined,
       });
-      if (sent.ok) {
-        target =
-          (await findInvestorEsignTargetForPortalUser(dealId, {
-            email,
-            userId,
-          })) ?? commitmentTarget;
+      if (sent.ok && commitmentTarget) {
+        target = commitmentTarget;
         raw = await readInvestorEsignStatusJson(dealId, target);
         bundle = parseEsignStatusBundle(raw);
       }
@@ -176,7 +200,7 @@ export async function getDealMyEsignSignSession(params: {
 
   try {
     const { signUrl } = await getEmbeddedSignUrl(signatureId);
-    if (sigId) {
+    if (sigId && target) {
       await markDealInvestorEsignViewed(params.dealId, target, sigId);
     }
     return {

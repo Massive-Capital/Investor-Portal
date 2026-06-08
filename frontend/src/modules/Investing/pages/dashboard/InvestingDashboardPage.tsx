@@ -1,27 +1,26 @@
 import {
   Briefcase,
   DollarSign,
-  LayoutDashboard,
   LineChart,
   PiggyBank,
 } from "lucide-react"
-import { useEffect, useState } from "react"
-import { NavLink } from "react-router-dom"
+import { useEffect, useState, type ReactNode } from "react"
 import { ToolStyleCard } from "@/common/components/tool-style-card/ToolStyleCard"
-import { SyndicatingDealsSection } from "@/modules/Syndication/Deals/SyndicatingDealsSection"
+import { cardCompactAmountOrDash } from "@/common/components/card-compact-amount/CardCompactAmount"
+import { InvestingDashboardDealsSection } from "./InvestingDashboardDealsSection"
 import "@/modules/Syndication/usermanagement/user_management.css"
+import "@/modules/Syndication/Deals/deals-list.css"
 import "@/modules/Syndication/Dashboard/sponsor-dashboard.css"
 import {
   loadInvestingDashboardMetrics,
   type InvestingDashboardMetrics,
 } from "./investingDashboardMetrics"
-import "./dashboard-investing.css"
 
 function metricDescription(
   loading: boolean,
   metrics: InvestingDashboardMetrics | null,
-  pick: (m: InvestingDashboardMetrics) => string,
-): string {
+  pick: (m: InvestingDashboardMetrics) => ReactNode,
+): ReactNode {
   if (loading || metrics == null) return "—"
   return pick(metrics)
 }
@@ -47,25 +46,20 @@ export function InvestingDashboardPage() {
 
   return (
     <section className="um_page sponsor_dash sponsor_dash_investing">
-      <div className="um_members_header_block">
-        <div className="um_header_row">
-          <h2 className="um_title um_title_with_icon">
-            <LayoutDashboard
-              className="um_title_icon"
-              size={26}
-              strokeWidth={1.75}
-              aria-hidden
-            />
-            Investor dashboard
-          </h2>
+      <header className="sponsor_dash_hero">
+        <div className="sponsor_dash_hero_copy">
+          <p className="sponsor_dash_hero_eyebrow">Portfolio Overview</p>
+          <h1 className="sponsor_dash_hero_title">Investor dashboard</h1>
+        </div>
+        {/* <div className="sponsor_dash_hero_actions">
           <NavLink
-            className="um_btn_secondary sponsor_dash_add_link"
+            className="um_btn_primary sponsor_dash_add_link"
             to="/investing/investments"
           >
             All deals
           </NavLink>
-        </div>
-      </div>
+        </div> */}
+      </header>
 
       {/* <section
         className="investing_dash_panel"
@@ -86,7 +80,7 @@ export function InvestingDashboardPage() {
       </section> */}
 
       <section
-        className="sponsor_dash_metrics_investing_mode investing_dash_top_metrics"
+        className="sponsor_dash_metrics"
         aria-label="Investing summary"
         aria-busy={loading}
       >
@@ -94,14 +88,18 @@ export function InvestingDashboardPage() {
           variant="metric"
           icon={PiggyBank}
           title="Total invested"
-          description={metricDescription(loading, metrics, (m) => m.totalInvestedDisplay)}
+          description={metricDescription(loading, metrics, (m) =>
+            cardCompactAmountOrDash(m.totalInvestedDisplay),
+          )}
           hintTitle="Sum of your committed amounts on each active deal you are invested in."
         />
         <ToolStyleCard
           variant="metric"
           icon={DollarSign}
           title="Total distributed"
-          description={metricDescription(loading, metrics, (m) => m.totalDistributedDisplay)}
+          description={metricDescription(loading, metrics, (m) =>
+            cardCompactAmountOrDash(m.totalDistributedDisplay),
+          )}
           hintTitle="Your funded rows: amount shown is the committed on each of your rows that has a funded date."
         />
         <ToolStyleCard
@@ -115,17 +113,14 @@ export function InvestingDashboardPage() {
           variant="metric"
           icon={LineChart}
           title="Total in-progress"
-          description={metricDescription(loading, metrics, (m) => m.totalInProgressDisplay)}
+          description={metricDescription(loading, metrics, (m) =>
+            cardCompactAmountOrDash(m.totalInProgressDisplay),
+          )}
           hintTitle="Calculated as the sum of active investments that have not been countersigned."
         />
       </section>
 
-      <SyndicatingDealsSection
-        dealsHeadingId="investing-deals-heading"
-        includeParticipantDeals
-        filterOfferingDashboardVisibility
-        dealsSectionTitle="Your deals"
-      />
+      <InvestingDashboardDealsSection />
     </section>
   )
 }

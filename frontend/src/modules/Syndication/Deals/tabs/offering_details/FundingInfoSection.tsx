@@ -1,5 +1,27 @@
-import { useId, useState } from "react"
-import { InfoIconPanel } from "./FieldInfoHeading"
+import { Loader2, RotateCcw, Save } from "lucide-react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
+import { toast } from "../../../../../common/components/Toast"
+import {
+  patchDealFundingInstructions,
+  fetchDealById,
+  type DealDetailApi,
+} from "../../api/dealsApi"
+import { applyOfferingInvestorPreviewJsonFromServer } from "../../utils/offeringPreviewServerState"
+import {
+  applyFundingInformationDocumentsSectionFromPreview,
+  hasFundingInformationDocumentsSection,
+  parseDocumentSectionsFromPreviewJson,
+} from "../../utils/offeringPreviewDocSections"
+import { CheckPaymentDetailsForm } from "./CheckPaymentDetailsForm"
+import { InvestmentFeeFields } from "./InvestmentFeeFields"
+import { WireTransferDetailsForm } from "./WireTransferDetailsForm"
+import {
+  cloneFundingInstructions,
+  fundingInstructionsEqual,
+  fundingInstructionsFromStoredJson,
+  serializeFundingInstructions,
+  type FundingInstructionsState,
+} from "./fundingInstructions"
 
 type FundingToggleProps = {
   checked: boolean
@@ -26,25 +48,103 @@ function FundingToggle({ checked, onChange, id, labelId }: FundingToggleProps) {
   )
 }
 
-const INVESTMENT_FEE_OPTIONS = [
-  { value: "none", label: "No fee" },
-  { value: "flat", label: "Flat amount" },
-  { value: "percent", label: "Percentage of commitment" },
-] as const
+type FundingInfoSectionProps = {
+  dealId: string
+  initialStoredJson?: string | null
+  onSaved?: (deal: DealDetailApi) => void
+}
 
-const INVESTMENT_FEE_HELP_P1 =
-  'Investment fees are additional charges for an investment that does not count toward the investment amount. For example, this could be a flat fee charged for an investment payment, or a "true up" as a result of a previous tranche.'
-const INVESTMENT_FEE_HELP_P2 =
-  'Investment fees are not enforced with wire transfers. For wire transfers, please indicate the fee amount within the "Wire transfer details" section.'
-
-export function FundingInfoSection() {
+export function FundingInfoSection({
+  dealId,
+  initialStoredJson,
+  onSaved,
+}: FundingInfoSectionProps) {
   const baseId = useId()
-  const [achEnabled, setAchEnabled] = useState(false)
-  const [wireEnabled, setWireEnabled] = useState(true)
-  const [checksEnabled, setChecksEnabled] = useState(false)
-  const [receivingBankAccount, setReceivingBankAccount] = useState("")
-  const [investmentFeeMethod, setInvestmentFeeMethod] = useState("none")
-  const [checkInstructions, setCheckInstructions] = useState("")
+  const [form, setForm] = useState<FundingInstructionsState>(() =>
+    fundingInstructionsFromStoredJson(initialStoredJson),
+  )
+  const [savedSnapshot, setSavedSnapshot] = useState<FundingInstructionsState>(
+    () => cloneFundingInstructions(fundingInstructionsFromStoredJson(initialStoredJson)),
+  )
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const next = fundingInstructionsFromStoredJson(initialStoredJson)
+    setForm(next)
+    setSavedSnapshot(cloneFundingInstructions(next))
+  }, [dealId, initialStoredJson])
+
+  const isDirty = useMemo(
+    () => !fundingInstructionsEqual(form, savedSnapshot),
+    [form, savedSnapshot],
+  )
+
+  const patchForm = useCallback(
+    (partial: Partial<FundingInstructionsState>) => {
+      setForm((prev) => ({ ...prev, ...partial }))
+    },
+    [],
+  )
+
+  const handleSave = useCallback(async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      const result = await patchDealFundingInstructions(
+        dealId,
+        serializeFundingInstructions(form),
+      )
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      onSaved?.(result.deal)
+      let previewJson = result.deal.offeringInvestorPreviewJson ?? null
+      applyOfferingInvestorPreviewJsonFromServer(dealId, previewJson)
+
+      let documentsSynced = applyFundingInformationDocumentsSectionFromPreview(
+        dealId,
+        previewJson,
+      )
+      if (
+        !documentsSynced &&
+        !hasFundingInformationDocumentsSection(
+          parseDocumentSectionsFromPreviewJson(previewJson),
+        )
+      ) {
+        try {
+          const refreshed = await fetchDealById(dealId)
+          if (refreshed.offeringInvestorPreviewJson) {
+            previewJson = refreshed.offeringInvestorPreviewJson
+            applyOfferingInvestorPreviewJsonFromServer(dealId, previewJson)
+            documentsSynced = applyFundingInformationDocumentsSectionFromPreview(
+              dealId,
+              previewJson,
+            )
+            if (documentsSynced) {
+              onSaved?.(refreshed)
+            }
+          }
+        } catch {
+          /* funding instructions saved; documents sync will retry on next save */
+        }
+      }
+
+      const fromApi = result.deal.fundingInstructionsJson?.trim() ?? ""
+      const rawForForm =
+        fromApi !== "" ? fromApi : serializeFundingInstructions(form)
+      const next = fundingInstructionsFromStoredJson(rawForForm)
+      setForm(next)
+      setSavedSnapshot(cloneFundingInstructions(next))
+      toast.success("Funding info saved.")
+    } finally {
+      setSaving(false)
+    }
+  }, [dealId, form, saving, onSaved])
+
+  const handleReset = useCallback(() => {
+    setForm(cloneFundingInstructions(savedSnapshot))
+  }, [savedSnapshot])
 
   const achTitleId = `${baseId}-ach-title`
   const wireTitleId = `${baseId}-wire-title`
@@ -54,37 +154,74 @@ export function FundingInfoSection() {
   return (
     <div className="deal_fi_root">
       <div className="deal_fi_stack">
-        {/* Integrated ACH */}
+        {/* ACH payments */}
         <section className="deal_fi_card" aria-labelledby={achTitleId}>
           <div className="deal_fi_card_main">
             <FundingToggle
               id={`${baseId}-ach-switch`}
               labelId={achTitleId}
-              checked={achEnabled}
-              onChange={setAchEnabled}
+              checked={form.achEnabled}
+              onChange={(achEnabled) => patchForm({ achEnabled })}
             />
             <div className="deal_fi_card_body">
               <div className="deal_fi_title_row">
                 <h3 className="deal_fi_card_title" id={achTitleId}>
-                  Integrated ACH payments
+                  ACH payments
                 </h3>
                 <span className="deal_fi_badge deal_fi_badge_recommended">
                   Recommended
                 </span>
               </div>
               <p className="deal_fi_desc">
-                Payments are linked to the investment and tracked automatically,
-                with email notifications when payments are initiated and
-                completed.{" "}
-                <button type="button" className="deal_fi_inline_link">
-                  Fee details
-                </button>
-                .
+                Our system will generate a PDF of these instructions for your
+                LPs. You can also upload your own PDF in Offering documents.
               </p>
-              {achEnabled ? (
-                <button type="button" className="deal_fi_text_link">
-                  Connect external account
-                </button>
+              {form.achEnabled ? (
+                <>
+                  <WireTransferDetailsForm
+                    baseId={`${baseId}-ach`}
+                    receivingBank={form.achReceivingBank}
+                    onReceivingBankChange={(achReceivingBank) =>
+                      patchForm({ achReceivingBank })
+                    }
+                    bankAddress={form.achBankAddress}
+                    onBankAddressChange={(achBankAddress) =>
+                      patchForm({ achBankAddress })
+                    }
+                    routingNumber={form.achRoutingNumber}
+                    onRoutingNumberChange={(achRoutingNumber) =>
+                      patchForm({ achRoutingNumber })
+                    }
+                    accountNumber={form.achAccountNumber}
+                    onAccountNumberChange={(achAccountNumber) =>
+                      patchForm({ achAccountNumber })
+                    }
+                    accountType={form.achAccountType}
+                    onAccountTypeChange={(achAccountType) =>
+                      patchForm({ achAccountType })
+                    }
+                    beneficiaryAccountName={form.achBeneficiaryAccountName}
+                    onBeneficiaryAccountNameChange={(achBeneficiaryAccountName) =>
+                      patchForm({ achBeneficiaryAccountName })
+                    }
+                    beneficiaryAddress={form.achBeneficiaryAddress}
+                    onBeneficiaryAddressChange={(achBeneficiaryAddress) =>
+                      patchForm({ achBeneficiaryAddress })
+                    }
+                    reference={form.achReference}
+                    onReferenceChange={(achReference) =>
+                      patchForm({ achReference })
+                    }
+                    otherInstructions={form.achOtherInstructions}
+                    onOtherInstructionsChange={(achOtherInstructions) =>
+                      patchForm({ achOtherInstructions })
+                    }
+                  />
+                  <p className="deal_fi_footnote">
+                    When no ACH instructions have been provided, LPs will be
+                    asked to contact their sponsor for ACH details.
+                  </p>
+                </>
               ) : null}
             </div>
           </div>
@@ -96,8 +233,8 @@ export function FundingInfoSection() {
             <FundingToggle
               id={`${baseId}-wire-switch`}
               labelId={wireTitleId}
-              checked={wireEnabled}
-              onChange={setWireEnabled}
+              checked={form.wireEnabled}
+              onChange={(wireEnabled) => patchForm({ wireEnabled })}
             />
             <div className="deal_fi_card_body">
               <h3 className="deal_fi_card_title" id={wireTitleId}>
@@ -107,25 +244,47 @@ export function FundingInfoSection() {
                 Our system will generate a PDF of these instructions for your
                 LPs. You can also upload your own PDF in Offering documents.
               </p>
-              {wireEnabled ? (
+              {form.wireEnabled ? (
                 <>
-                  <div className="deal_fi_field_block">
-                    <label
-                      className="deal_fi_label"
-                      htmlFor={`${baseId}-receiving-bank`}
-                    >
-                      Receiving bank account
-                    </label>
-                    <input
-                      id={`${baseId}-receiving-bank`}
-                      type="text"
-                      className="deal_fi_input"
-                      autoComplete="off"
-                      placeholder="Account name or reference"
-                      value={receivingBankAccount}
-                      onChange={(e) => setReceivingBankAccount(e.target.value)}
-                    />
-                  </div>
+                  <WireTransferDetailsForm
+                    baseId={`${baseId}-wire`}
+                    receivingBank={form.receivingBank}
+                    onReceivingBankChange={(receivingBank) =>
+                      patchForm({ receivingBank })
+                    }
+                    bankAddress={form.bankAddress}
+                    onBankAddressChange={(bankAddress) =>
+                      patchForm({ bankAddress })
+                    }
+                    routingNumber={form.routingNumber}
+                    onRoutingNumberChange={(routingNumber) =>
+                      patchForm({ routingNumber })
+                    }
+                    accountNumber={form.accountNumber}
+                    onAccountNumberChange={(accountNumber) =>
+                      patchForm({ accountNumber })
+                    }
+                    accountType={form.accountType}
+                    onAccountTypeChange={(accountType) =>
+                      patchForm({ accountType })
+                    }
+                    beneficiaryAccountName={form.beneficiaryAccountName}
+                    onBeneficiaryAccountNameChange={(beneficiaryAccountName) =>
+                      patchForm({ beneficiaryAccountName })
+                    }
+                    beneficiaryAddress={form.beneficiaryAddress}
+                    onBeneficiaryAddressChange={(beneficiaryAddress) =>
+                      patchForm({ beneficiaryAddress })
+                    }
+                    reference={form.wireReference}
+                    onReferenceChange={(wireReference) =>
+                      patchForm({ wireReference })
+                    }
+                    otherInstructions={form.wireOtherInstructions}
+                    onOtherInstructionsChange={(wireOtherInstructions) =>
+                      patchForm({ wireOtherInstructions })
+                    }
+                  />
                   <p className="deal_fi_footnote">
                     When no wire instructions have been provided, LPs will be
                     asked to contact their sponsor for wire details.
@@ -142,8 +301,8 @@ export function FundingInfoSection() {
             <FundingToggle
               id={`${baseId}-checks-switch`}
               labelId={checksTitleId}
-              checked={checksEnabled}
-              onChange={setChecksEnabled}
+              checked={form.checksEnabled}
+              onChange={(checksEnabled) => patchForm({ checksEnabled })}
             />
             <div className="deal_fi_card_body">
               <h3 className="deal_fi_card_title" id={checksTitleId}>
@@ -153,23 +312,28 @@ export function FundingInfoSection() {
                 Enter instructions for mailing a check. This is not recommended
                 for most use cases.
               </p>
-              {checksEnabled ? (
-                <div className="deal_fi_field_block">
-                  <label
-                    className="deal_fi_label"
-                    htmlFor={`${baseId}-check-notes`}
-                  >
-                    Mailing instructions
-                  </label>
-                  <textarea
-                    id={`${baseId}-check-notes`}
-                    className="deal_fi_textarea"
-                    rows={4}
-                    placeholder="Payee name, address, memo line, etc."
-                    value={checkInstructions}
-                    onChange={(e) => setCheckInstructions(e.target.value)}
-                  />
-                </div>
+              {form.checksEnabled ? (
+                <CheckPaymentDetailsForm
+                  baseId={`${baseId}-check`}
+                  mailingAddress={form.checkMailingAddress}
+                  onMailingAddressChange={(checkMailingAddress) =>
+                    patchForm({ checkMailingAddress })
+                  }
+                  beneficiary={form.checkBeneficiary}
+                  onBeneficiaryChange={(checkBeneficiary) =>
+                    patchForm({ checkBeneficiary })
+                  }
+                  beneficiaryAddress={form.checkBeneficiaryAddress}
+                  onBeneficiaryAddressChange={(checkBeneficiaryAddress) =>
+                    patchForm({ checkBeneficiaryAddress })
+                  }
+                  memo={form.checkMemo}
+                  onMemoChange={(checkMemo) => patchForm({ checkMemo })}
+                  otherInstructions={form.checkOtherInstructions}
+                  onOtherInstructionsChange={(checkOtherInstructions) =>
+                    patchForm({ checkOtherInstructions })
+                  }
+                />
               ) : null}
             </div>
           </div>
@@ -186,40 +350,59 @@ export function FundingInfoSection() {
                 Configure an additional fee charged to the investor upon funding
                 the investment. This is not for use as an acquisition fee.
               </p>
-              <div className="deal_fi_field_block">
-                <div className="deal_fi_label_row">
-                  <label
-                    className="deal_fi_label"
-                    htmlFor={`${baseId}-fee-method`}
-                  >
-                    Investment fee method
-                  </label>
-                  <InfoIconPanel
-                    ariaLabel="More information: investment fee method"
-                    infoContent={
-                      <>
-                        <p>{INVESTMENT_FEE_HELP_P1}</p>
-                        <p>{INVESTMENT_FEE_HELP_P2}</p>
-                      </>
-                    }
-                  />
-                </div>
-                <select
-                  id={`${baseId}-fee-method`}
-                  className="deal_fi_select"
-                  value={investmentFeeMethod}
-                  onChange={(e) => setInvestmentFeeMethod(e.target.value)}
-                >
-                  {INVESTMENT_FEE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <InvestmentFeeFields
+                baseId={`${baseId}-fee`}
+                investmentFeeMethod={form.investmentFeeMethod}
+                onInvestmentFeeMethodChange={(investmentFeeMethod) =>
+                  patchForm({ investmentFeeMethod })
+                }
+                feeHandlingMethod={form.feeHandlingMethod}
+                onFeeHandlingMethodChange={(feeHandlingMethod) =>
+                  patchForm({ feeHandlingMethod })
+                }
+                feeAmount={form.feeAmount}
+                onFeeAmountChange={(feeAmount) => patchForm({ feeAmount })}
+              />
             </div>
           </div>
         </section>
+      </div>
+
+      <div className="deal_kh_footer deal_fi_footer um_modal_actions add_contact_modal_actions">
+        <button
+          type="button"
+          className="um_btn_secondary"
+          disabled={!isDirty || saving}
+          onClick={handleReset}
+        >
+          <RotateCcw size={17} strokeWidth={2} aria-hidden />
+          Reset
+        </button>
+        <div className="add_contact_modal_actions_trailing">
+          <button
+            type="button"
+            className="um_btn_primary"
+            disabled={!isDirty || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? (
+              <>
+                <Loader2
+                  size={18}
+                  strokeWidth={2}
+                  className="deal_offering_btn_spin"
+                  aria-hidden
+                />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save size={18} strokeWidth={2} aria-hidden />
+                Save
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

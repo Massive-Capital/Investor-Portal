@@ -22,7 +22,6 @@
 
 .deal_invite_spin {
   animation: deal_invite_spin 0.9s linear infinite;
-  color: var(--portal-primary, #2563eb);
   margin-bottom: 0.75rem;
 }
 
@@ -32,50 +31,52 @@
   }
 }
 
-.deal_invite_muted {
+.authPage .deal_invite_muted {
   margin: 0;
-  color: var(--portal-text-muted, #64748b);
+  color: var(--auth-landing-ink-muted, rgba(244, 241, 235, 0.55));
   font-size: 0.9375rem;
 }
 
-.deal_invite_kicker {
+.authPage .deal_invite_kicker {
   margin: 0 0 0.35rem;
   font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--portal-text-muted, #64748b);
+  color: var(--auth-landing-gold, #c9973a);
 }
 
-.deal_invite_title {
+.authPage .deal_invite_title {
   margin: 0 0 0.65rem;
+  font-family: var(--portal-font-display, "Playfair Display", Georgia, serif);
   font-size: 1.35rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
-  color: var(--portal-text, #0f172a);
+  color: var(--auth-landing-ink, #f4f1eb);
 }
 
-.deal_invite_body {
+.authPage .deal_invite_body {
   margin: 0 0 1.25rem;
   font-size: 0.9375rem;
   line-height: 1.5;
-  color: var(--portal-text-muted, #475569);
+  color: var(--auth-landing-ink-muted, rgba(244, 241, 235, 0.55));
 }
 
-.deal_invite_summary {
+.authPage .deal_invite_summary {
   margin: 0 0 1.5rem;
   padding: 0.85rem 1rem;
-  border-radius: 10px;
-  background: var(--portal-surface-muted, #f1f5f9);
+  border-radius: var(--portal-card-radius, 4px);
+  background: rgba(244, 241, 235, 0.05);
+  border: 1px solid var(--auth-landing-blue-border, rgba(30, 80, 160, 0.25));
   text-align: left;
 }
 
-.deal_invite_summary_row {
+.authPage .deal_invite_summary_row {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
   font-size: 0.9rem;
-  color: var(--portal-text, #0f172a);
+  color: var(--auth-landing-ink, #f4f1eb);
   word-break: break-word;
 }
 
@@ -90,60 +91,55 @@
 }
 
 /* Sign up: same shell bg as signup page (signup_form.css `.authPage:has(.signup_page)` → #f8f8f8) */
-.deal_invite_btn_primary {
+.authPage .deal_invite_btn_primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  padding: 0.65rem 1.1rem;
-  border-radius: var(--ui-button-border-radius, 25px);
-  font-weight: 600;
-  font-size: 0.9375rem;
+  padding: 0.7rem 1.1rem;
+  border-radius: var(--ui-button-border-radius, 4px);
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   text-decoration: none;
   box-sizing: border-box;
-  background: var(--ui-button-background-add);
-  /* background-color: #f8f8f8; */
-  color: white;
-  border: 1px solid #e5e5e5;
+  background: var(--auth-landing-gold, #c9973a);
+  color: var(--auth-landing-blue-deep, #04080f);
+  border: 1px solid var(--auth-landing-gold, #c9973a);
   cursor: pointer;
 }
 
-.deal_invite_btn_primary:hover {
-  background: var(--ui-button-hover);
-    /* border-color: #d4d4d4; */
+.authPage .deal_invite_btn_primary:hover {
+  background: var(--auth-landing-gold-light, #e8bc6a);
+  border-color: var(--auth-landing-gold-light, #e8bc6a);
 }
 
-/*
- * Sign in: same #f8f8f8 as signup shell for border + text (readable on a dark fill).
- * Sign up uses #f8f8f8 as the button background.
- */
-.deal_invite_btn_secondary {
+.authPage .deal_invite_btn_secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.6rem 1rem;
-  border-radius: var(--ui-button-border-radius, 25px);
+  padding: 0.65rem 1rem;
+  border-radius: var(--ui-button-border-radius, 4px);
   font-weight: 600;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   text-decoration: none;
   box-sizing: border-box;
-  color: var(--ui-button-background-add);
-  background-color: #f8f8f8;
-  /* background: var(--ui-button-background-add); */
-  border: 1px solid var(--ui-button-background-add);
+  color: var(--auth-landing-ink, #f4f1eb);
+  background: transparent;
+  border: 1px solid var(--auth-landing-blue-border, rgba(30, 80, 160, 0.25));
 }
 
-/* .deal_invite_btn_secondary:hover {
-  background: #334155;
-  border-color: #f8f8f8;
-  color: #f8f8f8;
-} */
+.authPage .deal_invite_btn_secondary:hover {
+  border-color: var(--auth-landing-gold-border, rgba(201, 151, 58, 0.3));
+  color: var(--auth-landing-gold-light, #e8bc6a);
+}
 
-.deal_invite_icon_warn {
-  color: var(--portal-warning, #d97706);
+.authPage .deal_invite_icon_warn {
+  color: var(--auth-landing-gold-light, #e8bc6a);
   margin-bottom: 0.5rem;
 }
 
-:root[data-theme="dark"] .deal_invite_summary {
-  background: rgba(148, 163, 184, 0.12);
+.authPage .deal_invite_spin {
+  color: var(--auth-landing-gold, #c9973a);
 }

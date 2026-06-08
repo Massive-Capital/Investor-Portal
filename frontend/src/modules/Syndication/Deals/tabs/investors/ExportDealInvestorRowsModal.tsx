@@ -1,4 +1,5 @@
-import { Search, X } from "lucide-react"
+import { Download, Search, X } from "lucide-react"
+import { ExportModalFooter } from "../../../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "../../components/export-deals-modal.css"
 import { formatMemberUsername } from "../../../usermanagement/memberAdminShared"
@@ -248,23 +249,17 @@ export function ExportDealInvestorRowsModal({
           )}
         </ul>
 
-        <footer className="deals_export_modal_footer">
-          <button
-            type="button"
-            className="deals_export_modal_btn_secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
+        <ExportModalFooter onClose={onClose}>
           <button
             type="button"
             className="deals_export_modal_btn_primary"
             onClick={handleExportExcel}
             disabled={selectedKeys.size === 0}
           >
+            <Download size={16} strokeWidth={2} aria-hidden />
             Export to Excel
           </button>
-        </footer>
+        </ExportModalFooter>
       </div>
     </div>
   )

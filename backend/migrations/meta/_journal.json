@@ -365,6 +365,20 @@
       "when": 1893150000000,
       "tag": "0052_drop_deal_offering_document",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1893200000000,
+      "tag": "0053_funding_instructions_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1893250000000,
+      "tag": "0054_deal_investment_funding_method",
+      "breakpoints": true
     }
   ]
 }

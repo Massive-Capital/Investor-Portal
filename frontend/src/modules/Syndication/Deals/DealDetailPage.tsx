@@ -48,6 +48,7 @@ import { LpDealDetailsPage } from "@/modules/Investing/pages/deals/deal-details"
 import { refreshInvestmentDealDocumentsPreview } from "@/modules/Investing/pages/investments/utils/refreshInvestmentDealDocumentsPreview"
 import { applyOfferingInvestorPreviewJsonFromServer } from "./utils/offeringPreviewServerState"
 import { clearOfferingPreviewRuntime } from "./utils/offeringPreviewRuntimeStore"
+import { invitationMailSentOptimisticKeys } from "./utils/dealInvitationMailStatus"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
 import { ADD_MEMBER_DRAFT_ROW_ID } from "./tabs/deal_members/add-investment/addMemberDraftInvestorRow"
 import {
@@ -69,11 +70,14 @@ import type {
 } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import {
+  parseViewerDealMemberRoleFromApi,
   resolveViewerDealInvestorRoleRaw,
   resolveViewerDealMemberRole,
   viewerCanSendDealEsignTemplates,
   viewerCanUploadDealEsignTemplates,
+  viewerCanApproveDealFund,
   visibleDealDetailTabIds,
+  type ViewerDealMemberRole,
 } from "./utils/dealDetailTabVisibility"
 import { toast } from "../../../common/components/Toast"
 import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
@@ -163,11 +167,13 @@ export function DealDetailPage() {
   const [memberRosterForTabs, setMemberRosterForTabs] = useState<
     DealInvestorRow[]
   >([])
+  const [viewerDealMemberRoleFromApi, setViewerDealMemberRoleFromApi] =
+    useState<ViewerDealMemberRole | null>(null)
 
   const openInvestNow = useCallback(() => {
     const id = dealId?.trim()
     if (!id) return
-    navigate(dealInvestNowPath(id))
+    navigate(dealInvestNowPath(id), { state: { mode: "fresh" } })
   }, [dealId, navigate])
 
   useEffect(() => {
@@ -175,10 +181,15 @@ export function DealDetailPage() {
   }, [dealId])
 
   useEffect(() => {
+    setViewerDealMemberRoleFromApi(null)
     if (!dealId?.trim()) return
     let cancelled = false
-    void fetchDealMembers(dealId).then((rows) => {
-      if (!cancelled) setMemberRosterForTabs(rows)
+    void fetchDealMembers(dealId).then((result) => {
+      if (cancelled) return
+      setMemberRosterForTabs(result.members)
+      setViewerDealMemberRoleFromApi(
+        parseViewerDealMemberRoleFromApi(result.viewerDealMemberRole),
+      )
     })
     return () => {
       cancelled = true
@@ -188,15 +199,19 @@ export function DealDetailPage() {
   const sessionEmail = getSessionUserEmail()
   const sessionUserId = getSessionUserId()
 
-  const viewerDealMemberRole = useMemo(
-    () =>
-      resolveViewerDealMemberRole(
-        memberRosterForTabs,
-        sessionEmail,
-        sessionUserId,
-      ),
-    [memberRosterForTabs, sessionEmail, sessionUserId],
-  )
+  const viewerDealMemberRole = useMemo(() => {
+    if (viewerDealMemberRoleFromApi != null) return viewerDealMemberRoleFromApi
+    return resolveViewerDealMemberRole(
+      memberRosterForTabs,
+      sessionEmail,
+      sessionUserId,
+    )
+  }, [
+    viewerDealMemberRoleFromApi,
+    memberRosterForTabs,
+    sessionEmail,
+    sessionUserId,
+  ])
 
   const viewerDealTabIds = useMemo(
     () => visibleDealDetailTabIds(viewerDealMemberRole),
@@ -210,6 +225,11 @@ export function DealDetailPage() {
 
   const canSendEsignTemplates = useMemo(
     () => viewerCanSendDealEsignTemplates(viewerDealMemberRole),
+    [viewerDealMemberRole],
+  )
+
+  const canApproveFund = useMemo(
+    () => viewerCanApproveDealFund(viewerDealMemberRole),
     [viewerDealMemberRole],
   )
 
@@ -261,6 +281,7 @@ export function DealDetailPage() {
     const returnTo = (
       location.state as { returnTo?: string } | null
     )?.returnTo?.trim()
+    if (returnTo === "/investing/dashboard") return "/dashboard"
     return returnTo || "/investing/investments"
   }, [mode, location.state])
 
@@ -506,12 +527,13 @@ export function DealDetailPage() {
         to_email: email,
         member_display_name: name && name !== "—" ? name : undefined,
         invitation_source: "investor",
+        contact_member_id: row.contactId?.trim() || undefined,
       })
       if (result.ok) {
-        const rowId = row.id?.trim()
-        if (rowId) {
-          setInvitationMailSentByRowId((prev) => ({ ...prev, [rowId]: true }))
-        }
+        setInvitationMailSentByRowId((prev) => ({
+          ...prev,
+          ...invitationMailSentOptimisticKeys(row),
+        }))
         toast.success(
           "Invitation sent",
           "The investor invitation email was sent using your server mail settings.",
@@ -540,12 +562,13 @@ export function DealDetailPage() {
         member_display_name: name && name !== "—" ? name : undefined,
         invitation_source: "deal_member",
         deal_member_role: dealRowRoleLabelForInvitationEmail(row),
+        contact_member_id: row.contactId?.trim() || undefined,
       })
       if (result.ok) {
-        const rowId = row.id?.trim()
-        if (rowId) {
-          setInvitationMailSentByRowId((prev) => ({ ...prev, [rowId]: true }))
-        }
+        setInvitationMailSentByRowId((prev) => ({
+          ...prev,
+          ...invitationMailSentOptimisticKeys(row),
+        }))
         toast.success(
           "Invitation sent",
           "The deal invitation email was sent (with this row’s role) using your server mail settings.",
@@ -813,11 +836,14 @@ export function DealDetailPage() {
                 canSendEsignTemplates && !dealHasEsignDocuments
               }
               sendEsignDisabledTitle="Upload at least one document on the eSign Templates tab before sending."
+              canApproveFund={canApproveFund}
               onCopyOfferingLink={handleCopyMemberOfferingLink}
               onDeleteMember={handleDeleteMember}
               offeringLinkAvailable={offeringLinkAvailable}
               offeringLinkBlockedBecauseDraft={isDealDraftStage}
               invitationMailStatusByRowId={invitationMailSentByRowId}
+              viewerDealMemberRole={viewerDealMemberRole}
+              dealMembersRoster={memberRosterForTabs}
             />
           </>
         ) : activeTab === "offering_details" && dealDetailApi ? (
@@ -836,6 +862,8 @@ export function DealDetailPage() {
           <DealEsignTemplatesTab
             dealId={dealId}
             offeringInvestorPreviewJson={dealDetailApi?.offeringInvestorPreviewJson}
+            dealStage={dealDetailApi?.dealStage}
+            offeringStatus={dealDetailApi?.offeringStatus}
             canUploadDocuments={canUploadEsignTemplates}
           />
         ) : activeTab === "investor_communication" && dealId?.trim() ? (

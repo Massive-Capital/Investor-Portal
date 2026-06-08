@@ -225,7 +225,7 @@ export function KeyHighlightsSection({
       <div className="deal_kh_toolbar">
         <button
           type="button"
-          className="deal_kh_add_btn"
+          className="um_btn_primary"
           onClick={addMetric}
         >
           <Plus size={18} strokeWidth={2} aria-hidden />
@@ -323,39 +323,41 @@ export function KeyHighlightsSection({
         </div>
       </div>
 
-      <div className="deal_kh_footer">
+      <div className="deal_kh_footer um_modal_actions add_contact_modal_actions">
         <button
           type="button"
-          className="deal_kh_btn_reset"
+          className="um_btn_secondary"
           disabled={!isDirty || saving}
           onClick={handleReset}
         >
           <RotateCcw size={17} strokeWidth={2} aria-hidden />
           Reset
         </button>
-        <button
-          type="button"
-          className="deal_kh_btn_save"
-          disabled={!isDirty || saving}
-          onClick={() => void handleSave()}
-        >
-          {saving ? (
-            <>
-              <Loader2
-                size={18}
-                strokeWidth={2}
-                className="deal_kh_btn_save_spin"
-                aria-hidden
-              />
-              Saving…
-            </>
-          ) : (
-            <>
-              <Save size={18} strokeWidth={2} aria-hidden />
-              Save
-            </>
-          )}
-        </button>
+        <div className="add_contact_modal_actions_trailing">
+          <button
+            type="button"
+            className="um_btn_primary"
+            disabled={!isDirty || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? (
+              <>
+                <Loader2
+                  size={18}
+                  strokeWidth={2}
+                  className="deal_offering_btn_spin"
+                  aria-hidden
+                />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save size={18} strokeWidth={2} aria-hidden />
+                Save
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

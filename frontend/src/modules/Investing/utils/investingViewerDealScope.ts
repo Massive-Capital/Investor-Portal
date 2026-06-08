@@ -13,6 +13,7 @@ import type {
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
+import { dealHasInvestNowDraftForViewer } from "@/modules/Investing/pages/invest/investNowDraftUtils"
 import {
   investorCommittedVisibleToViewer,
   investorEsignWasSent,
@@ -46,6 +47,9 @@ export function viewerDealHasStartedInvestment(
   viewerEmailNorm: string,
 ): boolean {
   if (!viewerEmailNorm) return false
+  if (dealHasInvestNowDraftForViewer(payload.investors, viewerEmailNorm)) {
+    return true
+  }
   for (const inv of payload.investors) {
     if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
     if (investorRowCommittedNumeric(inv) > 0) return true
@@ -74,6 +78,9 @@ export function viewerHasDealParticipation(
   viewerEmailNorm: string,
 ): boolean {
   if (!viewerEmailNorm) return false
+  if (dealHasInvestNowDraftForViewer(payload.investors, viewerEmailNorm)) {
+    return true
+  }
   for (const inv of payload.investors) {
     if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
     if (investorRowCommittedNumeric(inv) > 0) return true
@@ -328,7 +335,7 @@ export type InvestingDealsPageScopeEntry = {
   members: DealInvestorRow[]
 }
 
-/** Deals visible on `/investing/investments` (same scope as the former Deals tab). */
+/** Deals visible on `/investing/deals` (invested, invited LP, sponsor roster, or assignee). */
 export async function mapInvestingDealsPageScope(
   rows: DealListRow[],
 ): Promise<InvestingDealsPageScopeEntry[]> {
@@ -336,15 +343,38 @@ export async function mapInvestingDealsPageScope(
   if (!viewerEmailNorm) return []
   const withPayload = await Promise.all(
     rows.map(async (row) => {
-      const [payload, members] = await Promise.all([
+      const [payload, membersResult] = await Promise.all([
         fetchDealInvestors(row.id, { lpInvestorsOnly: false }),
         fetchDealMembers(row.id),
       ])
-      return { row, payload, members }
+      return { row, payload, members: membersResult.members }
     }),
   )
   return withPayload.filter(({ payload, members }) =>
     dealIsInViewerInvestingDealsPageScope(payload, members),
+  )
+}
+
+/**
+ * `/investing/investments` only — committed capital, Invest Now in progress, or invited
+ * LP who has not started onboarding. Excludes sponsor-only / assignee deals.
+ */
+export async function mapInvestingInvestmentsPageScope(
+  rows: DealListRow[],
+): Promise<InvestingDealsPageScopeEntry[]> {
+  const viewerEmailNorm = investingViewerEmailNorm()
+  if (!viewerEmailNorm) return []
+  const withPayload = await Promise.all(
+    rows.map(async (row) => {
+      const [payload, membersResult] = await Promise.all([
+        fetchDealInvestors(row.id, { lpInvestorsOnly: false }),
+        fetchDealMembers(row.id),
+      ])
+      return { row, payload, members: membersResult.members }
+    }),
+  )
+  return withPayload.filter(({ payload }) =>
+    dealIsInViewerInvestmentsListScope(payload, viewerEmailNorm),
   )
 }
 

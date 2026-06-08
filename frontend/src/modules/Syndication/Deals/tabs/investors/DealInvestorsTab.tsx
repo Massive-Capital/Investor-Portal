@@ -49,6 +49,7 @@ import { DealInvestorRoleCell } from "./DealInvestorRoleBadge";
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal";
 import { DealInvestorSignedCell } from "./DealInvestorSignedCell";
 import { logInvestorsDataTableDebug } from "./investorsTabDebug";
+import { applyInvitationMailSentMarks } from "../../utils/dealInvitationMailStatus";
 import {
   investorEsignIsFullyCompletedForRow,
   resolveInvestorRowEsignStatus,
@@ -74,6 +75,7 @@ import {
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip";
 import { toast } from "../../../../../common/components/Toast";
 import { ToolStyleCard } from "../../../../../common/components/tool-style-card/ToolStyleCard";
+import { cardCompactAmountOrDash } from "../../../../../common/components/card-compact-amount/CardCompactAmount";
 import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl";
 import {
   upsertRuntimeForViewerFromInvestorsPayload,
@@ -126,6 +128,13 @@ import {
   parseEmailInput,
 } from "../../../../../common/features/send-mail";
 import { useNavigate } from "react-router-dom";
+import { getSessionUserId } from "@/common/auth/sessionUserId";
+import {
+  resolveViewerDealMemberRole,
+  scopeDealInvestorRowsForViewer,
+  type ViewerDealMemberRole,
+} from "../../utils/dealDetailTabVisibility";
+import { getSessionUserEmail } from "../../../../../common/auth/sessionUserEmail";
 import "../../../usermanagement/user_management.css";
 import "../../../Dashboard/sponsor-dashboard.css";
 import "../../deals-list.css";
@@ -189,6 +198,8 @@ interface DealInvestorsTabProps {
   /** When true, Send E-sign is visible but disabled (e.g. no templates uploaded). */
   sendEsignDisabled?: boolean;
   sendEsignDisabledTitle?: string;
+  /** When false, “Approve fund” is hidden/disabled (lead or admin sponsor only). */
+  canApproveFund?: boolean;
   /** Copy offering link (same as Deal Members). */
   onCopyOfferingLink?: (row: DealInvestorRow) => void;
   /**
@@ -210,6 +221,10 @@ interface DealInvestorsTabProps {
    * until the list response includes `send_invitation_mail` / `invitationMailSent`.
    */
   invitationMailStatusByRowId?: Record<string, true>;
+  /** From GET `/deals/:id/members` — drives co-sponsor investor list scope. */
+  viewerDealMemberRole?: ViewerDealMemberRole;
+  /** Deal roster (same as members tab) — resolve co-sponsor role before API role returns. */
+  dealMembersRoster?: DealInvestorRow[];
 }
 
 function parseCommittedCellToNumber(s: string | undefined): number {
@@ -429,6 +444,7 @@ function DealInvestorsPopulated({
   offeringLinkAvailable,
   offeringLinkBlockedBecauseDraft = false,
   onRefreshInvestors,
+  canApproveFund = false,
 }: {
   initialPayload: DealInvestorsPayload;
   dealId: string;
@@ -446,6 +462,7 @@ function DealInvestorsPopulated({
   offeringLinkAvailable: boolean;
   offeringLinkBlockedBecauseDraft?: boolean;
   onRefreshInvestors?: () => void | Promise<void>;
+  canApproveFund?: boolean;
 }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -470,6 +487,13 @@ function DealInvestorsPopulated({
 
   const handleApproveFund = useCallback(
     async (row: DealInvestorRow) => {
+      if (!canApproveFund) {
+        toast.error(
+          "Not authorized",
+          "Only the lead sponsor or admin sponsor can approve the fund.",
+        );
+        return;
+      }
       if (!getApiV1Base()) {
         toast.error(
           "Not available",
@@ -480,8 +504,20 @@ function DealInvestorsPopulated({
       if (
         !investorRowSupportsApproveFund(row) ||
         investorRowApproveFundNotApplicable(row) ||
-        investorRowCommittedAmountIsZero(row)
+        investorRowCommittedAmountIsZero(row) ||
+        !investorEsignIsFullyCompletedForRow(row)
       ) {
+        if (
+          investorRowSupportsApproveFund(row) &&
+          !investorRowApproveFundNotApplicable(row) &&
+          !investorRowCommittedAmountIsZero(row) &&
+          !investorEsignIsFullyCompletedForRow(row)
+        ) {
+          toast.error(
+            "E-sign required",
+            "Complete e-sign before approving the fund.",
+          );
+        }
         return;
       }
       setApproveFundBusyId(row.id);
@@ -506,7 +542,7 @@ function DealInvestorsPopulated({
         setApproveFundBusyId(null);
       }
     },
-    [dealId, onRefreshInvestors],
+    [canApproveFund, dealId, onRefreshInvestors],
   );
 
   const kpis = useMemo((): DealInvestorsKpis => {
@@ -981,19 +1017,13 @@ function DealInvestorsPopulated({
         tdClassName: "deal_inv_td_ellipsis",
         cell: (row) => {
           const s = String(row.addedByDisplayName ?? "").trim();
+          const display = s && s !== "—" ? s : "—";
           const adderId = String(row.addedByUserId ?? "").trim();
           const title =
-            adderId && s && s !== "—"
-              ? `${s} (${adderId})`
-              : adderId
-                ? adderId
-                : undefined;
-          return (
-            <DealInvEllipsisText
-              text={s && s !== "—" ? s : "—"}
-              title={title}
-            />
-          );
+            adderId && display !== "—"
+              ? `${display} (${adderId})`
+              : adderId || undefined;
+          return <DealInvEllipsisText text={display} title={title} />;
         },
       },
       {
@@ -1087,15 +1117,19 @@ function DealInvestorsPopulated({
               onSendInvite={(r) => {
                 void onSendInvitationMail?.(r);
               }}
-              onApproveFund={handleApproveFund}
+              onApproveFund={canApproveFund ? handleApproveFund : undefined}
               approveFundDisabled={
+                !canApproveFund ||
                 approveFundBusyId === row.id ||
                 !investorRowSupportsApproveFund(row) ||
                 investorRowApproveFundNotApplicable(row) ||
-                investorRowCommittedAmountIsZero(row)
+                investorRowCommittedAmountIsZero(row) ||
+                !investorEsignIsFullyCompletedForRow(row)
               }
               approveFundDisabledTitle={
-                approveFundBusyId === row.id
+                !canApproveFund
+                  ? "Only the lead sponsor or admin sponsor can approve the fund"
+                  : approveFundBusyId === row.id
                   ? "Approving…"
                   : !investorRowSupportsApproveFund(row)
                     ? "Available only for investors with an investment record"
@@ -1103,7 +1137,9 @@ function DealInvestorsPopulated({
                       ? "Already past this step or closed"
                       : investorRowCommittedAmountIsZero(row)
                         ? "Committed amount must be greater than $0"
-                        : undefined
+                        : !investorEsignIsFullyCompletedForRow(row)
+                          ? "Complete e-sign before approving the fund"
+                          : undefined
               }
               onDelete={(r) => {
                 void onDeleteMember?.(r);
@@ -1133,6 +1169,7 @@ function DealInvestorsPopulated({
       offeringLinkAvailable,
       handleApproveFund,
       approveFundBusyId,
+      canApproveFund,
       openEsignStatusModal,
     ],
   );
@@ -1197,9 +1234,13 @@ function DealInvestorsPopulated({
           {
             icon: CircleDollarSign,
             title: "Offering Size",
-            description: kpis.offeringSize,
+            description: cardCompactAmountOrDash(kpis.offeringSize),
           },
-          { icon: DollarSign, title: "Committed", description: kpis.committed },
+          {
+            icon: DollarSign,
+            title: "Committed",
+            description: cardCompactAmountOrDash(kpis.committed),
+          },
           {
             icon: FileCheck,
             title: "Document signed",
@@ -1213,9 +1254,13 @@ function DealInvestorsPopulated({
           {
             icon: Landmark,
             title: "Total Funded",
-            description: kpis.totalFunded,
+            description: cardCompactAmountOrDash(kpis.totalFunded),
           },
-          { icon: PiggyBank, title: "Remaining", description: kpis.remaining },
+          {
+            icon: PiggyBank,
+            title: "Remaining",
+            description: cardCompactAmountOrDash(kpis.remaining),
+          },
         ] as const
       ).map((item) => (
         <ToolStyleCard
@@ -1430,7 +1475,7 @@ function DealInvestorsPopulated({
           <div className="deal_inv_panel_add_row">
             <button
               type="button"
-              className="deals_list_add_btn deal_inv_toolbar_add_investor_btn"
+              className="um_btn_primary"
               onClick={onAddInvestor}
             >
               <Plus size={18} strokeWidth={2} aria-hidden />
@@ -1582,6 +1627,17 @@ function DealInvestorsPopulated({
           </section>
 
           <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
+            <div className="um_search_wrap">
+              <Search className="um_search_icon" size={18} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search investors…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search investors"
+              />
+            </div>
             <div
               className="um_toolbar_actions deal_inv_table_toolbar_actions"
               role="toolbar"
@@ -1605,17 +1661,6 @@ function DealInvestorsPopulated({
                 <Download size={18} strokeWidth={2} aria-hidden />
                 <span>Export All</span>
               </button>
-            </div>
-            <div className="um_search_wrap">
-              <Search className="um_search_icon" size={18} aria-hidden />
-              <input
-                type="search"
-                className="um_search_input"
-                placeholder="Search investors…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search investors"
-              />
             </div>
           </div>
         </div>
@@ -1656,6 +1701,7 @@ export const DealInvestorsTab = forwardRef<
     onSendEsignConfirm,
     sendEsignDisabled = false,
     sendEsignDisabledTitle,
+    canApproveFund = false,
     onCopyOfferingLink,
     onDeleteMember,
     onSharedInvestmentModalOpenChange,
@@ -1663,9 +1709,13 @@ export const DealInvestorsTab = forwardRef<
     offeringLinkBlockedBecauseDraft = false,
     investorsListRefreshKey = 0,
     invitationMailStatusByRowId,
+    viewerDealMemberRole = null,
+    dealMembersRoster = [],
   },
   ref,
 ) {
+  const sessionUserId = getSessionUserId();
+  const sessionEmail = getSessionUserEmail();
   const [addLpInvestorOpen, setAddLpInvestorOpen] = useState(false);
   /** “Continue editing” on draft row: prefill AddLpInvestorModal from session add-member draft. */
   const [lpResumeAddMemberDraft, setLpResumeAddMemberDraft] = useState(false);
@@ -1821,9 +1871,31 @@ export const DealInvestorsTab = forwardRef<
     return buildAddMemberDraftInvestorRow(dealId, investorClasses);
   }, [dealId, investorClasses, addMemberDraftTick]);
 
+  const effectiveViewerRole = useMemo((): ViewerDealMemberRole => {
+    if (viewerDealMemberRole != null) return viewerDealMemberRole;
+    if (dealMembersRoster.length > 0) {
+      return resolveViewerDealMemberRole(
+        dealMembersRoster,
+        sessionEmail,
+        sessionUserId,
+      );
+    }
+    return null;
+  }, [
+    viewerDealMemberRole,
+    dealMembersRoster,
+    sessionEmail,
+    sessionUserId,
+  ]);
+
   const mergedInvestors = useMemo(() => {
     const combined = [...(payload?.investors ?? []), ...localAddedInvestors];
     const lpOnly = combined.filter((r) => isLpInvestorsTabRow(r));
+    const scopedLpOnly = scopeDealInvestorRowsForViewer(
+      lpOnly,
+      effectiveViewerRole,
+      sessionUserId,
+    );
     const draftRedundantWithApi = isAddMemberSessionDraftRedundantWithApiRows(
       dealId,
       combined,
@@ -1836,8 +1908,8 @@ export const DealInvestorsTab = forwardRef<
       !addInvestmentOpen &&
       !addLpInvestorOpen &&
       isLpInvestorsTabRow(sessionDraftRow);
-    if (showDraft) return [...lpOnly, sessionDraftRow];
-    return lpOnly;
+    if (showDraft) return [...scopedLpOnly, sessionDraftRow];
+    return scopedLpOnly;
   }, [
     dealId,
     payload,
@@ -1847,21 +1919,18 @@ export const DealInvestorsTab = forwardRef<
     editLpRow,
     addInvestmentOpen,
     addLpInvestorOpen,
+    effectiveViewerRole,
+    sessionUserId,
   ]);
 
   const mergedPayload = useMemo((): DealInvestorsPayload | null => {
     if (!payload) return null;
-    const o = invitationMailStatusByRowId;
-    if (!o || Object.keys(o).length === 0) {
-      return { ...payload, investors: mergedInvestors };
-    }
     return {
       ...payload,
-      investors: mergedInvestors.map((r) => {
-        if (!o[r.id]) return r;
-        if (r.invitationMailSent === true) return r;
-        return { ...r, invitationMailSent: true };
-      }),
+      investors: applyInvitationMailSentMarks(
+        mergedInvestors,
+        invitationMailStatusByRowId,
+      ),
     };
   }, [payload, mergedInvestors, invitationMailStatusByRowId]);
 
@@ -2060,6 +2129,11 @@ export const DealInvestorsTab = forwardRef<
       .toLowerCase() === "draft" ||
       isDealDetailFormIncomplete(dealDetail));
 
+  const existingInvestorRowsForAddModal = useMemo(
+    () => mergedInvestors.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID),
+    [mergedInvestors],
+  );
+
   const lpInvestorModal = (
     <AddLpInvestorModal
       dealId={dealId}
@@ -2068,6 +2142,7 @@ export const DealInvestorsTab = forwardRef<
       editRow={editLpRow}
       resumeAddMemberDraft={lpResumeAddMemberDraft}
       dealBlocksInvitationEmails={lpBlocksInvites}
+      existingInvestorRows={existingInvestorRowsForAddModal}
       onClose={() => {
         setAddLpInvestorOpen(false);
         setEditLpRow(null);
@@ -2149,6 +2224,7 @@ export const DealInvestorsTab = forwardRef<
         onDeleteMember={onDeleteMember}
         offeringLinkAvailable={offeringLinkAvailable}
         offeringLinkBlockedBecauseDraft={offeringLinkBlockedBecauseDraft}
+        canApproveFund={canApproveFund}
         onRefreshInvestors={refreshInvestorsFromApi}
       />
       <DealInvestorViewModal

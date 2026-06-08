@@ -277,7 +277,7 @@ export function AssetRowActions({
                       : `Activate “${label}” and return it to active assets?`}
                   </p>
                 </div>
-                <div className="um_modal_actions">
+                <div className="um_modal_actions add_contact_modal_actions">
                   <button
                     type="button"
                     className="um_btn_secondary"

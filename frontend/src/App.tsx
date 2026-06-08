@@ -1,5 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
+import "./common/theme/portal-tabs.css";
+import { ThemeProvider } from "./common/theme/ThemeProvider";
 import { SESSION_BEARER_KEY } from "./common/auth/sessionKeys";
 import { LpInvestorShellGuard } from "@/modules/Investing";
 import { RequireAuth } from "./common/auth/RequireAuth";
@@ -55,6 +57,7 @@ import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage
 import { MyAccountPasswordPage } from "./modules/myaccount/MyAccountPasswordPage";
 import { CompanyOverview } from "./modules/Investing/pages/company_overview/CompanyOverview";
 import Landing_Page from "./modules/Landing_Page/Landing_Page";
+import ClassicLandingPage from "./modules/Landing_Page/pages/ClassicLandingPage";
 import { NotificationsPage } from "@/modules/notifications";
 
 type PlaceholderPageProps = {
@@ -126,10 +129,11 @@ function routerBasename(): string | undefined {
 
 function App() {
   return (
-    <>
+    <ThemeProvider>
       <BrowserRouter basename={routerBasename()}>
         <Routes>
           <Route path="/" element={<Landing_Page />} />
+          <Route path="/landing-classic" element={<ClassicLandingPage />} />
           <Route
             path="/investing/investments/:investmentId/esign"
             element={<InvestmentEsignSignGate />}
@@ -208,6 +212,10 @@ function App() {
               element={<EditInvestorProfilePage />}
             />
             <Route path="investing/profiles" element={<InvestingProfilesPage />} />
+            <Route
+              path="investing/dashboard"
+              element={<Navigate to="/dashboard" replace />}
+            />
             <Route
               path="investing/deals"
               element={<Navigate to="/investing/investments" replace />}
@@ -289,13 +297,15 @@ function App() {
           <Route path="/signup/:token" element={<SignupPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgotPassword" element={<ForgotPasswordPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/resetPassword" element={<ResetPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/termsandservices" element={<TermsService />} />
           <Route path="/privacypolicy" element={<PrivacyPolicy />} />
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </BrowserRouter>
-    </>
+    </ThemeProvider>
   );
 }
 

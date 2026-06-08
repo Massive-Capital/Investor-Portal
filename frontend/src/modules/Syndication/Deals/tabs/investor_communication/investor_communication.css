@@ -350,10 +350,6 @@
   border-bottom: 1px solid var(--portal-border);
 }
 
-.deal_inv_comm_recipients_modal .deal_inv_comm_recipients_table_panel .um_search_wrap {
-  max-width: none;
-}
-
 .deal_inv_comm_recipients_modal .deal_inv_comm_recipients_table_panel .um_table_wrap {
   flex: 1;
   min-height: 0;

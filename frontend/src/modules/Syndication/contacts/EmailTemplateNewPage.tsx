@@ -2,12 +2,15 @@ import {
   ArrowLeft,
   LayoutTemplate,
   Loader2,
+  Paperclip,
   Save,
   Trash2,
+  Upload,
   X,
 } from "lucide-react"
 import {
   type ChangeEvent,
+  type DragEvent,
   type FormEvent,
   useCallback,
   useEffect,
@@ -31,6 +34,7 @@ import {
   EMAIL_TEMPLATE_BODY_MAX,
   EMAIL_TEMPLATE_SUBJECT_MAX,
   fileToStoredAttachment,
+  formatEmailAttachmentSize,
   getEmailTemplateById,
   updateEmailTemplate,
   type EmailTemplateRow,
@@ -66,6 +70,8 @@ export default function EmailTemplateNewPage() {
 
   const editorRef = useRef<HTMLDivElement>(null)
   const quillRef = useRef<Quill | null>(null)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
+  const [attachmentDropFocus, setAttachmentDropFocus] = useState(false)
 
   useEffect(() => {
     if (!templateId) return
@@ -169,6 +175,32 @@ export default function EmailTemplateNewPage() {
       setStripStoredAttachment(false)
     },
     [],
+  )
+
+  const pickAttachmentFile = useCallback(() => {
+    attachmentInputRef.current?.click()
+  }, [])
+
+  const applyAttachmentFile = useCallback((file: File | null) => {
+    if (!file) return
+    if (file.size > EMAIL_TEMPLATE_ATTACHMENT_MAX_BYTES) {
+      toast.error(
+        "File too large",
+        `Choose a file up to ${EMAIL_TEMPLATE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB.`,
+      )
+      return
+    }
+    setAttachmentFile(file)
+    setStripStoredAttachment(false)
+  }, [])
+
+  const onAttachmentDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      setAttachmentDropFocus(false)
+      applyAttachmentFile(e.dataTransfer.files?.[0] ?? null)
+    },
+    [applyAttachmentFile],
   )
 
   const handleSubmit = useCallback(
@@ -287,6 +319,14 @@ export default function EmailTemplateNewPage() {
     isEdit && Boolean(existingRow?.attachment) && !stripStoredAttachment
   const showAttachmentChosen =
     Boolean(attachmentFile) || hasStoredAttachmentVisible
+  const attachmentDisplayName = attachmentFile
+    ? attachmentFile.name
+    : (existingRow?.attachment?.fileName ?? "")
+  const attachmentDisplaySize = attachmentFile
+    ? formatEmailAttachmentSize(attachmentFile.size)
+    : existingRow?.attachment
+      ? formatEmailAttachmentSize(existingRow.attachment.size)
+      : ""
 
   const formTitle = isEdit ? "Edit email template" : "New email template"
   const formTitleId = "email-template-form-title"
@@ -393,52 +433,109 @@ export default function EmailTemplateNewPage() {
         <div className="um_field email_template_attachment_field">
           <span className="um_field_label_row">Attachment</span>
           <p className="um_hint email_template_field_hint">
-            One file, maximum {EMAIL_TEMPLATE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB.
+            Optional. One file, up to{" "}
+            {EMAIL_TEMPLATE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB.
           </p>
+          <input
+            ref={attachmentInputRef}
+            type="file"
+            className="email_template_attachment_input_hidden"
+            onChange={onAttachmentChange}
+            aria-label="Choose attachment file"
+          />
           {!showAttachmentChosen ? (
-            <label className="email_template_attachment_upload_btn">
-              <input
-                type="file"
-                className="email_template_attachment_input_hidden"
-                onChange={onAttachmentChange}
-                aria-label="Choose attachment file"
-              />
-              <span className="um_btn_secondary">Choose file</span>
-            </label>
-          ) : (
-            <div className="email_template_attachment_chosen">
-              <span
-                className="email_template_attachment_name"
-                title={
-                  attachmentFile
-                    ? attachmentFile.name
-                    : (existingRow?.attachment?.fileName ?? "")
+            <div
+              role="button"
+              tabIndex={0}
+              className={`email_template_attachment_dropzone${
+                attachmentDropFocus
+                  ? " email_template_attachment_dropzone--focus"
+                  : ""
+              }`}
+              onClick={pickAttachmentFile}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  pickAttachmentFile()
                 }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setAttachmentDropFocus(true)
+              }}
+              onDragLeave={() => setAttachmentDropFocus(false)}
+              onDrop={onAttachmentDrop}
+            >
+              <span
+                className="email_template_attachment_dropzone_icon_ring"
+                aria-hidden
               >
-                {attachmentFile
-                  ? attachmentFile.name
-                  : (existingRow?.attachment?.fileName ?? "")}
+                <Upload size={20} strokeWidth={1.75} />
               </span>
-              <span className="email_template_attachment_size" aria-hidden>
-                {attachmentFile ? (
-                  <>({(attachmentFile.size / 1024).toFixed(1)} KB)</>
-                ) : existingRow?.attachment ? (
-                  <>({(existingRow.attachment.size / 1024).toFixed(1)} KB)</>
-                ) : null}
+              <span className="email_template_attachment_dropzone_text">
+                <span className="email_template_attachment_dropzone_title">
+                  Add an attachment
+                </span>
+                <span className="email_template_attachment_dropzone_sub">
+                  Drop a file here or click to browse
+                </span>
               </span>
-              <button
-                type="button"
-                className="contacts_table_icon_action_btn email_template_attachment_remove"
-                onClick={removeAttachment}
-                aria-label="Remove attachment"
-              >
-                <Trash2 size={17} strokeWidth={2} aria-hidden />
-              </button>
             </div>
+          ) : (
+            <ul
+              className="email_template_attachment_file_list"
+              aria-label="Selected attachment"
+            >
+              <li className="email_template_attachment_file_row">
+                <span
+                  className="email_template_attachment_file_icon_wrap"
+                  aria-hidden
+                >
+                  <Paperclip size={18} strokeWidth={2} />
+                </span>
+                <span className="email_template_attachment_file_meta">
+                  <span
+                    className="email_template_attachment_file_name"
+                    title={attachmentDisplayName}
+                  >
+                    {attachmentDisplayName}
+                  </span>
+                  {attachmentDisplaySize ? (
+                    <span className="email_template_attachment_file_size">
+                      {attachmentDisplaySize}
+                    </span>
+                  ) : null}
+                </span>
+                <div
+                  className="email_template_attachment_file_actions"
+                  role="group"
+                  aria-label="Attachment actions"
+                >
+                  <button
+                    type="button"
+                    className="email_template_attachment_file_btn"
+                    onClick={pickAttachmentFile}
+                    aria-label="Replace attachment"
+                    title="Replace file"
+                  >
+                    <Upload size={16} strokeWidth={2} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    className="email_template_attachment_file_btn email_template_attachment_file_btn--danger"
+                    onClick={removeAttachment}
+                    aria-label="Remove attachment"
+                    title="Remove file"
+                  >
+                    <Trash2 size={16} strokeWidth={2} aria-hidden />
+                  </button>
+                </div>
+              </li>
+            </ul>
           )}
         </div>
 
-        <div className="email_template_new_actions um_modal_actions">
+        <div className="email_template_new_actions um_modal_actions add_contact_modal_actions">
           <button
             type="button"
             className="um_btn_secondary"
@@ -448,7 +545,8 @@ export default function EmailTemplateNewPage() {
             <X size={16} strokeWidth={2} aria-hidden />
             Cancel
           </button>
-          <button type="submit" className="um_btn_primary" disabled={submitting}>
+          <div className="add_contact_modal_actions_trailing">
+            <button type="submit" className="um_btn_primary" disabled={submitting}>
             {submitting ? (
               <>
                 <Loader2
@@ -470,7 +568,8 @@ export default function EmailTemplateNewPage() {
                 Save template
               </>
             )}
-          </button>
+            </button>
+          </div>
         </div>
       </form>
     </section>

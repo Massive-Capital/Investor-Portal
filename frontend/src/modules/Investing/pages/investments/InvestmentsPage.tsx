@@ -11,6 +11,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
 import { dealWorkspacePath } from "@/modules/Syndication/Deals/utils/dealWorkspacePath"
+import {
+  AvatarInitialsRing,
+} from "@/common/components/entity-avatar/EntityAvatarNameCell"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   DataTable,
@@ -30,7 +33,12 @@ import "@/modules/Syndication/Deals/deal-investors-tab.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
 import { ExportInvestmentsModal } from "./ExportInvestmentsModal"
-import { resolveInvestmentOnboardingBucket } from "./investmentOnboardingBucket"
+import {
+  investmentRowMatchesOnboardingTab,
+  resolveInvestmentOnboardingBucket,
+} from "./investmentOnboardingBucket"
+import type { InvestNowLocationState } from "@/modules/Investing/pages/invest/investNowLocationState"
+import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/investNowDraftProgress"
 import { getMergedInvestmentListRows } from "./investmentsRuntimeData"
 import type { InvestmentListRow } from "./investments.types"
 import "@/common/components/data-table/data-table.css"
@@ -51,7 +59,7 @@ const TAB_IDS: Record<InvestmentsPageTab, string> = {
 function parseInvestmentsTab(value: string | null): InvestmentsPageTab {
   if (value === "archives") return "archives"
   if (value === "pending") return "pending"
-  // Legacy `?tab=investments` / `deals` — default to In progress.
+  // Legacy `?tab=investments` / `deals` — default to Active tab.
   return "in_progress"
 }
 
@@ -100,11 +108,42 @@ function InvestmentDealNameCell({
 
   return (
     <div className="deals_list_name_cell">
-      <div className="deals_list_deal_avatar" aria-hidden>
-        <Briefcase size={18} strokeWidth={1.75} />
-      </div>
+      <AvatarInitialsRing name={name === "—" ? "Deal" : name} />
       <div className="deals_list_name_text">
         <div className="deals_list_name_primary">{nameLink}</div>
+      </div>
+    </div>
+  )
+}
+
+function InvestmentProgressCell({
+  progress,
+}: {
+  progress: InvestNowDraftProgress
+}) {
+  const { percent, phaseLabel } = progress
+  const stepLabel = phaseLabel.trim() || "In progress"
+
+  return (
+    <div className="investments_table_progress_cell">
+      <span className="investments_table_progress_step" title={stepLabel}>
+        {stepLabel}
+      </span>
+      <div className="investments_table_progress">
+        <div
+          className="investments_table_progress_track"
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Onboarding progress: ${percent}% — ${stepLabel}`}
+        >
+          <div
+            className="investments_table_progress_fill"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        <span className="investments_table_progress_pct">{percent}%</span>
       </div>
     </div>
   )
@@ -147,7 +186,7 @@ function InvestmentsTablePanel({
 
   return (
     <div
-      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel${
+      className={`um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel investments_table_panel${
         isInitialLoad ? " investments_page_loading_panel" : ""
       }${loading ? " deals_list_table_panel_loading" : ""}`}
       aria-busy={loading}
@@ -190,6 +229,7 @@ function InvestmentsTablePanel({
           <DataTable<InvestmentListRow>
             visualVariant="members"
             membersTableClassName="um_table_members deal_inv_table"
+            stickyColumnCount={2}
             columns={columns}
             rows={filtered}
             isLoading={loading}
@@ -239,6 +279,24 @@ function useMergedInvestmentRows() {
   return { rows, setRows, loading, reload }
 }
 
+/** Column widths — keep in sync with `--data-table-sticky-col-*-width` in investments-page.css */
+const INVESTMENTS_TABLE_COL_WIDTH = {
+  dealName: "13rem",
+  progress: "10rem",
+  sponsor: "9.5rem",
+  dealType: "9rem",
+  secType: "7rem",
+  propertyName: "10rem",
+  owningEntity: "9rem",
+  startDate: "7.5rem",
+  closeDate: "7.5rem",
+  investedAs: "9rem",
+  invested: "7.5rem",
+  distributed: "8rem",
+  valuation: "8rem",
+  actions: "5rem",
+} as const
+
 export default function InvestmentsPage() {
   const navigate = useNavigate()
   const { switchToInvesting } = usePortalMode()
@@ -278,8 +336,8 @@ export default function InvestmentsPage() {
         archived++
         continue
       }
-      if (resolveInvestmentOnboardingBucket(r) === "pending") pending++
-      else inProgress++
+      if (investmentRowMatchesOnboardingTab(r, "pending")) pending++
+      if (investmentRowMatchesOnboardingTab(r, "in_progress")) inProgress++
     }
     return {
       inProgressCount: inProgress,
@@ -294,10 +352,10 @@ export default function InvestmentsPage() {
     }
     return rows.filter((r) => {
       if (r.archived) return false
-      const bucket = resolveInvestmentOnboardingBucket(r)
-      return activeTab === "pending"
-        ? bucket === "pending"
-        : bucket === "in_progress"
+      return investmentRowMatchesOnboardingTab(
+        r,
+        activeTab === "pending" ? "pending" : "in_progress",
+      )
     })
   }, [rows, activeTab])
 
@@ -314,6 +372,7 @@ export default function InvestmentsPage() {
         r.secType,
         r.propertyName,
         r.owningEntityName,
+        r.dealSponsorName,
         dealStageLabel(r.status ?? ""),
       ]
         .map((s) => String(s ?? "").toLowerCase())
@@ -346,30 +405,56 @@ export default function InvestmentsPage() {
     [page, pageSize, filtered.length],
   )
 
-  const openDealPreview = useCallback(
-    (dealId: string, returnTab?: InvestmentsPageTab) => {
-      const id = dealId.trim()
-      if (!id) return
-      switchToInvesting()
-      const returnTo =
-        returnTab === "pending"
-          ? "/investing/investments?tab=pending"
-          : "/investing/investments"
-      navigate(dealWorkspacePath(id), { state: { returnTo } })
-    },
-    [navigate, switchToInvesting],
-  )
+  // const openDealPreview = useCallback(
+  //   (dealId: string, returnTab?: InvestmentsPageTab) => {
+  //     const id = dealId.trim()
+  //     if (!id) return
+  //     switchToInvesting()
+  //     const returnTo =
+  //       returnTab === "pending"
+  //         ? "/investing/investments?tab=pending"
+  //         : "/investing/investments"
+  //     navigate(dealWorkspacePath(id), { state: { returnTo } })
+  //   },
+  //   [navigate, switchToInvesting],
+  // )
 
-  const openInvestNow = useCallback(
+  const investNowReturnTo =
+    activeTab === "pending"
+      ? "/investing/investments?tab=pending"
+      : "/investing/investments"
+
+  const openInvestNowFresh = useCallback(
     (dealId: string) => {
       const id = dealId.trim()
       if (!id) return
       switchToInvesting()
       navigate(dealInvestNowPath(id), {
-        state: { returnTo: "/investing/investments" },
+        state: {
+          returnTo: investNowReturnTo,
+          mode: "fresh",
+        } satisfies InvestNowLocationState,
       })
     },
-    [navigate, switchToInvesting],
+    [navigate, switchToInvesting, investNowReturnTo],
+  )
+
+  const openInvestNowResume = useCallback(
+    (dealId: string, scope?: InvestmentListRow["investNowResumeScope"]) => {
+      const id = dealId.trim()
+      if (!id) return
+      switchToInvesting()
+      navigate(dealInvestNowPath(id), {
+        state: {
+          returnTo: investNowReturnTo,
+          mode: "resume",
+          investmentId: scope?.investmentId,
+          userInvestorProfileId: scope?.userInvestorProfileId,
+          profileId: scope?.profileId,
+        } satisfies InvestNowLocationState,
+      })
+    },
+    [navigate, switchToInvesting, investNowReturnTo],
   )
 
   const columns: DataTableColumn<InvestmentListRow>[] = useMemo(
@@ -377,7 +462,9 @@ export default function InvestmentsPage() {
       {
         id: "dealName",
         header: "Deal name",
-        tdClassName: "um_td_user",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.dealName,
+        thClassName: "investments_col_deal_name",
+        tdClassName: "um_td_user investments_col_deal_name",
         sortValue: (r) => (r.investmentName ?? "").toLowerCase(),
         cell: (r) => (
           <InvestmentDealNameCell
@@ -388,6 +475,21 @@ export default function InvestmentsPage() {
             }
           />
         ),
+      },
+      {
+        id: "investNowProgress",
+        header: "Progress",
+        align: "center",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.progress,
+        thClassName: "investments_col_progress deals_th_align_center",
+        tdClassName: "investments_col_progress",
+        sortValue: (r) => r.investNowDraftProgress?.percent ?? -1,
+        cell: (r) => {
+          if (!r.investNowDraftProgress) {
+            return <span className="um_status_muted">—</span>
+          }
+          return <InvestmentProgressCell progress={r.investNowDraftProgress} />
+        },
       },
       // {
       //   id: "dealStage",
@@ -424,20 +526,33 @@ export default function InvestmentsPage() {
       //   },
       // },
       {
+        id: "dealSponsorName",
+        header: "Sponsor",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.sponsor,
+        sortValue: (r) => (r.dealSponsorName ?? "").toLowerCase(),
+        cell: (r) => {
+          const t = String(r.dealSponsorName ?? "").trim()
+          return t && t !== "—" ? t : "—"
+        },
+      },
+      {
         id: "dealType",
         header: "Deal type",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.dealType,
         sortValue: (r) => (r.dealType ?? "").toLowerCase(),
         cell: (r) => dealTypeDisplayLabel(r.dealType ?? ""),
       },
       {
         id: "secType",
         header: "SEC type",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.secType,
         sortValue: (r) => secTypeDisplayLabel(r.secType ?? "").toLowerCase(),
         cell: (r) => secTypeDisplayLabel(r.secType ?? ""),
       },
       {
         id: "propertyName",
         header: "Property name",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.propertyName,
         sortValue: (r) => (r.propertyName ?? "").toLowerCase(),
         cell: (r) => {
           const t = String(r.propertyName ?? "").trim()
@@ -447,6 +562,7 @@ export default function InvestmentsPage() {
       {
         id: "owningEntity",
         header: "Owning entity",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.owningEntity,
         sortValue: (r) => (r.owningEntityName ?? "").toLowerCase(),
         cell: (r) => {
           const t = String(r.owningEntityName ?? "").trim()
@@ -457,6 +573,7 @@ export default function InvestmentsPage() {
         id: "start",
         header: "Start date",
         align: "center",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.startDate,
         thClassName: "deals_th_align_center investments_col_start_date",
         tdClassName: "investments_col_start_date",
         sortValue: (r) => dateSortValue(r.startDateDisplay),
@@ -466,32 +583,30 @@ export default function InvestmentsPage() {
         id: "close",
         header: "Close date",
         align: "center",
-        thClassName: "deals_th_align_center",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.closeDate,
+        thClassName: "deals_th_align_center investments_col_date",
+        tdClassName: "investments_col_date",
         sortValue: (r) => dateSortValue(r.dealCloseDate),
         cell: (r) => formatDealListDateDisplay(r.dealCloseDate),
       },
       {
         id: "investmentProfile",
         header: "Invested as",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.investedAs,
         thClassName: "investments_col_invested_as",
         tdClassName: "investments_col_invested_as",
         sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
-        cell: (r) => {
-          const text = r.investmentProfile?.trim() || "—"
-          return (
-            <span
-              className="investments_invested_as_cell"
-              title={text !== "—" ? text : undefined}
-            >
-              {text}
-            </span>
-          )
-        },
+        cell: (r) => (
+          <span className="investments_invested_as_name">
+            {r.investmentProfile?.trim() || "—"}
+          </span>
+        ),
       },
       {
         id: "investedAmount",
         header: "Invested",
         align: "right",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.invested,
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.investedAmount,
@@ -501,6 +616,7 @@ export default function InvestmentsPage() {
         id: "distributedAmount",
         header: "Distributed",
         align: "right",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.distributed,
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.distributedAmount,
@@ -509,6 +625,7 @@ export default function InvestmentsPage() {
       {
         id: "currentValuation",
         header: "Valuation",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.valuation,
         sortValue: (r) => (r.currentValuation ?? "").toLowerCase(),
         cell: (r) => r.currentValuation || "—",
       },
@@ -522,29 +639,40 @@ export default function InvestmentsPage() {
         id: "actions",
         header: "Actions",
         align: "center",
+        colWidth: INVESTMENTS_TABLE_COL_WIDTH.actions,
         thClassName: "um_th_actions deals_th_actions_head",
         tdClassName: "um_td_actions deal_inv_td_actions",
         cell: (r) => {
           const dealId = (r.dealId ?? r.id ?? "").trim()
           if (!dealId) return null
-          const isPending =
-            activeTab === "pending" ||
-            resolveInvestmentOnboardingBucket(r) === "pending"
+          const onPendingTab = activeTab === "pending"
+          const showResume =
+            !r.archived &&
+            onPendingTab &&
+            Boolean(r.hasInvestNowDraft && r.investNowResumeScope)
+          const showInvestNow =
+            !r.archived &&
+            (onPendingTab ? !showResume : activeTab === "in_progress")
+          const actionsDisabled =
+            Boolean(r.archived) || (!showResume && !showInvestNow)
           return (
             <div className="deal_members_actions_cell">
+              {/* Preview deal action disabled for investments table */}
               <DealRowActions
                 readOnlyActions
                 dealId={dealId}
                 dealName={r.investmentName}
                 dealStage={r.status}
                 archived={Boolean(r.archived)}
-                onPreviewDeal={
-                  r.archived || !isPending
-                    ? undefined
-                    : () => openDealPreview(dealId, "pending")
-                }
+                actionsDisabled={actionsDisabled}
                 onInvestNow={
-                  r.archived ? undefined : () => openInvestNow(dealId)
+                  showInvestNow ? () => openInvestNowFresh(dealId) : undefined
+                }
+                onResumeInvesting={
+                  showResume
+                    ? () =>
+                        openInvestNowResume(dealId, r.investNowResumeScope)
+                    : undefined
                 }
               />
             </div>
@@ -552,7 +680,7 @@ export default function InvestmentsPage() {
         },
       },
     ],
-    [activeTab, openDealPreview, openInvestNow],
+    [activeTab, openInvestNowFresh, openInvestNowResume],
   )
 
   const investmentsEmptyMessage =
@@ -645,7 +773,7 @@ export default function InvestmentsPage() {
                 aria-hidden
               />
               <span className="deals_tabs_label um_segmented_tab_label">
-                In progress
+                Active
               </span>
               <span className="deals_tabs_count">({inProgressCount})</span>
             </button>
@@ -713,7 +841,7 @@ export default function InvestmentsPage() {
                 ? "Search archived investments"
                 : activeTab === "pending"
                   ? "Search pending investments"
-                  : "Search in-progress investments"
+                  : "Search active investments"
             }
           />
         </div>

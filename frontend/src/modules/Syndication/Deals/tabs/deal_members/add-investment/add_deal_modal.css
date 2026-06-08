@@ -122,7 +122,7 @@
 /* Pill-shaped controls (dropdown triggers + text/date inputs) */
 .deals_add_inv_modal_form input.deals_add_inv_field_pill,
 .deals_add_inv_input.deals_add_inv_field_control.deals_add_inv_field_pill {
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
 }
 
 .deals_add_inv_modal_form .portal_dropdown_select_trigger.deals_add_inv_field_pill {
@@ -131,7 +131,7 @@
     0.65rem var(--portal-dropdown-trigger-padding-block, 0.45rem)
     0.75rem;
   font-size: var(--deals-add-inv-control-font);
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   justify-content: space-between;
   gap: 0.35rem;
 }
@@ -245,7 +245,7 @@
   box-sizing: border-box;
   min-height: var(--deals-add-inv-control-min-h);
   padding: 0.5rem 0.75rem;
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   font-family: var(--deals-add-inv-font-family);
   font-size: var(--deals-add-inv-control-font);
   font-weight: 400;
@@ -387,7 +387,7 @@
 .deals_add_inv_dropzone {
   margin-top: 0.25em;
   border: 1px dashed #cbd5e1;
-  border-radius: var(--ui-button-border-radius, 25px);
+  border-radius: var(--ui-button-border-radius, 4px);
   cursor: pointer;
   color: #64748b;
   font-size: 0.8125em;
@@ -464,6 +464,14 @@
   font-size: 0.8125em;
 }
 
+.deal_step_yesno_cards {
+  width: 100%;
+}
+
+.deals_add_inv_modal_body .deal_step_yesno_cards {
+  margin-top: 0.35em;
+}
+
 .deals_add_inv_doc_field {
   margin-top: 15px;
 }
@@ -517,7 +525,7 @@
 .deal_inv_ic_form_modal_panel.deal_inv_offering_modal
   .deals_add_inv_modal_form
   select.um_field_select.deals_add_inv_field_control {
-  border-radius: 9999px;
+  border-radius: var(--portal-pill-radius, 4px);
   padding-left: 1rem;
   padding-right: 2.35rem;
 }
@@ -662,4 +670,10 @@
   font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--portal-text-muted, #64748b);
+}
+
+/* Add Member — stack fields vertically (no side-by-side columns) */
+.deals_add_member_form_stacked .add_contact_name_grid {
+  grid-template-columns: 1fr;
+  gap: 0;
 }

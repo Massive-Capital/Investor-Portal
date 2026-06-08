@@ -1,4 +1,5 @@
 import { Download, Search, X } from "lucide-react"
+import { ExportModalFooter } from "../../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
 import { dealStageLabel } from "@/modules/Syndication/dealsDashboardUtils"
@@ -18,6 +19,7 @@ function downloadCsv(content: string, filename: string): void {
 function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
   const headers = [
     "Deal name",
+    "Sponsor",
     "Deal stage",
     "Your role",
     "Deal type",
@@ -41,6 +43,7 @@ function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
     lines.push(
       [
         esc(r.investmentName),
+        esc(r.dealSponsorName ?? ""),
         esc(dealStageLabel(r.status)),
         esc(r.viewerRolesLabel ?? ""),
         esc(r.dealType ?? ""),
@@ -266,14 +269,7 @@ export function ExportInvestmentsModal({
           )}
         </ul>
 
-        <footer className="deals_export_modal_footer">
-          <button
-            type="button"
-            className="deals_export_modal_btn_secondary"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
+        <ExportModalFooter onClose={onClose}>
           <button
             type="button"
             className="deals_export_modal_btn_secondary"
@@ -291,7 +287,7 @@ export function ExportInvestmentsModal({
             <Download size={16} strokeWidth={2} aria-hidden />
             Export all
           </button>
-        </footer>
+        </ExportModalFooter>
       </div>
     </div>
   )

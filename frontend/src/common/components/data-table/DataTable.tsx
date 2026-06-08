@@ -17,6 +17,8 @@ export type DataTableColumn<T> = {
   align?: "left" | "right" | "center";
   thClassName?: string;
   tdClassName?: string;
+  /** Fixed width for `<colgroup>` / `table-layout: fixed` alignment. */
+  colWidth?: string;
 };
 
 type DataTableProps<T> = {
@@ -68,6 +70,11 @@ type DataTableProps<T> = {
    */
   stickyFirstColumn?: boolean;
   /**
+   * Number of leading columns to pin during horizontal scroll (e.g. deal name + progress).
+   * Defaults to `1` when sticky columns are enabled, unless `stickyFirstColumn` is `false`.
+   */
+  stickyColumnCount?: number;
+  /**
    * Alternating row backgrounds by visible index (sorted + paginated). Uses
    * `.data_table_row_odd` / `.data_table_row_even` in `data-table.css`.
    */
@@ -94,6 +101,18 @@ function membersThTdTextAlign(
   return "left";
 }
 
+function stickyColClasses(colIndex: number, stickyColumnCount: number): string {
+  if (colIndex >= stickyColumnCount) return "";
+  const parts = [
+    "data_table_col_sticky",
+    `data_table_col_sticky--${colIndex}`,
+  ];
+  if (colIndex === stickyColumnCount - 1) {
+    parts.push("data_table_col_sticky_edge");
+  }
+  return parts.join(" ");
+}
+
 export function DataTable<T>({
   columns,
   rows,
@@ -108,11 +127,18 @@ export function DataTable<T>({
   initialSort,
   onBodyRowClick,
   stickyFirstColumn: stickyFirstColumnProp,
+  stickyColumnCount: stickyColumnCountProp,
   isLoading = false,
   stripedRows = true,
 }: DataTableProps<T>) {
-  const stickyFirstColumn =
-    stickyFirstColumnProp ?? visualVariant === "members";
+  const stickyColumnCount =
+    stickyColumnCountProp ??
+    (stickyFirstColumnProp === false
+      ? 0
+      : stickyFirstColumnProp === true || visualVariant === "members"
+        ? 1
+        : 0);
+  const stickyColumnsEnabled = stickyColumnCount > 0;
   /** Match Investors tab: same table classes when callers omit `membersTableClassName`. */
   const membersTableClassResolved =
     visualVariant === "members" &&
@@ -177,16 +203,25 @@ export function DataTable<T>({
           "um_table",
           "um_table_sortable",
           membersTableClassResolved,
-          stickyFirstColumn ? "data_table_sticky_first" : "",
+          stickyColumnsEnabled ? "data_table_sticky_first" : "",
         ]
           .filter(Boolean)
           .join(" ")
-      : stickyFirstColumn
+      : stickyColumnsEnabled
         ? "data_table data_table_sticky_first"
         : "data_table";
 
   const tableEl = (
     <table className={tableClass}>
+        <colgroup>
+          {columns.map((col) => (
+            <col
+              key={col.id}
+              className={col.thClassName || undefined}
+              style={col.colWidth ? { width: col.colWidth } : undefined}
+            />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             {columns.map((col, colIndex) => {
@@ -202,11 +237,11 @@ export function DataTable<T>({
                   : "none"
                 : undefined;
 
-              const stickyFirst = stickyFirstColumn && colIndex === 0;
+              const stickyClass = stickyColClasses(colIndex, stickyColumnCount);
               const thClass = [
                 col.thClassName,
                 visualVariant === "default" && active ? "data_table_th_sorted" : "",
-                stickyFirst ? "data_table_col_sticky" : "",
+                stickyClass,
               ]
                 .filter(Boolean)
                 .join(" ");
@@ -362,10 +397,10 @@ export function DataTable<T>({
                   const textAlign = membersThTdTextAlign(visualVariant, col);
                   const tdStyle =
                     textAlign !== undefined ? { textAlign } : undefined;
-                  const stickyFirst = stickyFirstColumn && colIndex === 0;
+                  const stickyClass = stickyColClasses(colIndex, stickyColumnCount);
                   const tdClass = [
                     col.tdClassName,
-                    stickyFirst ? "data_table_col_sticky" : "",
+                    stickyClass,
                   ]
                     .filter(Boolean)
                     .join(" ");
@@ -389,7 +424,8 @@ export function DataTable<T>({
 
   const scrollRegionClass = [
     "data_table_scroll_region",
-    stickyFirstColumn ? "data_table_scroll_region_sticky_first" : "",
+    stickyColumnsEnabled ? "data_table_scroll_region_sticky_first" : "",
+    rows.length === 0 ? "data_table_scroll_region--empty" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -397,7 +433,7 @@ export function DataTable<T>({
   if (visualVariant === "members") {
     const tableBlock =
       membersShell === "plain" ? (
-        stickyFirstColumn ? (
+        stickyColumnsEnabled ? (
           <div className={scrollRegionClass}>{tableEl}</div>
         ) : (
           tableEl
@@ -424,7 +460,7 @@ export function DataTable<T>({
 
   return (
     <div className={wrapClass}>
-      {stickyFirstColumn ? (
+      {stickyColumnsEnabled ? (
         <div className={scrollRegionClass}>{tableEl}</div>
       ) : (
         tableEl

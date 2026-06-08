@@ -1,4 +1,4 @@
-import { FileSignature, Loader2, X } from "lucide-react"
+import { FileSignature, ListChecks, Loader2, Send, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   fetchDealEsignTemplates,
@@ -253,7 +253,10 @@ export function SendEsignDocumentsModal({
                       onChange={toggleSelectAll}
                       disabled={sending}
                     />
-                    <span>Select all ready</span>
+                    <span>
+                      <ListChecks size={14} strokeWidth={2} aria-hidden />
+                      Select all ready
+                    </span>
                   </label>
                 </div>
               ) : null}
@@ -346,13 +349,14 @@ export function SendEsignDocumentsModal({
                 : `${selectedCount} document${selectedCount === 1 ? "" : "s"} selected`}
             </p>
           ) : null}
-          <div className="um_modal_actions">
+          <div className="um_modal_actions add_contact_modal_actions">
             <button
               type="button"
               className="um_btn_secondary"
               disabled={sending}
               onClick={onClose}
             >
+              <X size={16} strokeWidth={2} aria-hidden />
               Cancel
             </button>
             <button
@@ -372,10 +376,11 @@ export function SendEsignDocumentsModal({
                   <Loader2 className="deal_esign_spin" size={16} aria-hidden />
                   {esignWasSent ? "Re-sending…" : "Sending…"}
                 </>
-              ) : esignWasSent ? (
-                "Re-send E-sign"
               ) : (
-                "Send E-sign"
+                <>
+                  <Send size={16} strokeWidth={2} aria-hidden />
+                  {esignWasSent ? "Re-send E-sign" : "Send E-sign"}
+                </>
               )}
             </button>
           </div>

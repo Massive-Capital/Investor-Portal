@@ -2,6 +2,8 @@
  * Deal dashboard & card helpers — maps API (`DealListRow`, `DealDetailApi`) to `DealRecord` and metrics.
  * (Renamed from `deals-mock-data.ts`; contains no static mock deals.)
  */
+import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/investNowDraftProgress"
+import type { InvestNowDraftResumeScope } from "@/modules/Investing/pages/invest/investNowDraftUtils"
 import type { DealCardMetric } from "../../common/components/deal-card/DealCard"
 import { assetImagePathToUrl } from "../../common/utils/apiBaseUrl"
 import type { DealDetailApi } from "./Deals/api/dealsApi"
@@ -38,6 +40,8 @@ export interface DealRecord {
   statusLabel: string
   /** Raw `dealStage` from API (same as deals list) — drives stage chip colors on cards. */
   dealStage: string
+  /** Fundraising offering status (`offering_status`) — investor dashboard rules. */
+  offeringStatus?: string
   dealType?: string
   /** Wizard / legacy deal type → label for cards */
   dealTypeLabel?: string
@@ -56,6 +60,9 @@ export interface DealRecord {
   /** List API (optional) — merged with per-deal client seeding on cards. */
   reviewRating?: number
   reviewCount?: number
+  /** Invest Now draft progress for the signed-in LP (investing dashboard cards). */
+  investNowDraftProgress?: InvestNowDraftProgress | null
+  investNowResumeScope?: InvestNowDraftResumeScope | null
 }
 
 /** Short lifecycle label — never echoes arbitrary API text (e.g. deal name in `deal_stage`). */
@@ -273,6 +280,7 @@ export function dealListRowToDealRecord(row: DealListRow): DealRecord {
     closeDate: row.closeDateDisplay,
     statusLabel: dealStageLabel(row.dealStage),
     dealStage: String(row.dealStage ?? "").trim(),
+    offeringStatus: String(row.offeringStatus ?? "").trim() || undefined,
     dealType: row.dealType,
     dealTypeLabel: dealTypeDisplayLabel(row.dealType ?? ""),
     secTypeDisplay: secTypeDisplayLabel(row.secType ?? ""),

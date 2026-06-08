@@ -1,4 +1,4 @@
-import { Loader2, Megaphone, Trash2 } from "lucide-react"
+import { Loader2, Send, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useId, useState } from "react"
 import { toast } from "../../../../../common/components/Toast"
 import { patchDealAnnouncement, type DealDetailApi } from "../../api/dealsApi"
@@ -77,17 +77,6 @@ export function OfferingAnnouncementSection({
 
   return (
     <div className="deal_offering_announcement">
-      <p className="deal_offering_announcement_hint">
-        <Megaphone
-          size={16}
-          strokeWidth={2}
-          className="deal_offering_announcement_hint_icon"
-          aria-hidden
-        />
-        Publish an update at the <strong>top of this deal</strong> for everyone
-        who can open this deal (any tab). Leave title or message empty to hide
-        the banner after you clear or save empty fields.
-      </p>
       <div className="deal_offering_announcement_fields">
         <div className="deal_offering_announcement_field">
           <label
@@ -123,10 +112,10 @@ export function OfferingAnnouncementSection({
           />
         </div>
       </div>
-      <div className="deal_offering_announcement_actions">
+      <div className="deal_offering_announcement_actions um_modal_actions add_contact_modal_actions">
         <button
           type="button"
-          className="deal_offering_announcement_btn_secondary"
+          className="um_btn_secondary"
           disabled={saving || !hasPublished}
           onClick={() => void handleClear()}
           title={
@@ -138,26 +127,31 @@ export function OfferingAnnouncementSection({
           <Trash2 size={16} strokeWidth={2} aria-hidden />
           Clear published
         </button>
-        <button
-          type="button"
-          className="deal_offering_announcement_btn_primary"
-          disabled={saving || !isDirty}
-          onClick={() => void handleSave()}
-        >
-          {saving ? (
-            <>
-              <Loader2
-                size={16}
-                strokeWidth={2}
-                className="deal_offering_announcement_btn_spin"
-                aria-hidden
-              />
-              Saving…
-            </>
-          ) : (
-            "Publish to deal page"
-          )}
-        </button>
+        <div className="add_contact_modal_actions_trailing">
+          <button
+            type="button"
+            className="um_btn_primary"
+            disabled={saving || !isDirty}
+            onClick={() => void handleSave()}
+          >
+            {saving ? (
+              <>
+                <Loader2
+                  size={16}
+                  strokeWidth={2}
+                  className="deal_offering_btn_spin"
+                  aria-hidden
+                />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Send size={16} strokeWidth={2} aria-hidden />
+                Publish to deal page
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   )

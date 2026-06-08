@@ -40,6 +40,8 @@ export const addDealForm = pgTable("add_deal_form", {
   galleryCoverImageUrl: text("gallery_cover_image_url"),
   /** JSON array: { id, metric, newClass, isPreset }[] for Key Highlights (Offering details). */
   keyHighlightsJson: text("key_highlights_json"),
+  /** JSON: Funding Info (ACH / wire / checks / investment fee) on Offering details. */
+  fundingInstructionsJson: text("funding_instructions_json"),
   /** Shown at top of deal detail for every user who can open this deal. */
   dealAnnouncementTitle: text("deal_announcement_title"),
   dealAnnouncementMessage: text("deal_announcement_message"),

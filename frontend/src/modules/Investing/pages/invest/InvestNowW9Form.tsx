@@ -1,5 +1,5 @@
 import { ChevronDown, CircleHelp } from "lucide-react"
-import { useId, useState } from "react"
+import { useState } from "react"
 import { formatSsnItinInput } from "@/common/tax/usSsnItin"
 import { formatInvestNowW9AddressLine } from "./investNowW9FormUtils"
 import type { InvestNowW9FormValues } from "./investNowW9.types"
@@ -13,16 +13,18 @@ export interface InvestNowW9FormProps {
   values: InvestNowW9FormValues
   onChange: (next: InvestNowW9FormValues) => void
   disabled?: boolean
+  fieldErrors?: Partial<Record<"w9-name" | "w9-address" | "w9-ssn", string>>
 }
 
 export function InvestNowW9Form({
   values,
   onChange,
   disabled = false,
+  fieldErrors = {},
 }: InvestNowW9FormProps) {
-  const nameId = useId()
-  const addressId = useId()
-  const ssnId = useId()
+  const nameId = "invest-now-w9-name"
+  const addressId = "invest-now-w9-address"
+  const ssnId = "invest-now-w9-ssn"
   const [addressDetailsOpen, setAddressDetailsOpen] = useState(true)
 
   function patch(partial: Partial<InvestNowW9FormValues>) {
@@ -49,6 +51,7 @@ export function InvestNowW9Form({
         label={INVEST_NOW_W9_NAME_LABEL}
         required
         className="invest_now_w9_name_field"
+        error={fieldErrors["w9-name"]}
       >
         <div className="invest_now_w9_name_row">
           <input
@@ -58,6 +61,7 @@ export function InvestNowW9Form({
             value={values.name}
             disabled={disabled}
             autoComplete="name"
+            aria-invalid={Boolean(fieldErrors["w9-name"]) || undefined}
             onChange={(e) => patch({ name: e.target.value })}
           />
           <button
@@ -72,7 +76,12 @@ export function InvestNowW9Form({
         </div>
       </InvestNowFormField>
 
-      <InvestNowFormField id={addressId} label="Address" required>
+      <InvestNowFormField
+        id={addressId}
+        label="Address"
+        required
+        error={fieldErrors["w9-address"]}
+      >
         <div className="invest_now_address_field_stack">
           <div className="invest_now_address_field_wrap">
             <input
@@ -82,6 +91,7 @@ export function InvestNowW9Form({
               value={values.addressLine}
               disabled={disabled}
               autoComplete="street-address"
+              aria-invalid={Boolean(fieldErrors["w9-address"]) || undefined}
               onChange={(e) => patch({ addressLine: e.target.value })}
             />
             <button
@@ -177,7 +187,12 @@ export function InvestNowW9Form({
         </div>
       </InvestNowFormField>
 
-      <InvestNowFormField id={ssnId} label="Social security number" required>
+      <InvestNowFormField
+        id={ssnId}
+        label="Social security number"
+        required
+        error={fieldErrors["w9-ssn"]}
+      >
         <input
           id={ssnId}
           type="text"
@@ -186,6 +201,7 @@ export function InvestNowW9Form({
           disabled={disabled}
           inputMode="numeric"
           autoComplete="off"
+          aria-invalid={Boolean(fieldErrors["w9-ssn"]) || undefined}
           onChange={(e) => patch({ ssn: formatSsnItinInput(e.target.value) })}
         />
       </InvestNowFormField>

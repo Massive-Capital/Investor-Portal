@@ -109,15 +109,11 @@ export function InvestorOfferingDocumentsList({
                     className={`deal_docs_ui_banner_chevron${isOpen ? " deal_docs_ui_banner_chevron_open" : ""}`}
                   />
                 </button>
-                <button
-                  type="button"
-                  className="investment_detail_offering_section_title_btn"
-                  aria-expanded={isOpen}
-                  aria-controls={panelId}
-                  onClick={() => toggleSection(section.sectionId)}
-                >
-                  {section.sectionLabel}
-                </button>
+                <div className="deal_docs_ui_banner_heading">
+                  <span className="deal_docs_ui_banner_title">
+                    {section.sectionLabel}
+                  </span>
+                </div>
               </div>
               <div className="deal_docs_ui_banner_right">
                 <span className="deal_docs_ui_banner_count" aria-live="polite">

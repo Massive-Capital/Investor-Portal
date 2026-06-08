@@ -7,7 +7,7 @@ import {
   Loader2,
   Mail,
   Pencil,
-  Save,
+  Plus,
   Shield,
   Tag,
   UserRound,
@@ -25,6 +25,7 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import { toast } from "../../../../../../common/components/Toast"
+import { presentFormValidationError } from "../../../../../../common/utils/formValidationFocus"
 import { formatUsPhoneStoredForUi } from "../../../../../../common/phone/usPhoneNumber"
 import {
   DataTable,
@@ -80,6 +81,7 @@ import {
   moneyAmountOnChange,
 } from "../../../utils/offeringMoneyFormat"
 import { InfoIconPanel } from "../../offering_details/FieldInfoHeading"
+import { YesNoCardRadioGroup } from "../../../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
 import "../../../../contacts/contacts.css"
 import "../../../../usermanagement/user_management.css"
 import "../../../components/deal-step-form.css"
@@ -87,6 +89,9 @@ import "./add_deal_modal.css"
 
 const INVESTOR_CLASS_UNAVAILABLE_HINT =
   "Please complete the Classes section to assign an investor class."
+
+const INVITATION_EMAILS_UNAVAILABLE_HINT =
+  "Invitation emails are unavailable while the deal is in draft or required deal details are incomplete. Finalize the deal before sending invitations. You can still choose No below."
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
@@ -262,6 +267,7 @@ export function AddInvestmentModal({
   const backendInvPostInFlightRef = useRef(false)
   const backendInvAutosaveInFlightRef = useRef(false)
   const [form, setForm] = useState<AddInvestmentFormValues>(emptyForm)
+  const addInvFormRef = useRef<HTMLFormElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [memberRows, setMemberRows] = useState<Record<string, unknown>[]>([])
@@ -284,7 +290,7 @@ export function AddInvestmentModal({
   >([])
 
   const refreshMemberRosterForGate = useCallback(() => {
-    void fetchDealMembers(dealId).then((rows) => {
+    void fetchDealMembers(dealId).then(({ members: rows }) => {
       setMemberRosterForGate(
         rows.map((r) => ({
           id: r.id,
@@ -1013,52 +1019,32 @@ export function AddInvestmentModal({
   const noDealClasses =
     investorClassesReady && dealClasses.length === 0
 
-  function validateInvestmentStep1(): boolean {
-    if (!form.offeringId.trim()) {
-      setError("Select an offering.")
-      return false
-    }
+  function validateInvestmentStep1(): string | null {
+    if (!form.offeringId.trim()) return "Select an offering."
     if (!form.contactId.trim()) {
-      setError(
-        isInvestorEntry
-          ? "Select an investor or contact."
-          : "Select a member.",
-      )
-      return false
+      return isInvestorEntry
+        ? "Select an investor or contact."
+        : "Select a member."
     }
     if (isInvestorEntry) {
-      if (!investorClassesReady) {
-        setError("Loading investor classes…")
-        return false
-      }
+      if (!investorClassesReady) return "Loading investor classes…"
       if (noDealClasses) {
-        setError(
-          "Add at least one investor class in the Classes section before recording an investment.",
-        )
-        return false
+        return "Add at least one investor class in the Classes section before recording an investment."
       }
-      if (!form.investorClass.trim()) {
-        setError("Select an investor class.")
-        return false
-      }
+      if (!form.investorClass.trim()) return "Select an investor class."
       if (!dealClasses.some((c) => c.id === form.investorClass.trim())) {
-        setError("Select a valid investor class from this deal.")
-        return false
+        return "Select a valid investor class from this deal."
       }
     }
     if (isInvestorEntry && !form.commitmentAmount.trim()) {
-      setError("Enter a commitment amount.")
-      return false
+      return "Enter a commitment amount."
     }
     if (
       leadSponsorContactId &&
       form.contactId.trim() === leadSponsorContactId &&
       isAdminSponsorOrCoSponsorRole(form.investorRole)
     ) {
-      setError(
-        "This person is already Lead Sponsor on this deal. They cannot also be Admin sponsor or Co-sponsor.",
-      )
-      return false
+      return "This person is already Lead Sponsor on this deal. They cannot also be Admin sponsor or Co-sponsor."
     }
     if (
       form.investorRole === LEAD_SPONSOR_ROLE_VALUE &&
@@ -1067,27 +1053,33 @@ export function AddInvestmentModal({
         excludeRowIdForLeadSponsorGate,
       )
     ) {
-      setError(
-        "This deal already has a Lead Sponsor. Choose another role or edit the existing Lead Sponsor row.",
-      )
-      return false
+      return "This deal already has a Lead Sponsor. Choose another role or edit the existing Lead Sponsor row."
     }
     if (
       isInvestorEntry &&
       form.sendInvitationMail === "yes" &&
       !String(form.profileId ?? "").trim()
     ) {
-      setError(
-        "Select an investor profile before choosing to send the invitation email.",
-      )
-      return false
+      return "Select an investor profile before choosing to send the invitation email."
     }
-    return true
+    return null
+  }
+
+  function reportAddInvestmentValidation(message: string) {
+    setError(message)
+    presentFormValidationError({
+      container: addInvFormRef.current,
+      message,
+    })
   }
 
   async function performSave() {
     setError(null)
-    if (!validateInvestmentStep1()) return
+    const validationMessage = validateInvestmentStep1()
+    if (validationMessage) {
+      reportAddInvestmentValidation(validationMessage)
+      return
+    }
     setSubmitting(true)
     try {
       let values = withInvitationMailPolicy(form, dealBlocksInvitationEmails)
@@ -1208,7 +1200,13 @@ export function AddInvestmentModal({
         </div>
 
         <form
-          className="deals_add_inv_modal_form"
+          ref={addInvFormRef}
+          className={[
+            "deals_add_inv_modal_form",
+            !isInvestorEntry ? "deals_add_member_form_stacked" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           onSubmit={handleFormSubmit}
           noValidate
         >
@@ -1329,7 +1327,9 @@ export function AddInvestmentModal({
                   ) : null}
                 </div>
 
-                <hr className="add_contact_section_rule" />
+                {isInvestorEntry ? (
+                  <hr className="add_contact_section_rule" />
+                ) : null}
 
                 {isInvestorEntry ? (
                   <>
@@ -1555,54 +1555,42 @@ export function AddInvestmentModal({
                           ? "Would you like to notify the investor about their addition to the deal?"
                           : "Would you like to notify the member about their addition to the deal?"}
                       </span>
+                      {dealBlocksInvitationEmails ? (
+                        <span className="deals_add_inv_label_info">
+                          <InfoIconPanel
+                            ariaLabel="More information: Invitation emails"
+                            infoContent={
+                              <>
+                                Invitation emails are unavailable while the deal is
+                                in draft or required deal details are incomplete.
+                                Finalize the deal before sending invitations. You
+                                can still choose <strong>No</strong> below.
+                              </>
+                            }
+                          />
+                        </span>
+                      ) : null}
                     </div>
                     {dealBlocksInvitationEmails ? (
-                      <p className="deals_create_field_hint" role="status">
-                        Invitation emails are unavailable while the deal is in
-                        draft or required deal details are incomplete. Finalize
-                        the deal before sending invitations. You can still choose{" "}
-                        <strong>No</strong> below.
+                      <p id="add-inv-send-invite-hint" className="visually_hidden">
+                        {INVITATION_EMAILS_UNAVAILABLE_HINT}
                       </p>
                     ) : null}
-                    <div
-                      className="deal_step_yesno"
-                      role="radiogroup"
-                      aria-labelledby="add-inv-send-invite-label"
-                    >
-                      <label className="deal_step_yesno_label">
-                        <input
-                          type="radio"
-                          name="add-inv-send-invitation"
-                          value="yes"
-                          checked={form.sendInvitationMail === "yes"}
-                          disabled={dealBlocksInvitationEmails}
-                          title={
-                            dealBlocksInvitationEmails
-                              ? "Unavailable until the deal is finalized"
-                              : undefined
-                          }
-                          onChange={() => patch({ sendInvitationMail: "yes" })}
-                        />
-                        <span>Yes</span>
-                         <span className="deal_step_yesno_common">
-                            {" "}
-                            (Standard)
-                          </span>
-                      </label>
-                      <label className="deal_step_yesno_label">
-                        <input
-                          type="radio"
-                          name="add-inv-send-invitation"
-                          value="no"
-                          checked={form.sendInvitationMail === "no"}
-                          onChange={() => patch({ sendInvitationMail: "no" })}
-                        />
-                        <span>
-                          No
-                         
-                        </span>
-                      </label>
-                    </div>
+                    <YesNoCardRadioGroup
+                      className="deal_step_yesno_cards"
+                      name="add-inv-send-invitation"
+                      value={form.sendInvitationMail}
+                      onChange={(v) => patch({ sendInvitationMail: v })}
+                      yesIsCommon
+                      variant="mail"
+                      disabled={dealBlocksInvitationEmails}
+                      ariaLabelledBy="add-inv-send-invite-label"
+                      ariaDescribedBy={
+                        dealBlocksInvitationEmails
+                          ? "add-inv-send-invite-hint"
+                          : undefined
+                      }
+                    />
                   </div>
 {/* 
                   {form.extraContributionAmounts.map((amt, idx) => (
@@ -1671,12 +1659,12 @@ export function AddInvestmentModal({
                       className="add_contact_modal_btn_spin"
                       aria-hidden
                     />
-                    Saving…
+                    Adding...
                   </>
                 ) : (
                   <>
-                    <Save size={16} strokeWidth={2} aria-hidden />
-                    Save
+                    <Plus size={16} strokeWidth={2} aria-hidden />
+                    Add
                   </>
                 )}
               </button>

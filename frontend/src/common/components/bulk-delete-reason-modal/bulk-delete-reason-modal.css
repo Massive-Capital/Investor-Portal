@@ -2,25 +2,7 @@
   z-index: 12000;
 }
 
-.bulk_delete_reason_confirm_btn.um_btn_primary {
-  background: #b91c1c;
-  border-color: #991b1b;
-  color: #fff;
-}
-
-.bulk_delete_reason_confirm_btn.um_btn_primary:hover:not(:disabled) {
-  background: #991b1b;
-  border-color: #7f1d1d;
-}
-
-:root[data-theme="dark"] .bulk_delete_reason_confirm_btn.um_btn_primary {
-  background: #dc2626;
-  border-color: #b91c1c;
-}
-
-:root[data-theme="dark"] .bulk_delete_reason_confirm_btn.um_btn_primary:hover:not(:disabled) {
-  background: #b91c1c;
-}
+/* Confirm uses shared um_btn_primary tokens */
 
 .um_toolbar_delete_btn {
   color: #b91c1c;

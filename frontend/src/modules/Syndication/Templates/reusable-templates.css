@@ -19,7 +19,7 @@
   gap: 1rem;
   padding: 1.25rem;
   border: 1px solid var(--portal-border, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--portal-surface, #fff);
 }
 

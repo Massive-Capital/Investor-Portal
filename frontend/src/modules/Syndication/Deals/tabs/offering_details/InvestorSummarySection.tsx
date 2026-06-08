@@ -2,6 +2,7 @@ import { Loader2, Save } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import Quill from "quill"
 import "quill/dist/quill.snow.css"
+import { FormHeadingWithInfo } from "../../../../../common/components/form-heading/FormHeadingWithInfo"
 import { toast } from "../../../../../common/components/Toast"
 import { patchDealInvestorSummary, type DealDetailApi } from "../../api/dealsApi"
 
@@ -115,21 +116,25 @@ export function InvestorSummarySection({
 
   return (
     <div className="deal_offering_summary deal_offering_investor_summary">
-      <h3 className="deal_offering_investor_summary_title">
-        Summary for all investors
-      </h3>
-      <p className="deal_offering_investor_summary_hint">
-        This text appears on the offering preview for investors. Use clear,
-        professional formatting. For readability, prefer dark text over very
-        bright colors; use bold sparingly for key points.
-      </p>
+      <FormHeadingWithInfo
+        as="h3"
+        className="deal_offering_investor_summary_title"
+        title="Summary for all investors"
+        info={
+          <p>
+            This text appears on the offering preview for investors. Use clear,
+            professional formatting. For readability, prefer dark text over very
+            bright colors; use bold sparingly for key points.
+          </p>
+        }
+      />
       <div className="deal_offering_quill">
         <div ref={editorRef} className="deal_offering_quill_editor_host" />
       </div>
       <div className="deal_offering_investor_summary_actions">
         <button
           type="button"
-          className="deal_offering_investor_summary_save"
+          className="um_btn_primary"
           disabled={saving || !dirty}
           onClick={() => void handleSave()}
         >
@@ -138,7 +143,7 @@ export function InvestorSummarySection({
               <Loader2
                 size={16}
                 strokeWidth={2}
-                className="deal_offering_investor_summary_save_spin"
+                className="deal_offering_btn_spin"
                 aria-hidden
               />
               <span>Saving…</span>

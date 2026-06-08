@@ -54,7 +54,7 @@
   margin: 0;
   padding: 0.2em;
   border: none;
-  border-radius: var(--portal-pill-radius, 9999px);
+  border-radius: var(--portal-pill-radius, 4px);
   background: transparent;
   color: var(--portal-text-muted);
   cursor: pointer;
@@ -203,7 +203,7 @@
 .form_tooltip_surface {
   position: relative;
   padding: 0.65em 0.85em;
-  border-radius: 8px;
+  border-radius: var(--portal-card-radius, 4px);
   background: var(--form-tooltip-bg);
   color: var(--form-tooltip-fg);
   border: 1px solid var(--form-tooltip-border);

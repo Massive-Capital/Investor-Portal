@@ -115,3 +115,14 @@
   font-size: 0.8rem;
   color: var(--sx-text-soft);
 }
+
+.sx-footer__classic-link {
+  color: var(--sx-brand);
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+.sx-footer__classic-link:hover {
+  opacity: 0.85;
+}

@@ -138,10 +138,8 @@ export default function ResetPasswordForm() {
             Back to sign in
           </Link>
         </div>
-        <div className="companyContent">
-          <div className="contentOne">
-            <FooterForm />
-          </div>
+        <div className="auth_help companyContent">
+          <FooterForm />
         </div>
       </>
     );
@@ -179,10 +177,6 @@ export default function ResetPasswordForm() {
   return (
     <>
       <form onSubmit={handleSubmit} autoComplete="off">
-        <p className="pwdCaption">
-          Reset your password to regain access to your account.
-        </p>
-
         <div className="emailData">
           <Input
             labelName="Account email (from reset link)"
@@ -270,17 +264,12 @@ export default function ResetPasswordForm() {
           </button>
         </div>
 
-        <p className="signinText">
-          Remember your password?{" "}
-          <Link to="/signin" className="redirecting_links">
-            <span>Sign in</span>
-          </Link>
+        <p className="auth_footer_links">
+          Remember your password? <Link to="/signin">Sign in</Link>
         </p>
 
-        <div className="companyContent">
-          <div className="contentOne">
-            <FooterForm />
-          </div>
+        <div className="auth_help companyContent">
+          <FooterForm />
         </div>
       </form>
     </>

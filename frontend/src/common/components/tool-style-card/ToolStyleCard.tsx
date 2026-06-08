@@ -5,7 +5,7 @@ import "./tool-style-card.css"
 interface ToolStyleCardProps {
   icon: LucideIcon
   title: string
-  description: string
+  description: ReactNode
   footer?: ReactNode
   hintTitle?: string
   onClick?: () => void
@@ -26,6 +26,7 @@ export function ToolStyleCard({
 }: ToolStyleCardProps) {
   const rootClass = [
     "tool_style_card",
+    variant === "metric" ? "tool_style_card--metric portal_metric_kpi_card" : "",
     onClick ? "tool_style_card_clickable" : "",
     className,
   ]
@@ -45,18 +46,16 @@ export function ToolStyleCard({
   const inner =
     variant === "metric" ? (
       <>
-        <div className="tool_style_card_metric_top">
+        <div className="tool_style_card_metric_header">
+          <div className="tool_style_card_label_cluster">
+            <span className="tool_style_card_label_inline">{title}</span>
+            {hintEl}
+          </div>
           <div className="tool_style_card_icon_box" aria-hidden>
             <Icon className="tool_style_card_icon" size={22} strokeWidth={1.75} />
           </div>
-          <div className="tool_style_card_metric_body">
-            <div className="tool_style_card_label_cluster">
-              <span className="tool_style_card_label_inline">{title}</span>
-              {hintEl}
-            </div>
-            <p className="tool_style_card_value_lead">{description}</p>
-          </div>
         </div>
+        <p className="tool_style_card_value_lead">{description}</p>
         {footer ? <div className="tool_style_card_footer">{footer}</div> : null}
       </>
     ) : (

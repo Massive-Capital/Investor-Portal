@@ -85,11 +85,11 @@ export function CompanySwitcher() {
           setOpen((v) => !v)
         }}
       >
-        <Building2 size={16} strokeWidth={2} aria-hidden />
+        <Building2 size={20} strokeWidth={2} aria-hidden />
         <span className="company_switcher_label">
           {active?.companyName ?? "Company"}
         </span>
-        <ChevronDown size={16} strokeWidth={2} aria-hidden />
+        <ChevronDown size={20} strokeWidth={2} aria-hidden />
       </button>
       {open ? (
         <ul className="company_switcher_menu" role="listbox">

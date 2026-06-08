@@ -31,28 +31,9 @@
   margin-top: 0.5em;
 }
 
-.deal_step_yesno {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1em;
-  margin-top: 0.35em;
-}
-
-.deal_step_yesno_label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-  font-size: var(--deals-control-size, 0.9375rem);
-  font-weight: 500;
-  color: var(--portal-text);
-  line-height: var(--deals-control-line-height, 1.45);
-  cursor: pointer;
-  text-align: center;
-}
-
-.deal_step_yesno_common {
-  font-weight: 400;
-  color: var(--portal-text-muted);
+.deal_step_yesno_cards {
+  margin-top: 0.5em;
+  width: 100%;
 }
 
 .deal_step_date_hint {

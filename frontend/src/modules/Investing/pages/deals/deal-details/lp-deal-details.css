@@ -42,6 +42,10 @@
   color: var(--portal-text, #0f172a);
 }
 
+.lpdd_onboarding_panel {
+  margin: 0.75rem 0 1.35rem;
+}
+
 .lpdd_hero {
   margin-bottom: 1.5rem;
 }
@@ -255,29 +259,45 @@
   display: flex;
   justify-content: space-between;
 }
-/* Buttons */
+/* Buttons — match portal primary actions (navy + gold) */
 .lpdd_btn_primary {
   display: inline-flex;
   width: 100%;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
-  padding: 0.65rem 1.4rem;
+  padding: 0.65rem 1.15rem;
   font-size: 0.9375rem;
-  font-weight: 700;
+  font-weight: 600;
   font-family: inherit;
-  border: none;
-  border-radius: 0.5rem;
-  background: var(--lpdd-accent);
-  color: #fff;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--ui-button-border, var(--sidebar-active-text));
+  border-radius: var(--ui-button-border-radius, 4px);
+  background: var(--ui-button-background-add, var(--sidebar-bg-color));
+  color: var(--ui-button-text, var(--sidebar-active-text));
   cursor: pointer;
   text-decoration: none;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
-  transition: filter 0.15s ease, transform 0.1s ease;
+  box-sizing: border-box;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .lpdd_btn_primary:hover:not(:disabled) {
-  filter: brightness(1.05);
+  background: var(--ui-button-hover);
+  color: var(--ui-button-text, var(--sidebar-active-text));
+}
+
+.lpdd_btn_primary:focus-visible {
+  outline: 2px solid var(--portal-primary, #00477a);
+  outline-offset: 2px;
+}
+
+.lpdd_btn_primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .lpdd_hero_invest {
@@ -710,6 +730,10 @@ button.lpd_link:hover {
   margin-top: 1.75rem;
 }
 
+.lpdd_offering_docs--embedded {
+  margin-top: 0;
+}
+
 .lpdd_section_heading {
   font-size: 1.125rem;
   font-weight: 600;
@@ -727,7 +751,9 @@ button.lpd_link:hover {
   color: var(--lpdd-danger, #b42318);
 }
 
-.lpdd_offering_docs_panel .investment_detail_offering_docs_panel {
+/* Embedded in offering wireframe — outer `.deal_offer_pf_panel` carries the card surface. */
+.lpdd_offering_docs--embedded .investment_detail_offering_docs_panel {
+  padding: 0;
   border: none;
   background: transparent;
   box-shadow: none;

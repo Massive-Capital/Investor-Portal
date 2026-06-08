@@ -5,9 +5,10 @@ import SigninForm from "../components/SigninForm";
 const SigninPage = () => {
  
 
+  // subtitle="Access your portfolio, deals, and secure documents."
   return (
-    <AuthLayout title="Signin" caption="Sign in to your account">
-     <SigninForm/>
+    <AuthLayout title="Sign in" caption="Sign in">
+      <SigninForm />
     </AuthLayout>
   );
 };

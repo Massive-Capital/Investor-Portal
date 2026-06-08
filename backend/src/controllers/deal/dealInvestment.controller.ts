@@ -11,13 +11,14 @@ import {
   enrichFullInvestorApiFromLpRoster,
   filterMergedLpInvestorsForCoSponsorViewer,
   getLpInvestorsTabPayload,
-  isViewerCoSponsorOnDeal,
+  shouldScopeInvestorsToCoSponsorAddedOnly,
   mergeDealLpRosterIntoFullInvestorRows,
 } from "../../services/deal/dealLpInvestor.service.js";
 import {
   buildInvestorKpisFromRows,
   DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
   enrichInvestorApiRowsWithAddedBy,
+  redactCoSponsorAddedInvestorEmailsForLeadAdminViewer,
   getDealInvestmentById,
   getLatestCommitmentAmountForDealContact,
   insertDealInvestment,
@@ -32,7 +33,14 @@ import {
 import { sendDealFundApprovedNotification } from "../../services/deal/dealFundApprovedEmail.service.js";
 import { upsertDealMemberForDeal } from "../../services/deal/dealMember.service.js";
 import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
+import { isPortalUserLeadOrAdminSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
+import { dealInvestmentEsignIsFullyCompleted } from "../../constants/deal-investor-esign-status.js";
 import { logSocDealInvestmentWrite } from "../../audit/index.js";
+
+const FUND_APPROVAL_FORBIDDEN_MESSAGE =
+  "Only the lead sponsor or admin sponsor can approve the fund.";
+const FUND_APPROVAL_REQUIRES_ESIGN_MESSAGE =
+  "Complete e-sign before approving the fund.";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -132,7 +140,7 @@ export async function getDealInvestors(
       lpInvestorsOnly: false,
     });
     rows = await mergeDealLpRosterIntoFullInvestorRows(dealId, rows);
-    if (await isViewerCoSponsorOnDeal(dealId, user.id)) {
+    if (await shouldScopeInvestorsToCoSponsorAddedOnly(dealId, user.id)) {
       rows = await filterMergedLpInvestorsForCoSponsorViewer(
         dealId,
         user.id,
@@ -145,9 +153,14 @@ export async function getDealInvestors(
       rows,
       mapped,
     );
-    const investors = await enrichInvestorApiRowsWithAddedBy(
+    const withAddedBy = await enrichInvestorApiRowsWithAddedBy(
       dealId,
       withLpRosterMeta,
+    );
+    const investors = await redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
+      dealId,
+      user.id,
+      withAddedBy,
     );
     const kpis = buildInvestorKpisFromRows(rows);
     res.status(200).json({
@@ -313,6 +326,22 @@ export async function putDealInvestment(
 
     const fundApproved = fundApprovedFromRequestBody(b, existing.fundApproved);
     const fundApprovedBecameTrue = fundApproved && !existing.fundApproved;
+    if (fundApprovedBecameTrue) {
+      if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
+        res.status(403).json({ message: FUND_APPROVAL_FORBIDDEN_MESSAGE });
+        return;
+      }
+      if (
+        !dealInvestmentEsignIsFullyCompleted({
+          esignStatusJson: existing.esignStatusJson,
+          docSignedDate: existing.docSignedDate,
+          profileId: existing.profileId,
+        })
+      ) {
+        res.status(400).json({ message: FUND_APPROVAL_REQUIRES_ESIGN_MESSAGE });
+        return;
+      }
+    }
     const fundApprovedBy = fundApproved
       ? fundApprovedBecameTrue
         ? user.id
@@ -573,6 +602,25 @@ export async function postDealInvestment(
     const resolvedInvestorClass = classResolution.storedInvestorClass;
 
     const fundApproved = fundApprovedFromRequestBody(b, false);
+    if (fundApproved && !autosave) {
+      if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
+        res.status(403).json({ message: FUND_APPROVAL_FORBIDDEN_MESSAGE });
+        return;
+      }
+      const esignStatusJson = bodyString(b.esignStatusJson ?? b.esign_status_json);
+      const docSignedDate = bodyString(b.docSignedDate ?? b.doc_signed_date);
+      const profileId = bodyString(b.profileId ?? b.profile_id);
+      if (
+        !dealInvestmentEsignIsFullyCompleted({
+          esignStatusJson: esignStatusJson || null,
+          docSignedDate: docSignedDate || null,
+          profileId: profileId || null,
+        })
+      ) {
+        res.status(400).json({ message: FUND_APPROVAL_REQUIRES_ESIGN_MESSAGE });
+        return;
+      }
+    }
     const fundApprovedBy = fundApproved ? user.id : null;
     const fundApprovedAt = fundApproved ? new Date() : null;
 

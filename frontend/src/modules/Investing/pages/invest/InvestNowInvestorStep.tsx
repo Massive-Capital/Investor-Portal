@@ -1,4 +1,3 @@
-import { useId } from "react"
 import type { DropdownSelectOption } from "@/common/components/dropdown-select"
 import { DealsCreateDropdownSelect } from "@/modules/Syndication/Deals/components/DealsCreateDropdownSelect"
 import "@/modules/Syndication/Deals/components/deals-create-dropdown.css"
@@ -16,6 +15,9 @@ export interface InvestNowInvestorStepProps {
   disabled: boolean
   bookLoading: boolean
   error?: string
+  fieldErrors?: Partial<
+    Record<"profile" | "investmentClass" | "sponsor", string>
+  >
   onAddProfile?: () => void
 }
 
@@ -29,9 +31,10 @@ export function InvestNowInvestorStep({
   disabled,
   bookLoading,
   error,
+  fieldErrors = {},
   onAddProfile,
 }: InvestNowInvestorStepProps) {
-  const profileFieldId = useId()
+  const profileFieldId = "invest-now-profile"
   const titleId = "invest-now-step-investor-title"
 
   return (
@@ -41,7 +44,12 @@ export function InvestNowInvestorStep({
       hint="Select the investor profile and investment class you want to invest in, as well as the primary sponsor you are investing with."
       error={error}
     >
-      <InvestNowFormField id={profileFieldId} label="Profile" required>
+      <InvestNowFormField
+        id={profileFieldId}
+        label="Profile"
+        required
+        error={fieldErrors.profile}
+      >
         <DealsCreateDropdownSelect
           id={profileFieldId}
           options={profileOptions}
@@ -49,6 +57,7 @@ export function InvestNowInvestorStep({
           onChange={onSavedProfileChange}
           placeholder={bookLoading ? "Loading profiles…" : "Select profile"}
           ariaLabel="Profile"
+          invalid={Boolean(fieldErrors.profile)}
           disabled={disabled || loading || bookLoading}
           footer={
             onAddProfile
@@ -62,6 +71,7 @@ export function InvestNowInvestorStep({
         label="Investment class"
         required
         value={investmentClassLabel}
+        error={fieldErrors.investmentClass}
       />
 
       <InvestNowReadonlyField
@@ -69,6 +79,7 @@ export function InvestNowInvestorStep({
         required
         value={sponsorLabel}
         emphasis
+        error={fieldErrors.sponsor}
       />
     </InvestNowStepLayout>
   )
