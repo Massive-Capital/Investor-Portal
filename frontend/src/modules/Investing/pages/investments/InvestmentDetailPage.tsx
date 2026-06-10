@@ -8,7 +8,7 @@ import {
   MapPin,
   Percent,
   Search,
-  UserCircle,
+  IdCard,
   type LucideIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
@@ -114,6 +114,17 @@ function InvestmentDetailApprovedOnCell({ iso }: { iso?: string }) {
   if (formatted === "—") return <InvestmentDetailCenterDash />
   return <span className="investment_detail_cell_text">{formatted}</span>
 }
+
+/** Column widths — keep in sync with investment-detail.css profile breakdown table. */
+const PROFILE_BREAKDOWN_COL_WIDTH = {
+  profileName: "14rem",
+  profileType: "11rem",
+  invested: "7.5rem",
+  investedOn: "9rem",
+  approvedBy: "7.75rem",
+  approvedOn: "9.25rem",
+  actions: "6.5rem",
+} as const
 
 type DebtInfoFields = {
   outstandingLoans: string
@@ -507,21 +518,25 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
       {
         id: "profileName",
         header: "Profile name",
+        colWidth: PROFILE_BREAKDOWN_COL_WIDTH.profileName,
         sortValue: (r) => (r.profileName ?? "").toLowerCase(),
-        tdClassName: "um_td_user",
+        thClassName: "investment_detail_col_profile_name",
+        tdClassName: "um_td_user investment_detail_td_profile_name",
         cell: (r) => (
           <EntityAvatarNameCell
             displayName={r.profileName ?? ""}
-            linkClassName="um_user_meta_username"
+            linkClassName="investment_detail_profile_name_text um_user_meta_username"
+            cellClassName="investment_detail_profile_name_cell"
           />
         ),
       },
       {
         id: "investorType",
-        header: "Investor type",
+        header: "Profile type",
+        colWidth: PROFILE_BREAKDOWN_COL_WIDTH.profileType,
         sortValue: (r) => (r.investorType ?? "").toLowerCase(),
-        thClassName: "investment_detail_col_investor_type",
-        tdClassName: "um_td_user investment_detail_col_investor_type",
+        thClassName: "investment_detail_col_profile_type",
+        tdClassName: "investment_detail_col_profile_type",
         cell: (r) => (
           <InvestmentDetailHoverTruncCell text={r.investorType ?? ""} />
         ),
@@ -530,6 +545,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
         id: "invested",
         header: "Invested",
         align: "right",
+        colWidth: PROFILE_BREAKDOWN_COL_WIDTH.invested,
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.investedAmount,
@@ -538,14 +554,16 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
       {
         id: "investedOn",
         header: "Invested on",
+        colWidth: PROFILE_BREAKDOWN_COL_WIDTH.investedOn,
         sortValue: (r) => String(r.investedAtIso ?? ""),
-        tdClassName: "um_td_user",
+        tdClassName: "investment_detail_col_invested_on",
         cell: (r) => formatInvDetailDateTime(r.investedAtIso),
       },
       {
         id: "approvedBy",
         header: "Approved by",
         align: "center",
+        colWidth: PROFILE_BREAKDOWN_COL_WIDTH.approvedBy,
         sortValue: (r) => String(r.approvedBy ?? "").toLowerCase(),
         thClassName: "deals_th_align_center investment_detail_col_approved_by",
         tdClassName: "investment_detail_col_approved_by investment_detail_td_center",
@@ -555,6 +573,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
         id: "approvedOn",
         header: "Approved on",
         align: "center",
+        colWidth: PROFILE_BREAKDOWN_COL_WIDTH.approvedOn,
         sortValue: (r) => String(r.approvedAtIso ?? ""),
         thClassName: "deals_th_align_center investment_detail_col_approved_on",
         tdClassName: "investment_detail_col_approved_on investment_detail_td_center",
@@ -646,6 +665,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
           id: "actions",
           header: "Actions",
           align: "center",
+          colWidth: PROFILE_BREAKDOWN_COL_WIDTH.actions,
           thClassName: "um_th_actions deals_th_actions_head",
           tdClassName: "um_td_actions deal_inv_td_actions",
           cell: (line) => {
@@ -718,7 +738,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               }`}
               onClick={() => setActiveTab("profile")}
             >
-              <UserCircle
+              <IdCard
                 className="deals_tabs_icon um_segmented_tab_icon"
                 size={16}
                 strokeWidth={2}
@@ -825,7 +845,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                   />
                   {!hasRoleBreakdownTable ? (
                     <ViewReadonlyField
-                      Icon={UserCircle}
+                      Icon={IdCard}
                       label="Invested as"
                       value={displayOrDash(investedAsLine)}
                     />
@@ -936,9 +956,23 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               {hasRoleBreakdownTable && d.investedAsBreakdown ? (
                 <>
                   <div
-                    className="um_toolbar deal_inv_table_um_toolbar investment_detail_inv_profile_table_toolbar"
+                    className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search investment_detail_inv_profile_table_toolbar"
                     aria-label="Table tools"
                   >
+                    <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
+                      <span
+                        className="investment_detail_inv_profile_totals"
+                        aria-live="polite"
+                      >
+                        <DollarSign
+                          className="investment_detail_inv_profile_totals_icon"
+                          size={14}
+                          strokeWidth={2}
+                          aria-hidden
+                        />
+                        Invested: {investedDisplay}
+                      </span>
+                    </div>
                     <div className="um_search_wrap">
                       <Search className="um_search_icon" size={18} aria-hidden />
                       <input
@@ -949,14 +983,6 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                         onChange={(e) => setProfileBreakdownQuery(e.target.value)}
                         aria-label="Filter profile commitments"
                       />
-                    </div>
-                    <div className="investment_detail_inv_profile_toolbar_end">
-                      <span
-                        className="investment_detail_inv_profile_totals"
-                        aria-live="polite"
-                      >
-                        Invested {investedDisplay}
-                      </span>
                     </div>
                   </div>
                   <DataTable<InvestmentBreakdownLine>

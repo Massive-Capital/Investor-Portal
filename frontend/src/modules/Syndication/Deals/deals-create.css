@@ -82,7 +82,7 @@
 
 .deals_create_card {
   padding: 1.5em 1.75em 1.65em;
-  margin-bottom: 1.5em;
+  /* margin-bottom: 1.5em; */
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-card-radius);
   background: var(--portal-surface);
@@ -958,12 +958,22 @@
 }
 
 .deals_add_deal_asset_footer_actions.deal_inv_ic_add_panel_actions {
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   width: 100%;
   flex-shrink: 0;
   margin-top: 0.85em;
   gap: 0.75em;
+}
+
+/* Page shells: Close stays on the left; step/save actions stay on the right */
+.deals_add_deal_asset_page
+  .deals_add_deal_asset_footer_actions
+  > .um_btn_secondary:first-child,
+.deals_add_deal_asset_page
+  .email_template_new_actions.add_contact_modal_actions
+  > .um_btn_secondary:first-child {
+  margin-right: auto;
 }
 
 .deals_add_deal_asset_footer_actions .add_contact_modal_actions_trailing {

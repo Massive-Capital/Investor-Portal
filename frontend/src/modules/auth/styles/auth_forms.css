@@ -41,6 +41,10 @@
   flex-shrink: 0;
 }
 
+.loginForm .input_wrapper label .input_wrapper__label_leading {
+  gap: 0.5em;
+}
+
 .loginForm .input_wrapper label .input_wrapper__label_leading > span.input_wrapper__label_icon {
   margin: 0;
   display: flex;

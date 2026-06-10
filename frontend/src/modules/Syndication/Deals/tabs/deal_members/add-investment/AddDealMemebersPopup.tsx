@@ -514,7 +514,8 @@ export function AddInvestmentModal({
   useEffect(() => {
     if (!getApiV1Base()) return
     if (!open || mode !== "add") return
-    if (!investorClassesReady || dealClasses.length === 0) return
+    if (!investorClassesReady) return
+    if (isInvestorEntry && dealClasses.length === 0) return
 
     if (backendInvAutosaveTimerRef.current)
       clearTimeout(backendInvAutosaveTimerRef.current)
@@ -1083,13 +1084,6 @@ export function AddInvestmentModal({
     setSubmitting(true)
     try {
       let values = withInvitationMailPolicy(form, dealBlocksInvitationEmails)
-      if (
-        !isInvestorEntry &&
-        !values.investorClass.trim() &&
-        dealClasses[0]?.id?.trim()
-      ) {
-        values = { ...values, investorClass: dealClasses[0].id.trim() }
-      }
       await onSave(values, null)
       if (mode === "add") {
         skipFlushDraftAfterSaveRef.current = true
@@ -1576,21 +1570,22 @@ export function AddInvestmentModal({
                         {INVITATION_EMAILS_UNAVAILABLE_HINT}
                       </p>
                     ) : null}
-                    <YesNoCardRadioGroup
-                      className="deal_step_yesno_cards"
-                      name="add-inv-send-invitation"
-                      value={form.sendInvitationMail}
-                      onChange={(v) => patch({ sendInvitationMail: v })}
-                      yesIsCommon
-                      variant="mail"
-                      disabled={dealBlocksInvitationEmails}
-                      ariaLabelledBy="add-inv-send-invite-label"
-                      ariaDescribedBy={
-                        dealBlocksInvitationEmails
-                          ? "add-inv-send-invite-hint"
-                          : undefined
-                      }
-                    />
+                    <div className="portal_yesno_field_block">
+                      <YesNoCardRadioGroup
+                        name="add-inv-send-invitation"
+                        value={form.sendInvitationMail}
+                        onChange={(v) => patch({ sendInvitationMail: v })}
+                        yesIsCommon
+                        variant="mail"
+                        disabled={dealBlocksInvitationEmails}
+                        ariaLabelledBy="add-inv-send-invite-label"
+                        ariaDescribedBy={
+                          dealBlocksInvitationEmails
+                            ? "add-inv-send-invite-hint"
+                            : undefined
+                        }
+                      />
+                    </div>
                   </div>
 {/* 
                   {form.extraContributionAmounts.map((amt, idx) => (
@@ -1643,7 +1638,7 @@ export function AddInvestmentModal({
               disabled={submitting}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               <button

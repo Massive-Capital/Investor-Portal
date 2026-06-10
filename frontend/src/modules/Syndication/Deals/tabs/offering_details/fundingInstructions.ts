@@ -1,3 +1,8 @@
+import {
+  blurFormatMoneyInputTwoDecimals,
+  blurFormatPercentTwoDecimalsInput,
+} from "../../utils/offeringMoneyFormat"
+
 export type FundingAccountType = "checking" | "savings"
 
 export type FundingInstructionsState = {
@@ -76,6 +81,14 @@ function clipFeeMethod(v: unknown): string {
 
 function clipFeeHandling(v: unknown): string {
   return v === "included" ? "included" : "in_addition"
+}
+
+function normalizeStoredFeeAmount(method: string, amount: string): string {
+  const t = amount.trim()
+  if (!t) return ""
+  if (method === "flat") return blurFormatMoneyInputTwoDecimals(t)
+  if (method === "percent") return blurFormatPercentTwoDecimalsInput(t)
+  return t
 }
 
 export function fundingInstructionsFromStoredJson(
@@ -168,7 +181,10 @@ export function fundingInstructionsFromStoredJson(
           : "",
       investmentFeeMethod: clipFeeMethod(investmentFee.method),
       feeHandlingMethod: clipFeeHandling(investmentFee.handlingMethod),
-      feeAmount: typeof investmentFee.amount === "string" ? investmentFee.amount : "",
+      feeAmount: normalizeStoredFeeAmount(
+        clipFeeMethod(investmentFee.method),
+        typeof investmentFee.amount === "string" ? investmentFee.amount : "",
+      ),
     }
   } catch {
     return base
@@ -215,7 +231,10 @@ export function serializeFundingInstructions(
     investmentFee: {
       method: state.investmentFeeMethod,
       handlingMethod: state.feeHandlingMethod,
-      amount: state.feeAmount,
+      amount: normalizeStoredFeeAmount(
+        state.investmentFeeMethod,
+        state.feeAmount,
+      ),
     },
   })
 }

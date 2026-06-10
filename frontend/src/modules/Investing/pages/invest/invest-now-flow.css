@@ -157,45 +157,52 @@
 
 
 .invest_now_questionnaire_options {
-
   display: flex;
-
   flex-direction: column;
-
   gap: 0.5rem;
-
   padding: 0.25rem 0 0;
-
 }
 
-
+.invest_now_questionnaire_options:has(
+    .invest_now_questionnaire_option:nth-child(2):last-child
+  ) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--portal-binary-radio-gap, 0.65rem);
+  width: 100%;
+  max-width: min(100%, var(--portal-binary-radio-max-width, 28rem));
+}
 
 .invest_now_questionnaire_option {
-
   display: flex;
-
-  align-items: flex-start;
-
-  gap: 0.5rem;
-
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--portal-binary-radio-inner-gap, 0.5rem);
   font-size: var(--deals-control-size, 0.9375rem);
-
-  line-height: 1.4;
-
+  line-height: 1.25;
   color: var(--portal-text, #334155);
-
   cursor: pointer;
-
 }
 
-
+.invest_now_questionnaire_options:has(
+    .invest_now_questionnaire_option:nth-child(2):last-child
+  )
+  .invest_now_questionnaire_option {
+  min-height: var(--portal-binary-radio-min-height, 2.125rem);
+  padding: var(--portal-binary-radio-padding-y, 0.3rem)
+    var(--portal-binary-radio-padding-x, 0.65rem);
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 4px);
+  background: var(--portal-surface, #fff);
+}
 
 .invest_now_questionnaire_option input {
-
-  margin-top: 0.2rem;
-
+  margin: 0;
   flex-shrink: 0;
-
+  width: 1rem;
+  height: 1rem;
+  align-self: center;
   accent-color: var(--portal-control-accent, var(--sidebar-bg-color, #131b2e));
 
 }
@@ -582,7 +589,7 @@
   display: inline-flex;
   align-items: center;
   padding: 0.28rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--ui-button-border-radius, 4px);
   font-size: 0.8125rem;
   font-weight: 600;
   border: 1px solid var(--portal-border, #cbd5e1);

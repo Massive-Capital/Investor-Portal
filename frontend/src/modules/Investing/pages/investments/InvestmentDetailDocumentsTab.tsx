@@ -625,7 +625,7 @@ function OfferingDocumentsPanel({
       <div className="deal_docs investment_detail_offering_docs">
         <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_assets_datatable_panel investment_detail_offering_docs_panel">
           <div
-            className="um_toolbar deal_docs_toolbar investment_detail_offering_docs_toolbar"
+            className="um_toolbar deal_docs_toolbar um_toolbar_export_then_search investment_detail_offering_docs_toolbar"
             role="toolbar"
             aria-label="Search offering documents"
           >
@@ -887,7 +887,7 @@ function EsignaturesDocumentsPanel({
           ) : null}
 
           <div
-            className="um_toolbar investment_detail_esign_docs_toolbar"
+            className="um_toolbar um_toolbar_export_then_search investment_detail_esign_docs_toolbar"
             role="toolbar"
             aria-label="Search e-sign documents"
           >

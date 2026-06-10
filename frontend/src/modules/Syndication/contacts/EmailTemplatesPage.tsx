@@ -36,6 +36,9 @@ import "../Deals/deals-list.css"
 import "../Deals/deal-investors-tab.css"
 import "./contacts.css"
 import { EmailTemplateRowActions } from "./components/EmailTemplateRowActions"
+
+/** Wide enough for the “Actions” header on one line (see contacts.css). */
+const EMAIL_TEMPLATES_ACTIONS_COL_WIDTH = "7rem" as const
 import {
   attachmentToObjectUrl,
   deleteEmailTemplate,
@@ -353,8 +356,9 @@ function EmailTemplatesTemplatesTabContent() {
         id: "actions",
         header: "Actions",
         align: "center",
-        thClassName: "um_th_actions",
-        tdClassName: "um_td_actions deal_inv_td_actions",
+        colWidth: EMAIL_TEMPLATES_ACTIONS_COL_WIDTH,
+        thClassName: "um_th_actions contacts_th_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions contacts_td_actions",
         cell: (row) => (
           <EmailTemplateRowActions
             templateName={row.name}

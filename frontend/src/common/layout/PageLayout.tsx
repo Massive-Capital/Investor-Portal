@@ -10,8 +10,8 @@ import {
   Mails,
   Settings,
   Star,
+  IdCard,
   TrendingUp,
-  UserCircle,
   Users,
 } from "lucide-react"
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
@@ -251,7 +251,7 @@ const investingNavItems: NavItemLink[] = [
   { label: "Investments", to: "/investing/investments", icon: TrendingUp },
   // { label: "Deals", to: "/investing/investments?tab=deals", icon: Briefcase },
   // { label: "Documents", to: "/investing/documents", icon: FileText },
-  { label: "Profiles", to: "/investing/profiles", icon: UserCircle },
+  { label: "Profiles", to: "/investing/profiles", icon: IdCard },
   { label: "Settings", to: "/account", icon: Settings },
   // { label: "Leave a review", to: "/investing/review", icon: Star },
   { label: "FeedBack", to: "/investing/feedback", icon: Star },

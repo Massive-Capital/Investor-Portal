@@ -1,11 +1,11 @@
 import { ExternalLink, MapPin } from "lucide-react"
-import type { DealDetailApi } from "../../api/dealsApi"
+import { dealDisplayFieldText, type DealDetailApi } from "../../api/dealsApi"
 
 /** Full address string for Google Maps embed / search. */
 export function buildDealLocationQuery(detail: DealDetailApi): string {
   const parts: string[] = []
   const push = (v: string | undefined) => {
-    const t = String(v ?? "").trim()
+    const t = dealDisplayFieldText(v)
     if (t) parts.push(t)
   }
   push(detail.propertyName)

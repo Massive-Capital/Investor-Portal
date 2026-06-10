@@ -41,6 +41,7 @@ import {
   dealWorkspacePath,
   EMPTY_INVESTORS_PAYLOAD,
   formatOfferingPortfolioLocationLine,
+  hasOfferingPortfolioLocationLine,
   isDealUuidForOfferingPreview,
 } from "./dealOfferingPreviewShared"
 import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
@@ -49,7 +50,8 @@ import {
   effectiveOfferingStatusForAccess,
   getDealStatusRules,
 } from "./constants/deal-lifecycle"
-import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
+import { dealStageLabel } from "../dealsDashboardUtils"
+import { isDealStageOfferingShareBlocked } from "./constants/deal-lifecycle/deal-stage"
 import { writeInvestNowIntent } from "./utils/investNowIntent"
 import {
   OfferingPreviewShareEmailRecipientsAddon,
@@ -169,13 +171,6 @@ export function DealOfferingPortfolioPage() {
     isPublicOfferingRoute,
   ])
 
-  const sharePreviewUsesLegacyLink =
-    !isPublicOfferingRoute &&
-    Boolean(previewShareUrl) &&
-    !lpShareToken &&
-    lpShareTokenError &&
-    isDealUuidForOfferingPreview(dealIdFromRoute)
-
   const previewShareUrlDisplayText = useMemo(() => {
     const name =
       detail?.dealName?.trim() ||
@@ -281,10 +276,11 @@ export function DealOfferingPortfolioPage() {
     investorVisibilitySync,
   ])
 
-  const isDealDraft = isDealStageDraft(detail?.dealStage)
+  const isDealShareBlocked = isDealStageOfferingShareBlocked(detail?.dealStage)
+  const dealShareBlockedStageLabel = dealStageLabel(detail?.dealStage)
 
   const sharePreviewActionsDisabled =
-    isDealDraft ||
+    isDealShareBlocked ||
     !previewShareUrl ||
     shareLinkLoading ||
     (!isPublicOfferingRoute && !hasAnyInvestorVisibleSection)
@@ -553,7 +549,7 @@ export function DealOfferingPortfolioPage() {
               {isPublicOfferingRoute ? "Shared offering" : "Investment offering"}
             </p>
             <h1 className="sponsor_dash_hero_title">{offeringHeroTitle}</h1>
-            {offeringHeroLocation && offeringHeroLocation !== "—" ? (
+            {hasOfferingPortfolioLocationLine(offeringHeroLocation) ? (
               <p className="deal_offer_pf_hero_location">{offeringHeroLocation}</p>
             ) : null}
             {isPublicOfferingRoute ? (
@@ -608,8 +604,8 @@ export function DealOfferingPortfolioPage() {
                   <div
                     className="deal_offer_pf_share_actions"
                     aria-label={
-                      isDealDraft
-                        ? `${previewShareUrlDisplayText}. Sharing is unavailable while this deal is in Draft.`
+                      isDealShareBlocked
+                        ? `${previewShareUrlDisplayText}. Sharing is unavailable while this deal is in ${dealShareBlockedStageLabel}.`
                         : !hasAnyInvestorVisibleSection
                           ? `${previewShareUrlDisplayText}. Sharing is off until at least one section is visible to investors.`
                           : `${previewShareUrlDisplayText}. Use Copy offering link or Share preview.`
@@ -636,7 +632,7 @@ export function DealOfferingPortfolioPage() {
                       </button>
                       <FormTooltip
                         label={
-                          isDealDraft
+                          isDealShareBlocked
                             ? "Why Copy offering link is unavailable"
                             : hasAnyInvestorVisibleSection
                               ? "More information: Copy offering link"
@@ -644,8 +640,8 @@ export function DealOfferingPortfolioPage() {
                         }
                         content={
                           <p className="deals_table_header_tooltip_p">
-                            {isDealDraft
-                              ? "Move this deal out of Draft before sharing an offering preview link with investors."
+                            {isDealShareBlocked
+                              ? "Change the deal stage before sharing an offering preview link with investors."
                               : hasAnyInvestorVisibleSection
                                 ? "Copy the link or send it by email — LP investors can open the same preview without signing in."
                                 : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
@@ -667,7 +663,7 @@ export function DealOfferingPortfolioPage() {
                       </button>
                       <FormTooltip
                         label={
-                          isDealDraft
+                          isDealShareBlocked
                             ? "Why Share preview is unavailable"
                             : hasAnyInvestorVisibleSection
                               ? "More information: Share preview"
@@ -675,8 +671,8 @@ export function DealOfferingPortfolioPage() {
                         }
                         content={
                           <p className="deals_table_header_tooltip_p">
-                            {isDealDraft
-                              ? "Move this deal out of Draft before emailing an offering preview link to investors."
+                            {isDealShareBlocked
+                              ? "Change the deal stage before emailing an offering preview link to investors."
                               : hasAnyInvestorVisibleSection
                                 ? "Opens a dialog to email the same offering preview link to your organization’s contacts, company members, or addresses you add. No login is required for recipients."
                                 : "Nothing is set to appear for investors on this preview yet. Turn on at least one “Make it visible to Investors” toggle in Offering details or the Documents tab, then share the link."}
@@ -689,12 +685,6 @@ export function DealOfferingPortfolioPage() {
                   </div>
                 ) : null}
               </div>
-              {sharePreviewUsesLegacyLink ? (
-                <p className="um_hint deal_offer_pf_share_hint" role="status">
-                  This link uses the offering id in the URL. Ask your administrator
-                  to configure encrypted preview links if you need to hide it.
-                </p>
-              ) : null}
               {shareLinkLoading ? (
                 <p className="um_toolbar_notice deal_offer_pf_share_loading" role="status">
                   <Loader2
@@ -712,20 +702,15 @@ export function DealOfferingPortfolioPage() {
                 </p>
               ) : previewShareUrl ? (
                 <>
-                  {sharePreviewUsesLegacyLink ? (
-                    <p className="um_hint deal_offer_pf_share_warning" role="status">
-                      Encrypted link was not available (for example, preview
-                      encryption may not be configured on the server). You can
-                      still copy the preview link below.
-                    </p>
-                  ) : null}
-                  {isDealDraft ? (
+                  {isDealShareBlocked ? (
                     <p
                       className="um_toolbar_notice deal_offer_pf_share_disabled_hint"
                       role="status"
                     >
-                      This deal is in <strong>Draft</strong>. Change the deal stage
-                      before copying or sharing the offering preview link.
+                      This deal is in{" "}
+                      <strong>{dealShareBlockedStageLabel}</strong>. Change the
+                      deal stage before copying or sharing the offering preview
+                      link.
                     </p>
                   ) : !hasAnyInvestorVisibleSection ? (
                     <p
@@ -855,7 +840,7 @@ export function DealOfferingPortfolioPage() {
                         onClick={closeShareModal}
                       >
                         <X size={16} strokeWidth={2} aria-hidden />
-                        Cancel
+                        Close
                       </button>
                       <div className="add_contact_modal_actions_trailing">
                         <button

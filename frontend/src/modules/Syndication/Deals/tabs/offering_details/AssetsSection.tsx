@@ -196,7 +196,9 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
             hint="Property or asset name shown in the offering."
           />
         ),
-        tdClassName: "um_td_user",
+        colWidth: "14rem",
+        thClassName: "deal_assets_col_name",
+        tdClassName: "um_td_user deal_assets_col_name",
         sortValue: (row) => row.name.toLowerCase(),
         cell: (row) => (
           <button

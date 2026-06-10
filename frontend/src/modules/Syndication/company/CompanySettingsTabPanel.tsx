@@ -33,18 +33,15 @@ import {
   Copy,
   Image as ImageIcon,
   Images,
-  MailCheck,
-  MailX,
   Pencil,
   Loader2,
   Settings,
   Trash2,
   Upload,
-  Users,
-  UserX,
   X,
 } from "lucide-react";
 import { CardRadioGroup } from "../../../common/components/CardRadioGroup/CardRadioGroup";
+import { YesNoCardRadioGroup } from "../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup";
 import { toast } from "../../../common/components/Toast";
 import "./company-settings-tab.css";
 
@@ -128,6 +125,32 @@ function SettingsFieldLabel({ children }: { children: ReactNode }) {
   );
 }
 
+function SettingsMediaItemLabel({
+  title,
+  description,
+  Icon,
+}: {
+  title: string;
+  description?: string;
+  Icon?: LucideIcon;
+}) {
+  return (
+    <div className="cp_settings_media_asset_head">
+      {Icon ? (
+        <span className="cp_settings_media_asset_icon" aria-hidden>
+          <Icon size={16} strokeWidth={2} />
+        </span>
+      ) : null}
+      <div className="cp_settings_media_asset_head_text">
+        <span className="cp_settings_media_item_title">{title}</span>
+        {description ? (
+          <p className="cp_settings_media_item_desc">{description}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function SettingsFieldEditActions({
   readOnly,
   editing,
@@ -151,7 +174,7 @@ function SettingsFieldEditActions({
       <div className="cp_settings_row_actions um_modal_actions add_contact_modal_actions">
         <button type="button" className="um_btn_secondary" onClick={onCancel}>
           <X size={16} strokeWidth={2} aria-hidden />
-          Cancel
+          Close
         </button>
         <div className="add_contact_modal_actions_trailing">
           <button
@@ -835,7 +858,7 @@ export function CompanySettingsTabPanel({
           <div className="cp_settings_control">
             <div className="cp_settings_value_row">
               <div className="cp_settings_edit_field_block">
-                <CardRadioGroup
+                <YesNoCardRadioGroup
                   name="cp-email-verify"
                   value={
                     (editEmailVerify ? emailVerifyDraft : emailVerifyBeforeInvest)
@@ -843,12 +866,10 @@ export function CompanySettingsTabPanel({
                       : "no"
                   }
                   onChange={(v) => setEmailVerifyDraft(v === "yes")}
+                  yesLabel="Yes (most common)"
+                  variant="mail"
                   ariaLabel="Require email verification before investing"
                   disabled={readOnly || !editEmailVerify}
-                  options={[
-                    { value: "yes", label: "Yes (most common)", icon: MailCheck },
-                    { value: "no", label: "No", icon: MailX },
-                  ]}
                 />
               </div>
               <SettingsFieldEditActions
@@ -878,7 +899,7 @@ export function CompanySettingsTabPanel({
           <div className="cp_settings_control">
             <div className="cp_settings_value_row">
               <div className="cp_settings_edit_field_block">
-                <CardRadioGroup
+                <YesNoCardRadioGroup
                   name="cp-primary-member"
                   value={
                     (editPrimaryMember ? primaryMemberDraft : primaryMemberInFunnel)
@@ -888,10 +909,6 @@ export function CompanySettingsTabPanel({
                   onChange={(v) => setPrimaryMemberDraft(v === "yes")}
                   ariaLabel="Allow investors to select primary company member in investment funnel"
                   disabled={readOnly || !editPrimaryMember}
-                  options={[
-                    { value: "yes", label: "Yes", icon: Users },
-                    { value: "no", label: "No", icon: UserX },
-                  ]}
                 />
               </div>
               <SettingsFieldEditActions
@@ -1037,17 +1054,25 @@ export function CompanySettingsTabPanel({
         </div>
       </section>
 
-      {/* `logoImageUrl` — see `applySettingsMediaFromPayload` */}
-      <section className="cp_settings_section" aria-labelledby="cp-logo">
+      <section
+        className="cp_settings_section cp_settings_org_assets_section"
+        aria-labelledby="cp-org-assets"
+      >
         <SettingsSectionHeading
-          id="cp-logo"
-          Icon={ImageIcon}
-          description="Displayed on your deals, offerings, and company portal."
+          id="cp-org-assets"
+          Icon={Images}
+          description="Logo, background, and icon used on your deals, offerings, and company portal."
         >
-          Logo
+          Org assets
         </SettingsSectionHeading>
-        <div className="cp_settings_media_panel">
-              <div className="cp_media_card">
+        <div className="cp_settings_media_grid">
+          <article className="cp_settings_media_asset_card">
+            <SettingsMediaItemLabel
+              Icon={Building2}
+              title="Logo"
+              description="Displayed on your deals, offerings, and company portal."
+            />
+            <div className="cp_settings_media_asset_preview">
                 <input
                   ref={logoFileInputRef}
                   type="file"
@@ -1119,7 +1144,7 @@ export function CompanySettingsTabPanel({
                     )
                   ) : (
                     <>
-                      <Building2 size={40} strokeWidth={1.5} />
+                      <Building2 size={32} strokeWidth={1.5} aria-hidden />
                       <span className="cp_media_preview_label">{companyName}</span>
                     </>
                   )}
@@ -1129,7 +1154,8 @@ export function CompanySettingsTabPanel({
                     {logoDraft.name}
                   </p>
                 ) : null}
-              </div>
+            </div>
+            <footer className="cp_settings_media_asset_footer">
               <div className="cp_settings_media_toolbar" aria-label="Logo actions">
                 <SettingsFieldEditActions
                 readOnly={readOnly}
@@ -1234,21 +1260,16 @@ export function CompanySettingsTabPanel({
                   </div>
                 ) : null}
               </div>
-        </div>
-      </section>
+            </footer>
+          </article>
 
-      {/* `backgroundImageUrl` — see `applySettingsMediaFromPayload` */}
-      <section className="cp_settings_section" aria-labelledby="cp-bg">
-        <SettingsSectionHeading
-          id="cp-bg"
-          Icon={Images}
-          description="Optional high-resolution image for your company portal login page."
-        >
-          Background image
-        </SettingsSectionHeading>
-        <div className="cp_settings_media_panel">
-              <div className="cp_media_card">
-
+          <article className="cp_settings_media_asset_card">
+            <SettingsMediaItemLabel
+              Icon={Images}
+              title="Background image"
+              description="Optional high-resolution image for your company portal login page."
+            />
+            <div className="cp_settings_media_asset_preview">
                 <input
                   ref={bgFileInputRef}
                   type="file"
@@ -1332,14 +1353,20 @@ export function CompanySettingsTabPanel({
                         reactKey={backgroundImagePublicId ?? bgPreviewSrc ?? "background"}
                       />
                     )
-                  ) : null}
+                  ) : (
+                    <div className="cp_media_preview_empty">
+                      <Images size={32} strokeWidth={1.5} aria-hidden />
+                      <span>No background set</span>
+                    </div>
+                  )}
                 </div>
                 {editBg && bgDraft && !readOnly ? (
                   <p className="cp_settings_media_selected_file" title={bgDraft.name}>
                     {bgDraft.name}
                   </p>
                 ) : null}
-              </div>
+            </div>
+            <footer className="cp_settings_media_asset_footer">
               <div className="cp_settings_media_toolbar" aria-label="Background image actions">
                 <SettingsFieldEditActions
                 readOnly={readOnly}
@@ -1442,20 +1469,16 @@ export function CompanySettingsTabPanel({
                   </div>
                 ) : null}
               </div>
-        </div>
-      </section>
+            </footer>
+          </article>
 
-      {/* `logoIconUrl` — see `applySettingsMediaFromPayload` */}
-      <section className="cp_settings_section" aria-labelledby="cp-logo-icon">
-        <SettingsSectionHeading
-          id="cp-logo-icon"
-          Icon={ImageIcon}
-          description="Smaller logo for the browser tab and collapsed sidebar."
-        >
-          Logo icon
-        </SettingsSectionHeading>
-        <div className="cp_settings_media_panel">
-              <div className="cp_media_card cp_media_card_icon">
+          <article className="cp_settings_media_asset_card">
+            <SettingsMediaItemLabel
+              Icon={ImageIcon}
+              title="Logo icon"
+              description="Smaller logo for the browser tab and collapsed sidebar."
+            />
+            <div className="cp_settings_media_asset_preview">
                 <input
                   ref={iconFileInputRef}
                   type="file"
@@ -1550,7 +1573,8 @@ export function CompanySettingsTabPanel({
                     {iconDraft.name}
                   </p>
                 ) : null}
-              </div>
+            </div>
+            <footer className="cp_settings_media_asset_footer">
               <div className="cp_settings_media_toolbar" aria-label="Logo icon actions">
                 <SettingsFieldEditActions
                 readOnly={readOnly}
@@ -1653,6 +1677,8 @@ export function CompanySettingsTabPanel({
                   </div>
                 ) : null}
               </div>
+            </footer>
+          </article>
         </div>
       </section>
       </div>

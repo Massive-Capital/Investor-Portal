@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { Briefcase } from "lucide-react"
 import { Link } from "react-router-dom"
 import { initialsFromDisplayName } from "../../utils/displayInitials"
 
@@ -16,6 +17,20 @@ export function AvatarInitialsRing({
       aria-hidden
     >
       <span className="um_user_initials">{initials}</span>
+    </div>
+  )
+}
+
+/** Deal rows — Briefcase icon (matches sidebar Deals nav) instead of initials. */
+export function DealAvatarIconRing({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={["um_user_avatar_ring deals_avatar_icon_ring", className]
+        .filter(Boolean)
+        .join(" ")}
+      aria-hidden
+    >
+      <Briefcase size={16} strokeWidth={2} />
     </div>
   )
 }

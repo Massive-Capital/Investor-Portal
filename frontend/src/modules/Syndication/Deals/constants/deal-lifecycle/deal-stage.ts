@@ -13,6 +13,19 @@ export function isDealStageDraft(raw: string | null | undefined): boolean {
   return normalizeDealStageCanonical(raw) === "draft"
 }
 
+/** True when lifecycle stage is Liquidated. */
+export function isDealStageLiquidated(raw: string | null | undefined): boolean {
+  return normalizeDealStageCanonical(raw) === "liquidated"
+}
+
+/** Draft and liquidated deals cannot copy or share offering preview links. */
+export function isDealStageOfferingShareBlocked(
+  raw: string | null | undefined,
+): boolean {
+  const stage = normalizeDealStageCanonical(raw)
+  return stage === "draft" || stage === "liquidated"
+}
+
 export function normalizeDealStageCanonical(
   raw: string | null | undefined,
 ): DealStage | null {

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, Clock, Pencil, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Lock, Pencil, Plus, Save, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useId, useState } from "react"
 import {
   resolveQuestionForDisplay,
@@ -142,7 +142,7 @@ export function QuestionnaireQuestionCard({
 
   return (
     <li
-      className={`deal_esign_questionnaire_question_card${expanded ? " deal_esign_questionnaire_question_card_expanded" : ""}${viewMode ? " deal_esign_questionnaire_question_card_saved" : ""}`}
+      className={`deal_esign_questionnaire_question_card${defaultLocked ? " deal_esign_questionnaire_question_card_default" : ""}${expanded ? " deal_esign_questionnaire_question_card_expanded" : ""}${viewMode ? " deal_esign_questionnaire_question_card_saved" : ""}`}
     >
       <div className="deal_esign_questionnaire_question_body">
         <div className="deal_esign_questionnaire_question_summary">
@@ -163,8 +163,8 @@ export function QuestionnaireQuestionCard({
             </div>
             <div className="deal_esign_questionnaire_question_head_end">
               {q.isDefault ? (
-                <span className="deal_esign_questionnaire_default_badge">
-                  <Clock size={12} strokeWidth={2} aria-hidden />
+                <span className="deal_esign_questionnaire_default_badge" title="Built-in field">
+                  <Lock size={11} strokeWidth={2.25} aria-hidden />
                   Default
                 </span>
               ) : null}
@@ -243,6 +243,12 @@ export function QuestionnaireQuestionCard({
             role="region"
             aria-label={`Settings for ${q.label}`}
           >
+            {defaultLocked ? (
+              <p className="deal_esign_questionnaire_default_hint" role="note">
+                Built-in field — label, type, and options are fixed. You can adjust
+                subtext and whether the field is required.
+              </p>
+            ) : null}
             <div className="deal_esign_questionnaire_field">
               <label htmlFor={labelFieldId} className="deal_esign_questionnaire_field_label">
                 Label
@@ -461,7 +467,7 @@ export function QuestionnaireQuestionCard({
                     }
                     onClick={handleSaveField}
                   >
-                    <Check size={14} strokeWidth={2} aria-hidden />
+                    <Save size={14} strokeWidth={2} aria-hidden />
                     Save
                   </button>
                 ) : null}

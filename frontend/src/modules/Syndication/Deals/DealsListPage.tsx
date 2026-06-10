@@ -8,8 +8,9 @@ import {
   Plus,
   Search,
   X,
+  type LucideIcon,
 } from "lucide-react"
-import { AvatarInitialsRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell"
+import { DealAvatarIconRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { Link, useLocation, useSearchParams } from "react-router-dom"
 import {
@@ -77,6 +78,7 @@ type DealsListTab = "deals" | "archives"
 function DealTableColumnHeader({
   label,
   hint,
+  icon: HeaderIcon,
   headerAlign = "left",
   tooltipPlacement = "bottom",
   tooltipPanelAlign,
@@ -84,6 +86,7 @@ function DealTableColumnHeader({
 }: {
   label: string
   hint: string
+  icon?: LucideIcon
   headerAlign?: "left" | "center" | "right"
   tooltipPlacement?: "top" | "bottom"
   /** When set, overrides alignment derived from headerAlign (helps narrow columns). */
@@ -106,6 +109,14 @@ function DealTableColumnHeader({
         : "start")
   return (
     <span className={`deals_table_col_header${headerAlignClass}`}>
+      {HeaderIcon ? (
+        <HeaderIcon
+          className="deals_table_col_header_icon"
+          size={14}
+          strokeWidth={2}
+          aria-hidden
+        />
+      ) : null}
       <span>{label}</span>
       <span
         className="deals_table_header_tooltip_anchor"
@@ -142,15 +153,20 @@ function DealListNameCell({ row }: { row: DealListRow }) {
     </Link>
   )
 
-  const dealLabel = row.dealName?.trim() || "Deal"
-
   return (
     <div className="deals_list_name_cell">
-      <AvatarInitialsRing name={dealLabel} />
+      <DealAvatarIconRing />
       <div className="deals_list_name_text">
-        <div className="deals_list_name_primary">{nameLink}</div>
-        {showDraftMarker ? (
-          <div className="deals_list_name_subrow">
+        <div
+          className={[
+            "deals_list_name_primary",
+            showDraftMarker ? "deals_list_name_with_draft" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {nameLink}
+          {showDraftMarker ? (
             <span
               className="deals_list_draft_icon deals_list_draft_icon--draft"
               title="Incomplete draft"
@@ -158,8 +174,8 @@ function DealListNameCell({ row }: { row: DealListRow }) {
               <FilePenLine size={14} strokeWidth={2} aria-hidden />
               <span className="deals_list_sr_only">Draft</span>
             </span>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -226,7 +242,7 @@ function DealsSuspendAllConfirmModal({
             onClick={onCancel}
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <button
             type="button"
@@ -593,19 +609,24 @@ export function DealsListPage({
           hint="Legal or marketing name of the offering."
         />
       ),
-      tdClassName: "um_td_user",
+      colWidth: "15rem",
+      thClassName: "deals_col_deal_name",
+      tdClassName: "um_td_user deals_col_deal_name",
       sortValue: (row) => (row.dealName ?? "").toLowerCase(),
       cell: (row) => <DealListNameCell row={row} />,
     }
 
     const dealStageColumn: DataTableColumn<DealListRow> = {
       id: "dealStage",
+      colWidth: "9.5rem",
       header: (
         <DealTableColumnHeader
           label="Deal stage"
           hint="Current lifecycle stage for this offering."
         />
       ),
+      thClassName: "deals_col_deal_stage",
+      tdClassName: "deals_col_deal_stage",
       sortValue: (row) => dealStageLabel(row.dealStage ?? "").toLowerCase(),
       cell: (row) => {
         const label = dealStageLabel(row.dealStage ?? "").trim() || "—"
@@ -658,6 +679,7 @@ export function DealsListPage({
 
     const startColumn: DataTableColumn<DealListRow> = {
       id: "start",
+      colWidth: "8.25rem",
       header: (
         <DealTableColumnHeader
           label="Start Date"
@@ -667,6 +689,7 @@ export function DealsListPage({
       ),
       align: "center",
       thClassName: "deals_th_align_center",
+      tdClassName: "deals_td_align_center",
       sortValue: (row) =>
         dateSortValue(row.startDateDisplay ?? row.createdDateDisplay),
       cell: (row) =>
@@ -677,6 +700,7 @@ export function DealsListPage({
 
     const closeColumn: DataTableColumn<DealListRow> = {
       id: "close",
+      colWidth: "8.25rem",
       header: (
         <DealTableColumnHeader
           label="Close Date"
@@ -686,12 +710,14 @@ export function DealsListPage({
       ),
       align: "center",
       thClassName: "deals_th_align_center",
+      tdClassName: "deals_td_align_center",
       sortValue: (row) => dateSortValue(row.closeDateDisplay),
       cell: (row) => formatDealListDateDisplay(row.closeDateDisplay),
     }
 
     const investingYourRoleColumn: DataTableColumn<DealListRow> = {
       id: "yourRole",
+      colWidth: "10rem",
       header: (
         <DealTableColumnHeader
           label="Your role"
@@ -713,6 +739,7 @@ export function DealsListPage({
       investingYourRoleColumn,
       {
         id: "dealType",
+        colWidth: "10rem",
         header: (
           <DealTableColumnHeader
             label="Deal type"
@@ -724,6 +751,7 @@ export function DealsListPage({
       },
       {
         id: "secType",
+        colWidth: "10rem",
         header: (
           <DealTableColumnHeader
             label="SEC type"
@@ -736,6 +764,7 @@ export function DealsListPage({
       },
       {
         id: "propertyName",
+        colWidth: "11rem",
         header: (
           <DealTableColumnHeader
             label="Property name"
@@ -750,6 +779,7 @@ export function DealsListPage({
       },
       {
         id: "owningEntity",
+        colWidth: "11rem",
         header: (
           <DealTableColumnHeader
             label="Owning entity"
@@ -775,8 +805,9 @@ export function DealsListPage({
           />
         ),
         align: "right",
+        colWidth: "10.75rem",
         thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => committedSortValue(row.raiseTarget),
         cell: (row) => formatCommittedCurrency(row.raiseTarget),
       },
@@ -790,8 +821,9 @@ export function DealsListPage({
           />
         ),
         align: "right",
+        colWidth: "10.75rem",
         thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => committedSortValue(row.totalInProgress),
         cell: (row) => formatCommittedCurrency(row.totalInProgress),
       },
@@ -805,8 +837,9 @@ export function DealsListPage({
           />
         ),
         align: "right",
+        colWidth: "10.75rem",
         thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => {
           const m = investorMetricsByDealId[row.id]
           return committedSortValue(m?.fundedRaw ?? row.totalAccepted)
@@ -826,8 +859,9 @@ export function DealsListPage({
           />
         ),
         align: "right",
+        colWidth: "10.75rem",
         thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => {
           const m = investorMetricsByDealId[row.id]
           return committedSortValue(m?.remainingRaw ?? "0")
@@ -847,8 +881,9 @@ export function DealsListPage({
           />
         ),
         align: "right",
+        colWidth: "10.75rem",
         thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => {
           const m = investorMetricsByDealId[row.id]
           return committedSortValue(m?.committedRaw ?? row.totalAccepted)
@@ -871,6 +906,7 @@ export function DealsListPage({
       ...(dealsListContext === "syndicating" ? syndicatingFinancialColumns : []),
       {
         id: "actions",
+        colWidth: "5rem",
         header: "Actions",
         align: "center",
         thClassName: "um_th_actions deals_th_actions_head",

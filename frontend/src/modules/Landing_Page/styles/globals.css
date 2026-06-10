@@ -224,7 +224,7 @@
   justify-content: center;
   gap: 0.4rem;
   padding: 0.65rem 1.15rem;
-  border-radius: 999px;
+  border-radius: var(--sx-radius-box);
   border: 1.5px solid color-mix(in srgb, var(--sx-brand) 42%, transparent);
   color: var(--sx-brand);
   font-weight: 600;
@@ -248,7 +248,7 @@
   justify-content: center;
   gap: 0.4rem;
   padding: 0.68rem 1.35rem;
-  border-radius: 999px;
+  border-radius: var(--sx-radius-box);
   font-weight: 650;
   font-size: 0.9rem;
   color: #ffffff;

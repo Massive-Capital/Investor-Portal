@@ -30,7 +30,7 @@
 :root[data-theme="dark"] .top_navbar {
   /* dark:bg-[#0a0f1a]/80 */
   background-color: rgba(10, 15, 26, 0.8);
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--portal-gold-accent, #d4af37);
 }
 
 .top_navbar_start {
@@ -142,6 +142,15 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+:root[data-theme="dark"] .top_navbar_user_wrap:has(.top_navbar_dd) .top_navbar_profile_chip {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 28%,
+    transparent
+  );
+}
+
 .top_navbar_profile_chip:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--portal-gold-accent, #d4af37) 35%, transparent);
@@ -151,27 +160,45 @@
   position: absolute;
   top: calc(100% + 0.5em);
   right: 0;
+  z-index: 3000;
   width: min(20.75em, calc(100dvw - 2em));
   box-sizing: border-box;
-  padding: 1em 0 0.5em;
-  background: var(--portal-surface);
-  border: 1px solid var(--portal-border);
+  padding: 0.35rem;
+  background: var(--portal-surface, #fcf8fa);
+  border: 1px solid var(--portal-border, #c6c6cd);
   border-radius: var(--portal-card-radius, 4px);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 40px rgb(15 23 42 / 10%);
 }
 
 :root[data-theme="dark"] .top_navbar_dd {
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  background: color-mix(
+    in srgb,
+    var(--sidebar-bg-color, #0a0f1a) 88%,
+    rgba(255, 255, 255, 0.06)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 24%,
+    var(--portal-border, rgba(255, 255, 255, 0.14))
+  );
+  box-shadow:
+    0 10px 40px rgb(0 0 0 / 42%),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .top_navbar_dd_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
   margin: 0;
-  padding: 0 0 0.25em;
+  padding: 0;
   list-style: none;
 }
 
 .top_navbar_dd_list li {
-  padding: 0 1.5em;
+  padding: 0;
 }
 
 .top_navbar_dd_item {
@@ -180,26 +207,53 @@
   gap: 0.65em;
   width: 100%;
   margin: 0;
-  padding: 0.55em 1em;
+  padding: 0.5rem 0.65rem;
   border: none;
   background: transparent;
   text-align: left;
   font-family: inherit;
   font-style: normal;
-  font-size: 0.9375em;
-  font-weight: 400;
-  color: var(--portal-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--portal-text, #1b1b1d);
   cursor: pointer;
   border-radius: var(--ui-button-border-radius, 4px);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .top_navbar_dd_item:hover {
-  background: var(--portal-toggle-track);
+  background: var(--portal-toggle-track, #f0edef);
+  color: var(--portal-text, #1b1b1d);
+}
+
+.top_navbar_dd_item:hover .top_navbar_dd_item_icon {
+  color: var(--portal-gold-accent, #d4af37);
 }
 
 .top_navbar_dd_item_icon {
   flex-shrink: 0;
-  color: var(--portal-text-muted);
+  color: var(--portal-text-muted, #76777d);
+  transition: color 0.15s ease;
+}
+
+:root[data-theme="dark"] .top_navbar_dd_item {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="dark"] .top_navbar_dd_item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.96);
+}
+
+:root[data-theme="dark"] .top_navbar_dd_item_icon {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+:root[data-theme="dark"] .top_navbar_dd_item:hover .top_navbar_dd_item_icon {
+  color: var(--portal-gold-accent, #d4af37);
 }
 
 .top_navbar_dd_theme_block {
@@ -212,7 +266,7 @@
 
 .top_navbar_dd_theme_trigger--open {
   font-weight: 600;
-  color: var(--portal-text);
+  color: var(--portal-tab-active-text, #131b2e);
   background: var(--portal-tab-active-bg);
 }
 
@@ -220,14 +274,38 @@
   color: var(--portal-gold-accent, #d4af37);
 }
 
+:root[data-theme="dark"] .top_navbar_dd_theme_trigger--open {
+  color: var(--portal-tab-active-text, #d4af37);
+  background: var(
+    --portal-tab-active-bg,
+    color-mix(in srgb, var(--portal-gold-accent, #d4af37) 14%, transparent)
+  );
+}
+
 .top_navbar_dd_theme_panel {
-  padding: 0.2em 0 0.35em;
-  border-top: 1px solid color-mix(in srgb, var(--portal-border) 65%, transparent);
+  margin: 0.15rem 0 0.1rem 0.35rem;
+  padding: 0.2rem 0 0.2rem 0.55rem;
+  border-left: 2px solid color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 35%,
+    var(--portal-border, #c6c6cd)
+  );
+}
+
+:root[data-theme="dark"] .top_navbar_dd_theme_panel {
+  border-left-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 45%,
+    rgba(255, 255, 255, 0.12)
+  );
 }
 
 .top_navbar_dd_theme_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
   margin: 0;
-  padding: 0.25em 0 0;
+  padding: 0;
   list-style: none;
 }
 
@@ -237,20 +315,20 @@
   gap: 0.65em;
   width: 100%;
   margin: 0;
-  padding: 0.45em 1em;
+  padding: 0.45rem 0.55rem;
   border: none;
   border-radius: var(--ui-button-border-radius, 4px);
   background: transparent;
   text-align: left;
   font-family: inherit;
-  font-size: 0.875em;
+  font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.3;
-  color: var(--portal-text-muted);
+  color: var(--portal-text-muted, #76777d);
   cursor: pointer;
   transition:
-    background-color 0.2s ease,
-    color 0.2s ease;
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .top_navbar_dd_theme_option svg {
@@ -271,11 +349,10 @@
 
 .top_navbar_dd_theme_option_active,
 .top_navbar_dd_theme_option_active:hover {
-  color: var(--portal-gold-accent, #d4af37);
-  background: color-mix(
-    in srgb,
-    var(--portal-gold-accent, #d4af37) 8%,
-    transparent
+  color: var(--portal-tab-active-text, #131b2e);
+  background: var(
+    --portal-tab-active-bg,
+    color-mix(in srgb, var(--portal-gold-accent, #d4af37) 10%, transparent)
   );
 }
 
@@ -289,36 +366,60 @@
   color: var(--portal-gold-accent, #d4af37);
 }
 
-:root[data-theme="dark"] .top_navbar_dd_theme_trigger--open {
-  color: rgba(255, 255, 255, 0.92);
+:root[data-theme="dark"] .top_navbar_dd_theme_option {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 :root[data-theme="dark"] .top_navbar_dd_theme_option:hover {
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 :root[data-theme="dark"] .top_navbar_dd_theme_option_active,
 :root[data-theme="dark"] .top_navbar_dd_theme_option_active:hover {
   color: var(--portal-gold-accent, #d4af37);
+  background: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 14%,
+    transparent
+  );
+}
+
+.top_navbar_dd_list > li:has(.top_navbar_dd_item_logout) {
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid color-mix(in srgb, var(--portal-border, #c6c6cd) 72%, transparent);
+}
+
+:root[data-theme="dark"] .top_navbar_dd_list > li:has(.top_navbar_dd_item_logout) {
+  border-top-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 18%,
+    rgba(255, 255, 255, 0.1)
+  );
 }
 
 .top_navbar_dd_item_logout {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: var(--portal-danger, #b91c1c);
+  background: transparent;
 }
 
 .top_navbar_dd_item_logout .top_navbar_dd_item_icon {
-  color: #b91c1c;
+  color: var(--portal-danger, #b91c1c);
 }
 
 .top_navbar_dd_item_logout:hover {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: var(--portal-danger, #b91c1c);
+  background: color-mix(in srgb, var(--portal-danger, #b91c1c) 10%, transparent);
+}
+
+.top_navbar_dd_item_logout:hover .top_navbar_dd_item_icon {
+  color: var(--portal-danger, #b91c1c);
 }
 
 :root[data-theme="dark"] .top_navbar_dd_item_logout {
   color: #fca5a5;
-  background: color-mix(in srgb, #b91c1c 18%, var(--portal-surface));
+  background: transparent;
 }
 
 :root[data-theme="dark"] .top_navbar_dd_item_logout .top_navbar_dd_item_icon {
@@ -326,8 +427,12 @@
 }
 
 :root[data-theme="dark"] .top_navbar_dd_item_logout:hover {
-  color: #fca5a5;
-  background: color-mix(in srgb, #b91c1c 22%, var(--portal-surface));
+  color: #fecaca;
+  background: color-mix(in srgb, #b91c1c 16%, transparent);
+}
+
+:root[data-theme="dark"] .top_navbar_dd_item_logout:hover .top_navbar_dd_item_icon {
+  color: #fecaca;
 }
 
 /* Avatar styling lives in portal-theme.css (`.top_navbar_avatar`). */

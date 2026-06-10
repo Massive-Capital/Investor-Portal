@@ -1,7 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap");
-@import "./common/theme/portal-theme.css";
-@import "./common/styles/portal-tables.css";
+@import "@/common/theme/portal-theme.css";
+@import "@/common/theme/portal-dark-mode.css";
+@import "@/common/styles/portal-tables.css";
+@import "@/common/styles/portal-buttons.css";
+@import "@/common/styles/portal-radio-groups.css";
 
 /* Prevent horizontal scroll: full-width chain + clip (focus rings, vw quirks) */
 html {
@@ -402,11 +405,19 @@ input[type="reset"],
   border-radius: var(--ui-button-border-radius) !important;
 }
 
-/* Toggles: rectangular track */
+/* Toggles: pill-shaped track */
 .vendor_overview_toggle,
 .product_profile_toggle,
-.product_profile_product_toggle {
-  border-radius: var(--ui-button-border-radius, 4px) !important;
+.product_profile_product_toggle,
+.deal_fi_toggle {
+  border-radius: 9999px !important;
+}
+
+.deal_fi_toggle_track,
+.vendor_overview_toggle_track,
+.product_profile_toggle_track,
+.product_profile_product_toggle_track {
+  border-radius: 9999px !important;
 }
 
 /* Modal/page close button (CircleX) – same across the application */

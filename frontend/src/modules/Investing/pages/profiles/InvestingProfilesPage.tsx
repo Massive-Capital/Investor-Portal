@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { MapPin, Plus, UserCircle, Users } from "lucide-react"
+import { IdCard, MapPin, Plus, Users } from "lucide-react"
 import { EntityAvatarNameCell } from "@/common/components/entity-avatar/EntityAvatarNameCell"
 import { ActiveArchivedTabs } from "@/common/components/active-archived-tabs/ActiveArchivedTabs"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
@@ -89,6 +89,22 @@ function formatProfileListDate(iso: string): string {
     day: "numeric",
   })
 }
+
+/** Column widths for fixed-layout profile tables (keep name column readable). */
+const PROFILES_TABLE_COL_WIDTH = {
+  profileName: "16rem",
+  profileType: "17rem",
+  addedBy: "9rem",
+  investments: "6.5rem",
+  dateCreated: "8.5rem",
+  beneficiaryName: "12rem",
+  relationship: "8rem",
+  email: "11rem",
+  phone: "8rem",
+  address: "14rem",
+  addressName: "11rem",
+  actions: "5rem",
+} as const
 
 /**
  * LP investing shell: `/investing/profiles` — profiles, beneficiaries, and saved addresses.
@@ -560,25 +576,32 @@ export default function InvestingProfilesPage() {
       {
         id: "profileName",
         header: "Profile name",
+        colWidth: PROFILES_TABLE_COL_WIDTH.profileName,
+        thClassName: "investing_profiles_col_name",
         sortValue: (r) => (r.profileName ?? "").toLowerCase(),
-        tdClassName: "um_td_user",
+        tdClassName: "um_td_user investing_profiles_td_name",
         cell: (r) => (
           <EntityAvatarNameCell
             displayName={r.profileName ?? ""}
             onClick={() => openProfileView(r)}
-            linkClassName="deals_table_name_link investing_profiles_name_link um_user_meta_username"
+            linkClassName="deals_table_name_link investing_profiles_name_text um_user_meta_username"
+            cellClassName="investing_profiles_name_cell"
           />
         ),
       },
       {
         id: "profileType",
         header: "Profile type",
+        colWidth: PROFILES_TABLE_COL_WIDTH.profileType,
+        thClassName: "investing_profiles_col_profile_type",
+        tdClassName: "investing_profiles_td_profile_type",
         sortValue: (r) => bookProfileTypeDisplayLabel(r).toLowerCase(),
         cell: (r) => bookProfileTypeDisplayLabel(r),
       },
       {
         id: "addedBy",
         header: "Added by",
+        colWidth: PROFILES_TABLE_COL_WIDTH.addedBy,
         sortValue: (r) => (r.addedBy ?? "").toLowerCase(),
         cell: (r) => r.addedBy?.trim() || "—",
       },
@@ -586,14 +609,16 @@ export default function InvestingProfilesPage() {
         id: "investments",
         header: "Investments",
         align: "right",
+        colWidth: PROFILES_TABLE_COL_WIDTH.investments,
         thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric",
+        tdClassName: "um_td_numeric investing_profiles_td_count",
         sortValue: (r) => r.investmentsCount,
         cell: (r) => String(r.investmentsCount ?? 0),
       },
       {
         id: "dateCreated",
         header: "Date created",
+        colWidth: PROFILES_TABLE_COL_WIDTH.dateCreated,
         sortValue: (r) => Date.parse(r.dateCreated) || 0,
         cell: (r) => formatProfileListDate(r.dateCreated),
       },
@@ -601,6 +626,7 @@ export default function InvestingProfilesPage() {
         id: "actions",
         header: "Actions",
         align: "right",
+        colWidth: PROFILES_TABLE_COL_WIDTH.actions,
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions",
         cell: (row) => (
@@ -626,36 +652,43 @@ export default function InvestingProfilesPage() {
       {
         id: "fullName",
         header: "Name",
+        colWidth: PROFILES_TABLE_COL_WIDTH.beneficiaryName,
+        thClassName: "investing_profiles_col_name",
         sortValue: (r) => (r.fullName ?? "").toLowerCase(),
-        tdClassName: "um_td_user",
+        tdClassName: "um_td_user investing_profiles_td_name",
         cell: (r) => (
           <EntityAvatarNameCell
             displayName={r.fullName ?? ""}
-            linkClassName="um_user_meta_username"
+            linkClassName="deals_table_name_link investing_profiles_name_text um_user_meta_username"
+            cellClassName="investing_profiles_name_cell"
           />
         ),
       },
       {
         id: "relationship",
         header: "Relationship",
+        colWidth: PROFILES_TABLE_COL_WIDTH.relationship,
         sortValue: (r) => (r.relationship ?? "").toLowerCase(),
         cell: (r) => r.relationship?.trim() || "—",
       },
       {
         id: "email",
         header: "Email",
+        colWidth: PROFILES_TABLE_COL_WIDTH.email,
         sortValue: (r) => (r.email ?? "").toLowerCase(),
         cell: (r) => r.email?.trim() || "—",
       },
       {
         id: "phone",
         header: "Phone",
+        colWidth: PROFILES_TABLE_COL_WIDTH.phone,
         sortValue: (r) => nationalDigitsFromStoredPhone(String(r.phone ?? "")),
         cell: (r) => formatUsPhoneStoredForUi(r.phone),
       },
       {
         id: "address",
         header: "Address",
+        colWidth: PROFILES_TABLE_COL_WIDTH.address,
         sortValue: (r) => (r.addressQuery ?? "").toLowerCase(),
         cell: (r) => r.addressQuery?.trim() || "—",
       },
@@ -663,6 +696,7 @@ export default function InvestingProfilesPage() {
         id: "actions",
         header: "Actions",
         align: "right",
+        colWidth: PROFILES_TABLE_COL_WIDTH.actions,
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions",
         cell: (row) => (
@@ -691,12 +725,15 @@ export default function InvestingProfilesPage() {
       {
         id: "name",
         header: "Name / company",
+        colWidth: PROFILES_TABLE_COL_WIDTH.addressName,
+        thClassName: "investing_profiles_col_name",
         sortValue: (r) => (r.fullNameOrCompany ?? "").toLowerCase(),
-        tdClassName: "um_td_user",
+        tdClassName: "um_td_user investing_profiles_td_name",
         cell: (r) => (
           <EntityAvatarNameCell
             displayName={r.fullNameOrCompany ?? ""}
-            linkClassName="um_user_meta_username"
+            linkClassName="deals_table_name_link investing_profiles_name_text um_user_meta_username"
+            cellClassName="investing_profiles_name_cell"
           />
         ),
       },
@@ -769,7 +806,7 @@ export default function InvestingProfilesPage() {
       <div className="um_members_header_block">
         <div className="um_header_row">
           <h2 className="um_title um_title_with_icon">
-            <UserCircle
+            <IdCard
               className="um_title_icon"
               size={26}
               strokeWidth={1.75}
@@ -806,7 +843,7 @@ export default function InvestingProfilesPage() {
               className={`um_members_tab deals_tabs_tab um_segmented_tab${activeTab === "my-profiles" ? " um_members_tab_active" : ""}`}
               onClick={() => setActiveTab("my-profiles")}
             >
-              <UserCircle
+              <IdCard
                 className="deals_tabs_icon um_segmented_tab_icon"
                 size={16}
                 strokeWidth={2}
@@ -869,7 +906,7 @@ export default function InvestingProfilesPage() {
                   archivedCount={profileArchivedCount}
                   idPrefix="investing-profiles-filter"
                   ariaLabel="Filter profiles by status"
-                  activeIcon={UserCircle}
+                  activeIcon={IdCard}
                   activePanelId="profiles-panel-my-profiles"
                 />
                 <button
@@ -885,7 +922,7 @@ export default function InvestingProfilesPage() {
 
           <div id="profiles-panel-my-profiles" role="tabpanel" aria-labelledby="profiles-tab-my-profiles" className="contacts_main_tab_panel_wrap">
             <div className="um_members_tab_content contacts_main_tab_content_flush">
-              <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+              <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel investing_profiles_table_panel">
                 <InvestingProfilesTableToolbar
                   onExport={() => setExportModalOpen(true)}
                   exportDisabled={bookLoading}
@@ -898,6 +935,7 @@ export default function InvestingProfilesPage() {
                 <DataTable<InvestorProfileListRow>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
+              stickyFirstColumn={false}
               columns={profileColumns}
               rows={filteredProfiles}
               isLoading={bookLoading}
@@ -950,7 +988,7 @@ export default function InvestingProfilesPage() {
 
           <div id="profiles-panel-beneficiaries" role="tabpanel" aria-labelledby="profiles-tab-beneficiaries" className="contacts_main_tab_panel_wrap">
             <div className="um_members_tab_content contacts_main_tab_content_flush">
-              <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+              <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel investing_profiles_table_panel">
                 <InvestingProfilesTableToolbar
                   onExport={() => setExportBeneModalOpen(true)}
                   exportDisabled={bookLoading}
@@ -963,6 +1001,7 @@ export default function InvestingProfilesPage() {
                 <DataTable<BeneficiaryListRow>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
+              stickyFirstColumn={false}
               columns={beneficiaryColumns}
               rows={filteredBeneficiaries}
               isLoading={bookLoading}
@@ -1015,7 +1054,7 @@ export default function InvestingProfilesPage() {
 
           <div id="profiles-panel-addresses" role="tabpanel" aria-labelledby="profiles-tab-addresses" className="contacts_main_tab_panel_wrap">
             <div className="um_members_tab_content contacts_main_tab_content_flush">
-              <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+              <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel investing_profiles_table_panel">
                 <InvestingProfilesTableToolbar
                   onExport={() => setExportAddrModalOpen(true)}
                   exportDisabled={bookLoading}
@@ -1028,6 +1067,7 @@ export default function InvestingProfilesPage() {
                 <DataTable<SavedAddress>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
+              stickyFirstColumn={false}
               columns={addressColumns}
               rows={filteredAddresses}
               isLoading={bookLoading}

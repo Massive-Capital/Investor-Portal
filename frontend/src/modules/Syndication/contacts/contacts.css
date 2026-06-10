@@ -650,7 +650,7 @@
 }
 
 .email_template_new_actions.add_contact_modal_actions {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 @keyframes email_template_new_btn_spin {
@@ -727,95 +727,12 @@
   margin-top: 1rem;
 }
 
-.contacts_filter_button_group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.contacts_filter_btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-  padding: 0.65em 0.9em;
-  border-radius: 999px;
-  border: 1px solid var(--portal-border, #e2e8f0);
-  background: var(--portal-surface, #fff);
-  font-family: inherit;
-  font-style: normal;
-  font-size: 0.875em;
-  font-weight: 600;
-  color: var(--portal-text, #0f172a);
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.contacts_filter_btn:hover {
-  background: var(--portal-muted-surface, #f8fafc);
-  border-color: #cbd5e1;
-}
-
-.contacts_filter_btn_active {
-  border-color: var(--portal-text, #0f172a);
-  background: var(--portal-text, #0f172a);
-  color: #fff;
-}
-
-.contacts_filter_btn_active:hover {
-  border-color: var(--portal-text, #0f172a);
-  background: #1e293b;
-  color: #fff;
-}
-
-.contacts_filter_btn_count {
-  font-weight: 500;
-  opacity: 0.88;
-}
-
-.contacts_filter_btn_active .contacts_filter_btn_count {
-  opacity: 0.95;
-}
-
 .contacts_toolbar_add_btn {
   flex-shrink: 0;
 }
 
 .contacts_main_tab_content_flush.um_members_tab_content {
   margin-top: 0;
-}
-
-/* Tags / Lists usage filters — dark mode aligned with portal tabs */
-:root[data-theme="dark"] .contacts_filter_btn {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: var(--portal-text-muted);
-}
-
-:root[data-theme="dark"] .contacts_filter_btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--portal-text);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-:root[data-theme="dark"] .contacts_filter_btn_active {
-  color: var(--portal-tab-active-text, #d4af37);
-  background: color-mix(in srgb, var(--portal-gold-accent, #d4af37) 15%, transparent);
-  border-color: var(--portal-gold-accent, #d4af37);
-}
-
-:root[data-theme="dark"] .contacts_filter_btn_active:hover {
-  color: var(--portal-tab-active-text, #d4af37);
-  background: color-mix(in srgb, var(--portal-gold-accent, #d4af37) 20%, transparent);
-  border-color: var(--portal-gold-accent, #d4af37);
-}
-
-:root[data-theme="dark"] .contacts_filter_btn_count {
-  color: inherit;
-  opacity: 0.85;
 }
 
 .contacts_main_tab_panel_wrap {
@@ -1039,6 +956,32 @@
   vertical-align: middle;
 }
 
+/* Actions column — keep “Actions” header on one line (Contacts + Email templates). */
+.contacts_page .contacts_table_panel,
+.email_templates_page .contacts_table_panel {
+  --contacts-actions-col-width: 7rem;
+}
+
+.contacts_page .contacts_table_panel .um_th_actions.contacts_th_actions,
+.contacts_page .contacts_table_panel td.um_td_actions.contacts_td_actions,
+.email_templates_page .contacts_table_panel .um_th_actions.contacts_th_actions,
+.email_templates_page .contacts_table_panel td.um_td_actions.contacts_td_actions {
+  width: var(--contacts-actions-col-width);
+  min-width: var(--contacts-actions-col-width) !important;
+  max-width: none;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.contacts_page .contacts_table_panel thead th.um_th_actions.contacts_th_actions,
+.email_templates_page .contacts_table_panel thead th.um_th_actions.contacts_th_actions {
+  text-align: center;
+}
+
 /* Main contacts: Deals column — match centered numeric header/cell on `.deal_inv_table` */
 .deal_inv_table_panel.contacts_table_panel
   .um_table.deal_inv_table
@@ -1227,7 +1170,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   width: 100%;
   box-sizing: border-box;
   gap: 0.5em;

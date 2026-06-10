@@ -1,11 +1,12 @@
 import {
   ArrowUpDown,
   CircleDot,
+  Download,
   LayoutGrid,
   LayoutList,
   Search,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import {
   applyDealsSearchToParams,
@@ -15,7 +16,7 @@ import {
   DataTable,
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
-import { AvatarInitialsRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell"
+import { DealAvatarIconRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell"
 import { DealCard } from "../../../common/components/deal-card/DealCard"
 import {
   dealListRowToDealRecord,
@@ -43,6 +44,8 @@ import {
 } from "./constants/deal-lifecycle"
 import { parseMoneyDigits } from "./utils/offeringMoneyFormat"
 import { dealStageChipCompactClassName } from "./utils/dealStageChip"
+import { ExportDealsModal } from "./components/ExportDealsModal"
+import type { DealListRow } from "./types/deals.types"
 import "./deals-list.css"
 import "./deal-investors-tab.css"
 import "../Dashboard/sponsor-dashboard.css"
@@ -51,65 +54,116 @@ export type DealsSortKey = "createdAt" | "title" | "target"
 
 type DealsViewMode = "grid" | "list"
 
+function dealRecordToDealListRow(record: DealRecord): DealListRow {
+  return {
+    id: record.id,
+    dealName: record.title,
+    dealType: record.dealType ?? "",
+    dealStage: record.dealStage,
+    totalInProgress: record.totalInProgress ?? "—",
+    totalAccepted: record.totalAccepted,
+    raiseTarget: record.targetAmount,
+    distributions: record.totalDistributions,
+    investors: record.investorCount,
+    closeDateDisplay: record.closeDateDisplay ?? record.closeDate,
+    createdDateDisplay: record.createdDateDisplay ?? "—",
+    createdAt: record.createdAt,
+    locationDisplay: record.location,
+    offeringStatus: record.offeringStatus,
+  }
+}
+
+export function DealsViewToggle({
+  view,
+  onViewChange,
+  className,
+}: {
+  view: DealsViewMode
+  onViewChange: (view: DealsViewMode) => void
+  className?: string
+}) {
+  return (
+    <div
+      className={`sponsor_dash_view_toggle${className ? ` ${className}` : ""}`}
+      role="group"
+      aria-label="View layout"
+    >
+      <button
+        type="button"
+        className={`sponsor_dash_view_btn${view === "list" ? " sponsor_dash_view_btn_active" : ""}`}
+        onClick={() => onViewChange("list")}
+        aria-pressed={view === "list"}
+        aria-label="List view"
+      >
+        <LayoutList size={18} strokeWidth={2} />
+      </button>
+      <button
+        type="button"
+        className={`sponsor_dash_view_btn${view === "grid" ? " sponsor_dash_view_btn_active" : ""}`}
+        onClick={() => onViewChange("grid")}
+        aria-pressed={view === "grid"}
+        aria-label="Grid view"
+      >
+        <LayoutGrid size={18} strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
+export function DealsSortControl({
+  sortKey,
+  onSortKeyChange,
+  className,
+}: {
+  sortKey: DealsSortKey
+  onSortKeyChange: (sortKey: DealsSortKey) => void
+  className?: string
+}) {
+  return (
+    <div className={`sponsor_dash_sort_wrap${className ? ` ${className}` : ""}`}>
+      <ArrowUpDown
+        size={18}
+        strokeWidth={2}
+        className="sponsor_dash_sort_icon"
+        aria-hidden
+      />
+      <select
+        className="sponsor_dash_sort_select"
+        value={sortKey}
+        onChange={(e) => onSortKeyChange(e.target.value as DealsSortKey)}
+        aria-label="Sort deals by"
+      >
+        <option value="createdAt">Created at</option>
+        <option value="title">Title</option>
+        <option value="target">Target amount</option>
+      </select>
+    </div>
+  )
+}
+
 export function DealsViewSortControls({
   view,
   onViewChange,
   sortKey,
   onSortKeyChange,
   className,
+  betweenViewAndSort,
 }: {
   view: DealsViewMode
   onViewChange: (view: DealsViewMode) => void
   sortKey: DealsSortKey
   onSortKeyChange: (sortKey: DealsSortKey) => void
   className?: string
+  /** Renders between grid/list toggle and sort select (e.g. Export All on dashboard). */
+  betweenViewAndSort?: ReactNode
 }) {
   return (
     <div
       className={`sponsor_dash_deals_controls_right${className ? ` ${className}` : ""}`}
     >
-      <div
-        className="sponsor_dash_view_toggle"
-        role="group"
-        aria-label="View layout"
-      >
-        <button
-          type="button"
-          className={`sponsor_dash_view_btn${view === "list" ? " sponsor_dash_view_btn_active" : ""}`}
-          onClick={() => onViewChange("list")}
-          aria-pressed={view === "list"}
-          aria-label="List view"
-        >
-          <LayoutList size={18} strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          className={`sponsor_dash_view_btn${view === "grid" ? " sponsor_dash_view_btn_active" : ""}`}
-          onClick={() => onViewChange("grid")}
-          aria-pressed={view === "grid"}
-          aria-label="Grid view"
-        >
-          <LayoutGrid size={18} strokeWidth={2} />
-        </button>
-      </div>
-      <div className="sponsor_dash_sort_wrap">
-        <ArrowUpDown
-          size={16}
-          strokeWidth={2}
-          className="sponsor_dash_sort_icon"
-          aria-hidden
-        />
-        <select
-          className="sponsor_dash_sort_select"
-          value={sortKey}
-          onChange={(e) => onSortKeyChange(e.target.value as DealsSortKey)}
-          aria-label="Sort deals by"
-        >
-          <option value="createdAt">Created at</option>
-          <option value="title">Title</option>
-          <option value="target">Target amount</option>
-        </select>
-      </div>
+      <DealsViewToggle view={view} onViewChange={onViewChange} />
+      {betweenViewAndSort}
+      <DealsSortControl sortKey={sortKey} onSortKeyChange={onSortKeyChange} />
     </div>
   )
 }
@@ -131,7 +185,7 @@ interface SyndicatingDealsSectionProps {
    * user has a positive committed amount, matching `/investing/deals` scope.
    */
   onlyDealsWithViewerCommitment?: boolean
-  /** Visible section title for the deals block (default: “Deals dashboard”). */
+  /** Visible section title for the deals block (default: “All Deals”). */
   dealsSectionTitle?: string
   /**
    * When true, hides deals whose offering status disallows dashboard visibility
@@ -162,7 +216,7 @@ export function SyndicatingDealsSection({
   dealsHeadingId = "sponsor-deals-heading",
   includeParticipantDeals = false,
   onlyDealsWithViewerCommitment = false,
-  dealsSectionTitle = "Deals dashboard",
+  dealsSectionTitle = "All Deals",
   filterOfferingDashboardVisibility = false,
   controlledDeals,
   controlledLoading = false,
@@ -218,6 +272,7 @@ export function SyndicatingDealsSection({
     Record<string, { reviewRating: number, reviewCount: number }>
   >({})
   const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
 
   useEffect(() => {
     if (isControlled) {
@@ -402,18 +457,26 @@ export function SyndicatingDealsSection({
     return rows
   }, [filtered, sortKey])
 
+  const exportDeals = useMemo(
+    () => deals.map(dealRecordToDealListRow),
+    [deals],
+  )
+
   const columns: DataTableColumn<DealRecord>[] = useMemo(
     () => [
       {
         id: "deal",
         header: "Deal",
+        colWidth: "15rem",
+        thClassName: "deals_col_deal_name",
+        tdClassName: "um_td_user deals_col_deal_name",
         sortValue: (row) => (row.title ?? "").toLowerCase(),
         cell: (row) => (
-          <div className="deals_list_name_cell deals_list_name_cell--sponsor_dash">
-            <AvatarInitialsRing name={row.title?.trim() || "Deal"} />
+          <div className="deals_list_name_cell">
+            <DealAvatarIconRing />
             <div className="deals_list_name_text">
               <Link
-                className="sponsor_dash_table_link"
+                className="deals_table_name_link"
                 to={`/deals/${encodeURIComponent(row.id)}`}
               >
                 {row.title || "—"}
@@ -425,17 +488,19 @@ export function SyndicatingDealsSection({
       {
         id: "location",
         header: "Location",
+        colWidth: "11rem",
         sortValue: (row) => row.location ?? "",
         cell: (row) => (
-          <span className="sponsor_dash_table_muted">
-            {row.location ?? "—"}
-          </span>
+          <span className="um_status_muted">{row.location ?? "—"}</span>
         ),
       },
       {
         id: "target",
         header: "Target amount",
+        colWidth: "10.75rem",
         align: "right",
+        thClassName: "deals_th_align_right",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => {
           const n = parseMoneyDigits(row.targetAmount)
           return Number.isFinite(n) ? n : 0
@@ -445,7 +510,10 @@ export function SyndicatingDealsSection({
       {
         id: "funded",
         header: "Total funded",
+        colWidth: "10.75rem",
         align: "right",
+        thClassName: "deals_th_align_right",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => {
           const n = parseMoneyDigits(row.totalFunded)
           return Number.isFinite(n) ? n : 0
@@ -455,7 +523,10 @@ export function SyndicatingDealsSection({
       {
         id: "investors",
         header: "# investors",
+        colWidth: "8.5rem",
         align: "right",
+        thClassName: "deals_th_align_right",
+        tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => {
           const n = parseInt(String(row.investorCount).replace(/\D/g, ""), 10)
           return Number.isFinite(n) ? n : row.investorCount
@@ -465,13 +536,19 @@ export function SyndicatingDealsSection({
       {
         id: "close",
         header: "Close date",
-        align: "right",
+        colWidth: "8.25rem",
+        align: "center",
+        thClassName: "deals_th_align_center",
+        tdClassName: "deals_td_align_center",
         sortValue: (row) => dateSortValue(row.closeDate),
         cell: (row) => formatDealListDateDisplay(row.closeDate),
       },
       {
         id: "status",
-        header: "Status",
+        header: includeParticipantDeals ? "Status" : "Deal stage",
+        colWidth: "9.5rem",
+        thClassName: "deals_col_deal_stage",
+        tdClassName: "deals_col_deal_stage",
         sortValue: (row) =>
           dealStageLabel(row.dealStage ?? "").toLowerCase(),
         cell: (row) => {
@@ -507,7 +584,7 @@ export function SyndicatingDealsSection({
         },
       },
     ],
-    [filterOfferingDashboardVisibility],
+    [filterOfferingDashboardVisibility, includeParticipantDeals],
   )
 
   return (
@@ -527,33 +604,49 @@ export function SyndicatingDealsSection({
             )}
             {!hideToolbarSearch || !hideToolbarControls ? (
               <div className="sponsor_dash_deals_tools sponsor_dash_deals_toolbar">
-                {!hideToolbarSearch ? (
-                  <div className="sponsor_dash_search_row">
-                    <div className="sponsor_dash_search_wrap sponsor_dash_search_wrap_full">
-                      <Search
-                        className="sponsor_dash_search_icon"
-                        size={18}
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                      <input
-                        type="search"
-                        className="sponsor_dash_search_input"
-                        placeholder={searchPlaceholder}
-                        value={query}
-                        onChange={(e) => handleDealsQueryChange(e.target.value)}
-                        aria-label="Search deals"
-                      />
-                    </div>
+                {!hideToolbarControls ? (
+                  <div className="sponsor_dash_deals_toolbar_leading">
+                    <button
+                      type="button"
+                      className="um_toolbar_export_btn investing_dash_deals_export_btn"
+                      onClick={() => setExportModalOpen(true)}
+                      disabled={loading || exportDeals.length === 0}
+                    >
+                      <Download size={18} strokeWidth={2} aria-hidden />
+                      <span>Export All</span>
+                    </button>
+                    <DealsSortControl
+                      sortKey={sortKey}
+                      onSortKeyChange={setSortKey}
+                    />
                   </div>
                 ) : null}
-                {!hideToolbarControls ? (
-                  <DealsViewSortControls
-                    view={view}
-                    onViewChange={setView}
-                    sortKey={sortKey}
-                    onSortKeyChange={setSortKey}
-                  />
+                {!hideToolbarSearch || !hideToolbarControls ? (
+                  <div className="sponsor_dash_deals_toolbar_trailing">
+                    {!hideToolbarControls ? (
+                      <DealsViewToggle view={view} onViewChange={setView} />
+                    ) : null}
+                    {!hideToolbarSearch ? (
+                      <div className="sponsor_dash_search_row">
+                        <div className="sponsor_dash_search_wrap sponsor_dash_search_wrap_full">
+                          <Search
+                            className="sponsor_dash_search_icon"
+                            size={18}
+                            strokeWidth={2}
+                            aria-hidden
+                          />
+                          <input
+                            type="search"
+                            className="sponsor_dash_search_input"
+                            placeholder={searchPlaceholder}
+                            value={query}
+                            onChange={(e) => handleDealsQueryChange(e.target.value)}
+                            aria-label="Search deals"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -634,6 +727,7 @@ export function SyndicatingDealsSection({
                         : dealRecordToCardMetrics(deal)
                     }
                     coverImageUrl={deal.coverImageUrl}
+                    coverImageUrls={deal.coverImageUrls}
                     reviewRating={mergedReviewRating}
                     reviewCount={mergedReviewCount}
                     reviewLoading={reviewsLoading && !hasSeededReview}
@@ -657,20 +751,33 @@ export function SyndicatingDealsSection({
           </div>
         </div>
       ) : (
-        <div className="um_panel um_members_tab_panel deal_inv_table_panel sponsor_dash_deals_list_table_wrap">
+        <div
+          className={`deals_list_table_panel sponsor_dash_deals_list_table_wrap${
+            loading ? " deals_list_table_panel_loading" : ""
+          }`}
+        >
           <DataTable
             visualVariant="members"
+            membersTableClassName="um_table_members deal_inv_table"
             columns={columns}
             rows={sortedDeals}
             getRowKey={(row, rowIndex) => row.id || `sponsor-deal-${rowIndex}`}
+            isLoading={loading && sortedDeals.length === 0}
             emptyLabel={
               query.trim()
                 ? "No deals match your search."
                 : (emptyStateMessage ?? "No deal to display.")
             }
+            emptyStateRole={loading ? "status" : undefined}
           />
         </div>
       )}
+
+      <ExportDealsModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        deals={exportDeals}
+      />
     </section>
   )
 }

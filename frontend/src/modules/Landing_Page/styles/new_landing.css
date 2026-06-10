@@ -44,6 +44,7 @@
   /* Layout */
   --wrap: min(1340px, 92vw);
   --vpad: clamp(80px, 11vw, 160px);
+  --f2-box-radius: var(--ui-button-border-radius, 4px);
 }
 
 /* ── RESET ── */
@@ -305,7 +306,7 @@ html.files2-landing-page #root {
   font-weight: 600;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  border-radius: 999px;
+  border-radius: var(--f2-box-radius);
   border: none;
   background: transparent;
   cursor: pointer;
@@ -532,6 +533,7 @@ html.files2-landing-page #root {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   border: none;
+  border-radius: var(--f2-box-radius);
   overflow: hidden;
   transition: color .4s;
   cursor: pointer;
@@ -560,7 +562,7 @@ html.files2-landing-page #root {
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.04em;
-  border-radius: 0;
+  border-radius: var(--f2-box-radius);
   cursor: pointer;
   transition:
     border-color 0.3s ease,
@@ -653,7 +655,7 @@ html.files2-landing-page #root {
   padding: 8px 18px;
   background: rgba(26,79,196,0.15);
   border: 1px solid var(--blue-border);
-  border-radius: 100px;
+  border-radius: var(--f2-box-radius);
   font-family: var(--f-mono);
   font-size: 10px;
   letter-spacing: 0.15em;

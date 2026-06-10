@@ -926,7 +926,7 @@ export function AddInvestmentModal({
               disabled={submitting}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               {step === 2 ? (
@@ -963,11 +963,7 @@ export function AddInvestmentModal({
                     </>
                   ) : (
                     <>
-                      {mode === "edit" ? (
-                        <Save size={16} strokeWidth={2} aria-hidden />
-                      ) : (
-                        <Plus size={16} strokeWidth={2} aria-hidden />
-                      )}
+                      <Save size={16} strokeWidth={2} aria-hidden />
                       Save
                     </>
                   )}

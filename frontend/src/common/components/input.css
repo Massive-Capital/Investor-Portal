@@ -34,6 +34,11 @@
   display: block;
 }
 
+.input_wrapper__optional_mark {
+  font-weight: 400;
+  color: var(--portal-text-muted, #64748b);
+}
+
 .input_wrapper__field {
   position: relative;
   width: 100%;

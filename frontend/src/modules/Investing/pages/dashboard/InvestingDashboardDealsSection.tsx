@@ -16,7 +16,7 @@ import { ExportDealsModal } from "@/modules/Syndication/Deals/components/ExportD
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
 import { getDealStatusRules } from "@/modules/Syndication/Deals/constants/deal-lifecycle"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
-import { SyndicatingDealsSection, DealsViewSortControls, type DealsSortKey } from "@/modules/Syndication/Deals/SyndicatingDealsSection"
+import { SyndicatingDealsSection, DealsSortControl, DealsViewToggle, type DealsSortKey } from "@/modules/Syndication/Deals/SyndicatingDealsSection"
 import {
   dealHasInvestNowDraftForViewer,
   firstInvestNowDraftRowForViewer,
@@ -129,7 +129,7 @@ function tabMeta(tab: DealsTab): {
 } {
   if (tab === "all") {
     return {
-      sectionTitle: "All deals",
+      sectionTitle: "All Deals",
       searchPlaceholder: "Search deals…",
       emptyLabel: "No deals in your investing scope yet.",
     }
@@ -251,11 +251,11 @@ export function InvestingDashboardDealsSection() {
             strokeWidth={1.75}
             aria-hidden
           />
-          All deals
+          All Deals
         </h2>
       </header>
 
-      <div className="investing_dash_deals_block um_panel deals_list_card_surface deal_inv_table_panel">
+      <div className="sponsor_dash_deals_block um_panel deals_list_card_surface deal_inv_table_panel">
       <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer investing_dash_deals_tabs">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
@@ -358,37 +358,37 @@ export function InvestingDashboardDealsSection() {
       </div>
 
       <div className="investing_dash_deals_toolbar_row">
-        <div className="um_toolbar deal_inv_table_um_toolbar investing_dash_deals_toolbar investing_dash_deals_unified_toolbar">
-          <div className="um_search_wrap investing_dash_deals_search_wrap">
-            <Search className="um_search_icon" size={18} aria-hidden />
-            <input
-              type="search"
-              className="um_search_input"
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={loading}
-              aria-label={searchPlaceholder}
-            />
-          </div>
-          <div className="um_toolbar_actions deal_inv_table_toolbar_actions deals_list_toolbar_actions investing_dash_deals_export_actions">
+        <div className="um_toolbar deal_inv_table_um_toolbar investing_dash_deals_toolbar investing_dash_deals_unified_toolbar sponsor_dash_deals_toolbar">
+          <div className="sponsor_dash_deals_toolbar_leading">
             <button
               type="button"
-              className="um_toolbar_export_btn"
+              className="um_toolbar_export_btn investing_dash_deals_export_btn"
               onClick={() => setExportModalOpen(true)}
               disabled={loading || exportDeals.length === 0}
             >
               <Download size={18} strokeWidth={2} aria-hidden />
               <span>Export All</span>
             </button>
+            <DealsSortControl
+              sortKey={dealsSortKey}
+              onSortKeyChange={setDealsSortKey}
+            />
           </div>
-          <DealsViewSortControls
-            className="investing_dash_deals_view_sort sponsor_dash_deals_toolbar"
-            view={dealsView}
-            onViewChange={setDealsView}
-            sortKey={dealsSortKey}
-            onSortKeyChange={setDealsSortKey}
-          />
+          <div className="sponsor_dash_deals_toolbar_trailing">
+            <DealsViewToggle view={dealsView} onViewChange={setDealsView} />
+            <div className="um_search_wrap investing_dash_deals_search_wrap">
+              <Search className="um_search_icon" size={18} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder={searchPlaceholder}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={loading}
+                aria-label={searchPlaceholder}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

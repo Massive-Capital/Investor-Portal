@@ -127,9 +127,69 @@ a.deals_list_add_link.um_btn_primary {
   text-decoration: none;
 }
 
-.deals_list_back_circle:hover {
+.deals_list_back_circle:hover,
+.deals_list_back_circle:focus-visible {
   background: var(--portal-primary-soft);
   color: var(--portal-text);
+  text-decoration: none;
+}
+
+/* Full-page flows — space below top nav so back control is not flush with chrome */
+.deals_add_deal_asset_page > header.deals_list_head,
+.deals_add_deal_asset_page > .deals_list_head {
+  padding-top: 1rem;
+}
+
+.deals_detail_page > header.deals_list_head {
+  padding-top: 1rem;
+}
+
+/* Full-page create/edit flows: header back matches Edit deal gold secondary */
+.deals_add_deal_asset_page .deals_list_back_circle {
+  background: var(--portal-tab-active-bg);
+  color: var(--portal-tab-active-text, var(--portal-text));
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 28%,
+    var(--portal-border, #c6c6c6)
+  );
+}
+
+.deals_add_deal_asset_page .deals_list_back_circle:hover,
+.deals_add_deal_asset_page .deals_list_back_circle:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 16%,
+    transparent
+  );
+  color: var(--portal-tab-active-text, var(--portal-text));
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 42%,
+    var(--portal-border, #c6c6c6)
+  );
+  text-decoration: none;
+}
+
+:root[data-theme="dark"] .deals_add_deal_asset_page .deals_list_back_circle {
+  background: var(--portal-tab-active-bg);
+  color: var(--portal-tab-active-text, var(--portal-text));
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 32%,
+    var(--portal-border, rgba(255, 255, 255, 0.14))
+  );
+}
+
+:root[data-theme="dark"] .deals_add_deal_asset_page .deals_list_back_circle:hover,
+:root[data-theme="dark"] .deals_add_deal_asset_page .deals_list_back_circle:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 22%,
+    transparent
+  );
+  color: var(--portal-tab-active-text, var(--portal-text));
+  text-decoration: none;
 }
 
 .portal_tab_placeholder {
@@ -190,7 +250,7 @@ a.deals_list_add_link.um_btn_primary {
 
 .deal_documents_tab_root .deal_docs > .um_panel .deal_docs_toolbar.um_toolbar {
   padding: 0;
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--portal-table-toolbar-margin-bottom, 25px);
 }
 
 .deal_documents_tab_root .deal_docs_ui_root {
@@ -281,9 +341,8 @@ a.deals_list_add_link.um_btn_primary {
   gap: 0.65em;
 }
 
-/* Pull announcement flush to top nav (cancels .app_main_content top padding) */
 .deals_detail_page .deals_list_head:has(.deal_announcement_banner--page) {
-  gap: 0.5em;
+  gap: 0.75em;
 }
 
 .deals_detail_page .deals_list_head .deals_list_title_row {
@@ -291,12 +350,8 @@ a.deals_list_add_link.um_btn_primary {
 }
 
 .deals_detail_page .deals_list_head .deal_announcement_banner--page {
-  margin-top: calc(-1.25em - 20px);
-  margin-bottom: 0.35em;
-  padding-left: 1.5em;
-  padding-right: 1.5em;
-  border-radius: var(--portal-card-radius, 4px);
-  border: none;
+  width: 100%;
+  margin: 0;
 }
 
 .deals_list_not_found {
@@ -325,7 +380,7 @@ a.deals_list_add_link.um_btn_primary {
   text-decoration: none;
 }
 
-.deals_list_not_found a:hover {
+.deals_list_not_found a:not(.deals_list_inline_back):hover {
   text-decoration: underline;
 }
 
@@ -334,6 +389,12 @@ a.deals_list_add_link.um_btn_primary {
   align-items: center;
   gap: 0.35em;
   vertical-align: middle;
+  text-decoration: none;
+}
+
+.deals_list_inline_back:hover,
+.deals_list_inline_back:focus-visible {
+  text-decoration: none;
 }
 
 /* Deals list & deal detail: horizontal tab strip + arrows; scrollbar hidden (scroll/touch still works) */
@@ -462,6 +523,7 @@ a.deals_list_add_link.um_btn_primary {
 
 /*
  * Deals DataTable: horizontal scroll when content is wider than the card.
+ * `table-layout: fixed` + `<colgroup>` widths keep header cells aligned with body while scrolling.
  */
 .deals_list_table_panel .um_table_wrap.data_table_shell,
 .deals_list_table_panel .data_table_scroll_region {
@@ -469,12 +531,20 @@ a.deals_list_add_link.um_btn_primary {
   -webkit-overflow-scrolling: touch;
 }
 
+.deals_list_table_panel .um_table_wrap.data_table_shell {
+  border: 1px solid var(--portal-table-border, var(--portal-border, #e2e8f0));
+  border-radius: var(--portal-card-radius, 4px);
+  overflow: hidden;
+}
+
 .deals_list_table_panel .data_table_scroll_region {
   overscroll-behavior-x: contain;
 }
 
+.deals_list_table_panel .um_table_wrap.data_table_shell .data_table_scroll_region .um_table.deal_inv_table,
+.deals_list_table_panel .um_table.deal_inv_table,
 .deals_list_table_panel .um_table {
-  table-layout: auto;
+  table-layout: fixed;
   width: max-content;
   min-width: 100%;
   max-width: none;
@@ -499,9 +569,15 @@ a.deals_list_add_link.um_btn_primary {
   overflow-wrap: anywhere;
   hyphens: auto;
   overflow: visible;
+  background: var(--portal-table-header-bg, #f8fafc);
+  color: var(--portal-table-header-text, #475569);
+  border-bottom: 1px solid
+    var(--portal-table-header-border, var(--portal-table-border, #e2e8f0));
+}
+
+/* Scrolling columns only — do not override sticky pinned headers (see below). */
+.deals_list_table_panel .um_table thead th:not(.data_table_col_sticky) {
   position: relative;
-  /* Align with card/panel surface — no distinct header band vs first body row */
-  background: transparent;
 }
 
 /* Horizontal scroll: non-sticky header cells must paint under the sticky column (see data-table.css z-index). */
@@ -509,25 +585,80 @@ a.deals_list_add_link.um_btn_primary {
   z-index: 0;
 }
 
-/* Sticky first column: opaque surface matches `.um_panel` (#f8f8f8) so scrolling headers do not show through. */
+/* Pinned deal-name column — header stays aligned with body while scrolling horizontally. */
+.deals_list_table_panel .um_table.data_table_sticky_first {
+  --data-table-sticky-col-0-width: 15rem;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.deals_list_table_panel .um_table.data_table_sticky_first th.data_table_col_sticky,
+.deals_list_table_panel .um_table.data_table_sticky_first td.data_table_col_sticky {
+  position: sticky;
+  background-clip: padding-box;
+  box-sizing: border-box;
+}
+
+.deals_list_table_panel .um_table.data_table_sticky_first thead th.data_table_col_sticky {
+  top: 0;
+}
+
+.deals_list_table_panel .um_table.data_table_sticky_first th.data_table_col_sticky--0,
+.deals_list_table_panel .um_table.data_table_sticky_first td.data_table_col_sticky--0,
+.deals_list_table_panel .um_table th.deals_col_deal_name,
+.deals_list_table_panel .um_table td.deals_col_deal_name {
+  left: 0;
+  width: var(--data-table-sticky-col-0-width);
+  min-width: var(--data-table-sticky-col-0-width);
+  max-width: var(--data-table-sticky-col-0-width);
+  box-sizing: border-box;
+}
+
+.deals_list_table_panel .um_table.data_table_sticky_first th.data_table_col_sticky--1,
+.deals_list_table_panel .um_table.data_table_sticky_first td.data_table_col_sticky--1 {
+  left: var(--data-table-sticky-col-0-width);
+}
+
+/* Sticky first column: opaque header surface so scrolling columns do not show through. */
 .deals_list_table_panel .um_table.data_table_sticky_first thead th.data_table_col_sticky--0 {
   z-index: 4;
-  background: var(--portal-panel-bg, #f8f8f8);
+  background: var(--portal-table-header-bg, #f8fafc);
+  color: var(--portal-table-header-text, #475569);
+  border-bottom: 1px solid
+    var(--portal-table-header-border, var(--portal-table-border, #e2e8f0));
 }
 
 .deals_list_table_panel .um_table.data_table_sticky_first thead th.data_table_col_sticky--1 {
   z-index: 5;
-  background: var(--portal-panel-bg, #f8f8f8);
+  background: var(--portal-table-header-bg, #f8fafc);
+  color: var(--portal-table-header-text, #475569);
+  border-bottom: 1px solid
+    var(--portal-table-header-border, var(--portal-table-border, #e2e8f0));
 }
 
 .deals_list_table_panel .um_table.data_table_sticky_first tbody td.data_table_col_sticky--0 {
   z-index: 2;
-  background: var(--portal-table-row-odd, #ffffff);
 }
 
 .deals_list_table_panel .um_table.data_table_sticky_first tbody td.data_table_col_sticky--1 {
   z-index: 3;
+}
+
+/* Sticky body cells follow striped row surfaces (see data-table.css). */
+.deals_list_table_panel
+  .um_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_odd
+  td.data_table_col_sticky {
   background: var(--portal-table-row-odd, #ffffff);
+}
+
+.deals_list_table_panel
+  .um_table.data_table_sticky_first
+  tbody
+  tr.data_table_row_even
+  td.data_table_col_sticky {
+  background: var(--portal-table-row-even, #f8fafc);
 }
 
 
@@ -573,9 +704,51 @@ a.deals_list_add_link.um_btn_primary {
   white-space: nowrap;
   font-size: var(--portal-table-font-size, 0.9375rem);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
   /* Align with `.um_table td` (0.65em 0.75em) for column edges that line up header ↔ body */
   padding: 0.65em 0.75em;
   gap: 0.35em;
+}
+
+/* Sort headers — match body column alignment (left / center / right) when scrolling */
+.deals_list_table_panel
+  .um_table
+  .um_sort_header_ctl:not(.um_sort_header_ctl_align_center):not(.um_sort_header_ctl_align_end) {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.deals_list_table_panel .um_table .um_sort_header_ctl.um_sort_header_ctl_align_center {
+  justify-content: center;
+  text-align: center;
+}
+
+.deals_list_table_panel .um_table .um_sort_header_ctl.um_sort_header_ctl_align_end {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.deals_list_table_panel
+  .um_table
+  .um_sort_header_ctl.um_sort_header_ctl_align_center
+  .um_sort_header_label,
+.deals_list_table_panel
+  .um_table
+  .um_sort_header_ctl.um_sort_header_ctl_align_end
+  .um_sort_header_label {
+  flex: 0 0 auto;
+  min-width: min-content;
+  overflow: visible;
+}
+
+.deals_list_table_panel .um_table th.deals_col_deal_name .um_sort_header_label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Hint + label row — do not cap at 100% width inside sort control (prevents pathological wrapping) */
@@ -628,6 +801,25 @@ a.deals_list_add_link.um_btn_primary {
 
 .deals_list_table_panel .um_table_pagination {
   overflow-x: hidden;
+  border-top: 1px solid var(--portal-table-border, var(--portal-border, #e2e8f0));
+}
+
+:root[data-theme="dark"] .deals_list_table_panel .um_table_wrap.data_table_shell {
+  background: var(--portal-surface, rgba(255, 255, 255, 0.04));
+  border-color: var(--portal-table-border);
+}
+
+:root[data-theme="dark"] .deals_list_table_panel .um_table_pagination {
+  background: var(--portal-surface, rgba(255, 255, 255, 0.04));
+  border-top-color: var(--portal-table-border);
+}
+
+:root[data-theme="dark"]
+  .deals_list_table_panel
+  .data_table_scroll_region.data_table_scroll_region--overflow-x {
+  /* Keep scrollbar inside the card — no harsh clip on rounded corners */
+  border-bottom-left-radius: var(--portal-card-radius, 4px);
+  border-bottom-right-radius: var(--portal-card-radius, 4px);
 }
 
 .deals_list_table_panel_loading {
@@ -674,7 +866,7 @@ a.deals_list_add_link.um_btn_primary {
 
 /* Match Members table name / link treatment */
 .deals_table_name_link {
-  color: #000000;
+  color: var(--portal-text, #1b1b1d);
   font-weight: 600;
   text-decoration: none;
 }
@@ -731,8 +923,11 @@ a.deals_list_add_link.um_btn_primary {
 /* Same card surface as My deals — also Customers directory + deal Assets tab */
 .deals_list_page .deals_list_table_panel.deals_list_card_surface,
 .company_page .deals_list_table_panel.deals_list_card_surface,
+.investing_profiles_page .deals_list_table_panel.deals_list_card_surface,
 .deal_offering_root
-  .deal_assets_datatable_panel.deals_list_table_panel.deals_list_card_surface {
+  .deal_assets_datatable_panel.deals_list_table_panel.deals_list_card_surface,
+.deal_offering_root
+  .deal_offering_info_panel.deals_list_table_panel.deals_list_card_surface {
   background: var(--portal-panel-bg, #f6f6f6);
 }
 
@@ -796,6 +991,11 @@ a.deals_list_add_link.um_btn_primary {
   max-width: 100%;
 }
 
+.deals_table_col_header_icon {
+  flex-shrink: 0;
+  color: var(--portal-gold-accent, #d4af37);
+}
+
 .deals_table_col_header_end {
   justify-content: flex-end;
   width: 100%;
@@ -844,21 +1044,32 @@ a.deals_list_add_link.um_btn_primary {
   max-width: 100%;
 }
 
-/* Column header alignment: dates / text vs amounts */
-.deals_list_table_panel thead th.deals_th_align_center {
+/* Column header alignment: dates / text vs amounts — same min-width on th + td so headers line up when scrolling */
+.deals_list_table_panel .um_table thead th.deals_th_align_center,
+.deals_list_table_panel .um_table tbody td.deals_td_align_center {
   text-align: center;
   min-width: 8.25rem;
+  width: 8.25rem;
+  box-sizing: border-box;
 }
 
-.deals_list_table_panel thead th.deals_th_align_right {
+.deals_list_table_panel .um_table thead th.deals_th_align_right,
+.deals_list_table_panel .um_table tbody td.deals_td_align_right {
   text-align: right;
   min-width: 10.75rem;
+  width: 10.75rem;
+  box-sizing: border-box;
 }
 
-/* Amount / currency cells — tabular figures + right edge alignment */
+.deals_list_table_panel .um_table thead th.deals_col_deal_stage,
+.deals_list_table_panel .um_table tbody td.deals_col_deal_stage {
+  min-width: 9.5rem;
+  width: 9.5rem;
+  box-sizing: border-box;
+}
+
 .deals_list_table_panel .um_table_members tbody td.um_td_numeric {
   font-variant-numeric: tabular-nums;
-  min-width: 9rem;
 }
 
 .deals_list_table_panel thead th.deals_th_actions_head {
@@ -1213,6 +1424,10 @@ a.deals_list_add_link.um_btn_primary {
   flex-shrink: 0;
 }
 
+.deals_avatar_icon_ring svg {
+  flex-shrink: 0;
+}
+
 .deals_list_name_text {
   display: flex;
   flex-direction: column;
@@ -1225,6 +1440,20 @@ a.deals_list_add_link.um_btn_primary {
 .deals_list_name_primary {
   min-width: 0;
   width: 100%;
+}
+
+.deals_list_name_primary.deals_list_name_with_draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+
+.deals_list_table_panel .deals_list_name_with_draft .deals_table_name_link {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .deals_list_name_subrow {

@@ -29,10 +29,25 @@
 
 .deal_step_fieldset .radio-group {
   margin-top: 0.5em;
+  width: 100%;
+  max-width: min(100%, var(--portal-binary-radio-max-width, 28rem));
+}
+
+/* Create deal — all four stage pills on one row */
+.deal_step_fieldset .radio-group.deal_step_stage_pills {
+  max-width: 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.deal_step_stage_pills .radio-btn {
+  min-height: var(--portal-binary-radio-min-height, 2.125rem);
+  padding: var(--portal-binary-radio-padding-y, 0.3rem)
+    var(--portal-binary-radio-padding-x, 0.65rem);
+  font-size: 0.8125rem;
+  line-height: 1.25;
 }
 
 .deal_step_yesno_cards {
-  margin-top: 0.5em;
   width: 100%;
 }
 

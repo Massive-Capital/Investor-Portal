@@ -59,7 +59,9 @@ export function OfferingPreviewAssetBentoCard({
           </span>
           <div className="deal_offer_pf_bento_asset_head_text">
             <h3 className="deal_offer_pf_bento_asset_name">{block.name}</h3>
-            <p className="deal_offer_pf_bento_asset_address">{block.address}</p>
+            {block.address ? (
+              <p className="deal_offer_pf_bento_asset_address">{block.address}</p>
+            ) : null}
           </div>
         </div>
 

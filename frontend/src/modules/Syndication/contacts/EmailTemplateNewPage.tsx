@@ -543,7 +543,7 @@ export default function EmailTemplateNewPage() {
             disabled={submitting}
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <div className="add_contact_modal_actions_trailing">
             <button type="submit" className="um_btn_primary" disabled={submitting}>

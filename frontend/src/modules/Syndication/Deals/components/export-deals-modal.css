@@ -195,7 +195,7 @@
 .deals_export_modal_footer {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.5em;
   padding: 0.85em 1.1em 1em;
@@ -209,7 +209,6 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.5em;
-  margin-left: auto;
 }
 
 .deals_export_modal_btn_secondary {
@@ -217,7 +216,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.4em;
-  padding: 0.5em 1em;
+  box-sizing: border-box;
+  min-height: var(--portal-button-height, 2.25rem);
+  height: var(--portal-button-height, 2.25rem);
+  padding: 0 1em;
   border: 1px solid var(--portal-border);
   border-radius: var(--portal-pill-radius);
   background: var(--portal-surface);
@@ -238,7 +240,10 @@
   align-items: center;
   justify-content: center;
   gap: 0.4em;
-  padding: 0.5em 1em;
+  box-sizing: border-box;
+  min-height: var(--portal-button-height, 2.25rem);
+  height: var(--portal-button-height, 2.25rem);
+  padding: 0 1em;
   border: none;
   border-radius: var(--portal-pill-radius);
   background: var(--portal-primary);

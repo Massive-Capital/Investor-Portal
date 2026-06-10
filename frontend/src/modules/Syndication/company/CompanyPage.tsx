@@ -1614,7 +1614,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   disabled={editSubmitting}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
@@ -1697,7 +1697,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   onClick={() => closeSuspendModal()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
@@ -1774,7 +1774,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   disabled={addSubmitting}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"

@@ -566,7 +566,7 @@ export function EsignCreateTemplateModal({
               onClick={onClose}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <button
               type="submit"

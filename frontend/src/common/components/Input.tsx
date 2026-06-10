@@ -24,6 +24,8 @@ type InputProps = {
   required?: boolean;
   /** When false, no mandatory icon is shown next to the label (native `required` unchanged). */
   requiredIndicator?: boolean;
+  /** When true, shows “(optional)” beside the label. Defaults to true when not required and `requiredIndicator` is false. */
+  optionalIndicator?: boolean;
   "aria-invalid"?: boolean | "true" | "false";
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   autoComplete?: string;
@@ -48,12 +50,16 @@ const Input = ({
   inputClassName,
   required,
   requiredIndicator = true,
+  optionalIndicator,
   "aria-invalid": ariaInvalid,
   inputMode,
   autoComplete,
   ...props
 }: InputProps) => {
   const showRequiredMark = Boolean(required) && requiredIndicator;
+  const showOptionalMark =
+    optionalIndicator ??
+    (!required && requiredIndicator === false);
   const inputClass = ["input_field", inputClassName].filter(Boolean).join(" ");
   const inputNode =
     type === "textarea" ? (
@@ -106,7 +112,12 @@ const Input = ({
       >
         <span className="input_wrapper__label_leading">
           {icon && <span className="input_wrapper__label_icon">{icon}</span>}
-          <span className="input_wrapper__label_text">{labelName}</span>
+          <span className="input_wrapper__label_text">
+            {labelName}
+            {showOptionalMark ? (
+              <span className="input_wrapper__optional_mark"> (optional)</span>
+            ) : null}
+          </span>
         </span>
         {showRequiredMark ? (
           <span

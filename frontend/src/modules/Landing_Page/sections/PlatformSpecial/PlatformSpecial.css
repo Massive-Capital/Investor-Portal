@@ -89,7 +89,7 @@
 
 .sx-platform__metric {
   padding: 0.45rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--sx-radius-box);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;

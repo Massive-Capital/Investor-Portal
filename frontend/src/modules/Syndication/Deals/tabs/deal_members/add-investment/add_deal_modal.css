@@ -346,7 +346,7 @@
 .deals_add_inv_field_locked_badge {
   margin-inline-start: 0.35em;
   padding: 0.12em 0.45em;
-  border-radius: 999px;
+  border-radius: var(--ui-button-border-radius, 4px);
   font-size: 0.65em;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -468,8 +468,12 @@
   width: 100%;
 }
 
-.deals_add_inv_modal_body .deal_step_yesno_cards {
-  margin-top: 0.35em;
+.deals_add_inv_modal_form .um_field:has(.portal_yesno_field_block) .um_field_label_row {
+  margin-bottom: 0.35em;
+}
+
+.deals_add_inv_modal_form .portal_yesno_field_block {
+  margin-top: 0;
 }
 
 .deals_add_inv_doc_field {

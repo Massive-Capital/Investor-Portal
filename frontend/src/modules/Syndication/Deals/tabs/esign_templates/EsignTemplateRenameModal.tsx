@@ -111,7 +111,7 @@ export function EsignTemplateRenameModal({
             disabled={busy}
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <button
             type="button"

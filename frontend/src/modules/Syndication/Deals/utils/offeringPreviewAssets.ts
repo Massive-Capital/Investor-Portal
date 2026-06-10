@@ -1,4 +1,4 @@
-import type { DealDetailApi } from "../api/dealsApi"
+import { dealDisplayFieldText, type DealDetailApi } from "../api/dealsApi"
 import {
   assetTypeFromAttributes,
   computeDealAssetRowsFromClientStorage,
@@ -56,7 +56,7 @@ export function isFilledPreviewAssetValue(value: string | undefined): boolean {
 }
 
 function filledPreviewText(raw: string | undefined): string {
-  const t = String(raw ?? "").trim()
+  const t = dealDisplayFieldText(raw)
   if (!t || t === "—") return ""
   return t
 }
@@ -73,17 +73,20 @@ function acquisitionPriceDisplay(
 /** Full deal address for offering preview “Location” section. */
 export function formatOfferingPreviewDealAddress(detail: DealDetailApi): string {
   const street = [detail.addressLine1, detail.addressLine2]
-    .map((x) => (x ?? "").trim())
+    .map((x) => dealDisplayFieldText(x))
     .filter(Boolean)
     .join(", ")
   const locality = [detail.city, detail.state, detail.zipCode]
-    .map((x) => (x ?? "").trim())
+    .map((x) => dealDisplayFieldText(x))
     .filter(Boolean)
     .join(", ")
-  const country = (detail.country ?? "").trim()
+  const country = dealDisplayFieldText(detail.country)
   const parts = [street, locality, country].filter(Boolean)
   if (parts.length) return parts.join(", ")
-  return [detail.city, detail.country].filter((x) => x?.trim()).join(", ") || "—"
+  const cityCountry = [dealDisplayFieldText(detail.city), country]
+    .filter(Boolean)
+    .join(", ")
+  return cityCountry || "—"
 }
 
 function orderedPreviewAssetRows(detail: DealDetailApi): DealAssetRow[] {

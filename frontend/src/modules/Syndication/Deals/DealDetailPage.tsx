@@ -80,7 +80,10 @@ import {
   type ViewerDealMemberRole,
 } from "./utils/dealDetailTabVisibility"
 import { toast } from "../../../common/components/Toast"
-import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
+import {
+  isDealStageDraft,
+  isDealStageOfferingShareBlocked,
+} from "./constants/deal-lifecycle/deal-stage"
 import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
@@ -438,12 +441,15 @@ export function DealDetailPage() {
   const announcementMessage =
     dealDetailApi?.dealAnnouncementMessage?.trim() ?? ""
   const isDealDraftStage = isDealStageDraft(dealDetailApi?.dealStage)
+  const isDealOfferingShareBlocked = isDealStageOfferingShareBlocked(
+    dealDetailApi?.dealStage,
+  )
   /** Stage chip already says Draft — avoid a second draft marker beside the title. */
   const showIncompleteDraftBadge = dealFormIncomplete && !isDealDraftStage
 
   const offeringLinkAvailable = useMemo(
-    () => dealHasOfferingShareLink(dealDetailApi) && !isDealDraftStage,
-    [dealDetailApi, isDealDraftStage],
+    () => dealHasOfferingShareLink(dealDetailApi) && !isDealOfferingShareBlocked,
+    [dealDetailApi, isDealOfferingShareBlocked],
   )
 
   const handleEditDeal = useCallback(() => {
@@ -458,9 +464,9 @@ export function DealDetailPage() {
         !dealId?.trim() ||
         !dealDetailApi ||
         !dealHasOfferingShareLink(dealDetailApi) ||
-        isDealDraftStage
+        isDealOfferingShareBlocked
       )
-        return
+      return
       try {
         const url = await buildDealOfferingPreviewShareUrl(dealId.trim(), {
           previewToken: dealDetailApi.offeringPreviewToken,
@@ -476,7 +482,7 @@ export function DealDetailPage() {
         toast.error("Could not copy link", msg)
       }
     },
-    [dealId, dealDetailApi, isDealDraftStage],
+    [dealId, dealDetailApi, isDealOfferingShareBlocked],
   )
 
   /** **Investors** tab: send eSign documents to this row’s email. */
@@ -777,7 +783,7 @@ export function DealDetailPage() {
               <DealMembersTab
                 dealId={dealId}
                 offeringLinkAvailable={offeringLinkAvailable}
-                offeringLinkBlockedBecauseDraft={isDealDraftStage}
+                offeringLinkBlockedBecauseDraft={isDealOfferingShareBlocked}
                 addInvestmentOpen={addInvestmentOpen}
                 sharedInvestmentModalOpen={sharedInvestmentModalOpen}
                 investorsRefreshKey={dealMembersRefreshKey}
@@ -840,7 +846,7 @@ export function DealDetailPage() {
               onCopyOfferingLink={handleCopyMemberOfferingLink}
               onDeleteMember={handleDeleteMember}
               offeringLinkAvailable={offeringLinkAvailable}
-              offeringLinkBlockedBecauseDraft={isDealDraftStage}
+              offeringLinkBlockedBecauseDraft={isDealOfferingShareBlocked}
               invitationMailStatusByRowId={invitationMailSentByRowId}
               viewerDealMemberRole={viewerDealMemberRole}
               dealMembersRoster={memberRosterForTabs}

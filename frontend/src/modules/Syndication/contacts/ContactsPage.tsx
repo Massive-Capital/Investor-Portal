@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   AlignLeft,
   Ban,
-  Check,
   CheckCircle2,
   ClipboardList,
   ContactRound,
@@ -12,7 +11,9 @@ import {
   LayoutList,
   Mail,
   Pencil,
+  Loader2,
   Plus,
+  Save,
   Search,
   Send,
   Tag,
@@ -38,6 +39,10 @@ import {
   nationalDigitsFromStoredPhone,
 } from "../../../common/phone/usPhoneNumber"
 import { ActiveArchivedTabs } from "../../../common/components/active-archived-tabs/ActiveArchivedTabs"
+import {
+  UsageFilterTabs,
+  type UsageFilterTab,
+} from "../../../common/components/usage-filter-tabs/UsageFilterTabs"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
@@ -90,7 +95,10 @@ type ContactsListTab = "active" | "archived"
 
 type ContactsMainTab = "contacts" | "tags" | "lists"
 
-type CatalogUsageFilter = "all" | "in_use" | "unused"
+/** Wide enough for the “Actions” header on one line (see contacts.css). */
+const CONTACTS_ACTIONS_COL_WIDTH = "7rem" as const
+
+type CatalogUsageFilter = UsageFilterTab
 
 type ContactLabelRow = {
   id: string
@@ -991,8 +999,9 @@ function ContactsPage() {
         id: "actions",
         header: "Actions",
         align: "right",
-        thClassName: "um_th_actions",
-        tdClassName: "um_td_actions deal_inv_td_actions",
+        colWidth: CONTACTS_ACTIONS_COL_WIDTH,
+        thClassName: "um_th_actions contacts_th_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions contacts_td_actions",
         cell: (r) => (
           <ContactCatalogRowActions
             itemLabel={r.name}
@@ -1030,8 +1039,9 @@ function ContactsPage() {
         id: "actions",
         header: "Actions",
         align: "center",
-        thClassName: "um_th_actions",
-        tdClassName: "um_td_actions deal_inv_td_actions",
+        colWidth: CONTACTS_ACTIONS_COL_WIDTH,
+        thClassName: "um_th_actions contacts_th_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions contacts_td_actions",
         cell: (r) => (
           <ContactCatalogRowActions
             itemLabel={r.name}
@@ -1213,8 +1223,9 @@ function ContactsPage() {
         id: "actions",
         header: "Actions",
         align: "center",
-        thClassName: "um_th_actions",
-        tdClassName: "um_td_actions deal_inv_td_actions",
+        colWidth: CONTACTS_ACTIONS_COL_WIDTH,
+        thClassName: "um_th_actions contacts_th_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions contacts_td_actions",
         cell: (row) => (
           <ContactRowActions
             contactLabel={
@@ -1551,55 +1562,15 @@ function ContactsPage() {
         <>
           <div className="um_members_header_block contacts_inner_header">
             <div className="contacts_toolbar_filters_row">
-              <div
-                className="contacts_filter_button_group"
-                role="group"
-                aria-label="Filter tags by usage"
-              >
-                <button
-                  type="button"
-                  aria-pressed={tagsUsageFilter === "all"}
-                  className={`contacts_filter_btn${
-                    tagsUsageFilter === "all" ? " contacts_filter_btn_active" : ""
-                  }`}
-                  onClick={() => setTagsUsageFilter("all")}
-                >
-                  <span>All</span>
-                  <span className="contacts_filter_btn_count">
-                    ({tagCatalog.length})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={tagsUsageFilter === "in_use"}
-                  className={`contacts_filter_btn${
-                    tagsUsageFilter === "in_use"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => setTagsUsageFilter("in_use")}
-                >
-                  <span>In use</span>
-                  <span className="contacts_filter_btn_count">
-                    ({tagCountInUse})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={tagsUsageFilter === "unused"}
-                  className={`contacts_filter_btn${
-                    tagsUsageFilter === "unused"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => setTagsUsageFilter("unused")}
-                >
-                  <span>Unused</span>
-                  <span className="contacts_filter_btn_count">
-                    ({tagCountUnused})
-                  </span>
-                </button>
-              </div>
+              <UsageFilterTabs
+                value={tagsUsageFilter}
+                onChange={setTagsUsageFilter}
+                allCount={tagCatalog.length}
+                inUseCount={tagCountInUse}
+                unusedCount={tagCountUnused}
+                idPrefix="contacts-tags-filter"
+                ariaLabel="Filter tags by usage"
+              />
               <button
                 type="button"
                 className="um_btn_primary contacts_toolbar_add_btn"
@@ -1649,57 +1620,15 @@ function ContactsPage() {
         <>
           <div className="um_members_header_block contacts_inner_header">
             <div className="contacts_toolbar_filters_row">
-              <div
-                className="contacts_filter_button_group"
-                role="group"
-                aria-label="Filter lists by usage"
-              >
-                <button
-                  type="button"
-                  aria-pressed={listsUsageFilter === "all"}
-                  className={`contacts_filter_btn${
-                    listsUsageFilter === "all"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => setListsUsageFilter("all")}
-                >
-                  <span>All</span>
-                  <span className="contacts_filter_btn_count">
-                    ({listCatalog.length})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={listsUsageFilter === "in_use"}
-                  className={`contacts_filter_btn${
-                    listsUsageFilter === "in_use"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => setListsUsageFilter("in_use")}
-                >
-                  <span>In use</span>
-                  <span className="contacts_filter_btn_count">
-                    ({listCountInUse})
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={listsUsageFilter === "unused"}
-                  className={`contacts_filter_btn${
-                    listsUsageFilter === "unused"
-                      ? " contacts_filter_btn_active"
-                      : ""
-                  }`}
-                  onClick={() => setListsUsageFilter("unused")}
-                >
-                  <span>Unused</span>
-                  <span className="contacts_filter_btn_count">
-                    ({listCountUnused})
-                  </span>
-                </button>
-              </div>
+              <UsageFilterTabs
+                value={listsUsageFilter}
+                onChange={setListsUsageFilter}
+                allCount={listCatalog.length}
+                inUseCount={listCountInUse}
+                unusedCount={listCountUnused}
+                idPrefix="contacts-lists-filter"
+                ariaLabel="Filter lists by usage"
+              />
               <button
                 type="button"
                 className="um_btn_primary contacts_toolbar_add_btn"
@@ -1881,14 +1810,18 @@ function ContactsPage() {
                   onClick={() => closeLabelModal()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
                   className="um_btn_primary"
                   disabled={labelModalBusy}
                 >
-                  <Check size={16} strokeWidth={2} aria-hidden />
+                  {labelModalBusy ? (
+                    <Loader2 size={16} strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Save size={16} strokeWidth={2} aria-hidden />
+                  )}
                   {labelModalBusy ? "Saving…" : "Save"}
                 </button>
               </div>
@@ -2077,7 +2010,7 @@ function ContactsPage() {
                 onClick={closeSendMailModal}
               >
                 <X size={16} strokeWidth={2} aria-hidden />
-                Cancel
+                Close
               </button>
               <button
                 type="button"
@@ -2247,7 +2180,7 @@ function ContactsPage() {
                   onClick={() => closeSuspendContact()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"

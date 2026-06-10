@@ -34,13 +34,15 @@ export function DealAnnouncementBanner({
   return (
     <div className={rootClass} role="region" aria-label="Deal announcement">
       <div className="deal_announcement_banner_icon_wrap" aria-hidden>
-        <Megaphone size={variant === "page" ? 15 : 16} strokeWidth={2} />
+        <Megaphone size={variant === "page" ? 16 : 17} strokeWidth={2} />
       </div>
       <div className="deal_announcement_banner_content">
-        <p className="deal_announcement_banner_eyebrow">Announcement</p>
-        {trimmedTitle ? (
-          <p className="deal_announcement_banner_title">{trimmedTitle}</p>
-        ) : null}
+        <div className="deal_announcement_banner_head">
+          <span className="deal_announcement_banner_eyebrow">Announcement</span>
+          {trimmedTitle ? (
+            <p className="deal_announcement_banner_title">{trimmedTitle}</p>
+          ) : null}
+        </div>
         {trimmedMessage ? (
           <p className="deal_announcement_banner_message">{trimmedMessage}</p>
         ) : null}

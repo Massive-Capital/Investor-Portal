@@ -164,6 +164,7 @@ export function DealStepForm({ draft, errors, onChange }: DealStepFormProps) {
           />
           <RadioPillGroup
             name="dealStage"
+            className="deal_step_stage_pills"
             value={draft.dealStage}
             options={DEAL_STAGE_CHOICES}
             ariaLabelledBy="deal-stage-heading"

@@ -79,8 +79,8 @@ export function ConfirmDeleteModal({
           <p className="deals_suspend_all_modal_message">{body}</p>
         </div>
         <ModalFooterActions>
-          <ModalCancelButton onClick={onCancel} disabled={busy} />
           <ModalFooterTrailing>
+            <ModalCancelButton onClick={onCancel} disabled={busy} />
             <ModalDeleteButton
               onClick={() => void onConfirm()}
               disabled={busy}

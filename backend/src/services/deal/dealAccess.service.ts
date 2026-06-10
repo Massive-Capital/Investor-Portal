@@ -219,9 +219,22 @@ export async function listDealsForViewer(
   if (missing.length === 0) return base;
 
   const extraRows = await listAddDealFormsByIds(missing);
+  const orgId = scope.organizationId;
+  const scopedExtras =
+    orgId != null
+      ? (
+          await Promise.all(
+            extraRows.map(async (r) =>
+              (await isAddDealFormInOrganizationScope(r, orgId)) ? r : null,
+            ),
+          )
+        ).filter((r): r is AddDealFormRow => r != null)
+      : extraRows;
+  if (scopedExtras.length === 0) return base;
+
   const byId = new Map<string, AddDealFormRow>();
   for (const r of base) byId.set(String(r.id), r);
-  for (const r of extraRows) byId.set(String(r.id), r);
+  for (const r of scopedExtras) byId.set(String(r.id), r);
   return [...byId.values()].sort((a, b) =>
     String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
   );

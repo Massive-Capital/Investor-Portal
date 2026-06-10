@@ -25,6 +25,7 @@
   --sx-radius-lg: 20px;
   --sx-radius-md: 14px;
   --sx-radius-sm: 10px;
+  --sx-radius-box: var(--ui-button-border-radius, 4px);
   --sx-nav-h: 92px;
   --sx-max: 1200px;
   --sx-font-display: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;

@@ -1,6 +1,8 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import {
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
@@ -79,6 +81,11 @@ type DataTableProps<T> = {
    * `.data_table_row_odd` / `.data_table_row_even` in `data-table.css`.
    */
   stripedRows?: boolean;
+  /**
+   * Always enable horizontal scroll (investors / deal members tables with many columns).
+   * Skipped when the table body is empty.
+   */
+  forceHorizontalScroll?: boolean;
 };
 
 function sortHeaderLabel(header: ReactNode, columnId: string): string {
@@ -101,16 +108,93 @@ function membersThTdTextAlign(
   return "left";
 }
 
-function stickyColClasses(colIndex: number, stickyColumnCount: number): string {
+function isCheckboxColumn(col: {
+  thClassName?: string;
+  tdClassName?: string;
+}): boolean {
+  return (
+    col.thClassName?.includes("um_th_checkbox") === true ||
+    col.tdClassName?.includes("um_td_checkbox") === true
+  );
+}
+
+function stickyColClasses(
+  colIndex: number,
+  stickyColumnCount: number,
+  col: { thClassName?: string; tdClassName?: string },
+): string {
   if (colIndex >= stickyColumnCount) return "";
   const parts = [
     "data_table_col_sticky",
     `data_table_col_sticky--${colIndex}`,
   ];
-  if (colIndex === stickyColumnCount - 1) {
+  if (colIndex === stickyColumnCount - 1 && !isCheckboxColumn(col)) {
     parts.push("data_table_col_sticky_edge");
   }
   return parts.join(" ");
+}
+
+function TableScrollRegion({
+  className,
+  children,
+  measureKey,
+  forceHorizontalScroll = false,
+}: {
+  className: string;
+  children: ReactNode;
+  measureKey: string;
+  forceHorizontalScroll?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [overflowX, setOverflowX] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      setOverflowX(false);
+      return;
+    }
+    const measure = () => {
+      const table = el.querySelector("table");
+      if (!table) {
+        setOverflowX(false);
+        return;
+      }
+      const regionWidth = el.clientWidth;
+      if (regionWidth <= 0) {
+        setOverflowX(false);
+        return;
+      }
+      // Sticky column divider only when the table is wider than its scroll region.
+      const tableWidth = table.scrollWidth;
+      setOverflowX(tableWidth - regionWidth > 2);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    const table = el.querySelector("table");
+    if (table) ro.observe(table);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [measureKey]);
+
+  const regionClass = [
+    className,
+    overflowX || forceHorizontalScroll
+      ? "data_table_scroll_region--overflow-x"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div ref={ref} className={regionClass}>
+      {children}
+    </div>
+  );
 }
 
 export function DataTable<T>({
@@ -130,6 +214,7 @@ export function DataTable<T>({
   stickyColumnCount: stickyColumnCountProp,
   isLoading = false,
   stripedRows = true,
+  forceHorizontalScroll = false,
 }: DataTableProps<T>) {
   const stickyColumnCount =
     stickyColumnCountProp ??
@@ -218,7 +303,11 @@ export function DataTable<T>({
             <col
               key={col.id}
               className={col.thClassName || undefined}
-              style={col.colWidth ? { width: col.colWidth } : undefined}
+              style={
+                col.colWidth
+                  ? { width: col.colWidth, minWidth: col.colWidth }
+                  : undefined
+              }
             />
           ))}
         </colgroup>
@@ -237,7 +326,7 @@ export function DataTable<T>({
                   : "none"
                 : undefined;
 
-              const stickyClass = stickyColClasses(colIndex, stickyColumnCount);
+              const stickyClass = stickyColClasses(colIndex, stickyColumnCount, col);
               const thClass = [
                 col.thClassName,
                 visualVariant === "default" && active ? "data_table_th_sorted" : "",
@@ -397,7 +486,7 @@ export function DataTable<T>({
                   const textAlign = membersThTdTextAlign(visualVariant, col);
                   const tdStyle =
                     textAlign !== undefined ? { textAlign } : undefined;
-                  const stickyClass = stickyColClasses(colIndex, stickyColumnCount);
+                  const stickyClass = stickyColClasses(colIndex, stickyColumnCount, col);
                   const tdClass = [
                     col.tdClassName,
                     stickyClass,
@@ -430,16 +519,38 @@ export function DataTable<T>({
     .filter(Boolean)
     .join(" ");
 
+  const scrollMeasureKey = [
+    rows.length,
+    displayRows.length,
+    columns.length,
+    pagination?.page ?? 0,
+    pagination?.pageSize ?? 0,
+    isLoading ? 1 : 0,
+    stickyColumnCount,
+  ].join("|");
+
+  const scrollRegion = (className: string) => (
+    <TableScrollRegion
+      className={className}
+      measureKey={scrollMeasureKey}
+      forceHorizontalScroll={
+        forceHorizontalScroll && rows.length > 0 && !isLoading
+      }
+    >
+      {tableEl}
+    </TableScrollRegion>
+  );
+
   if (visualVariant === "members") {
     const tableBlock =
       membersShell === "plain" ? (
         stickyColumnsEnabled ? (
-          <div className={scrollRegionClass}>{tableEl}</div>
+          scrollRegion(scrollRegionClass)
         ) : (
           tableEl
         )
       ) : (
-        <div className={scrollRegionClass}>{tableEl}</div>
+        scrollRegion(scrollRegionClass)
       );
     return (
       <div className={wrapClass}>
@@ -461,7 +572,7 @@ export function DataTable<T>({
   return (
     <div className={wrapClass}>
       {stickyColumnsEnabled ? (
-        <div className={scrollRegionClass}>{tableEl}</div>
+        scrollRegion(scrollRegionClass)
       ) : (
         tableEl
       )}

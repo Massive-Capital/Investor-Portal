@@ -43,7 +43,7 @@ import {
 } from "../deal_members/add-investment/addMemberFormDraftStorage";
 import { notifyDealInvestorsExportAudit } from "../../api/dealInvestorsExportNotifyApi";
 import { InviteMailStatusBadge } from "./InviteMailStatusBadge";
-import { DealMemberUserCell } from "./DealMemberUserCell";
+import { DealInvestorIdentityCell } from "./DealInvestorIdentityCell";
 import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCell";
 import { DealInvestorRoleCell } from "./DealInvestorRoleBadge";
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal";
@@ -936,9 +936,9 @@ function DealInvestorsPopulated({
         header: "Investor",
         sortValue: (row) =>
           `${row.displayName} ${row.entitySubtitle} ${formatMemberUsername(row.userDisplayName)} ${row.userEmail}`.toLowerCase(),
-        tdClassName: "um_td_user deal_inv_td_user_cell",
+        tdClassName: "deal_inv_td_member deal_inv_td_investor_identity",
         cell: (row) => (
-          <DealMemberUserCell
+          <DealInvestorIdentityCell
             row={row}
             isDraft={investorRowShowsDraftBadge(row)}
           />
@@ -1446,7 +1446,7 @@ function DealInvestorsPopulated({
                 onClick={closeSendMailModal}
               >
                 <X size={16} strokeWidth={2} aria-hidden />
-                Cancel
+                Close
               </button>
               <button
                 type="button"
@@ -1472,17 +1472,6 @@ function DealInvestorsPopulated({
 
       <div className="um_panel um_members_tab_panel deal_inv_table_panel">
         <div className="deal_inv_controls">
-          <div className="deal_inv_panel_add_row">
-            <button
-              type="button"
-              className="um_btn_primary"
-              onClick={onAddInvestor}
-            >
-              <Plus size={18} strokeWidth={2} aria-hidden />
-              Add Investor
-            </button>
-          </div>
-
           {/* Share with lead sponsor + Send email (deferred)
           <div className="deal_inv_toolbar">
             <div className="deal_inv_toolbar_leading">
@@ -1626,23 +1615,8 @@ function DealInvestorsPopulated({
             </div>
           </section>
 
-          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
-            <div className="um_search_wrap">
-              <Search className="um_search_icon" size={18} aria-hidden />
-              <input
-                type="search"
-                className="um_search_input"
-                placeholder="Search investors…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search investors"
-              />
-            </div>
-            <div
-              className="um_toolbar_actions deal_inv_table_toolbar_actions"
-              role="toolbar"
-              aria-label="Investor list actions"
-            >
+          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search deal_investors_table_toolbar">
+            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deal_investors_toolbar_actions_leading">
               <button
                 type="button"
                 className="um_btn_toolbar"
@@ -1662,12 +1636,39 @@ function DealInvestorsPopulated({
                 <span>Export All</span>
               </button>
             </div>
+            <div
+              className="um_toolbar_actions deal_inv_table_toolbar_actions deal_investors_toolbar_actions_trailing"
+              role="toolbar"
+              aria-label="Investor list actions"
+            >
+              <div className="um_search_wrap">
+                <Search className="um_search_icon" size={18} aria-hidden />
+                <input
+                  type="search"
+                  className="um_search_input"
+                  placeholder="Search investors…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Search investors"
+                />
+              </div>
+              <button
+                type="button"
+                className="um_btn_primary deal_investors_add_investor_btn"
+                onClick={onAddInvestor}
+              >
+                <Plus size={18} strokeWidth={2} aria-hidden />
+                Add Investor
+              </button>
+            </div>
           </div>
         </div>
 
         <DataTable
           visualVariant="members"
           membersTableClassName="um_table_members deal_inv_table"
+          stickyColumnCount={2}
+          forceHorizontalScroll
           columns={columns}
           rows={filtered}
           getRowKey={(row, i) => row.id || `inv-${dealId}-${i}`}

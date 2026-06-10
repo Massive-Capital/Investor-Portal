@@ -95,6 +95,10 @@ import {
 import { downloadInvestorClassesExportCsv } from "../../utils/offeringDetailsSectionExportCsv"
 import { ExportSelectableRowsModal } from "../../components/ExportSelectableRowsModal"
 import { toast } from "../../../../../common/components/Toast"
+import {
+  YesNoCardRadioGroup,
+  parseYesNoFieldValue,
+} from "../../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
 import "../../../contacts/contacts.css"
 import "../../deal-investor-class.css"
 import "../../deals-create.css"
@@ -128,6 +132,30 @@ function classTypeOptionLabel(value: string): string {
   if (!value.trim()) return "—"
   const o = CLASS_TYPE_OPTIONS.find((x) => x.value === value)
   return o?.label ?? value
+}
+
+function YesNoInvestorClassField({
+  name,
+  labelId,
+  value,
+  onChange,
+  disabled,
+}: {
+  name: string
+  labelId: string
+  value: string
+  onChange: (v: "yes" | "no") => void
+  disabled?: boolean
+}) {
+  return (
+    <YesNoCardRadioGroup
+      name={name}
+      value={parseYesNoFieldValue(value)}
+      onChange={onChange}
+      disabled={disabled}
+      ariaLabelledBy={labelId}
+    />
+  )
 }
 
 /** LP metrics strip: show $0 instead of em dash for empty money fields. */
@@ -493,16 +521,6 @@ const LP_HURDLE_PREF_RETURN_OPTIONS: { value: string; label: string }[] = [
 const MEZZ_CLASS_PREF_RETURN_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "Select a preferred return type" },
   ...LP_HURDLE_PREF_RETURN_OPTIONS,
-]
-
-const LP_HURDLE_FINAL_OPTIONS: { value: string; label: string }[] = [
-  { value: "no", label: "No" },
-  { value: "yes", label: "Yes" },
-]
-
-const LP_HURDLE_ADV_YES_NO: { value: string; label: string }[] = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
 ]
 
 const LP_HURDLE_DAY_COUNT_OPTIONS: { value: string; label: string }[] = [
@@ -1251,36 +1269,28 @@ function MezzaninePreferredReturnFields({
         <div className="deal_inv_lp_hurdle_advanced_grid">
           <div className="deal_inv_class_field">
             <label
+              id={`${idPrefix}-mezz-adv-catchup-label`}
               className="deal_inv_class_field_label"
-              htmlFor={`${idPrefix}-mezz-adv-catchup`}
             >
               Catch up on preferred returns{" "}
               <span className="deal_inv_required" aria-hidden>
                 *
               </span>
             </label>
-            <select
-              id={`${idPrefix}-mezz-adv-catchup`}
-              className={advSelectCtl}
-              disabled={disabled}
+            <YesNoInvestorClassField
+              name={`${idPrefix}-mezz-adv-catchup`}
+              labelId={`${idPrefix}-mezz-adv-catchup-label`}
               value={adv.classCatchUpPreferredReturns}
-              onChange={(e) =>
-                patchAdvanced({
-                  classCatchUpPreferredReturns: e.target.value,
-                })
+              onChange={(v) =>
+                patchAdvanced({ classCatchUpPreferredReturns: v })
               }
-            >
-              {LP_HURDLE_ADV_YES_NO.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              disabled={disabled}
+            />
           </div>
           <div className="deal_inv_class_field">
             <label
+              id={`${idPrefix}-mezz-adv-honor-capital-label`}
               className="deal_inv_ic_raise_own_label"
-              htmlFor={`${idPrefix}-mezz-adv-honor-capital`}
             >
               <span>
                 Honor only on capital event
@@ -1301,23 +1311,15 @@ function MezzaninePreferredReturnFields({
                 />
               </span>
             </label>
-            <select
-              id={`${idPrefix}-mezz-adv-honor-capital`}
-              className={advSelectCtl}
-              disabled={disabled}
+            <YesNoInvestorClassField
+              name={`${idPrefix}-mezz-adv-honor-capital`}
+              labelId={`${idPrefix}-mezz-adv-honor-capital-label`}
               value={adv.classHonorOnlyOnCapitalEvent}
-              onChange={(e) =>
-                patchAdvanced({
-                  classHonorOnlyOnCapitalEvent: e.target.value,
-                })
+              onChange={(v) =>
+                patchAdvanced({ classHonorOnlyOnCapitalEvent: v })
               }
-            >
-              {LP_HURDLE_ADV_YES_NO.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              disabled={disabled}
+            />
           </div>
           <div className="deal_inv_class_field">
             <label
@@ -2020,24 +2022,18 @@ function LpHurdleCard({
           </div>
           <div className="deal_inv_class_field">
             <label
+              id={`${sid}-final-label`}
               className="deal_inv_class_field_label"
-              htmlFor={`${sid}-final`}
             >
               Final hurdle <span className="deal_inv_required">*</span>
             </label>
-            <select
-              id={`${sid}-final`}
-              className="deals_add_inv_field_control um_field_select"
-              disabled={disabled}
+            <YesNoInvestorClassField
+              name={`${sid}-final`}
+              labelId={`${sid}-final-label`}
               value={h.finalHurdle}
-              onChange={(e) => onUpdate({ finalHurdle: e.target.value })}
-            >
-              {LP_HURDLE_FINAL_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => onUpdate({ finalHurdle: v })}
+              disabled={disabled}
+            />
           </div>
         </div>
 
@@ -2060,34 +2056,26 @@ function LpHurdleCard({
           <div className="deal_inv_lp_hurdle_advanced_grid">
             <div className="deal_inv_class_field">
               <label
+                id={`${sid}-adv-catchup-label`}
                 className="deal_inv_class_field_label"
-                htmlFor={`${sid}-adv-catchup`}
               >
                 Catch up on preferred returns{" "}
                 <span className="deal_inv_required" aria-hidden>
                   *
                 </span>
               </label>
-              <select
-                id={`${sid}-adv-catchup`}
-                className="deals_add_inv_field_control um_field_select"
-                disabled={disabled}
+              <YesNoInvestorClassField
+                name={`${sid}-adv-catchup`}
+                labelId={`${sid}-adv-catchup-label`}
                 value={h.catchUpPreferredReturns}
-                onChange={(e) =>
-                  onUpdate({ catchUpPreferredReturns: e.target.value })
-                }
-              >
-                {LP_HURDLE_ADV_YES_NO.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => onUpdate({ catchUpPreferredReturns: v })}
+                disabled={disabled}
+              />
             </div>
             <div className="deal_inv_class_field">
               <label
+                id={`${sid}-adv-honor-capital-label`}
                 className="deal_inv_ic_raise_own_label"
-                htmlFor={`${sid}-adv-honor-capital`}
               >
                 <span>
                   Honor only on capital event
@@ -2109,21 +2097,13 @@ function LpHurdleCard({
                   />
                 </span>
               </label>
-              <select
-                id={`${sid}-adv-honor-capital`}
-                className="deals_add_inv_field_control um_field_select"
-                disabled={disabled}
+              <YesNoInvestorClassField
+                name={`${sid}-adv-honor-capital`}
+                labelId={`${sid}-adv-honor-capital-label`}
                 value={h.honorOnlyOnCapitalEvent}
-                onChange={(e) =>
-                  onUpdate({ honorOnlyOnCapitalEvent: e.target.value })
-                }
-              >
-                {LP_HURDLE_ADV_YES_NO.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => onUpdate({ honorOnlyOnCapitalEvent: v })}
+                disabled={disabled}
+              />
             </div>
             <div className="deal_inv_class_field">
               <label
@@ -4520,7 +4500,7 @@ export function AddInvestorClassPanel({
             disabled={submitting}
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <div className="add_contact_modal_actions_trailing">
             {asPage && pipelineStep > 1 ? (
@@ -4556,7 +4536,7 @@ export function AddInvestorClassPanel({
                   </>
                 ) : (
                   <>
-                    <Plus size={16} strokeWidth={2} aria-hidden />
+                    <Save size={16} strokeWidth={2} aria-hidden />
                     Save
                   </>
                 )}
@@ -4768,7 +4748,7 @@ export function EditInvestorClassPanel({
             disabled={submitting}
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <div className="add_contact_modal_actions_trailing">
             {pipelineStep > 1 ? (
@@ -4894,7 +4874,7 @@ function InvestorClassConfirmDeleteModal({
             disabled={busy}
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <div className="add_contact_modal_actions_trailing">
             <button

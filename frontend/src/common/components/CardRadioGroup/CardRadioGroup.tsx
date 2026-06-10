@@ -28,9 +28,16 @@ export function CardRadioGroup({
   ariaLabelledBy,
   disabled = false,
 }: Props) {
+  const groupClass = [
+    "card_radio_group",
+    options.length === 2 ? "card_radio_group_binary" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
-      className="card_radio_group"
+      className={groupClass}
       role="radiogroup"
       aria-label={ariaLabelledBy ? undefined : ariaLabel}
       aria-labelledby={ariaLabelledBy}
@@ -52,11 +59,9 @@ export function CardRadioGroup({
               disabled={disabled}
               onChange={() => onChange(opt.value)}
             />
-            <span className="card_radio_card_main">
-              <Icon className="card_radio_card_icon" size={20} strokeWidth={1.75} aria-hidden />
-              <span className="card_radio_card_label">{opt.label}</span>
-            </span>
             <span className="card_radio_card_radio" aria-hidden />
+            <Icon className="card_radio_card_icon" size={18} strokeWidth={1.75} aria-hidden />
+            <span className="card_radio_card_label">{opt.label}</span>
           </label>
         );
       })}

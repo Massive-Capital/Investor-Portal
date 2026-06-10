@@ -55,6 +55,7 @@ import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import { rowDisplayName } from "../../../usermanagement/memberAdminShared"
 import { InfoIconPanel } from "../offering_details/FieldInfoHeading"
 import { YesNoCardRadioGroup } from "../../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
+import "../../../contacts/contacts.css"
 import "../../../usermanagement/user_management.css"
 import "../../components/deal-step-form.css"
 import "../deal_members/add-investment/add_deal_modal.css"
@@ -983,21 +984,22 @@ export function AddLpInvestorModal({
                     {INVITATION_EMAILS_UNAVAILABLE_HINT}
                   </p>
                 ) : null}
-                <YesNoCardRadioGroup
-                  className="deal_step_yesno_cards"
-                  name="lp-inv-send-invitation"
-                  value={sendInvitationMail}
-                  onChange={setSendInvitationMail}
-                  yesIsCommon
-                  variant="mail"
-                  disabled={dealBlocksInvitationEmails}
-                  ariaLabelledBy="lp-inv-send-invite-label"
-                  ariaDescribedBy={
-                    dealBlocksInvitationEmails
-                      ? "lp-inv-send-invite-hint"
-                      : undefined
-                  }
-                />
+                <div className="portal_yesno_field_block">
+                  <YesNoCardRadioGroup
+                    name="lp-inv-send-invitation"
+                    value={sendInvitationMail}
+                    onChange={setSendInvitationMail}
+                    yesIsCommon
+                    variant="mail"
+                    disabled={dealBlocksInvitationEmails}
+                    ariaLabelledBy="lp-inv-send-invite-label"
+                    ariaDescribedBy={
+                      dealBlocksInvitationEmails
+                        ? "lp-inv-send-invite-hint"
+                        : undefined
+                    }
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1010,7 +1012,7 @@ export function AddLpInvestorModal({
               disabled={submitting}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <button
               type="submit"

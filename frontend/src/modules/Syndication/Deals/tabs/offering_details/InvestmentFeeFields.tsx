@@ -1,7 +1,13 @@
 import type { ReactNode } from "react"
+import { DollarSign } from "lucide-react"
 import { MandatoryFieldMark } from "../../../../../common/components/form-tooltip/FormTooltip"
 import { InfoIconPanel } from "./FieldInfoHeading"
-
+import {
+  blurFormatMoneyInputTwoDecimals,
+  blurFormatPercentTwoDecimalsInput,
+  formatCurrencyUsdTypeInput,
+  formatPercentTypeInput,
+} from "../../utils/offeringMoneyFormat"
 export const INVESTMENT_FEE_OPTIONS = [
   { value: "none", label: "No fee" },
   { value: "flat", label: "Amount" },
@@ -93,6 +99,8 @@ export function InvestmentFeeFields({
   const feeMethodLabelId = `${baseId}-fee-method-label`
   const feeHandlingLabelId = `${baseId}-fee-handling-label`
   const feeAmountLabelId = `${baseId}-fee-amount-label`
+  const isFlatFee = investmentFeeMethod === "flat"
+  const isPercentFee = investmentFeeMethod === "percent"
 
   return (
     <div className="deal_fi_wire_form deal_fi_fee_form">
@@ -182,14 +190,30 @@ export function InvestmentFeeFields({
             role="group"
             aria-labelledby={`${baseId}-new-class-fees-heading`}
           >
-            <FeeLabelWithHelp
-              labelId={feeAmountLabelId}
-              htmlFor={`${baseId}-fee-amount`}
-              label="Fee amount"
-              helpAriaLabel="More information: fee amount"
-              helpContent={<p>{FEE_AMOUNT_HELP}</p>}
-              required
-            />
+            <div className="deal_fi_wire_label deal_fi_wire_label_with_help">
+              <label
+                id={feeAmountLabelId}
+                htmlFor={`${baseId}-fee-amount`}
+                className="deal_fi_fee_amount_label"
+              >
+                <span className="form_label_inline_row">
+                  {isFlatFee ? (
+                    <DollarSign
+                      className="deal_fi_fee_amount_label_icon"
+                      size={17}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span>Fee amount</span>
+                  <MandatoryFieldMark />
+                </span>
+              </label>
+              <InfoIconPanel
+                ariaLabel="More information: fee amount"
+                infoContent={<p>{FEE_AMOUNT_HELP}</p>}
+              />
+            </div>
             <input
               id={`${baseId}-fee-amount`}
               type="text"
@@ -197,8 +221,31 @@ export function InvestmentFeeFields({
               inputMode="decimal"
               autoComplete="off"
               aria-required
+              aria-labelledby={feeAmountLabelId}
+              placeholder={isFlatFee ? "$0.00" : "0.00%"}
               value={feeAmount}
-              onChange={(e) => onFeeAmountChange(e.target.value)}
+              onChange={(e) => {
+                const raw = e.target.value
+                if (isFlatFee) {
+                  onFeeAmountChange(formatCurrencyUsdTypeInput(raw))
+                  return
+                }
+                if (isPercentFee) {
+                  onFeeAmountChange(formatPercentTypeInput(raw))
+                  return
+                }
+                onFeeAmountChange(raw)
+              }}
+              onBlur={(e) => {
+                const raw = e.target.value
+                if (isFlatFee) {
+                  onFeeAmountChange(blurFormatMoneyInputTwoDecimals(raw))
+                  return
+                }
+                if (isPercentFee) {
+                  onFeeAmountChange(blurFormatPercentTwoDecimalsInput(raw))
+                }
+              }}
             />
           </div>
         </section>

@@ -1,5 +1,21 @@
-import { ArrowRight, CameraOff, CircleDot, MapPin } from "lucide-react"
-import { useCallback } from "react"
+import {
+  ArrowRight,
+  Briefcase,
+  Building2,
+  Calendar,
+  CircleDot,
+  CircleDollarSign,
+  ClipboardCheck,
+  DollarSign,
+  LineChart,
+  MapPin,
+  PieChart,
+  Shield,
+  UserRound,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react"
+import { useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { CardCompactAmount } from "@/common/components/card-compact-amount/CardCompactAmount"
 import { InvestNowDraftProgressBar } from "@/modules/Investing/pages/invest/InvestNowDraftProgressBar"
@@ -10,6 +26,7 @@ import type { InvestNowStepperPhase } from "@/modules/Investing/pages/invest/inv
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
 import { dealStageChipCompactClassName } from "../../../modules/Syndication/Deals/utils/dealStageChip"
 import "../../../modules/Syndication/Deals/deals-list.css"
+import { DealCardMediaCarousel } from "./DealCardMediaCarousel"
 import "./deal-card.css"
 
 const DEAL_CARD_MONEY_METRIC_LABELS = new Set([
@@ -21,6 +38,39 @@ const DEAL_CARD_MONEY_METRIC_LABELS = new Set([
   "Offering size",
   "Total in-progress",
 ])
+
+const DEAL_CARD_METRIC_ICONS: Record<string, LucideIcon> = {
+  "Target amount": LineChart,
+  "Total accepted": ClipboardCheck,
+  "Total funded": Wallet,
+  "Total distributions": DollarSign,
+  "# of investors": UserRound,
+  "Close date": Calendar,
+  "Minimum investment": CircleDollarSign,
+  "Offering size": LineChart,
+  "SEC type": Shield,
+  "Deal type": Briefcase,
+  "Investment type": PieChart,
+  "Property type": Building2,
+}
+
+function DealCardMetricIcon({ label }: { label: string }) {
+  const hasIcon = Object.prototype.hasOwnProperty.call(DEAL_CARD_METRIC_ICONS, label)
+  const Icon = hasIcon ? DEAL_CARD_METRIC_ICONS[label] : undefined
+  return (
+    <span
+      className={[
+        "deal_card_metric_icon",
+        hasIcon ? "" : "deal_card_metric_icon--spacer",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      aria-hidden
+    >
+      {Icon ? <Icon size={12} strokeWidth={1.75} /> : null}
+    </span>
+  )
+}
 
 function renderDealCardMetricValue(label: string, value: string) {
   if (value === "—" || !DEAL_CARD_MONEY_METRIC_LABELS.has(label)) return value
@@ -52,6 +102,8 @@ interface DealCardProps {
   metrics: DealCardMetric[]
   /** First uploaded asset image from the deal (full URL) */
   coverImageUrl?: string
+  /** Gallery URLs for dashboard carousel (cover first when set). */
+  coverImageUrls?: string[]
   onUploadCoverClick?: () => void
   /**
    * Stable seed for {@link USE_DEAL_CARD_PLACEHOLDER_REVIEWS} (e.g. deal id).
@@ -86,6 +138,7 @@ export function DealCard({
   previewNotice = null,
   metrics,
   coverImageUrl,
+  coverImageUrls,
   onUploadCoverClick,
   prestigeLayout = false,
   investNowDraftProgress = null,
@@ -94,7 +147,12 @@ export function DealCard({
   investNowReturnTo = "/dashboard",
 }: DealCardProps) {
   const navigate = useNavigate()
-  const hasCover = Boolean(coverImageUrl?.trim())
+  const resolvedImageUrls = useMemo(() => {
+    const fromList = coverImageUrls?.map((u) => u.trim()).filter(Boolean) ?? []
+    if (fromList.length > 0) return fromList
+    const single = coverImageUrl?.trim()
+    return single ? [single] : []
+  }, [coverImageUrls, coverImageUrl])
 
   const openInvestNowPhase = useCallback(
     (phaseId: InvestNowStepperPhase["id"]) => {
@@ -122,10 +180,13 @@ export function DealCard({
 
   const statusBadge = (
     <span
-      className={
+      className={[
         statusBadgeClassName ??
-        `deal_card_status ${dealStageChipCompactClassName(dealStage)}`
-      }
+          ["deal_card_status", dealStageChipCompactClassName(dealStage)].join(" "),
+        prestigeLayout ? "deal_card_prestige_stage" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       title={previewNotice?.tooltip ?? `Stage: ${statusLabel}`}
     >
       {!hideStatusIcon ? (
@@ -138,47 +199,35 @@ export function DealCard({
   )
 
   const mediaBlock = (
-    <div className="deal_card_media">
-      {hasCover ? (
-        <img
-          src={coverImageUrl}
-          alt={`Property image for ${title}`}
-          className="deal_card_cover"
-          loading="eager"
-          fetchPriority="high"
-          decoding="async"
-        />
-      ) : (
-        <div className="deal_card_media_placeholder">
-          <CameraOff size={40} strokeWidth={1.25} aria-hidden />
-          {onUploadCoverClick ? (
-            <button
-              type="button"
-              className="deal_card_upload_btn"
-              onClick={onUploadCoverClick}
-            >
-              Upload photo
-            </button>
-          ) : (
-            <span className="deal_card_upload_muted">Upload photo</span>
-          )}
-        </div>
-      )}
-    </div>
+    <DealCardMediaCarousel
+      imageUrls={resolvedImageUrls}
+      title={title}
+      onUploadCoverClick={onUploadCoverClick}
+    />
   )
 
-  const titleBlock = (
-    <>
+  const titleOnlyBlock = (
+    <div className="deal_card_head deal_card_head--prestige_title">
       <h3 className="deal_card_title">
         <span className="deal_card_title_text">{title}</span>
       </h3>
-      {location ? (
-        <p className="deal_card_location">
-          <MapPin size={16} className="deal_card_location_icon" aria-hidden />
-          <span className="deal_card_location_text">{location}</span>
-        </p>
-      ) : null}
-    </>
+    </div>
+  )
+
+  const locationBlock = location ? (
+    <p className="deal_card_location">
+      <MapPin size={12} strokeWidth={1.75} className="deal_card_location_icon" aria-hidden />
+      <span className="deal_card_location_text">{location}</span>
+    </p>
+  ) : null
+
+  const titleBlock = (
+    <div className="deal_card_head">
+      <h3 className="deal_card_title">
+        <span className="deal_card_title_text">{title}</span>
+      </h3>
+      {locationBlock}
+    </div>
   )
 
   const metricsBlock = (
@@ -196,52 +245,90 @@ export function DealCard({
 
   if (prestigeLayout) {
     return (
-      <article className="deal_card deal_card--prestige">
-        {statusBadge}
-        <div className="deal_card_prestige_row">
+      <article
+        className={[
+          "deal_card",
+          "deal_card--prestige",
+          previewNotice?.message ? "deal_card--prestige_coming_soon" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <div className="deal_card_prestige_hero">
           {mediaBlock}
-          <div className="deal_card_prestige_body">
-            <div className="deal_card_prestige_main">
-              <div className="deal_card_prestige_head">{titleBlock}</div>
-              {metricsBlock}
-              {previewNotice?.message ? (
-                <p
-                  className="deal_card_preview_notice"
-                  title={previewNotice.tooltip}
-                >
-                  {previewNotice.message}
-                </p>
-              ) : null}
-            </div>
-            {investNowDraftProgress ? (
-              <>
-                <div className="invest_now_onboarding_panel deal_card_prestige_progress_panel">
-                  <div className="invest_now_onboarding_panel_body">
-                    <InvestNowDraftProgressBar
-                      embedded
-                      progress={investNowDraftProgress}
-                      phaseNav={{
-                        onPhaseClick: openInvestNowPhase,
-                        currentStepOnly: true,
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="deal_card_prestige_footer">
-                  <span className="deal_card_manage_cta">
-                    Manage Deal
-                    <ArrowRight size={18} strokeWidth={2} aria-hidden />
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="deal_card_prestige_footer">
-                <span className="deal_card_manage_cta">
-                  Manage Deal
-                  <ArrowRight size={18} strokeWidth={2} aria-hidden />
-                </span>
+          <div className="deal_card_prestige_overlay">
+            <div className="deal_card_prestige_hero_meta">
+              <div className="deal_card_prestige_meta_chip deal_card_prestige_meta_chip--title deal_card_prestige_title_chip">
+                {titleOnlyBlock}
               </div>
-            )}
+              <div className="deal_card_prestige_hero_bottom">
+                {locationBlock ? (
+                  <div className="deal_card_prestige_meta_chip deal_card_prestige_meta_chip--location">
+                    {locationBlock}
+                  </div>
+                ) : (
+                  <span className="deal_card_prestige_hero_bottom_spacer" aria-hidden />
+                )}
+                <div className="deal_card_prestige_meta_chip deal_card_prestige_meta_chip--status">
+                  {statusBadge}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="deal_card_prestige_bottom">
+          <dl className="deal_card_metrics deal_card_prestige_metrics">
+            {metrics.slice(0, 6).map(({ label, value }) => (
+              <div key={label} className="deal_card_metric deal_card_metric--prestige">
+                <DealCardMetricIcon label={label} />
+                <div className="deal_card_metric_copy">
+                  <dt className="deal_card_metric_label">
+                    <span className="deal_card_metric_label_text">{label}</span>
+                  </dt>
+                  <dd className="deal_card_metric_value">
+                    {renderDealCardMetricValue(label, value)}
+                  </dd>
+                </div>
+              </div>
+            ))}
+          </dl>
+          <div
+            className={[
+              "deal_card_prestige_footer_row",
+              investNowDraftProgress ? "" : "deal_card_prestige_footer_row--no_progress",
+              previewNotice?.message
+                ? "deal_card_prestige_footer_row--with_notice"
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {investNowDraftProgress ? (
+              <div className="deal_card_prestige_progress">
+                <InvestNowDraftProgressBar
+                  embedded
+                  progress={investNowDraftProgress}
+                  phaseNav={{
+                    onPhaseClick: openInvestNowPhase,
+                    currentStepOnly: true,
+                  }}
+                />
+              </div>
+            ) : null}
+            {previewNotice?.message ? (
+              <p
+                className="deal_card_preview_notice deal_card_preview_notice--prestige_footer"
+                title={previewNotice.tooltip}
+              >
+                {previewNotice.message}
+              </p>
+            ) : null}
+            <div className="deal_card_prestige_manage">
+              <span className="deal_card_manage_cta">
+                Manage deal
+                <ArrowRight size={16} strokeWidth={2} aria-hidden />
+              </span>
+            </div>
           </div>
         </div>
       </article>
@@ -255,8 +342,7 @@ export function DealCard({
         <section className="deal_card_top_right">
             {!prestigeLayout ? statusBadge : null}
           <div className="deal_card_top_text">
-            <div className="deal_card_head">
-              {titleBlock}
+            {titleBlock}
               {/* <div
                 className="deal_card_reviews"
                 role="group"
@@ -309,7 +395,6 @@ export function DealCard({
                   </span>
                 ) : null}
               </div> */}
-            </div>
           </div>
         </section>
       </div>

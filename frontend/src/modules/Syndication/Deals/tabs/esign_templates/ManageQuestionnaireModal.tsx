@@ -1,11 +1,19 @@
-import { Save, Settings2, Sparkles, X } from "lucide-react"
+import { Settings2, Sparkles, X } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 import { createPortal } from "react-dom"
+import {
+  ModalCancelButton,
+  ModalFooterTrailing,
+  ModalResetButton,
+  ModalSaveButton,
+} from "@/common/components/modal/ModalFooterButtons"
 import {
   ESIGN_ENTITY_CATEGORIES,
   ESIGN_ENTITY_CATEGORY_COLUMN_LABELS,
 } from "./esignEntityCategories"
 import {
+  cloneProfileSectionVisibility,
+  DEFAULT_INVESTOR_QUESTIONNAIRE_PROFILE_SECTION_VISIBILITY,
   isQuestionnaireSectionVisibleForProfile,
   isRecommendedQuestionnaireSectionForProfile,
   setQuestionnaireSectionVisibleForProfile,
@@ -64,6 +72,14 @@ export function ManageQuestionnaireModal({
     const hasRules = draftVisibility && Object.keys(draftVisibility).length > 0
     onSave(hasRules ? draftVisibility : undefined)
     onClose()
+  }
+
+  function handleReset() {
+    setDraftVisibility(
+      cloneProfileSectionVisibility(
+        DEFAULT_INVESTOR_QUESTIONNAIRE_PROFILE_SECTION_VISIBILITY,
+      ),
+    )
   }
 
   return createPortal(
@@ -226,24 +242,19 @@ export function ManageQuestionnaireModal({
           </p>
         </div>
         <div className="um_modal_actions add_contact_modal_actions">
-          <button
-            type="button"
-            className="um_btn_secondary"
+          <ModalCancelButton
+            className="um_btn_secondary add_contact_modal_actions_leading"
             onClick={onClose}
             disabled={saving}
-          >
-            <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="um_btn_primary"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            <Save size={16} strokeWidth={2} aria-hidden />
-            {saving ? "Saving…" : "Save"}
-          </button>
+          />
+          <ModalFooterTrailing>
+            <ModalResetButton
+              onClick={handleReset}
+              disabled={disabled}
+              title="Restore recommended defaults for all investor profiles"
+            />
+            <ModalSaveButton onClick={handleSave} disabled={disabled} busy={saving} />
+          </ModalFooterTrailing>
         </div>
       </div>
     </div>,

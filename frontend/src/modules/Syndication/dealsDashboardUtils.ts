@@ -5,7 +5,10 @@
 import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/investNowDraftProgress"
 import type { InvestNowDraftResumeScope } from "@/modules/Investing/pages/invest/investNowDraftUtils"
 import type { DealCardMetric } from "../../common/components/deal-card/DealCard"
-import { assetImagePathToUrl } from "../../common/utils/apiBaseUrl"
+import {
+  assetImagePathToUrl,
+  assetImagePathsToUrls,
+} from "../../common/utils/apiBaseUrl"
 import type { DealDetailApi } from "./Deals/api/dealsApi"
 import {
   dealTypeDisplayLabel,
@@ -25,7 +28,10 @@ import type { DealListRow } from "./Deals/types/deals.types"
 import { normalizeDealStageCanonical } from "./Deals/constants/deal-lifecycle/deal-stage"
 import { canonicalDealStageToFormValue } from "./Deals/constants/deal-stage-modal-config"
 import { DEAL_STAGE_CHOICES } from "./Deals/types/deals.types"
-import { collectDealGalleryUrls } from "./Deals/utils/offeringGalleryUrls"
+import {
+  collectDealGalleryUrls,
+  galleryUrlsReferToSameAsset,
+} from "./Deals/utils/offeringGalleryUrls"
 
 export interface DealRecord {
   id: string
@@ -57,6 +63,8 @@ export interface DealRecord {
   createdAt?: string
   /** Resolved `/uploads/...` URL for dashboard card cover */
   coverImageUrl?: string
+  /** Gallery URLs for dashboard card carousel (cover first when set). */
+  coverImageUrls?: string[]
   /** List API (optional) — merged with per-deal client seeding on cards. */
   reviewRating?: number
   reviewCount?: number
@@ -261,11 +269,22 @@ function listRowInvestmentPropertyLabels(row: DealListRow): {
   }
 }
 
+/** Gallery URLs for dashboard cards from list API fields. */
+export function collectDealListRowGalleryUrls(row: DealListRow): string[] {
+  const fromAssets = assetImagePathsToUrls(row.assetImagePath ?? null)
+  const coverPick = row.galleryCoverImageUrl?.trim()
+  if (!coverPick) return fromAssets
+  if (fromAssets.length === 0) return [coverPick]
+  const rest = fromAssets.filter((u) => !galleryUrlsReferToSameAsset(u, coverPick))
+  return [coverPick, ...rest]
+}
+
 export function dealListRowToDealRecord(row: DealListRow): DealRecord {
   const loc = row.locationDisplay?.trim()
   const coverFromPick = row.galleryCoverImageUrl?.trim()
   const cover =
     coverFromPick || assetImagePathToUrl(row.assetImagePath ?? null)
+  const coverImageUrls = collectDealListRowGalleryUrls(row)
   const { investmentTypeDisplay, propertyTypeDisplay } =
     listRowInvestmentPropertyLabels(row)
   return {
@@ -291,6 +310,7 @@ export function dealListRowToDealRecord(row: DealListRow): DealRecord {
     closeDateDisplay: row.closeDateDisplay,
     createdAt: row.createdAt,
     ...(cover ? { coverImageUrl: cover } : {}),
+    ...(coverImageUrls.length > 0 ? { coverImageUrls } : {}),
     ...(row.reviewRating != null && Number.isFinite(row.reviewRating)
       ? { reviewRating: row.reviewRating }
       : {}),
@@ -300,7 +320,8 @@ export function dealListRowToDealRecord(row: DealListRow): DealRecord {
 
 export function dealDetailApiToRecord(d: DealDetailApi): DealRecord {
   const loc = [d.city, d.country].filter((x) => x?.trim()).join(", ")
-  const galleryFirst = collectDealGalleryUrls(d)[0]
+  const coverImageUrls = collectDealGalleryUrls(d)
+  const galleryFirst = coverImageUrls[0]
   const coverPick = d.galleryCoverImageUrl?.trim()
   const cover =
     coverPick || galleryFirst || assetImagePathToUrl(d.assetImagePath ?? null)
@@ -326,5 +347,6 @@ export function dealDetailApiToRecord(d: DealDetailApi): DealRecord {
     closeDateDisplay: d.listRow.closeDateDisplay,
     createdAt: d.createdAt,
     ...(cover ? { coverImageUrl: cover } : {}),
+    ...(coverImageUrls.length > 0 ? { coverImageUrls } : {}),
   }
 }

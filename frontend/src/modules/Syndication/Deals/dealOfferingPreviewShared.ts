@@ -1,6 +1,6 @@
 import { matchPath } from "react-router-dom"
 import { formatDateDdMmmYyyy } from "../../../common/utils/formatDateDisplay"
-import type { DealDetailApi } from "./api/dealsApi"
+import { dealDisplayFieldText, type DealDetailApi } from "./api/dealsApi"
 import {
   acceptedAmountForPayload,
   formatUsdDashboardAmount,
@@ -121,13 +121,18 @@ const INVESTMENT_TYPE_LABELS: Record<string, string> = {
 export function formatOfferingPortfolioLocationLine(
   detail: DealDetailApi,
 ): string {
-  const city = detail.city?.trim()
-  const state = detail.state?.trim()
+  const city = dealDisplayFieldText(detail.city)
+  const state = dealDisplayFieldText(detail.state)
   const parts = [city, state].filter(Boolean)
   if (parts.length) return parts.join(", ")
-  const country = detail.country?.trim()
+  const country = dealDisplayFieldText(detail.country)
   if (city && country) return `${city}, ${country}`
   return country || city || "—"
+}
+
+export function hasOfferingPortfolioLocationLine(line: string): boolean {
+  const t = line.trim()
+  return Boolean(t) && t !== "—"
 }
 
 function investmentTypeFromClassJson(ic: DealInvestorClass): string | undefined {

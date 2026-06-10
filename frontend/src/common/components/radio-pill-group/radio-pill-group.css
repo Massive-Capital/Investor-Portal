@@ -1,8 +1,13 @@
 .radio-group {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
+  gap: var(--portal-binary-radio-gap, 0.65rem);
   width: 100%;
+}
+
+.radio-group.radio-group_binary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: min(100%, var(--portal-binary-radio-max-width, 28rem));
 }
 
 /*

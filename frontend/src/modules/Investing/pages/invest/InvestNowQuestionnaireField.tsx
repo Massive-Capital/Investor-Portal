@@ -1,4 +1,10 @@
 import { UsPhoneInput } from "@/common/components/UsPhoneInput"
+import {
+  YesNoCardRadioGroup,
+  isYesNoOptionPair,
+  storedOptionFromYesNoValue,
+  yesNoValueFromStoredOption,
+} from "@/common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
 import { questionnaireFieldSelector } from "@/common/utils/formValidationFocus"
 import "@/common/components/us-phone-input.css"
 import {
@@ -85,31 +91,45 @@ export function InvestNowQuestionnaireField({
   }
 
   if (question.fieldType === "boolean") {
+    const yesNoValue =
+      value === "yes" || value === "no" ? (value as "yes" | "no") : ""
     return (
       <InvestNowFormField
-        id={fieldId}
         label={question.label}
         required={question.required}
         error={error}
       >
-        <select
-          id={fieldId}
-          className="deals_create_select"
-          value={value}
+        <YesNoCardRadioGroup
+          name={fieldId}
+          value={yesNoValue}
+          onChange={(v) => patch(v)}
           disabled={disabled}
-          aria-invalid={ariaInvalid}
-          onChange={(e) => patch(e.target.value)}
-        >
-          <option value="">Select…</option>
-          <option value="yes">Yes</option>
-          <option value="no">No</option>
-        </select>
+          ariaLabel={question.label}
+        />
       </InvestNowFormField>
     )
   }
 
   if (question.fieldType === "radio") {
     const options = question.options ?? []
+    if (isYesNoOptionPair(options)) {
+      const yesNoValue = yesNoValueFromStoredOption(value, options)
+      return (
+        <InvestNowFormField
+          label={question.label}
+          required={question.required}
+          error={error}
+        >
+          <YesNoCardRadioGroup
+            name={fieldId}
+            value={yesNoValue}
+            onChange={(v) => patch(storedOptionFromYesNoValue(v, options))}
+            disabled={disabled}
+            ariaLabel={question.label}
+          />
+        </InvestNowFormField>
+      )
+    }
     return (
       <fieldset
         id={fieldId}

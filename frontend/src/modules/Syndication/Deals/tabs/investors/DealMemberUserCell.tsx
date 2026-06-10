@@ -6,11 +6,6 @@ import {
 import type { DealInvestorRow } from "../../types/deal-investors.types"
 
 function dealMemberInitials(r: DealInvestorRow): string {
-  const name = String(r.displayName ?? "").trim()
-  const parts = name.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2)
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-  if (name.length >= 2) return name.slice(0, 2).toUpperCase()
   const u = String(r.userDisplayName ?? "")
     .trim()
     .replace(/^@+/, "")
@@ -18,6 +13,11 @@ function dealMemberInitials(r: DealInvestorRow): string {
     return u.slice(0, 2).toUpperCase()
   const e = String(r.userEmail ?? "").trim()
   if (e.length >= 2) return e.slice(0, 2).toUpperCase()
+  const name = String(r.displayName ?? "").trim()
+  const parts = name.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2)
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  if (name.length >= 2) return name.slice(0, 2).toUpperCase()
   return "?"
 }
 
@@ -30,11 +30,8 @@ export function DealMemberUserCell({
 }) {
   const initials = dealMemberInitials(row)
   const rawEmail = String(row.userEmail ?? "").trim()
-  const displayNameTrim = String(row.displayName ?? "").trim()
   const usernameFormatted = formatMemberUsername(row.userDisplayName)
-  const nameLine =
-    displayNameTrim ||
-    (usernameFormatted !== "—" ? usernameFormatted : "—")
+  const nameLine = usernameFormatted
   const emailText = String(formatValue(row.userEmail)).trim() || "—"
 
   return (

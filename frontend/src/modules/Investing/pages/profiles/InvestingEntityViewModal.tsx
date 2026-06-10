@@ -1,23 +1,20 @@
-import { Fragment, useEffect, useId, useState } from "react"
+import { useEffect } from "react"
 import type { LucideIcon } from "lucide-react"
 import {
-  Building2,
   Calendar,
   CircleCheck,
-  ChevronRight,
   FileText,
   Hash,
   Mail,
   MapPin,
   Pencil,
   Phone,
+  IdCard,
   User,
   X,
-  ArrowLeft,
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { ViewReadonlyField } from "@/common/components/ViewReadonlyField"
-import { InvestingFormField } from "./InvestingFormField"
 import "@/modules/Syndication/Deals/tabs/investors/add-investment-modal.css"
 import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Syndication/usermanagement/user_management.css"
@@ -48,6 +45,7 @@ type InvestingEntityViewModalProps = {
 }
 
 const PROFILE_RECORD_SECTION_HEADING = "Profile record"
+const PROFILE_TYPE_SECTION_HEADING = "Profile type"
 
 function slugFromLabel(label: string): string {
   return label
@@ -73,13 +71,9 @@ function viewFieldIconForLabel(label: string): LucideIcon {
   ) {
     return MapPin
   }
-  if (
-    t.includes("relationship") ||
-    t.includes("name") ||
-    t.includes("profile name")
-  )
-    return User
-  if (t.includes("type") && t.includes("profile")) return Building2
+  if (t.includes("profile name") || (t.includes("type") && t.includes("profile")))
+    return IdCard
+  if (t.includes("relationship") || t.includes("name")) return User
   if (t.includes("date")) return Calendar
   if (t.includes("status") || t.includes("investment") || t.includes("added by"))
     return CircleCheck
@@ -96,9 +90,33 @@ function viewFieldIconForLabel(label: string): LucideIcon {
   return FileText
 }
 
-function ViewFieldGrid({ rows }: { rows: DetailRow[] }) {
+function isFullWidthViewLabel(label: string): boolean {
+  const t = label.toLowerCase()
   return (
-    <div className="um_view_grid contacts_view_modal_grid">
+    t.includes("address") ||
+    t.includes("memo") ||
+    t.includes("note") ||
+    t.includes("street") ||
+    t.includes("mailing") ||
+    t.includes("beneficiary") ||
+    t.includes("bank address") ||
+    t.includes("distribution")
+  )
+}
+
+function ViewFieldGrid({
+  rows,
+  gridClassName,
+}: {
+  rows: DetailRow[]
+  gridClassName?: string
+}) {
+  return (
+    <div
+      className={["um_view_grid contacts_view_modal_grid", gridClassName]
+        .filter(Boolean)
+        .join(" ")}
+    >
       {rows.map((r, i) => {
         const v = r.value.trim() || "—"
         const Icon = viewFieldIconForLabel(r.label)
@@ -108,6 +126,9 @@ function ViewFieldGrid({ rows }: { rows: DetailRow[] }) {
             Icon={Icon}
             label={r.label}
             value={v}
+            fieldClassName={
+              isFullWidthViewLabel(r.label) ? "um_view_field_span_full" : undefined
+            }
           />
         )
       })}
@@ -115,73 +136,34 @@ function ViewFieldGrid({ rows }: { rows: DetailRow[] }) {
   )
 }
 
-function ProfileWizardReadonlyFields({ rows }: { rows: DetailRow[] }) {
-  return (
-    <div className="investing_profile_view_fields">
-      {rows.map((r, i) => {
-        const v = r.value.trim() || "—"
-        const id = `profile-view-${slugFromLabel(r.label)}-${i}`
-        const Icon = viewFieldIconForLabel(r.label)
-        return (
-          <InvestingFormField key={id} id={id} label={r.label} Icon={Icon}>
-            <div className="add_profile_readonly_type">{v}</div>
-          </InvestingFormField>
-        )
-      })}
-    </div>
-  )
-}
-
-function ProfileViewStepper({
-  steps,
-  currentStep,
-  onStepChange,
+function ProfileSummaryStrip({
+  profileTypeLabel,
+  metaRows,
 }: {
-  steps: string[]
-  currentStep: number
-  onStepChange: (step: number) => void
+  profileTypeLabel?: string
+  metaRows: DetailRow[]
 }) {
+  if (!profileTypeLabel && metaRows.length === 0) return null
+
   return (
-    <div className="add_contact_stepper" role="group" aria-label="Profile sections">
-      {steps.map((label, i) => {
-        const n = i + 1
-        const isActive = currentStep === n
-        const isDone = currentStep > n
+    <div className="investing_profile_view_summary" role="group" aria-label="Profile summary">
+      {profileTypeLabel ? (
+        <span className="investing_profile_view_type_badge">{profileTypeLabel}</span>
+      ) : null}
+      {metaRows.map((row, i) => {
+        const value = row.value.trim() || "—"
         return (
-          <Fragment key={label}>
-            {i > 0 ? (
-              <span
-                className={
-                  currentStep > i
-                    ? "add_contact_step_line add_contact_step_line_active"
-                    : "add_contact_step_line"
-                }
-                aria-hidden
-              />
-            ) : null}
-            <button
-              type="button"
-              className={
-                isActive
-                  ? "add_contact_step_node add_contact_step_node_active investing_profile_view_step_btn"
-                  : isDone
-                    ? "add_contact_step_node add_contact_step_node_done investing_profile_view_step_btn"
-                    : "add_contact_step_node investing_profile_view_step_btn"
-              }
-              onClick={() => onStepChange(n)}
-              aria-current={isActive ? "step" : undefined}
-            >
-              <span className="add_contact_step_dot">{n}</span>
-              <span className="add_contact_step_label">{label}</span>
-            </button>
-          </Fragment>
+          <div key={`${slugFromLabel(row.label)}-${i}`} className="investing_profile_view_summary_item">
+            <span className="investing_profile_view_summary_label">{row.label}</span>
+            <span className="investing_profile_view_summary_value">{value}</span>
+          </div>
         )
       })}
     </div>
   )
 }
 
-function ProfileWizardViewBody({
+function ProfileDocumentViewBody({
   profileTitle,
   sections,
   description,
@@ -196,23 +178,24 @@ function ProfileWizardViewBody({
   onEdit?: () => void
   editLabel: string
 }) {
-  const stepLabelId = useId()
-  const wizardSections = sections.filter(
-    (s) => s.heading && s.heading !== PROFILE_RECORD_SECTION_HEADING,
+  const profileTypeSection = sections.find(
+    (s) => s.heading === PROFILE_TYPE_SECTION_HEADING,
   )
+  const profileTypeLabel = profileTypeSection?.rows[0]?.value?.trim()
+
   const metaSection = sections.find(
     (s) => s.heading === PROFILE_RECORD_SECTION_HEADING,
   )
-  const totalSteps = Math.max(wizardSections.length, 1)
-  const [step, setStep] = useState(1)
+  const metaRows =
+    metaSection?.rows.filter((r) => r.label.trim().toLowerCase() !== "profile name") ??
+    []
 
-  useEffect(() => {
-    setStep(1)
-  }, [sections])
-
-  const activeSection = wizardSections[step - 1]
-  const isLastStep = step >= totalSteps
-  const stepLabel = activeSection?.heading ?? ""
+  const contentSections = sections.filter(
+    (s) =>
+      s.heading &&
+      s.heading !== PROFILE_RECORD_SECTION_HEADING &&
+      s.heading !== PROFILE_TYPE_SECTION_HEADING,
+  )
 
   return (
     <>
@@ -232,13 +215,6 @@ function ProfileWizardViewBody({
               {description}
             </p>
           ) : null}
-          {wizardSections.length > 0 ? (
-            <ProfileViewStepper
-              steps={wizardSections.map((s) => s.heading)}
-              currentStep={step}
-              onStepChange={setStep}
-            />
-          ) : null}
         </div>
         <button
           type="button"
@@ -251,57 +227,42 @@ function ProfileWizardViewBody({
       </div>
 
       <div className="deals_add_inv_modal_scroll investing_profile_view_scroll">
-        <div className="add_contact_section" aria-labelledby={stepLabelId}>
-          <p id={stepLabelId} className="add_contact_section_eyebrow">
-            {stepLabel}
-          </p>
-          {activeSection ? (
-            <ProfileWizardReadonlyFields rows={activeSection.rows} />
-          ) : null}
-          {isLastStep && metaSection ? (
-            <>
-              <hr className="add_contact_section_rule" aria-hidden />
-              <p className="add_contact_section_eyebrow add_contact_section_eyebrow_spaced">
-                {metaSection.heading}
-              </p>
-              <ProfileWizardReadonlyFields rows={metaSection.rows} />
-            </>
-          ) : null}
+        <ProfileSummaryStrip
+          profileTypeLabel={profileTypeLabel || undefined}
+          metaRows={metaRows}
+        />
+        <div className="investing_profile_view_cards">
+          {contentSections.map((section, idx) => (
+            <section
+              key={section.heading || `section-${idx}`}
+              className="investing_profile_view_card"
+              aria-label={section.heading}
+            >
+              <h3 className="investing_profile_view_card_title">{section.heading}</h3>
+              <ViewFieldGrid
+                rows={section.rows}
+                gridClassName="investing_profile_view_grid"
+              />
+            </section>
+          ))}
         </div>
       </div>
 
       <div className="um_modal_actions add_contact_modal_actions investing_profile_view_footer">
-        <button type="button" className="um_btn_secondary" onClick={onClose}>
+        <button
+          type="button"
+          className="um_btn_secondary investing_profile_view_close_btn"
+          onClick={onClose}
+        >
           <X size={16} strokeWidth={2} aria-hidden />
           Close
         </button>
-        <div className="add_contact_modal_actions_trailing">
-          {step > 1 ? (
-            <button
-              type="button"
-              className="um_btn_secondary"
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
-            >
-              <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-              Back
-            </button>
-          ) : null}
-          {step < totalSteps ? (
-            <button
-              type="button"
-              className="um_btn_primary"
-              onClick={() => setStep((s) => Math.min(totalSteps, s + 1))}
-            >
-              Next
-              <ChevronRight size={18} strokeWidth={2} aria-hidden />
-            </button>
-          ) : onEdit ? (
-            <button type="button" className="um_btn_primary" onClick={onEdit}>
-              <Pencil size={16} strokeWidth={2} aria-hidden />
-              {editLabel}
-            </button>
-          ) : null}
-        </div>
+        {onEdit ? (
+          <button type="button" className="um_btn_primary" onClick={onEdit}>
+            <Pencil size={16} strokeWidth={2} aria-hidden />
+            {editLabel}
+          </button>
+        ) : null}
       </div>
     </>
   )
@@ -370,7 +331,7 @@ export function InvestingEntityViewModal({
         onClick={(e) => e.stopPropagation()}
       >
         {isProfileWizard ? (
-          <ProfileWizardViewBody
+          <ProfileDocumentViewBody
             profileTitle={title}
             sections={sectionList}
             description={description}
@@ -380,10 +341,23 @@ export function InvestingEntityViewModal({
           />
         ) : (
           <>
-            <div className="um_modal_head">
-              <h2 id="investing-view-modal-title" className="um_modal_title">
-                {title}
-              </h2>
+            <div className="um_modal_head add_contact_modal_head investing_entity_view_head">
+              <div className="add_contact_modal_head_main">
+                <h2
+                  id="investing-view-modal-title"
+                  className="um_modal_title add_contact_modal_title"
+                >
+                  {title}
+                </h2>
+                {description ? (
+                  <p
+                    id="investing-view-modal-desc"
+                    className="investing_entity_view_lead"
+                  >
+                    {description}
+                  </p>
+                ) : null}
+              </div>
               <button
                 type="button"
                 className="um_modal_close"
@@ -393,15 +367,7 @@ export function InvestingEntityViewModal({
                 <X size={20} strokeWidth={2} aria-hidden />
               </button>
             </div>
-            <div className="deals_add_inv_modal_scroll">
-              {description ? (
-                <p
-                  id="investing-view-modal-desc"
-                  className="investing_entity_view_lead"
-                >
-                  {description}
-                </p>
-              ) : null}
+            <div className="deals_add_inv_modal_scroll investing_entity_view_scroll">
               {sectionList.map((section, idx) => (
                 <section
                   key={section.heading || `section-${idx}`}
@@ -417,8 +383,12 @@ export function InvestingEntityViewModal({
                 </section>
               ))}
             </div>
-            <div className="um_modal_actions um_modal_actions_view contacts_view_modal_footer">
-              <button type="button" className="um_btn_secondary" onClick={onClose}>
+            <div className="um_modal_actions um_modal_actions_view contacts_view_modal_footer investing_entity_view_footer">
+              <button
+                type="button"
+                className="um_btn_secondary contacts_view_modal_close_btn"
+                onClick={onClose}
+              >
                 <X size={16} strokeWidth={2} aria-hidden />
                 Close
               </button>

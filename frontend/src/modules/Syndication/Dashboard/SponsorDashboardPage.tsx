@@ -1,4 +1,5 @@
 import {
+  Briefcase,
   ClipboardList,
   DollarSign,
   LineChart,
@@ -121,10 +122,33 @@ function SyndicatingDashboard() {
         />
       </section>
 
-      <SyndicatingDealsSection
-        dealsHeadingId="sponsor-deals-heading"
-        searchPlaceholder="Search deals…"
-      />
+      <section
+        className="investing_dash_deals_section"
+        aria-labelledby="sponsor-deals-heading"
+      >
+        <header className="investing_dash_deals_header">
+          <h2
+            id="sponsor-deals-heading"
+            className="sponsor_dash_section_title investing_dash_deals_title"
+          >
+            <Briefcase
+              className="investing_dash_deals_title_icon"
+              size={22}
+              strokeWidth={1.75}
+              aria-hidden
+            />
+            All Deals
+          </h2>
+        </header>
+
+        <div className="sponsor_dash_deals_block um_panel deals_list_card_surface deal_inv_table_panel">
+          <SyndicatingDealsSection
+            hideDealsHeading
+            dealsHeadingId="sponsor-deals-heading"
+            searchPlaceholder="Search deals…"
+          />
+        </div>
+      </section>
     </section>
   )
 }

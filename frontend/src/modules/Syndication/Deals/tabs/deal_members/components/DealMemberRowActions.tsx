@@ -52,7 +52,7 @@ export interface DealMemberRowActionsProps {
    * When false, “Copy offering link” is disabled (e.g. visibility is not “Only visible with link”).
    */
   offeringLinkAvailable?: boolean
-  /** Deal lifecycle is Draft — offering preview link must not be copied. */
+  /** Deal lifecycle blocks offering preview link copy (e.g. Draft or Liquidated). */
   offeringLinkBlockedBecauseDraft?: boolean
   /** Investors tab: advance investment to “funding instructions sent” (optional). */
   onApproveFund?: (row: DealInvestorRow) => void | Promise<void>
@@ -242,7 +242,7 @@ export function DealMemberRowActions({
                   disabled={deleteBusy}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="button"
@@ -373,7 +373,7 @@ export function DealMemberRowActions({
                     disabled={draftRow || !offeringLinkAvailable}
                     title={
                       offeringLinkBlockedBecauseDraft
-                        ? "Change the deal stage from Draft before copying an offering preview link."
+                        ? "Change the deal stage before copying an offering preview link."
                         : !offeringLinkAvailable
                           ? 'Set visibility to “Only visible with link” in Offering Details to enable this link.'
                           : undefined

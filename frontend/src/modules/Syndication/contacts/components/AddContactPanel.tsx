@@ -1113,7 +1113,7 @@ export function AddContactPanel({
               disabled={submitting}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               {step === 2 ? (

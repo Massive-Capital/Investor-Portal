@@ -47,6 +47,7 @@ import {
   firstCreatedInvestorClassName,
   hasMeaningfulInvestorSummaryHtml,
   formatOfferingPortfolioLocationLine,
+  hasOfferingPortfolioLocationLine,
   keyHighlightRowsForOfferingPreview,
 } from "./dealOfferingPreviewShared"
 import { OfferingPreviewKeyHighlightsTable } from "./components/OfferingPreviewKeyHighlightsTable"
@@ -471,7 +472,7 @@ export function DealOfferingPreviewInner({
 
   const locationSection = useMemo(() => {
     if (!showInvestorPreviewOverviewKv) return null
-    const hasCityState = dealLocationLine && dealLocationLine !== "—"
+    const hasCityState = hasOfferingPortfolioLocationLine(dealLocationLine)
     const hasMap = Boolean(dealMapQuery.trim())
     if (!hasCityState && !hasMap) return null
     return (
@@ -512,7 +513,9 @@ export function DealOfferingPreviewInner({
             >
               <div className="deal_offer_pf_titlebar_main">
                 <h1 className="deal_offer_pf_page_title">{title}</h1>
-                <p className="deal_offer_pf_property_line">{dealLocationLine}</p>
+                {hasOfferingPortfolioLocationLine(dealLocationLine) ? (
+                  <p className="deal_offer_pf_property_line">{dealLocationLine}</p>
+                ) : null}
               </div>
               {investNowDraftProgress && onInvestNowPhaseClick ? (
                 <div

@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, Check, CreditCard, Receipt, Search } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  CreditCard,
+  Receipt,
+  RotateCcw,
+  Search,
+} from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
@@ -182,6 +189,17 @@ function parseIsoDate(iso: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
   const d = new Date(`${iso}T12:00:00`);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function invoiceStatusClassName(status: string): string {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "paid") return "cp_billing_invoice_status cp_billing_invoice_status--paid";
+  if (normalized === "open") return "cp_billing_invoice_status cp_billing_invoice_status--open";
+  if (normalized === "overdue") {
+    return "cp_billing_invoice_status cp_billing_invoice_status--overdue";
+  }
+  if (normalized === "void") return "cp_billing_invoice_status cp_billing_invoice_status--void";
+  return "cp_billing_invoice_status";
 }
 
 function invoiceMatchesFilters(
@@ -427,9 +445,12 @@ function BillingPaymentHistoryPanel() {
       },
       {
         id: "invoiceNumber",
-        header: "Invoice Number",
+        header: "Invoice number",
         sortValue: (row) => row.invoiceNumber.toLowerCase(),
-        cell: (row) => row.invoiceNumber,
+        tdClassName: "cp_billing_invoice_number_td",
+        cell: (row) => (
+          <span className="cp_billing_invoice_number">{row.invoiceNumber}</span>
+        ),
       },
       {
         id: "invoiceDate",
@@ -447,12 +468,16 @@ function BillingPaymentHistoryPanel() {
         id: "status",
         header: "Status",
         sortValue: (row) => row.status.toLowerCase(),
-        cell: (row) => row.status,
+        cell: (row) => (
+          <span className={invoiceStatusClassName(row.status)}>{row.status}</span>
+        ),
       },
       {
         id: "amount",
         header: "Amount",
         align: "right",
+        thClassName: "deals_th_align_right",
+        tdClassName: "um_td_numeric cp_billing_amount_td",
         sortValue: (row) => row.amount,
         cell: (row) => row.amount,
       },
@@ -460,14 +485,17 @@ function BillingPaymentHistoryPanel() {
         id: "receipt",
         header: "Receipt",
         align: "center",
+        thClassName: "deals_th_align_center um_th_actions",
+        tdClassName: "um_td_actions cp_billing_receipt_td",
         cell: () => (
           <button
             type="button"
             className="cp_billing_receipt_btn"
             disabled
             aria-label="Download receipt (unavailable)"
+            title="Receipt download coming soon"
           >
-            <Receipt size={16} aria-hidden="true" />
+            <Receipt size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         ),
       },
@@ -496,60 +524,83 @@ function BillingPaymentHistoryPanel() {
 
   return (
     <div className="cp_billing_payment_history">
-      <div
-        className="cp_billing_payment_filters"
+      <header className="cp_billing_payment_history_head">
+        <h3 className="cp_billing_payment_history_title">Payment history</h3>
+        <p className="cp_billing_payment_history_lead">
+          Filter invoices by date and status. Download receipts when available.
+        </p>
+      </header>
+
+      <section
+        className="cp_billing_payment_filters_panel"
         role="search"
         aria-label="Invoice filters"
       >
-        <div className="cp_billing_date_range">
-          <Calendar size={18} strokeWidth={2} aria-hidden="true" />
-          <input
-            type="date"
-            className="cp_billing_date_input"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            aria-label="Invoice date from"
-          />
-          <span className="cp_billing_date_range_sep">To</span>
-          <input
-            type="date"
-            className="cp_billing_date_input"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            aria-label="Invoice date to"
-          />
+        <div className="cp_billing_payment_filters_grid">
+          <div className="cp_billing_filter_field cp_billing_filter_field--date">
+            <label className="cp_billing_filter_label" htmlFor="cp-billing-date-from">
+              <Calendar size={14} strokeWidth={2} aria-hidden />
+              Invoice date
+            </label>
+            <div className="cp_billing_date_range">
+              <input
+                id="cp-billing-date-from"
+                type="date"
+                className="cp_billing_filter_input cp_billing_date_input"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                aria-label="Invoice date from"
+              />
+              <span className="cp_billing_date_range_sep">to</span>
+              <input
+                type="date"
+                className="cp_billing_filter_input cp_billing_date_input"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                aria-label="Invoice date to"
+              />
+            </div>
+          </div>
+
+          <div className="cp_billing_filter_field">
+            <label className="cp_billing_filter_label" htmlFor="cp-billing-status">
+              Status
+            </label>
+            <select
+              id="cp-billing-status"
+              className="cp_billing_filter_input cp_billing_status_select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Invoice status"
+            >
+              <option value="">All statuses</option>
+              <option value="paid">Paid</option>
+              <option value="open">Open</option>
+              <option value="overdue">Overdue</option>
+              <option value="void">Void</option>
+            </select>
+          </div>
         </div>
 
-        <select
-          className="cp_billing_status_select"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          aria-label="Invoice status"
-        >
-          <option value="">All Status</option>
-          <option value="paid">Paid</option>
-          <option value="open">Open</option>
-          <option value="overdue">Overdue</option>
-          <option value="void">Void</option>
-        </select>
-
-        <button
-          type="button"
-          className="cp_billing_reset_link"
-          onClick={handleReset}
-        >
-          Reset Filters
-        </button>
-
-        <button
-          type="button"
-          className="um_btn_primary cp_billing_search_btn"
-          onClick={handleSearch}
-        >
-          <Search size={16} strokeWidth={2} aria-hidden />
-          Search
-        </button>
-      </div>
+        <div className="cp_billing_payment_filters_actions">
+          <button
+            type="button"
+            className="um_btn_secondary cp_billing_reset_btn"
+            onClick={handleReset}
+          >
+            <RotateCcw size={16} strokeWidth={2} aria-hidden />
+            Reset filters
+          </button>
+          <button
+            type="button"
+            className="um_btn_primary cp_billing_search_btn"
+            onClick={handleSearch}
+          >
+            <Search size={16} strokeWidth={2} aria-hidden />
+            Search
+          </button>
+        </div>
+      </section>
 
       <div
         className="cp_billing_outstanding_banner"
@@ -557,20 +608,19 @@ function BillingPaymentHistoryPanel() {
         aria-live="polite"
       >
         <span className="cp_billing_outstanding_icon" aria-hidden="true">
-          <Check size={14} strokeWidth={3} />
+          <Check size={14} strokeWidth={2.5} />
         </span>
-        <p>
-          Your account has no outstanding invoices at this time.
-        </p>
+        <p>Your account has no outstanding invoices at this time.</p>
       </div>
 
-      <div className="cp_billing_invoices_table_wrap deals_list_table_panel deals_list_card_surface deal_inv_table_panel">
+      <div className="cp_billing_invoices_table_wrap deal_inv_table_panel">
         <DataTable
           columns={columns}
           rows={filteredInvoices}
           getRowKey={(row) => row.id}
           emptyLabel="No invoices found for the selected filters."
           visualVariant="members"
+          membersTableClassName="um_table_members deal_inv_table"
           membersShell="default"
           initialSort={{ columnId: "invoiceDate", direction: "desc" }}
           pagination={invoicePagination}

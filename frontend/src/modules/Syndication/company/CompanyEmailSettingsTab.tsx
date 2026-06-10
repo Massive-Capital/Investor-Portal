@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AtSign,
+  Eye,
   Languages,
   Mail,
   PenLine,
   Pencil,
   Send,
+  Settings,
   Signature,
   Trash2,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { FormHeadingWithInfo } from "../../../common/components/form-heading/FormHeadingWithInfo";
@@ -190,6 +193,7 @@ export function CompanyEmailSettingsTab(props: Props) {
                       {PLATFORM_DISPLAY_EMAIL}
                     </div>
                     <button type="button" className="um_btn_secondary">
+                      <Eye size={16} strokeWidth={2} aria-hidden />
                       Preview company email
                     </button>
                   </div>
@@ -257,6 +261,7 @@ export function CompanyEmailSettingsTab(props: Props) {
                         Edit
                       </button>
                       <button type="button" className="um_btn_secondary">
+                        <X size={16} strokeWidth={2} aria-hidden />
                         Clear
                       </button>
                     </div>
@@ -284,6 +289,7 @@ export function CompanyEmailSettingsTab(props: Props) {
                     <div className="cp_settings_value_row">
                       <div className="cp_media_actions">
                         <button type="button" className="um_btn_secondary">
+                          <Settings size={16} strokeWidth={2} aria-hidden />
                           Manage
                         </button>
                         <button type="button" className="um_btn_secondary">

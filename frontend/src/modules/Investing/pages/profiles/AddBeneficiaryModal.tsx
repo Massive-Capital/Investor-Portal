@@ -447,7 +447,7 @@ export function AddBeneficiaryModal({
           <div className="um_modal_actions add_contact_modal_actions">
             <button type="button" className="um_btn_secondary" onClick={onClose}>
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               <button type="submit" className="um_btn_primary">

@@ -25,7 +25,6 @@ import {
   isLpInvestorRole,
   listDealInvestmentsByDealId,
   mapDealInvestmentsToInvestorApi,
-  resolveFirstInvestorClassForDeal,
   resolveInvestorClassForDealInvestment,
   saveSubscriptionDocument,
   updateDealInvestment,
@@ -69,6 +68,20 @@ function parseExtras(raw: unknown): string[] {
 function isAutosaveBody(b: Record<string, unknown>): boolean {
   const v = bodyString(b.autosave);
   return v === "true" || v === "1" || v.toLowerCase() === "yes";
+}
+
+/** Deal Members roster adds may omit class; investments with an explicit class are validated. */
+async function resolveDealInvestmentInvestorClass(
+  dealId: string,
+  investorClass: string,
+) {
+  const trimmed = investorClass.trim();
+  if (!trimmed) {
+    return resolveInvestorClassForDealInvestment(dealId, investorClass, {
+      optional: true,
+    });
+  }
+  return resolveInvestorClassForDealInvestment(dealId, investorClass);
 }
 
 /** Multipart / JSON: optional `fund_approved` / `fundApproved`; preserves `fallback` when absent. */
@@ -308,10 +321,10 @@ export async function putDealInvestment(
       return;
     }
 
-    const classResolution =
-      autosave && !investorClass.trim()
-        ? await resolveFirstInvestorClassForDeal(dealId)
-        : await resolveInvestorClassForDealInvestment(dealId, investorClass);
+    const classResolution = await resolveDealInvestmentInvestorClass(
+      dealId,
+      investorClass,
+    );
     if (!classResolution.ok) {
       res.status(400).json({ message: classResolution.message });
       return;
@@ -591,10 +604,10 @@ export async function postDealInvestment(
       return;
     }
 
-    const classResolution =
-      autosave && !investorClass.trim()
-        ? await resolveFirstInvestorClassForDeal(dealId)
-        : await resolveInvestorClassForDealInvestment(dealId, investorClass);
+    const classResolution = await resolveDealInvestmentInvestorClass(
+      dealId,
+      investorClass,
+    );
     if (!classResolution.ok) {
       res.status(400).json({ message: classResolution.message });
       return;

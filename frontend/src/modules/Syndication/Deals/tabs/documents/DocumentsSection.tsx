@@ -1,7 +1,6 @@
 import {
   ArrowRightLeft,
   ChevronDown,
-  CircleCheck,
   Copy,
   Download,
   Eye,
@@ -429,6 +428,8 @@ export function DocumentsSection({
   const sectionUploadFieldId = useId()
   const sectionFileInputRef = useRef<HTMLInputElement>(null)
   const uploadDocsTitleId = useId()
+  const uploadDocsUploadFieldId = useId()
+  const uploadFileInputRef = useRef<HTMLInputElement>(null)
   const visibilityConfirmTitleId = useId()
   const moveDocumentTitleId = useId()
   const moveSelectRequiredTitleId = useId()
@@ -970,13 +971,12 @@ export function DocumentsSection({
     setUploadDocsError(null)
   }, [documentUploadBusy])
 
-  const onUploadFilesChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
+  const appendUploadFiles = useCallback(
+    (incoming: FileList | File[] | null | undefined) => {
       const { next, rejectedNames } = appendPdfFilesFromPicker(
         uploadFiles,
-        e.currentTarget.files,
+        incoming,
       )
-      e.currentTarget.value = ""
       setUploadFiles(next)
       if (rejectedNames.length > 0) {
         setUploadDocsError(
@@ -989,6 +989,14 @@ export function DocumentsSection({
       }
     },
     [uploadFiles],
+  )
+
+  const onUploadFilesChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      appendUploadFiles(e.currentTarget.files)
+      e.currentTarget.value = ""
+    },
+    [appendUploadFiles],
   )
 
   const removeUploadFileAt = useCallback((index: number) => {
@@ -1470,20 +1478,12 @@ export function DocumentsSection({
   return (
     <div className="deal_docs">
       <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_assets_datatable_panel">
-        <div className="um_toolbar deal_docs_toolbar um_toolbar_export_then_search" role="toolbar" aria-label="Document actions">
-          <div className="um_search_wrap">
-            <Search className="um_search_icon" size={18} strokeWidth={2} aria-hidden />
-            <input
-              type="search"
-              className="um_search_input"
-              placeholder="Search documents…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search documents"
-              autoComplete="off"
-            />
-          </div>
-          <div className="um_toolbar_actions deal_docs_toolbar_actions">
+        <div
+          className="um_toolbar deal_docs_toolbar um_toolbar_export_then_search deal_docs_toolbar_documents"
+          role="toolbar"
+          aria-label="Document actions"
+        >
+          <div className="um_toolbar_actions deal_docs_toolbar_actions deal_docs_toolbar_actions_leading">
             <input
               ref={quickUploadInputRef}
               type="file"
@@ -1506,12 +1506,26 @@ export function DocumentsSection({
                 ? ` (${selectedMovableDocumentCount})`
                 : ""}
             </button>
+          </div>
+          <div className="um_toolbar_actions deal_docs_toolbar_actions deal_docs_toolbar_actions_trailing">
+            <div className="um_search_wrap">
+              <Search className="um_search_icon" size={18} strokeWidth={2} aria-hidden />
+              <input
+                type="search"
+                className="um_search_input"
+                placeholder="Search documents…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search documents"
+                autoComplete="off"
+              />
+            </div>
             <button
               type="button"
-              className="deal_docs_toolbar_btn"
+              className="um_btn_primary deal_docs_add_section_btn"
               onClick={onAddSection}
             >
-              <Plus size={16} strokeWidth={2} aria-hidden />
+              <Plus size={18} strokeWidth={2} aria-hidden />
               Add section
             </button>
           </div>
@@ -2180,7 +2194,7 @@ export function DocumentsSection({
                       onClick={closeAddSectionModal}
                     >
                       <X size={16} strokeWidth={2} aria-hidden />
-                      Cancel
+                      Close
                     </button>
                     <button
                       type="submit"
@@ -2214,22 +2228,36 @@ export function DocumentsSection({
       {showUploadDocsModal
         ? createPortal(
             <div
-              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_section_modal_overlay"
               role="presentation"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget && !documentUploadBusy) {
+                  closeUploadDocsModal()
+                }
+              }}
             >
               <div
-                className="um_modal deals_add_inv_modal_panel add_contact_panel"
+                className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_docs_section_modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={uploadDocsTitleId}
+                onMouseDown={(e) => e.stopPropagation()}
               >
                 <div className="um_modal_head add_contact_modal_head">
-                  <h3
-                    id={uploadDocsTitleId}
-                    className="um_modal_title add_contact_modal_title"
-                  >
-                    Upload documents
-                  </h3>
+                  <div className="add_contact_modal_head_main">
+                    <FormHeadingWithInfo
+                      as="h2"
+                      id={uploadDocsTitleId}
+                      className="um_modal_title add_contact_modal_title"
+                      title="Upload documents"
+                      info={
+                        <p>
+                          Add PDF files to the selected section. They appear in
+                          this section&apos;s document list after upload.
+                        </p>
+                      }
+                    />
+                  </div>
                   <button
                     type="button"
                     className="um_modal_close"
@@ -2240,42 +2268,57 @@ export function DocumentsSection({
                     <X size={20} strokeWidth={2} aria-hidden />
                   </button>
                 </div>
-                <form onSubmit={onSubmitUploadDocuments} noValidate>
-                  <div className="deals_add_inv_modal_scroll">
-                    <p className="deal_offering_muted">
-                      Section: <strong>{uploadTargetLabel || "Section"}</strong>
-                    </p>
-                    <p className="deal_offering_muted">
-                      Uploaded files are added to this section’s document list.
-                    </p>
-                    <label className="deals_create_label">
-                      Upload documents
-                      <input
-                        type="file"
-                        className="deals_create_input"
-                        multiple
-                        accept="application/pdf,.pdf"
-                        onChange={onUploadFilesChange}
-                        aria-invalid={uploadFiles.length === 0 && uploadDocsError != null}
+                <form
+                  className="deals_add_inv_modal_form deal_docs_section_modal_form"
+                  onSubmit={onSubmitUploadDocuments}
+                  noValidate
+                >
+                  <div className="deals_add_inv_modal_scroll deal_docs_section_modal_scroll">
+                    <div className="deal_docs_section_modal_fields">
+                      <p className="deal_docs_move_modal_summary">
+                        Section:{" "}
+                        <strong>{uploadTargetLabel || "Section"}</strong>
+                      </p>
+                      <div className="deal_docs_section_modal_upload_block">
+                        <span className="deal_docs_section_modal_upload_label">
+                          Documents
+                        </span>
+                        <DocumentsPdfUploadDropzone
+                          id={uploadDocsUploadFieldId}
+                          disabled={documentUploadBusy}
+                          inputRef={uploadFileInputRef}
+                          onPickClick={() => uploadFileInputRef.current?.click()}
+                          onInputChange={onUploadFilesChange}
+                          onFilesDropped={appendUploadFiles}
+                        />
+                        <p className="deal_docs_section_modal_upload_hint">
+                          PDF only — select multiple files if needed.
+                        </p>
+                      </div>
+                      <ModalPendingDocumentFilesList
+                        files={uploadFiles}
+                        disabled={documentUploadBusy}
+                        onRemove={removeUploadFileAt}
                       />
-                    </label>
-                    <ModalPendingDocumentFilesList
-                      files={uploadFiles}
-                      disabled={documentUploadBusy}
-                      onRemove={removeUploadFileAt}
-                    />
-                    {uploadFiles.length > 0 ? (
-                      <p className="deal_offering_muted">
-                        {uploadFiles.length}{" "}
-                        {uploadFiles.length === 1 ? "file" : "files"} will be
-                        uploaded to this section.
-                      </p>
-                    ) : null}
-                    {uploadDocsError ? (
-                      <p className="deals_create_error" role="alert">
-                        {uploadDocsError}
-                      </p>
-                    ) : null}
+                      {uploadFiles.length > 0 ? (
+                        <p
+                          className="deal_docs_section_modal_status"
+                          role="status"
+                        >
+                          <strong>{uploadFiles.length}</strong>{" "}
+                          {uploadFiles.length === 1 ? "file" : "files"} ready to
+                          upload.
+                        </p>
+                      ) : null}
+                      {uploadDocsError ? (
+                        <p
+                          className="deal_docs_section_modal_error"
+                          role="alert"
+                        >
+                          {uploadDocsError}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="um_modal_actions add_contact_modal_actions">
                     <button
@@ -2285,7 +2328,7 @@ export function DocumentsSection({
                       onClick={closeUploadDocsModal}
                     >
                       <X size={16} strokeWidth={2} aria-hidden />
-                      Cancel
+                      Close
                     </button>
                     <button
                       type="submit"
@@ -2304,8 +2347,8 @@ export function DocumentsSection({
                         </>
                       ) : (
                         <>
-                          <Save size={16} strokeWidth={2} aria-hidden />
-                          Save
+                          <Upload size={16} strokeWidth={2} aria-hidden />
+                          Upload
                         </>
                       )}
                     </button>
@@ -2394,7 +2437,7 @@ export function DocumentsSection({
                     onClick={cancelVisibilityChange}
                   >
                     <X size={16} strokeWidth={2} aria-hidden />
-                    Cancel
+                    Close
                   </button>
                   <button
                     type="button"
@@ -2429,68 +2472,61 @@ export function DocumentsSection({
       {moveSelectRequiredOpen
         ? createPortal(
             <div
-              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_section_modal_overlay deal_docs_shared_notify_overlay"
+              className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_docs_section_modal_overlay deal_docs_move_hint_overlay"
               role="presentation"
               onMouseDown={(e) => {
                 if (e.target === e.currentTarget) setMoveSelectRequiredOpen(false)
               }}
             >
               <div
-                className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_docs_move_modal_shell deal_docs_move_hint_modal"
+                className="deal_docs_move_hint_modal"
                 role="alertdialog"
                 aria-modal="true"
                 aria-labelledby={moveSelectRequiredTitleId}
+                aria-describedby={`${moveSelectRequiredTitleId}-desc`}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <div className="um_modal_head add_contact_modal_head">
-                  <div className="add_contact_modal_head_main">
-                    <FormHeadingWithInfo
-                      as="h2"
+                <header className="deal_docs_move_hint_head">
+                  <span className="deal_docs_move_hint_icon" aria-hidden>
+                    <ListChecks size={20} strokeWidth={2} />
+                  </span>
+                  <div className="deal_docs_move_hint_head_text">
+                    <h2
                       id={moveSelectRequiredTitleId}
-                      className="um_modal_title add_contact_modal_title"
-                      title="Move selected"
-                      info={
-                        <p>
-                          Choose one or more documents in a section, then use
-                          Move selected.
-                        </p>
-                      }
-                    />
+                      className="deal_docs_move_hint_title"
+                    >
+                      No documents selected
+                    </h2>
                   </div>
                   <button
                     type="button"
-                    className="um_modal_close"
+                    className="deal_docs_move_hint_close"
                     aria-label="Close"
                     onClick={() => setMoveSelectRequiredOpen(false)}
                   >
                     <X size={20} strokeWidth={2} aria-hidden />
                   </button>
-                </div>
-                <div className="deals_add_inv_modal_scroll deal_docs_move_modal_scroll">
-                  <p className="deal_docs_move_modal_message" role="status">
-                    Select document for moving.
+                </header>
+                <div className="deal_docs_move_hint_body">
+                  <p
+                    id={`${moveSelectRequiredTitleId}-desc`}
+                    className="deal_docs_move_hint_message"
+                  >
+                    Select one or more documents using the checkboxes in a section,
+                    then choose <strong>Move selected</strong> to move them to
+                    another section.
                   </p>
                 </div>
-                <div className="um_modal_actions add_contact_modal_actions">
+                <footer className="deal_docs_move_hint_actions">
                   <button
                     type="button"
-                    className="um_btn_secondary"
+                    className="um_btn_secondary deal_docs_move_hint_btn"
                     onClick={() => setMoveSelectRequiredOpen(false)}
                   >
                     <X size={16} strokeWidth={2} aria-hidden />
-                    Cancel
+                    Close
                   </button>
-                  <div className="add_contact_modal_actions_trailing">
-                    <button
-                      type="button"
-                      className="um_btn_primary"
-                      onClick={() => setMoveSelectRequiredOpen(false)}
-                    >
-                      <CircleCheck size={16} strokeWidth={2} aria-hidden />
-                      OK
-                    </button>
-                  </div>
-                </div>
+                </footer>
               </div>
             </div>,
             document.body,
@@ -2632,7 +2668,7 @@ export function DocumentsSection({
                     onClick={cancelMoveDocument}
                   >
                     <X size={16} strokeWidth={2} aria-hidden />
-                    Cancel
+                    Close
                   </button>
                   <div className="add_contact_modal_actions_trailing">
                     <button

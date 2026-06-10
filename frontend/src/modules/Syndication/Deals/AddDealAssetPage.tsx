@@ -457,7 +457,7 @@ export function AddDealAssetPage() {
           <div className="um_modal_actions add_contact_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions">
             <button type="button" className="um_btn_secondary" onClick={goBack}>
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               {step === 2 ? (
@@ -477,11 +477,7 @@ export function AddDealAssetPage() {
                 </button>
               ) : (
                 <button type="submit" className="um_btn_primary">
-                  {isEdit ? (
-                    <Save size={16} strokeWidth={2} aria-hidden />
-                  ) : (
-                    <Plus size={16} strokeWidth={2} aria-hidden />
-                  )}
+                  <Save size={16} strokeWidth={2} aria-hidden />
                   {isEdit ? "Save changes" : "Save asset"}
                 </button>
               )}

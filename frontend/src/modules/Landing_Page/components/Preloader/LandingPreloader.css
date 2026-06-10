@@ -101,7 +101,7 @@
   display: block;
   width: 52px;
   height: 3px;
-  border-radius: 999px;
+  border-radius: var(--sx-radius-box);
   background: linear-gradient(
     90deg,
     transparent,

@@ -142,6 +142,20 @@ export function blurFormatMoneyInput(raw: string): string {
   }).format(n)
 }
 
+/** Blur-format USD with commas and exactly two fraction digits (e.g. $1,234.00). */
+export function blurFormatMoneyInputTwoDecimals(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ""
+  const n = parseMoneyDigits(t)
+  if (!Number.isFinite(n)) return raw
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
 /**
  * While typing in amount fields: keep only digits and one decimal point.
  * This prevents alphabet/special chars before blur-formatting runs.
@@ -308,4 +322,9 @@ export function moneyAmountOnChange(raw: string): string {
 /** Use on `onBlur` for any USD amount field. */
 export function moneyAmountOnBlur(raw: string): string {
   return blurFormatMoneyInput(raw)
+}
+
+/** Use on `onBlur` when the field must always show two decimal places. */
+export function moneyAmountOnBlurTwoDecimals(raw: string): string {
+  return blurFormatMoneyInputTwoDecimals(raw)
 }

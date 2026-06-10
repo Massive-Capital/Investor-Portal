@@ -1045,7 +1045,7 @@ html.deal_offer_pf_sticky_scroll body {
   flex-shrink: 0;
   width: 1.75rem;
   height: 1.75rem;
-  border-radius: 999px;
+  border-radius: var(--ui-button-border-radius, 4px);
   background: var(--sidebar-bg-color);
   color: var(--sidebar-active-text, #d4af37);
 }
@@ -1418,7 +1418,7 @@ html.deal_offer_pf_sticky_scroll body {
   justify-content: center;
   width: 2.25rem;
   height: 2.25rem;
-  border-radius: 999px;
+  border-radius: var(--ui-button-border-radius, 4px);
   background: var(--sidebar-bg-color);
   color: var(--sidebar-active-text, #d4af37);
 }
@@ -2220,13 +2220,6 @@ a.deal_offer_pf_hero_action_link.sponsor_dash_add_link {
   border: 1px solid color-mix(in srgb, var(--portal-primary, #2563eb) 22%, transparent);
 }
 
-.deal_offer_pf_share .um_hint.deal_offer_pf_share_hint,
-.deal_offer_pf_share .um_hint.deal_offer_pf_share_warning {
-  margin: 0 0 0.75em;
-  line-height: 1.5;
-  font-size: 0.875em;
-}
-
 .deal_offer_pf_share_url_field {
   flex: 1;
   min-width: min(100%, 12rem);
@@ -2582,8 +2575,8 @@ a.deal_offer_pf_hero_action_link.sponsor_dash_add_link {
 
 .deal_offer_pf_share_recipient_manual_btn.um_btn_secondary {
   flex: 0 0 auto;
-  min-height: 2.5rem;
-  height: 2.5rem;
+  min-height: var(--portal-button-height, 2.25rem);
+  height: var(--portal-button-height, 2.25rem);
   padding: 0 1em;
   font-size: 0.875rem;
   white-space: nowrap;
@@ -2661,13 +2654,6 @@ a.deal_offer_pf_hero_action_link.sponsor_dash_add_link {
   font-size: 0.75rem;
   color: #b45309;
   line-height: 1.4;
-}
-
-.deal_offer_pf_share_warning {
-  margin: 0.35em 0 0.65em;
-  font-size: 0.75rem;
-  color: var(--portal-text-muted, #64748b);
-  line-height: 1.45;
 }
 
 .deal_offer_pf_share_disabled_hint {
@@ -3688,10 +3674,6 @@ a.deal_offer_pf_hero_action_link.sponsor_dash_add_link {
 
 :root[data-theme="dark"] .deal_offer_pf_share_error {
   color: #fbbf24;
-}
-
-:root[data-theme="dark"] .deal_offer_pf_share_warning {
-  color: var(--portal-text-muted, #94a3b8);
 }
 
 :root[data-theme="dark"] .deal_offer_pf_share_disabled_hint {

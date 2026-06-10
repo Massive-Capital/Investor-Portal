@@ -54,6 +54,7 @@ import {
 import { DataTablePagination } from "../../../common/components/DataTablePagination/DataTablePagination";
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField";
 import { toast } from "../../../common/components/Toast";
+import { MemberRoleBadge } from "./MemberRoleBadge";
 import {
   COMPANY_EDIT_ROLE_OPTIONS,
   COMPANY_INVITE_ROLE_OPTIONS,
@@ -1511,16 +1512,18 @@ export default function UserManagementPage({
             </button>
           </div>
         </div>
-        <div className="um_members_top_row_actions">
-          <button
-            type="button"
-            className="um_btn_primary"
-            onClick={openInviteModal}
-          >
-            <UserPlus size={18} aria-hidden />
-            Invite Member
-          </button>
-        </div>
+        {membersTab === "users" ? (
+          <div className="um_members_top_row_actions">
+            <button
+              type="button"
+              className="um_btn_primary"
+              onClick={openInviteModal}
+            >
+              <UserPlus size={18} aria-hidden />
+              Invite Member
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="um_members_tab_content">
@@ -1751,10 +1754,8 @@ export default function UserManagementPage({
                           </div>
                         </div>
                       </td>
-                      <td className="um_td_memberships">
-                        <span className="um_membership_role_tag">
-                          {primaryRoleLabelFromRow(row)}
-                        </span>
+                      <td className="um_td_memberships um_td_role">
+                        <MemberRoleBadge row={row} />
                       </td>
                       <td className="um_td_memberships">
                         <UserOrganizationsCell
@@ -1827,7 +1828,7 @@ export default function UserManagementPage({
       </div>
 
       <div
-        className="um_panel um_members_tab_panel"
+        className="um_panel um_members_tab_panel deals_list_card_surface um_members_general_panel"
         id="um-members-panel-general"
         role="tabpanel"
         aria-labelledby="um-members-tab-general"
@@ -2015,7 +2016,7 @@ export default function UserManagementPage({
               <ViewReadonlyField
                 Icon={Shield}
                 label="Roles"
-                value={primaryRoleLabelFromRow(viewRow)}
+                value={<MemberRoleBadge row={viewRow} />}
               />
               <ViewReadonlyField
                 Icon={Building2}
@@ -2211,7 +2212,7 @@ export default function UserManagementPage({
                   onClick={() => closeEditMember()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
@@ -2312,7 +2313,7 @@ export default function UserManagementPage({
                   onClick={() => closeSuspendMember()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
@@ -2452,7 +2453,7 @@ export default function UserManagementPage({
                   onClick={closeInviteModal}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
@@ -2607,7 +2608,7 @@ export default function UserManagementPage({
                 onClick={closeSendMailModal}
               >
                 <X size={16} strokeWidth={2} aria-hidden />
-                Cancel
+                Close
               </button>
               <button
                 type="button"

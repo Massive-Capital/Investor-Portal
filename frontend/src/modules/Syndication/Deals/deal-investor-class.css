@@ -13,6 +13,7 @@
 
 .deal_offering_info {
   min-width: 0;
+  padding-top: 0.35em;
 }
 
 /* One column field shell — matches ClassFieldsForm grid labels */
@@ -68,7 +69,7 @@
   width: 1.15rem;
   height: 1.15rem;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--ui-button-border-radius, 4px);
   padding: 0;
   color: inherit;
   background: transparent;
@@ -327,11 +328,6 @@ a.deal_offering_add_ic_btn.um_btn_primary {
 
 /* Inside Offering Information accordion: square top so the table lines up with the section shell */
 .deal_offering_panel .deal_inv_class_table_wrap {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
-.deal_offering_panel .deal_inv_class_cards .deal_inv_class_card:first-child {
   border-top-left-radius: 0;
   border-top-right-radius: 0;
 }

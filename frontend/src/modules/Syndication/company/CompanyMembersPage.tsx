@@ -70,13 +70,13 @@ import {
   memberRowIsCurrentUser,
   memberRowIsInactive,
   organizationsSortValue,
-  primaryRoleLabelFromRow,
   normalizeMemberStatusForEdit,
   resolveOrganizationDisplayScope,
   roleSortValue,
   syncSessionUserDetailsById,
   userStatusForUi,
 } from "../usermanagement/memberAdminShared"
+import { MemberRoleBadge } from "../usermanagement/MemberRoleBadge"
 import { UserOrganizationsCell } from "../usermanagement/UserOrganizationsCell"
 import { escapeCsvCell, exportAuditLinesForMembers } from "../usermanagement/memberCsv"
 import { notifyMembersExportAudit } from "../usermanagement/membersExportNotifyApi"
@@ -972,10 +972,8 @@ export default function CompanyMembersPage() {
         id: "role",
         header: "Roles",
         sortValue: (row) => roleSortValue(row).toLowerCase(),
-        tdClassName: "um_td_memberships",
-        cell: (row) => (
-          <span className="um_membership_role_tag">{primaryRoleLabelFromRow(row)}</span>
-        ),
+        tdClassName: "um_td_memberships um_td_role",
+        cell: (row) => <MemberRoleBadge row={row} />,
       },
       {
         id: "organizations",
@@ -1367,7 +1365,7 @@ export default function CompanyMembersPage() {
               <ViewReadonlyField
                 Icon={Shield}
                 label="Roles"
-                value={primaryRoleLabelFromRow(viewRow)}
+                value={<MemberRoleBadge row={viewRow} />}
               />
               <ViewReadonlyField
                 Icon={Building2}
@@ -1575,7 +1573,7 @@ export default function CompanyMembersPage() {
                 disabled={sendMailSending}
               >
                 <X size={16} strokeWidth={2} aria-hidden />
-                Cancel
+                Close
               </button>
               <button
                 type="button"
@@ -1800,7 +1798,7 @@ export default function CompanyMembersPage() {
                   onClick={() => closeEditMember()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"
@@ -1896,7 +1894,7 @@ export default function CompanyMembersPage() {
                   onClick={() => closeSuspendMember()}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="submit"

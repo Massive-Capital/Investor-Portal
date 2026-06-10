@@ -34,7 +34,7 @@ export function ModalFooterTrailing({ children }: { children: ReactNode }) {
 }
 
 export function ModalCancelButton({
-  children = "Cancel",
+  children = "Close",
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (

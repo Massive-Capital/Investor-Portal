@@ -187,7 +187,7 @@ export function InvestorCommunicationRowActions({
                   disabled={deleteBusy}
                 >
                   <X size={16} strokeWidth={2} aria-hidden />
-                  Cancel
+                  Close
                 </button>
                 <button
                   type="button"

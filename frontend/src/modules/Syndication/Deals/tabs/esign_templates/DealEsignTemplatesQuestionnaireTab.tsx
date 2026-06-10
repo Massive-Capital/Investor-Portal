@@ -1,4 +1,4 @@
-import { Check, Pencil, Plus, Settings2, X } from "lucide-react"
+import { Loader2, Lock, Pencil, Plus, Save, Settings2, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "@/common/components/Toast"
@@ -516,7 +516,7 @@ export function DealEsignTemplatesQuestionnaireTab({
               return (
                 <div
                   key={section.id}
-                  className={`deal_esign_questionnaire_section_tab${isActive ? " deal_esign_questionnaire_section_tab_active" : ""}${isPending ? " deal_esign_questionnaire_section_tab_pending" : ""}`}
+                  className={`deal_esign_questionnaire_section_tab${section.isDefault ? " deal_esign_questionnaire_section_tab_default" : ""}${isActive ? " deal_esign_questionnaire_section_tab_active" : ""}${isPending ? " deal_esign_questionnaire_section_tab_pending" : ""}`}
                 >
                   <button
                     type="button"
@@ -556,18 +556,28 @@ export function DealEsignTemplatesQuestionnaireTab({
                   </button>
                   {canEdit ? (
                     <>
-                      <button
-                        type="button"
-                        className="deal_esign_questionnaire_section_icon_btn"
-                        aria-label={`Rename ${section.label}`}
-                        onClick={() => {
-                          setActiveSectionId(section.id)
-                          setEditingSectionId(section.id)
-                          setSectionLabelDraft(section.label)
-                        }}
-                      >
-                        <Pencil size={14} strokeWidth={2} aria-hidden />
-                      </button>
+                      {section.isDefault ? (
+                        <span
+                          className="deal_esign_questionnaire_section_default_mark"
+                          title="Built-in section"
+                          aria-label="Built-in section"
+                        >
+                          <Lock size={13} strokeWidth={2.25} aria-hidden />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="deal_esign_questionnaire_section_icon_btn"
+                          aria-label={`Rename ${section.label}`}
+                          onClick={() => {
+                            setActiveSectionId(section.id)
+                            setEditingSectionId(section.id)
+                            setSectionLabelDraft(section.label)
+                          }}
+                        >
+                          <Pencil size={14} strokeWidth={2} aria-hidden />
+                        </button>
+                      )}
                       {!section.isDefault && !isPending ? (
                         <button
                           type="button"
@@ -636,7 +646,11 @@ export function DealEsignTemplatesQuestionnaireTab({
                 disabled={saving}
                 onClick={onSavePendingSection}
               >
-                <Check size={16} strokeWidth={2} aria-hidden />
+                {saving ? (
+                  <Loader2 size={16} strokeWidth={2} aria-hidden />
+                ) : (
+                  <Save size={16} strokeWidth={2} aria-hidden />
+                )}
                 {saving ? "Saving…" : "Save section"}
               </button>
             </div>

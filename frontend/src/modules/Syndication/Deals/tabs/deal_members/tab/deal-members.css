@@ -16,6 +16,11 @@
   vertical-align: middle;
 }
 
+.deal_inv_td_investor_identity {
+  min-width: 14rem;
+  vertical-align: middle;
+}
+
 .deal_member_user_name_row {
   display: flex;
   align-items: center;
@@ -34,9 +39,105 @@
   min-width: 0;
 }
 
-/* Investors tab uses the same shell spacing as Deal Members when both classes apply */
+/* Toolbar — one row: Send mail + Export left; search + Add Member on the right */
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.65em 1em;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .um_toolbar_actions.deal_members_toolbar_actions_leading {
+  order: 0;
+  margin-left: 0;
+  margin-right: 0;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65em;
+}
+
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .um_toolbar_actions.deal_members_toolbar_actions_trailing {
+  order: 1;
+  margin-left: auto;
+  margin-right: 0;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65em;
+  min-width: 0;
+}
+
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .deal_members_toolbar_actions_trailing
+  .um_search_wrap {
+  order: 0;
+  margin-left: 0;
+  flex: 0 1 22em;
+  min-width: min(12rem, 100%);
+  max-width: 22em;
+}
+
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .deal_members_add_member_btn.um_btn_primary {
+  order: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .deal_members_add_member_btn.um_btn_primary
+  svg {
+  flex-shrink: 0;
+}
+
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .um_btn_toolbar,
+.deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .um_toolbar_export_btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar {
+    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+    .um_toolbar_actions.deal_members_toolbar_actions_leading,
+  .deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+    .um_toolbar_actions.deal_members_toolbar_actions_trailing {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .deal_members_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+    .deal_members_toolbar_actions_trailing
+    .um_search_wrap {
+    flex: 1 1 100%;
+    max-width: none;
+    width: 100%;
+  }
+}
+
+/* Investors tab uses tighter spacing between KPI cards and table panel */
 .deal_inv_populated.deal_members_tab {
-  gap: 1.25em;
+  gap: 0.75em;
 }
 
 .deal_members_actions_cell {

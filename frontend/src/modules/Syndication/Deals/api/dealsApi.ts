@@ -1,4 +1,7 @@
-import { SESSION_BEARER_KEY } from "../../../../common/auth/sessionKeys"
+import {
+  organizationIdQueryParam,
+  portalAuthHeaders,
+} from "../../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
 import { formatDateDdMmmYyyy } from "../../../../common/utils/formatDateDisplay"
 import {
@@ -98,13 +101,7 @@ export interface DealDetailApi {
 }
 
 function authHeaders(): HeadersInit {
-  const token =
-    typeof sessionStorage !== "undefined"
-      ? sessionStorage.getItem(SESSION_BEARER_KEY)
-      : null
-  const h: HeadersInit = {}
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
+  return portalAuthHeaders()
 }
 
 /**
@@ -336,10 +333,14 @@ export async function fetchDealsList(options?: {
 }): Promise<DealListRow[]> {
   const base = getApiV1Base()
   if (!base) return []
-  const q =
-    options?.includeParticipantDeals === true
-      ? "?includeParticipantDeals=1"
-      : ""
+  const params = new URLSearchParams()
+  if (options?.includeParticipantDeals === true) {
+    params.set("includeParticipantDeals", "1")
+  } else {
+    const activeOrg = organizationIdQueryParam()
+    if (activeOrg) params.set("organizationId", activeOrg)
+  }
+  const q = params.toString() ? `?${params.toString()}` : ""
   try {
     const res = await fetch(`${base}/deals${q}`, {
       headers: { ...authHeaders() },
@@ -1519,6 +1520,22 @@ export const AUTOSAVE_DEFAULT_DEAL_NAME = "Untitled deal"
 
 function isAutosavePlaceholderStored(value: string): boolean {
   return value.trim().toLowerCase() === AUTOSAVE_PLACEHOLDER_TEXT.toLowerCase()
+}
+
+/** True when the API stored the autosave placeholder instead of a real value. */
+export function isDealAutosavePlaceholderText(
+  value: string | undefined | null,
+): boolean {
+  return isAutosavePlaceholderStored(String(value ?? "").trim())
+}
+
+/** Trim and drop autosave placeholder tokens for investor-facing copy. */
+export function dealDisplayFieldText(
+  value: string | undefined | null,
+): string {
+  const t = String(value ?? "").trim()
+  if (!t || isAutosavePlaceholderStored(t)) return ""
+  return t
 }
 
 /**

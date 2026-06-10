@@ -29,7 +29,9 @@ export function RadioPillGroup<T extends string>({
   ariaLabelledBy,
   className,
 }: RadioPillGroupProps<T>) {
-  const groupClass = ["radio-group", className].filter(Boolean).join(" ")
+  const groupClass = ["radio-group", options.length === 2 ? "radio-group_binary" : "", className]
+    .filter(Boolean)
+    .join(" ")
 
   return (
     <div

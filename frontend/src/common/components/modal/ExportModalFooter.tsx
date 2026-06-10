@@ -16,7 +16,7 @@ export function ExportModalFooter({
         onClick={onClose}
       >
         <X size={16} strokeWidth={2} aria-hidden />
-        Cancel
+        Close
       </button>
       <div className="deals_export_modal_footer_trailing">{children}</div>
     </footer>

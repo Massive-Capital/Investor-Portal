@@ -12,7 +12,7 @@ import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
 import { dealWorkspacePath } from "@/modules/Syndication/Deals/utils/dealWorkspacePath"
 import {
-  AvatarInitialsRing,
+  DealAvatarIconRing,
 } from "@/common/components/entity-avatar/EntityAvatarNameCell"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
@@ -108,7 +108,7 @@ function InvestmentDealNameCell({
 
   return (
     <div className="deals_list_name_cell">
-      <AvatarInitialsRing name={name === "—" ? "Deal" : name} />
+      <DealAvatarIconRing />
       <div className="deals_list_name_text">
         <div className="deals_list_name_primary">{nameLink}</div>
       </div>
@@ -290,7 +290,7 @@ const INVESTMENTS_TABLE_COL_WIDTH = {
   owningEntity: "9rem",
   startDate: "7.5rem",
   closeDate: "7.5rem",
-  investedAs: "9rem",
+  investedAs: "12rem",
   invested: "7.5rem",
   distributed: "8rem",
   valuation: "8rem",
@@ -594,10 +594,10 @@ export default function InvestmentsPage() {
         header: "Invested as",
         colWidth: INVESTMENTS_TABLE_COL_WIDTH.investedAs,
         thClassName: "investments_col_invested_as",
-        tdClassName: "investments_col_invested_as",
+        tdClassName: "investments_col_invested_as investments_col_profile_name",
         sortValue: (r) => (r.investmentProfile ?? "").toLowerCase(),
         cell: (r) => (
-          <span className="investments_invested_as_name">
+          <span className="investments_invested_as_name investments_profile_name_text">
             {r.investmentProfile?.trim() || "—"}
           </span>
         ),

@@ -1,4 +1,4 @@
-import { Loader2, Plus, X } from "lucide-react"
+import { Loader2, Save, X } from "lucide-react"
 import { UsPhoneInput } from "../../../../../../common/components/UsPhoneInput"
 import {
   isValidUsNanp10,
@@ -203,19 +203,20 @@ export function AddContactQuickModal({
               </label>
             </div>
           </div>
-          <div className="add_contact_quick_actions">
+          <div className="add_contact_quick_actions um_modal_actions add_contact_modal_actions">
             <button
               type="button"
-              className="add_contact_quick_btn_secondary"
+              className="um_btn_secondary"
               disabled={submitting}
               onClick={handleClose}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
+            <div className="add_contact_modal_actions_trailing">
             <button
               type="submit"
-              className="add_contact_quick_btn_primary"
+              className="um_btn_primary"
               disabled={submitting}
             >
               {submitting ? (
@@ -230,11 +231,12 @@ export function AddContactQuickModal({
                 </>
               ) : (
                 <>
-                  <Plus size={16} strokeWidth={2} aria-hidden />
+                  <Save size={16} strokeWidth={2} aria-hidden />
                   Save contact
                 </>
               )}
             </button>
+            </div>
           </div>
         </form>
       </div>

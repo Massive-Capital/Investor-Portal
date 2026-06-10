@@ -122,8 +122,17 @@ html.light {
   /* Tables, panels, pagination */
   --portal-panel-bg: #f8f8f8;
   --portal-table-border: #e2e8f0;
-  --portal-table-header-text: #475569;
-  --portal-table-header-bg: #f8fafc;
+  --portal-table-header-text: var(--portal-text, #1b1b1d);
+  --portal-table-header-bg: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 9%,
+    var(--portal-panel-bg, #f8f8f8)
+  );
+  --portal-table-header-border: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 24%,
+    var(--portal-table-border, #e2e8f0)
+  );
   --portal-table-body-text: var(--portal-text);
   --portal-table-row-odd: #ffffff;
   --portal-table-row-even: #f8fafc;
@@ -136,6 +145,19 @@ html.light {
   --portal-pagination-strong: #334155;
   --portal-pagination-btn-bg: #ffffff;
   --portal-pagination-btn-text: #475569;
+  /* Table horizontal scroll */
+  --portal-table-scroll-thumb: #cbd5e1;
+  --portal-table-scroll-thumb-hover: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 18%,
+    #94a3b8
+  );
+  --portal-table-sticky-edge-line: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 14%,
+    var(--portal-table-border, #e2e8f0)
+  );
+  --portal-table-sticky-edge-shadow: rgb(15 23 42 / 7%);
   --portal-pagination-btn-border: #e2e8f0;
   --portal-pagination-btn-hover-bg: #f8fafc;
 }
@@ -223,10 +245,19 @@ html.dark {
   );
   --portal-tab-strip-border: rgba(255, 255, 255, 0.12);
 
-  --portal-panel-bg: rgba(255, 255, 255, 0.05);
-  --portal-table-border: rgba(255, 255, 255, 0.1);
-  --portal-table-header-text: rgba(255, 255, 255, 0.72);
-  --portal-table-header-bg: transparent;
+  --portal-panel-bg: rgba(255, 255, 255, 0.06);
+  --portal-table-border: rgba(255, 255, 255, 0.12);
+  --portal-table-header-text: rgba(255, 255, 255, 0.84);
+  --portal-table-header-bg: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 14%,
+    rgba(255, 255, 255, 0.06)
+  );
+  --portal-table-header-border: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 30%,
+    rgba(255, 255, 255, 0.1)
+  );
   --portal-table-body-text: rgba(255, 255, 255, 0.92);
   --portal-table-row-odd: rgba(255, 255, 255, 0.05);
   --portal-table-row-even: rgba(255, 255, 255, 0.08);
@@ -241,6 +272,19 @@ html.dark {
   --portal-pagination-btn-text: rgba(255, 255, 255, 0.78);
   --portal-pagination-btn-border: rgba(255, 255, 255, 0.14);
   --portal-pagination-btn-hover-bg: rgba(255, 255, 255, 0.1);
+  /* Table horizontal scroll */
+  --portal-table-scroll-thumb: rgba(255, 255, 255, 0.14);
+  --portal-table-scroll-thumb-hover: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 28%,
+    rgba(255, 255, 255, 0.22)
+  );
+  --portal-table-sticky-edge-line: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 24%,
+    rgba(255, 255, 255, 0.1)
+  );
+  --portal-table-sticky-edge-shadow: rgb(0 0 0 / 38%);
 }
 
 html,

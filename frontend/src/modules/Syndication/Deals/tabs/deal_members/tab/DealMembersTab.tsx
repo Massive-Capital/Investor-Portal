@@ -35,6 +35,7 @@ import {
 } from "../add-investment/addMemberDraftInvestorRow"
 import { fetchDealInvestorClasses, fetchDealMembers } from "../../../api/dealsApi"
 import { notifyDealMembersExportAudit } from "../../../api/dealMembersExportNotifyApi"
+import { formatMemberUsername } from "../../../../usermanagement/memberAdminShared"
 import { DealMemberUserCell } from "../../investors/DealMemberUserCell"
 import { ExportDealInvestorRowsModal } from "../../investors/ExportDealInvestorRowsModal"
 import {
@@ -481,7 +482,7 @@ export function DealMembersTab({
         id: "user",
         header: "User",
         sortValue: (r) =>
-          `${String(r.displayName ?? "")} ${String(r.userDisplayName ?? "")} ${String(r.userEmail ?? "")}`.toLowerCase(),
+          `${formatMemberUsername(r.userDisplayName)} ${String(r.userEmail ?? "")} ${String(r.displayName ?? "")}`.toLowerCase(),
         tdClassName: "um_td_user deal_inv_td_user_cell",
         cell: (r) => (
           <DealMemberUserCell row={r} isDraft={investorRowShowsDraftBadge(r)} />
@@ -737,17 +738,6 @@ export function DealMembersTab({
 
   return (
     <div className="deal_members_tab">
-      <div className="deal_inv_panel_add_row">
-        <button
-          type="button"
-          className="um_btn_primary"
-          onClick={onAddMember}
-        >
-          <Plus size={18} strokeWidth={2} aria-hidden />
-          Add Member
-        </button>
-      </div>
-
       <ExportDealInvestorRowsModal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
@@ -902,7 +892,7 @@ export function DealMembersTab({
                 onClick={closeSendMailModal}
               >
                 <X size={16} strokeWidth={2} aria-hidden />
-                Cancel
+                Close
               </button>
               <button
                 type="button"
@@ -931,19 +921,8 @@ export function DealMembersTab({
           </p>
         ) : (
           <>
-            <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search deal members…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search deal members"
-                />
-              </div>
-              <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
+            <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search deal_members_table_toolbar">
+              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deal_members_toolbar_actions_leading">
                 <button
                   type="button"
                   className="um_btn_toolbar"
@@ -962,11 +941,34 @@ export function DealMembersTab({
                   <span>Export All</span>
                 </button>
               </div>
+              <div className="um_toolbar_actions deal_inv_table_toolbar_actions deal_members_toolbar_actions_trailing">
+                <div className="um_search_wrap">
+                  <Search className="um_search_icon" size={18} aria-hidden />
+                  <input
+                    type="search"
+                    className="um_search_input"
+                    placeholder="Search deal members…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Search deal members"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="um_btn_primary deal_members_add_member_btn"
+                  onClick={onAddMember}
+                >
+                  <Plus size={18} strokeWidth={2} aria-hidden />
+                  Add Member
+                </button>
+              </div>
             </div>
 
             <DataTable<DealInvestorRow>
               visualVariant="members"
               membersTableClassName="um_table_members deal_inv_table"
+              stickyColumnCount={2}
+              forceHorizontalScroll
               columns={columns}
               rows={filteredRows}
               getRowKey={(r, i) => r.id || `dm-${dealId}-${i}`}

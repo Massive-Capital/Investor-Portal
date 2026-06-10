@@ -152,7 +152,7 @@ export function BulkDeleteReasonModal({
               disabled={busy}
             >
               <X size={16} strokeWidth={2} aria-hidden />
-              Cancel
+              Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               <button

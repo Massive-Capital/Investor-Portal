@@ -115,7 +115,7 @@ export function OfferingAnnouncementSection({
       <div className="deal_offering_announcement_actions um_modal_actions add_contact_modal_actions">
         <button
           type="button"
-          className="um_btn_secondary"
+          className="um_btn_secondary add_contact_modal_actions_leading"
           disabled={saving || !hasPublished}
           onClick={() => void handleClear()}
           title={

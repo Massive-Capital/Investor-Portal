@@ -57,6 +57,7 @@ import { BENEFICIARY_LEGAL_DISCLAIMER } from "./beneficiary-legal"
 import { formatSsnItinInput, ssnItinFieldError } from "@/common/tax/usSsnItin"
 import { InvestingFormField } from "./InvestingFormField"
 import { SavedAddressSelect } from "./SavedAddressSelect"
+import { YesNoCardRadioGroup } from "@/common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
 import { DealsCreateDropdownSelect } from "@/modules/Syndication/Deals/components/DealsCreateDropdownSelect"
 import type { SavedAddress } from "./address.types"
 import type {
@@ -1670,15 +1671,10 @@ export function AddInvestorProfileModal({
                 }
                 error={fieldError.custodianIra}
               >
-                <select
-                  id="ap-entity-custodian"
-                  className={invClass(
-                    "um_field_select deals_add_inv_field_control",
-                    Boolean(fieldError.custodianIra),
-                  )}
+                <YesNoCardRadioGroup
+                  name="ap-entity-custodian"
                   value={form.custodianIra}
-                  onChange={(e) => {
-                    const v = e.target.value as "" | "yes" | "no"
+                  onChange={(v) => {
                     if (v === "yes") {
                       patch(
                         {
@@ -1695,7 +1691,7 @@ export function AddInvestorProfileModal({
                         },
                         "custodianIra",
                       )
-                    } else if (v === "no") {
+                    } else {
                       patch(
                         {
                           custodianIra: v,
@@ -1715,41 +1711,11 @@ export function AddInvestorProfileModal({
                           "iraCustodianEin",
                         ],
                       )
-                    } else {
-                      patch(
-                        {
-                          custodianIra: v,
-                          legalIraName: "",
-                          iraCompany: "",
-                          federalTaxClassification: "",
-                          iraPartnerEin: "",
-                          iraCustodianEin: "",
-                          iraPartnerEinVisible: false,
-                          iraCustodianEinVisible: false,
-                          entitySubType: "",
-                          entityLegalName: "",
-                          entityJurisdictionOfRegistration: "",
-                          entityDateFormed: "",
-                          entityOwnedByIra401k: "" as const,
-                          entityMemberCount: "",
-                          entityDisregarded: "" as const,
-                          entityEin: "",
-                          entityEinVisible: false,
-                        },
-                        "custodianIra",
-                      )
                     }
                   }}
-                  aria-label="Is this a custodian based IRA or 401(k)"
-                  aria-invalid={Boolean(fieldError.custodianIra)}
-                  aria-describedby={
-                    fieldError.custodianIra ? "ap-entity-custodian-err" : undefined
-                  }
-                >
-                  <option value="">Select</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
+                  disabled={false}
+                  ariaLabel="Is this a custodian based IRA or 401(k)"
+                />
               </InvestingFormField>
 
               {form.custodianIra === "yes" ? (
@@ -2019,21 +1985,14 @@ export function AddInvestorProfileModal({
                       />
                     }
                   >
-                    <select
-                      id="ap-entity-owned-ira"
-                      className="um_field_select deals_add_inv_field_control"
+                    <YesNoCardRadioGroup
+                      name="ap-entity-owned-ira"
                       value={form.entityOwnedByIra401k}
-                      onChange={(e) =>
-                        patch(
-                          { entityOwnedByIra401k: e.target.value as "" | "yes" | "no" },
-                        )
+                      onChange={(v) =>
+                        patch({ entityOwnedByIra401k: v })
                       }
-                      aria-label="Is this entity owned by an IRA or 401(k)?"
-                    >
-                      <option value="">Select</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
+                      ariaLabel="Is this entity owned by an IRA or 401(k)?"
+                    />
                   </InvestingFormField>
                   <InvestingFormField
                     id="ap-entity-member-count"
@@ -2140,26 +2099,14 @@ export function AddInvestorProfileModal({
                     }
                     error={fieldError.entityDisregarded}
                   >
-                    <select
-                      id="ap-entity-disregarded"
-                      className={invClass(
-                        "um_field_select deals_add_inv_field_control",
-                        Boolean(fieldError.entityDisregarded),
-                      )}
+                    <YesNoCardRadioGroup
+                      name="ap-entity-disregarded"
                       value={form.entityDisregarded}
-                      onChange={(e) =>
-                        patch(
-                          { entityDisregarded: e.target.value as "" | "yes" | "no" },
-                          "entityDisregarded",
-                        )
+                      onChange={(v) =>
+                        patch({ entityDisregarded: v }, "entityDisregarded")
                       }
-                      aria-label="Is this a disregarded entity"
-                      aria-invalid={Boolean(fieldError.entityDisregarded)}
-                    >
-                      <option value="">Select</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
+                      ariaLabel="Is this a disregarded entity"
+                    />
                   </InvestingFormField>
                   <InvestingFormField
                     id="ap-entity-ein"
@@ -3003,7 +2950,7 @@ export function AddInvestorProfileModal({
             aria-label="Close"
           >
             <X size={16} strokeWidth={2} aria-hidden />
-            Cancel
+            Close
           </button>
           <div className="add_contact_modal_actions_trailing">
             {((isIndividual || isJointTenancy || isEntity) && step > 1) && (
