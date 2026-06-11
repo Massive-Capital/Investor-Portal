@@ -10,6 +10,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import {
+  INVESTOR,
   isCompanyAdminRole,
   isPlatformAdminRole,
 } from "../../constants/roles.js";
@@ -111,6 +112,16 @@ export type CreateContactInput = {
   tags: string[];
   lists: string[];
   owners: string[];
+};
+
+export const SELF_REGISTERED_CONTACT_ADDED_BY_LABEL = "Self Registered";
+export const UNASSIGNED_CONTACT_OWNER_LABEL = "Unassigned";
+
+export type ContactCreatorUserSnapshot = {
+  id: string;
+  role: string | null;
+  organizationId: string | null;
+  email: string | null;
 };
 
 /** Thrown when another contact in the same company scope already uses this email or phone. */
@@ -288,6 +299,151 @@ export async function markContactsAsPortalUserByEmailNorm(
 }
 
 /**
+ * Self-serve investor signup (no company): ensure a CRM row exists for platform
+ * contacts with `created_by` = the new portal user.
+ */
+/** CRM rows for self-registered investors — platform admin visibility only. */
+export function isPlatformAdminOnlyContactRow(
+  row: Pick<ContactRow, "platformAdminOnly">,
+): boolean {
+  return Boolean(row.platformAdminOnly);
+}
+
+function excludePlatformAdminOnlyContactsWhere(): SQL {
+  return eq(contact.platformAdminOnly, false);
+}
+
+export async function ensureSelfRegisteredInvestorContact(params: {
+  userId: string;
+  emailNorm: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+}): Promise<string | null> {
+  const userId = String(params.userId ?? "").trim();
+  const emailNorm = normalizeContactEmailForScope(params.emailNorm);
+  if (!userId || !emailNorm || !emailNorm.includes("@")) return null;
+
+  let phoneStored = "";
+  try {
+    phoneStored = normalizeContactPhoneForWrite(params.phone);
+  } catch {
+    phoneStored = "";
+  }
+
+  const firstName = String(params.firstName ?? "").trim();
+  const lastName = String(params.lastName ?? "").trim();
+
+  const [existing] = await db
+    .select()
+    .from(contact)
+    .where(sql`lower(trim(${contact.email})) = ${emailNorm}`)
+    .limit(1);
+
+  if (existing) {
+    const sponsorOwned = existing.createdBy !== userId;
+    const [updated] = await db
+      .update(contact)
+      .set({
+        isPortalUser: true,
+        ...(sponsorOwned ? {} : { platformAdminOnly: true }),
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(phoneStored ? { phone: phoneStored } : {}),
+      })
+      .where(eq(contact.id, existing.id))
+      .returning({ id: contact.id });
+    return sponsorOwned ? null : String(updated?.id ?? existing.id).trim() || null;
+  }
+
+  const [inserted] = await db
+    .insert(contact)
+    .values({
+      firstName: firstName || "—",
+      lastName: lastName || "—",
+      email: emailNorm,
+      phone: phoneStored,
+      note: "",
+      tags: [],
+      lists: [],
+      owners: [],
+      status: "active",
+      createdBy: userId,
+      organizationId: null,
+      isPortalUser: true,
+      platformAdminOnly: true,
+    })
+    .returning({ id: contact.id });
+  return String(inserted?.id ?? "").trim() || null;
+}
+
+export function isSelfRegisteredInvestorContactRow(
+  row: ContactRow,
+  creator: ContactCreatorUserSnapshot | null | undefined,
+): boolean {
+  if (isPlatformAdminOnlyContactRow(row)) return true;
+  if (!row.isPortalUser || row.organizationId) return false;
+  if (!creator || creator.id !== row.createdBy) return false;
+  if (String(creator.role ?? "").trim() !== INVESTOR) return false;
+  if (creator.organizationId) return false;
+  const contactEmail = normalizeContactEmailForScope(row.email);
+  const creatorEmail = normalizeContactEmailForScope(creator.email ?? "");
+  return Boolean(
+    contactEmail && creatorEmail && contactEmail === creatorEmail,
+  );
+}
+
+export function resolveContactDisplayFields(
+  row: ContactRow,
+  creator: ContactCreatorUserSnapshot | null | undefined,
+  createdByDisplayNameFromUser: string,
+): { createdByDisplayName: string; owners: string[] } {
+  if (isSelfRegisteredInvestorContactRow(row, creator)) {
+    return {
+      createdByDisplayName: SELF_REGISTERED_CONTACT_ADDED_BY_LABEL,
+      owners:
+        row.owners?.length > 0
+          ? row.owners
+          : [UNASSIGNED_CONTACT_OWNER_LABEL],
+    };
+  }
+  return {
+    createdByDisplayName: createdByDisplayNameFromUser,
+    owners: row.owners ?? [],
+  };
+}
+
+export async function loadContactCreatorUsersById(
+  userIds: string[],
+): Promise<Map<string, ContactCreatorUserSnapshot>> {
+  const ids = [...new Set(userIds.map((id) => String(id).trim()).filter(Boolean))];
+  if (ids.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      id: users.id,
+      role: users.role,
+      organizationId: users.organizationId,
+      email: users.email,
+    })
+    .from(users)
+    .where(inArray(users.id, ids));
+
+  const map = new Map<string, ContactCreatorUserSnapshot>();
+  for (const row of rows) {
+    const id = String(row.id).trim();
+    if (!id) continue;
+    map.set(id, {
+      id,
+      role: row.role ?? null,
+      organizationId: row.organizationId ?? null,
+      email: row.email ?? null,
+    });
+  }
+  return map;
+}
+
+/**
  * Contacts are scoped by the **creator’s** organization: all contacts whose
  * `created_by` is a user in that org share one pool for unique email / phone.
  * Creators with no `organization_id` (platform admin) use a global pool.
@@ -445,7 +601,11 @@ export async function listContactsForViewerScoped(
       .select()
       .from(contact)
       .where(
-        and(eq(contact.createdBy, viewerUserId), vis)!,
+        and(
+          eq(contact.createdBy, viewerUserId),
+          vis,
+          excludePlatformAdminOnlyContactsWhere(),
+        )!,
       )
       .orderBy(desc(contact.createdAt));
   }
@@ -460,7 +620,11 @@ export async function listContactsForViewerScoped(
     and(isNull(contact.organizationId), inArray(contact.createdBy, ids))!,
   )!;
 
-  const parts: SQL[] = [orgScope, vis];
+  const parts: SQL[] = [
+    orgScope,
+    vis,
+    excludePlatformAdminOnlyContactsWhere(),
+  ];
   if (coSponsorNarrowToCreatorOnly) {
     parts.push(eq(contact.createdBy, viewerUserId));
   }
@@ -610,6 +774,9 @@ async function viewerCanAccessContactRow(
   viewerRole?: string | null,
 ): Promise<boolean> {
   const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  if (isPlatformAdminOnlyContactRow(row)) {
+    return isPlatformAdminRole(ctx.roleForScope);
+  }
   if (isPlatformAdminRole(ctx.roleForScope)) return true;
   if (
     await viewerShouldSeeOnlySelfCreatedContacts(

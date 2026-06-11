@@ -379,6 +379,13 @@
       "when": 1893250000000,
       "tag": "0054_deal_investment_funding_method",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1893300000000,
+      "tag": "0055_contact_platform_admin_only_signup_notifications",
+      "breakpoints": true
     }
   ]
 }

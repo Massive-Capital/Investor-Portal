@@ -81,6 +81,7 @@ import "../../../deals-list.css"
 import "../../../../usermanagement/user_management.css"
 import "../../../../contacts/contacts.css"
 import "./deal-members.css"
+import "../../../../../../common/components/data-table/data-table.css"
 
 function includeInDealMembersTable(r: DealInvestorRow): boolean {
   if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
@@ -914,11 +915,24 @@ export function DealMembersTab({
         onSaved={handleSendMailPreviewSaved}
       />
 
-      <div className="um_panel um_members_tab_panel deal_inv_table_panel">
+      <div
+        className={`um_panel um_members_tab_panel deal_inv_table_panel${
+          loading ? " deal_members_table_panel_loading" : ""
+        }`}
+        aria-busy={loading}
+      >
         {loading ? (
-          <p className="deals_list_not_found" role="status">
-            Loading deal members…
-          </p>
+          <div
+            className="deal_members_page_loading"
+            role="status"
+            aria-live="polite"
+            aria-label="Loading deal members"
+          >
+            <div className="data_table_loader_spinner" aria-hidden />
+            <span className="deal_members_page_loading_text">
+              Loading deal members…
+            </span>
+          </div>
         ) : (
           <>
             <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search deal_members_table_toolbar">

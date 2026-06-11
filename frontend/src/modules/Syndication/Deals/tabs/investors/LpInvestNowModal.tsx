@@ -387,8 +387,8 @@ export function LpInvestNowModal({
                   placeholder="Select profile type"
                   ariaLabel="Investor profile type"
                   disabled={submitting}
-                  footer={{
-                    label: "Add Profile",
+                  header={{
+                    label: "+ Add Profile",
                     onClick: () => navigate("/investing/profiles/add"),
                   }}
                   triggerClassName={DROPDOWN_TRIGGER_PILL}

@@ -2,8 +2,13 @@ import type {
   DealInvestorRow,
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import type { DealRecord } from "@/modules/Syndication/dealsDashboardUtils"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
-import { getDealStatusRules } from "@/modules/Syndication/Deals/constants/deal-lifecycle"
+import {
+  effectiveOfferingStatusForAccess,
+  getDealStatusRules,
+  isInvestorDashboardOpportunityOffering,
+} from "@/modules/Syndication/Deals/constants/deal-lifecycle"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import { dealHasFullyCompletedProfileEsign } from "@/modules/Investing/pages/invest/investNowDraftUtils"
 import {
@@ -27,10 +32,29 @@ export type InvestingDashboardClassifiedDealBucket = Exclude<
 export const INVESTING_DASHBOARD_DEAL_TAB_ORDER: readonly InvestingDashboardDealBucket[] =
   ["all", "active", "in_progress", "coming_soon"]
 
+export type InvestingDashboardDealsByBucket = Record<
+  InvestingDashboardClassifiedDealBucket,
+  DealRecord[]
+>
+
 export function isInvestingDashboardComingSoonDeal(
-  row: Pick<DealListRow, "offeringStatus">,
+  row: Pick<DealListRow, "offeringStatus" | "dealStage">,
 ): boolean {
-  return getDealStatusRules(row.offeringStatus).status === "coming_soon"
+  const effective = effectiveOfferingStatusForAccess(
+    row.dealStage,
+    row.offeringStatus,
+  )
+  if (!effective) return false
+  return getDealStatusRules(effective).status === "coming_soon"
+}
+
+export function isInvestingDashboardOpportunityDeal(
+  row: Pick<DealListRow, "offeringStatus" | "dealStage">,
+): boolean {
+  return isInvestorDashboardOpportunityOffering(
+    row.dealStage,
+    row.offeringStatus,
+  )
 }
 
 /** Not yet GP countersigned or complete; not inactive / draft / past / closed. */
@@ -120,14 +144,33 @@ export function viewerHasActiveDealEsignCompletion(
 /**
  * Dashboard deal cards: active (e-sign complete for ≥1 profile, or GP
  * countersigned) and in-progress (onboarding / Invest Now not yet signed).
- * Coming soon is for visible deals not yet invested in.
+ * Coming soon is preview-only opportunities (Investment Opportunities tab) until the
+ * investor has started committing or signing.
  */
+function viewerHasInvestmentActivityOnDeal(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): boolean {
+  return (
+    viewerHasActiveDealEsignCompletion(payload, viewerEmailNorm) ||
+    activeCountersignedCommittedForViewer(payload, viewerEmailNorm) > 0 ||
+    inProgressNotCountersignedForViewer(payload, viewerEmailNorm) > 0 ||
+    viewerDealHasStartedInvestment(payload, viewerEmailNorm)
+  )
+}
+
 export function classifyInvestingDashboardDealBucket(
-  row: Pick<DealListRow, "offeringStatus">,
+  row: Pick<DealListRow, "offeringStatus" | "dealStage">,
   payload: DealInvestorsPayload,
   viewerEmailNorm: string,
 ): InvestingDashboardClassifiedDealBucket | null {
   if (!viewerEmailNorm) return null
+
+  const isOpportunity = isInvestingDashboardOpportunityDeal(row)
+  const hasActivity = viewerHasInvestmentActivityOnDeal(payload, viewerEmailNorm)
+
+  if (isOpportunity && !hasActivity) return "coming_soon"
+
   if (viewerHasActiveDealEsignCompletion(payload, viewerEmailNorm)) {
     return "active"
   }
@@ -143,8 +186,17 @@ export function classifyInvestingDashboardDealBucket(
   if (viewerDealNeedsOnboarding(payload, viewerEmailNorm)) {
     return "in_progress"
   }
-  if (isInvestingDashboardComingSoonDeal(row)) {
-    return "coming_soon"
-  }
+  if (isOpportunity) return "coming_soon"
   return null
+}
+
+/**
+ * Platform admin in investing mode has no LP activity — bucket by offering status only
+ * so opportunity deals appear under Opportunities, not Active.
+ */
+export function classifyInvestingDashboardDealBucketForPlatformAdmin(
+  row: Pick<DealListRow, "offeringStatus" | "dealStage">,
+): InvestingDashboardClassifiedDealBucket {
+  if (isInvestingDashboardOpportunityDeal(row)) return "coming_soon"
+  return "active"
 }

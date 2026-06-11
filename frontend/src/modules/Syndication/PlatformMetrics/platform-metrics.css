@@ -22,16 +22,24 @@
 
 /* Grid layout: `pm_kpi_grid` in tool-style-card.css */
 
+.pm_kpi_value {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
 .pm_kpi_spark_row {
   margin-top: auto;
   padding-top: 0.5rem;
-  min-height: 2.5rem;
+  min-height: 2.25rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .pm_sparkline {
   display: block;
   width: 100%;
-  max-width: 140px;
+  height: 2.25rem;
+  max-width: none;
 }
 
 .pm_kpi_footer {
@@ -65,6 +73,42 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.65rem;
+}
+
+@media (max-width: 639px) {
+  .platform_metrics_page .um_header_row {
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .platform_metrics_page .pm_header_actions {
+    width: 100%;
+  }
+
+  .platform_metrics_page .pm_header_actions .sponsor_dash_add_link {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: min(100%, 9rem);
+  }
+
+  .pm_kpi_card .tool_style_card_metric_header {
+    gap: 0.5rem;
+  }
+
+  .pm_kpi_card .tool_style_card_label_inline {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .pm_kpi_footer {
+    font-size: 0.6875rem;
+  }
+}
+
+@media (max-width: 479px) {
+  .platform_metrics_page .pm_section {
+    margin-bottom: 1.25rem;
+  }
 }
 
 @media (max-width: 1024px) {

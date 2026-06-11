@@ -43,8 +43,8 @@ export function CheckPaymentDetailsForm({
   onMailingAddressChange,
   beneficiary,
   onBeneficiaryChange,
-  beneficiaryAddress,
-  onBeneficiaryAddressChange,
+  beneficiaryAddress: _beneficiaryAddress,
+  onBeneficiaryAddressChange: _onBeneficiaryAddressChange,
   memo,
   onMemoChange,
   otherInstructions,
@@ -56,23 +56,24 @@ export function CheckPaymentDetailsForm({
     <div className="deal_fi_wire_form">
       <section className="deal_fi_wire_group" aria-label="Check payment details">
         <CheckTextRow
+          id={`${baseId}-beneficiary`}
+          label="Beneficiary Name"
+          value={beneficiary}
+          onChange={onBeneficiaryChange}
+        />
+        <CheckTextRow
           id={`${baseId}-mailing-address`}
           label="Mailing address"
           value={mailingAddress}
           onChange={onMailingAddressChange}
         />
-        <CheckTextRow
-          id={`${baseId}-beneficiary`}
-          label="Beneficiary"
-          value={beneficiary}
-          onChange={onBeneficiaryChange}
-        />
-        <CheckTextRow
+        {/* Beneficiary address — hidden per product (use Mailing address above). */}
+        {/* <CheckTextRow
           id={`${baseId}-beneficiary-address`}
           label="Beneficiary address"
           value={beneficiaryAddress}
           onChange={onBeneficiaryAddressChange}
-        />
+        /> */}
         <CheckTextRow
           id={`${baseId}-memo`}
           label="Memo"

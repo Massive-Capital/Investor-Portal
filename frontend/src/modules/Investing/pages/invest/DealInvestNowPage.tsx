@@ -49,6 +49,7 @@ import {
   lpProfileUseKey,
 } from "@/modules/Syndication/Deals/utils/lpInvestNowProfileBlocking"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import { recordRecentlyViewedDeal } from "@/modules/Investing/pages/dashboard/recentlyViewedDeals"
 import { readInvestNowLocationState } from "./investNowLocationState"
 import { investNowStepIndexFromSavedProgress } from "./investNowSavedStep"
 import { investNowStepIndexForPhaseId } from "./investNowFlowSteps"
@@ -333,6 +334,15 @@ export function DealInvestNowPage() {
     return dealId ? dealWorkspacePath(dealId) : "/investing/investments"
   }, [dealId, investNowNav.returnTo])
 
+  const exitInvestNowFlow = useCallback(
+    (options?: { replace?: boolean }) => {
+      const id = dealId?.trim()
+      if (id) recordRecentlyViewedDeal(id)
+      navigate(backTo, options?.replace ? { replace: true } : undefined)
+    },
+    [backTo, dealId, navigate],
+  )
+
   useEffect(() => {
     switchToInvesting()
   }, [switchToInvesting])
@@ -372,7 +382,7 @@ export function DealInvestNowPage() {
             "This offering is not open for investment yet.",
             "You can preview the deal until its status allows commitments or investing.",
           )
-          navigate(backTo, { replace: true })
+          exitInvestNowFlow({ replace: true })
           return
         }
 
@@ -414,7 +424,7 @@ export function DealInvestNowPage() {
           resolveInvestNowInvestmentClassLabel(classes, null, viewerClass),
         )
       } catch {
-        if (!cancelled) navigate(backTo, { replace: true })
+        if (!cancelled) exitInvestNowFlow({ replace: true })
       } finally {
         if (!cancelled) {
           setBookLoading(false)
@@ -1424,7 +1434,7 @@ export function DealInvestNowPage() {
         <button
           type="button"
           className="um_btn_secondary"
-          onClick={() => navigate(backTo)}
+          onClick={() => exitInvestNowFlow()}
         >
           <ArrowLeft size={16} strokeWidth={2} aria-hidden />
           Back
@@ -1640,7 +1650,7 @@ export function DealInvestNowPage() {
             <button
               type="button"
               className="deals_list_back_circle"
-              onClick={() => navigate(backTo)}
+              onClick={() => exitInvestNowFlow()}
               aria-label={
                 backTo === "/investing/investments"
                   ? "Back to investments"
@@ -1681,7 +1691,7 @@ export function DealInvestNowPage() {
               type="button"
               className="um_btn_secondary"
               disabled={submitting}
-              onClick={() => navigate(backTo)}
+              onClick={() => exitInvestNowFlow()}
             >
               <X size={16} strokeWidth={2} aria-hidden />
               Close

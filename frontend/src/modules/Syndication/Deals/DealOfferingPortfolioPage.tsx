@@ -19,7 +19,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom"
-import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys"
+import { AUTH_RETURN_NEXT_KEY, SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys"
 import { FormHeadingWithInfo } from "../../../common/components/form-heading/FormHeadingWithInfo"
 import { FormTooltip } from "../../../common/components/form-tooltip/FormTooltip"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
@@ -52,7 +52,11 @@ import {
 } from "./constants/deal-lifecycle"
 import { dealStageLabel } from "../dealsDashboardUtils"
 import { isDealStageOfferingShareBlocked } from "./constants/deal-lifecycle/deal-stage"
-import { writeInvestNowIntent } from "./utils/investNowIntent"
+import { writePendingRecentlyViewedDeal } from "@/modules/Investing/pages/dashboard/recentlyViewedDeals"
+import {
+  dealOfferingPortfolioPath,
+  writeOfferingPortfolioAuthIntent,
+} from "./utils/offeringPortfolioAuthIntent"
 import {
   OfferingPreviewShareEmailRecipientsAddon,
   type OfferingShareEmailTag,
@@ -110,6 +114,16 @@ export function DealOfferingPortfolioPage() {
     if (isPublicOfferingRoute) return previewQueryValue
     return dealIdFromRoute?.trim() || undefined
   }, [isPublicOfferingRoute, previewQueryValue, dealIdFromRoute])
+
+  const portfolioBackTo = useMemo(() => {
+    const returnTo = (
+      location.state as { returnTo?: string } | null
+    )?.returnTo?.trim()
+    if (returnTo) return returnTo
+    if (mode === "investing") return "/dashboard?dealsTab=coming_soon"
+    const id = effectiveDealId?.trim()
+    return id ? dealWorkspacePath(id) : "/deals"
+  }, [effectiveDealId, location.state, mode])
 
   const [detail, setDetail] = useState<DealDetailApi | null>(null)
   const [classes, setClasses] = useState<DealInvestorClass[]>([])
@@ -187,26 +201,11 @@ export function DealOfferingPortfolioPage() {
 
   const isSessionAuthenticated = readSessionAuthenticated()
 
-  const offeringReturnPath = `${location.pathname}${location.search}`
-
-  const dealWorkspaceReturnPath = useMemo(
-    () =>
-      detail?.id?.trim()
-        ? dealWorkspacePath(detail.id)
-        : offeringReturnPath,
-    [detail?.id, offeringReturnPath],
-  )
-
-  const publicInvestNowSignInState = useMemo(
-    () =>
-      isPublicOfferingRoute && !isSessionAuthenticated
-        ? ({ from: dealWorkspaceReturnPath, investNow: true as const } satisfies {
-            from: string
-            investNow: true
-          })
-        : undefined,
-    [isPublicOfferingRoute, isSessionAuthenticated, dealWorkspaceReturnPath],
-  )
+  const publicOfferingSignInState = useMemo(() => {
+    const id = detail?.id?.trim()
+    if (!isPublicOfferingRoute || isSessionAuthenticated || !id) return undefined
+    return { from: dealOfferingPortfolioPath(id) }
+  }, [detail?.id, isPublicOfferingRoute, isSessionAuthenticated])
 
   const isInvestorFacingView =
     isPublicOfferingRoute || mode === "investing"
@@ -238,10 +237,37 @@ export function DealOfferingPortfolioPage() {
   const openInvestNowInWorkspace = useCallback(() => {
     const id = detail?.id?.trim()
     if (!id) return
-    writeInvestNowIntent(id)
     switchToInvesting()
-    navigate(dealInvestNowPath(id), { state: { mode: "fresh" } })
-  }, [detail?.id, navigate, switchToInvesting])
+    const returnTo = isPublicOfferingRoute
+      ? dealOfferingPortfolioPath(id)
+      : portfolioBackTo
+    navigate(dealInvestNowPath(id), {
+      state: { mode: "fresh", returnTo },
+    })
+  }, [detail?.id, isPublicOfferingRoute, navigate, portfolioBackTo, switchToInvesting])
+
+  function persistSharedOfferingAuthIntent(dealId: string) {
+    const id = dealId.trim()
+    if (!id) return
+    writeOfferingPortfolioAuthIntent(id)
+    writePendingRecentlyViewedDeal(id)
+    const returnPath = dealOfferingPortfolioPath(id)
+    try {
+      sessionStorage.setItem(AUTH_RETURN_NEXT_KEY, returnPath)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    const id = detail?.id?.trim()
+    if (!id || isSessionAuthenticated || !isPublicOfferingRoute) return
+    writePendingRecentlyViewedDeal(id)
+  }, [detail?.id, isPublicOfferingRoute, isSessionAuthenticated])
+
+  useEffect(() => {
+    if (isInvestorFacingView && isSessionAuthenticated) switchToInvesting()
+  }, [isInvestorFacingView, isSessionAuthenticated, switchToInvesting])
 
   useEffect(() => {
     if (!detail?.id || isPublicOfferingRoute) return
@@ -420,33 +446,6 @@ export function DealOfferingPortfolioPage() {
     }
   }, [effectiveDealId, isPublicOfferingRoute])
 
-  /** After sign-in on the public link, land in deal workspace and open Invest now there. */
-  useEffect(() => {
-    if (
-      !isPublicOfferingRoute ||
-      !isSessionAuthenticated ||
-      loading ||
-      !detail?.id?.trim()
-    )
-      return
-    const st = location.state as { investNow?: boolean } | null
-    if (!st?.investNow) return
-    const workspace = dealWorkspacePath(detail.id)
-    if (location.pathname.replace(/\/+$/, "") === workspace.replace(/\/+$/, ""))
-      return
-    switchToInvesting()
-    navigate(workspace, { replace: true, state: { investNow: true } })
-  }, [
-    isPublicOfferingRoute,
-    isSessionAuthenticated,
-    loading,
-    detail?.id,
-    location.state,
-    location.pathname,
-    navigate,
-    switchToInvesting,
-  ])
-
   const title =
     detail?.dealName?.trim() ||
     detail?.propertyName?.trim() ||
@@ -533,12 +532,9 @@ export function DealOfferingPortfolioPage() {
       <div className="deal_offer_pf">
         {!isPublicOfferingRoute ? (
           <div className="deal_offer_pf_back_row">
-            <Link
-              to={`/deals/${encodeURIComponent(effectiveDealId)}`}
-              className="deal_offer_pf_back"
-            >
+            <Link to={portfolioBackTo} className="deal_offer_pf_back">
               <ArrowLeft size={18} strokeWidth={2} aria-hidden />
-              Back to deal
+              {mode === "investing" ? "Back to opportunities" : "Back to deal"}
             </Link>
           </div>
         ) : null}
@@ -572,10 +568,10 @@ export function DealOfferingPortfolioPage() {
               ) : (
                 <Link
                   to="/signin"
-                  state={publicInvestNowSignInState}
+                  state={publicOfferingSignInState}
                   onClick={() => {
                     const id = detail?.id?.trim()
-                    if (id) writeInvestNowIntent(id)
+                    if (id) persistSharedOfferingAuthIntent(id)
                   }}
                   className="um_btn_primary sponsor_dash_add_link deal_offer_pf_hero_action_link"
                 >
@@ -749,7 +745,8 @@ export function DealOfferingPortfolioPage() {
           onInvestNow={
             canOpenInvestNowInWorkspace ? openInvestNowInWorkspace : undefined
           }
-          publicInvestNowSignInState={publicInvestNowSignInState}
+          publicOfferingSignInState={publicOfferingSignInState}
+          onPersistSharedOfferingAuthIntent={persistSharedOfferingAuthIntent}
           galleryUsesPersistedSourcesOnly={isPublicOfferingRoute}
         />
 

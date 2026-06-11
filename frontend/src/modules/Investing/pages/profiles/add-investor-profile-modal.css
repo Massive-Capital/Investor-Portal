@@ -19,6 +19,86 @@
   justify-content: flex-start;
 }
 
+/* Clickable profile wizard steps — same behavior as Next when moving forward */
+.investing_add_profile_inline_root .add_contact_stepper .add_contact_step_node_btn,
+.investing_add_profile_form_panel .add_contact_stepper .add_contact_step_node_btn,
+.deals_create_flow .add_contact_stepper .add_contact_step_node_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+  margin: 0;
+  padding: 0.15em 0.2em;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.investing_add_profile_inline_root
+  .add_contact_stepper
+  .add_contact_step_node_clickable:hover:not(:disabled),
+.investing_add_profile_form_panel
+  .add_contact_stepper
+  .add_contact_step_node_clickable:hover:not(:disabled),
+.deals_create_flow
+  .add_contact_stepper
+  .add_contact_step_node_clickable:hover:not(:disabled),
+.investing_add_profile_inline_root .add_contact_stepper .add_contact_step_node_btn:hover,
+.investing_add_profile_form_panel .add_contact_stepper .add_contact_step_node_btn:hover,
+.deals_create_flow .add_contact_stepper .add_contact_step_node_btn:hover {
+  color: var(--portal-primary, #2563eb);
+}
+
+.investing_add_profile_inline_root
+  .add_contact_stepper
+  .add_contact_step_node_btn:focus-visible,
+.investing_add_profile_form_panel
+  .add_contact_stepper
+  .add_contact_step_node_btn:focus-visible,
+.deals_create_flow .add_contact_stepper .add_contact_step_node_btn:focus-visible {
+  outline: 2px solid var(--portal-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.investing_add_profile_inline_root
+  .add_contact_stepper
+  .add_contact_step_node_btn
+  .add_contact_step_label,
+.investing_add_profile_form_panel
+  .add_contact_stepper
+  .add_contact_step_node_btn
+  .add_contact_step_label,
+.deals_create_flow
+  .add_contact_stepper
+  .add_contact_step_node_btn
+  .add_contact_step_label {
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.15em;
+  transition: text-decoration-color 0.12s ease;
+}
+
+.investing_add_profile_inline_root
+  .add_contact_stepper
+  .add_contact_step_node_btn:hover
+  .add_contact_step_label,
+.investing_add_profile_form_panel
+  .add_contact_stepper
+  .add_contact_step_node_btn:hover
+  .add_contact_step_label,
+.deals_create_flow
+  .add_contact_stepper
+  .add_contact_step_node_btn:hover
+  .add_contact_step_label {
+  text-decoration-color: currentColor;
+}
+
 /* In-page variant (`variant="inline"`) on `/investing/profiles` */
 .investing_add_profile_inline_root {
   width: 100%;
@@ -58,28 +138,70 @@
   border-radius: var(--deals-add-inv-control-radius, 10px);
 }
 
-.add_profile_mailing_search {
-  margin-top: 0.5em;
+/* Mailing row — checkbox sits in the label row beside the field title */
+.add_profile_mailing_field .um_field_label_with_suffix {
+  flex: 1;
+  min-width: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65em 1em;
 }
 
-.add_profile_same_as_tax {
-  display: flex !important;
+.add_profile_mailing_field .um_field_label_text {
+  flex: 0 1 auto;
+}
+
+.um_field label.add_profile_same_as_tax,
+.add_profile_mailing_field label.add_profile_same_as_tax {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5em;
-  margin: 0 0 0.5em;
+  gap: 0.45em;
+  margin: 0;
+  padding: 0;
   font-size: 0.8125rem;
-  color: var(--portal-text-secondary, #64748b);
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--portal-text-muted, #64748b);
   cursor: pointer;
   user-select: none;
-    margin-left: 0.4em;
+  white-space: nowrap;
 }
 
-.add_profile_same_as_tax input {
-  width: 1em;
-  height: 1em;
+.add_profile_same_as_tax_text {
+  line-height: 1.25;
+}
+
+/* Override `.um_field input` full-width field chrome on this checkbox */
+.um_field .add_profile_same_as_tax_checkbox,
+.deals_add_inv_modal_form .um_field .add_profile_same_as_tax_checkbox {
+  width: 1rem !important;
+  height: 1rem !important;
+  min-width: 1rem !important;
+  max-width: 1rem !important;
   margin: 0;
-  flex-shrink: 0;
+  padding: 0 !important;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 4px;
+  box-sizing: border-box;
   cursor: pointer;
+  accent-color: var(--portal-primary, #2563eb);
+}
+
+.um_field .add_profile_same_as_tax_checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+@media (max-width: 520px) {
+  .add_profile_mailing_field .um_field_label_with_suffix {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .add_profile_mailing_field label.add_profile_same_as_tax {
+    margin-left: 0;
+  }
 }
 
 /* `um_field` / `mail_text_label` from user_management + add-investment modal */

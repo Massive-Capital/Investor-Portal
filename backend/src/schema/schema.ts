@@ -103,3 +103,8 @@ export {
   type EsignTemplateSignerRole,
   type EsignReusableTemplateStatus,
 } from "./esign.schema.js";
+export {
+  platformSignupNotification,
+  type PlatformSignupNotificationInsert,
+  type PlatformSignupNotificationRow,
+} from "./platformSignupNotification.schema.js";

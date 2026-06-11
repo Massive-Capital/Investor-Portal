@@ -378,12 +378,13 @@ export async function buildFundingInstructionsPdf(params: {
         payload.ach.beneficiaryAccountName,
         maxWidth,
       );
-      drawField(
-        writer,
-        "Beneficiary address",
-        payload.ach.beneficiaryAddress,
-        maxWidth,
-      );
+      // Beneficiary address — hidden per product.
+      // drawField(
+      //   writer,
+      //   "Beneficiary address",
+      //   payload.ach.beneficiaryAddress,
+      //   maxWidth,
+      // );
       drawField(writer, "Reference", payload.ach.reference, maxWidth);
       drawField(
         writer,
@@ -423,12 +424,13 @@ export async function buildFundingInstructionsPdf(params: {
         payload.wire.beneficiaryAccountName,
         maxWidth,
       );
-      drawField(
-        writer,
-        "Beneficiary address",
-        payload.wire.beneficiaryAddress,
-        maxWidth,
-      );
+      // Beneficiary address — hidden per product.
+      // drawField(
+      //   writer,
+      //   "Beneficiary address",
+      //   payload.wire.beneficiaryAddress,
+      //   maxWidth,
+      // );
       drawField(writer, "Reference", payload.wire.reference, maxWidth);
       drawField(
         writer,
@@ -451,14 +453,15 @@ export async function buildFundingInstructionsPdf(params: {
 
   if (payload.checks.enabled) {
     drawSectionHeading(writer, "Checks");
+    drawField(writer, "Beneficiary Name", payload.checks.beneficiary, maxWidth);
     drawField(writer, "Mailing address", payload.checks.mailingAddress, maxWidth);
-    drawField(writer, "Beneficiary", payload.checks.beneficiary, maxWidth);
-    drawField(
-      writer,
-      "Beneficiary address",
-      payload.checks.beneficiaryAddress,
-      maxWidth,
-    );
+    // Beneficiary address — hidden per product.
+    // drawField(
+    //   writer,
+    //   "Beneficiary address",
+    //   payload.checks.beneficiaryAddress,
+    //   maxWidth,
+    // );
     drawField(writer, "Memo", payload.checks.memo, maxWidth);
     drawField(
       writer,

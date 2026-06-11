@@ -88,8 +88,8 @@ export function WireTransferDetailsForm({
   onAccountTypeChange,
   beneficiaryAccountName,
   onBeneficiaryAccountNameChange,
-  beneficiaryAddress,
-  onBeneficiaryAddressChange,
+  beneficiaryAddress: _beneficiaryAddress,
+  onBeneficiaryAddressChange: _onBeneficiaryAddressChange,
   reference,
   onReferenceChange,
   otherInstructions,
@@ -173,12 +173,13 @@ export function WireTransferDetailsForm({
           value={beneficiaryAccountName}
           onChange={onBeneficiaryAccountNameChange}
         />
-        <WireTextRow
+        {/* Beneficiary address — hidden per product. */}
+        {/* <WireTextRow
           id={`${baseId}-beneficiary-address`}
           label="Beneficiary address"
           value={beneficiaryAddress}
           onChange={onBeneficiaryAddressChange}
-        />
+        /> */}
       </section>
 
       <section className="deal_fi_wire_group" aria-labelledby={`${baseId}-wire-other-heading`}>

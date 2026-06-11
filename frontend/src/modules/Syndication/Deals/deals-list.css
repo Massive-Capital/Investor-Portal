@@ -374,6 +374,22 @@ a.deals_list_add_link.um_btn_primary {
   text-align: center;
 }
 
+.deals_page_loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: center;
+}
+
+.deals_page_loading_text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
+
 .deals_list_not_found a {
   color: var(--portal-primary);
   font-weight: 600;
@@ -1582,6 +1598,20 @@ a.deals_list_add_link.um_btn_primary {
   border-color: color-mix(in srgb, #eab308 38%, transparent);
 }
 
+.deals_stage_chip--open_investment,
+.deals_stage_chip--invest_now {
+  color: #14532d;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #4ade80 42%, #16a34a) 0%,
+    color-mix(in srgb, #22c55e 88%, #15803d) 100%
+  );
+  border-color: color-mix(in srgb, #16a34a 55%, #14532d);
+  box-shadow:
+    0 1px 2px rgb(21 128 61 / 18%),
+    inset 0 1px 0 rgb(255 255 255 / 22%);
+}
+
 .deals_stage_chip--managing_asset {
   color: #065f46;
   background: color-mix(in srgb, #10b981 20%, transparent);
@@ -1610,6 +1640,20 @@ a.deals_list_add_link.um_btn_primary {
   color: #bfdbfe;
   background: color-mix(in srgb, #2563eb 22%, transparent);
   border-color: color-mix(in srgb, #3b82f6 45%, transparent);
+}
+
+:root[data-theme="dark"] .deals_stage_chip--open_investment,
+:root[data-theme="dark"] .deals_stage_chip--invest_now {
+  color: #ecfdf5;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #16a34a 75%, #052e16) 0%,
+    color-mix(in srgb, #22c55e 70%, #14532d) 100%
+  );
+  border-color: color-mix(in srgb, #4ade80 45%, #166534);
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 28%),
+    inset 0 1px 0 rgb(255 255 255 / 12%);
 }
 
 :root[data-theme="dark"] .deals_stage_chip--coming_soon {

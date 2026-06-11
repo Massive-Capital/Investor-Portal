@@ -1,11 +1,5 @@
-import { WorkInProgressPage } from "@/common/components/WorkInProgressPage"
+import { Navigate } from "react-router-dom"
 
 export default function Opportunities() {
-  return (
-    <WorkInProgressPage
-      title="Opportunities"
-      backTo="/dashboard"
-      backLabel="Dashboard"
-    />
-  )
+  return <Navigate to="/dashboard?dealsTab=coming_soon" replace />
 }

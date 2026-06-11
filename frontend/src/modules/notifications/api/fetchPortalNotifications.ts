@@ -1,5 +1,6 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
-import { isLpInvestorSessionUser } from "@/common/auth/roleUtils"
+import { isLpInvestorSessionUser, isPlatformAdmin } from "@/common/auth/roleUtils"
+import { fetchPlatformSignupNotifications } from "./fetchPlatformSignupNotifications"
 import { getMergedInvestmentListRows } from "@/modules/Investing/pages/investments/investmentsRuntimeData"
 import {
   fetchDealInvestors,
@@ -162,16 +163,28 @@ async function collectSponsorNotifications(
 /**
  * Builds in-app notifications from live deal / investor / e-sign APIs for the signed-in user.
  */
+async function collectPlatformAdminSignupNotifications(
+  out: NotificationDraft[],
+): Promise<void> {
+  if (!isPlatformAdmin()) return
+  const signupNotes = await fetchPlatformSignupNotifications()
+  out.push(...signupNotes)
+}
+
 export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
   const out: NotificationDraft[] = []
   const isLpOnly = isLpInvestorSessionUser()
 
   if (isLpOnly) {
-    await collectLpInvestorNotifications(out)
+    await Promise.all([
+      collectLpInvestorNotifications(out),
+      collectPlatformAdminSignupNotifications(out),
+    ])
   } else {
     await Promise.all([
       collectSponsorNotifications(out),
       collectLpInvestorNotifications(out),
+      collectPlatformAdminSignupNotifications(out),
     ])
   }
 

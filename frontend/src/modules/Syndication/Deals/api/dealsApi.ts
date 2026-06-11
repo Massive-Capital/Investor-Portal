@@ -1,3 +1,4 @@
+import { isPlatformAdmin } from "../../../../common/auth/roleUtils"
 import {
   organizationIdQueryParam,
   portalAuthHeaders,
@@ -330,6 +331,11 @@ function normalizeDealListRow(
 export async function fetchDealsList(options?: {
   /** Syndication org deals plus deals where the user is on the roster (`assigning_deal_user`). */
   includeParticipantDeals?: boolean
+  /**
+   * Scope to one customer org (platform admin drill-in). Omit on the main dashboard
+   * so platform admins receive the full deal roster.
+   */
+  organizationId?: string
 }): Promise<DealListRow[]> {
   const base = getApiV1Base()
   if (!base) return []
@@ -337,8 +343,13 @@ export async function fetchDealsList(options?: {
   if (options?.includeParticipantDeals === true) {
     params.set("includeParticipantDeals", "1")
   } else {
-    const activeOrg = organizationIdQueryParam()
-    if (activeOrg) params.set("organizationId", activeOrg)
+    const explicitOrg = options?.organizationId?.trim()
+    if (explicitOrg) {
+      params.set("organizationId", explicitOrg)
+    } else if (!isPlatformAdmin()) {
+      const activeOrg = organizationIdQueryParam()
+      if (activeOrg) params.set("organizationId", activeOrg)
+    }
   }
   const q = params.toString() ? `?${params.toString()}` : ""
   try {

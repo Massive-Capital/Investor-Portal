@@ -7,7 +7,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { ToolStyleCard } from "../../../common/components/tool-style-card/ToolStyleCard"
 import { cardCompactAmountOrDash } from "../../../common/components/card-compact-amount/CardCompactAmount"
@@ -20,23 +20,6 @@ import {
 } from "./syndicationDashboardData"
 import "../usermanagement/user_management.css"
 import "./sponsor-dashboard.css"
-
-function formatDashboardValue(
-  loading: boolean,
-  summary: SyndicationDashboardSummary | null,
-  pick: (s: SyndicationDashboardSummary) => ReactNode,
-): ReactNode {
-  if (loading || summary == null) return "—"
-  return pick(summary)
-}
-
-function totalInvestorsAcrossDealsDisplay(
-  loading: boolean,
-  summary: SyndicationDashboardSummary | null,
-): string {
-  if (loading || summary == null) return "—"
-  return String(summary.totalInvestorRows)
-}
 
 function SyndicatingDashboard() {
   const [summary, setSummary] = useState<SyndicationDashboardSummary | null>(
@@ -86,38 +69,41 @@ function SyndicatingDashboard() {
           variant="metric"
           icon={LineChart}
           title="Total target amount"
-          description={formatDashboardValue(loading, summary, (s) =>
-            cardCompactAmountOrDash(s.totalTargetDisplay),
-          )}
+          loading={loading}
+          description={cardCompactAmountOrDash(summary?.totalTargetDisplay)}
         />
         <ToolStyleCard
           variant="metric"
           icon={DollarSign}
           title="Total distributions"
-          description={formatDashboardValue(loading, summary, (s) =>
-            cardCompactAmountOrDash(s.totalDistributionsDisplay),
-          )}
+          loading={loading}
+          description={cardCompactAmountOrDash(summary?.totalDistributionsDisplay)}
         />
         <ToolStyleCard
           variant="metric"
           icon={UserRound}
           title="# of investors"
-          description={totalInvestorsAcrossDealsDisplay(loading, summary)}
+          loading={loading}
+          description={
+            summary != null ? String(summary.totalInvestorRows) : "—"
+          }
           hintTitle="Sum of investors on each deal (same as the row count on the deal Investors tab), added across all your deals."
         />
         <ToolStyleCard
           variant="metric"
           icon={Users}
           title="# of contacts"
-          description={formatDashboardValue(loading, summary, (s) =>
-            String(s.contactsCount),
-          )}
+          loading={loading}
+          description={
+            summary != null ? String(summary.contactsCount) : "—"
+          }
           hintTitle="Contacts added under your company (same list as Add contacts / CRM)."
         />
         <ToolStyleCard
           variant="metric"
           icon={ClipboardList}
           title="# of reviews"
+          loading={loading}
           description="—"
         />
       </section>

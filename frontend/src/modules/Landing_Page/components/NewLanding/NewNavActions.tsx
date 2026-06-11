@@ -39,7 +39,7 @@ export function Files2NavActions({ onAfterAction, className = "" }: Files2NavAct
         Webinar
       </button>
       <button type="button" className="f2-nav-btn f2-nav-btn--primary" onClick={goSignIn}>
-        <span>Start Raising</span>
+        <span>Start Raising & Investing</span>
         <ArrowRight className="f2-nav-btn__arrow" size={18} strokeWidth={2} aria-hidden />
       </button>
     </div>

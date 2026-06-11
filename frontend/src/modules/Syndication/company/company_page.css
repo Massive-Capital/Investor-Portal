@@ -46,6 +46,40 @@
   box-sizing: border-box;
 }
 
+/* Customers list: first column is company name (not a row-select checkbox). */
+.company_page
+  .cp_companies_tab_panel.deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first {
+  --data-table-sticky-col-0-width: var(--cp-table-name-col-min, 16rem);
+}
+
+.cp_company_list_name_th,
+.cp_company_list_name_td {
+  min-width: var(--cp-table-name-col-min, 16rem);
+}
+
+.company_page
+  .cp_companies_tab_panel.deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first
+  th.data_table_col_sticky--0,
+.company_page
+  .cp_companies_tab_panel.deal_inv_table_panel
+  .um_table.deal_inv_table.data_table_sticky_first
+  td.data_table_col_sticky--0 {
+  width: var(--data-table-sticky-col-0-width);
+  min-width: var(--data-table-sticky-col-0-width);
+  max-width: var(--data-table-sticky-col-0-width);
+  box-sizing: border-box;
+}
+
+.company_page
+  .cp_companies_tab_panel.deal_inv_table_panel
+  .um_table.deal_inv_table
+  td.um_td_user
+  .um_user_meta {
+  flex: 1;
+}
+
 .cp_company_avatar {
   width: 1.875rem;
   height: 1.875rem;
@@ -221,9 +255,9 @@ a.cp_company_deal_name_link:focus-visible {
 /* Customer company → Members: Deals column must stay visible (counts from API). */
 .cp_company_tab_table_wrap .um_table_members .cp_company_members_deals_th,
 .cp_company_tab_table_wrap .um_table_members .cp_company_members_deals_td {
-  min-width: 4.5em;
-  width: 5.5em;
-  max-width: 6em;
+  min-width: 5em;
+  width: 6.5em;
+  max-width: 7.5em;
   text-align: center;
   vertical-align: middle;
   font-variant-numeric: tabular-nums;
@@ -236,25 +270,189 @@ a.cp_company_deal_name_link:focus-visible {
   color: #0f172a;
 }
 
-/* No horizontal scroll inside company tab DataTables (members / customers list) */
-.cp_company_tab_table_wrap > .um_table_wrap.data_table_shell {
-  overflow-x: hidden;
+/*
+ * Customers directory + company Members/Deals tables — roomier rhythm than dense
+ * deal_inv defaults. Scroll horizontally when columns need space instead of crushing cells.
+ */
+.company_page {
+  --cp-table-cell-padding-y: 0.75em;
+  --cp-table-cell-padding-x: 1em;
+  --cp-table-header-padding-y: 0.7em;
+  --cp-table-header-padding-x: 1em;
+  --cp-table-font-size: var(--portal-table-font-size, 0.9375rem);
+  --cp-table-name-col-min: 16rem;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .cp_company_tab_table_wrap
+  > .um_table_wrap.data_table_shell {
+  overflow: hidden;
+  border: 1px solid var(--portal-table-border, var(--portal-border, #e2e8f0));
+  border-radius: var(--portal-card-radius, 4px);
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .cp_company_tab_table_wrap
+  .data_table_scroll_region {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   max-width: 100%;
 }
 
-.cp_company_tab_table_wrap .data_table_scroll_region {
-  overflow-x: hidden;
-  max-width: 100%;
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .cp_company_tab_table_wrap
+  .um_table.deal_inv_table {
+  width: 100%;
+  min-width: 56rem;
+  table-layout: fixed;
+}
+
+.company_page
+  #cp-company-panel-members
+  .cp_company_tab_table_wrap
+  .um_table.deal_inv_table {
+  min-width: 72rem;
+}
+
+.company_page
+  #cp-company-panel-deals
+  .cp_company_tab_table_wrap
+  .um_table.deal_inv_table {
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  thead
+  th:not(.um_th_actions):not(.um_th_checkbox) {
+  padding: 0;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  .um_sort_header_ctl {
+  padding: var(--cp-table-header-padding-y) var(--cp-table-header-padding-x);
+  gap: 0.4em;
+  font-size: var(--cp-table-font-size);
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  tbody
+  td {
+  font-size: var(--cp-table-font-size);
+  line-height: 1.45;
+  padding: var(--cp-table-cell-padding-y) var(--cp-table-cell-padding-x);
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  thead
+  th.um_th_checkbox,
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  tbody
+  td.um_td_checkbox {
+  padding: var(--cp-table-cell-padding-y) 0.85em;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  thead
+  th.um_th_actions,
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  tbody
+  td.um_td_actions {
+  padding: var(--cp-table-cell-padding-y) 0.85em;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  .um_user_cell {
+  gap: 0.85em;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  .um_td_user {
+  min-width: var(--cp-table-name-col-min);
+}
+
+.company_page
+  #cp-company-panel-members
+  .um_table.deal_inv_table.data_table_sticky_first {
+  --data-table-sticky-col-1-width: var(--cp-table-name-col-min);
+}
+
+.company_page
+  #cp-company-panel-members
+  .um_table.deal_inv_table.data_table_sticky_first
+  th.data_table_col_sticky--1,
+.company_page
+  #cp-company-panel-members
+  .um_table.deal_inv_table.data_table_sticky_first
+  td.data_table_col_sticky--1 {
+  width: var(--data-table-sticky-col-1-width);
+  min-width: var(--data-table-sticky-col-1-width);
+  max-width: var(--data-table-sticky-col-1-width);
+  box-sizing: border-box;
+}
+
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  .um_user_meta_username,
+.company_page
+  :is(.cp_companies_tab_panel, #cp-company-panel-members, #cp-company-panel-deals)
+  .um_table.deal_inv_table
+  .um_user_meta_email {
+  font-size: 1em;
+  line-height: 1.45;
 }
 
 .cp_company_cell_muted {
   color: #475569;
-  font-size: 0.9em;
+  font-size: inherit;
 }
 
+/* Company detail → Deals tab: first column is deal name (not a row-select checkbox). */
+#cp-company-panel-deals
+  .cp_company_deals_table.um_table.deal_inv_table.data_table_sticky_first {
+  --data-table-sticky-col-0-width: var(--cp-table-name-col-min, 16rem);
+}
+
+#cp-company-panel-deals
+  .cp_company_deals_table.um_table.deal_inv_table.data_table_sticky_first
+  th.data_table_col_sticky--0,
+#cp-company-panel-deals
+  .cp_company_deals_table.um_table.deal_inv_table.data_table_sticky_first
+  td.data_table_col_sticky--0 {
+  width: var(--data-table-sticky-col-0-width);
+  min-width: var(--data-table-sticky-col-0-width);
+  max-width: var(--data-table-sticky-col-0-width);
+  box-sizing: border-box;
+}
+
+.cp_company_deals_table .cp_company_deal_name_th,
 .cp_company_deals_table .cp_company_deal_name_td {
-  width: 26%;
-  max-width: 0;
+  min-width: var(--cp-table-name-col-min, 16rem);
+  width: 18rem;
   vertical-align: middle;
 }
 
@@ -274,18 +472,19 @@ a.cp_company_deal_name_link:focus-visible {
 
 .cp_company_deals_table .cp_company_deal_meta_td {
   vertical-align: middle;
-  font-size: 0.9em;
+  min-width: 7.5rem;
 }
 
 .cp_company_deals_table .cp_company_deal_date_th,
 .cp_company_deals_table .cp_company_deal_date_td {
   white-space: nowrap;
-  font-size: 0.88em;
+  min-width: 6.5rem;
 }
 
 .cp_company_deals_table .cp_company_deal_num_th,
 .cp_company_deals_table .cp_company_deal_num_td {
-  width: 5.5em;
+  min-width: 6rem;
+  width: 6.5rem;
   font-variant-numeric: tabular-nums;
 }
 

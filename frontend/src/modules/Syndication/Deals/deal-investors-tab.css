@@ -356,8 +356,8 @@
   cursor: not-allowed;
 }
 
-/* Investors tab toolbar — one row: Send mail + Export left; search + Add Investor right */
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar {
+/* Investors tab — toolbar above filters: actions left, search right */
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -366,10 +366,12 @@
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  margin-top: 0;
+  margin-bottom: 0.85em;
 }
 
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
-  .um_toolbar_actions.deal_investors_toolbar_actions_leading {
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .deal_investors_filters_toolbar_actions {
   order: 0;
   margin-left: 0;
   margin-right: 0;
@@ -380,8 +382,8 @@
   gap: 0.65em;
 }
 
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
-  .um_toolbar_actions.deal_investors_toolbar_actions_trailing {
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .deal_investors_filters_toolbar_trailing {
   order: 1;
   margin-left: auto;
   margin-right: 0;
@@ -393,9 +395,9 @@
   min-width: 0;
 }
 
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
-  .deal_investors_toolbar_actions_trailing
-  .um_search_wrap {
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
+  .deal_investors_filters_toolbar_trailing
+  .deal_inv_filters_search.um_search_wrap {
   order: 0;
   margin-left: 0;
   flex: 0 1 22em;
@@ -403,7 +405,7 @@
   max-width: 22em;
 }
 
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
   .deal_investors_add_investor_btn.um_btn_primary {
   order: 1;
   display: inline-flex;
@@ -413,39 +415,70 @@
   white-space: nowrap;
 }
 
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
   .deal_investors_add_investor_btn.um_btn_primary
   svg {
   flex-shrink: 0;
 }
 
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
   .um_btn_toolbar,
-.deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
+.deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
   .um_toolbar_export_btn {
   white-space: nowrap;
 }
 
+/* Initial load — centered in the table panel */
+.deal_investors_table_panel_loading.deal_inv_table_panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(52vh, 28rem);
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.deal_investors_page_loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: center;
+}
+
+.deal_investors_page_loading_text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
+
 @media (max-width: 640px) {
-  .deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar {
+  .deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar {
     flex-wrap: wrap;
     flex-direction: column;
     align-items: stretch;
   }
 
-  .deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
-    .um_toolbar_actions.deal_investors_toolbar_actions_leading,
-  .deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
-    .um_toolbar_actions.deal_investors_toolbar_actions_trailing {
+  .deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
+    .deal_investors_filters_toolbar_actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
+    .deal_investors_filters_toolbar_trailing {
     width: 100%;
     margin-left: 0;
     flex-wrap: wrap;
     justify-content: flex-start;
   }
 
-  .deal_investors_table_toolbar.um_toolbar.deal_inv_table_um_toolbar
-    .deal_investors_toolbar_actions_trailing
-    .um_search_wrap {
+  .deal_investors_filters_toolbar.um_toolbar.deal_inv_table_um_toolbar
+    .deal_investors_filters_toolbar_trailing
+    .deal_inv_filters_search.um_search_wrap {
     flex: 1 1 100%;
     max-width: none;
     width: 100%;
@@ -459,6 +492,10 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--portal-text-muted);
+}
+
+.deal_investors_filters_toolbar .deal_inv_filters_search .um_search_input {
+  width: 100%;
 }
 
 /* Legacy: kept for any embeds still using filter-row search */

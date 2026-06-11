@@ -17,6 +17,7 @@ import {
   Tag,
   UserRound,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   forwardRef,
@@ -27,6 +28,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { AddInvestmentModal } from "../deal_members";
 import {
@@ -425,6 +427,39 @@ function resolveOfferingSizeKpi(
   return amt != null && Number.isFinite(amt)
     ? formatMoneyFieldDisplay(String(amt))
     : "—";
+}
+
+const DEAL_INVESTORS_KPI_CARD_SPECS: ReadonlyArray<{
+  icon: LucideIcon;
+  title: string;
+}> = [
+  { icon: CircleDollarSign, title: "Offering Size" },
+  { icon: DollarSign, title: "Committed" },
+  { icon: FileCheck, title: "Document signed" },
+  { icon: BadgeCheck, title: "Approved" },
+  { icon: Landmark, title: "Total Funded" },
+  { icon: PiggyBank, title: "Remaining" },
+];
+
+function DealInvestorsKpiSkeletonSection() {
+  return (
+    <section
+      className="sponsor_dash_metrics deal_inv_kpi_metrics"
+      aria-label="Deal investment summary"
+      aria-busy
+    >
+      {DEAL_INVESTORS_KPI_CARD_SPECS.map((item) => (
+        <ToolStyleCard
+          key={item.title}
+          variant="metric"
+          icon={item.icon}
+          title={item.title}
+          description="—"
+          loading
+        />
+      ))}
+    </section>
+  );
 }
 
 function DealInvestorsPopulated({
@@ -1229,48 +1264,38 @@ function DealInvestorsPopulated({
 
   const kpiMetricCards = useMemo(
     () =>
-      (
-        [
-          {
-            icon: CircleDollarSign,
-            title: "Offering Size",
-            description: cardCompactAmountOrDash(kpis.offeringSize),
-          },
-          {
-            icon: DollarSign,
-            title: "Committed",
-            description: cardCompactAmountOrDash(kpis.committed),
-          },
-          {
-            icon: FileCheck,
-            title: "Document signed",
-            description: documentSignedKpi,
-          },
-          {
-            icon: BadgeCheck,
-            title: "Approved",
-            description: kpis.approvedCount,
-          },
-          {
-            icon: Landmark,
-            title: "Total Funded",
-            description: cardCompactAmountOrDash(kpis.totalFunded),
-          },
-          {
-            icon: PiggyBank,
-            title: "Remaining",
-            description: cardCompactAmountOrDash(kpis.remaining),
-          },
-        ] as const
-      ).map((item) => (
-        <ToolStyleCard
-          key={item.title}
-          variant="metric"
-          icon={item.icon}
-          title={item.title}
-          description={item.description}
-        />
-      )),
+      DEAL_INVESTORS_KPI_CARD_SPECS.map((item) => {
+        let description: ReactNode = "—";
+        switch (item.title) {
+          case "Offering Size":
+            description = cardCompactAmountOrDash(kpis.offeringSize);
+            break;
+          case "Committed":
+            description = cardCompactAmountOrDash(kpis.committed);
+            break;
+          case "Document signed":
+            description = documentSignedKpi;
+            break;
+          case "Approved":
+            description = kpis.approvedCount;
+            break;
+          case "Total Funded":
+            description = cardCompactAmountOrDash(kpis.totalFunded);
+            break;
+          case "Remaining":
+            description = cardCompactAmountOrDash(kpis.remaining);
+            break;
+        }
+        return (
+          <ToolStyleCard
+            key={item.title}
+            variant="metric"
+            icon={item.icon}
+            title={item.title}
+            description={description}
+          />
+        );
+      }),
     [kpis, documentSignedKpi],
   );
 
@@ -1495,6 +1520,54 @@ function DealInvestorsPopulated({
           </div>
           */}
 
+          <div
+            className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search deal_investors_filters_toolbar"
+            role="toolbar"
+            aria-label="Investor list actions"
+          >
+            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deal_investors_filters_toolbar_actions">
+              <button
+                type="button"
+                className="um_btn_toolbar"
+                onClick={openSendMailModal}
+                disabled={selectedInvestorRows.length === 0}
+              >
+                <Send size={18} strokeWidth={2} aria-hidden />
+                Send mail
+              </button>
+              <button
+                type="button"
+                className="um_toolbar_export_btn"
+                onClick={() => setExportModalOpen(true)}
+                aria-label="Export All"
+              >
+                <Download size={18} strokeWidth={2} aria-hidden />
+                <span>Export All</span>
+              </button>
+            </div>
+            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deal_investors_filters_toolbar_trailing">
+              <div className="um_search_wrap deal_inv_filters_search">
+                <Search className="um_search_icon" size={18} aria-hidden />
+                <input
+                  type="search"
+                  className="um_search_input"
+                  placeholder="Search investors…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Search investors"
+                />
+              </div>
+              <button
+                type="button"
+                className="um_btn_primary deal_investors_add_investor_btn"
+                onClick={onAddInvestor}
+              >
+                <Plus size={18} strokeWidth={2} aria-hidden />
+                Add Investor
+              </button>
+            </div>
+          </div>
+
           <section
             className="deal_inv_filters_section"
             aria-labelledby="deal-inv-filters-heading"
@@ -1614,54 +1687,6 @@ function DealInvestorsPopulated({
               </div>
             </div>
           </section>
-
-          <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search deal_investors_table_toolbar">
-            <div className="um_toolbar_actions deal_inv_table_toolbar_actions deal_investors_toolbar_actions_leading">
-              <button
-                type="button"
-                className="um_btn_toolbar"
-                onClick={openSendMailModal}
-                disabled={selectedInvestorRows.length === 0}
-              >
-                <Send size={18} strokeWidth={2} aria-hidden />
-                Send mail
-              </button>
-              <button
-                type="button"
-                className="um_toolbar_export_btn"
-                onClick={() => setExportModalOpen(true)}
-                aria-label="Export All"
-              >
-                <Download size={18} strokeWidth={2} aria-hidden />
-                <span>Export All</span>
-              </button>
-            </div>
-            <div
-              className="um_toolbar_actions deal_inv_table_toolbar_actions deal_investors_toolbar_actions_trailing"
-              role="toolbar"
-              aria-label="Investor list actions"
-            >
-              <div className="um_search_wrap">
-                <Search className="um_search_icon" size={18} aria-hidden />
-                <input
-                  type="search"
-                  className="um_search_input"
-                  placeholder="Search investors…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search investors"
-                />
-              </div>
-              <button
-                type="button"
-                className="um_btn_primary deal_investors_add_investor_btn"
-                onClick={onAddInvestor}
-              >
-                <Plus size={18} strokeWidth={2} aria-hidden />
-                Add Investor
-              </button>
-            </div>
-          </div>
         </div>
 
         <DataTable
@@ -2180,9 +2205,25 @@ export const DealInvestorsTab = forwardRef<
       <>
         {modal}
         {lpInvestorModal}
-        <p className="deals_list_not_found" role="status">
-          Loading investors…
-        </p>
+        <div className="deal_inv_populated deal_members_tab">
+          <DealInvestorsKpiSkeletonSection />
+          <div
+            className="um_panel um_members_tab_panel deal_inv_table_panel deal_investors_table_panel_loading"
+            aria-busy
+          >
+            <div
+              className="deal_investors_page_loading"
+              role="status"
+              aria-live="polite"
+              aria-label="Loading investors"
+            >
+              <div className="data_table_loader_spinner" aria-hidden />
+              <span className="deal_investors_page_loading_text">
+                Loading investors…
+              </span>
+            </div>
+          </div>
+        </div>
       </>
     );
 

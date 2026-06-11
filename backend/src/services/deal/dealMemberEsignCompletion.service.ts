@@ -598,7 +598,7 @@ export async function listMyEsignDocumentsForInvestor(
           fileId: d.fileId,
           name: d.name,
           url: d.url,
-          status: fullyCompleted || d.url ? "signed" : "pending",
+          status: fullyCompleted ? "signed" : "pending",
           ...(categoryId ? { categoryId } : {}),
           ...(sig ? { signatureRequestId: sig } : {}),
         });

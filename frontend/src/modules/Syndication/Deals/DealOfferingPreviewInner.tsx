@@ -24,7 +24,6 @@ import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
 import type { DealDetailApi } from "./api/dealsApi"
 import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
-import { writeInvestNowIntent } from "./utils/investNowIntent"
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import {
@@ -92,8 +91,9 @@ export type DealOfferingPreviewInnerProps = {
   investNowDraftProgress?: InvestNowDraftProgress | null
   /** Navigate to a specific Invest Now onboarding phase (resume mode). */
   onInvestNowPhaseClick?: (phaseId: InvestNowStepperPhase["id"]) => void
-  /** Public shared link: sign-in redirect preserves offering URL and opens Invest now after login. */
-  publicInvestNowSignInState?: { from: string; investNow: true }
+  /** Public shared link: sign-in redirect returns to the authenticated offering portfolio. */
+  publicOfferingSignInState?: { from: string }
+  onPersistSharedOfferingAuthIntent?: (dealId: string) => void
   /** When omitted, derived from `detail.offeringStatus`. */
   offeringStatusRules?: DealStatusRules
   /**
@@ -120,7 +120,8 @@ export function DealOfferingPreviewInner({
   onInvestNow,
   investNowDraftProgress = null,
   onInvestNowPhaseClick,
-  publicInvestNowSignInState,
+  publicOfferingSignInState,
+  onPersistSharedOfferingAuthIntent,
   galleryUsesPersistedSourcesOnly = false,
   offeringStatusRules: offeringStatusRulesProp,
   showDocumentsSection = true,
@@ -748,14 +749,13 @@ export function DealOfferingPreviewInner({
                       <Link
                         to="/signin"
                         state={
-                          publicInvestNowSignInState ?? {
+                          publicOfferingSignInState ?? {
                             from: `${typeof window !== "undefined" ? window.location.pathname + window.location.search : "/offering_portfolio"}`,
-                            investNow: true as const,
                           }
                         }
                         onClick={() => {
                           const id = detail.id?.trim()
-                          if (id) writeInvestNowIntent(id)
+                          if (id) onPersistSharedOfferingAuthIntent?.(id)
                         }}
                         className="um_btn_primary deal_offer_pf_invest_cta deal_offer_pf_invest_cta_side_top"
                       >

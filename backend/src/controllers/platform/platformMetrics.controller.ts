@@ -10,6 +10,7 @@ import {
   parseFundingPeriod,
 } from "../../services/platform/platformFunding.service.js";
 import { getUserActivityMetrics } from "../../services/platform/userActivity.service.js";
+import { listPlatformSignupNotificationsForAdmin } from "../../services/platform/platformSignupNotification.service.js";
 
 function actorRoleFromRow(
   actor: { role: string | null },
@@ -131,5 +132,59 @@ export async function getPlatformUserActivityHandler(
   } catch (err) {
     console.error("getPlatformUserActivityHandler:", err);
     res.status(500).json({ message: "Could not load user activity" });
+  }
+}
+
+/**
+ * GET /platform/signup-notifications — recent self-serve signups (platform admin only).
+ */
+export async function getPlatformSignupNotificationsHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const jwtUser = getJwtUser(req);
+  if (!jwtUser?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const [actor] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, jwtUser.id))
+    .limit(1);
+  if (!actor) {
+    res.status(401).json({ message: "User not found" });
+    return;
+  }
+
+  const role = actorRoleFromRow(actor, jwtUser);
+  if (!isPlatformAdminRole(role)) {
+    res.status(403).json({ message: "Not allowed" });
+    return;
+  }
+
+  try {
+    const rows = await listPlatformSignupNotificationsForAdmin(40);
+    res.status(200).json({
+      notifications: rows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        contactId: row.contactId ?? null,
+        signupKind: row.signupKind,
+        companyName: row.companyName ?? null,
+        organizationId: row.organizationId ?? null,
+        userEmail: row.userEmail,
+        userDisplayName: row.userDisplayName,
+        userRole: row.userRole,
+        createdAt:
+          row.createdAt instanceof Date
+            ? row.createdAt.toISOString()
+            : String(row.createdAt),
+      })),
+    });
+  } catch (err) {
+    console.error("getPlatformSignupNotificationsHandler:", err);
+    res.status(500).json({ message: "Could not load signup notifications" });
   }
 }

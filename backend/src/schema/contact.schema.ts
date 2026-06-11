@@ -26,6 +26,10 @@ export const contact = pgTable("contact", {
   email: varchar("email", { length: 255 }).notNull(),
   /** True when this email is linked to a row in `users` — excluded from All Contacts lists. */
   isPortalUser: boolean("is_portal_user").notNull().default(false),
+  /**
+   * Self-registered investor CRM rows (no company) — visible to platform admins only.
+   */
+  platformAdminOnly: boolean("platform_admin_only").notNull().default(false),
   phone: varchar("phone", { length: 64 }).notNull().default(""),
   note: text("note").notNull().default(""),
   tags: jsonb("tags").$type<string[]>().notNull(),

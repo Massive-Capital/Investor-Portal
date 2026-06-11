@@ -9,6 +9,8 @@ export const COMPANY_ADMIN = "company_admin";
 export const PLATFORM_USER = "platform_user";
 export const COMPANY_USER = "company_user";
 export const DEAL_PARTICIPANT = "deal_participant";
+/** Self-serve signup without a company — investing portal only. */
+export const INVESTOR = "investor";
 
 /** Legacy role from older installs */
 const LEGACY_USER = "user";

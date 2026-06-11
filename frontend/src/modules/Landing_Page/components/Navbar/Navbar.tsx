@@ -97,7 +97,7 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
               Webinar
             </button>
             <Link to="/signin" className="sx-btn-glow sx-btn-glow--wide">
-              Start Raising/Investing
+              Start Raising & Investing
               <ArrowRight size={18} strokeWidth={2} aria-hidden />
             </Link>
           </div>
@@ -150,7 +150,7 @@ export function Navbar({ onNavigateSection }: NavbarProps) {
               Webinar
             </button>
             <Link to="/signin" className="sx-btn-glow sx-btn-glow--wide" onClick={() => setMenuOpen(false)}>
-              Start Raising
+               Start Raising & Investing
               <ArrowRight size={18} strokeWidth={2} aria-hidden />
             </Link>
           </div>

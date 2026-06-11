@@ -1,4 +1,30 @@
 /* Deal Members tab shell — table chrome comes from deal-investors-tab.css + user_management.css (same as Investors tab). */
+
+/* Initial load — centered in the table panel card */
+.deal_members_table_panel_loading.deal_inv_table_panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(52vh, 28rem);
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.deal_members_page_loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: center;
+}
+
+.deal_members_page_loading_text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
 /* Narrow Sl. no. column */
 .deal_inv_table_panel .deal_members_th_sl,
 .deal_inv_table_panel .deal_members_td_sl {
@@ -37,6 +63,32 @@
   flex-direction: column;
   gap: 1.25em;
   min-width: 0;
+}
+
+/* Initial load — centered in the table panel */
+.deal_members_table_panel_loading.deal_inv_table_panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(52vh, 28rem);
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.deal_members_page_loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: center;
+}
+
+.deal_members_page_loading_text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
 }
 
 /* Toolbar — one row: Send mail + Export left; search + Add Member on the right */

@@ -40,6 +40,10 @@ import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPath";
 import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePath";
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
+import {
+  applyOfferingPortfolioPostAuth,
+  consumeOfferingPortfolioAuthIntent,
+} from "../../Syndication/Deals/utils/offeringPortfolioAuthIntent";
 import "./signup_form.css";
 import { decodeJwtPayload } from "../utils/decode-jwt-payload";
 
@@ -356,6 +360,7 @@ export default function SignupForm() {
   }
 
   function resolvePostAuthPath() {
+    const portfolioIntent = consumeOfferingPortfolioAuthIntent();
     const storedIntent = consumeInvestNowIntent();
     const state = location.state as { from?: string; investNow?: boolean } | undefined;
     const from =
@@ -370,21 +375,23 @@ export default function SignupForm() {
       : isPlatformAdmin()
         ? "/metrics"
         : "/dashboard";
-    if (!from && dealId) {
+    let postAuthState: { investNow: true } | { returnTo: string } | undefined;
+    if (portfolioIntent?.dealId) {
+      const applied = applyOfferingPortfolioPostAuth(portfolioIntent.dealId);
+      redirectTo = from ?? applied.redirectTo;
+      postAuthState = applied.postAuthState;
+    } else if (!from && dealId) {
       redirectTo = dealWorkspacePath(dealId);
-    }
-    if (!from && storedIntent?.dealId) {
+    } else if (!from && storedIntent?.dealId) {
       redirectTo = dealInvestNowPath(storedIntent.dealId);
+      postAuthState = { investNow: true as const };
+    } else if (state?.investNow === true) {
+      postAuthState = { investNow: true as const };
     }
     if (redirectTo === "/") {
       redirectTo = isPlatformAdmin() ? "/metrics" : "/dashboard";
     }
-    const wantsInvestNow =
-      state?.investNow === true || Boolean(storedIntent?.dealId);
-    return {
-      redirectTo,
-      postAuthState: wantsInvestNow ? ({ investNow: true as const } as const) : undefined,
-    };
+    return { redirectTo, postAuthState };
   }
 
   async function signInAfterSignup(email: string, password: string): Promise<boolean> {
@@ -519,12 +526,12 @@ export default function SignupForm() {
             </div>
             <div className="emailData">
               <Input
-                labelName="Company"
+                labelName="Company (optional)"
                 id="signup-companyName"
                 icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
                 type="text"
                 name="companyName"
-                placeholder="Acme Capital LLC"
+                placeholder="Leave blank for investor-only access"
                 value={signUpFormData.companyName}
                 onChange={handleChange}
                 readOnly={Boolean(token && resolvedInviteCompanyName)}

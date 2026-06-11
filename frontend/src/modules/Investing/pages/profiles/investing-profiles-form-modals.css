@@ -85,6 +85,11 @@
   grid-column: 1 / -1;
 }
 
+/* Add address: zip spans full row (was half-width in the two-column grid) */
+.investing_add_address_form_panel .add_address_zip_field {
+  width: 100%;
+}
+
 /* Stacked sub-label (check memo, distribution) beside icon */
 .investing_form_label_stack {
   display: flex;

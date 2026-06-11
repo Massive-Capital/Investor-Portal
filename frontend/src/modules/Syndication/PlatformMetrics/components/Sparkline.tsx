@@ -36,8 +36,7 @@ export function Sparkline({
     <svg
       className={`pm_sparkline ${className}`.trim()}
       viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
+      preserveAspectRatio="none"
       aria-hidden
     >
       <defs>

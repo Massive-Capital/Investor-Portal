@@ -4,7 +4,7 @@ import {
   LineChart,
   PiggyBank,
 } from "lucide-react"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useState } from "react"
 import { ToolStyleCard } from "@/common/components/tool-style-card/ToolStyleCard"
 import { cardCompactAmountOrDash } from "@/common/components/card-compact-amount/CardCompactAmount"
 import { InvestingDashboardDealsSection } from "./InvestingDashboardDealsSection"
@@ -15,15 +15,6 @@ import {
   loadInvestingDashboardMetrics,
   type InvestingDashboardMetrics,
 } from "./investingDashboardMetrics"
-
-function metricDescription(
-  loading: boolean,
-  metrics: InvestingDashboardMetrics | null,
-  pick: (m: InvestingDashboardMetrics) => ReactNode,
-): ReactNode {
-  if (loading || metrics == null) return "—"
-  return pick(metrics)
-}
 
 export function InvestingDashboardPage() {
   const [metrics, setMetrics] = useState<InvestingDashboardMetrics | null>(null)
@@ -88,34 +79,32 @@ export function InvestingDashboardPage() {
           variant="metric"
           icon={PiggyBank}
           title="Total invested"
-          description={metricDescription(loading, metrics, (m) =>
-            cardCompactAmountOrDash(m.totalInvestedDisplay),
-          )}
+          loading={loading}
+          description={cardCompactAmountOrDash(metrics?.totalInvestedDisplay)}
           hintTitle="Sum of your committed amounts on each active deal you are invested in."
         />
         <ToolStyleCard
           variant="metric"
           icon={DollarSign}
           title="Total distributed"
-          description={metricDescription(loading, metrics, (m) =>
-            cardCompactAmountOrDash(m.totalDistributedDisplay),
-          )}
+          loading={loading}
+          description={cardCompactAmountOrDash(metrics?.totalDistributedDisplay)}
           hintTitle="Your funded rows: amount shown is the committed on each of your rows that has a funded date."
         />
         <ToolStyleCard
           variant="metric"
           icon={Briefcase}
           title="# of deals"
-          description={metricDescription(loading, metrics, (m) => String(m.dealCount))}
+          loading={loading}
+          description={metrics != null ? String(metrics.dealCount) : "—"}
           hintTitle="Active deals where you have a positive committed amount."
         />
         <ToolStyleCard
           variant="metric"
           icon={LineChart}
           title="Total in-progress"
-          description={metricDescription(loading, metrics, (m) =>
-            cardCompactAmountOrDash(m.totalInProgressDisplay),
-          )}
+          loading={loading}
+          description={cardCompactAmountOrDash(metrics?.totalInProgressDisplay)}
           hintTitle="Calculated as the sum of active investments that have not been countersigned."
         />
       </section>

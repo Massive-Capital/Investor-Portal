@@ -2,10 +2,15 @@
  * LP investing-mode nav, session flags, and deal allowlists from:
  * - `deal_lp_investor` only (contact email and/or denormalized `deal_lp_investor.email`).
  */
-import { and, inArray, or, sql } from "drizzle-orm";
+import { and, inArray, ne, or, sql } from "drizzle-orm";
+import {
+  isInvestorDashboardOpportunityOffering,
+} from "../../constants/deal-lifecycle/deal-status-rules.js";
+import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
   DEAL_PARTICIPANT,
   isCompanyAdminRole,
+  isInvestorPortalRole,
   isPlatformAdminRole,
 } from "../../constants/roles.js";
 import { db, pool } from "../../database/db.js";
@@ -214,8 +219,39 @@ export async function listDealIdsFromSponsorDealMemberForEmail(
 }
 
 /**
+ * Investor dashboard “Opportunities” — coming soon (preview) and open-for-investment
+ * offerings visible on the portal (not draft / closed / past).
+ */
+export async function listInvestorVisibleComingSoonDealIds(): Promise<string[]> {
+  const rows = await db
+    .select({
+      id: addDealForm.id,
+      dealStage: addDealForm.dealStage,
+      offeringStatus: addDealForm.offeringStatus,
+    })
+    .from(addDealForm)
+    .where(ne(addDealForm.dealStage, "draft"));
+
+  const out: string[] = [];
+  for (const row of rows) {
+    if (
+      !isInvestorDashboardOpportunityOffering(
+        row.dealStage,
+        row.offeringStatus,
+      )
+    ) {
+      continue;
+    }
+    const id = String(row.id ?? "").trim();
+    if (id) out.push(id);
+  }
+  return out;
+}
+
+/**
  * Investing → Deals tab: deals the viewer participates in as LP, investor, roster
- * assignee, or sponsor (Lead / Admin / Co-sponsor on `deal_member`).
+ * assignee, or sponsor (Lead / Admin / Co-sponsor on `deal_member`), plus visible
+ * dashboard opportunity offerings (coming soon + open for investment).
  */
 export async function listInvestingParticipantDealIdsForUser(params: {
   userId: string;
@@ -225,14 +261,26 @@ export async function listInvestingParticipantDealIdsForUser(params: {
   const userId = String(params.userId ?? "").trim();
   if (!emailNorm || !userId) return [];
 
-  const [lp, sponsor, assigned, investment] = await Promise.all([
-    listDealIdsFromLpInvestorTableForEmail(emailNorm),
-    listDealIdsFromSponsorDealMemberForEmail(emailNorm),
-    listDealIdsAssignedToUser(userId),
-    listDealIdsFromDealInvestmentForEmail(emailNorm),
-  ]);
+  const [lp, sponsor, sponsorInvited, assigned, investment, comingSoon] =
+    await Promise.all([
+      listDealIdsFromLpInvestorTableForEmail(emailNorm),
+      listDealIdsFromSponsorDealMemberForEmail(emailNorm),
+      listDealIdsFromSponsorInvitedDealMemberForEmail(emailNorm),
+      listDealIdsAssignedToUser(userId),
+      listDealIdsFromDealInvestmentForEmail(emailNorm),
+      listInvestorVisibleComingSoonDealIds(),
+    ]);
 
-  return [...new Set([...lp, ...sponsor, ...assigned, ...investment])];
+  return [
+    ...new Set([
+      ...lp,
+      ...sponsor,
+      ...sponsorInvited,
+      ...assigned,
+      ...investment,
+      ...comingSoon,
+    ]),
+  ];
 }
 
 /**
@@ -329,6 +377,17 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
       lp_investor_deal_ids: [],
       lp_investor_role_display: null,
       is_lp_investor: false,
+    };
+  }
+
+  if (isInvestorPortalRole(portalRole)) {
+    const lp = await resolveLpInvestorSessionFlags(emailNorm);
+    return {
+      ...base,
+      lp_investor_nav: true,
+      lp_investor_deal_ids: lp.lp_investor_deal_ids,
+      lp_investor_role_display: "Investor",
+      is_lp_investor: true,
     };
   }
 

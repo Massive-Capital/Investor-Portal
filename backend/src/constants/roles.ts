@@ -13,6 +13,9 @@ export const COMPANY_USER = "company_user";
 /** Invited deal member: may only access deals where they appear on the roster (`assigning_deal_user` / investments). */
 export const DEAL_PARTICIPANT = "deal_participant";
 
+/** Self-serve signup without a company — investing portal only (no syndicating workspace). */
+export const INVESTOR = "investor";
+
 /** Roles a platform admin may assign on invite (stored on the invite JWT). */
 export const INVITE_ASSIGNABLE_ROLES = [
   PLATFORM_ADMIN,
@@ -32,6 +35,10 @@ export function isPlatformAdminRole(role: string | null | undefined): boolean {
 
 export function isCompanyAdminRole(role: string | null | undefined): boolean {
   return String(role ?? "").trim() === COMPANY_ADMIN;
+}
+
+export function isInvestorPortalRole(role: string | null | undefined): boolean {
+  return String(role ?? "").trim() === INVESTOR;
 }
 
 /** Legacy DB/JWT value; same effective access as {@link PLATFORM_USER} in the frontend (`normalizeRole`). */

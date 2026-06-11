@@ -158,7 +158,8 @@ function mapMyEsignApiDocuments(
       visibilityLabel: investmentEsignStatusLabel(d.status),
       esignStatus: d.status,
       source: "esign",
-      canSign: d.status === "pending",
+      canSign:
+        d.status !== "signed" && Boolean(d.signatureRequestId?.trim()),
       signatureRequestId: d.signatureRequestId?.trim() || undefined,
       categoryId: categoryId || undefined,
     }

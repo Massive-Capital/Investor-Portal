@@ -1,10 +1,19 @@
-import { normalizeDealStatus } from "../constants/deal-lifecycle"
+import {
+  isDealStageDraft,
+  normalizeDealStatus,
+} from "../constants/deal-lifecycle"
 
 export const OPEN_INVESTMENT_ESIGN_REQUIRED_TITLE =
   "Cannot activate Open to Investment"
 
 export const OPEN_INVESTMENT_ESIGN_REQUIRED_MESSAGE =
   "E-sign templates are not configured for this deal.\n\nYou must create and complete e-sign setup before enabling investor onboarding and investment flow."
+
+export const OPEN_INVESTMENT_DRAFT_STAGE_INFO_TITLE =
+  "Deal stage is Draft"
+
+export const OPEN_INVESTMENT_DRAFT_STAGE_INFO_MESSAGE =
+  "While the deal is in Draft, investors cannot access the offering, even when status is set to Open to Investment.\n\nMove the deal to Capital Raising when you are ready to go live."
 
 export type CanActivateOpenInvestmentFailureReason = "missing_esign_templates"
 
@@ -16,6 +25,15 @@ export type CanActivateOpenInvestmentResult =
 export interface DealForOpenInvestmentActivation {
   offeringStatus?: string | null
   esignTemplatesConfigured: boolean
+}
+
+export function isOpenInvestmentWhileDealStageDraft(
+  dealStage: string | null | undefined,
+  currentOfferingStatus: string | null | undefined,
+  nextOfferingStatus: string | null | undefined,
+): boolean {
+  if (!isDealStageDraft(dealStage)) return false
+  return isTransitionToOpenInvestment(currentOfferingStatus, nextOfferingStatus)
 }
 
 export function isTransitionToOpenInvestment(

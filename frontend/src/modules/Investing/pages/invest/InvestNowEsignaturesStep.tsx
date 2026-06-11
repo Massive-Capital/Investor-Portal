@@ -125,14 +125,20 @@ export function InvestNowEsignaturesStep({
 
   const needsSignature = !esignLoading && !esignCompleted && Boolean(profileTemplate)
 
+  const hasOutboundSignatureRequest = Boolean(firstPendingSignatureRequestId)
+
+  /** True when Dropbox already has a pending request (this session or sponsor / prior send). */
+  const esignAwaitingSignature =
+    hasOutboundSignatureRequest &&
+    hasUnsignedDocuments &&
+    !esignCompleted &&
+    !sendError
+
   const canStartSigning =
     needsSignature &&
-    profileReady &&
-    esignSendOk &&
-    !sendError &&
-    !esignCompleted &&
-    Boolean(firstPendingSignatureRequestId) &&
-    hasUnsignedDocuments
+    esignAwaitingSignature &&
+    (esignSendOk || esignDocuments.length > 0 || esignPending) &&
+    (profileReady || esignDocuments.length > 0 || esignPending)
 
   const openSignModal = useCallback((signatureRequestId?: string | null) => {
     setSignModalSignatureRequestId(
@@ -180,12 +186,11 @@ export function InvestNowEsignaturesStep({
         : []
 
   function docCanSign(doc: InvestNowEsignDocRow): boolean {
-    if (doc.status === "signed" || esignCompleted || disabled || !canStartSigning) {
-      return false
-    }
+    if (doc.status === "signed" || esignCompleted || disabled) return false
     const sigId =
       doc.signatureRequestId?.trim() || firstPendingSignatureRequestId
-    return Boolean(sigId)
+    if (!sigId) return false
+    return doc.status === "pending" || canStartSigning
   }
 
   return (
@@ -269,7 +274,7 @@ export function InvestNowEsignaturesStep({
             Your subscription document is ready. Open the signing form to complete
             your signature.
           </p>
-          {/* <button
+          <button
             type="button"
             className="um_btn_primary invest_now_esign_sign_btn"
             disabled={disabled}
@@ -277,7 +282,7 @@ export function InvestNowEsignaturesStep({
           >
             <FileSignature size={18} strokeWidth={2} aria-hidden />
             Sign
-          </button> */}
+          </button>
         </div>
       ) : null}
 
@@ -431,7 +436,8 @@ export function mapMyEsignDocumentsToInvestNowRows(
     name: d.name,
     url: resolveEsignDocumentUrlForViewer(d.url) || "",
     status: d.status === "signed" ? "signed" : "pending",
-    canSign: d.status === "pending",
+    canSign:
+      d.status !== "signed" && Boolean(d.signatureRequestId?.trim()),
     signatureRequestId: d.signatureRequestId?.trim() || undefined,
   }))
 }

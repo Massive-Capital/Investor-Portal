@@ -618,36 +618,38 @@ export function AddAddressModal({
                   />
                 </InvestingFormField>
               </div>
-              <InvestingFormField
-                id="addr-zip"
-                label={
-                  <>
-                    {isUs ? "Zip code" : "Zip / postal code"}{" "}
-                    <span className="investing_form_req" aria-label="required">
-                      *
-                    </span>
-                  </>
-                }
-                Icon={Hash}
-                tight
-              >
-                <input
+              <div className="add_beneficiary_field_grid__full add_address_zip_field">
+                <InvestingFormField
                   id="addr-zip"
-                  className={ADDR_INPUT_CLASS}
-                  value={form.zip}
-                  onChange={(e) =>
-                    patch({
-                      zip: isUs
-                        ? normalizeZipCodeDigits(e.target.value)
-                        : e.target.value,
-                    })
+                  label={
+                    <>
+                      {isUs ? "Zip code" : "Zip / postal code"}{" "}
+                      <span className="investing_form_req" aria-label="required">
+                        *
+                      </span>
+                    </>
                   }
-                  placeholder={isUs ? "5-digit zip" : "Enter zip or postal code"}
-                  autoComplete="postal-code"
-                  inputMode={isUs ? "numeric" : undefined}
-                  maxLength={isUs ? 5 : undefined}
-                />
-              </InvestingFormField>
+                  Icon={Hash}
+                  tight
+                >
+                  <input
+                    id="addr-zip"
+                    className={ADDR_INPUT_CLASS}
+                    value={form.zip}
+                    onChange={(e) =>
+                      patch({
+                        zip: isUs
+                          ? normalizeZipCodeDigits(e.target.value)
+                          : e.target.value,
+                      })
+                    }
+                    placeholder={isUs ? "5-digit zip" : "Enter zip or postal code"}
+                    autoComplete="postal-code"
+                    inputMode={isUs ? "numeric" : undefined}
+                    maxLength={isUs ? 5 : undefined}
+                  />
+                </InvestingFormField>
+              </div>
             </div>
             ) : (
             <div

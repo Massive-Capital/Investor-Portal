@@ -37,6 +37,7 @@ import {
   parseEsignStatusJson,
 } from "../../constants/deal-investor-esign-status.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
+import { formatPortalUserDisplayLabel } from "../../utils/portalUsernameDisplay.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
@@ -224,13 +225,7 @@ function formatMemberDisplayFromUser(u: {
   username: string;
   companyName: string | null;
 }): string {
-  const full = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
-  if (full) return full;
-  const co = u.companyName?.trim();
-  if (co) return co;
-  const un = u.username?.trim();
-  if (un) return un;
-  return "—";
+  return formatPortalUserDisplayLabel(u);
 }
 
 type ResolvedPortalUser = {
@@ -284,10 +279,10 @@ export async function resolveUsersByContactIds(
   for (const u of found) {
     const key = String(u.id).toLowerCase();
     const email = u.email?.trim() || "—";
-    const un = u.username?.trim() || "—";
+    const label = formatMemberDisplayFromUser(u);
     m.set(key, {
-      displayName: formatMemberDisplayFromUser(u),
-      userDisplayName: un,
+      displayName: label,
+      userDisplayName: label,
       userEmail: email,
     });
   }

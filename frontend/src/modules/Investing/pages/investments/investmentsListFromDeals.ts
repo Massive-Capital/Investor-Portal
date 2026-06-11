@@ -283,9 +283,12 @@ export async function loadInvestmentListRowsFromDeals(
   const out: InvestmentListRow[] = []
   for (const { row, payload, members } of scoped) {
     const committed = committedAmountForViewerEmail(payload, emn)
-    const needsOnboarding = viewerDealNeedsOnboarding(payload, emn)
-    if (committed <= 0 && !needsOnboarding) continue
-    const inv = primaryViewerRow(payload.investors, emn)
+    // `scoped` already passed `dealIsInViewerInvestmentsListScope` (invited, draft, or
+    // visible commitment). Do not drop in-progress Invest Now drafts — they have no
+    // visible committed amount until e-sign completes.
+    const inv =
+      primaryViewerRow(payload.investors, emn) ??
+      firstInvestNowDraftRowForViewer(payload.investors, emn)
     const viewerRolesLabel = formatViewerInvestingDealRolesLabel(
       resolveViewerInvestingDealRoles(
         members,

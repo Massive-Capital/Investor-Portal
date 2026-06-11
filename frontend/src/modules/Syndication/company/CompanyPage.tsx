@@ -566,8 +566,10 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       {
         id: "company",
         header: "Company",
+        colWidth: "28%",
         sortValue: (row) => row.name.toLowerCase(),
-        tdClassName: "um_td_user",
+        thClassName: "cp_company_list_name_th",
+        tdClassName: "um_td_user cp_company_list_name_td",
         cell: (row) => (
           <div className="um_user_cell">
             <div
@@ -594,6 +596,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       {
         id: "deals",
         header: "Deals",
+        colWidth: "9%",
         sortValue: (row) => Number(row.dealCount ?? 0),
         align: "center",
         cell: (row) => String(row.dealCount ?? 0),
@@ -601,6 +604,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       {
         id: "members",
         header: "Members",
+        colWidth: "10%",
         sortValue: (row) => Number(row.userCount ?? 0),
         align: "center",
         tdClassName: "um_td_numeric",
@@ -609,6 +613,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       {
         id: "contacts",
         header: "Contacts",
+        colWidth: "10%",
         sortValue: (row) => Number(row.contactCount ?? 0),
         align: "center",
         tdClassName: "um_td_numeric",
@@ -617,14 +622,14 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       {
         id: "status",
         header: "Status",
-        // align: "center",
+        colWidth: "14%",
         sortValue: (row) => companyStatusForUi(row).label.toLowerCase(),
         cell: (row) => <StatusWithDot {...companyStatusForUi(row)} />,
       },
       {
         id: "actions",
         header: "Actions",
-        width: "10%",
+        colWidth: "9%",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions deal_inv_td_actions",
         align: "center",
@@ -1308,6 +1313,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               <div className="cp_company_tab_table_wrap">
                 <DataTable
                   visualVariant="members"
+                  stickyFirstColumn={false}
                   membersTableClassName="um_table_members deal_inv_table"
                   initialSort={{ columnId: "company", direction: "asc" }}
                   columns={customerCompaniesColumns}

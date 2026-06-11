@@ -70,6 +70,7 @@ import {
   formatOrganizationsCsvCell,
   formatRoleCsvCell,
   formatValue,
+  memberUserCellPrimaryLabel,
   memberInvitePending,
   memberRowIsCurrentUser,
   memberRowIsInactive,
@@ -110,8 +111,8 @@ import "../Deals/deals-list.css";
 import "../Deals/tabs/investors/add-investment-modal.css";
 
 function initialsFromRow(row: Record<string, unknown>): string {
-  const first = String(row.firstName ?? "").trim();
-  const last = String(row.lastName ?? "").trim();
+  const first = String(row.firstName ?? row.first_name ?? "").trim();
+  const last = String(row.lastName ?? row.last_name ?? "").trim();
   if (first && last) {
     return (first[0] + last[0]).toUpperCase();
   }
@@ -1693,7 +1694,7 @@ export default function UserManagementPage({
                     (membersPageSafe - 1) * membersPageSize + i;
                   const rowId = rowStableId(row, globalIndex);
                   const initials = initialsFromRow(row);
-                  const usernameLabel = formatMemberUsername(row.username);
+                  const displayName = memberUserCellPrimaryLabel(row);
                   const rawEmail = String(row.email ?? "").trim();
                   const email = formatValue(row.email);
                   const menuOpen = actionMenuRowId === rowId;
@@ -1734,12 +1735,12 @@ export default function UserManagementPage({
                           <div className="um_user_meta">
                             <span
                               className={`um_user_meta_username${
-                                usernameLabel === "—"
+                                displayName === "—"
                                   ? " um_user_meta_username--placeholder"
                                   : ""
                               }`}
                             >
-                              {usernameLabel}
+                              {displayName}
                             </span>
                             {rawEmail.includes("@") ? (
                               <a
@@ -1781,7 +1782,7 @@ export default function UserManagementPage({
                             className="um_kebab_trigger"
                             aria-expanded={menuOpen}
                             aria-haspopup="menu"
-                            aria-label={`Actions for ${usernameLabel !== "—" ? usernameLabel : rawEmail || email}`}
+                            aria-label={`Actions for ${displayName !== "—" ? displayName : rawEmail || email}`}
                             ref={
                               menuOpen
                                 ? (el) => {

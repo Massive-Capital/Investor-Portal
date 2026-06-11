@@ -604,7 +604,7 @@ export default function InvestmentsPage() {
       },
       {
         id: "investedAmount",
-        header: "Invested",
+        header: "Investment",
         align: "right",
         colWidth: INVESTMENTS_TABLE_COL_WIDTH.invested,
         thClassName: "deals_th_align_right",

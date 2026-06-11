@@ -4173,10 +4173,10 @@ function ReadOnlyInvestorClassCard({
       </div>
       <p className="deal_inv_class_meta_line">
         <span>{classTypeOptionLabel(row.subscriptionType)}</span>
-        <span className="deal_inv_class_meta_sep">·</span>
+        {/* <span className="deal_inv_class_meta_sep">·</span>
         <span>{row.entityName || "—"}</span>
-        <span className="deal_inv_class_meta_sep">·</span>
-        <span>{formatDateDdMmmYyyy(row.startDate)}</span>
+        <span className="deal_inv_class_meta_sep">·</span> */}
+        <span>{formatDateDdMmmYyyy(row.createdAt)}</span>
       </p>
       <div className="deal_inv_class_card_body">
         <div className="deal_inv_class_fin_grid">
@@ -4232,13 +4232,13 @@ function ReadOnlyInvestorClassCard({
         </dl>
         <div className="deal_inv_class_status_row">
           <span className="deal_inv_class_status_chip">
-            <span className="deal_inv_class_status_chip_label">Status</span>
+            <span className="deal_inv_class_status_chip_label">Status:</span>
             <span className="deal_inv_class_status_chip_value">
               {dealStatusLabel}
             </span>
           </span>
           <span className="deal_inv_class_status_chip">
-            <span className="deal_inv_class_status_chip_label">Visibility</span>
+            <span className="deal_inv_class_status_chip_label">Visibility:</span>
             <span className="deal_inv_class_status_chip_value">
               {dealVisibilityLabel}
             </span>
@@ -4974,7 +4974,7 @@ function investorClassSearchBlob(
     row.name,
     classTypeOptionLabel(row.subscriptionType),
     row.entityName,
-    formatDateDdMmmYyyy(row.startDate),
+    formatDateDdMmmYyyy(row.createdAt),
     row.offeringSize,
     row.raiseAmountDistributions,
     row.billingRaiseQuota,

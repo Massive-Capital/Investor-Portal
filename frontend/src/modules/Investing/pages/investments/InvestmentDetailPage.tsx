@@ -543,7 +543,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
       },
       {
         id: "invested",
-        header: "Invested",
+        header: "Investment",
         align: "right",
         colWidth: PROFILE_BREAKDOWN_COL_WIDTH.invested,
         thClassName: "deals_th_align_right",

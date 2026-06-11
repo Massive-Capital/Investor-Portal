@@ -10,8 +10,11 @@ import {
   countDealInvestmentsByContactIdForViewer,
   getUserDisplayNameById,
   insertContact,
+  isSelfRegisteredInvestorContactRow,
   listContactsForViewer,
+  loadContactCreatorUsersById,
   patchContactStatusForViewer,
+  resolveContactDisplayFields,
   updateContactFieldsForViewer,
 } from "../services/contact/contact.service.js";
 import {
@@ -182,22 +185,61 @@ async function mapContactEmailTemplateToJsonWithName(
   };
 }
 
+async function mapContactsToJsonWithNames(
+  rows: ContactRow[],
+  dealCounts?: Map<string, number>,
+) {
+  const creatorById = await loadContactCreatorUsersById(
+    rows.map((row) => row.createdBy),
+  );
+
+  const displayNameByCreatorId = new Map<string, string>();
+  const creatorIdsNeedingName = [
+    ...new Set(
+      rows
+        .filter(
+          (row) =>
+            !isSelfRegisteredInvestorContactRow(
+              row,
+              creatorById.get(row.createdBy) ?? null,
+            ),
+        )
+        .map((row) => row.createdBy),
+    ),
+  ];
+  await Promise.all(
+    creatorIdsNeedingName.map(async (creatorId) => {
+      const name = (await getUserDisplayNameById(creatorId)).trim();
+      displayNameByCreatorId.set(creatorId, name);
+    }),
+  );
+
+  return rows.map((row) => {
+    const base = mapContactToJson(row);
+    const { createdBy: _createdBy, ...rest } = base;
+    const creator = creatorById.get(row.createdBy) ?? null;
+    const display = resolveContactDisplayFields(
+      row,
+      creator,
+      displayNameByCreatorId.get(row.createdBy) ?? "",
+    );
+    const idKey = String(row.id).trim().toLowerCase();
+    const dealCount = dealCounts?.get(idKey) ?? 0;
+    return {
+      ...rest,
+      owners: display.owners,
+      createdByDisplayName: display.createdByDisplayName || undefined,
+      dealCount,
+    };
+  });
+}
+
 async function mapContactToJsonWithNames(
   row: ContactRow,
   dealCounts?: Map<string, number>,
 ) {
-  const base = mapContactToJson(row);
-  const { createdBy: _createdBy, ...rest } = base;
-  const createdByDisplayName = (
-    await getUserDisplayNameById(row.createdBy)
-  ).trim();
-  const idKey = String(row.id).trim().toLowerCase();
-  const dealCount = dealCounts?.get(idKey) ?? 0;
-  return {
-    ...rest,
-    createdByDisplayName: createdByDisplayName || undefined,
-    dealCount,
-  };
+  const [mapped] = await mapContactsToJsonWithNames([row], dealCounts);
+  return mapped;
 }
 
 /** GET /contacts/organization-tags — names from `organization_contact_tag`. */
@@ -281,9 +323,7 @@ export async function getContacts(
       contactIds,
       requestedOrganizationId: requestedOrg,
     });
-    const contacts = await Promise.all(
-      rows.map((r) => mapContactToJsonWithNames(r, dealCounts)),
-    );
+    const contacts = await mapContactsToJsonWithNames(rows, dealCounts);
     logSocContactDirectoryView({
       actorUserId: user.id,
       resultCount: contacts.length,

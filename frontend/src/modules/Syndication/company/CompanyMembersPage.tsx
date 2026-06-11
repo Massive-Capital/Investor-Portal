@@ -904,6 +904,7 @@ export default function CompanyMembersPage() {
           />
         ),
         align: "center",
+        colWidth: "2.75rem",
         thClassName: "um_th_checkbox",
         tdClassName: "um_td_checkbox",
         cell: (row) => {
@@ -928,6 +929,7 @@ export default function CompanyMembersPage() {
       {
         id: "user",
         header: "User",
+        colWidth: "16rem",
         sortValue: (row) => {
           const name = memberUserCellPrimaryLabel(row)
           const e = formatValue(row.email)
@@ -971,6 +973,7 @@ export default function CompanyMembersPage() {
       {
         id: "role",
         header: "Roles",
+        colWidth: "9rem",
         sortValue: (row) => roleSortValue(row).toLowerCase(),
         tdClassName: "um_td_memberships um_td_role",
         cell: (row) => <MemberRoleBadge row={row} />,
@@ -978,6 +981,7 @@ export default function CompanyMembersPage() {
       {
         id: "organizations",
         header: organizationDisplayScope ? "Organization" : "Organizations",
+        colWidth: "12rem",
         sortValue: (row) =>
           organizationsSortValue(row, organizationDisplayScope).toLowerCase(),
         tdClassName: "um_td_memberships",
@@ -991,6 +995,7 @@ export default function CompanyMembersPage() {
       {
         id: "status",
         header: "User Status",
+        colWidth: "9rem",
         sortValue: (row) =>
           userStatusForUi(row).label.toLowerCase(),
         cell: (row) => {
@@ -1001,6 +1006,7 @@ export default function CompanyMembersPage() {
       {
         id: "account",
         header: "Account status",
+        colWidth: "10rem",
         sortValue: (row) =>
           accountStatusForUi(row).label.toLowerCase(),
         cell: (row) => {
@@ -1017,6 +1023,7 @@ export default function CompanyMembersPage() {
       {
         id: "actions",
         header: "Actions",
+        colWidth: "5rem",
         align: "center",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions",
@@ -1148,6 +1155,7 @@ export default function CompanyMembersPage() {
           <div className="cp_company_tab_table_wrap">
             <DataTable
               visualVariant="members"
+              stickyColumnCount={2}
               membersTableClassName="um_table_members deal_inv_table"
               initialSort={{ columnId: "user", direction: "asc" }}
               columns={columns}

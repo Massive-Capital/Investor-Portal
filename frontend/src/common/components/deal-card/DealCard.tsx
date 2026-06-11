@@ -3,7 +3,6 @@ import {
   Briefcase,
   Building2,
   Calendar,
-  CircleDot,
   CircleDollarSign,
   ClipboardCheck,
   DollarSign,
@@ -11,6 +10,7 @@ import {
   MapPin,
   PieChart,
   Shield,
+  TrendingUp,
   UserRound,
   Wallet,
   type LucideIcon,
@@ -26,6 +26,8 @@ import type { InvestNowStepperPhase } from "@/modules/Investing/pages/invest/inv
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
 import { dealStageChipCompactClassName } from "../../../modules/Syndication/Deals/utils/dealStageChip"
 import "../../../modules/Syndication/Deals/deals-list.css"
+import { InvestorDealStatusBadge } from "@/modules/Investing/components/InvestorDealStatusBadge"
+import type { InvestorDealStatusBadgeVariant } from "@/modules/Syndication/Deals/constants/deal-lifecycle/investor-offering-status-ui"
 import { DealCardMediaCarousel } from "./DealCardMediaCarousel"
 import "./deal-card.css"
 
@@ -97,6 +99,7 @@ interface DealCardProps {
   statusBadgeClassName?: string
   /** Hide the default stage dot icon (e.g. offering-status emoji badges). */
   hideStatusIcon?: boolean
+  statusBadgeVariant?: InvestorDealStatusBadgeVariant
   /** Preview-only copy shown under metrics (investor dashboard). */
   previewNotice?: { message: string; tooltip?: string } | null
   metrics: DealCardMetric[]
@@ -120,6 +123,8 @@ interface DealCardProps {
   reviewCount?: number
   /** light.html prestige-card horizontal layout (dashboard grid) */
   prestigeLayout?: boolean
+  /** Footer CTA on prestige cards (default: “Manage deal”). */
+  manageCtaLabel?: string
   /** Saved Invest Now wizard progress (investing dashboard draft deals). */
   investNowDraftProgress?: InvestNowDraftProgress | null
   /** Deal id — required for onboarding phase navigation from the progress panel. */
@@ -135,12 +140,14 @@ export function DealCard({
   dealStage = null,
   statusBadgeClassName,
   hideStatusIcon = false,
+  statusBadgeVariant = "default",
   previewNotice = null,
   metrics,
   coverImageUrl,
   coverImageUrls,
   onUploadCoverClick,
   prestigeLayout = false,
+  manageCtaLabel = "Manage deal",
   investNowDraftProgress = null,
   dealId,
   investNowResumeScope = null,
@@ -178,24 +185,26 @@ export function DealCard({
     ],
   )
 
+  const resolvedStatusBadgeClassName = [
+    statusBadgeClassName ??
+      ["deal_card_status", dealStageChipCompactClassName(dealStage)].join(" "),
+    prestigeLayout ? "deal_card_prestige_stage" : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  const isInvestNowOpportunity = statusBadgeVariant === "invest_now"
+  const useInvestNowFooterCta =
+    isInvestNowOpportunity && manageCtaLabel === "Invest Now"
+
   const statusBadge = (
-    <span
-      className={[
-        statusBadgeClassName ??
-          ["deal_card_status", dealStageChipCompactClassName(dealStage)].join(" "),
-        prestigeLayout ? "deal_card_prestige_stage" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      title={previewNotice?.tooltip ?? `Stage: ${statusLabel}`}
-    >
-      {!hideStatusIcon ? (
-        <span className="deals_list_stage_badge_icon" aria-hidden>
-          <CircleDot size={12} strokeWidth={2} />
-        </span>
-      ) : null}
-      <span className="deal_card_status_label">{statusLabel}</span>
-    </span>
+    <InvestorDealStatusBadge
+      statusLabel={statusLabel}
+      badgeClassName={resolvedStatusBadgeClassName}
+      hideStatusIcon={hideStatusIcon}
+      statusBadgeVariant={statusBadgeVariant}
+      statusInfo={previewNotice}
+    />
   )
 
   const mediaBlock = (
@@ -250,6 +259,7 @@ export function DealCard({
           "deal_card",
           "deal_card--prestige",
           previewNotice?.message ? "deal_card--prestige_coming_soon" : "",
+          isInvestNowOpportunity ? "deal_card--prestige_invest_now" : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -324,8 +334,18 @@ export function DealCard({
               </p>
             ) : null}
             <div className="deal_card_prestige_manage">
-              <span className="deal_card_manage_cta">
-                Manage deal
+              <span
+                className={[
+                  "deal_card_manage_cta",
+                  useInvestNowFooterCta ? "deal_card_manage_cta--invest_now" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                {useInvestNowFooterCta ? (
+                  <TrendingUp size={15} strokeWidth={2.25} aria-hidden />
+                ) : null}
+                {manageCtaLabel}
                 <ArrowRight size={16} strokeWidth={2} aria-hidden />
               </span>
             </div>

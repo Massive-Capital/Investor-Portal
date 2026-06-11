@@ -204,7 +204,7 @@ export function serializeFundingInstructions(
       accountNumber: state.achAccountNumber,
       accountType: state.achAccountType,
       beneficiaryAccountName: state.achBeneficiaryAccountName,
-      beneficiaryAddress: state.achBeneficiaryAddress,
+      beneficiaryAddress: "", // hidden field — use bank / mailing address instead
       reference: state.achReference,
       otherInstructions: state.achOtherInstructions,
     },
@@ -216,7 +216,7 @@ export function serializeFundingInstructions(
       accountNumber: state.accountNumber,
       accountType: state.accountType,
       beneficiaryAccountName: state.beneficiaryAccountName,
-      beneficiaryAddress: state.beneficiaryAddress,
+      beneficiaryAddress: "", // hidden field
       reference: state.wireReference,
       otherInstructions: state.wireOtherInstructions,
     },
@@ -224,7 +224,7 @@ export function serializeFundingInstructions(
       enabled: state.checksEnabled,
       mailingAddress: state.checkMailingAddress,
       beneficiary: state.checkBeneficiary,
-      beneficiaryAddress: state.checkBeneficiaryAddress,
+      beneficiaryAddress: "", // hidden field — use Mailing address instead
       memo: state.checkMemo,
       otherInstructions: state.checkOtherInstructions,
     },

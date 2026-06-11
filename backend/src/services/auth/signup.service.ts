@@ -9,12 +9,20 @@ import {
   COMPANY_ADMIN,
   COMPANY_USER,
   DEAL_PARTICIPANT,
+  INVESTOR,
   isInviteAssignableRole,
   PLATFORM_USER,
 } from "../../constants/roles.js";
 import { ensureCompanyByName } from "../company/company.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../deal/assigningDealUser.service.js";
-import { markContactsAsPortalUserByEmailNorm } from "../contact/contact.service.js";
+import {
+  ensureSelfRegisteredInvestorContact,
+  markContactsAsPortalUserByEmailNorm,
+} from "../contact/contact.service.js";
+import {
+  recordPlatformSelfServeSignupNotification,
+  type PlatformSelfServeSignupKind,
+} from "../platform/platformSignupNotification.service.js";
 import { getAddDealFormById } from "../deal/dealForm.service.js";
 import { sendSignupSuccessEmail } from "./signupSuccessEmail.service.js";
 import {
@@ -371,6 +379,13 @@ export async function registerUser(
       }
     } else if (applyInviteRole) {
       roleForUser = invitedRoleFromToken!;
+    } else if (
+      !inviteToken?.trim() &&
+      !organizationId &&
+      !companyName
+    ) {
+      // Self-serve signup with no company: investor-only portal (not syndicating workspace).
+      roleForUser = INVESTOR;
     }
 
     const phoneDup = await assertPhoneUniqueInOrganization({
@@ -435,10 +450,47 @@ export async function registerUser(
       );
     }
 
+    const isSelfServeSignup = !inviteToken?.trim() && !isDealMemberInvite;
+    let selfRegisteredContactId: string | null = null;
+
+    if (createdUserId && roleForUser === INVESTOR && !organizationId) {
+      try {
+        selfRegisteredContactId = await ensureSelfRegisteredInvestorContact({
+          userId: createdUserId,
+          emailNorm,
+          firstName,
+          lastName,
+          phone,
+        });
+      } catch (e) {
+        console.error("ensureSelfRegisteredInvestorContact after signup:", e);
+      }
+    }
+
     try {
       await markContactsAsPortalUserByEmailNorm(emailNorm);
     } catch (e) {
       console.error("markContactsAsPortalUserByEmailNorm after signup:", e);
+    }
+
+    if (createdUserId && isSelfServeSignup) {
+      try {
+        const signupKind: PlatformSelfServeSignupKind =
+          roleForUser === INVESTOR && !organizationId ? "investor" : "company";
+        await recordPlatformSelfServeSignupNotification({
+          userId: createdUserId,
+          email: emailNorm,
+          firstName,
+          lastName,
+          role: roleForUser,
+          signupKind,
+          companyName: companyName || null,
+          organizationId: organizationId ?? null,
+          contactId: selfRegisteredContactId,
+        });
+      } catch (e) {
+        console.error("recordPlatformSelfServeSignupNotification after signup:", e);
+      }
     }
 
     const uidForReconcile = pendingId ?? createdUserId;

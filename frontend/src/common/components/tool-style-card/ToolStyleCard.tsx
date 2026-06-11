@@ -12,6 +12,40 @@ interface ToolStyleCardProps {
   className?: string
   /** KPI row: label beside icon, large bold value (description), optional footer */
   variant?: "default" | "metric"
+  /** Shows a skeleton loader in place of the value while data is loading */
+  loading?: boolean
+}
+
+function ToolStyleCardValue({
+  loading,
+  description,
+  metric,
+}: {
+  loading: boolean
+  description: ReactNode
+  metric: boolean
+}) {
+  if (loading) {
+    return (
+      <div
+        className={
+          metric
+            ? "tool_style_card_value_loading tool_style_card_value_loading--metric"
+            : "tool_style_card_value_loading"
+        }
+        role="status"
+        aria-label="Loading"
+      >
+        <span className="tool_style_card_value_skeleton" aria-hidden />
+      </div>
+    )
+  }
+
+  if (metric) {
+    return <p className="tool_style_card_value_lead">{description}</p>
+  }
+
+  return <p className="tool_style_card_desc">{description}</p>
 }
 
 export function ToolStyleCard({
@@ -23,10 +57,12 @@ export function ToolStyleCard({
   onClick,
   className = "",
   variant = "default",
+  loading = false,
 }: ToolStyleCardProps) {
   const rootClass = [
     "tool_style_card",
     variant === "metric" ? "tool_style_card--metric portal_metric_kpi_card" : "",
+    loading ? "tool_style_card--loading" : "",
     onClick ? "tool_style_card_clickable" : "",
     className,
   ]
@@ -55,8 +91,10 @@ export function ToolStyleCard({
             <Icon className="tool_style_card_icon" size={22} strokeWidth={1.75} />
           </div>
         </div>
-        <p className="tool_style_card_value_lead">{description}</p>
-        {footer ? <div className="tool_style_card_footer">{footer}</div> : null}
+        <ToolStyleCardValue loading={loading} description={description} metric />
+        {footer && !loading ? (
+          <div className="tool_style_card_footer">{footer}</div>
+        ) : null}
       </>
     ) : (
       <>
@@ -67,18 +105,29 @@ export function ToolStyleCard({
           <h3 className="tool_style_card_title">{title}</h3>
           {hintEl}
         </div>
-        <p className="tool_style_card_desc">{description}</p>
-        {footer ? <div className="tool_style_card_footer">{footer}</div> : null}
+        <ToolStyleCardValue loading={loading} description={description} metric={false} />
+        {footer && !loading ? (
+          <div className="tool_style_card_footer">{footer}</div>
+        ) : null}
       </>
     )
 
   if (onClick) {
     return (
-      <button type="button" className={rootClass} onClick={onClick}>
+      <button
+        type="button"
+        className={rootClass}
+        onClick={onClick}
+        aria-busy={loading}
+      >
         {inner}
       </button>
     )
   }
 
-  return <div className={rootClass}>{inner}</div>
+  return (
+    <div className={rootClass} aria-busy={loading}>
+      {inner}
+    </div>
+  )
 }

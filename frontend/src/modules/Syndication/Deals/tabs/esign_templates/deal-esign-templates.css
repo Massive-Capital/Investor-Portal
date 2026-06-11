@@ -1273,8 +1273,82 @@
     background 0.15s ease;
 }
 
-.deal_esign_empty_loading {
-  min-height: 10rem;
+.deal_esign_profiles_table_wrap_loading {
+  position: relative;
+  min-height: min(20rem, 42vh);
+  pointer-events: none;
+}
+
+.deal_esign_profiles_table_skeleton {
+  opacity: 0.45;
+}
+
+.deal_esign_profiles_skeleton_row {
+  pointer-events: none;
+}
+
+.deal_esign_profiles_skeleton {
+  display: block;
+  height: 0.75rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--portal-border, #e2e8f0) 72%, #f1f5f9);
+  animation: deal_esign_profiles_skeleton_pulse 1.25s ease-in-out infinite;
+}
+
+.deal_esign_profiles_skeleton_profile {
+  width: min(12rem, 88%);
+}
+
+.deal_esign_profiles_skeleton_name {
+  width: min(14rem, 92%);
+}
+
+.deal_esign_profiles_skeleton_includes {
+  width: min(8rem, 70%);
+}
+
+.deal_esign_profiles_skeleton_status {
+  width: min(5.5rem, 80%);
+}
+
+.deal_esign_profiles_skeleton_actions {
+  width: min(6.5rem, 75%);
+}
+
+@keyframes deal_esign_profiles_skeleton_pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.deal_esign_profiles_table_loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: color-mix(
+    in srgb,
+    var(--portal-surface, #fff) 78%,
+    transparent
+  );
+  backdrop-filter: blur(1px);
+}
+
+.deal_esign_profiles_table_loading_text {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
 }
 
 .deal_esign_empty_dropzone_title {

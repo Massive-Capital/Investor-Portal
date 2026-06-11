@@ -213,7 +213,9 @@ export default function CompanyDealsPage() {
       {
         id: "name",
         header: "Deal",
+        colWidth: "18rem",
         sortValue: (row) => (row.dealName ?? "").toLowerCase(),
+        thClassName: "cp_company_deal_name_th",
         tdClassName: "cp_company_deal_name_td",
         cell: (row) => (
           <Link
@@ -227,6 +229,7 @@ export default function CompanyDealsPage() {
       {
         id: "type",
         header: "Type",
+        colWidth: "8rem",
         sortValue: (row) => dealTypeDisplayLabel(row.dealType).toLowerCase(),
         tdClassName: "cp_company_deal_meta_td",
         cell: (row) => (
@@ -238,6 +241,7 @@ export default function CompanyDealsPage() {
       {
         id: "stage",
         header: "Stage",
+        colWidth: "8rem",
         sortValue: (row) =>
           dealStageLabel(row.dealStage).toLowerCase(),
         tdClassName: "cp_company_deal_meta_td",
@@ -250,6 +254,7 @@ export default function CompanyDealsPage() {
       {
         id: "start",
         header: "Start",
+        colWidth: "7rem",
         align: "center",
         thClassName: "cp_company_deal_date_th",
         tdClassName: "cp_company_deal_date_td",
@@ -263,6 +268,7 @@ export default function CompanyDealsPage() {
       {
         id: "close",
         header: "Close",
+        colWidth: "7rem",
         align: "center",
         thClassName: "cp_company_deal_date_th",
         tdClassName: "cp_company_deal_date_td",
@@ -272,6 +278,7 @@ export default function CompanyDealsPage() {
       {
         id: "location",
         header: "Location",
+        colWidth: "10rem",
         sortValue: (row) => (row.locationDisplay ?? "").toLowerCase(),
         tdClassName: "cp_company_deal_meta_td",
         cell: (row) => (
@@ -283,6 +290,7 @@ export default function CompanyDealsPage() {
       {
         id: "investors",
         header: "Investors",
+        colWidth: "6.5rem",
         align: "right",
         thClassName: "cp_company_deal_num_th",
         tdClassName: "cp_company_deal_num_td um_td_numeric",
@@ -294,6 +302,7 @@ export default function CompanyDealsPage() {
       {
         id: "actions",
         header: "Actions",
+        colWidth: "5rem",
         align: "center",
         thClassName: "um_th_actions",
         tdClassName: "um_td_actions",
@@ -411,6 +420,7 @@ export default function CompanyDealsPage() {
         <div className="cp_company_tab_table_wrap">
           <DataTable
             visualVariant="members"
+            stickyFirstColumn={false}
             membersTableClassName="um_table_members deal_inv_table cp_company_deals_table"
             initialSort={{ columnId: "name", direction: "asc" }}
             columns={columns}

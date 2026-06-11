@@ -23,6 +23,10 @@ import { isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPath";
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
+import {
+  applyOfferingPortfolioPostAuth,
+  consumeOfferingPortfolioAuthIntent,
+} from "../../Syndication/Deals/utils/offeringPortfolioAuthIntent";
 import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import { toast } from "../../../common/components/Toast";
 import { ensureActiveCompanyInitialized } from "../../../common/auth/setActiveCompany";
@@ -126,6 +130,7 @@ const SigninForm = () => {
       const state = location.state as
         | { from?: string; investNow?: boolean }
         | undefined;
+      const portfolioIntent = consumeOfferingPortfolioAuthIntent();
       const storedIntent = consumeInvestNowIntent();
       const from =
         parseSafeNextPath(state?.from) ??
@@ -137,17 +142,23 @@ const SigninForm = () => {
         : isPlatformAdmin()
           ? "/metrics"
           : "/dashboard";
-      if (!from && storedIntent?.dealId) {
+      let postSignInState:
+        | { investNow: true }
+        | { returnTo: string }
+        | undefined;
+      if (portfolioIntent?.dealId) {
+        const applied = applyOfferingPortfolioPostAuth(portfolioIntent.dealId);
+        redirectTo = from ?? applied.redirectTo;
+        postSignInState = applied.postAuthState;
+      } else if (!from && storedIntent?.dealId) {
         redirectTo = dealInvestNowPath(storedIntent.dealId);
+        postSignInState = { investNow: true as const };
+      } else if (state?.investNow === true) {
+        postSignInState = { investNow: true as const };
       }
       if (redirectTo === "/") {
         redirectTo = isPlatformAdmin() ? "/metrics" : "/dashboard";
       }
-      const wantsInvestNow =
-        state?.investNow === true || Boolean(storedIntent?.dealId);
-      const postSignInState = wantsInvestNow
-        ? { investNow: true as const }
-        : undefined;
       navigate(redirectTo, { replace: true, state: postSignInState });
     } catch {
       setError(

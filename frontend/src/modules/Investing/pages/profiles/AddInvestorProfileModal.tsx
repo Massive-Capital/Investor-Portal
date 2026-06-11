@@ -683,55 +683,57 @@ function MailingAddressFields({
 
   return (
     <InvestingFormField
-      id={`${idPrefix}-mail`}
+      id={`${idPrefix}-mail-addr`}
+      fieldClassName="um_field add_profile_mailing_field"
       label={label}
       Icon={MapPin}
       error={mailingError}
+      labelSuffix={
+        <label className="add_profile_same_as_tax" htmlFor={`${idPrefix}-mail-same`}>
+          <input
+            id={`${idPrefix}-mail-same`}
+            type="checkbox"
+            className="add_profile_same_as_tax_checkbox"
+            checked={sameAsTax}
+            onChange={(e) => {
+              if (e.target.checked) {
+                onPatch(
+                  {
+                    mailingAddressMode: "same_as_tax",
+                    mailingAddressId: taxAddressId,
+                  },
+                  "mailingAddressId",
+                )
+              } else {
+                onPatch({ mailingAddressMode: "add_new" }, "mailingAddressId")
+              }
+            }}
+          />
+          <span className="add_profile_same_as_tax_text">Same as tax address</span>
+        </label>
+      }
     >
-      <label className="add_profile_same_as_tax" htmlFor={`${idPrefix}-mail-same`}>
-        <input
-          id={`${idPrefix}-mail-same`}
-          type="checkbox"
-          checked={sameAsTax}
-          onChange={(e) => {
-            if (e.target.checked) {
-              onPatch(
-                {
-                  mailingAddressMode: "same_as_tax",
-                  mailingAddressId: taxAddressId,
-                },
-                "mailingAddressId",
-              )
-            } else {
-              onPatch({ mailingAddressMode: "add_new" }, "mailingAddressId")
-            }
-          }}
-        />
-        <span>Same as tax address</span>
-      </label>
-      <div className={sameAsTax ? undefined : "add_profile_mailing_search"}>
-        <SavedAddressSelect
-          id={`${idPrefix}-mail-addr`}
-          value={displayMailingId}
-          onChange={(v) => {
-            if (!sameAsTax) onPatch({ mailingAddressId: v }, "mailingAddressId")
-          }}
-          savedAddresses={savedAddresses}
-          emptyLabel={
-            sameAsTax && !taxAddressId.trim()
-              ? "Select tax address first"
-              : emptyLabel
-          }
-          ariaLabel={
-            sameAsTax
-              ? "Mailing address — same as tax address"
-              : "Mailing address — select a saved address"
-          }
-          disabled={sameAsTax}
-          invalid={Boolean(mailingError)}
-          onAddNew={sameAsTax ? undefined : onOpenAddMailing}
-        />
-      </div>
+      <SavedAddressSelect
+        id={`${idPrefix}-mail-addr`}
+        value={displayMailingId}
+        onChange={(v) => {
+          if (!sameAsTax) onPatch({ mailingAddressId: v }, "mailingAddressId")
+        }}
+        savedAddresses={savedAddresses}
+        emptyLabel={
+          sameAsTax && !taxAddressId.trim()
+            ? "Select tax address first"
+            : emptyLabel
+        }
+        ariaLabel={
+          sameAsTax
+            ? "Mailing address — same as tax address"
+            : "Mailing address — select a saved address"
+        }
+        disabled={sameAsTax}
+        invalid={Boolean(mailingError)}
+        onAddNew={sameAsTax ? undefined : onOpenAddMailing}
+      />
     </InvestingFormField>
   )
 }
@@ -1171,9 +1173,9 @@ export function AddInvestorProfileModal({
     </>
   )
 
-  const validateStep = useCallback((): boolean => {
+  const validateStepFor = useCallback((stepNum: number): boolean => {
     const noErr: AddProfileFieldErrors = {}
-    if (step === 1) {
+    if (stepNum === 1) {
       const err: AddProfileFieldErrors = {}
       if (!form.profileType.trim()) {
         err.profileType = REQUIRED_MSG
@@ -1184,7 +1186,7 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 2 && isEntity) {
+    if (stepNum === 2 && isEntity) {
       const err: AddProfileFieldErrors = {}
       if (!form.custodianIra) {
         err.custodianIra = REQUIRED_MSG
@@ -1213,7 +1215,7 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 2 && isJointTenancy) {
+    if (stepNum === 2 && isJointTenancy) {
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
@@ -1227,7 +1229,7 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 2 && isIndividual) {
+    if (stepNum === 2 && isIndividual) {
       const err: AddProfileFieldErrors = {}
       if (!form.firstName.trim()) err.firstName = REQUIRED_MSG
       if (!form.lastName.trim()) err.lastName = REQUIRED_MSG
@@ -1236,7 +1238,7 @@ export function AddInvestorProfileModal({
       return Object.keys(err).length === 0
     }
     if (
-      step === 3 &&
+      stepNum === 3 &&
       (isIndividual || isJointTenancy || isEntity)
     ) {
       const err: AddProfileFieldErrors = {}
@@ -1244,7 +1246,7 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 4 && (isIndividual || isEntity)) {
+    if (stepNum === 4 && (isIndividual || isEntity)) {
       const err: AddProfileFieldErrors = {}
       if (!form.taxAddressId.trim()) {
         err.taxAddressId = "Select a tax address, or add one in the Address tab first."
@@ -1252,7 +1254,7 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 4 && isJointTenancy) {
+    if (stepNum === 4 && isJointTenancy) {
       const err: AddProfileFieldErrors = {}
       if (!form.taxAddressId.trim()) {
         err.taxAddressId = "Select a tax address, or add one in the Address tab first."
@@ -1264,13 +1266,53 @@ export function AddInvestorProfileModal({
       setFieldError(err)
       return Object.keys(err).length === 0
     }
-    if (step === 5 && hasBeneficiaryStep) {
+    if (stepNum === 5 && hasBeneficiaryStep) {
+      setFieldError(noErr)
+      return true
+    }
+    if (isEdit && stepNum === totalSteps) {
       setFieldError(noErr)
       return true
     }
     setFieldError(noErr)
     return true
-  }, [step, form, isIndividual, isJointTenancy, isEntity, hasBeneficiaryStep])
+  }, [
+    form,
+    isIndividual,
+    isJointTenancy,
+    isEntity,
+    hasBeneficiaryStep,
+    isEdit,
+    totalSteps,
+  ])
+
+  const validateStep = useCallback(
+    () => validateStepFor(step),
+    [validateStepFor, step],
+  )
+
+  const goToStep = useCallback(
+    (target: number) => {
+      if (target < 1 || target > totalSteps || target === step) return
+
+      if (target < step) {
+        setFieldError({})
+        setStep(target)
+        return
+      }
+
+      let current = step
+      while (current < target) {
+        if (!validateStepFor(current)) {
+          setStep(current)
+          return
+        }
+        current += 1
+      }
+      setStep(target)
+    },
+    [step, totalSteps, validateStepFor],
+  )
 
   const goNext = useCallback(() => {
     if (!validateStep()) return
@@ -1552,6 +1594,20 @@ export function AddInvestorProfileModal({
           const n = i + 1
           const isActive = step === n
           const isDone = step > n
+          const nodeClass = [
+            "add_contact_step_node",
+            isActive ? "add_contact_step_node_active" : "",
+            isDone ? "add_contact_step_node_done" : "",
+            !isActive ? "add_contact_step_node_clickable" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")
+          const nodeContent = (
+            <>
+              <span className="add_contact_step_dot">{n}</span>
+              <span className="add_contact_step_label">{label}</span>
+            </>
+          )
           return (
             <Fragment key={n}>
               {i > 0 ? (
@@ -1564,23 +1620,20 @@ export function AddInvestorProfileModal({
                   aria-hidden
                 />
               ) : null}
-              <div
-                className={
-                  isActive
-                    ? "add_contact_step_node add_contact_step_node_active"
-                    : isDone
-                      ? "add_contact_step_node add_contact_step_node_done"
-                      : "add_contact_step_node"
-                }
-              >
-                <span
-                  className="add_contact_step_dot"
-                  aria-current={isActive ? "step" : undefined}
+              {isActive ? (
+                <div className={nodeClass} aria-current="step">
+                  {nodeContent}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`${nodeClass} add_contact_step_node_btn`}
+                  onClick={() => goToStep(n)}
+                  aria-label={`Go to step ${n}: ${label}`}
                 >
-                  {n}
-                </span>
-                <span className="add_contact_step_label">{label}</span>
-              </div>
+                  {nodeContent}
+                </button>
+              )}
             </Fragment>
           )
         })}

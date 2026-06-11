@@ -40,6 +40,7 @@ import {
   type DealDetailApi,
 } from "./api/dealsApi"
 import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
+import { DealsPageCenteredLoader } from "./components/DealsPageCenteredLoader"
 import {
   dealInvestNowPath,
   EMPTY_INVESTORS_PAYLOAD,
@@ -167,6 +168,9 @@ export function DealDetailPage() {
   >([])
   const [investingOfferingInvestors, setInvestingOfferingInvestors] =
     useState<DealInvestorsPayload>(EMPTY_INVESTORS_PAYLOAD)
+  const [investingOfferingLoading, setInvestingOfferingLoading] = useState(
+    () => mode === "investing",
+  )
   const [memberRosterForTabs, setMemberRosterForTabs] = useState<
     DealInvestorRow[]
   >([])
@@ -367,25 +371,33 @@ export function DealDetailPage() {
   }, [dealId, mode])
 
   useEffect(() => {
-    if (mode !== "investing" || !dealId?.trim()) return
+    if (mode !== "investing" || !dealId?.trim()) {
+      setInvestingOfferingLoading(false)
+      return
+    }
     let cancelled = false
+    setInvestingOfferingLoading(true)
     setInvestingOfferingClasses([])
     setInvestingOfferingInvestors(EMPTY_INVESTORS_PAYLOAD)
     void (async () => {
-      const id = dealId.trim()
-      const [icResult, invResult] = await Promise.allSettled([
-        fetchDealInvestorClasses(id),
-        fetchDealInvestors(id),
-      ])
-      if (cancelled) return
-      setInvestingOfferingClasses(
-        icResult.status === "fulfilled" ? icResult.value : [],
-      )
-      setInvestingOfferingInvestors(
-        invResult.status === "fulfilled"
-          ? invResult.value
-          : EMPTY_INVESTORS_PAYLOAD,
-      )
+      try {
+        const id = dealId.trim()
+        const [icResult, invResult] = await Promise.allSettled([
+          fetchDealInvestorClasses(id),
+          fetchDealInvestors(id),
+        ])
+        if (cancelled) return
+        setInvestingOfferingClasses(
+          icResult.status === "fulfilled" ? icResult.value : [],
+        )
+        setInvestingOfferingInvestors(
+          invResult.status === "fulfilled"
+            ? invResult.value
+            : EMPTY_INVESTORS_PAYLOAD,
+        )
+      } finally {
+        if (!cancelled) setInvestingOfferingLoading(false)
+      }
     })()
     return () => {
       cancelled = true
@@ -635,11 +647,7 @@ export function DealDetailPage() {
     )
 
   if (deal === undefined)
-    return (
-      <div className="deals_list_page deals_detail_page deals_page_loader_center">
-        <p className="deals_list_not_found">Loading deal…</p>
-      </div>
-    )
+    return <DealsPageCenteredLoader label="Loading deal…" />
 
   if (!deal)
     return (
@@ -653,6 +661,9 @@ export function DealDetailPage() {
         </p>
       </div>
     )
+
+  if (mode === "investing" && investingOfferingLoading)
+    return <DealsPageCenteredLoader label="Loading deal…" />
 
   const showSyndicatingDealChrome = mode !== "investing"
 

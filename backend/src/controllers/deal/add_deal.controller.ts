@@ -261,7 +261,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
       }
       rows = await listAddDealFormsByOrganizationId(orgParam);
     } else {
-      if (includeParticipantDeals) {
+      if (includeParticipantDeals && !scope.seesAllDeals) {
         const [uRow] = await db
           .select({ email: users.email })
           .from(users)

@@ -19,6 +19,7 @@ import {
   updateDealInvestorClass,
   type DealDetailApi,
 } from "../../api/dealsApi"
+import { OpenInvestmentDraftStageInfoModal } from "../../components/OpenInvestmentDraftStageInfoModal"
 import { OpenInvestmentEsignRequiredModal } from "../../components/OpenInvestmentEsignRequiredModal"
 import {
   computeDealAssetRowsFromClientStorage,
@@ -65,7 +66,10 @@ import {
   OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
   readOfferingPreviewInvestorVisibility,
 } from "../../utils/offeringPreviewInvestorVisibility"
-import { canActivateOpenInvestment } from "../../utils/canActivateOpenInvestment"
+import {
+  canActivateOpenInvestment,
+  isOpenInvestmentWhileDealStageDraft,
+} from "../../utils/canActivateOpenInvestment"
 import { areDealEsignTemplatesConfigured } from "../../utils/dealEsignTemplatesConfigured"
 import { DEAL_DETAIL_TAB_QUERY_PARAM } from "../../utils/offeringDetailsSectionNav"
 
@@ -239,6 +243,9 @@ export function OfferingOverviewSection({
     boolean | null
   >(null)
   const [esignRequiredModalOpen, setEsignRequiredModalOpen] = useState(false)
+  const [draftStageInfoModalOpen, setDraftStageInfoModalOpen] = useState(false)
+  const [pendingOpenInvestmentStatus, setPendingOpenInvestmentStatus] =
+    useState<string | null>(null)
   const overviewRef = useRef<HTMLDivElement>(null)
 
   const refreshEsignTemplatesConfigured = useCallback(async () => {
@@ -280,6 +287,19 @@ export function OfferingOverviewSection({
     })
   }, [detail.id, navigate])
 
+  const cancelDraftStageOpenInvestment = useCallback(() => {
+    setPendingOpenInvestmentStatus(null)
+    setDraftStageInfoModalOpen(false)
+  }, [])
+
+  const confirmDraftStageOpenInvestment = useCallback(() => {
+    const next = pendingOpenInvestmentStatus
+    setPendingOpenInvestmentStatus(null)
+    setDraftStageInfoModalOpen(false)
+    if (!next) return
+    setDraft((d) => ({ ...d, offeringStatus: next }))
+  }, [pendingOpenInvestmentStatus])
+
   const tryApplyOfferingStatus = useCallback(
     async (next: string): Promise<boolean> => {
       let configured = esignTemplatesConfigured
@@ -297,10 +317,26 @@ export function OfferingOverviewSection({
         setEsignRequiredModalOpen(true)
         return false
       }
+      if (
+        isOpenInvestmentWhileDealStageDraft(
+          detail.dealStage,
+          draft.offeringStatus,
+          next,
+        )
+      ) {
+        setPendingOpenInvestmentStatus(next)
+        setDraftStageInfoModalOpen(true)
+        return false
+      }
       setDraft((d) => ({ ...d, offeringStatus: next }))
       return true
     },
-    [draft.offeringStatus, esignTemplatesConfigured, refreshEsignTemplatesConfigured],
+    [
+      detail.dealStage,
+      draft.offeringStatus,
+      esignTemplatesConfigured,
+      refreshEsignTemplatesConfigured,
+    ],
   )
 
   const selectedClassRow = useMemo(
@@ -1348,6 +1384,11 @@ export function OfferingOverviewSection({
         open={esignRequiredModalOpen}
         onCancel={() => setEsignRequiredModalOpen(false)}
         onGoToEsignTemplates={goToEsignTemplatesTab}
+      />
+      <OpenInvestmentDraftStageInfoModal
+        open={draftStageInfoModalOpen}
+        onCancel={cancelDraftStageOpenInvestment}
+        onConfirm={confirmDraftStageOpenInvestment}
       />
     </div>
   )

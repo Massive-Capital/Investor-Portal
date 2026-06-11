@@ -59,9 +59,9 @@ export function InvestNowInvestorStep({
           ariaLabel="Profile"
           invalid={Boolean(fieldErrors.profile)}
           disabled={disabled || loading || bookLoading}
-          footer={
+          header={
             onAddProfile
-              ? { label: "Add Profile", onClick: onAddProfile }
+              ? { label: "+ Add Profile", onClick: onAddProfile }
               : undefined
           }
         />

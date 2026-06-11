@@ -42,7 +42,9 @@ export function MetricKpiCard({
 
   return (
     <article
-      className="tool_style_card tool_style_card--metric portal_metric_kpi_card pm_kpi_card"
+      className={`tool_style_card tool_style_card--metric portal_metric_kpi_card pm_kpi_card${
+        loading ? " tool_style_card--loading" : ""
+      }`}
       aria-busy={loading}
     >
       <div className="tool_style_card_metric_header">
@@ -51,9 +53,17 @@ export function MetricKpiCard({
           <Icon className="tool_style_card_icon" size={22} strokeWidth={1.75} />
         </div>
       </div>
-      <p className="tool_style_card_value_lead pm_kpi_value">
-        {loading ? "—" : value}
-      </p>
+      {loading ? (
+        <div
+          className="tool_style_card_value_loading tool_style_card_value_loading--metric"
+          role="status"
+          aria-label="Loading"
+        >
+          <span className="tool_style_card_value_skeleton" aria-hidden />
+        </div>
+      ) : (
+        <p className="tool_style_card_value_lead pm_kpi_value">{value}</p>
+      )}
 
       <div className="pm_kpi_spark_row" aria-hidden={loading}>
         {!loading ? (

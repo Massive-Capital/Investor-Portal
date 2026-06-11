@@ -149,6 +149,19 @@ export function canInvestorInvest(
   )
 }
 
+/** Investor dashboard Opportunities tab — preview-only or open for investment. */
+export function isInvestorDashboardOpportunityOffering(
+  dealStage: string | null | undefined,
+  offeringStatus: string | null | undefined,
+): boolean {
+  const effective = effectiveOfferingStatusForAccess(dealStage, offeringStatus)
+  if (!effective) return false
+  const rules = getDealStatusRules(effective)
+  if (!rules.allowDashboardVisibility) return false
+  if (rules.status === "coming_soon") return true
+  return canInvestorInvest(effective)
+}
+
 export function shouldShowInvestButton(
   rawStatus: string | null | undefined,
 ): boolean {

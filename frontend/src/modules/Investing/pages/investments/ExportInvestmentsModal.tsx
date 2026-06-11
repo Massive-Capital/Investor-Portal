@@ -29,7 +29,7 @@ function buildInvestmentsExportCsv(rows: InvestmentListRow[]): string {
     "Start date",
     "Close date",
     "Invested as",
-    "Invested amount",
+    "Investment",
     "Distributed amount",
     "Current valuation",
     "Action required",

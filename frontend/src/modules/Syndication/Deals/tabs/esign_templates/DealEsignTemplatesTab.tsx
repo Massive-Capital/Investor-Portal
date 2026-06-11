@@ -54,6 +54,7 @@ import {
   type EsignEntityCategory,
 } from "./esignEntityCategories"
 import { resolveEsignTemplateStageNoticeVariant } from "../../utils/esignTemplateStageNotice"
+import "@/common/components/data-table/data-table.css"
 import "./deal-esign-templates.css"
 
 export type { EsignEntityCategory }
@@ -124,6 +125,77 @@ function EsignCreateTemplateButton({
       <Plus size={16} strokeWidth={2} aria-hidden />
       Create template
     </button>
+  )
+}
+
+function EsignProfilesTableLoader({
+  canUploadDocuments,
+}: {
+  canUploadDocuments: boolean
+}) {
+  return (
+    <div className="deal_esign_profiles_table_wrap deal_esign_profiles_table_wrap_loading">
+      <table
+        className="deal_esign_profiles_table deal_esign_profiles_table_skeleton"
+        aria-hidden
+      >
+        <thead>
+          <tr>
+            <th scope="col" className="deal_esign_profiles_th_profile">
+              Profile
+            </th>
+            <th scope="col" className="deal_esign_profiles_th_name">
+              Template name
+            </th>
+            <th scope="col" className="deal_esign_profiles_th_includes">
+              Includes
+            </th>
+            {canUploadDocuments ? (
+              <th scope="col" className="deal_esign_profiles_th_status">
+                Status
+              </th>
+            ) : null}
+            <th scope="col" className="deal_esign_profiles_th_actions">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {ESIGN_ENTITY_CATEGORIES.map((cat) => (
+            <tr key={cat.id} className="deal_esign_profiles_skeleton_row">
+              <th scope="row" className="deal_esign_profiles_cell_profile">
+                <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_profile" />
+              </th>
+              <td className="deal_esign_profiles_cell_name">
+                <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_name" />
+              </td>
+              <td className="deal_esign_profiles_cell_includes">
+                <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_includes" />
+              </td>
+              {canUploadDocuments ? (
+                <td className="deal_esign_profiles_cell_status">
+                  <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_status" />
+                </td>
+              ) : null}
+              <td className="deal_esign_profiles_cell_actions">
+                <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_actions" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div
+        className="deal_esign_profiles_table_loading"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading eSign templates"
+      >
+        <div className="data_table_loader_spinner" aria-hidden />
+        <span className="deal_esign_profiles_table_loading_text">
+          Loading eSign templates…
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -549,7 +621,7 @@ function DealEsignTemplatesProfilesTab({
 
 
       {loading ? (
-        <div className="deal_esign_empty_loading" aria-hidden />
+        <EsignProfilesTableLoader canUploadDocuments={canUploadDocuments} />
       ) : !hasAnyDocuments ? (
         <EsignTemplatesEmptyState
           canUpload={canUploadDocuments}

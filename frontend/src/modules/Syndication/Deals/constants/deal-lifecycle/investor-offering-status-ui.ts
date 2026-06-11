@@ -5,6 +5,7 @@ import { normalizeDealStatus } from "./deal-status"
 import {
   canInvestorInvest,
   effectiveOfferingStatusForAccess,
+  getDealStatusRules,
 } from "./deal-status-rules"
 
 export interface InvestorOfferingStatusUi {
@@ -63,10 +64,16 @@ export function canInvestorCommitInvestOrOnboard(params: {
   return canInvestorInvest(effective)
 }
 
+export type InvestorDealStatusBadgeVariant =
+  | "default"
+  | "coming_soon"
+  | "invest_now"
+
 export interface InvestorDealCardPresentation {
   statusLabel: string
   statusBadgeClassName: string
   hideStatusIcon: boolean
+  statusBadgeVariant: InvestorDealStatusBadgeVariant
   previewNotice: { message: string; tooltip?: string } | null
 }
 
@@ -74,24 +81,43 @@ function investorComingSoonChipCompactClassName(): string {
   return "deals_stage_chip deals_stage_chip--compact deals_stage_chip--coming_soon"
 }
 
+function investorInvestNowChipCompactClassName(): string {
+  return "deals_stage_chip deals_stage_chip--compact deals_stage_chip--invest_now"
+}
+
+const INVEST_NOW_BADGE_LABEL = "Invest Now"
+
 /** Dashboard card badge + optional preview copy for investor-facing deal lists. */
 export function getInvestorDealCardPresentation(
   offeringStatus: string | null | undefined,
   dealStage: string | null | undefined,
   fallbackStageLabel: string,
 ): InvestorDealCardPresentation {
-  const ui = getInvestorOfferingStatusUi(offeringStatus)
-  const isComingSoon = ui.status === "coming_soon"
+  const effective = effectiveOfferingStatusForAccess(dealStage, offeringStatus)
+  const rules = getDealStatusRules(effective ?? offeringStatus)
+  const ui = getInvestorOfferingStatusUi(effective ?? offeringStatus)
+  const isComingSoon = rules.status === "coming_soon"
+  const showInvestNowBadge =
+    !isComingSoon && canInvestorInvest(effective ?? offeringStatus)
   return {
     statusLabel: isComingSoon
       ? OFFERING_STATUS_CATALOG.coming_soon.label
-      : fallbackStageLabel,
+      : showInvestNowBadge
+        ? INVEST_NOW_BADGE_LABEL
+        : fallbackStageLabel,
     statusBadgeClassName: `deal_card_status ${
       isComingSoon
         ? investorComingSoonChipCompactClassName()
-        : dealStageChipCompactClassName(dealStage)
+        : showInvestNowBadge
+          ? investorInvestNowChipCompactClassName()
+          : dealStageChipCompactClassName(dealStage)
     }`,
     hideStatusIcon: false,
+    statusBadgeVariant: isComingSoon
+      ? "coming_soon"
+      : showInvestNowBadge
+        ? "invest_now"
+        : "default",
     previewNotice: ui.previewMessage
       ? {
           message: ui.previewMessage,
