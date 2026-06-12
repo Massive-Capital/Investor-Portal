@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
@@ -35,7 +35,7 @@ export async function patchDealLpInvestorMyInvestNowAddon(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

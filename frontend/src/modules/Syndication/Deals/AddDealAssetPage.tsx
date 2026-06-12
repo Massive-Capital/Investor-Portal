@@ -24,11 +24,12 @@ import { FormHeadingWithInfo } from "../../../common/components/form-heading/For
 import { toast } from "../../../common/components/Toast"
 import { assetImagePathsToUrls } from "../../../common/utils/apiBaseUrl"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
-import { fetchDealById, postDealOfferingGalleryUploads } from "./api/dealsApi"
+import { fetchDealById, patchDealOfferingGallery, postDealOfferingGalleryUploads } from "./api/dealsApi"
 import { mapDealDetailApiToCreateDrafts } from "./createDealFormMap"
 import { AssetAdditionalInfoSection } from "./components/AssetAdditionalInfoSection"
 import { AssetStepForm } from "./components/AssetStepForm"
 import {
+  ASSET_MAX_IMAGE_COUNT,
   assetTypeFromAttributes,
   createDefaultAssetAttributeRows,
   formatAddressFromAssetDraft,
@@ -41,7 +42,7 @@ import {
   type DealAssetRow,
 } from "./types/deal-asset.types"
 import { zipCodeFieldError } from "./utils/dealZipCode"
-import { dedupeGalleryUrlsPreserveOrder } from "./utils/offeringGalleryUrls"
+import { dedupeGalleryUrlsPreserveOrder, collectGalleryPathsFromDealAssetsMap } from "./utils/offeringGalleryUrls"
 import { emptyAssetStepDraft, type AssetStepDraft } from "./types/deals.types"
 import "../contacts/contacts.css"
 import "../usermanagement/user_management.css"
@@ -75,6 +76,7 @@ export function AddDealAssetPage() {
   )
   const [hydrated, setHydrated] = useState(!isEdit)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
   const dealDetailPath =
@@ -131,11 +133,17 @@ export function AddDealAssetPage() {
               if (cancelled) return
               const fromApi = assetImagePathsToUrls(detail.assetImagePath)
               setExistingImageUrls(
-                dedupeGalleryUrlsPreserveOrder([...fromSaved, ...fromApi]),
+                dedupeGalleryUrlsPreserveOrder(
+                  fromSaved.length > 0 ? [...fromSaved] : fromApi,
+                ),
               )
             } catch {
               if (!cancelled) {
-                setExistingImageUrls(Array.isArray(saved) ? saved : [])
+                setExistingImageUrls(
+                  dedupeGalleryUrlsPreserveOrder(
+                    Array.isArray(saved) ? saved : [],
+                  ),
+                )
               }
             } finally {
               if (!cancelled) setHydrated(true)
@@ -163,7 +171,9 @@ export function AddDealAssetPage() {
           const { asset } = mapDealDetailApiToCreateDrafts(detail)
           setAssetDraft(asset)
           setAttrRows(createDefaultAssetAttributeRows())
-          setExistingImageUrls(assetImagePathsToUrls(detail.assetImagePath))
+          setExistingImageUrls(
+            dedupeGalleryUrlsPreserveOrder(assetImagePathsToUrls(detail.assetImagePath)),
+          )
         } catch {
           if (!cancelled)
             setLoadError("Could not load this deal. Try again from the deal page.")
@@ -227,7 +237,14 @@ export function AddDealAssetPage() {
     const zipErr = zipCodeFieldError(assetDraft.zipCode)
     if (zipErr) nextErr.zipCode = zipErr
     setAssetErrors(nextErr)
-    const ok = Object.keys(nextErr).length === 0
+    const fieldOk = Object.keys(nextErr).length === 0
+    const imageCount = existingImageUrls.length + assetImageFiles.length
+    if (imageCount > ASSET_MAX_IMAGE_COUNT) {
+      toast.error(
+        `Each asset can have up to ${ASSET_MAX_IMAGE_COUNT} images. Remove ${imageCount - ASSET_MAX_IMAGE_COUNT} to continue.`,
+      )
+    }
+    const ok = fieldOk && imageCount <= ASSET_MAX_IMAGE_COUNT
     if (!ok) {
       focusFirstFormErrorAfterUpdate({ container: formRef.current })
     }
@@ -236,7 +253,7 @@ export function AddDealAssetPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!dealId) return
+    if (!dealId || saving) return
     if (step === 1) {
       if (validateDetails()) setStep(2)
       return
@@ -247,48 +264,66 @@ export function AddDealAssetPage() {
       return
     }
 
-    const resolvedId = isEdit ? assetId : `asset-${Date.now()}`
-    const prev = isEdit ? getDealAssetPersisted(dealId, resolvedId) : undefined
+    setSaving(true)
+    try {
+      const resolvedId = isEdit ? assetId : `asset-${Date.now()}`
+      const prev = isEdit ? getDealAssetPersisted(dealId, resolvedId) : undefined
 
-    let imagePreviewDataUrls = dedupeGalleryUrlsPreserveOrder([
-      ...existingImageUrls,
-    ])
-    if (assetImageFiles.length > 0) {
-      const up = await postDealOfferingGalleryUploads(dealId, assetImageFiles)
-      if (!up.ok) {
-        toast.error(up.message)
+      let imagePreviewDataUrls = dedupeGalleryUrlsPreserveOrder([
+        ...existingImageUrls,
+      ])
+
+      if (assetImageFiles.length > 0) {
+        const up = await postDealOfferingGalleryUploads(dealId, assetImageFiles)
+        if (!up.ok) {
+          toast.error(up.message)
+          return
+        }
+        const fromPaths = assetImagePathsToUrls(up.newPaths.join(";"))
+        imagePreviewDataUrls = dedupeGalleryUrlsPreserveOrder([
+          ...imagePreviewDataUrls,
+          ...fromPaths,
+        ])
+      }
+
+      const imageCount = imagePreviewDataUrls.length
+
+      const row: DealAssetRow = {
+        id: resolvedId,
+        name: assetDraft.propertyName.trim(),
+        address: formatAddressFromAssetDraft(assetDraft),
+        assetType: assetTypeFromAttributes(attrRows),
+        imageCount,
+        archived: prev?.row.archived ?? false,
+        additionalInfo: serializeAdditionalInfo(attrRows),
+      }
+
+      const entry: DealAssetPersisted = {
+        id: resolvedId,
+        row,
+        draft: assetDraft,
+        attrRows,
+        imagePreviewDataUrls,
+      }
+      upsertDealAssetPersisted(dealId, entry)
+
+      const galleryPaths = collectGalleryPathsFromDealAssetsMap(dealId)
+      const gallerySync = await patchDealOfferingGallery(dealId, galleryPaths)
+      if (!gallerySync.ok) {
+        toast.error(
+          gallerySync.message ||
+            "Asset saved locally but gallery could not be synced. Try saving again.",
+        )
         return
       }
-      const fromPaths = assetImagePathsToUrls(up.newPaths.join(";"))
-      imagePreviewDataUrls = dedupeGalleryUrlsPreserveOrder([
-        ...imagePreviewDataUrls,
-        ...fromPaths,
-      ])
+
+      setAssetImageFiles([])
+      setExistingImageUrls(imagePreviewDataUrls)
+      toast.success(isEdit ? "Asset updated" : "Asset added")
+      navigate(dealDetailReturnPath)
+    } finally {
+      setSaving(false)
     }
-
-    const imageCount = imagePreviewDataUrls.length
-
-    const row: DealAssetRow = {
-      id: resolvedId,
-      name: assetDraft.propertyName.trim(),
-      address: formatAddressFromAssetDraft(assetDraft),
-      assetType: assetTypeFromAttributes(attrRows),
-      imageCount,
-      archived: prev?.row.archived ?? false,
-      additionalInfo: serializeAdditionalInfo(attrRows),
-    }
-
-    const entry: DealAssetPersisted = {
-      id: resolvedId,
-      row,
-      draft: assetDraft,
-      attrRows,
-      imagePreviewDataUrls,
-    }
-    upsertDealAssetPersisted(dealId, entry)
-
-    setAssetImageFiles([])
-    navigate(dealDetailReturnPath)
   }
 
   if (!dealId) {
@@ -404,16 +439,11 @@ export function AddDealAssetPage() {
                 imageFiles={assetImageFiles}
                 onChange={patchAsset}
                 onImageFilesChange={setAssetImageFiles}
-                existingImageUrls={
-                  isEdit ? existingImageUrls : undefined
-                }
-                onRemoveExistingImage={
-                  isEdit
-                    ? (i) =>
-                        setExistingImageUrls((prev) =>
-                          prev.filter((_, j) => j !== i),
-                        )
-                    : undefined
+                existingImageUrls={existingImageUrls}
+                onRemoveExistingImage={(i) =>
+                  setExistingImageUrls((prev) =>
+                    prev.filter((_, j) => j !== i),
+                  )
                 }
               />
             ) : (
@@ -471,14 +501,18 @@ export function AddDealAssetPage() {
                 </button>
               ) : null}
               {step === 1 ? (
-                <button type="submit" className="um_btn_primary">
+                <button type="submit" className="um_btn_primary" disabled={saving}>
                   Next
                   <ChevronRight size={18} strokeWidth={2} aria-hidden />
                 </button>
               ) : (
-                <button type="submit" className="um_btn_primary">
+                <button type="submit" className="um_btn_primary" disabled={saving}>
                   <Save size={16} strokeWidth={2} aria-hidden />
-                  {isEdit ? "Save changes" : "Save asset"}
+                  {saving
+                    ? "Saving…"
+                    : isEdit
+                      ? "Save changes"
+                      : "Save asset"}
                 </button>
               )}
             </div>

@@ -9,7 +9,7 @@ import {
   updateCompany,
   type CompanyAuditAction,
 } from "../../services/company/company.service.js";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
 import { db } from "../../database/db.js";
 import { companies, users } from "../../schema/schema.js";
@@ -42,7 +42,7 @@ function actorRoleFromRow(
 }
 
 export async function getCompanies(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -89,7 +89,7 @@ type CreateCompanyBody = {
 };
 
 export async function postCompany(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -135,7 +135,7 @@ type PatchCompanyBody = {
 };
 
 export async function patchCompany(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -214,7 +214,7 @@ export async function postCompaniesExportNotify(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

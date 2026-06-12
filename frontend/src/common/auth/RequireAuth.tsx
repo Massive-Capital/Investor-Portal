@@ -1,6 +1,30 @@
+import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { ensureValidAccessToken, handleAuthSessionExpired } from "./portalFetch";
 import { parseSafeNextPath } from "./parseSafeNextPath";
 import { AUTH_RETURN_NEXT_KEY, SESSION_BEARER_KEY } from "./sessionKeys";
+import { useIdleLogout } from "./useIdleLogout";
+
+function IdleSessionGuard() {
+  useIdleLogout();
+  return null;
+}
+
+function AuthBootstrap() {
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const ok = await ensureValidAccessToken();
+      if (!cancelled && !ok && sessionStorage.getItem(SESSION_BEARER_KEY)) {
+        handleAuthSessionExpired();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return null;
+}
 
 /** Wraps routes that require a valid session (JWT in sessionStorage). */
 export function RequireAuth() {
@@ -21,5 +45,11 @@ export function RequireAuth() {
     }
     return <Navigate to="/signin" replace />;
   }
-  return <Outlet />;
+  return (
+    <>
+      <AuthBootstrap />
+      <IdleSessionGuard />
+      <Outlet />
+    </>
+  );
 }

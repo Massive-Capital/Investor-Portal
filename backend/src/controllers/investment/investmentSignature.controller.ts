@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import { db } from "../../database/db.js";
 import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
 import {
@@ -41,7 +41,7 @@ export async function getInvestmentSignStatusHandler(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

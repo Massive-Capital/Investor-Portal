@@ -144,8 +144,8 @@ export type NestedPreviewDocument = {
    */
   sharedWithScope?: SectionSharedWithScope
   /**
-   * When true, only investors who have saved at least one book profile on this
-   * deal (Invest Now profile step) may see the file in the LP portal.
+   * When true, LP portal investors may see this file only after completing eSign
+   * on at least one commitment for this deal (Funding Information PDFs).
    */
   requiresProfileInvestment?: boolean
 }

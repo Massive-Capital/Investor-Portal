@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { getJwtUser } from "../middleware/jwtUser.js";
+import { getValidJwtUser } from "../middleware/jwtUser.js";
 import { db } from "../database/db.js";
 import { users } from "../schema/schema.js";
 import {
@@ -118,7 +118,7 @@ function actorRoleForMemberAdmin(
 }
 
 export async function getUsers(req: Request, res: Response): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -234,7 +234,7 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
 
 /** Frontend send-mail composer defaults (auth required). */
 export async function getMailDefaults(req: Request, res: Response): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -245,7 +245,7 @@ export async function getMailDefaults(req: Request, res: Response): Promise<void
 
 /** Sends email from app without opening local mail client. */
 export async function postSendMail(req: Request, res: Response): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -342,7 +342,7 @@ type PatchUserBody = {
 const REASON_MAX_LEN = 4000;
 
 export async function patchUser(req: Request, res: Response): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -428,7 +428,7 @@ export async function patchUser(req: Request, res: Response): Promise<void> {
 }
 
 export async function getMemberAuditLogs(req: Request, res: Response): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -475,7 +475,7 @@ export async function postMembersExportNotify(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

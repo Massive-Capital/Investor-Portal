@@ -1,4 +1,9 @@
 export { users, type UserRow } from "./auth.schema/signin.js";
+export {
+  userAuthTokens,
+  type UserAuthTokenRow,
+  type UserAuthTokenInsert,
+} from "./auth.schema/userAuthTokens.schema.js";
 export { companies, type CompanyRow } from "./company.schema/company.js";
 export { deals, type DealRow } from "../schema/deal.schema/deal.schema.js";
 export {

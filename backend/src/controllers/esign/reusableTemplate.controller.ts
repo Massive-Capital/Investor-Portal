@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import { getDealEsignDropboxSignPublicConfig } from "../../services/deal/dealEsignDropboxSign.service.js";
 import type { DealMemoryUploadFile } from "../../services/deal/dealForm.service.js";
 import type { EsignTemplateSignerRole } from "../../schema/esign.schema.js";
@@ -76,7 +76,7 @@ export async function getTemplatesDropboxSignConfig(
   _req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(_req);
+  const user = await getValidJwtUser(_req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -91,7 +91,7 @@ export async function getReusableTemplates(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -119,7 +119,7 @@ export async function postReusableTemplateUpload(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -161,7 +161,7 @@ export async function postReusableTemplateEmbeddedDraft(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -205,7 +205,7 @@ export async function postReusableTemplateSave(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

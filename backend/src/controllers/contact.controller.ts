@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { getJwtUser } from "../middleware/jwtUser.js";
+import { getValidJwtUser } from "../middleware/jwtUser.js";
 import { isPlatformAdminRole } from "../constants/roles.js";
 import { db } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
@@ -247,7 +247,7 @@ export async function getOrganizationContactTags(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -276,7 +276,7 @@ export async function getOrganizationContactLists(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -304,7 +304,7 @@ export async function getContacts(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -337,7 +337,7 @@ export async function getContacts(
 }
 
 export async function postContact(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -418,7 +418,7 @@ export async function postContact(req: Request, res: Response): Promise<void> {
 }
 
 export async function patchContact(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -519,7 +519,7 @@ export async function patchContactStatus(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -575,7 +575,7 @@ export async function getContactEmailTemplates(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -604,7 +604,7 @@ export async function postContactEmailTemplate(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -649,7 +649,7 @@ export async function patchContactEmailTemplate(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -707,7 +707,7 @@ export async function deleteContactEmailTemplate(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

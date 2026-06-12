@@ -1214,8 +1214,12 @@
   text-transform: uppercase;
 }
 
-.deal_card_link:hover .deal_card--prestige .deal_card_manage_cta,
-.deal_card:hover .deal_card--prestige .deal_card_manage_cta {
+.deal_card_link:hover
+  .deal_card--prestige
+  .deal_card_manage_cta:not(.deal_card_manage_cta--invest_now),
+.deal_card:hover
+  .deal_card--prestige
+  .deal_card_manage_cta:not(.deal_card_manage_cta--invest_now) {
   background: color-mix(in srgb, var(--portal-gold-accent, #d4af37) 14%, transparent);
   border-color: var(--portal-gold-accent, #d4af37);
 }
@@ -1257,32 +1261,51 @@
     color-mix(in srgb, #22c55e 16%, var(--portal-border, #e2e8f0));
 }
 
-.deal_card_manage_cta--invest_now {
+.deal_card--prestige .deal_card_manage_cta--invest_now {
   gap: 0.4rem;
   padding: 0.55rem 1rem;
   font-size: 0.8125rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: #fff;
-  background: linear-gradient(
-    135deg,
-    #22c55e 0%,
-    #16a34a 100%
-  );
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   border: 1px solid color-mix(in srgb, #15803d 70%, #16a34a);
   box-shadow: 0 1px 2px rgb(21 128 61 / 22%);
+  transition:
+    background 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    transform 0.22s ease,
+    filter 0.22s ease;
 }
 
-.deal_card_link:hover .deal_card_manage_cta--invest_now,
-.deal_card:hover .deal_card_manage_cta--invest_now {
-  letter-spacing: 0.02em;
+.deal_card--prestige .deal_card_manage_cta--invest_now svg:last-child {
+  transition: transform 0.22s ease;
+}
+
+.deal_card_link:hover .deal_card--prestige .deal_card_manage_cta--invest_now,
+.deal_card:hover .deal_card--prestige .deal_card_manage_cta--invest_now {
+  letter-spacing: 0.01em;
   color: #fff;
-  background: linear-gradient(
-    135deg,
-    #4ade80 0%,
-    #16a34a 100%
-  );
-  border-color: #15803d;
-  box-shadow: 0 2px 8px rgb(22 163 74 / 28%);
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  border-color: #166534;
+  box-shadow:
+    0 4px 14px rgb(22 163 74 / 32%),
+    0 0 0 1px color-mix(in srgb, #86efac 28%, transparent);
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.deal_card_link:hover
+  .deal_card--prestige
+  .deal_card_manage_cta--invest_now
+  svg:last-child,
+.deal_card:hover
+  .deal_card--prestige
+  .deal_card_manage_cta--invest_now
+  svg:last-child {
+  transform: translateX(2px);
 }
 
 @media (max-width: 640px) {
@@ -1307,8 +1330,8 @@
     border-color 0.25s ease;
 }
 
-.deal_card_link:hover .deal_card_manage_cta,
-.deal_card:hover .deal_card_manage_cta {
+.deal_card_link:hover .deal_card_manage_cta:not(.deal_card_manage_cta--invest_now),
+.deal_card:hover .deal_card_manage_cta:not(.deal_card_manage_cta--invest_now) {
   letter-spacing: 0.04em;
   background: color-mix(in srgb, var(--portal-gold-accent, #d4af37) 10%, transparent);
 }

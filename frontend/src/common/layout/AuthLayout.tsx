@@ -9,7 +9,7 @@ import {
 import defaultAuthLogo from "@/assets/images/updated_syndicationx_logo.png"
 import { formatAppDocumentTitle } from "../utils/appDocumentTitle"
 import { normalizeDealGallerySrc } from "../utils/apiBaseUrl"
-import { ThemeToggleButton } from "../theme/ThemeToggleButton"
+// import { ThemeToggleButton } from "../theme/ThemeToggleButton"
 import "./auth_layout.css"
 import "../../modules/auth/styles/auth_forms.css"
 
@@ -97,9 +97,11 @@ export default function AuthLayout({
   return (
     <div className={authPageClasses}>
       <div className="authPage_ambient" aria-hidden />
+      {/* Theme toggle disabled on auth pages
       <div className="authPage_toolbar">
         <ThemeToggleButton />
       </div>
+      */}
       <div className="authContent">
         <div className="loginData">
           <div className="loginCred">

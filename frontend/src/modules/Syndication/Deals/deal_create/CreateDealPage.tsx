@@ -18,6 +18,7 @@ import {
   getApiV1Base,
 } from "../../../../common/utils/apiBaseUrl"
 import { AssetStepForm } from "../components/AssetStepForm"
+import { ASSET_MAX_IMAGE_COUNT } from "../types/deal-asset.types"
 import { DealStageChangeConfirmModal } from "../components/DealStageChangeConfirmModal"
 import { DealStepForm } from "../components/DealStepForm"
 import "../../contacts/contacts.css"
@@ -524,7 +525,15 @@ export function CreateDealPage() {
     const zipErr = zipCodeFieldError(assetDraft.zipCode)
     if (zipErr) next.zipCode = zipErr
     setAssetErrors(next)
-    const ok = Object.keys(next).length === 0
+    const fieldOk = Object.keys(next).length === 0
+    const imageCount =
+      existingPropertyImageUrls.length + assetImages.length
+    if (imageCount > ASSET_MAX_IMAGE_COUNT) {
+      toast.error(
+        `Each asset can have up to ${ASSET_MAX_IMAGE_COUNT} images. Remove ${imageCount - ASSET_MAX_IMAGE_COUNT} to continue.`,
+      )
+    }
+    const ok = fieldOk && imageCount <= ASSET_MAX_IMAGE_COUNT
     if (!ok) {
       focusFirstFormErrorAfterUpdate({ container: formRef.current })
     }

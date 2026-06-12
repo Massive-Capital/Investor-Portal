@@ -1,10 +1,10 @@
 import type { Request, Response } from "express";
 import { signInWithPassword } from "../../services/auth/auth.service.js";
+import { linkPortalSessionToAuthTokens } from "../../services/auth/token.service.js";
 import { startUserPortalSession } from "../../services/platform/userActivity.service.js";
 
 type SigninBody = {
   email?: unknown;
-  // emailOrUsername?: unknown;
   password?: unknown;
 };
 
@@ -22,7 +22,7 @@ export async function postSignin(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const result = await signInWithPassword(email, password);
+  const result = await signInWithPassword(email, password, req);
 
   if (!result.ok) {
     const status =
@@ -40,6 +40,13 @@ export async function postSignin(req: Request, res: Response): Promise<void> {
     ).trim();
     if (userId) {
       activitySessionId = await startUserPortalSession(userId);
+      if (activitySessionId) {
+        await linkPortalSessionToAuthTokens(
+          result.accessTokenId,
+          result.refreshTokenId,
+          activitySessionId,
+        );
+      }
     }
   } catch (err) {
     console.error("startUserPortalSession after signin:", err);
@@ -47,9 +54,10 @@ export async function postSignin(req: Request, res: Response): Promise<void> {
 
   res.status(200).json({
     message: result.message,
-    token: result.token,
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+    token: result.accessToken,
     userDetails: result.userDetails,
     ...(activitySessionId ? { activitySessionId } : {}),
   });
 }
-

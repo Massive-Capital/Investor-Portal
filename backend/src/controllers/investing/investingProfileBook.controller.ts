@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   BeneficiaryDuplicateError,
   BeneficiaryInvalidEmailError,
@@ -53,8 +53,8 @@ function isUuid(s: string): boolean {
   return typeof s === "string" && UUID_RE.test(s.trim());
 }
 
-function requireUser(req: Request, res: Response): string | null {
-  const jwtUser = getJwtUser(req);
+async function requireUser(req: Request, res: Response): Promise<string | null> {
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return null;
@@ -63,7 +63,7 @@ function requireUser(req: Request, res: Response): string | null {
 }
 
 export async function getMyProfileBook(req: Request, res: Response): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   try {
     const snapshot = await getProfileBookForUser(userId);
@@ -75,7 +75,7 @@ export async function getMyProfileBook(req: Request, res: Response): Promise<voi
 }
 
 export async function postMyProfileBookProfile(req: Request, res: Response): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const body = req.body as { profileName?: unknown; profileType?: unknown; profileWizardState?: unknown };
   const profileName = typeof body.profileName === "string" ? body.profileName : "";
@@ -115,7 +115,7 @@ export async function patchMyProfileBookProfile(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const id = String(req.params.id ?? "");
   if (!isUuid(id)) {
@@ -144,7 +144,7 @@ export async function putMyProfileBookProfile(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const id = String(req.params.id ?? "");
   if (!isUuid(id)) {
@@ -209,7 +209,7 @@ export async function postMyProfileBookBeneficiary(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const body = req.body as Record<string, unknown>;
   const input = {
@@ -248,7 +248,7 @@ export async function patchMyProfileBookBeneficiary(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const id = String(req.params.id ?? "");
   if (!isUuid(id)) {
@@ -277,7 +277,7 @@ export async function putMyProfileBookBeneficiary(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const id = String(req.params.id ?? "");
   if (!isUuid(id)) {
@@ -318,7 +318,7 @@ export async function putMyProfileBookBeneficiary(
 }
 
 export async function postMyProfileBookAddress(req: Request, res: Response): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const body = req.body as Record<string, unknown>;
   const input = {
@@ -355,7 +355,7 @@ export async function patchMyProfileBookAddress(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const id = String(req.params.id ?? "");
   if (!isUuid(id)) {
@@ -384,7 +384,7 @@ export async function putMyProfileBookAddress(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const userId = requireUser(req, res);
+  const userId = await requireUser(req, res);
   if (!userId) return;
   const id = String(req.params.id ?? "");
   if (!isUuid(id)) {

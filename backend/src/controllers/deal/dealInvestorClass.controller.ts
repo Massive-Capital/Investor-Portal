@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { logSocDestructiveDealAction } from "../../audit/index.js";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
   assertDealIdReadableOrAssignedParticipant,
@@ -119,7 +119,7 @@ export async function getDealInvestorClasses(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -156,7 +156,7 @@ export async function postDealInvestorClass(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -205,7 +205,7 @@ export async function putDealInvestorClass(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -262,7 +262,7 @@ export async function deleteDealInvestorClass(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

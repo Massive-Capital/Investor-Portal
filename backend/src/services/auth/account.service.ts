@@ -7,6 +7,7 @@ import { mergeLpInvestorFlagsIntoUserPayload } from "../investing/lpInvestorAcce
 import { serializeUserForClient } from "../user/userAdmin.service.js";
 import { parseUsPhoneToE164 } from "../../utils/usPhone.js";
 import { listUserCompanyMemberships } from "./userCompanyMembership.service.js";
+import { revokeAllUserAuthTokens } from "./token.service.js";
 
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
@@ -154,6 +155,7 @@ export async function changePasswordForUser(
       .update(users)
       .set({ passwordHash, updatedAt: new Date() })
       .where(eq(users.id, userId));
+    await revokeAllUserAuthTokens(userId);
   } catch (err) {
     console.error("changePasswordForUser: update failed", err);
     return {

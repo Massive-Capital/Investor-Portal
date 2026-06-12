@@ -1,5 +1,9 @@
-import { Image } from "lucide-react"
-import { useEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react"
+import {
+  useEffect,
+  useMemo,
+  type Dispatch,
+  type SetStateAction,
+} from "react"
 import {
   FormTooltip,
   MandatoryFieldMark,
@@ -12,12 +16,14 @@ import {
   isUnitedStatesCountry,
   resolveUsStateCodeForDraft,
 } from "../constants/usLocations"
+import { ASSET_MAX_IMAGE_COUNT } from "../types/deal-asset.types"
 import {
   COUNTRY_OPTIONS,
   type AssetStepDraft,
 } from "../types/deals.types"
 import { normalizeZipCodeDigits } from "../utils/dealZipCode"
 import { DealsCreateDropdownSelect } from "./DealsCreateDropdownSelect"
+import { AssetImageUploadSection } from "./AssetImageUploadSection"
 import "./asset-step-form.css"
 
 interface AssetStepFormProps {
@@ -69,7 +75,6 @@ export function AssetStepForm({
   showSectionTitle = true,
   usLocationSource = "countriesNow",
 }: AssetStepFormProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const isUs = isUnitedStatesCountry(draft.country)
   const usStateCode = useMemo(
     () => (isUs ? resolveUsStateCodeForDraft(draft.state) : ""),
@@ -151,37 +156,6 @@ export function AssetStepForm({
     const code = resolveUsStateCodeForDraft(draft.state)
     if (code && code !== draft.state) onChange({ state: code })
   }, [isUs, draft.state, onChange])
-
-  function mergeFiles(incoming: FileList | File[]) {
-    onImageFilesChange((prev) => {
-      const key = (f: File) => `${f.name}\0${f.size}\0${f.lastModified}`
-      const seen = new Set(prev.map(key))
-      const list = [...prev]
-      for (const f of Array.from(incoming)) {
-        if (!f.type.startsWith("image/")) continue
-        const k = key(f)
-        if (seen.has(k)) continue
-        seen.add(k)
-        list.push(f)
-      }
-      return list
-    })
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault()
-    if (e.dataTransfer.files.length)
-      mergeFiles(e.dataTransfer.files)
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault()
-  }
-
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.files?.length) mergeFiles(e.target.files)
-    e.target.value = ""
-  }
 
   return (
     <section
@@ -391,99 +365,13 @@ export function AssetStepForm({
         </label>
 
         <div className="asset_step_label_full asset_step_upload_block">
-          {existingImageUrls.length > 0 ? (
-            <>
-              <span className="deals_create_label_text">Images</span>
-              <ul
-                className="asset_step_existing_images"
-                aria-label="Images for this asset"
-              >
-                {existingImageUrls.map((src, i) => (
-                  <li
-                    key={`existing-img-${i}`}
-                    className="asset_step_existing_item"
-                  >
-                    <div className="asset_step_existing_thumb_wrap">
-                      <img
-                        src={src}
-                        alt=""
-                        className="asset_step_existing_thumb"
-                        loading="eager"
-                        decoding="async"
-                      />
-                    </div>
-                    {onRemoveExistingImage ? (
-                      <button
-                        type="button"
-                        className="asset_step_remove_file"
-                        onClick={() => onRemoveExistingImage(i)}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-              <span className="deals_create_label_text asset_step_upload_eyebrow">
-                Add more images
-              </span>
-            </>
-          ) : (
-            <span className="deals_create_label_text">Upload images</span>
-          )}
-          <div
-            className="asset_step_dropzone"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            role="region"
-            aria-label="Upload property images"
-          >
-            <Image
-              className="asset_step_dropzone_icon"
-              size={40}
-              strokeWidth={1.25}
-              aria-hidden
-            />
-            <p className="asset_step_dropzone_text">
-              Drag and drop photos or{" "}
-              <button
-                type="button"
-                className="asset_step_browse"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                browse
-              </button>{" "}
-              to choose files.
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="asset_step_file_input"
-              accept="image/*"
-              multiple
-              onChange={handleFileInput}
-            />
-          </div>
-          {imageFiles.length > 0 ? (
-            <ul className="asset_step_file_list">
-              {imageFiles.map((f, i) => (
-                <li key={`${f.name}-${i}`}>
-                  {f.name}
-                  <button
-                    type="button"
-                    className="asset_step_remove_file"
-                    onClick={() =>
-                      onImageFilesChange((prev) =>
-                        prev.filter((_, j) => j !== i),
-                      )
-                    }
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <AssetImageUploadSection
+            imageFiles={imageFiles}
+            onImageFilesChange={onImageFilesChange}
+            existingImageUrls={existingImageUrls}
+            onRemoveExistingImage={onRemoveExistingImage}
+            maxCount={ASSET_MAX_IMAGE_COUNT}
+          />
         </div>
       </div>
     </section>

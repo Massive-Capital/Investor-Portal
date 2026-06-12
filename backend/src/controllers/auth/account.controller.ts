@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   changePasswordForUser,
   getOwnProfile,
@@ -8,7 +8,7 @@ import {
 
 export async function getMyProfile(req: Request, res: Response): Promise<void> {
   try {
-    const jwtUser = getJwtUser(req);
+    const jwtUser = await getValidJwtUser(req);
     if (!jwtUser?.id) {
       res.status(401).json({ message: "Authorization required" });
       return;
@@ -29,7 +29,7 @@ export async function getMyProfile(req: Request, res: Response): Promise<void> {
 
 export async function postChangePassword(req: Request, res: Response): Promise<void> {
   try {
-    const jwtUser = getJwtUser(req);
+    const jwtUser = await getValidJwtUser(req);
     if (!jwtUser?.id) {
       res.status(401).json({ message: "Authorization required" });
       return;
@@ -68,7 +68,7 @@ export async function postChangePassword(req: Request, res: Response): Promise<v
 
 export async function patchMyProfile(req: Request, res: Response): Promise<void> {
   try {
-    const jwtUser = getJwtUser(req);
+    const jwtUser = await getValidJwtUser(req);
     if (!jwtUser?.id) {
       res.status(401).json({ message: "Authorization required" });
       return;

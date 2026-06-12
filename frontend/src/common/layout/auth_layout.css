@@ -34,6 +34,7 @@ body:has(.authPage) {
   opacity: 0.22;
 }
 
+/* Theme toggle disabled on auth pages
 .authPage_toolbar {
   position: fixed;
   top: 0;
@@ -58,6 +59,7 @@ body:has(.authPage) {
   background: color-mix(in srgb, var(--auth-landing-gold) 12%, var(--auth-card-bg));
   color: var(--auth-landing-gold-light, #e8bc6a);
 }
+*/
 
 .authContent {
   position: relative;

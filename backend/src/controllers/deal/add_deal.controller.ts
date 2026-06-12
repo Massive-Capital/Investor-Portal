@@ -4,7 +4,7 @@ import {
   logSocDealOfferingAssetUpload,
   logSocDestructiveDealAction,
 } from "../../audit/index.js";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
@@ -221,7 +221,7 @@ async function mapRowToJsonWithInvestmentCount(
  * so participants see syndicated + assigned deals in one list.
  */
 export async function getDeals(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -350,7 +350,7 @@ export async function patchDealInvestorSummary(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -403,7 +403,7 @@ export async function patchDealAnnouncement(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -470,7 +470,7 @@ export async function patchDealOfferingOverview(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -569,7 +569,7 @@ export async function patchDealOfferingInvestorPreview(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -623,7 +623,7 @@ export async function patchDealKeyHighlights(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -684,7 +684,7 @@ export async function patchDealFundingInstructions(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -747,7 +747,7 @@ export async function patchDealGalleryCover(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -819,7 +819,7 @@ export async function patchDealOfferingGallery(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -871,7 +871,7 @@ export async function postDealOfferingDocumentUploads(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -924,7 +924,7 @@ export async function postDealOfferingGalleryUploads(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -982,7 +982,7 @@ export async function getOfferingPreviewToken(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -1035,7 +1035,7 @@ export async function postOfferingPreviewShareEmail(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -1186,7 +1186,7 @@ export async function getPublicOfferingPreview(
 }
 
 export async function getDealById(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -1223,7 +1223,7 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
 }
 
 export async function postDeal(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -1294,7 +1294,7 @@ export async function postDeal(req: Request, res: Response): Promise<void> {
 }
 
 export async function putDeal(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -1405,7 +1405,7 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
 }
 
 export async function deleteDeal(req: Request, res: Response): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

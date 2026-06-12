@@ -11,14 +11,20 @@ import {
   LockKeyhole,
   Mail,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Input from "../../../common/components/Input";
 import {
   AUTH_RETURN_NEXT_KEY,
   SESSION_ACTIVITY_SESSION_ID_KEY,
   SESSION_BEARER_KEY,
+  SESSION_REFRESH_KEY,
   SESSION_USER_DETAILS_KEY,
 } from "../../../common/auth/sessionKeys";
+import { storeAuthTokens } from "../../../common/auth/authTokensApi";
+import {
+  SESSION_IDLE_TIMEOUT_NOTICE_KEY,
+  touchSessionActivity,
+} from "../../../common/auth/idleSession";
 import { isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPath";
@@ -36,7 +42,19 @@ const SigninForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const resetSuccess = location.state?.resetSuccess;
+  const idleLogout = location.state?.idleLogout === true;
   const apiV1 = getApiV1Base();
+
+  useEffect(() => {
+    if (sessionStorage.getItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY) === "1") {
+      sessionStorage.removeItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY);
+      toast.error(
+        "Session timeout",
+        "You were signed out after 15 minutes of inactivity. Please sign in again.",
+        8000,
+      );
+    }
+  }, []);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -67,6 +85,8 @@ const SigninForm = () => {
       let data: {
         message?: string;
         token?: string;
+        accessToken?: string;
+        refreshToken?: string;
         userDetails?: unknown;
         activitySessionId?: string;
       } = {};
@@ -107,8 +127,18 @@ const SigninForm = () => {
         }
         return;
       }
-      if (data.token) {
-        sessionStorage.setItem(SESSION_BEARER_KEY, data.token);
+      const accessToken =
+        typeof data.accessToken === "string"
+          ? data.accessToken
+          : typeof data.token === "string"
+            ? data.token
+            : null;
+      if (accessToken) {
+        storeAuthTokens(accessToken, data.refreshToken ?? null);
+        touchSessionActivity();
+      } else {
+        sessionStorage.removeItem(SESSION_BEARER_KEY);
+        sessionStorage.removeItem(SESSION_REFRESH_KEY);
       }
       if (data.userDetails != null) {
         sessionStorage.setItem(
@@ -252,6 +282,15 @@ const SigninForm = () => {
           </Link>
         </p>
 
+        {idleLogout && (
+          <div className="authMessage authMessage--error">
+            <CircleAlert className="authMessage__icon" size={16} aria-hidden />
+            <p className="loginSuccess">
+              Session timeout. You were signed out after 15 minutes of
+              inactivity. Sign in again to continue.
+            </p>
+          </div>
+        )}
         {resetSuccess && (
           <div className="authMessage authMessage--success">
             <CheckCircle className="authMessage__icon" size={16} aria-hidden />

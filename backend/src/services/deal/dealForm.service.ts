@@ -939,10 +939,12 @@ export async function updateDealOfferingGalleryPathsById(
   if (!existing) return undefined;
   const normalized = normalizeOfferingGalleryPathsFromBody(paths);
   if (!normalized.ok) return undefined;
-  const json = JSON.stringify(normalized.paths);
+  const deduped = dedupeAssetImagePathSegmentsPreserveOrder(normalized.paths);
+  const json = JSON.stringify(deduped);
+  const assetImagePath = deduped.length > 0 ? deduped.join(";") : null;
   const [updated] = await db
     .update(addDealForm)
-    .set({ offeringGalleryPaths: json })
+    .set({ offeringGalleryPaths: json, assetImagePath })
     .where(eq(addDealForm.id, id))
     .returning();
   return updated;

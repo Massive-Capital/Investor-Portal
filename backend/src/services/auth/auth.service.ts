@@ -1,17 +1,22 @@
 import bcrypt from "bcrypt";
-import jwt, { type SignOptions } from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { companies, users } from "../../schema/schema.js";
-import { getJwtExpiry, getJwtSecret } from "../../config/auth.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
 import { enrichUserRecordForDealParticipant } from "../deal/dealParticipantProfile.service.js";
 import { mergeLpInvestorFlagsIntoUserPayload } from "../investing/lpInvestorAccess.service.js";
 import { listUserCompanyMemberships } from "./userCompanyMembership.service.js";
+import { issueAuthTokenPair } from "./token.service.js";
+import type { Request } from "express";
 
 export type SigninSuccess = {
   ok: true;
   message: string;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenId: string;
+  refreshTokenId: string;
+  /** @deprecated Use accessToken */
   token: string;
   userDetails: Record<string, unknown>[];
 };
@@ -29,6 +34,8 @@ export type SigninResult = SigninSuccess | SigninFailure;
 export async function signInWithPassword(
   rawEmail: string,
   userPassword: string,
+  req?: Request,
+  portalSessionId?: string,
 ): Promise<SigninResult> {
   const input = (rawEmail ?? "").toString().trim().toLowerCase();
   if (!input) {
@@ -124,16 +131,14 @@ export async function signInWithPassword(
       }
     }
 
-    const secret = getJwtSecret();
-    const token = jwt.sign(
-      {
-        id: user_table.id,
+    const { accessToken, refreshToken, accessTokenId, refreshTokenId } =
+      await issueAuthTokenPair({
+        userId: user_table.id,
         email: user_table.email,
         userRole: user_table.role,
-      },
-      secret,
-      { expiresIn: getJwtExpiry() } as SignOptions,
-    );
+        portalSessionId,
+        req,
+      });
 
     const { passwordHash: _pw, ...userWithoutSecret } = user_table;
     let displayCompanyName = "";
@@ -172,7 +177,11 @@ export async function signInWithPassword(
     return {
       ok: true,
       message: "User Login Successful",
-      token,
+      accessToken,
+      refreshToken,
+      accessTokenId,
+      refreshTokenId,
+      token: accessToken,
       userDetails,
     };
   } catch (error) {

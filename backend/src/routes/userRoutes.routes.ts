@@ -22,6 +22,10 @@ import {
   postChangePassword,
 } from "../controllers/auth/account.controller.js";
 import {
+  postAuthLogout,
+  postRefreshTokens,
+} from "../controllers/auth/refresh.controller.js";
+import {
   postActivityLogout,
   postActivityPageView,
   postEnsureActivitySession,
@@ -31,6 +35,8 @@ const userRoutes = Router();
 
 userRoutes
 .post("/auth/signin", postSignin)
+.post("/auth/refresh", postRefreshTokens)
+.post("/auth/logout", postAuthLogout)
 .post("/auth/activity/session", postEnsureActivitySession)
 .post("/auth/activity/logout", postActivityLogout)
 .post("/auth/activity/page-view", postActivityPageView)

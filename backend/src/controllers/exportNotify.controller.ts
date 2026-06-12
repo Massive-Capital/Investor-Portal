@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { getJwtUser } from "../middleware/jwtUser.js";
+import { getValidJwtUser } from "../middleware/jwtUser.js";
 import { db } from "../database/db.js";
 import { companies, users } from "../schema/schema.js";
 import { sanitizeExportedLinesForNotify } from "../services/workspace/exportNotifySanitize.js";
@@ -56,7 +56,7 @@ async function handleExportNotify(
   kind: WorkspaceExportAuditKind,
   linesKey: ExportNotifyLinesKey,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -136,7 +136,7 @@ export async function postDealInvestorsExportNotify(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -187,7 +187,7 @@ export async function postDealMembersExportNotify(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

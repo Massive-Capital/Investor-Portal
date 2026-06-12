@@ -254,6 +254,23 @@ export function uploadRelativePathsFromGalleryUrls(urls: string[]): string[] {
   return out
 }
 
+/** Upload-relative paths for all non-archived assets in local storage (authoritative image lists). */
+export function collectGalleryPathsFromDealAssetsMap(dealId: string): string[] {
+  const urls: string[] = []
+  try {
+    for (const entry of Object.values(readDealAssetsFullMap(dealId))) {
+      if (entry.row.archived) continue
+      if (!Array.isArray(entry.imagePreviewDataUrls)) continue
+      for (const u of entry.imagePreviewDataUrls) {
+        if (typeof u === "string" && u.trim()) urls.push(u)
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return uploadRelativePathsFromGalleryUrls(urls)
+}
+
 /** Upload-relative paths referenced anywhere in persisted deal asset maps (localStorage). */
 export function collectUploadRelativePathsFromDealAssetsMap(
   detail: DealDetailApi,

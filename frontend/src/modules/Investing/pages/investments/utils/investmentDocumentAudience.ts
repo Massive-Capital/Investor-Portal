@@ -1,10 +1,11 @@
 import type { DealInvestorClass } from "@/modules/Syndication/Deals/types/deal-investor-class.types"
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import { investorEsignIsFullyCompletedForRow } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import {
-  investorEsignIsFullyCompletedForRow,
-  investorEsignWasSent,
-} from "@/modules/Syndication/Deals/utils/investorEsignStatus"
-import type { NestedPreviewDocument } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
+  FUNDING_INFORMATION_DOCUMENTS_SECTION_ID,
+  isFundingInstructionsAutoPdfDocument,
+  type NestedPreviewDocument,
+} from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 
 export type InvestmentDocumentAudienceContext = {
   viewerRows: DealInvestorRow[]
@@ -62,18 +63,24 @@ function viewerMatchesSharedInvestorId(
   return false
 }
 
-function viewerHasCompletedProfileInvestment(
+/** True when this login has finished eSign for at least one commitment on the deal. */
+function viewerHasCompletedEsign(
   viewerRows: InvestmentDocumentAudienceContext["viewerRows"],
 ): boolean {
   for (const row of viewerRows) {
-    const hasProfile =
-      Boolean(String(row.userInvestorProfileId ?? "").trim()) ||
-      Boolean(String(row.profileId ?? "").trim())
-    if (!hasProfile) continue
-    if (!investorEsignWasSent(row)) continue
     if (investorEsignIsFullyCompletedForRow(row)) return true
   }
   return false
+}
+
+function fundingDocumentRequiresEsignCompletion(
+  doc: NestedPreviewDocument,
+): boolean {
+  if (doc.requiresProfileInvestment) return true
+  if (isFundingInstructionsAutoPdfDocument(doc)) return true
+  return (
+    doc.lpDisplaySectionId?.trim() === FUNDING_INFORMATION_DOCUMENTS_SECTION_ID
+  )
 }
 
 /**
@@ -85,8 +92,8 @@ export function nestedDocumentVisibleToInvestor(
   ctx: InvestmentDocumentAudienceContext,
 ): boolean {
   if (
-    doc.requiresProfileInvestment &&
-    !viewerHasCompletedProfileInvestment(ctx.viewerRows)
+    fundingDocumentRequiresEsignCompletion(doc) &&
+    !viewerHasCompletedEsign(ctx.viewerRows)
   ) {
     return false
   }

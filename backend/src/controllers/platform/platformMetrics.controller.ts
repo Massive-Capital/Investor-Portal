@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
@@ -26,7 +26,7 @@ export async function getPlatformMetricsHandler(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -64,7 +64,7 @@ export async function getPlatformFundingHandler(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -104,7 +104,7 @@ export async function getPlatformUserActivityHandler(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -142,7 +142,7 @@ export async function getPlatformSignupNotificationsHandler(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

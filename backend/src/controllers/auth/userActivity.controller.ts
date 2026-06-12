@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   endUserPortalSession,
   ensureUserPortalSession,
@@ -25,7 +25,7 @@ export async function postEnsureActivitySession(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -51,7 +51,7 @@ export async function postActivityLogout(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;
@@ -78,7 +78,7 @@ export async function postActivityPageView(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

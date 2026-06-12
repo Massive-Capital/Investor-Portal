@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   getWorkspaceTabPayload,
   isWorkspaceTabKey,
@@ -34,7 +34,7 @@ export async function getWorkspaceTabSettings(
   res: Response,
 ): Promise<void> {
   try {
-    const user = getJwtUser(req);
+    const user = await getValidJwtUser(req);
     if (!user?.id) {
       res.status(401).json({ message: "Authorization required" });
       return;
@@ -71,7 +71,7 @@ export async function putWorkspaceTabSettings(
   res: Response,
 ): Promise<void> {
   try {
-    const user = getJwtUser(req);
+    const user = await getValidJwtUser(req);
     if (!user?.id) {
       res.status(401).json({ message: "Authorization required" });
       return;

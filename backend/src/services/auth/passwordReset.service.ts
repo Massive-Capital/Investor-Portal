@@ -9,6 +9,7 @@ import emailConfig, {
   smtpEnvelopeForSendMail,
 } from "../../functions/emailconfig.js";
 import { buildResetPasswordEmailHtml } from "../../functions/resetPasswordEmail.template.js";
+import { revokeAllUserAuthTokens } from "./token.service.js";
 
 const BCRYPT_ROUNDS = 10;
 const RESET_TOKEN_PURPOSE = "password_reset";
@@ -170,6 +171,8 @@ export async function resetPasswordWithToken(
     if (updated.length === 0) {
       return { ok: false, status: 404, message: "User not found" };
     }
+
+    await revokeAllUserAuthTokens(updated[0]!.id);
 
     return { ok: true, message: "Password reset successfully." };
   } catch (err) {

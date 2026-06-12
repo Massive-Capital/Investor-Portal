@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
@@ -30,7 +30,7 @@ async function assertDealReadable(
   res: Response,
   dealId: string,
 ): Promise<boolean> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return false;
@@ -72,7 +72,7 @@ export async function postDealInvestorCommunicationMail(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const user = getJwtUser(req);
+  const user = await getValidJwtUser(req);
   if (!user?.id) {
     res.status(401).json({ message: "Authorization required" });
     return;

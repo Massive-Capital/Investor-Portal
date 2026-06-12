@@ -13,8 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { isLpInvestorSessionUser } from "../../auth/roleUtils"
-import { clearPortalSessionStorage } from "../../auth/sessionKeys"
-import { recordActivityLogout } from "../../auth/userActivityApi"
+import { performPortalLogout } from "../../auth/portalLogout"
 import { getSessionUserDisplayName } from "../../auth/sessionUserDisplayName"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { NotificationsNavButton } from "@/modules/notifications"
@@ -228,8 +227,7 @@ export function TopNavBar({ userName: userNameProp }: TopNavBarProps) {
 
   async function handleLogout() {
     closeMenu()
-    await recordActivityLogout()
-    clearPortalSessionStorage()
+    await performPortalLogout()
     navigate("/signin")
   }
 

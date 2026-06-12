@@ -6,6 +6,9 @@ import {
   type AssetStepDraft,
 } from "./deals.types"
 
+/** Maximum property images allowed per asset (Add/Edit asset and create-deal Assets step). */
+export const ASSET_MAX_IMAGE_COUNT = 10
+
 /** Legacy key for one-shot pending row (migrated into full map) */
 export function dealAssetPendingStorageKey(dealId: string): string {
   return `portal_deal_asset_pending_${dealId}`

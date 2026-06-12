@@ -1,4 +1,4 @@
-import { SESSION_BEARER_KEY } from "./sessionKeys"
+import { getStoredAccessToken } from "./authTokensApi"
 import { getSessionOrganizationCompanyId } from "./sessionOrganization"
 
 /** Sent on API calls so the backend scopes data to the selected company workspace. */
@@ -6,10 +6,7 @@ export const ACTIVE_ORGANIZATION_HEADER = "X-Active-Organization-Id"
 
 export function portalAuthHeaders(): HeadersInit {
   const h: Record<string, string> = {}
-  const token =
-    typeof sessionStorage !== "undefined"
-      ? sessionStorage.getItem(SESSION_BEARER_KEY)
-      : null
+  const token = getStoredAccessToken()
   if (token) h.Authorization = `Bearer ${token}`
 
   const activeOrg = getSessionOrganizationCompanyId()

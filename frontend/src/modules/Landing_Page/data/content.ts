@@ -47,7 +47,7 @@ export const hero = {
   headline: "The Ultimate Capital Raising Machine",
   subheadline:
     "Transforming investor syndication, fundraising, and capital deployment into one seamless institutional-grade platform.",
-  primaryCta: "Start Raising",
+  primaryCta: "Start Raising & Investing",
   secondaryCta: "Book Webinar",
   trust: [
     "Investor-ready",

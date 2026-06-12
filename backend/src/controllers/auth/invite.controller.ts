@@ -17,7 +17,7 @@ import {
   isPlatformAdminRole,
   PLATFORM_USER,
 } from "../../constants/roles.js";
-import { getJwtUser } from "../../middleware/jwtUser.js";
+import { getValidJwtUser } from "../../middleware/jwtUser.js";
 
 type InviteBody = {
   email?: unknown;
@@ -30,7 +30,7 @@ function roleLabelForInvite(invitedRole: string | null): string {
 }
 
 export async function postInviteUser(req: Request, res: Response): Promise<void> {
-  const jwtUser = getJwtUser(req);
+  const jwtUser = await getValidJwtUser(req);
   if (!jwtUser?.id || jwtUser.userRole == null || jwtUser.userRole === "") {
     res.status(401).json({ message: "Authorization required" });
     return;
