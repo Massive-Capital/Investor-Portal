@@ -63,6 +63,10 @@ import {
 } from "./companyCsv";
 import type { CompanyExportRow } from "./companyCsv";
 import { notifyCompaniesExportAudit } from "./companiesExportNotifyApi";
+import {
+  buildTableExportFilename,
+  downloadTableExportCsv,
+} from "../../../common/utils/tableExportFilename";
 import "../Deals/deal-investors-tab.css";
 import "../Deals/deals-list.css";
 import "../usermanagement/user_management.css";
@@ -164,6 +168,8 @@ function readStoredWorkspaceCompanyId(): string {
 
 const COMPANY_ID_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const SYNDICATION_X_COMPANY_NAME = "SyndicationX";
 
 type CompanyRow = CompanyExportRow;
 
@@ -374,7 +380,17 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       companies.some((c) => c.id.trim().toLowerCase() === pid)
         ? pid
         : "";
-    const next = (storedOk || companies[0].id).trim().toLowerCase();
+    const syndicationX = companies.find(
+      (c) =>
+        c.name.trim().toLowerCase() === SYNDICATION_X_COMPANY_NAME.toLowerCase(),
+    );
+    const next = (
+      storedOk ||
+      syndicationX?.id ||
+      companies[0].id
+    )
+      .trim()
+      .toLowerCase();
     if (!COMPANY_ID_UUID_RE.test(next)) return;
     if (next === pid) return;
     setPlatformAdminWorkspaceCompanyId(next);
@@ -770,18 +786,9 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     const line = [
       headers.map(escapeCsvCell).join(","),
       vals.map(escapeCsvCell).join(","),
-    ];
-    const blob = new Blob([line.join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const safe = row.name.replace(/[^\w.-]+/g, "_").slice(0, 40);
-    const filename = `company-${safe || row.id}.csv`;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    ].join("\r\n");
+    const filename = buildTableExportFilename({ dealName: row.name });
+    downloadTableExportCsv(`\uFEFF${line}`, filename);
     void notifyCompaniesExportAudit({
       rowCount: 1,
       exportedCompanyLines: exportAuditLinesForCompanies([row]),

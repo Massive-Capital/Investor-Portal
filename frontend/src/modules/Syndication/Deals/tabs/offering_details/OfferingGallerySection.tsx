@@ -11,6 +11,7 @@ import {
   galleryUrlsReferToSameAsset,
   mergePathSegmentsForOfferingGalleryPersist,
 } from "../../utils/offeringGalleryUrls"
+import { DealOfferingGalleryImage } from "../../components/DealOfferingGalleryImage"
 import { toast } from "../../../../../common/components/Toast"
 import "../deal_members/add-investment/add_deal_modal.css"
 
@@ -173,7 +174,7 @@ export function OfferingGallerySection({
                 onClick={() => setLightboxSrc(src)}
                 aria-label={`View gallery image ${i + 1} of ${urls.length} at full size`}
               >
-                <img
+                <DealOfferingGalleryImage
                   src={src}
                   alt=""
                   className="deal_offering_gallery_img"
@@ -237,10 +238,12 @@ export function OfferingGallerySection({
                   </button>
                 </div>
                 <div className="deals_add_inv_modal_scroll deal_offering_gallery_lightbox_scroll">
-                  <img
+                  <DealOfferingGalleryImage
                     src={lightboxSrc}
                     alt=""
                     className="deal_offering_gallery_lightbox_img"
+                    loading="eager"
+                    fetchPriority="high"
                   />
                 </div>
                 <div className="um_modal_actions deal_offering_gallery_lightbox_actions">

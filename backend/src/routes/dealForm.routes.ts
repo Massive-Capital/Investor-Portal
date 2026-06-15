@@ -234,7 +234,6 @@ router.patch(
 router.patch("/deals/:dealId/gallery-cover", patchDealGalleryCover);
 router.post(
   "/deals/:dealId/offering-gallery-uploads",
-  upload.array("galleryFiles", 20),
   postDealOfferingGalleryUploads,
 );
 router.post(
@@ -257,12 +256,8 @@ router.get(
   getDealOfferingShareRecipients,
 );
 router.get("/deals/:dealId", getDealById);
-router.put(
-  "/deals/:dealId",
-  upload.array("assetImages", 20),
-  putDeal,
-);
+router.put("/deals/:dealId", putDeal);
 router.delete("/deals/:dealId", deleteDeal);
-router.post("/deals", upload.array("assetImages", 20), postDeal);
+router.post("/deals", postDeal);
 
 export default router;

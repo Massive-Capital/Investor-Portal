@@ -25,6 +25,7 @@ import {
   memberRowKey,
 } from "./memberCsv"
 import { notifyMembersExportAudit } from "./membersExportNotifyApi"
+import { buildTableExportFilename } from "../../../common/utils/tableExportFilename"
 
 interface ExportMembersModalProps {
   open: boolean
@@ -52,8 +53,8 @@ export function ExportMembersModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedKeys(new Set())
-  }, [open])
+    setSelectedKeys(new Set(members.map((r) => memberRowKey(r))))
+  }, [open, members])
 
   const visibleMembers = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -151,8 +152,11 @@ export function ExportMembersModal({
     const chosen = members.filter((r) => keySet.has(keyForRow(r)))
     if (chosen.length === 0) return
     const csv = buildMembersCsv(chosen, organizationScope)
-    const stamp = new Date().toISOString().slice(0, 10)
-    downloadMembersCsv(csv, `members-export-${stamp}.csv`)
+    const filename = buildTableExportFilename({
+      tableSlug: "members",
+      includeDateStamp: true,
+    })
+    downloadMembersCsv(csv, filename)
     void notifyMembersExportAudit({
       rowCount: chosen.length,
       exportedMemberLines: exportAuditLinesForMembers(chosen),

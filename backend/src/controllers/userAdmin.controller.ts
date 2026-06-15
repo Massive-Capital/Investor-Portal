@@ -174,8 +174,8 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
     role,
     actor.organizationId ?? null,
     filterOrganizationId
-      ? { filterOrganizationId }
-      : undefined,
+      ? { filterOrganizationId, actorUserId: jwtUser.id }
+      : { actorUserId: jwtUser.id },
   );
   if (rows === null) {
     res.status(403).json({ message: "Not allowed to list members" });

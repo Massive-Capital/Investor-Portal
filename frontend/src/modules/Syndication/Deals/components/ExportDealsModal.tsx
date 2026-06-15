@@ -3,6 +3,7 @@ import { ExportModalFooter } from "../../../../common/components/modal/ExportMod
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { dealStageLabel } from "../../dealsDashboardUtils"
 import { toast } from "../../../../common/components/Toast"
+import { buildTableExportFilename } from "../../../../common/utils/tableExportFilename"
 import { notifyDealsExportAudit } from "../api/dealsExportNotifyApi"
 import type { DealListRow } from "../types/deals.types"
 import {
@@ -31,8 +32,8 @@ export function ExportDealsModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedIds(new Set())
-  }, [open])
+    setSelectedIds(new Set(deals.map((r) => r.id)))
+  }, [open, deals])
 
   const visibleDeals = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -98,8 +99,10 @@ export function ExportDealsModal({
     const chosen = deals.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildDealsListExportCsv(chosen)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `deals-export-${stamp}.csv`
+    const filename =
+      chosen.length === 1
+        ? buildTableExportFilename({ dealName: chosen[0]!.dealName })
+        : buildTableExportFilename({ tableSlug: "deals", includeDateStamp: true })
     downloadDealsListExportCsv(csv, filename)
     void notifyDealsExportAudit({
       rowCount: chosen.length,

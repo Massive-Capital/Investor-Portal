@@ -265,6 +265,8 @@ export function AddDealAssetPage() {
     }
 
     setSaving(true)
+    const filesToUpload = [...assetImageFiles]
+    setAssetImageFiles([])
     try {
       const resolvedId = isEdit ? assetId : `asset-${Date.now()}`
       const prev = isEdit ? getDealAssetPersisted(dealId, resolvedId) : undefined
@@ -273,9 +275,10 @@ export function AddDealAssetPage() {
         ...existingImageUrls,
       ])
 
-      if (assetImageFiles.length > 0) {
-        const up = await postDealOfferingGalleryUploads(dealId, assetImageFiles)
+      if (filesToUpload.length > 0) {
+        const up = await postDealOfferingGalleryUploads(dealId, filesToUpload)
         if (!up.ok) {
+          setAssetImageFiles(filesToUpload)
           toast.error(up.message)
           return
         }

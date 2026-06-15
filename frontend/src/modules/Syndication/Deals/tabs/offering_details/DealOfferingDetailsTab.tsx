@@ -165,6 +165,7 @@ export function DealOfferingDetailsTab({
         return (
           <OfferingInformationSection
             dealId={detail.id}
+            dealName={detail.dealName}
             dealOfferingStatus={detail.offeringStatus}
             dealOfferingVisibility={detail.offeringVisibility}
           />

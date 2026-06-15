@@ -106,6 +106,7 @@ import {
   downloadDealExportCsv,
   exportAuditLinesForDealInvestorRows,
 } from "../../utils/dealInvestorExportCsv";
+import { buildTableExportFilename } from "@/common/utils/tableExportFilename";
 import {
   dealInvestorStatusDisplayLabel,
   investorFundedColumnLabel,
@@ -465,6 +466,7 @@ function DealInvestorsKpiSkeletonSection() {
 function DealInvestorsPopulated({
   initialPayload,
   dealId,
+  dealName,
   dealDetail,
   investorClasses,
   onEditInvestor,
@@ -483,6 +485,7 @@ function DealInvestorsPopulated({
 }: {
   initialPayload: DealInvestorsPayload;
   dealId: string;
+  dealName: string;
   dealDetail?: DealDetailApi | null;
   investorClasses: DealInvestorClass[];
   onEditInvestor: (row: DealInvestorRow) => void;
@@ -1211,13 +1214,16 @@ function DealInvestorsPopulated({
 
   function handleExportInvestors(selected: DealInvestorRow[]) {
     const csv = buildDealInvestorsExportCsv(selected, dealAllClassNamesLine);
-    const stamp = new Date().toISOString().slice(0, 10);
-    const safeDeal = dealId.replace(/[^\w-]+/g, "_").slice(0, 36);
-    downloadDealExportCsv(csv, `deal-investors-${safeDeal}-${stamp}.csv`);
+    const filename = buildTableExportFilename({
+      dealName,
+      tableSlug: "investor",
+    });
+    downloadDealExportCsv(csv, filename);
     void notifyDealInvestorsExportAudit(dealId, {
       rowCount: selected.length,
       exportedLines: exportAuditLinesForDealInvestorRows(selected),
     });
+    toast.success("Investors exported", `Saved as ${filename}`);
   }
 
   const handleSendMailToSelectedInvestors = useCallback(async () => {
@@ -2236,6 +2242,7 @@ export const DealInvestorsTab = forwardRef<
       <DealInvestorsPopulated
         initialPayload={mergedPayload}
         dealId={dealId}
+        dealName={dealName}
         dealDetail={dealDetail}
         investorClasses={investorClasses}
         onEditInvestor={handleEditInvestor}

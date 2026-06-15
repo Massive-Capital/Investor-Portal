@@ -1,12 +1,7 @@
 import type { DealAssetRow } from "../types/deal-asset.types"
 import type { DealInvestorClass } from "../types/deal-investor-class.types"
 import { escapeCsvCell, downloadDealExportCsv } from "./dealInvestorExportCsv"
-
-function exportFilenameStamp(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
-}
+import { buildTableExportFilename } from "../../../../common/utils/tableExportFilename"
 
 export function buildDealAssetsExportCsv(rows: DealAssetRow[]): string {
   const headers = ["Name", "Address", "Asset type", "Images", "Status"]
@@ -64,21 +59,28 @@ export function buildInvestorClassesExportCsv(
   return `\uFEFF${lines.join("\r\n")}`
 }
 
-export function downloadDealAssetsExportCsv(dealId: string, rows: DealAssetRow[]): string {
-  const safeDeal = dealId.trim().replace(/[^\w-]+/g, "-") || "deal"
-  const filename = `deal-assets-${safeDeal}-${exportFilenameStamp()}.csv`
+export function downloadDealAssetsExportCsv(
+  dealName: string,
+  rows: DealAssetRow[],
+): string {
+  const filename = buildTableExportFilename({
+    dealName,
+    tableSlug: "assets",
+  })
   downloadDealExportCsv(buildDealAssetsExportCsv(rows), filename)
   return filename
 }
 
 export function downloadInvestorClassesExportCsv(
-  dealId: string,
+  dealName: string,
   rows: DealInvestorClass[],
   dealStatusLabel: string,
   dealVisibilityLabel: string,
 ): string {
-  const safeDeal = dealId.trim().replace(/[^\w-]+/g, "-") || "deal"
-  const filename = `deal-investor-classes-${safeDeal}-${exportFilenameStamp()}.csv`
+  const filename = buildTableExportFilename({
+    dealName,
+    tableSlug: "investor-classes",
+  })
   downloadDealExportCsv(
     buildInvestorClassesExportCsv(rows, dealStatusLabel, dealVisibilityLabel),
     filename,

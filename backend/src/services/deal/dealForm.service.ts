@@ -33,6 +33,11 @@ import {
   getDealEsignTemplatesState,
 } from "./dealEsignTemplates.service.js";
 import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
+import {
+  isCloudinaryConfigured,
+  isCloudinaryDeliveryUrl,
+  uploadDealImageToCloudinary,
+} from "../company/cloudinaryCompanyBranding.service.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
@@ -290,8 +295,25 @@ export async function saveDealAssetFiles(params: {
   files: DealMemoryUploadFile[];
   /** Optional deal id — files stored under `deal-assets/<dealName-dealId>/`. */
   dealId?: string;
+  /** Gallery / asset images: upload to Cloudinary when configured; otherwise disk. */
+  useCloudinaryForImages?: boolean;
 }): Promise<string[]> {
   if (!params.files.length) return [];
+  const useCloud =
+    Boolean(params.useCloudinaryForImages) && isCloudinaryConfigured();
+  if (useCloud) {
+    const stored: string[] = [];
+    for (const file of params.files) {
+      const stem = sanitizeOriginalStem(file.originalname);
+      const { secureUrl } = await uploadDealImageToCloudinary({
+        dealId: params.dealId,
+        buffer: file.buffer,
+        labelStem: stem,
+      });
+      stored.push(secureUrl);
+    }
+    return stored;
+  }
   const dealId = params.dealId?.trim() ?? "";
   const dealFolder = dealId ? await resolveDealStorageFolderName(dealId) : "";
   const uploadRoot = dealFolder
@@ -669,6 +691,14 @@ const MAX_OFFERING_GALLERY_PATHS = 40;
 const MAX_OFFERING_GALLERY_PATH_LEN = 500;
 const MAX_OFFERING_GALLERY_JSON_LEN = 32000;
 
+/** Upload-relative disk path or Cloudinary `https://res.cloudinary.com/...` delivery URL. */
+function isValidDealImageStoredPath(t: string): boolean {
+  if (!t || t.includes("..")) return false;
+  if (t.length > MAX_OFFERING_GALLERY_PATH_LEN) return false;
+  if (isCloudinaryDeliveryUrl(t)) return true;
+  return /^[\w./-]+$/.test(t);
+}
+
 /** Parse stored JSON array; invalid → []. */
 export function parseStoredOfferingOverviewAssetIds(
   raw: string | null | undefined,
@@ -704,9 +734,7 @@ export function parseStoredOfferingGalleryPaths(
     for (const x of p) {
       if (typeof x !== "string") continue;
       const t = x.trim().replace(/^\/+/, "");
-      if (!t || t.length > MAX_OFFERING_GALLERY_PATH_LEN) continue;
-      if (t.includes("..")) continue;
-      if (!/^[\w./-]+$/.test(t)) continue;
+      if (!t || !isValidDealImageStoredPath(t)) continue;
       out.push(t);
       if (out.length >= MAX_OFFERING_GALLERY_PATHS) break;
     }
@@ -726,9 +754,7 @@ export function mergeOfferingGalleryPathsIntoStored(
   for (const p of append) {
     const t = p.trim().replace(/^\/+/, "");
     if (!t || seen.has(t)) continue;
-    if (t.includes("..")) continue;
-    if (!/^[\w./-]+$/.test(t)) continue;
-    if (t.length > MAX_OFFERING_GALLERY_PATH_LEN) continue;
+    if (!isValidDealImageStoredPath(t)) continue;
     seen.add(t);
     cur.push(t);
     if (cur.length >= MAX_OFFERING_GALLERY_PATHS) break;
@@ -756,14 +782,8 @@ export function normalizeOfferingGalleryPathsFromBody(
       return { ok: false, message: "Gallery path cannot be empty." };
     }
     if (seen.has(t)) continue;
-    if (t.length > MAX_OFFERING_GALLERY_PATH_LEN) {
-      return { ok: false, message: "A gallery path is too long." };
-    }
-    if (t.includes("..")) {
+    if (!isValidDealImageStoredPath(t)) {
       return { ok: false, message: "Invalid gallery path." };
-    }
-    if (!/^[\w./-]+$/.test(t)) {
-      return { ok: false, message: "Invalid gallery path characters." };
     }
     seen.add(t);
     out.push(t);

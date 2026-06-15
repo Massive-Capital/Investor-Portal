@@ -2,6 +2,7 @@ import { Download, Search, X } from "lucide-react"
 import { ExportModalFooter } from "../../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
+import { buildTableExportFilename } from "@/common/utils/tableExportFilename"
 import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
 import {
   buildBeneficiariesExportCsv,
@@ -30,8 +31,8 @@ export function ExportBeneficiariesModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedIds(new Set())
-  }, [open])
+    setSelectedIds(new Set(beneficiaries.map((r) => r.id)))
+  }, [open, beneficiaries])
 
   const visibleRows = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -107,8 +108,10 @@ export function ExportBeneficiariesModal({
   function handleExportAll() {
     if (beneficiaries.length === 0) return
     const csv = buildBeneficiariesExportCsv(beneficiaries)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `beneficiaries-export-all-${stamp}.csv`
+    const filename = buildTableExportFilename({
+      tableSlug: "beneficiaries",
+      includeDateStamp: true,
+    })
     downloadExportCsv(csv, filename, true)
     toast.success("Beneficiaries exported", `Saved as ${filename}`)
     onClose()
@@ -118,8 +121,10 @@ export function ExportBeneficiariesModal({
     const chosen = beneficiaries.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildBeneficiariesExportCsv(chosen)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `beneficiaries-export-${stamp}.csv`
+    const filename = buildTableExportFilename({
+      tableSlug: "beneficiaries",
+      includeDateStamp: true,
+    })
     downloadExportCsv(csv, filename, true)
     toast.success("Beneficiaries exported", `Saved as ${filename}`)
     onClose()

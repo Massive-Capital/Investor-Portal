@@ -10,6 +10,7 @@ import {
   exportAuditLinesForContacts,
   formatContactSinceLabel,
 } from "../utils/contactCsv"
+import { buildTableExportFilename } from "../../../../common/utils/tableExportFilename"
 
 interface ExportContactsModalProps {
   open: boolean
@@ -38,8 +39,8 @@ export function ExportContactsModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedIds(new Set())
-  }, [open, listKind])
+    setSelectedIds(new Set(contacts.map((r) => r.id)))
+  }, [open, listKind, contacts])
 
   const visibleContacts = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -127,9 +128,11 @@ export function ExportContactsModal({
     const chosen = contacts.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildContactsCsv(chosen)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const slug = listKind === "archived" ? "archived" : "active"
-    downloadContactsCsv(csv, `contacts-export-${slug}-${stamp}.csv`)
+    const filename = buildTableExportFilename({
+      tableSlug: listKind === "archived" ? "contacts-archived" : "contacts",
+      includeDateStamp: true,
+    })
+    downloadContactsCsv(csv, filename)
     void notifyContactsExportAudit({
       rowCount: chosen.length,
       exportedContactLines: exportAuditLinesForContacts(chosen),

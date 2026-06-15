@@ -10,6 +10,7 @@ import {
   type CompanyExportRow,
 } from "./companyCsv"
 import { notifyCompaniesExportAudit } from "./companiesExportNotifyApi"
+import { buildTableExportFilename } from "../../../common/utils/tableExportFilename"
 
 interface ExportCompaniesModalProps {
   open: boolean
@@ -33,8 +34,8 @@ export function ExportCompaniesModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedIds(new Set())
-  }, [open, listKind])
+    setSelectedIds(new Set(companies.map((r) => r.id)))
+  }, [open, listKind, companies])
 
   const visibleCompanies = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -115,9 +116,10 @@ export function ExportCompaniesModal({
     const chosen = companies.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildCompaniesCsv(chosen)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const slug = listKind === "archived" ? "archived" : "active"
-    const filename = `companies-export-${slug}-${stamp}.csv`
+    const filename = buildTableExportFilename({
+      tableSlug: listKind === "archived" ? "companies-archived" : "companies",
+      includeDateStamp: true,
+    })
     downloadCompaniesCsv(csv, filename)
     void notifyCompaniesExportAudit({
       rowCount: chosen.length,

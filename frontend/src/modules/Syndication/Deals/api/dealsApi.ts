@@ -4,6 +4,10 @@ import {
   portalAuthHeaders,
 } from "../../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
+import {
+  MAX_DEAL_IMAGE_FILE_BYTES,
+  materializeImageFilesForUpload,
+} from "../../../../common/utils/materializeImageFileForUpload"
 import { formatDateDdMmmYyyy } from "../../../../common/utils/formatDateDisplay"
 import {
   parseDropboxDetailFromApi,
@@ -1168,9 +1172,9 @@ export async function patchDealOfferingGallery(
 }
 
 /** Upload new gallery files to the server (Add Asset / offering images) so public preview can load them. */
-export async function postDealOfferingGalleryUploads(
+async function postSingleDealGalleryImageUpload(
   dealId: string,
-  files: File[],
+  file: File,
 ): Promise<
   | { ok: true; deal: DealDetailApi; newPaths: string[] }
   | { ok: false; message: string }
@@ -1178,49 +1182,119 @@ export async function postDealOfferingGalleryUploads(
   const base = getApiV1Base()
   if (!base)
     return { ok: false, message: "VITE_BASE_URL is not configured." }
+  const form = new FormData()
+  form.append("galleryFiles", file, file.name)
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/offering-gallery-uploads`,
+      {
+        method: "POST",
+        headers: { ...authHeaders() },
+        body: form,
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      deal?: DealDetailApi & Record<string, unknown>
+      newPaths?: unknown
+      message?: string
+    }
+    if (!res.ok) {
+      const status = res.status
+      const fromServer =
+        typeof data.message === "string" && data.message.trim()
+          ? data.message.trim()
+          : ""
+      let msg =
+        fromServer ||
+        (status ? `Upload failed (HTTP ${status}).` : "Upload failed (unknown status).")
+      if (status === 502 || status === 503 || status === 504) {
+        const hint =
+          "The dev server could not connect to the API. Start the backend (e.g. `npm run dev` in the `backend` folder) and ensure the port matches `BACKEND_PORT` / the Vite proxy, or set `VITE_DEV_API_PROXY` in the frontend `.env` to your API base URL. Check the terminal where Vite is running for proxy errors."
+        if (import.meta.env.DEV) {
+          msg = fromServer ? `${fromServer} ${hint}` : hint
+        } else {
+          msg = fromServer || msg
+        }
+      }
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- dev-only upload diagnostics
+        console.warn("postSingleDealGalleryImageUpload", res.status, msg)
+      }
+      return { ok: false, message: msg }
+    }
+    if (res.status === 200 && data.deal) {
+      const np = data.newPaths
+      const newPaths = Array.isArray(np)
+        ? np.filter((x): x is string => typeof x === "string")
+        : []
+      return {
+        ok: true,
+        deal: normalizeDealDetailApi(data.deal),
+        newPaths,
+      }
+    }
+    return {
+      ok: false,
+      message: "Server did not confirm the gallery upload.",
+    }
+  } catch (e) {
+    const message =
+      e instanceof Error && e.message
+        ? e.message
+        : "Network error while uploading."
+    return { ok: false, message }
+  }
+}
+
+export async function postDealOfferingGalleryUploads(
+  dealId: string,
+  files: File[],
+): Promise<
+  | { ok: true; deal: DealDetailApi; newPaths: string[] }
+  | { ok: false; message: string }
+> {
+  if (!dealId.trim())
+    return { ok: false, message: "Missing deal id." }
   if (files.length === 0)
     return { ok: false, message: "No images to upload." }
   const fileKey = (f: File) => `${f.name}\0${f.size}\0${f.lastModified}`
   const seen = new Set<string>()
   const unique: File[] = []
   for (const f of files) {
+    if (typeof f.size === "number" && f.size <= 0) {
+      return { ok: false, message: "Choose a non-empty image file." }
+    }
+    if (typeof f.size === "number" && f.size > MAX_DEAL_IMAGE_FILE_BYTES) {
+      return { ok: false, message: "Image too large (max 20 MB each)." }
+    }
     const k = fileKey(f)
     if (seen.has(k)) continue
     seen.add(k)
     unique.push(f)
   }
-  const fd = new FormData()
-  for (const f of unique) fd.append("galleryFiles", f)
-  const res = await fetch(
-    `${base}/deals/${encodeURIComponent(dealId)}/offering-gallery-uploads`,
-    {
-      method: "POST",
-      headers: { ...authHeaders() },
-      body: fd,
-      credentials: "include",
-    },
-  )
-  const data = (await res.json().catch(() => ({}))) as {
-    deal?: DealDetailApi & Record<string, unknown>
-    newPaths?: unknown
-    message?: string
+  let materialized: File[]
+  try {
+    materialized = await materializeDealImageFiles(unique)
+  } catch (e) {
+    const message =
+      e instanceof Error && e.message
+        ? e.message
+        : "Could not read the selected image file."
+    return { ok: false, message }
   }
-  if (res.status === 200 && data.deal) {
-    const np = data.newPaths
-    const newPaths = Array.isArray(np)
-      ? np.filter((x): x is string => typeof x === "string")
-      : []
-    return {
-      ok: true,
-      deal: normalizeDealDetailApi(data.deal),
-      newPaths,
-    }
+  const allNewPaths: string[] = []
+  let lastDeal: DealDetailApi | null = null
+  for (const f of materialized) {
+    const one = await postSingleDealGalleryImageUpload(dealId, f)
+    if (!one.ok) return one
+    if (one.newPaths.length > 0) allNewPaths.push(...one.newPaths)
+    lastDeal = one.deal
   }
-  return {
-    ok: false,
-    message:
-      data.message || `Could not upload gallery images (${res.status})`,
+  if (!lastDeal) {
+    return { ok: false, message: "Server did not return deal details after upload." }
   }
+  return { ok: true, deal: lastDeal, newPaths: allNewPaths }
 }
 
 /** Offering document uploads (Documents tab) accept PDF files only. */
@@ -1667,7 +1741,9 @@ export function buildCreateDealFormDataForAutosave(
       imageOpts.retainedAssetImagePath.join(";"),
     )
   }
-  for (const file of imageFiles) fd.append("assetImages", file)
+  for (const file of imageFiles) {
+    fd.append("assetImages", file, file.name)
+  }
   return fd
 }
 
@@ -1705,8 +1781,18 @@ export function buildCreateDealFormData(
       imageOpts.retainedAssetImagePath.join(";"),
     )
   }
-  for (const file of imageFiles) fd.append("assetImages", file)
+  for (const file of imageFiles) {
+    fd.append("assetImages", file, file.name)
+  }
   return fd
+}
+
+/** Chrome-safe copy of picker files before multipart upload (same as org branding assets). */
+export async function materializeDealImageFiles(files: File[]): Promise<File[]> {
+  return materializeImageFilesForUpload(files, {
+    fallbackBasename: "property-image",
+    maxBytes: MAX_DEAL_IMAGE_FILE_BYTES,
+  })
 }
 
 export async function createDealMultipart(

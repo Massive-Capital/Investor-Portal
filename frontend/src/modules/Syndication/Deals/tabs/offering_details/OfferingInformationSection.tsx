@@ -5030,10 +5030,12 @@ export function InvestorClassAllocationToolbarNotice({
 
 export function OfferingInformationSection({
   dealId,
+  dealName,
   dealOfferingStatus,
   dealOfferingVisibility,
 }: {
   dealId: string
+  dealName?: string | null
   /** Same deal-level status as Offering Details → Overview (Deal Status). */
   dealOfferingStatus?: string | null
   /** Same deal-level visibility as Offering Details → Overview. */
@@ -5137,14 +5139,14 @@ export function OfferingInformationSection({
       const chosen = rows.filter((row) => keySet.has(row.id))
       if (chosen.length === 0) return
       const filename = downloadInvestorClassesExportCsv(
-        dealId,
+        dealName?.trim() || dealId,
         chosen,
         dealStatusLabel,
         dealVisibilityLabel,
       )
       toast.success("Investor classes exported", `Saved as ${filename}`)
     },
-    [dealId, rows, dealStatusLabel, dealVisibilityLabel],
+    [dealId, dealName, rows, dealStatusLabel, dealVisibilityLabel],
   )
 
   return (

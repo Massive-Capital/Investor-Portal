@@ -80,6 +80,7 @@ import { MemberRoleBadge } from "../usermanagement/MemberRoleBadge"
 import { UserOrganizationsCell } from "../usermanagement/UserOrganizationsCell"
 import { escapeCsvCell, exportAuditLinesForMembers } from "../usermanagement/memberCsv"
 import { notifyMembersExportAudit } from "../usermanagement/membersExportNotifyApi"
+import { buildTableExportFilename, downloadTableExportCsv } from "../../../common/utils/tableExportFilename"
 import type { CustomerCompanyOutletContext } from "./CustomerCompanyLayout"
 import "../Deals/deal-investors-tab.css"
 import "../Deals/deals-list.css"
@@ -390,26 +391,18 @@ export default function CompanyMembersPage() {
     const line = [
       headers.map(escapeCsvCell).join(","),
       vals.map(escapeCsvCell).join(","),
-    ]
-    const blob = new Blob([line.join("\r\n")], {
-      type: "text/csv;charset=utf-8",
+    ].join("\r\n")
+    const filename = buildTableExportFilename({
+      dealName: rowDisplayName(row),
+      tableSlug: "member",
     })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    const safe = String(row.username ?? row.email ?? "member").replace(
-      /[^\w.-]+/g,
-      "_",
-    )
-    a.download = `member-${safe}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadTableExportCsv(`\uFEFF${line}`, filename)
     void notifyMembersExportAudit({
       rowCount: 1,
       exportedMemberLines: exportAuditLinesForMembers([row]),
     })
     closeActionMenu()
-    toast.success("Member exported", `Saved as ${a.download}`)
+    toast.success("Member exported", `Saved as ${filename}`)
   }
 
   async function reinviteRow(row: Record<string, unknown>, rowId: string) {

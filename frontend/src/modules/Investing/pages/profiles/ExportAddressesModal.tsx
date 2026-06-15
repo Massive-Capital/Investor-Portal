@@ -2,6 +2,7 @@ import { Download, Search, X } from "lucide-react"
 import { ExportModalFooter } from "../../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
+import { buildTableExportFilename } from "@/common/utils/tableExportFilename"
 import { formatSavedAddressLabel, type SavedAddress } from "./address.types"
 import { COUNTRY_OPTIONS, US_STATE_OPTIONS } from "./usStates"
 import {
@@ -29,8 +30,8 @@ export function ExportAddressesModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedIds(new Set())
-  }, [open])
+    setSelectedIds(new Set(addresses.map((r) => r.id)))
+  }, [open, addresses])
 
   const visibleRows = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -118,8 +119,10 @@ export function ExportAddressesModal({
   function handleExportAll() {
     if (addresses.length === 0) return
     const csv = buildAddressesExportCsv(addresses)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `saved-addresses-export-all-${stamp}.csv`
+    const filename = buildTableExportFilename({
+      tableSlug: "saved-addresses",
+      includeDateStamp: true,
+    })
     downloadExportCsv(csv, filename, true)
     toast.success("Addresses exported", `Saved as ${filename}`)
     onClose()
@@ -129,8 +132,10 @@ export function ExportAddressesModal({
     const chosen = addresses.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildAddressesExportCsv(chosen)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `saved-addresses-export-${stamp}.csv`
+    const filename = buildTableExportFilename({
+      tableSlug: "saved-addresses",
+      includeDateStamp: true,
+    })
     downloadExportCsv(csv, filename, true)
     toast.success("Addresses exported", `Saved as ${filename}`)
     onClose()

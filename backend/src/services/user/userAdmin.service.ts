@@ -15,6 +15,7 @@ import {
   isPlatformAdminRole,
   PLATFORM_ADMIN,
   PLATFORM_USER,
+  LEGACY_USER,
 } from "../../constants/roles.js";
 import {
   enrichSerializedUsersWithDealParticipantRoles,
@@ -81,8 +82,55 @@ function isMissingMembershipTableError(err: unknown): boolean {
   return false;
 }
 
-/** Org Members UI: company_admin / company_user only — not investors (deal_participant) or LP contacts. */
-const COMPANY_ORG_STAFF_ROLES = [COMPANY_ADMIN, COMPANY_USER] as const;
+/** Org Members UI: org staff portal roles — not investors (deal_participant) or LP contacts. */
+const ORG_SETTINGS_MEMBER_ROLES = [
+  COMPANY_ADMIN,
+  COMPANY_USER,
+  PLATFORM_ADMIN,
+  PLATFORM_USER,
+  LEGACY_USER,
+] as const;
+
+async function appendPlatformAdminViewerToScopedList(
+  rows: Record<string, unknown>[],
+  actorUserId: string,
+  companyId: string,
+): Promise<Record<string, unknown>[]> {
+  const actorId = actorUserId.trim().toLowerCase();
+  if (!ORG_UUID_RE.test(actorId)) return rows;
+  if (
+    rows.some((r) => String(r.id ?? "").trim().toLowerCase() === actorId)
+  ) {
+    return rows;
+  }
+
+  const [actorUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, actorId))
+    .limit(1);
+  if (!actorUser || !isPlatformAdminRole(actorUser.role)) return rows;
+
+  const [scopeCompany] = await db
+    .select({ name: companies.name })
+    .from(companies)
+    .where(eq(companies.id, companyId))
+    .limit(1);
+  const scopeCompanyName = String(scopeCompany?.name ?? "").trim();
+
+  const mapped = serializeUserForClient(
+    actorUser,
+    scopeCompanyName || null,
+  );
+  const withDeal = await enrichSerializedUsersWithDealParticipantRoles([mapped]);
+  const enriched = await enrichUserRowsWithMemberships(withDeal);
+  const narrowed = narrowUserRowsToCompanyScope(
+    enriched,
+    companyId,
+    scopeCompanyName || "—",
+  );
+  return [...rows, ...narrowed];
+}
 
 async function listUsersScopedToCompany(companyId: string): Promise<Record<string, unknown>[]> {
   const [scopeCompany] = await db
@@ -95,11 +143,11 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
   const companyStaffWhere = or(
     and(
       eq(userCompanyMembership.companyId, companyId),
-      inArray(userCompanyMembership.role, [...COMPANY_ORG_STAFF_ROLES]),
+      inArray(userCompanyMembership.role, [...ORG_SETTINGS_MEMBER_ROLES]),
     ),
     and(
       eq(users.organizationId, companyId),
-      inArray(users.role, [...COMPANY_ORG_STAFF_ROLES]),
+      inArray(users.role, [...ORG_SETTINGS_MEMBER_ROLES]),
     ),
   );
 
@@ -140,7 +188,7 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
       .where(
         and(
           eq(users.organizationId, companyId),
-          inArray(users.role, [...COMPANY_ORG_STAFF_ROLES]),
+          inArray(users.role, [...ORG_SETTINGS_MEMBER_ROLES]),
         ),
       )
       .orderBy(desc(users.createdAt));
@@ -178,7 +226,7 @@ async function listUsersScopedToCompany(companyId: string): Promise<Record<strin
 export async function listUsersForAdmin(
   actorRole: string,
   actorOrganizationId: string | null,
-  opts?: { filterOrganizationId?: string | null },
+  opts?: { filterOrganizationId?: string | null; actorUserId?: string | null },
 ): Promise<Record<string, unknown>[] | null> {
   if (isPlatformAdminRole(actorRole)) {
     const filterOrg = opts?.filterOrganizationId?.trim() ?? "";
@@ -187,7 +235,16 @@ export async function listUsersForAdmin(
     if (!applyOrgFilter) {
       return [];
     }
-    return listUsersScopedToCompany(filterOrg);
+    let rows = await listUsersScopedToCompany(filterOrg);
+    const actorUserId = opts?.actorUserId?.trim() ?? "";
+    if (actorUserId) {
+      rows = await appendPlatformAdminViewerToScopedList(
+        rows,
+        actorUserId,
+        filterOrg,
+      );
+    }
+    return rows;
   }
   if (isCompanyAdminRole(actorRole)) {
     const filterOrg = opts?.filterOrganizationId?.trim() ?? "";

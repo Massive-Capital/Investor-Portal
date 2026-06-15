@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, CameraOff } from "lucide-react"
 import { useCallback, useEffect, useState, type MouseEvent } from "react"
+import { CloudinaryDeliveryImage } from "@/common/components/CloudinaryDeliveryImage"
 
 interface DealCardMediaCarouselProps {
   imageUrls: string[]
@@ -60,7 +61,7 @@ export function DealCardMediaCarousel({
 
   return (
     <div className="deal_card_media deal_card_media--hero deal_card_media_carousel">
-      <img
+      <CloudinaryDeliveryImage
         src={current}
         alt={title.trim() ? `Property image for ${title}` : "Property image"}
         className="deal_card_cover"

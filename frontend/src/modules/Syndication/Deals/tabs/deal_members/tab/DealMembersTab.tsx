@@ -49,6 +49,7 @@ import {
   downloadDealExportCsv,
   exportAuditLinesForDealInvestorRows,
 } from "../../../utils/dealInvestorExportCsv"
+import { buildTableExportFilename } from "../../../../../../common/utils/tableExportFilename"
 import { dealInvestorStatusDisplayLabel } from "../../../utils/dealInvestorTableDisplay"
 import { applyInvitationMailSentMarks } from "../../../utils/dealInvitationMailStatus"
 import {
@@ -94,6 +95,7 @@ function includeInDealMembersTable(r: DealInvestorRow): boolean {
 
 interface DealMembersTabProps {
   dealId: string
+  dealName: string
   /**
    * When true, “Copy offering link” is enabled (Offering Details → visibility “Only visible with link”).
    */
@@ -121,6 +123,7 @@ interface DealMembersTabProps {
 
 export function DealMembersTab({
   dealId,
+  dealName,
   offeringLinkAvailable,
   offeringLinkBlockedBecauseDraft = false,
   addInvestmentOpen,
@@ -689,13 +692,16 @@ export function DealMembersTab({
 
   function handleExportDealMembers(selected: DealInvestorRow[]) {
     const csv = buildDealMembersTableExportCsv(selected)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const safeDeal = dealId.replace(/[^\w-]+/g, "_").slice(0, 36)
-    downloadDealExportCsv(csv, `deal-members-${safeDeal}-${stamp}.csv`)
+    const filename = buildTableExportFilename({
+      dealName,
+      tableSlug: "deal-member",
+    })
+    downloadDealExportCsv(csv, filename)
     void notifyDealMembersExportAudit(dealId, {
       rowCount: selected.length,
       exportedLines: exportAuditLinesForDealInvestorRows(selected),
     })
+    toast.success("Deal members exported", `Saved as ${filename}`)
   }
 
   const handleSendMailToSelectedMembers = useCallback(async () => {

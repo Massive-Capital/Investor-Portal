@@ -1,8 +1,14 @@
 import {
   assetImagePathToUrl,
+  assetImagePathsToUrls,
   getUploadsPublicOrigin,
   normalizeDealGallerySrc,
 } from "../../../../common/utils/apiBaseUrl"
+import {
+  cloudinaryDeliveryUrlDedupeKey,
+  isCloudinaryDeliveryUrl,
+  resolveCloudinaryImageSrc,
+} from "../../../../common/utils/cloudinaryImage"
 import type { DealDetailApi } from "../api/dealsApi"
 import {
   computeDealAssetRowsFromClientStorage,
@@ -59,6 +65,9 @@ function canonicalGalleryUploadKey(raw: string): string | null {
   let s = normalizeDealGallerySrc(raw).trim()
   if (!s) return null
   if (s.startsWith("data:")) return s
+
+  const cloudKey = cloudinaryDeliveryUrlDedupeKey(s)
+  if (cloudKey) return `cloudinary:${cloudKey}`
 
   if (/^uploads\//i.test(s) && !s.startsWith("/")) {
     s = `/${s.replace(/^\/+/, "")}`
@@ -129,8 +138,11 @@ export function galleryUrlsReferToSameAsset(a: string, b: string): boolean {
     }
   }
 
-  const key = (s: string) =>
-    /^https?:\/\//i.test(s) ? fromAbsolute(s) : fromRootRelative(s)
+  const key = (s: string) => {
+    const cloud = cloudinaryDeliveryUrlDedupeKey(s)
+    if (cloud) return `cloudinary:${cloud}`
+    return /^https?:\/\//i.test(s) ? fromAbsolute(s) : fromRootRelative(s)
+  }
 
   const kx = key(x)
   const ky = key(y)
@@ -142,18 +154,40 @@ export function galleryUrlsReferToSameAsset(a: string, b: string): boolean {
 }
 
 function pushUniqueGalleryUrl(out: string[], raw: string): void {
-  const s = normalizeDealGallerySrc(raw).trim()
+  const s = resolveCloudinaryImageSrc(raw, normalizeDealGallerySrc).trim()
   if (!s) return
   if (out.some((e) => galleryUrlsReferToSameAsset(e, s))) return
   out.push(s)
+}
+
+/** Ordered unique stored path segments (Cloudinary URL or upload-relative path). */
+export function dedupeStoredImagePathSegments(
+  paths: readonly string[],
+): string[] {
+  const out: string[] = []
+  for (const raw of paths) {
+    const t = raw.trim()
+    if (!t) continue
+    const url = assetImagePathsToUrls(t)[0] ?? t
+    if (
+      out.some((p) =>
+        galleryUrlsReferToSameAsset(assetImagePathsToUrls(p)[0] ?? p, url),
+      )
+    ) {
+      continue
+    }
+    out.push(t)
+  }
+  return out
 }
 
 /** Stable-order unique URLs (API + local lists often repeat the same upload). */
 export function dedupeGalleryUrlsPreserveOrder(urls: readonly string[]): string[] {
   const out: string[] = []
   for (const raw of urls) {
-    const u = normalizeDealGallerySrc(
+    const u = resolveCloudinaryImageSrc(
       typeof raw === "string" ? raw : String(raw ?? ""),
+      normalizeDealGallerySrc,
     ).trim()
     if (!u) continue
     if (!out.some((e) => galleryUrlsReferToSameAsset(e, u))) out.push(u)
@@ -167,10 +201,11 @@ function galleryPathSegmentToUrl(seg: string): string {
   if (!t) return ""
   if (
     t.startsWith("data:image/") ||
+    isCloudinaryDeliveryUrl(t) ||
     /^https?:\/\//i.test(t) ||
     t.startsWith("/uploads/")
   ) {
-    return normalizeDealGallerySrc(t)
+    return resolveCloudinaryImageSrc(t, normalizeDealGallerySrc)
   }
   return assetImagePathToUrl(t)
 }
@@ -203,8 +238,9 @@ function mergeOfferingGalleryPathSegments(
 }
 
 /**
- * From displayed gallery URLs, extract upload-relative paths (for persisting to the API).
- * Skips `data:` URLs and non-`/uploads/` absolute links.
+ * From displayed gallery URLs, extract values to persist on the API:
+ * upload-relative paths for `/uploads/...`, or full Cloudinary delivery URLs.
+ * Skips `data:` URLs and other non-persistable absolute links.
  */
 export function uploadRelativePathsFromGalleryUrls(urls: string[]): string[] {
   const origin = getUploadsPublicOrigin().replace(/\/$/, "")
@@ -214,6 +250,13 @@ export function uploadRelativePathsFromGalleryUrls(urls: string[]): string[] {
   for (const raw of urls) {
     const s = raw.trim()
     if (!s || s.startsWith("data:")) continue
+    if (isCloudinaryDeliveryUrl(s)) {
+      const dedupeKey = cloudinaryDeliveryUrlDedupeKey(s) ?? s
+      if (seen.has(dedupeKey)) continue
+      seen.add(dedupeKey)
+      out.push(s)
+      continue
+    }
     let rel: string | null = null
     if (s.startsWith(uploadPrefix)) {
       rel = s.slice(uploadPrefix.length).replace(/^\/+/, "")
@@ -268,7 +311,7 @@ export function collectGalleryPathsFromDealAssetsMap(dealId: string): string[] {
   } catch {
     /* ignore */
   }
-  return uploadRelativePathsFromGalleryUrls(urls)
+  return dedupeStoredImagePathSegments(uploadRelativePathsFromGalleryUrls(urls))
 }
 
 /** Upload-relative paths referenced anywhere in persisted deal asset maps (localStorage). */
@@ -411,7 +454,9 @@ export function orderedGalleryUrlsForOffering(
 ): string[] {
   const all = collectDealGalleryUrls(detail, options)
   const pickRaw = detail.galleryCoverImageUrl?.trim()
-  const pick = pickRaw ? normalizeDealGallerySrc(pickRaw).trim() : ""
+  const pick = pickRaw
+    ? resolveCloudinaryImageSrc(pickRaw, normalizeDealGallerySrc).trim()
+    : ""
   if (!pick) return all
   if (all.length === 0) return [pick]
   const idx = all.findIndex((u) => galleryUrlsReferToSameAsset(u, pick))

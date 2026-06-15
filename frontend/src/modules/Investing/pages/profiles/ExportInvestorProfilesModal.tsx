@@ -2,19 +2,10 @@ import { Download, Search, X } from "lucide-react"
 import { ExportModalFooter } from "../../../../common/components/modal/ExportModalFooter"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "@/common/components/Toast"
+import { buildTableExportFilename, downloadTableExportCsv } from "@/common/utils/tableExportFilename"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
 import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 import "@/modules/Syndication/Deals/components/export-deals-modal.css"
-
-function downloadCsv(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 function formatDateForExport(iso: string): string {
   const t = Date.parse(iso)
@@ -72,8 +63,8 @@ export function ExportInvestorProfilesModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedIds(new Set())
-  }, [open])
+    setSelectedIds(new Set(profiles.map((r) => r.id)))
+  }, [open, profiles])
 
   const visibleRows = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()
@@ -149,9 +140,11 @@ export function ExportInvestorProfilesModal({
   function handleExportAll() {
     if (profiles.length === 0) return
     const csv = buildInvestorProfilesExportCsv(profiles)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `investor-profiles-export-all-${stamp}.csv`
-    downloadCsv(csv, filename)
+    const filename = buildTableExportFilename({
+      tableSlug: "investor-profiles",
+      includeDateStamp: true,
+    })
+    downloadTableExportCsv(csv, filename)
     toast.success("Profiles exported", `Saved as ${filename}`)
     onClose()
   }
@@ -160,9 +153,11 @@ export function ExportInvestorProfilesModal({
     const chosen = profiles.filter((r) => selectedIds.has(r.id))
     if (chosen.length === 0) return
     const csv = buildInvestorProfilesExportCsv(chosen)
-    const stamp = new Date().toISOString().slice(0, 10)
-    const filename = `investor-profiles-export-${stamp}.csv`
-    downloadCsv(csv, filename)
+    const filename = buildTableExportFilename({
+      tableSlug: "investor-profiles",
+      includeDateStamp: true,
+    })
+    downloadTableExportCsv(csv, filename)
     toast.success("Profiles exported", `Saved as ${filename}`)
     onClose()
   }

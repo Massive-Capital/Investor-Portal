@@ -95,21 +95,21 @@ function folderForCompany(companyId: string): string {
   return `investor_portal/companies/${companyId.toLowerCase()}`;
 }
 
-/**
- * Upload a workspace branding file to Cloudinary, scoped by company id in the folder.
- * Returns the delivery URL and the public id (path) for the asset.
- */
-export async function uploadCompanyBrandingToCloudinary(opts: {
-  companyId: string;
-  assetType: CloudinaryBrandingAssetType;
+function folderForDeal(dealId: string | undefined): string {
+  const id = String(dealId ?? "").trim().toLowerCase();
+  if (id) return `investor_portal/deals/${id}`;
+  return "investor_portal/deals/unassigned";
+}
+
+async function uploadImageBufferToCloudinary(opts: {
+  folder: string;
+  publicIdStem: string;
   buffer: Buffer;
-  mimetype: string;
 }): Promise<{ secureUrl: string; publicId: string }> {
   configureIfNeeded();
-  const folder = folderForCompany(opts.companyId);
-  const idPart = `${opts.assetType.replace(/[^a-z0-9_]/gi, "_")}-${Date.now()}`;
+  const idPart = `${opts.publicIdStem.replace(/[^a-z0-9_-]/gi, "_")}-${Date.now()}`;
   const uploadOptions = {
-    folder,
+    folder: opts.folder,
     public_id: idPart,
     resource_type: "image" as const,
     overwrite: false,
@@ -147,6 +147,51 @@ export async function uploadCompanyBrandingToCloudinary(opts: {
     throw new Error("Cloudinary upload did not return a secure URL and public id.");
   }
   return { secureUrl, publicId };
+}
+
+/**
+ * Upload a workspace branding file to Cloudinary, scoped by company id in the folder.
+ * Returns the delivery URL and the public id (path) for the asset.
+ */
+export async function uploadCompanyBrandingToCloudinary(opts: {
+  companyId: string;
+  assetType: CloudinaryBrandingAssetType;
+  buffer: Buffer;
+  mimetype: string;
+}): Promise<{ secureUrl: string; publicId: string }> {
+  return uploadImageBufferToCloudinary({
+    folder: folderForCompany(opts.companyId),
+    publicIdStem: opts.assetType.replace(/[^a-z0-9_]/gi, "_"),
+    buffer: opts.buffer,
+  });
+}
+
+/**
+ * Upload a deal gallery / asset image to Cloudinary.
+ * When `dealId` is missing (create-deal flow), files land under `investor_portal/deals/unassigned/`.
+ */
+export async function uploadDealImageToCloudinary(opts: {
+  dealId?: string;
+  buffer: Buffer;
+  labelStem: string;
+}): Promise<{ secureUrl: string; publicId: string }> {
+  return uploadImageBufferToCloudinary({
+    folder: folderForDeal(opts.dealId),
+    publicIdStem: opts.labelStem,
+    buffer: opts.buffer,
+  });
+}
+
+/** True for `https://res.cloudinary.com/...` delivery URLs stored in deal gallery fields. */
+export function isCloudinaryDeliveryUrl(raw: string): boolean {
+  const s = String(raw ?? "").trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" && /(^|\.)res\.cloudinary\.com$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** Best-effort delete; logs and ignores failures. */

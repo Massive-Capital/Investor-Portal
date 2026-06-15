@@ -180,7 +180,10 @@ export function AssetsSection({ detail }: AssetsSectionProps) {
       const keySet = new Set(selectedKeys)
       const chosen = rows.filter((row) => keySet.has(row.id))
       if (chosen.length === 0) return
-      const filename = downloadDealAssetsExportCsv(detail.id, chosen)
+      const filename = downloadDealAssetsExportCsv(
+        detail.dealName?.trim() || detail.id,
+        chosen,
+      )
       toast.success("Assets exported", `Saved as ${filename}`)
     },
     [detail.id, rows],

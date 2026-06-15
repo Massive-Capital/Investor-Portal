@@ -1,5 +1,8 @@
 import { portalAuthHeaders } from "../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl"
+import {
+  materializeImageFileForUpload as materializeImageFileForUploadShared,
+} from "../../../common/utils/materializeImageFileForUpload"
 
 export type WorkspaceTabKey = "settings" | "email" | "contact" | "offerings"
 
@@ -94,98 +97,23 @@ export type CompanyBrandingAsset = "logo" | "background" | "logoIcon"
 /** Logo, background image, and logo icon uploads (client + server). */
 export const MAX_BRANDING_FILE_BYTES = 1 * 1024 * 1024
 
-const MAX_MULTIPART_BRANDING_NAME_LEN = 180
-
-/**
- * Multipart `filename` must be safe 7-bit for Chrome/Edge+Multer in some pickers/Windows locales;
- * long or non-ASCII names (e.g. CJK) can end up with empty/garbled parts in Chromium.
- */
-function toSafeBrandingFileNameForMultipart(
-  fromPicker: string,
-  fallback: string,
-): string {
-  const base = (fromPicker?.trim() || fallback).trim() || fallback
-  const ascii = base
-    .replace(/[\u0000-\u001F\u007F]/g, "_")
-    .replace(/[^ -~]+/g, "_")
-    .replace(/[<>:"/\\|?*]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^[_\s]+|[_\s]+$/g, "")
-  const trimmed = (ascii || fallback).slice(0, MAX_MULTIPART_BRANDING_NAME_LEN)
-  return trimmed || fallback
-}
-
-function defaultBrandingUploadFilename(file: File): string {
-  const t = (file.type ?? "").toLowerCase()
-  if (file.name?.trim()) {
-    return toSafeBrandingFileNameForMultipart(file.name, "upload.png")
-  }
-  if (t.includes("jpeg") || t === "image/jpg")
-    return toSafeBrandingFileNameForMultipart("", "upload.jpg")
-  if (t.includes("png")) return toSafeBrandingFileNameForMultipart("", "upload.png")
-  if (t.includes("webp")) return toSafeBrandingFileNameForMultipart("", "upload.webp")
-  if (t.includes("svg")) return toSafeBrandingFileNameForMultipart("", "upload.svg")
-  if (t.includes("gif")) return toSafeBrandingFileNameForMultipart("", "upload.gif")
-  if (
-    t.includes("icon") ||
-    t === "image/vnd.microsoft.icon" ||
-    t === "image/x-icon"
-  ) {
-    return toSafeBrandingFileNameForMultipart("", "upload.ico")
-  }
-  return toSafeBrandingFileNameForMultipart("", "upload.png")
-}
-
-/** Infer image MIME from extension when Chromium leaves `File.type` empty. */
-function mimeFromBrandingFilename(name: string): string | null {
-  const m = /\.([a-z0-9]+)$/i.exec(name.trim())
-  const ext = m?.[1]?.toLowerCase() ?? ""
-  switch (ext) {
-    case "png":
-      return "image/png"
-    case "jpg":
-    case "jpeg":
-      return "image/jpeg"
-    case "webp":
-      return "image/webp"
-    case "gif":
-      return "image/gif"
-    case "svg":
-      return "image/svg+xml"
-    case "ico":
-      return "image/x-icon"
-    case "avif":
-      return "image/avif"
-    case "bmp":
-      return "image/bmp"
-    default:
-      return null
-  }
-}
-
-function brandingFileMeta(file: File): { name: string; type: string } {
-  const name = defaultBrandingUploadFilename(file)
-  const fromFile = file.type && file.type.length > 0 ? file.type : ""
-  const type = fromFile || mimeFromBrandingFilename(name) || "application/octet-stream"
-  return { name, type }
-}
-
-/**
- * Copy picker bytes into a new `File` (stable name + MIME). Chromium can upload **0 bytes**
- * when `new File([otherFile])` is used after the input was reset; `arrayBuffer()` avoids that.
- */
+/** @see materializeImageFileForUpload in common utils — branding uses 1 MB cap. */
 export async function materializeBrandingFile(file: File): Promise<File> {
-  const { name, type } = brandingFileMeta(file)
-  const buf = await file.arrayBuffer()
-  if (!buf.byteLength) {
-    throw new Error("The selected file is empty.")
-  }
-  return new File([buf], name, { type, lastModified: file.lastModified })
+  return materializeImageFileForUploadShared(file, {
+    fallbackBasename: "upload",
+    maxBytes: MAX_BRANDING_FILE_BYTES,
+  })
 }
 
 /** @deprecated Prefer {@link materializeBrandingFile} for upload/preview. */
 export function normalizeBrandingFileForPicker(file: File): File {
-  const { name, type } = brandingFileMeta(file)
+  const name = file.name?.trim()
+    ? file.name.trim().slice(0, 180)
+    : "upload.png"
+  const type =
+    file.type && file.type.length > 0
+      ? file.type
+      : "application/octet-stream"
   try {
     if (typeof File === "function") {
       return new File([file], name, { type, lastModified: file.lastModified })

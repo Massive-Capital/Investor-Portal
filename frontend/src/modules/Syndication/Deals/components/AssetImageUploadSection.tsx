@@ -18,6 +18,13 @@ import {
   type SetStateAction,
 } from "react"
 import { createPortal } from "react-dom"
+import { CloudinaryDeliveryImage } from "@/common/components/CloudinaryDeliveryImage"
+import {
+  isLikelyImageFile,
+  materializeImageFileForUpload,
+  MAX_DEAL_IMAGE_FILE_BYTES,
+} from "@/common/utils/materializeImageFileForUpload"
+import { toast } from "../../../../common/components/Toast"
 import { ASSET_MAX_IMAGE_COUNT } from "../types/deal-asset.types"
 import "../tabs/deal_members/add-investment/add_deal_modal.css"
 
@@ -127,37 +134,74 @@ export function AssetImageUploadSection({
 
   function mergeFiles(incoming: FileList | File[]) {
     let skipped = 0
-    onImageFilesChange((prev) => {
-      const key = (f: File) => `${f.name}\0${f.size}\0${f.lastModified}`
-      const seen = new Set(prev.map(key))
-      const list = [...prev]
-      const room = Math.max(0, maxCount - existingCount - prev.length)
+    let rejected = 0
+    void (async () => {
+      const accepted: File[] = []
       for (const f of Array.from(incoming)) {
-        if (!f.type.startsWith("image/")) continue
-        const k = key(f)
-        if (seen.has(k)) continue
-        if (list.length - prev.length >= room) {
-          skipped += 1
+        if (!isLikelyImageFile(f)) {
+          rejected += 1
           continue
         }
-        seen.add(k)
-        list.push(f)
+        if (typeof f.size === "number" && f.size <= 0) {
+          rejected += 1
+          continue
+        }
+        if (typeof f.size === "number" && f.size > MAX_DEAL_IMAGE_FILE_BYTES) {
+          toast.error("File too large", "Maximum file size is 20 MB per image.")
+          rejected += 1
+          continue
+        }
+        try {
+          accepted.push(
+            await materializeImageFileForUpload(f, {
+              fallbackBasename: "property-image",
+              maxBytes: MAX_DEAL_IMAGE_FILE_BYTES,
+            }),
+          )
+        } catch {
+          rejected += 1
+        }
       }
-      return list
-    })
-    if (skipped > 0) {
-      setImageLimitMessage(
-        `Each asset can have up to ${maxCount} images. Remove one or more to add more.`,
-      )
-      return
-    }
-    setImageLimitMessage(null)
+      if (accepted.length === 0) {
+        if (rejected > 0) {
+          toast.error(
+            "Invalid image",
+            "Could not read the selected file. Use PNG, JPEG, WebP, or GIF.",
+          )
+        }
+        return
+      }
+      onImageFilesChange((prev) => {
+        const key = (f: File) => `${f.name}\0${f.size}\0${f.lastModified}`
+        const seen = new Set(prev.map(key))
+        const list = [...prev]
+        const room = Math.max(0, maxCount - existingCount - prev.length)
+        for (const f of accepted) {
+          const k = key(f)
+          if (seen.has(k)) continue
+          if (list.length - prev.length >= room) {
+            skipped += 1
+            continue
+          }
+          seen.add(k)
+          list.push(f)
+        }
+        return list
+      })
+      if (skipped > 0) {
+        setImageLimitMessage(
+          `Each asset can have up to ${maxCount} images. Remove one or more to add more.`,
+        )
+        return
+      }
+      setImageLimitMessage(null)
+    })()
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     if (atLimit || !e.dataTransfer.files.length) return
-    mergeFiles(e.dataTransfer.files)
+    mergeFiles(Array.from(e.dataTransfer.files))
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -165,10 +209,12 @@ export function AssetImageUploadSection({
   }
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const picked = e.target.files
+    const snapshot = e.target.files?.length
+      ? Array.from(e.target.files)
+      : []
     e.target.value = ""
-    if (!picked?.length) return
-    mergeFiles(picked)
+    if (!snapshot.length) return
+    mergeFiles(snapshot)
   }
 
   function removeTile(tile: GalleryTile) {
@@ -253,13 +299,23 @@ export function AssetImageUploadSection({
                   onClick={() => setLightboxIndex(i)}
                   aria-label={`View ${label}`}
                 >
-                  <img
-                    src={tile.src}
-                    alt=""
-                    className="asset_image_tile_img"
-                    loading={i < 4 ? "eager" : "lazy"}
-                    decoding="async"
-                  />
+                  {tile.kind === "existing" ? (
+                    <CloudinaryDeliveryImage
+                      src={tile.src}
+                      alt=""
+                      className="asset_image_tile_img"
+                      loading={i < 4 ? "eager" : "lazy"}
+                      decoding="async"
+                    />
+                  ) : (
+                    <img
+                      src={tile.src}
+                      alt=""
+                      className="asset_image_tile_img"
+                      loading={i < 4 ? "eager" : "lazy"}
+                      decoding="async"
+                    />
+                  )}
                   <span className="asset_image_tile_view_overlay">
                     <Eye size={18} strokeWidth={2} aria-hidden />
                   </span>
@@ -342,7 +398,7 @@ export function AssetImageUploadSection({
         ref={fileInputRef}
         type="file"
         className="asset_step_file_input"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/*"
         multiple
         disabled={atLimit}
         onChange={handleFileInput}
@@ -405,12 +461,23 @@ export function AssetImageUploadSection({
                     {activeTile.kind === "pending" ? (
                       <span className="asset_image_lightbox_new_badge">New</span>
                     ) : null}
-                    <img
-                      key={activeTile.src}
-                      src={activeTile.src}
-                      alt=""
-                      className="asset_image_lightbox_img"
-                    />
+                    {activeTile.kind === "existing" ? (
+                      <CloudinaryDeliveryImage
+                        key={activeTile.src}
+                        src={activeTile.src}
+                        alt=""
+                        className="asset_image_lightbox_img"
+                        loading="eager"
+                        fetchPriority="high"
+                      />
+                    ) : (
+                      <img
+                        key={activeTile.src}
+                        src={activeTile.src}
+                        alt=""
+                        className="asset_image_lightbox_img"
+                      />
+                    )}
                     <p className="asset_image_lightbox_caption">
                       {tileLabel(activeTile)}
                     </p>
@@ -452,7 +519,11 @@ export function AssetImageUploadSection({
                         aria-label={`View image ${i + 1} of ${tiles.length}`}
                         onClick={() => setLightboxIndex(i)}
                       >
-                        <img src={tile.src} alt="" />
+                        {tile.kind === "existing" ? (
+                          <CloudinaryDeliveryImage src={tile.src} alt="" loading="eager" />
+                        ) : (
+                          <img src={tile.src} alt="" />
+                        )}
                       </button>
                     ))}
                   </div>

@@ -7,6 +7,15 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "./database/db.js";
 import { getUploadsPhysicalRoot } from "./config/uploadPaths.js";
 import { postCompanySettingsBranding } from "./controllers/company/companySettingsBranding.controller.js";
+import {
+  postDeal,
+  postDealOfferingGalleryUploads,
+  putDeal,
+} from "./controllers/deal/add_deal.controller.js";
+import {
+  uploadDealCreateOrUpdateAssetImages,
+  uploadDealOfferingGalleryFile,
+} from "./middleware/dealAssetImageUpload.middleware.js";
 import { uploadCompanySettingsBranding } from "./middleware/companySettingsBrandingUpload.middleware.js";
 import { socHttpAuditMiddleware } from "./middleware/socHttpAudit.middleware.js";
 import userRoutes from "./routes/userRoutes.routes.js";
@@ -69,12 +78,30 @@ app.use((req, res, next) => {
   next();
 });
 
-/* Multipart branding upload must run before any body parser (multer/busboy reads the stream). */
+/* Multipart uploads must run before any body parser (multer/busboy reads the stream). */
 app.post(
   "/api/v1/companies/:companyId/settings/branding/:assetType",
   socHttpAuditMiddleware,
   uploadCompanySettingsBranding,
   postCompanySettingsBranding,
+);
+app.post(
+  "/api/v1/deals",
+  socHttpAuditMiddleware,
+  uploadDealCreateOrUpdateAssetImages,
+  postDeal,
+);
+app.put(
+  "/api/v1/deals/:dealId",
+  socHttpAuditMiddleware,
+  uploadDealCreateOrUpdateAssetImages,
+  putDeal,
+);
+app.post(
+  "/api/v1/deals/:dealId/offering-gallery-uploads",
+  socHttpAuditMiddleware,
+  uploadDealOfferingGalleryFile,
+  postDealOfferingGalleryUploads,
 );
 
 // Allow larger request bodies (default is ~100kb; SyndicationX forms can exceed this)

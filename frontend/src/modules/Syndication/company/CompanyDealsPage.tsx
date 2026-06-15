@@ -10,6 +10,7 @@ import {
 import { createPortal } from "react-dom"
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom"
 import { toast } from "../../../common/components/Toast"
+import { buildTableExportFilename } from "../../../common/utils/tableExportFilename"
 import {
   DataTable,
   type DataTableColumn,
@@ -170,11 +171,9 @@ export default function CompanyDealsPage() {
 
   function exportDealRowCsv(row: DealListRow) {
     const csv = buildDealsListExportCsv([row])
-    const safe = String(row.dealName || row.id || "deal")
-      .trim()
-      .replace(/[^\w.-]+/g, "_")
-      .slice(0, 80)
-    const filename = `deal-${safe}.csv`
+    const filename = buildTableExportFilename({
+      dealName: row.dealName?.trim() || row.id,
+    })
     downloadDealsListExportCsv(csv, filename)
     void notifyDealsExportAudit({
       rowCount: 1,

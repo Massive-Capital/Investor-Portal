@@ -73,8 +73,8 @@ export function ExportDealInvestorRowsModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedKeys(new Set())
-  }, [open])
+    setSelectedKeys(new Set(rows.map((r) => dealInvestorRowExportKey(r))))
+  }, [open, rows])
 
   const visibleRows = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()

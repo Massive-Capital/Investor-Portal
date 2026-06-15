@@ -75,6 +75,7 @@ import {
   GalleryCoverUrlTooLargeError,
   sanitizeGalleryCoverImageUrl,
 } from "../../utils/sanitizeGalleryCoverImageUrl.js";
+import { requireDealMultipartFiles, optionalDealMultipartFiles } from "../../utils/dealMultipartUpload.util.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import {
   encryptOfferingPreviewDealId,
@@ -935,12 +936,8 @@ export async function postDealOfferingGalleryUploads(
     res.status(400).json({ message: "Missing deal id" });
     return;
   }
-  const files = (req as Request & { files?: DealMemoryUploadFile[] }).files;
-  const fileList = Array.isArray(files) ? files : [];
-  if (!fileList.length) {
-    res.status(400).json({ message: "No files uploaded." });
-    return;
-  }
+  const fileList = requireDealMultipartFiles(req, res, "galleryFiles");
+  if (!fileList) return;
   try {
     const scope = await resolveDealViewerScope(
       user.id,
@@ -952,7 +949,11 @@ export async function postDealOfferingGalleryUploads(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    const newPaths = await saveDealAssetFiles({ files: fileList, dealId });
+    const newPaths = await saveDealAssetFiles({
+      files: fileList,
+      dealId,
+      useCloudinaryForImages: true,
+    });
     const updated = await appendDealGalleryUploadsById(dealId, newPaths);
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
@@ -1251,8 +1252,7 @@ export async function postDeal(req: Request, res: Response): Promise<void> {
     zipCode: bodyString(b.zip_code ?? b.zipCode),
   };
 
-  const files = (req as Request & { files?: DealMemoryUploadFile[] }).files;
-  const fileList = Array.isArray(files) ? files : [];
+  const fileList = optionalDealMultipartFiles(req);
 
   try {
     const [actor] = await db
@@ -1266,7 +1266,10 @@ export async function postDeal(req: Request, res: Response): Promise<void> {
       if (fromBody) organizationId = fromBody;
     }
 
-    const assetPaths = await saveDealAssetFiles({ files: fileList });
+    const assetPaths = await saveDealAssetFiles({
+      files: fileList,
+      useCloudinaryForImages: true,
+    });
     const created = await insertAddDealForm(input, assetPaths, organizationId);
     const dealId = String(created.id);
     await assignCreatorToDeal(dealId, user.id);
@@ -1329,8 +1332,7 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
     zipCode: bodyString(b.zip_code ?? b.zipCode),
   };
 
-  const files = (req as Request & { files?: DealMemoryUploadFile[] }).files;
-  const fileList = Array.isArray(files) ? files : [];
+  const fileList = optionalDealMultipartFiles(req);
 
   try {
     const scope = await resolveDealViewerScope(
@@ -1358,7 +1360,11 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
       if (fromBody) organizationId = fromBody;
     }
 
-    const assetPaths = await saveDealAssetFiles({ files: fileList, dealId });
+    const assetPaths = await saveDealAssetFiles({
+      files: fileList,
+      dealId,
+      useCloudinaryForImages: true,
+    });
     const retainedProvided = Object.prototype.hasOwnProperty.call(
       b,
       "retained_asset_image_path",

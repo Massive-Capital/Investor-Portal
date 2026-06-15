@@ -793,6 +793,7 @@ export function DealDetailPage() {
             {activeTab === "deal_members" ? (
               <DealMembersTab
                 dealId={dealId}
+                dealName={displayName}
                 offeringLinkAvailable={offeringLinkAvailable}
                 offeringLinkBlockedBecauseDraft={isDealOfferingShareBlocked}
                 addInvestmentOpen={addInvestmentOpen}

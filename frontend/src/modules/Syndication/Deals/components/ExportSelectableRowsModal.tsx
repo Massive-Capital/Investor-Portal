@@ -41,8 +41,8 @@ export function ExportSelectableRowsModal({
   useEffect(() => {
     if (!open) return
     setModalQuery("")
-    setSelectedKeys(new Set())
-  }, [open])
+    setSelectedKeys(new Set(rows.map((r) => r.key)))
+  }, [open, rows])
 
   const visibleRows = useMemo(() => {
     const q = modalQuery.trim().toLowerCase()

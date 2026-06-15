@@ -1,3 +1,4 @@
+import { downloadTableExportCsv } from "../../../../common/utils/tableExportFilename"
 import { dealStageLabel } from "../../dealsDashboardUtils"
 import {
   DEAL_FORM_TYPE_OPTIONS,
@@ -59,18 +60,7 @@ export function downloadDealsListExportCsv(
   content: string,
   filename: string,
 ): void {
-  const blob = new Blob([content], {
-    type: "text/csv;charset=utf-8;",
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.rel = "noopener"
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  downloadTableExportCsv(content, filename)
 }
 
 export function exportAuditLinesForDealListRows(rows: DealListRow[]): string[] {

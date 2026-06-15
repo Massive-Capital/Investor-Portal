@@ -1,3 +1,5 @@
+import { isCloudinaryDeliveryUrl, normalizeCloudinaryDeliveryUrl, resolveCloudinaryImageSrc } from "./cloudinaryImage"
+
 /**
  * Builds the `/api/v1` root from `VITE_BASE_URL`.
  * Accepts either `http://host:port` or `http://host:port/api/v1` so paths are not doubled.
@@ -117,6 +119,7 @@ export function normalizeDealGallerySrc(raw: string | null | undefined): string 
     try {
       const u = new URL(s);
       if (u.protocol !== "http:" && u.protocol !== "https:") return s;
+      if (isCloudinaryDeliveryUrl(s)) return normalizeCloudinaryDeliveryUrl(s);
       const lowerPath = u.pathname.toLowerCase();
       const uploadsIdx = lowerPath.indexOf("/uploads/");
       if (uploadsIdx >= 0 || lowerPath.startsWith("/uploads")) {
@@ -166,10 +169,11 @@ export function assetImagePathToUrl(assetImagePath: string | null | undefined): 
   if (!first) return ""
   if (
     first.startsWith("data:image/") ||
+    isCloudinaryDeliveryUrl(first) ||
     /^https?:\/\//i.test(first) ||
     first.startsWith("/uploads/")
   ) {
-    return normalizeDealGallerySrc(first)
+    return resolveCloudinaryImageSrc(first, normalizeDealGallerySrc)
   }
   const rel = uploadsRelativeSegment(first)
   if (!rel) return ""
@@ -191,10 +195,11 @@ export function assetImagePathsToUrls(
     .map((seg) => {
       if (
         seg.startsWith("data:image/") ||
+        isCloudinaryDeliveryUrl(seg) ||
         /^https?:\/\//i.test(seg) ||
         seg.startsWith("/uploads/")
       ) {
-        return normalizeDealGallerySrc(seg)
+        return resolveCloudinaryImageSrc(seg, normalizeDealGallerySrc)
       }
       const rel = uploadsRelativeSegment(seg)
       if (!rel) return ""

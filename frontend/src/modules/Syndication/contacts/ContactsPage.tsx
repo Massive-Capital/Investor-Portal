@@ -86,6 +86,9 @@ import {
   exportAuditLinesForContacts,
   formatContactSinceLabel,
 } from "./utils/contactCsv"
+import {
+  buildTableExportFilename,
+} from "../../../common/utils/tableExportFilename"
 
 function contactRowIsSuspended(row: ContactRow): boolean {
   return row.status === "suspended"
@@ -636,11 +639,7 @@ function ContactsPage() {
 
   const exportContactRow = useCallback((row: ContactRow) => {
     const csv = buildContactsCsv([row])
-    const safe = String(row.email || row.id || "contact").replace(
-      /[^\w.-]+/g,
-      "_",
-    )
-    const filename = `contact-${safe}.csv`
+    const filename = buildTableExportFilename({ dealName: contactDisplayName(row) })
     downloadContactsCsv(csv, filename)
     void notifyContactsExportAudit({
       rowCount: 1,

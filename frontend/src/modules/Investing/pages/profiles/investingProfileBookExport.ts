@@ -2,16 +2,7 @@ import type { BeneficiaryDraft } from "./AddBeneficiaryModal"
 import type { SavedAddress } from "./address.types"
 import type { InvestorProfileListRow } from "./investor-profiles.types"
 import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
-
-function downloadCsv(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
+import { buildTableExportFilename, downloadTableExportCsv } from "@/common/utils/tableExportFilename"
 
 function esc(v: string): string {
   const s = String(v ?? "").replace(/"/g, '""')
@@ -30,7 +21,7 @@ function formatDateForExport(iso: string): string {
 
 const BOM = "\ufeff"
 
-export function exportInvestorProfileRow(row: InvestorProfileListRow, filenameBase = "profile"): void {
+export function exportInvestorProfileRow(row: InvestorProfileListRow): void {
   const headers = [
     "Profile name",
     "Profile type",
@@ -50,13 +41,15 @@ export function exportInvestorProfileRow(row: InvestorProfileListRow, filenameBa
       esc(row.archived ? "Yes" : "No"),
     ].join(","),
   ]
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")
-  downloadCsv(BOM + lines.join("\n"), `${filenameBase}-${stamp}.csv`)
+  const filename = buildTableExportFilename({
+    dealName: row.profileName,
+    tableSlug: "investor-profile",
+  })
+  downloadTableExportCsv(BOM + lines.join("\n"), filename)
 }
 
 export function exportBeneficiaryRow(
   row: BeneficiaryDraft & { id: string; archived?: boolean },
-  filenameBase = "beneficiary",
 ): void {
   const headers = [
     "Name",
@@ -79,8 +72,11 @@ export function exportBeneficiaryRow(
       esc(row.archived ? "Yes" : "No"),
     ].join(","),
   ]
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")
-  downloadCsv(BOM + lines.join("\n"), `${filenameBase}-${stamp}.csv`)
+  const filename = buildTableExportFilename({
+    dealName: row.fullName,
+    tableSlug: "beneficiary",
+  })
+  downloadTableExportCsv(BOM + lines.join("\n"), filename)
 }
 
 /** Multi-row CSV for export modal (same columns as `exportBeneficiaryRow`). */
@@ -152,17 +148,10 @@ export function downloadExportCsv(
   filename: string,
   withBom = true,
 ): void {
-  const payload = withBom ? `${BOM}${content}` : content
-  const blob = new Blob([payload], { type: "text/csv;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadTableExportCsv(withBom ? `${BOM}${content}` : content, filename)
 }
 
-export function exportSavedAddressRow(row: SavedAddress, filenameBase = "address"): void {
+export function exportSavedAddressRow(row: SavedAddress): void {
   const headers = [
     "Name / company",
     "Country",
@@ -190,6 +179,9 @@ export function exportSavedAddressRow(row: SavedAddress, filenameBase = "address
       esc(row.archived ? "Yes" : "No"),
     ].join(","),
   ]
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")
-  downloadCsv(BOM + lines.join("\n"), `${filenameBase}-${stamp}.csv`)
+  const filename = buildTableExportFilename({
+    dealName: row.fullNameOrCompany,
+    tableSlug: "saved-address",
+  })
+  downloadTableExportCsv(BOM + lines.join("\n"), filename)
 }

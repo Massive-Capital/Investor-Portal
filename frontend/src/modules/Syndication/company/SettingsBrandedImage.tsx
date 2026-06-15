@@ -3,6 +3,10 @@ import { useMemo } from "react";
 import { Cloudinary } from "@cloudinary/url-gen";
 
 import { normalizeDealGallerySrc } from "../../../common/utils/apiBaseUrl";
+import {
+  cloudinaryImgReferrerPolicy,
+  normalizeCloudinaryDeliveryUrl,
+} from "../../../common/utils/cloudinaryImage";
 
 
 
@@ -56,7 +60,7 @@ function resolveBrandedImageSrc(
 
     const normalized = normalizeDealGallerySrc(u);
 
-    return normalized || u;
+    return normalizeCloudinaryDeliveryUrl(normalized) || normalized || u;
 
   }
 
@@ -177,24 +181,6 @@ export function SettingsBrandedImage({
 
   if (!src) return null;
 
-  let crossOriginDelivery = false;
-
-  if (typeof window !== "undefined" && /^https?:\/\//i.test(src)) {
-
-    try {
-
-      crossOriginDelivery =
-
-        new URL(src).origin !== window.location.origin;
-
-    } catch {
-
-      crossOriginDelivery = true;
-
-    }
-
-  }
-
   return (
 
     <img
@@ -213,7 +199,7 @@ export function SettingsBrandedImage({
 
       decoding="async"
 
-      referrerPolicy={crossOriginDelivery ? "no-referrer" : undefined}
+      referrerPolicy={cloudinaryImgReferrerPolicy(src)}
 
       onError={onError}
 

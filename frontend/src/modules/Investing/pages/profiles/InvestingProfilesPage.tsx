@@ -71,15 +71,6 @@ type ViewModalState =
   | { kind: "address"; row: SavedAddress }
   | null
 
-function fileSlug(s: string, fallback: string): string {
-  const t = s
-    .trim()
-    .replace(/[<>:"/\\|?*]+/g, "")
-    .replace(/\s+/g, "-")
-    .slice(0, 48)
-  return t || fallback
-}
-
 function formatProfileListDate(iso: string): string {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return "—"
@@ -637,9 +628,7 @@ export default function InvestingProfilesPage() {
             onSetArchived={(v) => setProfileArchived(row.id, v)}
             onView={() => openProfileView(row)}
             onEdit={() => void navigate(`/investing/profiles/${encodeURIComponent(row.id)}/edit`)}
-            onExport={() =>
-              exportInvestorProfileRow(row, fileSlug(row.profileName, "profile"))
-            }
+            onExport={() => exportInvestorProfileRow(row)}
           />
         ),
       },
@@ -710,9 +699,7 @@ export default function InvestingProfilesPage() {
               setEditBeneficiary(row)
               setAddBenOpen(true)
             }}
-            onExport={() =>
-              exportBeneficiaryRow(row, fileSlug(row.fullName, "beneficiary"))
-            }
+            onExport={() => exportBeneficiaryRow(row)}
           />
         ),
       },
@@ -788,12 +775,7 @@ export default function InvestingProfilesPage() {
               setEditingAddress(row)
               setAddAddressOpen(true)
             }}
-            onExport={() =>
-              exportSavedAddressRow(
-                row,
-                fileSlug(row.fullNameOrCompany, "address"),
-              )
-            }
+            onExport={() => exportSavedAddressRow(row)}
           />
         ),
       },
