@@ -65,7 +65,7 @@ import {
   accountInviteIsExpired,
   accountStatusForUi,
   accountStatusLabel,
-  assignedDealCountFromRow,
+  // assignedDealCountFromRow,
   formatMemberUsername,
   formatOrganizationsCsvCell,
   formatRoleCsvCell,
@@ -87,9 +87,9 @@ import {
 } from "./memberAdminShared";
 import { UserOrganizationsCell } from "./UserOrganizationsCell";
 import { ExportMembersModal } from "./ExportMembersModal";
-import { escapeCsvCell, exportAuditLinesForMembers } from "./memberCsv";
+import { buildMembersCsv, downloadMembersCsv, exportAuditLinesForMembers } from "./memberCsv";
 import { notifyMembersExportAudit } from "./membersExportNotifyApi";
-import { buildTableExportFilename, downloadTableExportCsv } from "../../../common/utils/tableExportFilename";
+import { buildTableExportFilename } from "../../../common/utils/tableExportFilename";
 import {
   getCurrentSessionUserEmail,
   openSendMailDraft,
@@ -898,38 +898,12 @@ export default function UserManagementPage({
   );
 
   function exportRowCsv(row: Record<string, unknown>) {
-    const orgHeader = organizationDisplayScope?.companyId
-      ? "Organization"
-      : "Organizations";
-    const headers = [
-      "Name",
-      "Username",
-      "Email",
-      "Roles",
-      orgHeader,
-      "User Status",
-      "Account status",
-      "Assigned deals",
-    ];
-    const vals = [
-      rowDisplayName(row),
-      formatMemberUsername(row.username),
-      formatValue(row.email),
-      formatRoleCsvCell(row),
-      formatOrganizationsCsvCell(row, organizationDisplayScope),
-      userStatusForUi(row).label,
-      accountStatusForUi(row).label,
-      String(assignedDealCountFromRow(row)),
-    ];
-    const line = [
-      headers.map(escapeCsvCell).join(","),
-      vals.map(escapeCsvCell).join(","),
-    ].join("\r\n");
+    const csv = buildMembersCsv([row], organizationDisplayScope);
     const filename = buildTableExportFilename({
       dealName: rowDisplayName(row),
       tableSlug: "member",
     });
-    downloadTableExportCsv(`\uFEFF${line}`, filename);
+    downloadMembersCsv(csv, filename);
     void notifyMembersExportAudit({
       rowCount: 1,
       exportedMemberLines: exportAuditLinesForMembers([row]),

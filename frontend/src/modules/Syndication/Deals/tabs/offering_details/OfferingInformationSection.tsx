@@ -39,9 +39,8 @@ import { Link, useNavigate } from "react-router-dom"
 import { OFFERING_DETAILS_CLASSES_RETURN } from "../../utils/offeringDetailsSectionNav"
 import {
   clearInvestorClassFormFieldHighlights,
-  investorClassErrorPipelineStep,
-  investorClassValidationErrorTitle,
-  presentInvestorClassFormValidationError,
+  handleInvestorClassValidationError,
+  type InvestorClassFieldErrors,
 } from "../../utils/investorClassFormValidationScroll"
 import {
   computeInvestorClassAllocationTotals,
@@ -899,6 +898,11 @@ function MezzanineClassFormMetricsStrip({
   )
 }
 
+function InvestorClassFieldError({ message }: { message?: string }) {
+  if (!message) return null
+  return <p className="deals_create_field_error">{message}</p>
+}
+
 /** Mezzanine — ROI: preferred return percentage only (type selected above). */
 function MezzanineRoiPreferredReturnFields({
   idPrefix,
@@ -907,6 +911,7 @@ function MezzanineRoiPreferredReturnFields({
   fieldCtl,
   disabled,
   onClearError,
+  fieldErrors,
 }: {
   idPrefix: string
   form: DealInvestorClassFormValues
@@ -914,6 +919,7 @@ function MezzanineRoiPreferredReturnFields({
   fieldCtl: string
   disabled?: boolean
   onClearError?: () => void
+  fieldErrors?: InvestorClassFieldErrors
 }) {
   const adv = form.advanced
 
@@ -939,6 +945,7 @@ function MezzanineRoiPreferredReturnFields({
             inputMode="decimal"
             disabled={disabled}
             value={parsePctInput(adv.classPreferredReturnPct)}
+            aria-invalid={Boolean(fieldErrors?.mezzPrefReturnPct) || undefined}
             onChange={(e) => {
               onClearError?.()
               patchAdvanced({
@@ -956,6 +963,7 @@ function MezzanineRoiPreferredReturnFields({
           />
           <span className="deal_inv_lp_hurdle_pct_suffix">%</span>
         </div>
+        <InvestorClassFieldError message={fieldErrors?.mezzPrefReturnPct} />
       </div>
     </div>
   )
@@ -971,6 +979,7 @@ function MezzaninePreferredReturnFields({
   advSelectCtl,
   disabled,
   onClearError,
+  fieldErrors,
   showAverageAnnualExtras = false,
 }: {
   idPrefix: string
@@ -981,6 +990,7 @@ function MezzaninePreferredReturnFields({
   advSelectCtl: string
   disabled?: boolean
   onClearError?: () => void
+  fieldErrors?: InvestorClassFieldErrors
   /** Average annual return / cash on cash: start/end override + Advanced accordion. */
   showAverageAnnualExtras?: boolean
 }) {
@@ -1048,6 +1058,7 @@ function MezzaninePreferredReturnFields({
             className={advSelectCtl}
             value={adv.classPreferredReturnType}
             disabled={disabled}
+            aria-invalid={Boolean(fieldErrors?.mezzPrefReturnType) || undefined}
             onChange={(e) => {
               onClearError?.()
               patchAdvanced({ classPreferredReturnType: e.target.value })
@@ -1059,6 +1070,7 @@ function MezzaninePreferredReturnFields({
               </option>
             ))}
           </select>
+          <InvestorClassFieldError message={fieldErrors?.mezzPrefReturnType} />
         </div>
         <div className="deal_inv_class_field">
           <label
@@ -1080,6 +1092,7 @@ function MezzaninePreferredReturnFields({
               inputMode="decimal"
               disabled={disabled}
               value={parsePctInput(adv.classPreferredReturnPct)}
+              aria-invalid={Boolean(fieldErrors?.mezzPrefReturnPct) || undefined}
               onChange={(e) => {
                 onClearError?.()
                 patchAdvanced({
@@ -1097,6 +1110,7 @@ function MezzaninePreferredReturnFields({
             />
             <span className="deal_inv_lp_hurdle_pct_suffix">%</span>
           </div>
+          <InvestorClassFieldError message={fieldErrors?.mezzPrefReturnPct} />
         </div>
         <div className="deal_inv_class_field">
           <label
@@ -1126,6 +1140,7 @@ function MezzaninePreferredReturnFields({
             className={advSelectCtl}
             value={adv.preferredReturnAccruesOn}
             disabled={disabled}
+            aria-invalid={Boolean(fieldErrors?.mezzPrefAccruesOn) || undefined}
             onChange={(e) => {
               onClearError?.()
               patchAdvanced({ preferredReturnAccruesOn: e.target.value })
@@ -1137,6 +1152,7 @@ function MezzaninePreferredReturnFields({
               </option>
             ))}
           </select>
+          <InvestorClassFieldError message={fieldErrors?.mezzPrefAccruesOn} />
         </div>
         <div className="deal_inv_class_field">
           <label
@@ -1166,6 +1182,7 @@ function MezzaninePreferredReturnFields({
             className={advSelectCtl}
             value={adv.classDayCountConvention}
             disabled={disabled}
+            aria-invalid={Boolean(fieldErrors?.mezzDayCount) || undefined}
             onChange={(e) => {
               onClearError?.()
               patchAdvanced({ classDayCountConvention: e.target.value })
@@ -1177,6 +1194,7 @@ function MezzaninePreferredReturnFields({
               </option>
             ))}
           </select>
+          <InvestorClassFieldError message={fieldErrors?.mezzDayCount} />
         </div>
         {showAverageAnnualExtras ? (
           <>
@@ -1387,6 +1405,7 @@ function MezzanineClassAdvancedFields({
   dealAssetRows,
   disabled,
   onClearError,
+  fieldErrors,
 }: {
   idPrefix: string
   form: DealInvestorClassFormValues
@@ -1397,6 +1416,7 @@ function MezzanineClassAdvancedFields({
   dealAssetRows: DealAssetRow[]
   disabled?: boolean
   onClearError?: () => void
+  fieldErrors?: InvestorClassFieldErrors
 }) {
   const adv = form.advanced
 
@@ -1420,6 +1440,7 @@ function MezzanineClassAdvancedFields({
           value={adv.investmentType}
           disabled
           aria-readonly
+          aria-invalid={Boolean(fieldErrors?.advInvestmentType) || undefined}
           onChange={() => undefined}
         >
           {ADV_INVESTMENT_TYPE_OPTIONS.map((o) => (
@@ -1428,6 +1449,7 @@ function MezzanineClassAdvancedFields({
             </option>
           ))}
         </select>
+        <InvestorClassFieldError message={fieldErrors?.advInvestmentType} />
       </div>
 
       <div
@@ -1604,7 +1626,11 @@ function MezzanineClassAdvancedFields({
           className={advSelectCtl}
           value={adv.waitlistStatus}
           disabled={disabled}
-          onChange={(e) => patchAdvanced({ waitlistStatus: e.target.value })}
+          aria-invalid={Boolean(fieldErrors?.advWaitlist) || undefined}
+          onChange={(e) => {
+            onClearError?.()
+            patchAdvanced({ waitlistStatus: e.target.value })
+          }}
         >
           {ADV_WAITLIST_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -1612,6 +1638,7 @@ function MezzanineClassAdvancedFields({
             </option>
           ))}
         </select>
+        <InvestorClassFieldError message={fieldErrors?.advWaitlist} />
       </div>
     </div>
   )
@@ -2674,6 +2701,7 @@ function InvestorClassModalFormBody({
   dealAssetRows = [],
   /** Add-class page pipeline: step 1 = class details; step 2 = advanced (+ LP hurdles); omit = single screen (modal). */
   formStep,
+  fieldErrors,
 }: {
   idPrefix: string
   form: DealInvestorClassFormValues
@@ -2685,6 +2713,7 @@ function InvestorClassModalFormBody({
   showNewClassTitleAboveType?: boolean
   dealAssetRows?: DealAssetRow[]
   formStep?: 1 | 2
+  fieldErrors?: InvestorClassFieldErrors
 }) {
   const typeLbl = `${idPrefix}-class-type-lbl`
   const equityNameLbl = `${idPrefix}-equity-name-lbl`
@@ -2864,6 +2893,7 @@ function InvestorClassModalFormBody({
           aria-labelledby={typeLbl}
           value={form.subscriptionType}
           disabled={disabled}
+          aria-invalid={Boolean(fieldErrors?.classType) || undefined}
           onChange={(e) => {
             onClearError?.()
             const subscriptionType = e.target.value
@@ -2904,6 +2934,7 @@ function InvestorClassModalFormBody({
             </option>
           ))}
         </select>
+        <InvestorClassFieldError message={fieldErrors?.classType} />
       </div>
       <div className="deal_inv_class_field">
         <label
@@ -2937,6 +2968,7 @@ function InvestorClassModalFormBody({
             aria-labelledby={equityNameLbl}
             value={form.name}
             disabled={disabled}
+            aria-invalid={Boolean(fieldErrors?.equityName) || undefined}
             onChange={(e) => {
               onClearError?.()
               setForm({ name: e.target.value })
@@ -2963,6 +2995,7 @@ function InvestorClassModalFormBody({
                 placeholder="Equity class name"
                 value={form.name}
                 disabled={disabled}
+                aria-invalid={Boolean(fieldErrors?.equityName) || undefined}
                 onChange={(e) => {
                   onClearError?.()
                   setForm({ name: e.target.value })
@@ -3014,6 +3047,7 @@ function InvestorClassModalFormBody({
             </select> */}
           </div>
         )}
+        <InvestorClassFieldError message={fieldErrors?.equityName} />
       </div>
       {isGpLayout ? (
         <>
@@ -3054,6 +3088,7 @@ function InvestorClassModalFormBody({
                 placeholder="0.00%"
                 value={form.advanced.entityLegalOwnershipPct}
                 disabled={disabled}
+                aria-invalid={Boolean(fieldErrors?.entityLegalOwnership) || undefined}
                 onChange={(e) => {
                   onClearError?.()
                   patchAdvanced(
@@ -3110,6 +3145,7 @@ function InvestorClassModalFormBody({
                 )}
               </button>
             </div>
+            <InvestorClassFieldError message={fieldErrors?.entityLegalOwnership} />
           </div>
           <div className="deal_inv_class_field">
             <label
@@ -3182,6 +3218,7 @@ function InvestorClassModalFormBody({
               placeholder="$0"
               inputMode="decimal"
               value={form.offeringSize}
+              aria-invalid={Boolean(fieldErrors?.raiseOwnership) || undefined}
               onChange={(e) => {
                 onClearError?.()
                 const offeringSize = formatCurrencyUsdTypeInput(e.target.value)
@@ -3199,6 +3236,7 @@ function InvestorClassModalFormBody({
               }}
               disabled={disabled}
             />
+            <InvestorClassFieldError message={fieldErrors?.raiseOwnership} />
           </div>
           <div className="deal_inv_class_field">
             <label
@@ -3231,6 +3269,7 @@ function InvestorClassModalFormBody({
               placeholder="$0"
               inputMode="decimal"
               value={form.raiseAmountDistributions}
+              aria-invalid={Boolean(fieldErrors?.raiseDistributions) || undefined}
               onChange={(e) => {
                 onClearError?.()
                 setForm({
@@ -3248,6 +3287,7 @@ function InvestorClassModalFormBody({
               }
               disabled={disabled}
             />
+            <InvestorClassFieldError message={fieldErrors?.raiseDistributions} />
             {/* <p className="deal_inv_field_hint">
               {isMezzanineLayout ? (
                 <>
@@ -3330,6 +3370,7 @@ function InvestorClassModalFormBody({
               placeholder={isMezzanineLayout ? "$0" : "$50,000"}
               inputMode="decimal"
               value={form.minimumInvestment}
+              aria-invalid={Boolean(fieldErrors?.minimumInvestment) || undefined}
               onChange={(e) => {
                 onClearError?.()
                 setForm({
@@ -3343,6 +3384,7 @@ function InvestorClassModalFormBody({
               }
               disabled={disabled}
             />
+            <InvestorClassFieldError message={fieldErrors?.minimumInvestment} />
           </div>
           {!isMezzanineLayout ? (
             <div className="deal_inv_class_field">
@@ -3454,6 +3496,7 @@ function InvestorClassModalFormBody({
                 className={advSelectCtl}
                 value={form.advanced.classPreferredReturnType}
                 disabled={disabled}
+                aria-invalid={Boolean(fieldErrors?.mezzPrefReturnType) || undefined}
                 onChange={(e) => {
                   onClearError?.()
                   patchAdvanced({ classPreferredReturnType: e.target.value })
@@ -3468,6 +3511,7 @@ function InvestorClassModalFormBody({
                   </option>
                 ))}
               </select>
+              <InvestorClassFieldError message={fieldErrors?.mezzPrefReturnType} />
             </div>
           ) : null}
           {isMezzRoiPrefReturn ? (
@@ -3478,6 +3522,7 @@ function InvestorClassModalFormBody({
               fieldCtl={fieldCtl}
               disabled={disabled}
               onClearError={onClearError}
+              fieldErrors={fieldErrors}
             />
           ) : null}
           {isMezzStructuredPrefReturn ? (
@@ -3490,6 +3535,7 @@ function InvestorClassModalFormBody({
               advSelectCtl={advSelectCtl}
               disabled={disabled}
               onClearError={onClearError}
+              fieldErrors={fieldErrors}
               showAverageAnnualExtras={isMezzFullPrefReturnGrid}
             />
           ) : null}
@@ -3563,6 +3609,7 @@ function InvestorClassModalFormBody({
               dealAssetRows={dealAssetRows}
               disabled={disabled}
               onClearError={onClearError}
+              fieldErrors={fieldErrors}
             />
           ) : (
           <div className="deal_inv_ic_advanced_um_grid">
@@ -3600,6 +3647,7 @@ function InvestorClassModalFormBody({
                     className={advSelectCtl}
                     value={form.advanced.investmentType}
                     disabled={disabled}
+                    aria-invalid={Boolean(fieldErrors?.advInvestmentType) || undefined}
                     onChange={(e) =>
                       patchAdvanced({ investmentType: e.target.value })
                     }
@@ -3610,6 +3658,7 @@ function InvestorClassModalFormBody({
                       </option>
                     ))}
                   </select>
+                  <InvestorClassFieldError message={fieldErrors?.advInvestmentType} />
                 </div>
               </div>
             </section>
@@ -3666,6 +3715,7 @@ function InvestorClassModalFormBody({
                     placeholder="0.00%"
                     value={form.advanced.entityLegalOwnershipPct}
                     disabled={disabled}
+                    aria-invalid={Boolean(fieldErrors?.entityLegalOwnership) || undefined}
                     onChange={(e) => {
                       onClearError?.()
                       patchAdvanced(
@@ -3722,6 +3772,7 @@ function InvestorClassModalFormBody({
                     )}
                   </button>
                 </div>
+                <InvestorClassFieldError message={fieldErrors?.entityLegalOwnership} />
                   </div>
 
                   <div className="um_field add_contact_field_tight deal_inv_ic_pct_field deal_inv_ic_adv_field">
@@ -3758,6 +3809,7 @@ function InvestorClassModalFormBody({
                     placeholder="0.00%"
                     value={form.advanced.distributionSharePct}
                     disabled={disabled}
+                    aria-invalid={Boolean(fieldErrors?.advDistributionShare) || undefined}
                     onChange={(e) => {
                       onClearError?.()
                       patchAdvanced(
@@ -3814,6 +3866,7 @@ function InvestorClassModalFormBody({
                     )}
                   </button>
                 </div>
+                <InvestorClassFieldError message={fieldErrors?.advDistributionShare} />
                   </div>
                 </div>
               </section>
@@ -3905,6 +3958,7 @@ function InvestorClassModalFormBody({
                     autoComplete="off"
                     value={form.numberOfUnits}
                     disabled={disabled}
+                    aria-invalid={Boolean(fieldErrors?.numberOfUnits) || undefined}
                     onChange={(e) =>
                       setForm({
                         numberOfUnits: formatNumberOfUnitsTypingInput(e.target.value),
@@ -3916,6 +3970,7 @@ function InvestorClassModalFormBody({
                       })
                     }
                   />
+                  <InvestorClassFieldError message={fieldErrors?.numberOfUnits} />
                     </div>
 
                     <div className="um_field add_contact_field_tight deal_inv_ic_adv_field">
@@ -4076,9 +4131,11 @@ function InvestorClassModalFormBody({
                 className={advSelectCtl}
                 value={form.advanced.waitlistStatus}
                 disabled={disabled}
-                onChange={(e) =>
+                aria-invalid={Boolean(fieldErrors?.advWaitlist) || undefined}
+                onChange={(e) => {
+                  onClearError?.()
                   patchAdvanced({ waitlistStatus: e.target.value })
-                }
+                }}
               >
                 {ADV_WAITLIST_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -4086,6 +4143,7 @@ function InvestorClassModalFormBody({
                   </option>
                 ))}
               </select>
+              <InvestorClassFieldError message={fieldErrors?.advWaitlist} />
                 </div>
               </div>
             </section>
@@ -4284,9 +4342,7 @@ export function AddInvestorClassPanel({
   const formRef = useRef<HTMLFormElement>(null)
   const [form, setForm] = useState(emptyForm)
   const [err, setErr] = useState<string | null>(null)
-  const [validationDialogMessage, setValidationDialogMessage] = useState<
-    string | null
-  >(null)
+  const [fieldErrors, setFieldErrors] = useState<InvestorClassFieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const visible = asPage || open
   const idPrefix = "add-ic"
@@ -4297,47 +4353,22 @@ export function AddInvestorClassPanel({
 
   const showValidationError = useCallback(
     (message: string) => {
-      const targetStep = investorClassErrorPipelineStep(message)
-      const needsStepChange =
-        asPage &&
-        onPipelineStepChange != null &&
-        pipelineStep !== targetStep
-
-      const runFocus = () => {
-        presentInvestorClassFormValidationError({
-          container: formRef.current,
-          message,
-          idPrefix,
-          pipelineStep: targetStep,
-          onPipelineStepChange,
-          usePipeline: asPage,
-        })
-      }
-
-      if (needsStepChange) {
-        onPipelineStepChange(targetStep)
-        window.setTimeout(() => {
-          setErr(message)
-          setValidationDialogMessage(message)
-          runFocus()
-        }, 0)
-        return
-      }
-
-      setErr(message)
-      setValidationDialogMessage(message)
-      runFocus()
+      handleInvestorClassValidationError(message, {
+        setFieldErrors,
+        setFormError: setErr,
+        formRef,
+        idPrefix,
+        pipelineStep,
+        onPipelineStepChange,
+        usePipeline: asPage,
+      })
     },
     [asPage, idPrefix, onPipelineStepChange, pipelineStep],
   )
 
-  const closeValidationDialog = useCallback(() => {
-    setValidationDialogMessage(null)
-  }, [])
-
   const clearFormError = useCallback(() => {
     setErr(null)
-    setValidationDialogMessage(null)
+    setFieldErrors({})
     clearInvestorClassFormFieldHighlights(formRef.current)
   }, [])
 
@@ -4363,7 +4394,7 @@ export function AddInvestorClassPanel({
     if (!visible) return
     setForm(emptyForm())
     setErr(null)
-    setValidationDialogMessage(null)
+    setFieldErrors({})
   }, [visible, dealId])
 
   useEffect(() => {
@@ -4395,6 +4426,7 @@ export function AddInvestorClassPanel({
       )
       setForm(nextForm)
       setErr(null)
+      setFieldErrors({})
       onPipelineStepChange?.(2)
       return
     }
@@ -4483,6 +4515,7 @@ export function AddInvestorClassPanel({
             showNewClassTitleAboveType={asPage}
             dealAssetRows={dealAssetRows}
             formStep={asPage ? pipelineStep : undefined}
+            fieldErrors={fieldErrors}
           />
         </div>
         <div
@@ -4510,6 +4543,7 @@ export function AddInvestorClassPanel({
                 disabled={submitting}
                 onClick={() => {
                   setErr(null)
+                  setFieldErrors({})
                   onPipelineStepChange?.(1)
                 }}
               >
@@ -4546,19 +4580,6 @@ export function AddInvestorClassPanel({
         </div>
       </form>
     </section>
-    <InvestorClassMessageModal
-      open={validationDialogMessage != null}
-      title={
-        validationDialogMessage
-          ? investorClassValidationErrorTitle(validationDialogMessage)
-          : "Cannot save investor class"
-      }
-      onClose={closeValidationDialog}
-    >
-      <p className="deal_ic_dialog_message deal_ic_dialog_message_error" role="alert">
-        {validationDialogMessage}
-      </p>
-    </InvestorClassMessageModal>
     </>
   )
 }
@@ -4587,9 +4608,7 @@ export function EditInvestorClassPanel({
 }) {
   const [form, setForm] = useState(() => rowToForm(row))
   const [err, setErr] = useState<string | null>(null)
-  const [validationDialogMessage, setValidationDialogMessage] = useState<
-    string | null
-  >(null)
+  const [fieldErrors, setFieldErrors] = useState<InvestorClassFieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
   const idPrefix = "edit-ic"
@@ -4601,45 +4620,22 @@ export function EditInvestorClassPanel({
 
   const showValidationError = useCallback(
     (message: string) => {
-      const targetStep = investorClassErrorPipelineStep(message)
-      const needsStepChange =
-        onPipelineStepChange != null && pipelineStep !== targetStep
-
-      const runFocus = () => {
-        presentInvestorClassFormValidationError({
-          container: formRef.current,
-          message,
-          idPrefix,
-          pipelineStep: targetStep,
-          onPipelineStepChange,
-          usePipeline: true,
-        })
-      }
-
-      if (needsStepChange) {
-        onPipelineStepChange(targetStep)
-        window.setTimeout(() => {
-          setErr(message)
-          setValidationDialogMessage(message)
-          runFocus()
-        }, 0)
-        return
-      }
-
-      setErr(message)
-      setValidationDialogMessage(message)
-      runFocus()
+      handleInvestorClassValidationError(message, {
+        setFieldErrors,
+        setFormError: setErr,
+        formRef,
+        idPrefix,
+        pipelineStep,
+        onPipelineStepChange,
+        usePipeline: true,
+      })
     },
     [idPrefix, onPipelineStepChange, pipelineStep],
   )
 
-  const closeValidationDialog = useCallback(() => {
-    setValidationDialogMessage(null)
-  }, [])
-
   const clearFormError = useCallback(() => {
     setErr(null)
-    setValidationDialogMessage(null)
+    setFieldErrors({})
     clearInvestorClassFormFieldHighlights(formRef.current)
   }, [])
 
@@ -4662,7 +4658,7 @@ export function EditInvestorClassPanel({
   useEffect(() => {
     setForm(rowToForm(row))
     setErr(null)
-    setValidationDialogMessage(null)
+    setFieldErrors({})
     clearInvestorClassFormFieldHighlights(formRef.current)
   }, [row])
 
@@ -4679,6 +4675,7 @@ export function EditInvestorClassPanel({
       )
       setForm(nextForm)
       setErr(null)
+      setFieldErrors({})
       onPipelineStepChange?.(2)
       return
     }
@@ -4738,6 +4735,7 @@ export function EditInvestorClassPanel({
             showNewClassTitleAboveType
             dealAssetRows={dealAssetRows}
             formStep={pipelineStep}
+            fieldErrors={fieldErrors}
           />
         </div>
         <div className="um_modal_actions deal_inv_ic_add_panel_actions deals_add_deal_asset_footer_actions">
@@ -4758,6 +4756,7 @@ export function EditInvestorClassPanel({
                 disabled={submitting}
                 onClick={() => {
                   setErr(null)
+                  setFieldErrors({})
                   onPipelineStepChange?.(1)
                 }}
               >
@@ -4794,19 +4793,6 @@ export function EditInvestorClassPanel({
         </div>
       </form>
     </section>
-    <InvestorClassMessageModal
-      open={validationDialogMessage != null}
-      title={
-        validationDialogMessage
-          ? investorClassValidationErrorTitle(validationDialogMessage)
-          : "Cannot save investor class"
-      }
-      onClose={closeValidationDialog}
-    >
-      <p className="deal_ic_dialog_message deal_ic_dialog_message_error" role="alert">
-        {validationDialogMessage}
-      </p>
-    </InvestorClassMessageModal>
     </>
   )
 }

@@ -58,15 +58,13 @@ import { CompanySettingsTabPanel } from "./CompanySettingsTabPanel";
 import { ExportCompaniesModal } from "./ExportCompaniesModal";
 import UserManagementPage from "../usermanagement/UserManagementPage";
 import {
-  escapeCsvCell,
+  buildCompaniesCsv,
+  downloadCompaniesCsv,
   exportAuditLinesForCompanies,
 } from "./companyCsv";
 import type { CompanyExportRow } from "./companyCsv";
 import { notifyCompaniesExportAudit } from "./companiesExportNotifyApi";
-import {
-  buildTableExportFilename,
-  downloadTableExportCsv,
-} from "../../../common/utils/tableExportFilename";
+import { buildTableExportFilename } from "../../../common/utils/tableExportFilename";
 import "../Deals/deal-investors-tab.css";
 import "../Deals/deals-list.css";
 import "../usermanagement/user_management.css";
@@ -767,28 +765,9 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   }, [actionMenuCompanyId]);
 
   function exportRowCsv(row: CompanyRow) {
-    const headers = [
-      "Company",
-      "Deals",
-      "Members",
-      "No. of contacts",
-      "Status",
-      "Company ID",
-    ];
-    const vals = [
-      row.name,
-      String(row.dealCount ?? 0),
-      String(row.userCount ?? 0),
-      String(row.contactCount ?? 0),
-      companyStatusForUi(row).label,
-      row.id,
-    ];
-    const line = [
-      headers.map(escapeCsvCell).join(","),
-      vals.map(escapeCsvCell).join(","),
-    ].join("\r\n");
+    const csv = buildCompaniesCsv([row]);
     const filename = buildTableExportFilename({ dealName: row.name });
-    downloadTableExportCsv(`\uFEFF${line}`, filename);
+    downloadCompaniesCsv(csv, filename);
     void notifyCompaniesExportAudit({
       rowCount: 1,
       exportedCompanyLines: exportAuditLinesForCompanies([row]),

@@ -33,23 +33,29 @@ function companyStatusLabel(row: CompanyExportRow): string {
 
 export function buildCompaniesCsv(rows: CompanyExportRow[]): string {
   const headers = [
+    "Company ID",
     "Company",
     "Deals",
     "Members",
     "No. of contacts",
     "Status",
     "Created",
+    "Last updated",
   ];
   const lines = [headers.map(escapeCsvCell).join(",")];
   for (const row of rows) {
+    const created = row.createdAt ? formatDateDdMmmYyyy(row.createdAt) : "—";
+    const updated = row.updatedAt ? formatDateDdMmmYyyy(row.updatedAt) : "—";
     lines.push(
       [
+        row.id,
         row.name,
         String(row.dealCount ?? 0),
         String(row.userCount ?? 0),
         String(row.contactCount ?? 0),
         companyStatusLabel(row),
-        row.createdAt ? formatDateDdMmmYyyy(row.createdAt) : "—",
+        created === "—" ? "" : created,
+        updated === "—" ? "" : updated,
       ]
         .map((c) => escapeCsvCell(c))
         .join(","),

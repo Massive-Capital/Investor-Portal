@@ -91,6 +91,22 @@ const ORG_SETTINGS_MEMBER_ROLES = [
   LEGACY_USER,
 ] as const;
 
+/** Platform admins only appear in a company they are assigned to (org or membership). */
+async function userBelongsToCompany(
+  user: UserRow,
+  companyId: string,
+): Promise<boolean> {
+  const scopeId = companyId.trim().toLowerCase();
+  if (!ORG_UUID_RE.test(scopeId)) return false;
+
+  const userId = String(user.id ?? "").trim();
+  const orgId = String(user.organizationId ?? "").trim().toLowerCase();
+  if (orgId && orgId === scopeId) return true;
+
+  if (!userId) return false;
+  return hasUserCompanyMembership(userId, companyId);
+}
+
 async function appendPlatformAdminViewerToScopedList(
   rows: Record<string, unknown>[],
   actorUserId: string,
@@ -110,6 +126,7 @@ async function appendPlatformAdminViewerToScopedList(
     .where(eq(users.id, actorId))
     .limit(1);
   if (!actorUser || !isPlatformAdminRole(actorUser.role)) return rows;
+  if (!(await userBelongsToCompany(actorUser, companyId))) return rows;
 
   const [scopeCompany] = await db
     .select({ name: companies.name })

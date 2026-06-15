@@ -6,6 +6,26 @@ import {
 
 type InvestorClassPipelineStep = 1 | 2
 
+export type InvestorClassFieldKey =
+  | "classType"
+  | "equityName"
+  | "entityLegalOwnership"
+  | "raiseOwnership"
+  | "raiseDistributions"
+  | "minimumInvestment"
+  | "numberOfUnits"
+  | "mezzPrefReturnType"
+  | "mezzPrefReturnPct"
+  | "mezzPrefAccruesOn"
+  | "mezzDayCount"
+  | "advInvestmentType"
+  | "advDistributionShare"
+  | "advWaitlist"
+
+export type InvestorClassFieldErrors = Partial<
+  Record<InvestorClassFieldKey, string>
+>
+
 const FIELD_HIGHLIGHT_CLASS = "deal_inv_ic_field_invalid"
 const FIELD_HIGHLIGHT_ATTR = "data-inv-class-validation-error"
 
@@ -16,6 +36,45 @@ const ADVANCED_STEP_MESSAGES = new Set([
   "Waitlist status is required (Advanced).",
   "Number of units is required.",
 ])
+
+const MESSAGE_TO_FIELD: Record<string, InvestorClassFieldKey> = {
+  "Class type is required.": "classType",
+  "Equity class name is required.": "equityName",
+  "Entity legal ownership is required.": "entityLegalOwnership",
+  "Raise amount (for ownership) is required.": "raiseOwnership",
+  "Raise amount (for distributions) is required.": "raiseDistributions",
+  "Minimum investment is required.": "minimumInvestment",
+  "Number of units is required.": "numberOfUnits",
+  "Preferred return type is required.": "mezzPrefReturnType",
+  "Preferred return is required.": "mezzPrefReturnPct",
+  "Preferred return accrues on is required.": "mezzPrefAccruesOn",
+  "Day count convention is required.": "mezzDayCount",
+  "Investment type is required (Advanced).": "advInvestmentType",
+  "Entity legal ownership is required (Advanced).": "entityLegalOwnership",
+  "Distribution share is required (Advanced).": "advDistributionShare",
+  "Waitlist status is required (Advanced).": "advWaitlist",
+  "An investor class with this name already exists for this class type on this deal. Use a unique name or choose another class type.":
+    "equityName",
+  "Another investor class of this type already uses this name for this deal. Choose a unique name or another class type.":
+    "equityName",
+}
+
+const FIELD_KEY_TO_ID_SUFFIX: Record<InvestorClassFieldKey, string> = {
+  classType: "class-type",
+  equityName: "equity-name",
+  entityLegalOwnership: "adv-entity-own",
+  raiseOwnership: "raise-own",
+  raiseDistributions: "raise-dist",
+  minimumInvestment: "min-inv",
+  numberOfUnits: "adv-nou",
+  mezzPrefReturnType: "mezz-pref-return",
+  mezzPrefReturnPct: "mezz-pref-return-pct",
+  mezzPrefAccruesOn: "mezz-pref-accrues",
+  mezzDayCount: "mezz-day-count",
+  advInvestmentType: "adv-inv-type",
+  advDistributionShare: "adv-dist-share",
+  advWaitlist: "adv-waitlist",
+}
 
 function resolveRoot(container?: ParentNode | null): ParentNode {
   return container ?? document
@@ -33,35 +92,44 @@ function queryField(
   return null
 }
 
+/** Map validation copy to a stable field key for inline errors. */
+export function investorClassValidationMessageToFieldKey(
+  message: string,
+): InvestorClassFieldKey | null {
+  if (MESSAGE_TO_FIELD[message]) return MESSAGE_TO_FIELD[message]
+  if (message.includes("legal ownership")) return "entityLegalOwnership"
+  if (message.includes("distribution share")) return "advDistributionShare"
+  if (
+    message.includes("already exists") ||
+    message.includes("already uses this name")
+  ) {
+    return "equityName"
+  }
+  return null
+}
+
+export function buildInvestorClassFieldErrorsFromMessage(
+  message: string,
+): InvestorClassFieldErrors {
+  const key = investorClassValidationMessageToFieldKey(message)
+  return key ? { [key]: message } : {}
+}
+
+export function investorClassFieldKeyToSelector(
+  idPrefix: string,
+  key: InvestorClassFieldKey,
+): string {
+  return `#${idPrefix}-${FIELD_KEY_TO_ID_SUFFIX[key]}`
+}
+
 /** Map validation copy to stable field ids (`InvestorClassModalFormBody` idPrefix). */
 export function investorClassErrorPreferSelector(
   message: string,
   idPrefix: string,
 ): string | null {
-  const map: Record<string, string> = {
-    "Class type is required.": `#${idPrefix}-class-type`,
-    "Equity class name is required.": `#${idPrefix}-equity-name`,
-    "Entity legal ownership is required.": `#${idPrefix}-adv-entity-own`,
-    "Raise amount (for ownership) is required.": `#${idPrefix}-raise-own`,
-    "Raise amount (for distributions) is required.": `#${idPrefix}-raise-dist`,
-    "Minimum investment is required.": `#${idPrefix}-min-inv`,
-    "Number of units is required.": `#${idPrefix}-adv-nou`,
-    "Preferred return type is required.": `#${idPrefix}-mezz-pref-return`,
-    "Preferred return is required.": `#${idPrefix}-mezz-pref-return-pct`,
-    "Preferred return accrues on is required.": `#${idPrefix}-mezz-pref-accrues`,
-    "Day count convention is required.": `#${idPrefix}-mezz-day-count`,
-    "Investment type is required (Advanced).": `#${idPrefix}-adv-inv-type`,
-    "Entity legal ownership is required (Advanced).": `#${idPrefix}-adv-entity-own`,
-    "Distribution share is required (Advanced).": `#${idPrefix}-adv-dist-share`,
-    "Waitlist status is required (Advanced).": `#${idPrefix}-adv-waitlist`,
-    "An investor class with this name already exists for this class type on this deal. Use a unique name or choose another class type.":
-      `#${idPrefix}-equity-name`,
-    "Another investor class of this type already uses this name for this deal. Choose a unique name or another class type.":
-      `#${idPrefix}-equity-name`,
-  }
-  if (message.includes("legal ownership")) return `#${idPrefix}-adv-entity-own`
-  if (message.includes("distribution share")) return `#${idPrefix}-adv-dist-share`
-  return map[message] ?? null
+  const fieldKey = investorClassValidationMessageToFieldKey(message)
+  if (fieldKey) return investorClassFieldKeyToSelector(idPrefix, fieldKey)
+  return null
 }
 
 /** Pipeline step that contains the field for this validation message. */
@@ -85,6 +153,64 @@ export interface InvestorClassValidationFocusOptions {
   usePipeline?: boolean
   /** When false, skip toast (inline error only). Default true. */
   showToast?: boolean
+}
+
+export interface InvestorClassValidationHandlers {
+  setFieldErrors: (errors: InvestorClassFieldErrors) => void
+  setFormError: (message: string | null) => void
+  formRef: { current: HTMLFormElement | null }
+  idPrefix: string
+  pipelineStep?: InvestorClassPipelineStep
+  onPipelineStepChange?: (step: InvestorClassPipelineStep) => void
+  usePipeline?: boolean
+}
+
+/** Inline field errors + scroll; no toast or modal. */
+export function handleInvestorClassValidationError(
+  message: string,
+  handlers: InvestorClassValidationHandlers,
+): void {
+  const targetStep = investorClassErrorPipelineStep(message)
+  const needsStepChange =
+    handlers.usePipeline &&
+    handlers.onPipelineStepChange != null &&
+    handlers.pipelineStep != null &&
+    handlers.pipelineStep !== targetStep
+
+  const applyState = () => {
+    const fieldErrors = buildInvestorClassFieldErrorsFromMessage(message)
+    if (Object.keys(fieldErrors).length > 0) {
+      handlers.setFieldErrors(fieldErrors)
+      handlers.setFormError(null)
+    } else {
+      handlers.setFieldErrors({})
+      handlers.setFormError(message)
+    }
+  }
+
+  const runFocus = () => {
+    focusInvestorClassFormErrorWithPipeline({
+      container: handlers.formRef.current,
+      message,
+      idPrefix: handlers.idPrefix,
+      pipelineStep: targetStep,
+      onPipelineStepChange: handlers.onPipelineStepChange,
+      usePipeline: handlers.usePipeline,
+      showToast: false,
+    })
+  }
+
+  if (needsStepChange) {
+    handlers.onPipelineStepChange!(targetStep)
+    window.setTimeout(() => {
+      applyState()
+      runFocus()
+    }, 50)
+    return
+  }
+
+  applyState()
+  runFocus()
 }
 
 export function clearInvestorClassFormFieldHighlights(
@@ -139,9 +265,14 @@ export function investorClassValidationErrorTitle(message: string): string {
 function runInvestorClassFormErrorFocus(
   opts: InvestorClassValidationFocusOptions,
 ): void {
+  const inlineFieldError =
+    investorClassValidationMessageToFieldKey(opts.message) != null
+
   clearInvestorClassFormFieldHighlights(opts.container)
-  scrollInvestorClassFormToTop(opts.container)
-  scrollValidationAlertIntoView(opts.container)
+  if (!inlineFieldError) {
+    scrollInvestorClassFormToTop(opts.container)
+    scrollValidationAlertIntoView(opts.container)
+  }
 
   const preferSelector = investorClassErrorPreferSelector(
     opts.message,
@@ -176,7 +307,9 @@ function runInvestorClassFormErrorFocus(
     }
   }
 
-  if (!scrolled) scrollValidationAlertIntoView(opts.container)
+  if (!scrolled && !inlineFieldError) {
+    scrollValidationAlertIntoView(opts.container)
+  }
 }
 
 export function focusInvestorClassFormError(
@@ -192,12 +325,15 @@ export function focusInvestorClassFormError(
   })
 }
 
-/** Toast, scroll to banner + field, and highlight the control to fix. */
+/** Scroll to the matching field (opens Advanced, switches pipeline step). */
 export function presentInvestorClassFormValidationError(
   opts: InvestorClassValidationFocusOptions,
 ): void {
+  const inlineFieldError =
+    investorClassValidationMessageToFieldKey(opts.message) != null
   if (
     opts.showToast !== false &&
+    !inlineFieldError &&
     !isInvestorClassAllocationValidationMessage(opts.message)
   ) {
     toast.error(

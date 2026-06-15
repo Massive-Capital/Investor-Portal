@@ -4,6 +4,7 @@ import {
   Building2,
   CheckCircle2,
   ClipboardList,
+  Download,
   Eye,
   Mail,
   MoreHorizontal,
@@ -59,13 +60,10 @@ import {
   PLATFORM_INVITE_ROLE_OPTIONS,
   accountInviteIsExpired,
   accountStatusForUi,
-  assignedDealCountFromRow,
   formatMemberUsername,
+  formatValue,
   memberUserCellPrimaryLabel,
   rowDisplayName,
-  formatOrganizationsCsvCell,
-  formatRoleCsvCell,
-  formatValue,
   memberInvitePending,
   memberRowIsCurrentUser,
   memberRowIsInactive,
@@ -78,9 +76,10 @@ import {
 } from "../usermanagement/memberAdminShared"
 import { MemberRoleBadge } from "../usermanagement/MemberRoleBadge"
 import { UserOrganizationsCell } from "../usermanagement/UserOrganizationsCell"
-import { escapeCsvCell, exportAuditLinesForMembers } from "../usermanagement/memberCsv"
+import { buildMembersCsv, downloadMembersCsv, exportAuditLinesForMembers } from "../usermanagement/memberCsv"
 import { notifyMembersExportAudit } from "../usermanagement/membersExportNotifyApi"
-import { buildTableExportFilename, downloadTableExportCsv } from "../../../common/utils/tableExportFilename"
+import { ExportMembersModal } from "../usermanagement/ExportMembersModal"
+import { buildTableExportFilename } from "../../../common/utils/tableExportFilename"
 import type { CustomerCompanyOutletContext } from "./CustomerCompanyLayout"
 import "../Deals/deal-investors-tab.css"
 import "../Deals/deals-list.css"
@@ -196,6 +195,7 @@ export default function CompanyMembersPage() {
   const [suspendReason, setSuspendReason] = useState("")
   const [suspendSaving, setSuspendSaving] = useState(false)
   const [suspendErr, setSuspendErr] = useState("")
+  const [membersExportOpen, setMembersExportOpen] = useState(false)
 
   const kebabPortalRef = useRef<HTMLUListElement | null>(null)
   const kebabTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -367,36 +367,12 @@ export default function CompanyMembersPage() {
 
   function exportRowCsv(row: Record<string, unknown>) {
     const orgScope = resolveOrganizationDisplayScope(companyId, companyDisplayName)
-    const orgHeader = orgScope ? "Organization" : "Organizations"
-    const headers = [
-      "Name",
-      "Username",
-      "Email",
-      "Roles",
-      orgHeader,
-      "User Status",
-      "Account status",
-      "Assigned deals",
-    ]
-    const vals = [
-      rowDisplayName(row),
-      formatMemberUsername(row.username),
-      formatValue(row.email),
-      formatRoleCsvCell(row),
-      formatOrganizationsCsvCell(row, orgScope),
-      userStatusForUi(row).label,
-      accountStatusForUi(row).label,
-      String(assignedDealCountFromRow(row)),
-    ]
-    const line = [
-      headers.map(escapeCsvCell).join(","),
-      vals.map(escapeCsvCell).join(","),
-    ].join("\r\n")
+    const csv = buildMembersCsv([row], orgScope)
     const filename = buildTableExportFilename({
       dealName: rowDisplayName(row),
       tableSlug: "member",
     })
-    downloadTableExportCsv(`\uFEFF${line}`, filename)
+    downloadMembersCsv(csv, filename)
     void notifyMembersExportAudit({
       rowCount: 1,
       exportedMemberLines: exportAuditLinesForMembers([row]),
@@ -1092,7 +1068,7 @@ export default function CompanyMembersPage() {
       aria-busy={loading}
     >
       <div className="cp_company_tab_panel_inner">
-        <div className="um_toolbar cp_company_tab_toolbar deal_inv_table_um_toolbar">
+        <div className="um_toolbar cp_company_tab_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
           <p className="cp_company_tab_toolbar_hint">
             Portal members assigned to{" "}
             <strong className="cp_company_tab_toolbar_strong">
@@ -1100,33 +1076,44 @@ export default function CompanyMembersPage() {
             </strong>
             .
           </p>
-          <button
-            type="button"
-            className="um_btn_toolbar"
-            disabled={loading || selectedMemberRows.length === 0}
-            onClick={() => {
-              if (selectedMemberRows.length === 0) {
-                toast.error(
-                  "No members selected",
-                  "Select one or more members using the checkboxes in the table.",
-                )
-                return
-              }
-              openSendMailModal()
-            }}
-          >
-            <Send size={18} strokeWidth={2} aria-hidden />
-            Send mail
-          </button>
-          <button
-            type="button"
-            className="um_btn_toolbar"
-            disabled={loading}
-            onClick={() => void load()}
-          >
-            <RefreshCw size={18} strokeWidth={2} aria-hidden />
-            Refresh
-          </button>
+          <div className="um_toolbar_actions">
+            <button
+              type="button"
+              className="um_btn_toolbar"
+              disabled={loading || selectedMemberRows.length === 0}
+              onClick={() => {
+                if (selectedMemberRows.length === 0) {
+                  toast.error(
+                    "No members selected",
+                    "Select one or more members using the checkboxes in the table.",
+                  )
+                  return
+                }
+                openSendMailModal()
+              }}
+            >
+              <Send size={18} strokeWidth={2} aria-hidden />
+              Send mail
+            </button>
+            <button
+              type="button"
+              className="um_toolbar_export_btn"
+              disabled={loading || members.length === 0}
+              onClick={() => setMembersExportOpen(true)}
+            >
+              <Download size={18} strokeWidth={2} aria-hidden />
+              <span>Export All</span>
+            </button>
+            <button
+              type="button"
+              className="um_btn_toolbar"
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              <RefreshCw size={18} strokeWidth={2} aria-hidden />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {error ? (
@@ -1920,6 +1907,13 @@ export default function CompanyMembersPage() {
           </div>
         </div>
       ) : null}
+
+      <ExportMembersModal
+        open={membersExportOpen}
+        onClose={() => setMembersExportOpen(false)}
+        members={members}
+        organizationScope={organizationDisplayScope}
+      />
     </div>
   )
 }
