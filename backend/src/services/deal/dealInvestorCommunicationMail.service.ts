@@ -239,7 +239,7 @@ export async function sendDealInvestorCommunicationMail(
     });
     const row = await insertLog("sent");
     if (!row) {
-      return { ok: false, message: "Mail sent but log could not be saved" };
+      return { ok: false, message: "Email sent but log could not be saved" };
     }
     return { ok: true, row };
   } catch (err) {

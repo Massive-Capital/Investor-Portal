@@ -3717,6 +3717,7 @@ a.deal_docs_name_link:hover {
 
 .deal_docs_ui_empty_zone {
   padding: 1rem;
+  border-top: 1px solid var(--portal-border, #e2e8f0);
 }
 
 .deal_docs_empty_dropzone {
@@ -3831,7 +3832,7 @@ a.deal_docs_name_link:hover {
 
 .deal_docs_ui_banner {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem 0.85rem;
@@ -3843,6 +3844,84 @@ a.deal_docs_name_link:hover {
   );
   border-bottom: 1px solid
     color-mix(in srgb, var(--portal-border, #e2e8f0) 82%, transparent);
+  overflow: visible;
+}
+
+.deal_docs_ui_banner_toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.deal_docs_ui_banner_chevron_slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 1.65rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid
+    color-mix(in srgb, var(--portal-gold-accent, #d4af37) 22%, var(--portal-border));
+  border-radius: var(--portal-pill-radius, 4px);
+  background: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 4%,
+    var(--portal-surface, #fff)
+  );
+}
+
+.deal_docs_ui_banner_title_edit_wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.deal_docs_ui_banner_title_input {
+  box-sizing: border-box;
+  width: min(12rem, 38vw);
+  min-width: 6.5rem;
+  max-width: 100%;
+  height: 1.65rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--portal-border, #cbd5e1);
+  border-radius: var(--portal-pill-radius, 4px);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--portal-text, #0f172a);
+  background: var(--portal-surface, #fff);
+}
+
+.deal_docs_ui_banner_save_btn {
+  width: 1.65rem;
+  height: 1.65rem;
+  flex-shrink: 0;
+  color: var(--portal-gold-accent, #d4af37);
+}
+
+.deal_docs_ui_banner_title_editable {
+  cursor: text;
+  user-select: none;
+}
+
+.deal_docs_ui_banner_icon_slot {
+  display: inline-block;
+  flex: 0 0 1.85rem;
+  width: 1.85rem;
+  height: 1.85rem;
 }
 
 .deal_docs_ui_banner_heading {
@@ -3888,6 +3967,12 @@ a.deal_docs_name_link:hover {
 }
 
 .deal_docs_ui_banner_right {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex: 0 0 auto;
   margin-left: auto;
 }
 
@@ -4004,6 +4089,9 @@ a.deal_docs_name_link:hover {
 .deal_docs_ui_banner_count {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 7.25rem;
+  min-width: 7.25rem;
   min-height: 1.5rem;
   padding: 0.12rem 0.55rem;
   font-size: 0.6875rem;

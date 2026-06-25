@@ -2,11 +2,14 @@ import {
   findEsignSendForCategoryAndFiles,
   parseEsignStatusBundle,
 } from "../../constants/deal-investor-esign-status.js";
-import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
+import { getActiveEsignProvider } from "../../config/esignProvider.config.js";
+import { ESIGN_UNIFIED_CATEGORY_ID } from "../../constants/esignProfileTypes.js";
+import { isEsignProviderUnreachableError } from "../esign/esignProviderErrors.js";
 import { getAddDealFormById } from "./dealForm.service.js";
 import {
   dealHasEsignTemplateDocuments,
   getDealEsignTemplatesState,
+  isEsignTemplateReady,
   type EsignTemplateFileRecord,
 } from "./dealEsignTemplates.service.js";
 import {
@@ -27,7 +30,8 @@ import {
   createInvestorSignatureRequest,
   esignDocumentsFromSelectedFiles,
   esignTemplateDisplayNameForFile,
-} from "./dealMemberSendEsignDropbox.service.js";
+} from "./dealMemberSendEsign.service.js";
+import { resolveEsignFilesForInvestorProfile } from "./dealEsignProfileTemplate.service.js";
 
 const LP_COMMITMENT_PROFILE_IDS = new Set([
   "individual",
@@ -41,18 +45,6 @@ function esignCategoryFromProfileId(profileId: string): string | null {
   if (!p || !LP_COMMITMENT_PROFILE_IDS.has(p)) return null;
   if (p === "llc_corp_trust_etc") return "llc";
   return p;
-}
-
-function readyFilesForCategory(
-  files: EsignTemplateFileRecord[],
-  categoryId: string,
-): EsignTemplateFileRecord[] {
-  return files.filter(
-    (f) =>
-      f.categoryId === categoryId &&
-      f.dropboxSignStatus === "ready" &&
-      Boolean(f.dropboxSignTemplateId?.trim()),
-  );
 }
 
 export type SendMyInvestNowEsignResult =
@@ -112,11 +104,11 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
     return { ok: false, message: "Invalid investor profile for eSign" };
   }
 
-  if (!getDropboxSignConfig()) {
+  if (!getActiveEsignProvider()) {
     return {
       ok: false,
       message:
-        "Dropbox Sign is not configured. Your sponsor must enable eSign before you can sign documents here.",
+        "eSign is not configured on this deal yet. Contact your sponsor.",
     };
   }
 
@@ -129,14 +121,42 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
     };
   }
 
-  const selectedFiles = readyFilesForCategory(esignState.files, categoryId);
+  let selectedFiles: EsignTemplateFileRecord[];
+  try {
+    selectedFiles = await resolveEsignFilesForInvestorProfile(
+      esignState.files,
+      params.profileId,
+    );
+  } catch (err) {
+    if (isEsignProviderUnreachableError(err)) {
+      return {
+        ok: false,
+        message:
+          "The eSign service is temporarily unavailable. Ask your sponsor to ensure SignFlow is running, then try again.",
+      };
+    }
+    throw err;
+  }
   if (selectedFiles.length === 0) {
+    const hasUnified = esignState.files.some(
+      (f) => f.categoryId === ESIGN_UNIFIED_CATEGORY_ID,
+    );
+    const anyReady = esignState.files.some((f) => isEsignTemplateReady(f));
+    if (hasUnified && !anyReady) {
+      return {
+        ok: false,
+        message:
+          "The eSign template is not ready yet. Ask your sponsor to finish saving the template in the eSign editor.",
+      };
+    }
     return {
       ok: false,
       message:
-        "No Dropbox Sign template is ready for your investor profile on this deal. Ask your sponsor to complete the eSign template setup.",
+        "No eSign fields are configured for your investor profile on this deal. Ask your sponsor to add fields for your profile in the eSign template editor.",
     };
   }
+
+  const sendCategoryId = selectedFiles[0]!.categoryId.trim() || categoryId;
 
   const target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
     email,
@@ -146,10 +166,14 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
     investmentId: params.investmentId,
   });
   if (!target) {
+    const hasInvestmentRow =
+      Boolean(params.investmentId?.trim()) ||
+      Boolean(params.userInvestorProfileId?.trim());
     return {
       ok: false,
-      message:
-        "Save your investment commitment first, then return to sign documents.",
+      message: hasInvestmentRow
+        ? "Enter your investment amount on the previous step, then return to sign documents."
+        : "Save your investment commitment first, then return to sign documents.",
     };
   }
 
@@ -162,7 +186,7 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
 
   const selectedIds = new Set(selectedFiles.map((f) => f.id));
   const existingSend = bundle
-    ? findEsignSendForCategoryAndFiles(bundle, categoryId, selectedIds)
+    ? findEsignSendForCategoryAndFiles(bundle, sendCategoryId, selectedIds)
     : null;
 
   if (existingSend?.sentAt?.trim()) {
@@ -214,9 +238,13 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
       investorId: params.viewerUserId,
     });
     if (!sig) {
+      const provider = getActiveEsignProvider();
       return {
         ok: false,
-        message: "Could not create Dropbox Sign signature request",
+        message:
+          provider === "signflow"
+            ? "Could not create a SignFlow signing request. Confirm the template is saved and SignFlow is running."
+            : "Could not create an eSign signature request.",
       };
     }
     createResult = sig;
@@ -224,10 +252,17 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
     signatureId = sig.signatureId;
     investorPreviewRelativePath = sig.investorPreviewRelativePath;
   } catch (err) {
+    if (isEsignProviderUnreachableError(err)) {
+      return {
+        ok: false,
+        message:
+          "The eSign service is temporarily unavailable. Ask your sponsor to ensure SignFlow is running, then try again.",
+      };
+    }
     const msg =
       err instanceof Error
         ? err.message
-        : "Could not create Dropbox Sign signature request";
+        : "Could not create eSign signature request";
     return { ok: false, message: msg };
   }
 

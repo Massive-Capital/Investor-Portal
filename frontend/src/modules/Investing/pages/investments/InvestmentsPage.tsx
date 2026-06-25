@@ -19,6 +19,7 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
+import { TableCompactAmountCell } from "@/common/components/card-compact-amount/CardCompactAmount"
 // import { DealsListPage } from "@/modules/Syndication/Deals/DealsListPage"
 import { DealRowActions } from "@/modules/Syndication/Deals/components/DealRowActions"
 import {
@@ -610,7 +611,12 @@ export default function InvestmentsPage() {
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.investedAmount,
-        cell: (r) => formatUsd(r.investedAmount),
+        cell: (r) =>
+          r.investedAmount > 0 ? (
+            <TableCompactAmountCell amount={r.investedAmount} />
+          ) : (
+            "—"
+          ),
       },
       {
         id: "distributedAmount",

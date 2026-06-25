@@ -32,6 +32,7 @@ import {
   ASSET_MAX_IMAGE_COUNT,
   assetTypeFromAttributes,
   createDefaultAssetAttributeRows,
+  normalizeAssetAttributeMoneyRows,
   formatAddressFromAssetDraft,
   getDealAssetPersisted,
   primaryDealAssetRowId,
@@ -117,7 +118,7 @@ export function AddDealAssetPage() {
 
     if (persisted) {
       setAssetDraft(persisted.draft)
-      setAttrRows(persisted.attrRows)
+      setAttrRows(normalizeAssetAttributeMoneyRows(persisted.attrRows))
 
       if (assetId === primaryId) {
         const saved = persisted.imagePreviewDataUrls

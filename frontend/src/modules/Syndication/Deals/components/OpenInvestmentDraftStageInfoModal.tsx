@@ -91,7 +91,7 @@ export function OpenInvestmentDraftStageInfoModal({
             className="open_inv_esign_modal_btn open_inv_esign_modal_btn--primary"
             onClick={onConfirm}
           >
-            OK
+            Continue
           </button>
         </footer>
       </div>

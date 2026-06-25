@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { eq } from "drizzle-orm";
+import { getActiveEsignProvider } from "../../config/esignProvider.config.js";
 import type { DealInvestorEsignDocumentRef } from "../../constants/deal-investor-esign-status.js";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
 import {
@@ -21,6 +22,15 @@ import {
   isPdfUploadFile,
   prependInvestorQuestionnaireSignaturePage,
 } from "./esignPdfMerge.service.js";
+import { ESIGN_UNIFIED_CATEGORY_ID } from "../../constants/esignProfileTypes.js";
+import {
+  DEFAULT_ESIGN_SIGNFLOW_SIGNING_ORDER,
+  DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
+  normalizeEsignSignflowSigningOrder,
+  normalizeEsignSignflowWorkflowType,
+  type EsignSignflowSigningOrder,
+  type EsignSignflowWorkflowType,
+} from "../../constants/esignSigningWorkflow.js";
 import {
   buildStoredAssetName,
   type DealMemoryUploadFile,
@@ -31,6 +41,8 @@ const ESIGN_FOLDER = DEAL_ESIGN_TEMPLATES_FOLDER;
 
 /** Dropbox Sign template lifecycle stored alongside the uploaded file metadata. */
 export type DropboxSignTemplateStatus = "none" | "draft" | "ready";
+
+export type EsignProviderName = "dropbox" | "signflow";
 
 export type EsignTemplateFileRecord = {
   id: string;
@@ -48,16 +60,72 @@ export type EsignTemplateFileRecord = {
   questionnairePageLayoutVersion?: number;
   /** True when the stored PDF includes the appendix W-9 form. */
   includesW9Appendix?: boolean;
+  /** Active eSign provider for this template record. */
+  esignProvider?: EsignProviderName;
   /** Dropbox Sign template id after embedded draft is created or saved. */
   dropboxSignTemplateId?: string;
   dropboxSignStatus?: DropboxSignTemplateStatus;
   dropboxSignTitle?: string;
   dropboxSignSavedAt?: string;
+  /** SignFlow draft/template document id. */
+  signflowDocumentId?: string;
+  signflowStatus?: DropboxSignTemplateStatus;
+  signflowTitle?: string;
+  signflowSavedAt?: string;
+  /** SignFlow signing workflow — parallel or sequential. */
+  signflowWorkflowType?: EsignSignflowWorkflowType;
+  /** When sequential — who signs first. */
+  signflowSigningOrder?: EsignSignflowSigningOrder;
 };
+
+export function resolveEsignTemplateProvider(
+  file: EsignTemplateFileRecord,
+  activeProvider?: EsignProviderName | null,
+): EsignProviderName {
+  if (file.esignProvider) return file.esignProvider;
+  if (activeProvider) return activeProvider;
+  if (file.signflowDocumentId?.trim()) return "signflow";
+  if (file.dropboxSignTemplateId?.trim()) return "dropbox";
+  return "signflow";
+}
+
+export function resolveEsignTemplateExternalId(
+  file: EsignTemplateFileRecord,
+  activeProvider?: EsignProviderName | null,
+): string | undefined {
+  const provider = resolveEsignTemplateProvider(file, activeProvider);
+  if (provider === "signflow") {
+    return file.signflowDocumentId?.trim() || file.dropboxSignTemplateId?.trim();
+  }
+  return file.dropboxSignTemplateId?.trim() || file.signflowDocumentId?.trim();
+}
+
+export function resolveEsignTemplateStatus(
+  file: EsignTemplateFileRecord,
+  activeProvider?: EsignProviderName | null,
+): DropboxSignTemplateStatus {
+  const provider = resolveEsignTemplateProvider(file, activeProvider);
+  if (provider === "signflow") {
+    return file.signflowStatus ?? file.dropboxSignStatus ?? "none";
+  }
+  return file.dropboxSignStatus ?? file.signflowStatus ?? "none";
+}
+
+export function isEsignTemplateReady(
+  file: EsignTemplateFileRecord,
+  activeProvider?: EsignProviderName | null,
+): boolean {
+  return (
+    resolveEsignTemplateStatus(file, activeProvider) === "ready" &&
+    Boolean(resolveEsignTemplateExternalId(file, activeProvider))
+  );
+}
 
 export type EsignTemplateUploadMeta = {
   templateName?: string;
   includeQuestionnaire?: boolean;
+  signflowWorkflowType?: EsignSignflowWorkflowType;
+  signflowSigningOrder?: EsignSignflowSigningOrder;
 };
 
 export type EsignTemplatesJson = {
@@ -114,12 +182,28 @@ export function dealHasEsignTemplateDocuments(state: EsignTemplatesJson): boolea
   return state.files.length > 0;
 }
 
-/** At least one template uploaded and every template finished in Dropbox Sign. */
+/** Every uploaded template has field setup complete for the active eSign provider. */
 export function dealEsignTemplatesFullyConfigured(
   state: EsignTemplatesJson,
 ): boolean {
   if (state.files.length === 0) return false;
-  return state.files.every((f) => f.dropboxSignStatus === "ready");
+  const provider = getActiveEsignProvider();
+  return state.files.every((f) => isEsignTemplateReady(f, provider));
+}
+
+export function listIncompleteEsignTemplates(
+  state: EsignTemplatesJson,
+): EsignTemplateFileRecord[] {
+  const provider = getActiveEsignProvider();
+  return state.files.filter((f) => !isEsignTemplateReady(f, provider));
+}
+
+export function formatIncompleteEsignTemplateNames(
+  files: EsignTemplateFileRecord[],
+): string {
+  return files
+    .map((f) => f.templateName?.trim() || f.originalName?.trim() || "Untitled template")
+    .join(", ");
 }
 
 export function isPdfEsignFile(record: EsignTemplateFileRecord): boolean {
@@ -306,9 +390,19 @@ export function parseEsignTemplateUploadMeta(
       q === "true" ||
       q === "1" ||
       q === 1;
+    const workflowType =
+      normalizeEsignSignflowWorkflowType(
+        o.signflowWorkflowType ?? o.signflow_workflow_type,
+      ) ?? undefined;
+    const signingOrder =
+      normalizeEsignSignflowSigningOrder(
+        o.signflowSigningOrder ?? o.signflow_signing_order,
+      ) ?? undefined;
     return {
       templateName: templateName || undefined,
       includeQuestionnaire: includeQuestionnaire || undefined,
+      signflowWorkflowType: workflowType,
+      signflowSigningOrder: signingOrder,
     };
   });
 }
@@ -334,7 +428,24 @@ export async function saveDealEsignTemplateFiles(params: {
     );
   }
   const existingState = await getDealEsignTemplatesState(params.dealId);
-  if (
+  const hasUnified = existingState.files.some(
+    (f) => f.categoryId === ESIGN_UNIFIED_CATEGORY_ID,
+  );
+  const hasLegacy = existingState.files.some(
+    (f) => f.categoryId !== ESIGN_UNIFIED_CATEGORY_ID,
+  );
+
+  if (params.categoryId === ESIGN_UNIFIED_CATEGORY_ID) {
+    if (existingState.files.length > 0) {
+      throw new EsignTemplateUploadLimitError(
+        "This deal already has an eSign template. Remove it before uploading another.",
+      );
+    }
+  } else if (hasUnified) {
+    throw new EsignTemplateUploadLimitError(
+      "This deal uses a unified eSign template for all investor profiles. Remove it before uploading profile-specific templates.",
+    );
+  } else if (
     existingState.files.some((f) => f.categoryId === params.categoryId)
   ) {
     throw new EsignTemplateUploadLimitError(
@@ -400,6 +511,10 @@ export async function saveDealEsignTemplateFiles(params: {
         : undefined,
       includesW9Appendix: includesW9Appendix || undefined,
       dropboxSignTitle: templateName || undefined,
+      signflowWorkflowType:
+        uploadMeta.signflowWorkflowType ?? DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
+      signflowSigningOrder:
+        uploadMeta.signflowSigningOrder ?? DEFAULT_ESIGN_SIGNFLOW_SIGNING_ORDER,
     });
   }
 
@@ -443,15 +558,58 @@ export async function updateDealEsignTemplateName(
   const file = findEsignTemplateFile(state, fileId);
   if (!file) return null;
 
-  if (file.dropboxSignStatus !== "ready") {
+  if (!isEsignTemplateReady(file)) {
     throw new EsignTemplateRenameNotAllowedError(
-      "Only ready templates can be renamed here. Use Edit to finish Dropbox Sign setup first.",
+      "Only ready templates can be renamed here. Use Edit to finish template setup first.",
     );
   }
 
   file.templateName = name;
   file.dropboxSignTitle = name;
   await persistEsignTemplatesJson(dealId, state);
+  return file;
+}
+
+/**
+ * Updates SignFlow signing workflow for a template (draft or ready).
+ */
+export async function updateDealEsignTemplateSigningWorkflow(
+  dealId: string,
+  fileId: string,
+  settings: {
+    signflowWorkflowType?: EsignSignflowWorkflowType;
+    signflowSigningOrder?: EsignSignflowSigningOrder;
+  },
+): Promise<EsignTemplateFileRecord | null> {
+  const state = await getDealEsignTemplatesState(dealId);
+  const file = findEsignTemplateFile(state, fileId);
+  if (!file) return null;
+
+  const workflowType =
+    settings.signflowWorkflowType ??
+    normalizeEsignSignflowWorkflowType(file.signflowWorkflowType) ??
+    DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE;
+  const signingOrder =
+    settings.signflowSigningOrder ??
+    normalizeEsignSignflowSigningOrder(file.signflowSigningOrder) ??
+    DEFAULT_ESIGN_SIGNFLOW_SIGNING_ORDER;
+
+  file.signflowWorkflowType = workflowType;
+  file.signflowSigningOrder = signingOrder;
+  await persistEsignTemplatesJson(dealId, state);
+
+  const documentId = file.signflowDocumentId?.trim();
+  if (documentId) {
+    const { syncSignflowTemplateSigningWorkflow } = await import(
+      "./dealEsignSigningWorkflow.service.js"
+    );
+    await syncSignflowTemplateSigningWorkflow(
+      documentId,
+      workflowType,
+      signingOrder,
+    );
+  }
+
   return file;
 }
 
@@ -490,6 +648,18 @@ export function parseSendEsignFileIds(raw: unknown): string[] {
   }
   return out;
 }
+
+export function findUnifiedEsignTemplate(
+  state: EsignTemplatesJson,
+): EsignTemplateFileRecord | undefined {
+  return state.files.find((f) => f.categoryId === "all_profiles");
+}
+
+export function dealUsesUnifiedEsignTemplate(state: EsignTemplatesJson): boolean {
+  return Boolean(findUnifiedEsignTemplate(state));
+}
+
+export { ESIGN_UNIFIED_CATEGORY_ID } from "../../constants/esignProfileTypes.js";
 
 export function resolveEsignFilesByIds(
   state: EsignTemplatesJson,

@@ -139,6 +139,11 @@ export interface DealMembersPayload {
   members: DealInvestorRow[]
   /** API `viewerDealMemberRole` / `viewer_deal_member_role` for the signed-in user. */
   viewerDealMemberRole?: unknown
+  /** Lead sponsor person name for investor-facing surfaces (Invest Now). */
+  leadSponsorDisplayName?: string
+  /** When `referring_sponsor_ref` is sent on GET members, the linked sponsor name. */
+  referringSponsorDisplayName?: string
+  referringSponsorRef?: string
 }
 
 export function emptyDealMembersPayload(): DealMembersPayload {

@@ -1,6 +1,10 @@
 import { normalizeDealGallerySrc } from "../../../../common/utils/apiBaseUrl"
 import { getUsStateDisplayName } from "../constants/usLocations"
 import {
+  blurFormatMoneyInputTwoDecimals,
+  moneyAmountOnBlurTwoDecimals,
+} from "../utils/offeringMoneyFormat"
+import {
   COUNTRY_OPTIONS,
   emptyAssetStepDraft,
   type AssetStepDraft,
@@ -463,10 +467,24 @@ export function createDefaultAssetAttributeRows(): AssetAttributeRow[] {
   ]
 }
 
+export function normalizeAssetAttributeMoneyRows(
+  rows: AssetAttributeRow[],
+): AssetAttributeRow[] {
+  return rows.map((r) =>
+    r.kind === "money" && r.value.trim()
+      ? { ...r, value: moneyAmountOnBlurTwoDecimals(r.value) }
+      : r,
+  )
+}
+
 export function formatAttributeValue(r: AssetAttributeRow): string {
   if (r.na) return "N/A"
   const v = r.value.trim()
   if (!v) return ""
+  if (r.kind === "money") {
+    const formatted = blurFormatMoneyInputTwoDecimals(v)
+    return formatted || v
+  }
   if (r.kind === "number_units" && r.unitSuffix) return `${v} ${r.unitSuffix}`
   return v
 }

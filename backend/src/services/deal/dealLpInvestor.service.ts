@@ -39,6 +39,7 @@ import {
 } from "./dealInvestment.service.js";
 import type { DealViewerScope } from "./dealForm.service.js";
 import { resolveViewerDealMemberRoleOnDeal } from "./dealMemberScope.service.js";
+import { resolveInvestNowViewerContactOnDeal } from "./dealInvestNowViewerContact.service.js";
 
 function normalizeContactKey(raw: string): string {
   return String(raw ?? "")
@@ -901,71 +902,18 @@ export async function updateMyCommittedAmountForLpDeal(params: {
   }
 
   const viewerUserId = String(params.viewerUserId ?? "").trim();
-  const matchRows = await db
-    .select()
-    .from(dealLpInvestor)
-    .where(eq(dealLpInvestor.dealId, params.dealId));
-
-  console.table(matchRows);
-  console.log("view userid", viewerUserId);
-
-  let target: DealLpInvestorRow | undefined;
-  console.log("TARGET", target);
-  for (const row of matchRows) {
-    const em = await resolveEmailForContactMemberId(row.contactMemberId);
-    if (em === e) {
-      target = row;
-      break;
-    }
-  }
-
-  let fallbackContactMemberId = "";
-  if (!target && viewerUserId) {
-    const memberRows = await db
-      .select({ contactMemberId: dealMember.contactMemberId })
-      .from(dealMember)
-      .where(eq(dealMember.dealId, params.dealId));
-
-    let contactMemberId = "";
-    const preferred = new Set<string>([viewerUserId]);
-    const byEmail = await db
-      .select({ id: contact.id })
-      .from(contact)
-      .where(sql`lower(trim(${contact.email})) = ${e}`);
-    for (const row of byEmail) {
-      const cid = String(row.id ?? "").trim();
-      if (cid) preferred.add(cid);
-    }
-
-    for (const row of memberRows) {
-      const cid = String(row.contactMemberId ?? "").trim();
-      if (!cid) continue;
-      if (preferred.has(cid)) {
-        contactMemberId = cid;
-        break;
-      }
-    }
-    if (!contactMemberId) {
-      for (const row of memberRows) {
-        const cid = String(row.contactMemberId ?? "").trim();
-        if (!cid) continue;
-        const em = await resolveEmailForContactMemberId(cid);
-        if (em === e) {
-          contactMemberId = cid;
-          break;
-        }
-      }
-    }
-    if (contactMemberId) fallbackContactMemberId = contactMemberId;
-  }
-
-  const targetContactMemberId =
-    target?.contactMemberId || fallbackContactMemberId;
+  const resolvedContact = await resolveInvestNowViewerContactOnDeal({
+      dealId: params.dealId,
+      viewerEmailNorm: e,
+      viewerUserId,
+    });
+  let target = resolvedContact.lpInvestorRow;
+  const targetContactMemberId = resolvedContact.contactMemberId;
   if (!targetContactMemberId) {
     return {
       ok: false,
       message:
-        "No LP investor record for your account on this deal. Ask your sponsor to add you.",
+        "Could not link your account to this deal. Sign in with your investing email and try again.",
     };
   }
 

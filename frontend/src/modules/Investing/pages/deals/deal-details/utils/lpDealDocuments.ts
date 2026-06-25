@@ -1,6 +1,9 @@
 import { readOfferingPreviewDocuments } from "@/modules/Syndication/Deals/utils/offeringPreviewDocuments"
 import {
   effectiveDocumentSharedWithScope,
+  isEsignTemplateDocumentsSection,
+  isInvestorEsignWorkspaceDocument,
+  offeringPreviewDocumentExcludedFromInvestorOffering,
   readOfferingPreviewSections,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
@@ -29,8 +32,10 @@ export function listDocumentsForLpDealPage(dealId: string): LpDealDocumentRow[] 
     isLpDealWorkspace: true,
   }
   for (const sec of sections) {
+    if (isEsignTemplateDocumentsSection(sec)) continue
     const sl = sectionDisplayLabel(sec)
     for (const d of sec.nestedDocuments) {
+      if (isInvestorEsignWorkspaceDocument(d)) continue
       const scope = effectiveDocumentSharedWithScope(d, sec)
       if (!sectionVisibleOnOfferingPreview(scope, lpPortalCtx)) continue
       out.push({
@@ -46,6 +51,7 @@ export function listDocumentsForLpDealPage(dealId: string): LpDealDocumentRow[] 
   }
   if (out.length > 0) return out
   for (const d of readOfferingPreviewDocuments(id)) {
+    if (offeringPreviewDocumentExcludedFromInvestorOffering(d, sections)) continue
     const scope =
       d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
     if (!sectionVisibleOnOfferingPreview(scope, lpPortalCtx)) continue

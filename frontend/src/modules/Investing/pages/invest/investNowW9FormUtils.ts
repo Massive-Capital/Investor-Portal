@@ -143,6 +143,18 @@ export function mergeInvestNowW9Values(
     next.addressLine = formatInvestNowW9AddressLine(next)
   }
 
+  if (
+    next.name === current.name &&
+    next.addressLine === current.addressLine &&
+    next.street1 === current.street1 &&
+    next.street2 === current.street2 &&
+    next.city === current.city &&
+    next.state === current.state &&
+    next.zip === current.zip &&
+    next.ssn === current.ssn
+  ) {
+    return current
+  }
   return next
 }
 

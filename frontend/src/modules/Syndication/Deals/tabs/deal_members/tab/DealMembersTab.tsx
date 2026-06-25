@@ -58,6 +58,7 @@ import {
   displayInvestorCommittedAmountExport,
   parseMoneyDigits,
 } from "../../../utils/offeringMoneyFormat"
+import { TableCompactAmountCell } from "../../../../../../common/components/card-compact-amount/CardCompactAmount"
 import { DealInvestorCommittedAmountCell } from "../../investors/DealInvestorCommittedAmountCell"
 import { InviteMailStatusBadge } from "../../investors/InviteMailStatusBadge"
 import { DealInvestorRoleCell } from "../../investors/DealInvestorRoleBadge"
@@ -286,7 +287,7 @@ export function DealMembersTab({
     return displayRowsWithMail.filter((r) => {
       const mailLabel =
         r.invitationMailSent === true
-          ? "mail sent"
+          ? "email sent"
           : "not sent"
       const hay = [
         r.displayName,
@@ -609,13 +610,11 @@ export function DealMembersTab({
         cell: (r) => {
           if (r.id === ADD_MEMBER_DRAFT_ROW_ID) return "—"
           const text = displayAddedInvestorsCommittedAmount(r)
-          const display = String(text ?? "").trim() || "—"
+          const display = String(text ?? "").trim()
+          if (!display || display === "—") return "—"
           return (
-            <span
-              className="deal_inv_ellipsis_text deal_inv_ellipsis_text_end"
-              title={display}
-            >
-              {display}
+            <span className="deal_inv_ellipsis_text deal_inv_ellipsis_text_end">
+              <TableCompactAmountCell amount={display} />
             </span>
           )
         },
@@ -642,7 +641,7 @@ export function DealMembersTab({
       },
       {
         id: "mailStatus",
-        header: "Mail status",
+        header: "Email status",
         sortValue: (r) =>
           r.id === ADD_MEMBER_DRAFT_ROW_ID
             ? -1
@@ -775,7 +774,7 @@ export function DealMembersTab({
                   strokeWidth={2}
                   aria-hidden
                 />
-                <span>Send mail</span>
+                <span>Send email</span>
               </h3>
               <button
                 type="button"
@@ -950,7 +949,7 @@ export function DealMembersTab({
                   disabled={selectedMemberRows.length === 0}
                 >
                   <Send size={18} strokeWidth={2} aria-hidden />
-                  Send mail
+                  Send email
                 </button>
                 <button
                   type="button"

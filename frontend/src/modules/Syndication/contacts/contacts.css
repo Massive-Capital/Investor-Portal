@@ -1173,15 +1173,27 @@
   justify-content: flex-end;
   width: 100%;
   box-sizing: border-box;
-  gap: 0.5em;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.add_contact_panel .add_contact_modal_actions_leading {
+  margin-right: auto;
 }
 
 .add_contact_panel .add_contact_modal_actions_trailing {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.5em;
   align-items: center;
   justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .add_contact_panel .add_contact_modal_actions_trailing {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 @keyframes add_contact_modal_spin {

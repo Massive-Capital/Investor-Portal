@@ -1108,7 +1108,7 @@ export function AddContactPanel({
           <div className="um_modal_actions add_contact_modal_actions">
             <button
               type="button"
-              className="um_btn_secondary"
+              className="um_btn_secondary add_contact_modal_actions_leading"
               onClick={handleCancel}
               disabled={submitting}
             >

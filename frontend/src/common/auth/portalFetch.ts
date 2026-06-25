@@ -4,7 +4,7 @@ import {
   getStoredRefreshToken,
   refreshAuthTokens,
 } from "./authTokensApi"
-import { clearLastSessionActivity } from "./idleSession"
+import { clearLastSessionActivity, markIdleSessionTimeoutNotice } from "./idleSession"
 import { portalAuthHeaders } from "./portalAuthHeaders"
 import { clearPortalSessionStorage } from "./sessionKeys"
 
@@ -52,6 +52,7 @@ export function handleAuthSessionExpired(): void {
     Boolean(getStoredAccessToken()) || Boolean(getStoredRefreshToken())
   if (!hadSession) return
 
+  markIdleSessionTimeoutNotice()
   clearPortalSessionStorage()
   clearLastSessionActivity()
 

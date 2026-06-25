@@ -7,9 +7,19 @@ import type {
   DealInvestorRow,
 } from "../types/deal-investors.types"
 import type { DealEsignTemplateFileRecord } from "../api/dealsApi"
+import {
+  dealUsesUnifiedEsignTemplate,
+  ESIGN_UNIFIED_CATEGORY,
+  ESIGN_UNIFIED_CATEGORY_ID,
+} from "./esignUnifiedTemplate"
+export { ESIGN_UNIFIED_CATEGORY_ID, ESIGN_UNIFIED_CATEGORY } from "./esignUnifiedTemplate"
 
 /** eSign Templates tab categories (must match backend upload paths). */
 export const ESIGN_TEMPLATE_CATEGORIES = [
+  {
+    id: ESIGN_UNIFIED_CATEGORY_ID,
+    label: ESIGN_UNIFIED_CATEGORY.label,
+  },
   { id: "individual", label: "Individual" },
   {
     id: "custodian_ira_401k",
@@ -93,7 +103,9 @@ export interface EsignProfileStatusTab {
 export function buildEsignProfileStatusTabs(
   documents: DealInvestorEsignDocumentRef[],
   investorCategoryId: EsignTemplateCategoryId | null,
+  options?: { usesUnifiedTemplate?: boolean },
 ): EsignProfileStatusTab[] {
+  const usesUnified = options?.usesUnifiedTemplate ?? false
   const byCategory = new Map<string, DealInvestorEsignDocumentRef[]>()
   const uncategorized: DealInvestorEsignDocumentRef[] = []
 
@@ -110,11 +122,14 @@ export function buildEsignProfileStatusTabs(
   for (const cat of ESIGN_TEMPLATE_CATEGORIES) {
     const docs = byCategory.get(cat.id)
     if (!docs?.length) continue
+    const isUnifiedTab =
+      cat.id === ESIGN_UNIFIED_CATEGORY_ID && usesUnified
     tabs.push({
       categoryId: cat.id,
       label: cat.label,
       documents: docs,
-      isInvestorProfile: investorCategoryId === cat.id,
+      isInvestorProfile:
+        isUnifiedTab || investorCategoryId === cat.id,
     })
   }
   if (uncategorized.length > 0) {
@@ -128,17 +143,41 @@ export function buildEsignProfileStatusTabs(
   return tabs
 }
 
+/**
+ * Template file for an investor profile — unified `all_profiles` doc first,
+ * else legacy per-profile PDF.
+ */
+export function resolveEsignTemplateForInvestorProfile(
+  filesByCategory: Record<string, DealEsignTemplateFileRecord[]>,
+  commitmentProfileId: string,
+): DealEsignTemplateFileRecord | undefined {
+  if (dealUsesUnifiedEsignTemplate(filesByCategory)) {
+    return (filesByCategory[ESIGN_UNIFIED_CATEGORY_ID] ?? [])[0]
+  }
+  const categoryId = esignCategoryIdFromInvestorProfile(commitmentProfileId)
+  if (!categoryId) return undefined
+  return (filesByCategory[categoryId] ?? [])[0]
+}
+
 export function esignSelectableFilesForInvestor(
   row: DealInvestorRow,
   filesByCategory: Record<string, DealEsignTemplateFileRecord[]>,
 ): {
-  categoryId: EsignTemplateCategoryId | null
+  categoryId: EsignTemplateCategoryId | typeof ESIGN_UNIFIED_CATEGORY_ID | null
   categoryLabel: string
   files: DealEsignTemplateFileRecord[]
   profileLabel: string
 } {
-  const categoryId = resolveInvestorEsignCategoryId(row)
   const profileLabel = investorProfileLabelForRow(row)
+  if (dealUsesUnifiedEsignTemplate(filesByCategory)) {
+    return {
+      categoryId: ESIGN_UNIFIED_CATEGORY_ID,
+      categoryLabel: ESIGN_UNIFIED_CATEGORY.label,
+      files: filesByCategory[ESIGN_UNIFIED_CATEGORY_ID] ?? [],
+      profileLabel,
+    }
+  }
+  const categoryId = resolveInvestorEsignCategoryId(row)
   if (!categoryId) {
     return { categoryId: null, categoryLabel: "—", files: [], profileLabel }
   }

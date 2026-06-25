@@ -36,7 +36,10 @@ import {
   formatNumberOfUnitsTypingInput,
 } from "../../utils/offeringMoneyFormat"
 import {
+  isDealStageDraft,
   isInvestmentFlowOpeningTransition,
+  normalizeDealStageCanonical,
+  normalizeDealStatus,
   validateOfferingStatusChange,
 } from "../../constants/deal-lifecycle"
 import {
@@ -70,7 +73,7 @@ import {
   canActivateOpenInvestment,
   isOpenInvestmentWhileDealStageDraft,
 } from "../../utils/canActivateOpenInvestment"
-import { areDealEsignTemplatesConfigured } from "../../utils/dealEsignTemplatesConfigured"
+import { resolveDealEsignTemplatesConfigured } from "../../utils/dealEsignTemplatesConfigured"
 import { DEAL_DETAIL_TAB_QUERY_PARAM } from "../../utils/offeringDetailsSectionNav"
 
 type OfferingOverviewSectionProps = {
@@ -254,7 +257,10 @@ export function OfferingOverviewSection({
       setEsignTemplatesConfigured(false)
       return false
     }
-    const configured = areDealEsignTemplatesConfigured(result.filesByCategory)
+    const configured = resolveDealEsignTemplatesConfigured(
+      result.filesByCategory,
+      result.templatesFullyConfigured,
+    )
     setEsignTemplatesConfigured(configured)
     return configured
   }, [detail.id])
@@ -652,6 +658,17 @@ export function OfferingOverviewSection({
           "Existing investors will be notified to complete their investment.",
           8000,
         )
+      } else if (
+        !overviewBitsEqual &&
+        isDealStageDraft(detail.dealStage) &&
+        normalizeDealStageCanonical(dealOut.dealStage) === "capital_raising" &&
+        normalizeDealStatus(draft.offeringStatus) === "open_investment"
+      ) {
+        toast.success(
+          "Deal is now live",
+          "Stage moved to Capital Raising. Investors can access Open to Investment.",
+          8000,
+        )
       }
 
       onSaved?.(dealOut)
@@ -666,7 +683,16 @@ export function OfferingOverviewSection({
         detail: dealOut,
         savedSelectedIds: merged.selectedAssetIds,
       })
-      toast.success("Offering overview saved.")
+      if (
+        !(
+          !overviewBitsEqual &&
+          isDealStageDraft(detail.dealStage) &&
+          normalizeDealStageCanonical(dealOut.dealStage) === "capital_raising" &&
+          normalizeDealStatus(draft.offeringStatus) === "open_investment"
+        )
+      ) {
+        toast.success("Offering overview saved.")
+      }
     } catch (e) {
       toast.error(
         e instanceof Error ? e.message : "Could not save offering overview.",
@@ -701,7 +727,7 @@ export function OfferingOverviewSection({
     if (statusFieldEditable) {
       const stage = String(detail.dealStage ?? "").trim().toLowerCase()
       if (stage === "draft") {
-        return "While the deal is in Draft, investors cannot access the offering. Move to Capital Raising when you are ready to go live."
+        return "Set status to Open to Investment and click Save — the deal will move to Capital Raising automatically when eSign and classes are ready."
       }
       return undefined
     }

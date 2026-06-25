@@ -67,6 +67,11 @@ import {
   OFFERING_PREVIEW_VISIBILITY_CHANGED_EVENT,
   readInvestorVisibilityForOfferingPreview,
 } from "./utils/offeringPreviewInvestorVisibility"
+import {
+  offeringPreviewRefFromSearchParams,
+  readOfferingPreviewSponsorAttributionForDeal,
+  writeOfferingPreviewSponsorAttribution,
+} from "./utils/offeringPreviewSponsorRef"
 import type { DealInvestorsPayload } from "./types/deal-investors.types"
 import type { DealInvestorClass } from "./types/deal-investor-class.types"
 import "./tabs/deal_members/add-investment/add_deal_modal.css"
@@ -109,6 +114,12 @@ export function DealOfferingPortfolioPage() {
     }
   }, [isPublicOfferingRoute, searchParams])
 
+  /** Public route: encrypted sponsor ref from `?ref=` (unique per sharing sponsor). */
+  const sponsorRefQueryValue = useMemo(() => {
+    if (!isPublicOfferingRoute) return undefined
+    return offeringPreviewRefFromSearchParams(searchParams)
+  }, [isPublicOfferingRoute, searchParams])
+
   /** UUID from `/deals/:id/offering-portfolio` or preview param after server resolution (same string used for API). */
   const effectiveDealId = useMemo(() => {
     if (isPublicOfferingRoute) return previewQueryValue
@@ -133,21 +144,29 @@ export function DealOfferingPortfolioPage() {
   const [notFound, setNotFound] = useState(false)
 
   const [lpShareToken, setLpShareToken] = useState<string | null>(null)
+  const [lpShareSponsorRef, setLpShareSponsorRef] = useState<string | null>(null)
   const [lpShareTokenError, setLpShareTokenError] = useState(false)
 
   useEffect(() => {
     if (isPublicOfferingRoute || !dealIdFromRoute?.trim()) {
       setLpShareToken(null)
+      setLpShareSponsorRef(null)
       setLpShareTokenError(false)
       return
     }
     let cancelled = false
     setLpShareToken(null)
+    setLpShareSponsorRef(null)
     setLpShareTokenError(false)
     void (async () => {
       try {
-        const t = await fetchOfferingPreviewToken(dealIdFromRoute.trim())
-        if (!cancelled) setLpShareToken(t)
+        const { token, sponsorRef } = await fetchOfferingPreviewToken(
+          dealIdFromRoute.trim(),
+        )
+        if (!cancelled) {
+          setLpShareToken(token)
+          setLpShareSponsorRef(sponsorRef ?? null)
+        }
       } catch {
         if (!cancelled) setLpShareTokenError(true)
       }
@@ -168,7 +187,9 @@ export function DealOfferingPortfolioPage() {
       return ""
     }
     if (lpShareToken?.trim()) {
-      return buildPublicOfferingPreviewPageUrl(lpShareToken.trim())
+      return buildPublicOfferingPreviewPageUrl(lpShareToken.trim(), {
+        sponsorRef: lpShareSponsorRef,
+      })
     }
     if (
       lpShareTokenError &&
@@ -180,6 +201,7 @@ export function DealOfferingPortfolioPage() {
     return ""
   }, [
     lpShareToken,
+    lpShareSponsorRef,
     lpShareTokenError,
     dealIdFromRoute,
     isPublicOfferingRoute,
@@ -202,10 +224,13 @@ export function DealOfferingPortfolioPage() {
   const isSessionAuthenticated = readSessionAuthenticated()
 
   const publicOfferingSignInState = useMemo(() => {
-    const id = detail?.id?.trim()
-    if (!isPublicOfferingRoute || isSessionAuthenticated || !id) return undefined
-    return { from: dealOfferingPortfolioPath(id) }
-  }, [detail?.id, isPublicOfferingRoute, isSessionAuthenticated])
+    if (!isPublicOfferingRoute || isSessionAuthenticated) return undefined
+    const from =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/offering_portfolio"
+    return { from }
+  }, [isPublicOfferingRoute, isSessionAuthenticated])
 
   const isInvestorFacingView =
     isPublicOfferingRoute || mode === "investing"
@@ -242,14 +267,34 @@ export function DealOfferingPortfolioPage() {
       ? dealOfferingPortfolioPath(id)
       : portfolioBackTo
     navigate(dealInvestNowPath(id), {
-      state: { mode: "fresh", returnTo },
+      state: {
+        mode: "fresh",
+        returnTo,
+        referringSponsorRef: sponsorRefQueryValue ?? lpShareSponsorRef ?? undefined,
+        referringSponsorDisplayName: readOfferingPreviewSponsorAttributionForDeal(id)
+          ?.sponsorDisplayName,
+      },
     })
-  }, [detail?.id, isPublicOfferingRoute, navigate, portfolioBackTo, switchToInvesting])
+  }, [
+    detail?.id,
+    isPublicOfferingRoute,
+    navigate,
+    portfolioBackTo,
+    sponsorRefQueryValue,
+    lpShareSponsorRef,
+    switchToInvesting,
+  ])
 
   function persistSharedOfferingAuthIntent(dealId: string) {
     const id = dealId.trim()
     if (!id) return
     writeOfferingPortfolioAuthIntent(id)
+    if (sponsorRefQueryValue) {
+      writeOfferingPreviewSponsorAttribution({
+        dealId: id,
+        sponsorRef: sponsorRefQueryValue,
+      })
+    }
     writePendingRecentlyViewedDeal(id)
     const returnPath = dealOfferingPortfolioPath(id)
     try {
@@ -402,8 +447,23 @@ export function DealOfferingPortfolioPage() {
     void (async () => {
       try {
         if (isPublicOfferingRoute) {
-          const pack = await fetchPublicOfferingPreview(effectiveDealId)
+          const pack = await fetchPublicOfferingPreview(effectiveDealId, {
+            sponsorRef: sponsorRefQueryValue,
+          })
           if (cancelled) return
+          if (pack.deal.id && sponsorRefQueryValue) {
+            writeOfferingPreviewSponsorAttribution({
+              dealId: pack.deal.id,
+              sponsorRef: sponsorRefQueryValue,
+              sponsorDisplayName: pack.referringSponsorDisplayName,
+            })
+          } else if (pack.referringSponsorRef && pack.deal.id) {
+            writeOfferingPreviewSponsorAttribution({
+              dealId: pack.deal.id,
+              sponsorRef: pack.referringSponsorRef,
+              sponsorDisplayName: pack.referringSponsorDisplayName,
+            })
+          }
           applyOfferingInvestorPreviewJsonFromServer(
             pack.deal.id,
             pack.deal.offeringInvestorPreviewJson,
@@ -444,7 +504,7 @@ export function DealOfferingPortfolioPage() {
     return () => {
       cancelled = true
     }
-  }, [effectiveDealId, isPublicOfferingRoute])
+  }, [effectiveDealId, isPublicOfferingRoute, sponsorRefQueryValue])
 
   const title =
     detail?.dealName?.trim() ||

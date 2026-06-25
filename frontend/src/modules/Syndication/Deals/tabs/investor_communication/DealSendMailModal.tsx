@@ -289,7 +289,7 @@ export function DealSendMailModal({
                 strokeWidth={2}
                 aria-hidden
               />
-              <span>Send mail</span>
+              <span>Send email</span>
             </h3>
             <button
               type="button"

@@ -4,6 +4,7 @@ import { investorEsignIsFullyCompletedForRow } from "@/modules/Syndication/Deals
 import {
   FUNDING_INFORMATION_DOCUMENTS_SECTION_ID,
   isFundingInstructionsAutoPdfDocument,
+  isInvestorEsignWorkspaceDocument,
   type NestedPreviewDocument,
 } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 
@@ -91,6 +92,8 @@ export function nestedDocumentVisibleToInvestor(
   doc: NestedPreviewDocument,
   ctx: InvestmentDocumentAudienceContext,
 ): boolean {
+  if (isInvestorEsignWorkspaceDocument(doc)) return false
+
   if (
     fundingDocumentRequiresEsignCompletion(doc) &&
     !viewerHasCompletedEsign(ctx.viewerRows)

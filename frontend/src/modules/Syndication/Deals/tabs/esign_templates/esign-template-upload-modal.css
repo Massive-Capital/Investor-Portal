@@ -76,9 +76,124 @@
   margin-top: 1rem;
 }
 
-/* Create template modal */
-.deal_esign_create_modal.deals_add_inv_modal_panel {
-  max-width: min(32rem, 100%);
+/* Create template modal — premium shell aligned with Documents modals */
+.deal_esign_create_modal_overlay {
+  backdrop-filter: blur(3px);
+}
+
+.deal_esign_create_modal.um_modal.deals_add_inv_modal_panel {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: min(90vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--portal-surface, #fff);
+  border-radius: var(--portal-pill-radius, 4px);
+  box-shadow:
+    0 24px 48px -12px rgb(15 23 42 / 22%),
+    0 0 0 1px rgb(15 23 42 / 4%);
+}
+
+.deal_esign_create_modal .add_contact_modal_head {
+  align-items: flex-start;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+}
+
+.deal_esign_create_modal .add_contact_modal_head_main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+.deal_esign_create_modal .add_contact_modal_title.um_modal_title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_esign_create_modal .form_heading_with_info.um_modal_title {
+  width: 100%;
+}
+
+.deal_esign_create_modal .form_heading_with_info_row {
+  align-items: center;
+}
+
+.deal_esign_create_modal_lead {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_create_stepper {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em 1em;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.35rem;
+  margin-bottom: 0;
+  margin-left: 0;
+  box-sizing: border-box;
+}
+
+.deal_esign_create_stepper .add_contact_step_node {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.deal_esign_create_stepper .add_contact_step_label {
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.deal_esign_create_stepper .add_contact_step_dot {
+  flex-shrink: 0;
+}
+
+.deal_esign_create_stepper .add_contact_step_line {
+  width: 2.5em;
+  min-width: 1.5em;
+  flex-shrink: 0;
+}
+
+.deal_esign_create_modal_actions.um_modal_actions {
+  padding: 0.85rem 1.15rem 1rem;
+  border-top: 1px solid var(--portal-border, #e2e8f0);
+  margin-top: auto;
+}
+
+.deal_esign_create_modal_actions .add_contact_modal_actions_trailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.deal_esign_create_modal_actions .um_btn_primary,
+.deal_esign_create_modal_actions .um_btn_secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  min-height: var(--portal-button-height, 2.25rem);
+  height: var(--portal-button-height, 2.25rem);
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .deal_esign_create_modal_form {
@@ -88,8 +203,8 @@
   flex: 1;
 }
 
-.deal_esign_create_modal_body {
-  padding: 0 0.1rem;
+.deal_esign_create_modal_body.deals_add_inv_modal_scroll {
+  padding: 1rem 1.15rem 0.35rem;
 }
 
 .deal_esign_create_modal_fields {
@@ -98,23 +213,122 @@
   gap: 0.85rem;
 }
 
-.deal_esign_create_field {
+.deal_esign_create_section {
   margin: 0;
+  padding: 0.9rem 0.95rem 0.95rem;
+  border-radius: calc(var(--portal-card-radius, 4px) + 2px);
+  border: 1px solid var(--portal-border, #e2e8f0);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--portal-chrome-bg, #f8fafc) 55%, var(--portal-surface, #fff)) 0%,
+    var(--portal-surface, #fff) 62%
+  );
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
 }
 
-.deal_esign_create_field .um_field_label_row {
+.deal_esign_create_section_head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.deal_esign_create_section_badge {
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: var(--portal-focus, #2563eb);
+  background: color-mix(in srgb, var(--portal-focus, #2563eb) 12%, #fff);
+  border: 1px solid color-mix(in srgb, var(--portal-focus, #2563eb) 20%, #dbeafe);
+}
+
+.deal_esign_create_section_head_copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.deal_esign_create_section_title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_esign_create_section_desc {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_create_section_body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.deal_esign_create_field {
+  margin: 0;
+  gap: 0.35rem;
+}
+
+.deal_esign_create_field .um_label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_create_control {
+  width: 100%;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.deal_esign_create_control:hover:not(:disabled) {
+  border-color: #cbd5e1;
+}
+
+.deal_esign_create_control:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
 }
 
 .deal_esign_create_field_hint {
   margin: 0.35rem 0 0;
-  padding-left: 1.45rem;
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--portal-text-muted, #64748b);
 }
 
+.deal_esign_create_step_workflow .deal_esign_workflow_picker--modal {
+  margin: 0;
+  padding: 0.9rem 0.95rem 0.95rem;
+  border-radius: calc(var(--portal-card-radius, 4px) + 2px);
+  border: 1px solid var(--portal-border, #e2e8f0);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--portal-chrome-bg, #f8fafc) 55%, var(--portal-surface, #fff)) 0%,
+    var(--portal-surface, #fff) 62%
+  );
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
 /* Document source: deal library vs local upload */
+.deal_esign_create_section .deal_esign_doc_source_toggle {
+  margin-bottom: 0;
+}
 .deal_esign_doc_source_toggle {
   display: flex;
   gap: 0.35rem;
@@ -414,19 +628,26 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 0.75rem;
-  margin: 0.15rem 0 0;
+  margin: 0;
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--portal-border, #e2e8f0);
   border-radius: var(--portal-card-radius, 4px);
-  background: color-mix(in srgb, var(--portal-chrome-bg, #f8fafc) 55%, var(--portal-surface, #fff));
+  background: var(--portal-surface, #fff);
   cursor: pointer;
   transition:
     border-color 0.15s ease,
-    background 0.15s ease;
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .deal_esign_create_option_row:hover {
   border-color: color-mix(in srgb, var(--portal-focus, #2563eb) 35%, var(--portal-border, #e2e8f0));
+}
+
+.deal_esign_create_option_row--checked {
+  border-color: color-mix(in srgb, var(--portal-focus, #2563eb) 42%, var(--portal-border, #e2e8f0));
+  background: color-mix(in srgb, var(--portal-focus, #2563eb) 5%, var(--portal-surface, #fff));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--portal-focus, #2563eb) 10%, transparent);
 }
 
 .deal_esign_create_option_icon {
@@ -470,9 +691,35 @@
   accent-color: var(--portal-focus, #2563eb);
 }
 
-.deal_esign_create_modal .um_modal_actions .um_btn_primary,
-.deal_esign_create_modal .um_modal_actions .um_btn_secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+:root[data-theme="dark"] .deal_esign_create_modal.um_modal.deals_add_inv_modal_panel {
+  box-shadow: 0 24px 48px -12px rgb(0 0 0 / 45%);
+}
+
+:root[data-theme="dark"] .deal_esign_create_section {
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--portal-surface, #1a1a1a) 96%, #fff) 0%,
+    var(--portal-surface, #1a1a1a) 62%
+  );
+  border-color: var(--portal-border);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .deal_esign_create_step_workflow .deal_esign_workflow_picker--modal {
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--portal-surface, #1a1a1a) 96%, #fff) 0%,
+    var(--portal-surface, #1a1a1a) 62%
+  );
+  border-color: var(--portal-border);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .deal_esign_create_option_row {
+  background: var(--portal-surface);
+  border-color: var(--portal-border);
+}
+
+:root[data-theme="dark"] .deal_esign_create_option_row--checked {
+  background: color-mix(in srgb, var(--portal-focus, #60a5fa) 8%, var(--portal-surface));
 }

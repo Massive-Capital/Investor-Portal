@@ -11,6 +11,7 @@ import {
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import type { EsignEntityCategory } from "./esignEntityCategories"
 import { EsignProfileTemplateRowActions } from "./EsignProfileTemplateRowActions"
+import { EsignSigningWorkflowCell } from "./EsignSigningWorkflowCell"
 import { esignTemplateDisplayName } from "../../utils/esignTemplateDisplay"
 
 function isPdfFileName(name: string): boolean {
@@ -21,9 +22,19 @@ function esignFileViewUrl(relativePath: string): string {
   return normalizeDealGallerySrc(dealAssetRelativePathToUploadsUrl(relativePath))
 }
 
+function resolveTemplateStatus(
+  file: DealEsignTemplateFileRecord,
+): "none" | "draft" | "ready" {
+  if (file.signflowStatus && file.signflowStatus !== "none") {
+    return file.signflowStatus
+  }
+  return file.dropboxSignStatus ?? "none"
+}
+
 function statusLabel(file: DealEsignTemplateFileRecord): string {
-  if (file.dropboxSignStatus === "ready") return "Ready"
-  if (file.dropboxSignStatus === "draft") return "Setup incomplete — click Edit"
+  const status = resolveTemplateStatus(file)
+  if (status === "ready") return "Ready"
+  if (status === "draft") return "Setup incomplete — click Edit"
   return "Not configured"
 }
 
@@ -39,7 +50,7 @@ export function EsignProfileTemplateEmptyRow({
       <th scope="row" className="deal_esign_profiles_cell_profile">
         {category.label}
       </th>
-      <td className="deal_esign_profiles_cell_muted" colSpan={showStatusColumn ? 4 : 3}>
+      <td className="deal_esign_profiles_cell_muted" colSpan={showStatusColumn ? 5 : 4}>
         No template
       </td>
     </tr>
@@ -54,6 +65,7 @@ function EsignProfileTemplateFileRow({
   uploading,
   savingTemplate,
   dropboxSignConfigured,
+  esignProvider,
   onRemove,
   onEditTemplate,
   onRenameTemplate,
@@ -65,14 +77,15 @@ function EsignProfileTemplateFileRow({
   uploading: boolean
   savingTemplate: boolean
   dropboxSignConfigured: boolean
+  esignProvider: "signflow" | "dropbox" | null
   onRemove: () => void
   onEditTemplate: () => void
   onRenameTemplate: () => void
 }) {
   const isPdf = isPdfFileName(file.originalName)
-  const ready = file.dropboxSignStatus === "ready"
-  const notConfigured =
-    !file.dropboxSignStatus || file.dropboxSignStatus === "none"
+  const templateStatus = resolveTemplateStatus(file)
+  const ready = templateStatus === "ready"
+  const notConfigured = templateStatus === "none"
   const actionLabel = notConfigured ? "Configure" : "Edit"
   const staticViewUrl = esignFileViewUrl(file.relativePath)
   const displayName = esignTemplateDisplayName(file)
@@ -133,18 +146,42 @@ function EsignProfileTemplateFileRow({
           <span className="deal_esign_doc_muted">—</span>
         )}
       </td>
+      <td className="deal_esign_profiles_cell_workflow">
+        <EsignSigningWorkflowCell file={file} esignProvider={esignProvider} />
+      </td>
       {canManageDocuments ? (
         <td className="deal_esign_profiles_cell_status">
-          <span
-            className={`deal_esign_file_status deal_esign_file_status_${file.dropboxSignStatus ?? "none"}`}
-          >
-            {ready ? (
-              <FileCheck size={12} strokeWidth={2} aria-hidden />
-            ) : (
-              <FilePen size={12} strokeWidth={2} aria-hidden />
-            )}
-            {statusLabel(file)}
-          </span>
+          {!ready && dropboxSignConfigured && isPdf && !uploading && !savingTemplate ? (
+            <button
+              type="button"
+              className={`deal_esign_file_status deal_esign_file_status_${templateStatus} deal_esign_file_status_action`}
+              title={
+                notConfigured
+                  ? "Open SignFlow editor to configure this template"
+                  : "Open SignFlow editor to edit signature fields"
+              }
+              disabled={uploading || savingTemplate}
+              onClick={onEditTemplate}
+            >
+              {ready ? (
+                <FileCheck size={12} strokeWidth={2} aria-hidden />
+              ) : (
+                <FilePen size={12} strokeWidth={2} aria-hidden />
+              )}
+              {statusLabel(file)}
+            </button>
+          ) : (
+            <span
+              className={`deal_esign_file_status deal_esign_file_status_${templateStatus}`}
+            >
+              {ready ? (
+                <FileCheck size={12} strokeWidth={2} aria-hidden />
+              ) : (
+                <FilePen size={12} strokeWidth={2} aria-hidden />
+              )}
+              {statusLabel(file)}
+            </span>
+          )}
         </td>
       ) : null}
       <td className="deal_esign_profiles_cell_actions">
@@ -182,6 +219,7 @@ export function EsignProfileTemplateRow({
   uploading,
   savingTemplate,
   dropboxSignConfigured,
+  esignProvider,
   onRemove,
   onEditTemplate,
   onRenameTemplate,
@@ -193,6 +231,7 @@ export function EsignProfileTemplateRow({
   uploading: boolean
   savingTemplate: boolean
   dropboxSignConfigured: boolean
+  esignProvider: "signflow" | "dropbox" | null
   onRemove: () => void
   onEditTemplate: () => void
   onRenameTemplate: () => void
@@ -215,6 +254,7 @@ export function EsignProfileTemplateRow({
       uploading={uploading}
       savingTemplate={savingTemplate}
       dropboxSignConfigured={dropboxSignConfigured}
+      esignProvider={esignProvider}
       onRemove={onRemove}
       onEditTemplate={onEditTemplate}
       onRenameTemplate={onRenameTemplate}

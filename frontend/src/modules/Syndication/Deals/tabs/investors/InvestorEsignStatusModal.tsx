@@ -17,6 +17,7 @@ import type {
 import {
   buildEsignProfileStatusTabs,
   resolveInvestorEsignCategoryId,
+  ESIGN_UNIFIED_CATEGORY_ID,
   type EsignProfileStatusTab,
 } from "../../utils/esignTemplateCategories"
 import {
@@ -282,6 +283,21 @@ export function InvestorEsignStatusModal({
     [row],
   )
 
+  const usesUnifiedTemplate = useMemo(() => {
+    if (resolvedSends.some((s) => s.categoryId.trim() === ESIGN_UNIFIED_CATEGORY_ID)) {
+      return true
+    }
+    const fallback =
+      status ??
+      (row ? fallbackEsignStatusForRow(row) : null) ??
+      (row ? parseEsignStatusFromApi(row.esignStatus) : null)
+    return (
+      fallback?.documents?.some(
+        (d) => d.categoryId?.trim() === ESIGN_UNIFIED_CATEGORY_ID,
+      ) ?? false
+    )
+  }, [resolvedSends, status, row])
+
   const profileTabs = useMemo(() => {
     const documents = resolvedSends.flatMap((send) =>
       send.documents.map((d) => ({
@@ -298,10 +314,13 @@ export function InvestorEsignStatusModal({
       return buildEsignProfileStatusTabs(
         fallback.documents,
         investorCategoryId,
+        { usesUnifiedTemplate },
       )
     }
-    return buildEsignProfileStatusTabs(documents, investorCategoryId)
-  }, [resolvedSends, status, row, investorCategoryId])
+    return buildEsignProfileStatusTabs(documents, investorCategoryId, {
+      usesUnifiedTemplate,
+    })
+  }, [resolvedSends, status, row, investorCategoryId, usesUnifiedTemplate])
 
   useEffect(() => {
     if (profileTabs.length === 0) {
@@ -319,17 +338,27 @@ export function InvestorEsignStatusModal({
 
   const activeTabSend = useMemo(() => {
     if (!activeTab) return null
-    return findEsignSendForCategory(resolvedSends, activeTab.categoryId) ?? null
-  }, [activeTab, resolvedSends])
+    return (
+      findEsignSendForCategory(
+        resolvedSends,
+        activeTab.categoryId,
+        investorCategoryId,
+      ) ?? null
+    )
+  }, [activeTab, resolvedSends, investorCategoryId])
 
   const activeTabStatus = useMemo(() => {
     if (!activeTab || !activeTabSend?.sentAt?.trim()) return null
-    const fromSend = esignStatusForProfileTab(activeTab, resolvedSends)
+    const fromSend = esignStatusForProfileTab(
+      activeTab,
+      resolvedSends,
+      investorCategoryId,
+    )
     if (!fromSend) return null
     return mergeEsignStatusWithDropbox(fromSend, dropbox, {
       signatureRequestId: activeTabSend.signatureRequestId,
     })
-  }, [activeTab, activeTabSend, resolvedSends, dropbox])
+  }, [activeTab, activeTabSend, resolvedSends, dropbox, investorCategoryId])
 
   const activeTabSteps = useMemo(
     () => (activeTabStatus ? esignWorkflowSteps(activeTabStatus) : []),

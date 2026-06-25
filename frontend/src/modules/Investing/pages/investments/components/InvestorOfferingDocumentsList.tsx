@@ -4,6 +4,7 @@ import type {
   InvestmentDetailDocumentRow,
   InvestmentDetailDocumentSectionGroup,
 } from "../utils/investmentDetailDocuments"
+import { isInvestorOfferingDocumentSectionExcluded } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
 
 function safeDownloadFilename(name: string): string {
   const base = name.trim() || "document"
@@ -69,7 +70,14 @@ export function InvestorOfferingDocumentsList({
     Record<string, boolean>
   >({})
 
-  const displaySections = sections.filter((section) => section.documents.length > 0)
+  const displaySections = sections.filter(
+    (section) =>
+      section.documents.length > 0 &&
+      !isInvestorOfferingDocumentSectionExcluded(
+        section.sectionId,
+        section.sectionLabel,
+      ),
+  )
   if (displaySections.length === 0) return null
 
   const toggleSection = (sectionId: string) => {

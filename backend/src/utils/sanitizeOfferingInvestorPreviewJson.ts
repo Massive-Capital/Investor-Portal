@@ -1,3 +1,5 @@
+import { consolidateInvestorEsignDocumentSections } from "../services/deal/dealEsignDocumentsWorkspaceSync.service.js";
+
 const MAX_PAYLOAD_CHARS = 450_000;
 
 const VISIBILITY_KEYS = new Set([
@@ -76,6 +78,25 @@ function normalizeNested(
     : parseIdListField(raw.sharedInvestorIds);
   const sharedSponsorUserIds = parseIdListField(raw.sharedSponsorUserIds);
   const requiresProfileInvestment = Boolean(raw.requiresProfileInvestment);
+  const esignSignatureRequestId =
+    typeof raw.esignSignatureRequestId === "string" &&
+    raw.esignSignatureRequestId.trim()
+      ? clipStr(raw.esignSignatureRequestId.trim(), 200)
+      : undefined;
+  const esignInvestorRowId =
+    typeof raw.esignInvestorRowId === "string" && raw.esignInvestorRowId.trim()
+      ? clipStr(raw.esignInvestorRowId.trim(), 120)
+      : undefined;
+  const esignInvestorRowTable =
+    raw.esignInvestorRowTable === "investment" || raw.esignInvestorRowTable === "lp"
+      ? raw.esignInvestorRowTable
+      : undefined;
+  const esignTemplateFileId =
+    typeof raw.esignTemplateFileId === "string" && raw.esignTemplateFileId.trim()
+      ? clipStr(raw.esignTemplateFileId.trim(), 200)
+      : undefined;
+  const esignAwaitingSponsorSignature = Boolean(raw.esignAwaitingSponsorSignature);
+  const esignSponsorSigned = Boolean(raw.esignSponsorSigned);
   return {
     id,
     name,
@@ -88,6 +109,14 @@ function normalizeNested(
     sharedWithAllInvestors,
     sharedSponsorUserIds,
     ...(requiresProfileInvestment ? { requiresProfileInvestment: true } : {}),
+    ...(esignSignatureRequestId ? { esignSignatureRequestId } : {}),
+    ...(esignInvestorRowId ? { esignInvestorRowId } : {}),
+    ...(esignInvestorRowTable ? { esignInvestorRowTable } : {}),
+    ...(esignTemplateFileId ? { esignTemplateFileId } : {}),
+    ...(esignAwaitingSponsorSignature
+      ? { esignAwaitingSponsorSignature: true }
+      : {}),
+    ...(esignSponsorSigned ? { esignSponsorSigned: true } : {}),
   };
 }
 
@@ -195,8 +224,9 @@ function sanitizeSectionsInput(raw: unknown): Record<string, unknown>[] {
       i += 1;
     }
   }
-  const ids = new Set(out.map((x) => String(x.id)));
-  return out.map((s) => ({
+  const stripped = consolidateInvestorEsignDocumentSections(out);
+  const ids = new Set(stripped.map((x) => String(x.id)));
+  return stripped.map((s) => ({
     ...s,
     nestedDocuments: (s.nestedDocuments as Record<string, unknown>[]).map(
       (d) => ({

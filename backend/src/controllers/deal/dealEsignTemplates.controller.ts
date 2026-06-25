@@ -3,18 +3,21 @@ import type { Request, Response } from "express";
 import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
+  assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import type { DealMemoryUploadFile } from "../../services/deal/dealForm.service.js";
 import { isPortalUserLeadOrAdminSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
+  dealEsignTemplatesFullyConfigured,
   dealHasEsignTemplateDocuments,
   ensureEsignTemplatePdfPrepared,
   findEsignTemplateFile,
   getDealEsignTemplatesState,
   groupEsignFilesByCategory,
   isPdfEsignFile,
+  listIncompleteEsignTemplates,
   removeDealEsignTemplateFile,
   parseEsignTemplateUploadMeta,
   EsignTemplateNameRequiredError,
@@ -22,10 +25,17 @@ import {
   EsignTemplateUploadLimitError,
   saveDealEsignTemplateFiles,
   updateDealEsignTemplateName,
+  updateDealEsignTemplateSigningWorkflow,
 } from "../../services/deal/dealEsignTemplates.service.js";
+import { isPdfUploadFile } from "../../services/deal/esignPdfMerge.service.js";
 import {
   groupEsignFilesByCategoryWithInvestorFilled,
 } from "../../services/deal/dealEsignTemplateInvestorFilled.service.js";
+import {
+  normalizeEsignSignflowSigningOrder,
+  normalizeEsignSignflowWorkflowType,
+} from "../../constants/esignSigningWorkflow.js";
+import { filterEsignTemplateFilesForInvestorProfile, esignTemplateViewableForInvestorProfile } from "../../services/deal/dealEsignProfileTemplate.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -38,6 +48,7 @@ function bodyString(v: unknown): string {
 }
 
 const ALLOWED_ESIGN_CATEGORIES = new Set([
+  "all_profiles",
   "individual",
   "custodian_ira_401k",
   "joint_tenancy",
@@ -70,17 +81,27 @@ export async function getDealEsignTemplates(
       user.userRole,
       requestedOrganizationIdFromRequest(req),
     );
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
     const state = await getDealEsignTemplatesState(dealId);
+    const profileId = bodyString(
+      (req.query as Record<string, unknown>).profile_id ??
+        (req.query as Record<string, unknown>).profileId,
+    ).trim();
+    const filesForViewer = profileId
+      ? await filterEsignTemplateFilesForInvestorProfile(state.files, profileId)
+      : state.files;
     const filesByCategory = await groupEsignFilesByCategoryWithInvestorFilled(
       dealId,
-      state.files,
+      filesForViewer,
     );
+    const incompleteTemplates = listIncompleteEsignTemplates(state);
     res.status(200).json({
       hasDocuments: dealHasEsignTemplateDocuments(state),
+      templatesFullyConfigured: dealEsignTemplatesFullyConfigured(state),
+      incompleteTemplateCount: incompleteTemplates.length,
       filesByCategory,
     });
   } catch (err) {
@@ -128,7 +149,7 @@ export async function getDealEsignTemplateViewUrl(
       user.userRole,
       requestedOrganizationIdFromRequest(req),
     );
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -138,6 +159,23 @@ export async function getDealEsignTemplateViewUrl(
     if (!file) {
       res.status(404).json({ message: "File not found" });
       return;
+    }
+
+    const profileId = bodyString(
+      (req.query as Record<string, unknown>).profile_id ??
+        (req.query as Record<string, unknown>).profileId,
+    ).trim();
+    if (profileId) {
+      const allowed = await esignTemplateViewableForInvestorProfile(
+        file,
+        profileId,
+      );
+      if (!allowed) {
+        res.status(404).json({
+          message: "No eSign document is configured for this investor profile",
+        });
+        return;
+      }
     }
 
     if (!isPdfEsignFile(file)) {
@@ -213,7 +251,7 @@ export async function getDealEsignTemplateView(
       user.userRole,
       requestedOrganizationIdFromRequest(req),
     );
-    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
@@ -223,6 +261,23 @@ export async function getDealEsignTemplateView(
     if (!file) {
       res.status(404).json({ message: "File not found" });
       return;
+    }
+
+    const profileId = bodyString(
+      (req.query as Record<string, unknown>).profile_id ??
+        (req.query as Record<string, unknown>).profileId,
+    ).trim();
+    if (profileId) {
+      const allowed = await esignTemplateViewableForInvestorProfile(
+        file,
+        profileId,
+      );
+      if (!allowed) {
+        res.status(404).json({
+          message: "No eSign document is configured for this investor profile",
+        });
+        return;
+      }
     }
 
     if (!isPdfEsignFile(file)) {
@@ -298,7 +353,14 @@ export async function postDealEsignTemplateUploads(
   const files = (req as Request & { files?: DealMemoryUploadFile[] }).files;
   const fileList = Array.isArray(files) ? files : [];
   if (!fileList.length) {
-    res.status(400).json({ message: "No files uploaded." });
+    res.status(400).json({
+      message:
+        'No files uploaded. Choose a PDF and try again. If this keeps happening, refresh the page and ensure the backend was restarted.',
+    });
+    return;
+  }
+  if (!isPdfUploadFile(fileList[0]!)) {
+    res.status(400).json({ message: "Only PDF files can be used for eSign templates." });
     return;
   }
   if (fileList.length > 1) {
@@ -349,14 +411,18 @@ export async function postDealEsignTemplateUploads(
       res.status(409).json({ message: err.message });
       return;
     }
+    const message =
+      err instanceof Error && err.message.trim()
+        ? err.message
+        : "Could not upload eSign templates";
     console.error("postDealEsignTemplateUploads:", err);
-    res.status(500).json({ message: "Could not upload eSign templates" });
+    res.status(500).json({ message });
   }
 }
 
 /**
  * PATCH /deals/:dealId/esign-templates/:fileId
- * Body: { templateName } — ready templates only (rename display name).
+ * Body: { templateName?, signflowWorkflowType?, signflowSigningOrder? }
  */
 export async function patchDealEsignTemplate(
   req: Request,
@@ -382,6 +448,20 @@ export async function patchDealEsignTemplate(
 
   const b = req.body as Record<string, unknown>;
   const templateName = bodyString(b.templateName ?? b.template_name).trim();
+  const workflowType = normalizeEsignSignflowWorkflowType(
+    b.signflowWorkflowType ?? b.signflow_workflow_type,
+  );
+  const signingOrder = normalizeEsignSignflowSigningOrder(
+    b.signflowSigningOrder ?? b.signflow_signing_order,
+  );
+
+  if (!templateName && workflowType === null && signingOrder === null) {
+    res.status(400).json({
+      message:
+        "Provide templateName and/or signing workflow settings (signflowWorkflowType, signflowSigningOrder)",
+    });
+    return;
+  }
 
   try {
     const scope = await resolveDealViewerScope(
@@ -401,18 +481,48 @@ export async function patchDealEsignTemplate(
       return;
     }
 
-    const updated = await updateDealEsignTemplateName(
-      dealId,
-      fileId,
-      templateName,
-    );
+    let updated = null as Awaited<
+      ReturnType<typeof updateDealEsignTemplateName>
+    >;
+
+    if (templateName) {
+      updated = await updateDealEsignTemplateName(dealId, fileId, templateName);
+      if (!updated) {
+        res.status(404).json({ message: "File not found" });
+        return;
+      }
+    }
+
+    if (workflowType !== null || signingOrder !== null) {
+      const workflowUpdated = await updateDealEsignTemplateSigningWorkflow(
+        dealId,
+        fileId,
+        {
+          ...(workflowType !== null
+            ? { signflowWorkflowType: workflowType }
+            : {}),
+          ...(signingOrder !== null
+            ? { signflowSigningOrder: signingOrder }
+            : {}),
+        },
+      );
+      if (!workflowUpdated) {
+        res.status(404).json({ message: "File not found" });
+        return;
+      }
+      updated = workflowUpdated;
+    }
+
     if (!updated) {
       res.status(404).json({ message: "File not found" });
       return;
     }
+
     const state = await getDealEsignTemplatesState(dealId);
     res.status(200).json({
-      message: "Template name updated",
+      message: templateName
+        ? "Template updated"
+        : "Signing workflow updated",
       file: updated,
       hasDocuments: dealHasEsignTemplateDocuments(state),
       filesByCategory: groupEsignFilesByCategory(state),

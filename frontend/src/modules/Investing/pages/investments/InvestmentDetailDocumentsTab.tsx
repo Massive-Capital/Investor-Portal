@@ -27,6 +27,7 @@ import type { InvestmentDocumentAudienceContext } from "./utils/investmentDocume
 import {
   dealHasOfferingDocumentSections,
   EMPTY_INVESTMENT_DOCUMENT_AUDIENCE,
+  filterInvestorOfferingDocumentSectionGroups,
   listInvestmentDetailDocumentSectionGroups,
   type InvestmentDetailDocumentRow,
   type InvestmentDetailDocumentSectionGroup,
@@ -48,42 +49,18 @@ function safeDownloadFilename(name: string): string {
   return base.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 200)
 }
 
-function investmentEsignStatusLabel(status: "pending" | "signed"): string {
-  return status === "signed" ? "Signed" : "Awaiting signature"
+function investmentEsignStatusLabel(
+  status: "pending" | "signed",
+  esignCompleted?: boolean,
+): string {
+  if (esignCompleted || status === "signed") return "Completed"
+  return "Awaiting signature"
 }
 
 function investmentEsignStatusClassName(status: "pending" | "signed"): string {
   return status === "signed"
     ? "lpd_doc_esign_status lpd_doc_esign_status--signed"
     : "lpd_doc_esign_status lpd_doc_esign_status--pending"
-}
-
-function filterOfferingDocumentSections(
-  sections: InvestmentDetailDocumentSectionGroup[],
-  query: string,
-): InvestmentDetailDocumentSectionGroup[] {
-  const q = query.trim().toLowerCase()
-  return sections
-    .filter((section) => section.totalOnDeal > 0)
-    .map((section) => {
-      if (!q) return section
-      const sectionLabelMatches = section.sectionLabel.toLowerCase().includes(q)
-      const documents = section.documents.filter((d) => {
-        const blob = [d.name, d.sectionLabel, section.sectionLabel]
-          .join(" ")
-          .toLowerCase()
-        return blob.includes(q)
-      })
-      if (sectionLabelMatches) return section
-      return { ...section, documents }
-    })
-    .filter((section) => {
-      if (!q) return true
-      return (
-        section.documents.length > 0 ||
-        section.sectionLabel.toLowerCase().includes(q)
-      )
-    })
 }
 
 type EsignProfileCardData = {
@@ -94,6 +71,8 @@ type EsignProfileCardData = {
   profileName?: string
   /** Pins sign session / sync to this commitment row. */
   esignScope: DealMyEsignScopeQuery
+  /** All sends for this profile are fully complete in eSign. */
+  esignCompleted?: boolean
   /** Documents for this profile only (not merged across names). */
   documents: InvestmentDetailDocumentRow[]
 }
@@ -143,23 +122,34 @@ function buildEsignCommitmentSlots(
   return slots
 }
 
+function esignProfileCardStatus(
+  card: EsignProfileCardData,
+): "pending" | "signed" | null {
+  if (card.esignCompleted) return "signed"
+  return cardAggregateEsignStatus(card.documents)
+}
+
 function mapMyEsignApiDocuments(
   docs: Awaited<ReturnType<typeof fetchDealMyEsignDocuments>>["documents"],
   cardKey: string,
+  esignCompleted?: boolean,
 ): InvestmentDetailDocumentRow[] {
   return docs.map((d) => {
     const categoryId = d.categoryId?.trim() || ""
+    const signed = d.status === "signed"
     return {
       id: `esign-${cardKey}-${d.fileId}`,
       name: d.name,
       url: resolveEsignDocumentUrlForViewer(d.url),
       dateAdded: "—",
       sectionLabel: categoryId ? esignCategoryLabel(categoryId) : "E-signatures",
-      visibilityLabel: investmentEsignStatusLabel(d.status),
-      esignStatus: d.status,
+      visibilityLabel: investmentEsignStatusLabel(
+        signed ? "signed" : "pending",
+        esignCompleted,
+      ),
+      esignStatus: signed ? "signed" : "pending",
       source: "esign",
-      canSign:
-        d.status !== "signed" && Boolean(d.signatureRequestId?.trim()),
+      canSign: !signed && Boolean(d.signatureRequestId?.trim()),
       signatureRequestId: d.signatureRequestId?.trim() || undefined,
       categoryId: categoryId || undefined,
     }
@@ -222,7 +212,12 @@ async function fetchEsignProfileCardsForDeal(
       label: slot.label,
       ...(slot.profileName ? { profileName: slot.profileName } : {}),
       esignScope,
-      documents: mapMyEsignApiDocuments(esign.documents, slot.cardKey),
+      esignCompleted: esign.esignCompleted,
+      documents: mapMyEsignApiDocuments(
+        esign.documents,
+        slot.cardKey,
+        esign.esignCompleted,
+      ),
     })
   }
 
@@ -409,7 +404,7 @@ export function InvestmentDetailDocumentsTab({
   )
 
   const filteredOfferingSections = useMemo(
-    () => filterOfferingDocumentSections(offeringDocumentSections, query),
+    () => filterInvestorOfferingDocumentSectionGroups(offeringDocumentSections, query),
     [offeringDocumentSections, query],
   )
 
@@ -695,7 +690,7 @@ function EsignProfileTypeCardsGrid({
       aria-label="E-sign documents by investor profile"
     >
       {cards.map((card) => {
-        const status = cardAggregateEsignStatus(card.documents)
+        const status = esignProfileCardStatus(card)
 
         return (
           <article
@@ -717,7 +712,7 @@ function EsignProfileTypeCardsGrid({
                   <span
                     className={`${investmentEsignStatusClassName(status)} investment_detail_esign_profile_card_status`}
                   >
-                    {investmentEsignStatusLabel(status)}
+                    {investmentEsignStatusLabel(status, card.esignCompleted)}
                   </span>
                 ) : null}
               </div>
@@ -730,7 +725,6 @@ function EsignProfileTypeCardsGrid({
                 {card.documents.map((doc) => {
                   const url = doc.url?.trim() || ""
                   const canSign = Boolean(doc.canSign)
-                  // const docStatus = doc.esignStatus
 
                   return (
                     <li
@@ -751,70 +745,66 @@ function EsignProfileTypeCardsGrid({
                             />
                             {doc.name}
                           </span>
-                          {/* {docStatus ? (
-                            <span
-                              className={`${investmentEsignStatusClassName(docStatus)} investment_detail_esign_card_doc_status`}
-                            >
-                              {investmentEsignStatusLabel(docStatus)}
-                            </span>
-                          ) : null} */}
                         </div>
-                        {url || canSign ? (
-                          <div
-                            className="deal_docs_ui_doc_quick investment_detail_esign_card_doc_actions"
-                            role="group"
-                            aria-label={`${doc.name} actions`}
-                          >
-                            {canSign ? (
-                              <button
-                                type="button"
-                                className="investment_detail_esign_card_doc_sign_btn"
-                                aria-label={`Sign ${doc.name}`}
-                                onClick={() =>
-                                  onOpenSignModal(
-                                    doc.signatureRequestId ?? null,
-                                    card.esignScope,
-                                  )
-                                }
+                        <div
+                          className="deal_docs_ui_doc_quick investment_detail_esign_card_doc_actions"
+                          role="group"
+                          aria-label={`${doc.name} actions`}
+                        >
+                          {url ? (
+                            <>
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
+                                title="View"
+                                aria-label={`View ${doc.name}`}
                               >
-                                <FileSignature
-                                  size={15}
+                                <Eye size={16} strokeWidth={2} aria-hidden />
+                              </a>
+                              <a
+                                href={url}
+                                download={safeDownloadFilename(doc.name)}
+                                rel="noopener noreferrer"
+                                className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
+                                title="Download"
+                                aria-label={`Download ${doc.name}`}
+                              >
+                                <Download
+                                  size={16}
                                   strokeWidth={2}
                                   aria-hidden
                                 />
-                                Sign
-                              </button>
-                            ) : null}
-                            {url ? (
-                              <>
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
-                                  title="View"
-                                  aria-label={`View ${doc.name}`}
-                                >
-                                  <Eye size={16} strokeWidth={2} aria-hidden />
-                                </a>
-                                <a
-                                  href={url}
-                                  download={safeDownloadFilename(doc.name)}
-                                  rel="noopener noreferrer"
-                                  className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
-                                  title="Download"
-                                  aria-label={`Download ${doc.name}`}
-                                >
-                                  <Download
-                                    size={16}
-                                    strokeWidth={2}
-                                    aria-hidden
-                                  />
-                                </a>
-                              </>
-                            ) : null}
-                          </div>
-                        ) : null}
+                              </a>
+                            </>
+                          ) : null}
+                          {canSign ? (
+                            <button
+                              type="button"
+                              className="investment_detail_esign_card_doc_sign_btn"
+                              aria-label={`Sign ${doc.name}`}
+                              onClick={() =>
+                                onOpenSignModal(
+                                  doc.signatureRequestId ?? null,
+                                  card.esignScope,
+                                )
+                              }
+                            >
+                              <FileSignature
+                                size={15}
+                                strokeWidth={2}
+                                aria-hidden
+                              />
+                              Sign
+                            </button>
+                          ) : null}
+                          {!url && !canSign ? (
+                            <span className="investment_detail_offering_doc_unavailable">
+                              Unavailable
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </li>
                   )

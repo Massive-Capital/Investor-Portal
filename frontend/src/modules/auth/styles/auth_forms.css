@@ -185,20 +185,32 @@
   margin-top: 0.1em;
 }
 
-.authMessage--success .authMessage__icon,
-.loginSuccess {
-  color: #0f766e;
-}
-
-.authMessage--error .authMessage__icon,
-.orgError {
-  color: var(--portal-danger, #ba1a1a);
-}
-
+.authMessage__text,
 .authMessage p {
   margin: 0;
   flex: 1;
   min-width: 0;
+}
+
+.authMessage--success .authMessage__icon,
+.authMessage--success .authMessage__text {
+  color: #5eead4;
+}
+
+.authMessage--error .authMessage__icon,
+.authMessage--error .authMessage__text,
+.orgError {
+  color: #fca5a5;
+}
+
+/* Legacy class names — keep readable on auth card */
+.authMessage--success .loginSuccess {
+  color: #5eead4;
+}
+
+.authMessage--error .loginSuccess,
+.authMessage--error .orgError {
+  color: #fca5a5;
 }
 
 .loginBtn {

@@ -1,3 +1,5 @@
+import { esignSendCategoryMatchesInvestorProfile, ESIGN_UNIFIED_CATEGORY_ID } from "./esignProfileTypes.js";
+
 export interface DealInvestorEsignDocumentRef {
   fileId: string;
   name: string;
@@ -180,7 +182,6 @@ export function serializeEsignStatusBundle(
   return JSON.stringify(bundle);
 }
 
-/** Maps Invest Now / deal investment `profile_id` to eSign template category. */
 export function esignCategoryFromCommitmentProfileId(
   profileId: string | null | undefined,
 ): string | null {
@@ -195,6 +196,23 @@ export function esignCategoryFromCommitmentProfileId(
     return p;
   }
   return null;
+}
+
+const COMMITMENT_PROFILE_LABEL: Record<string, string> = {
+  individual: "Individual",
+  custodian_ira_401k: "Custodian IRA or custodian based 401(k)",
+  joint_tenancy: "Joint tenancy",
+  llc_corp_trust_etc:
+    "LLC, corp, partnership, trust, solo 401(k), or checkbook IRA",
+};
+
+/** Human-readable investor commitment profile for document titles. */
+export function commitmentProfileDisplayLabel(
+  profileId: string | null | undefined,
+): string {
+  const p = String(profileId ?? "").trim();
+  if (!p) return "—";
+  return COMMITMENT_PROFILE_LABEL[p] ?? p;
 }
 
 /**
@@ -214,7 +232,9 @@ export function pickWorkflowSendForColumn(
 
   const cat = preferredCategoryId?.trim();
   if (cat) {
-    const forCat = sorted.filter((s) => primaryCategoryForSend(s) === cat);
+    const forCat = sorted.filter((s) =>
+      esignSendCategoryMatchesInvestorProfile(primaryCategoryForSend(s), cat),
+    );
     if (forCat.length === 0) return null;
     const latestCat = forCat[forCat.length - 1]!;
     if (latestCat.completedAt?.trim()) return latestCat;
@@ -376,13 +396,17 @@ export function sendMatchesCategoryAndFileIds(
 ): boolean {
   const cat = categoryId.trim();
   const sendCat = primaryCategoryForSend(send);
-  if (cat && sendCat && sendCat !== cat) return false;
+  if (cat && sendCat && !esignSendCategoryMatchesInvestorProfile(sendCat, cat)) {
+    return false;
+  }
 
   const sameCategory =
     !send.categoryId?.trim() ||
-    send.categoryId.trim() === cat ||
+    esignSendCategoryMatchesInvestorProfile(send.categoryId.trim(), cat) ||
     (send.documents ?? []).every(
-      (d) => !d.categoryId?.trim() || d.categoryId.trim() === cat,
+      (d) =>
+        !d.categoryId?.trim() ||
+        esignSendCategoryMatchesInvestorProfile(d.categoryId.trim(), cat),
     );
   if (!sameCategory) return false;
 
@@ -413,7 +437,54 @@ export function findEsignSendForCategoryAndFiles(
 export function esignBundleHasPending(
   bundle: StoredDealInvestorEsignBundle,
 ): boolean {
-  return bundle.sends.some((s) => s.sentAt?.trim() && !s.completedAt?.trim());
+  return bundle.sends.some((s) => esignSendInvestorActionPending(s));
+}
+
+/** Investor portal: still needs to sign (deal/profile send scoped). */
+export function esignSendInvestorActionPending(
+  send: Pick<
+    StoredDealInvestorEsignSend,
+    "sentAt" | "signedAt" | "completedAt"
+  >,
+): boolean {
+  return (
+    Boolean(send.sentAt?.trim()) &&
+    !send.signedAt?.trim() &&
+    !send.completedAt?.trim()
+  );
+}
+
+/** Investor portal: investor finished signing for this send. */
+export function esignSendInvestorActionComplete(
+  send: Pick<StoredDealInvestorEsignSend, "signedAt" | "completedAt">,
+): boolean {
+  return Boolean(send.signedAt?.trim() || send.completedAt?.trim());
+}
+
+/**
+ * Investor signed and the signed PDF is stored — same criteria as the Documents tab
+ * “Investor e signatures” section. When true, sponsor counter-sign may proceed.
+ */
+export function esignSendReadyForSponsorCounterSign(
+  send: StoredDealInvestorEsignSend,
+): boolean {
+  if (!send.signedAt?.trim()) return false;
+  return (send.documents ?? []).some((d) => d.signedRelativePath?.trim());
+}
+
+export function esignProfileSendsPendingForInvestor(
+  sends: StoredDealInvestorEsignSend[],
+): boolean {
+  return sends.some((s) => esignSendInvestorActionPending(s));
+}
+
+export function esignProfileSendsCompleteForInvestor(
+  sends: StoredDealInvestorEsignSend[],
+): boolean {
+  return (
+    sends.length > 0 &&
+    sends.every((s) => esignSendInvestorActionComplete(s))
+  );
 }
 
 /** True when Dropbox should be polled to refresh viewed / signed / completed timestamps. */
@@ -426,6 +497,16 @@ export function esignBundleNeedsDropboxSync(
       Boolean(s.signatureRequestId?.trim()) &&
       !s.completedAt?.trim(),
   );
+}
+
+/** True when the investor signed but the signed PDF has not been stored locally yet. */
+export function esignBundleNeedsStoredPdfSync(
+  bundle: StoredDealInvestorEsignBundle,
+): boolean {
+  return bundle.sends.some((s) => {
+    if (!s.signedAt?.trim() && !s.completedAt?.trim()) return false;
+    return !(s.documents ?? []).some((d) => d.signedRelativePath?.trim());
+  });
 }
 
 export function esignBundleIsAllCompleted(
@@ -471,7 +552,16 @@ export function appendEsignSendToBundle(
 
   const kept = bundle.sends.filter((s) => {
     if (s.completedAt?.trim()) return true;
-    return primaryCategoryForSend(s) !== categoryId;
+    const sendCat = primaryCategoryForSend(s);
+    if (!sendCat || !categoryId) return sendCat !== categoryId;
+    if (sendCat === categoryId) return false;
+    if (
+      sendCat === ESIGN_UNIFIED_CATEGORY_ID ||
+      categoryId === ESIGN_UNIFIED_CATEGORY_ID
+    ) {
+      return false;
+    }
+    return true;
   });
 
   const newSend: StoredDealInvestorEsignSend = {

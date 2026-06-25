@@ -16,6 +16,7 @@ import {
   uploadDealCreateOrUpdateAssetImages,
   uploadDealOfferingGalleryFile,
 } from "./middleware/dealAssetImageUpload.middleware.js";
+import { uploadDealEsignTemplateFiles } from "./middleware/dealEsignTemplateUpload.middleware.js";
 import { uploadCompanySettingsBranding } from "./middleware/companySettingsBrandingUpload.middleware.js";
 import { socHttpAuditMiddleware } from "./middleware/socHttpAudit.middleware.js";
 import userRoutes from "./routes/userRoutes.routes.js";
@@ -26,8 +27,11 @@ import esignTemplateRoutes from "./routes/esignTemplate.routes.js";
 import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js";
 import platformRoutes from "./routes/platformRoutes.routes.js";
 import { postDropboxSignWebhook } from "./controllers/deal/dealDropboxSignWebhook.controller.js";
+import { postSignFlowWebhook } from "./controllers/deal/dealSignflowWebhook.controller.js";
+import { postDealEsignTemplateUploads } from "./controllers/deal/dealEsignTemplates.controller.js";
 import { dropboxSignWebhookUpload } from "./middleware/dropboxSignWebhook.middleware.js";
 import investmentSignatureRoutes from "./routes/investmentSignature.routes.js";
+import { getSignFlowPublicConfig } from "./config/signflow.config.js";
 
 
 const PORT = process.env.BACKEND_PORT ?? 5004;
@@ -103,6 +107,11 @@ app.post(
   uploadDealOfferingGalleryFile,
   postDealOfferingGalleryUploads,
 );
+app.post(
+  "/api/v1/deals/:dealId/esign-template-uploads",
+  uploadDealEsignTemplateFiles,
+  postDealEsignTemplateUploads,
+);
 
 // Allow larger request bodies (default is ~100kb; SyndicationX forms can exceed this)
 app.use(express.json({ limit: "10mb" }));
@@ -119,6 +128,10 @@ app.post(
   dropboxSignWebhookUpload,
   postDropboxSignWebhook,
 );
+
+/** SignFlow webhooks (no JWT; JSON body). */
+app.post("/webhooks/signflow", postSignFlowWebhook);
+app.post("/api/webhooks/signflow", postSignFlowWebhook);
 
 app.use("/api/v1", socHttpAuditMiddleware);
 
@@ -150,6 +163,19 @@ app.use("/api/v1", [
 ]);
 
 console.log("Starting server...");
+
+const signFlowCfg = getSignFlowPublicConfig();
+if (signFlowCfg.configured) {
+  console.log(
+    `SignFlow configured (${signFlowCfg.testMode ? "sandbox" : "production"}) → ${signFlowCfg.baseUrl}`,
+  );
+  const webhookBase = baseUrl?.trim() || `http://localhost:${PORT}`;
+  console.log(`SignFlow webhook URL → ${webhookBase}/api/webhooks/signflow`);
+} else {
+  console.log(
+    "SignFlow not configured — set SIGNFLOW_API_BASE_URL and SIGNFLOW_API_KEY (see API_INTEGRATION.md).",
+  );
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

@@ -102,10 +102,15 @@ export function fundedAmountForTotalFundedKpi(row: DealInvestorRow): number {
   return 0
 }
 
+/** Numeric committed total — same basis as syndication Investors tab Committed column. */
+export function investorRowCommittedAmountNumeric(row: DealInvestorRow): number {
+  const n = parseMoneyDigits(displayInvestorCommittedAmount(row))
+  return Number.isFinite(n) ? n : 0
+}
+
 /** True when total committed (same basis as the Committed column) is zero. */
 export function investorRowCommittedAmountIsZero(row: DealInvestorRow): boolean {
-  const n = parseMoneyDigits(displayInvestorCommittedAmount(row))
-  return Number.isFinite(n) && n === 0
+  return investorRowCommittedAmountNumeric(row) === 0
 }
 
 /** Deal Members: committed total from other investors this member added (see API field). */

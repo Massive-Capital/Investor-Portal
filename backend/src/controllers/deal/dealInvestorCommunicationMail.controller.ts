@@ -63,7 +63,7 @@ export async function getDealInvestorCommunicationMails(
     res.status(200).json({ mails });
   } catch (err) {
     console.error("getDealInvestorCommunicationMails:", err);
-    res.status(500).json({ message: "Could not load investor communication mail log" });
+    res.status(500).json({ message: "Could not load investor communication email log" });
   }
 }
 
@@ -125,18 +125,18 @@ export async function deleteDealInvestorCommunicationMailHandler(
   const mailId = paramMailId(req);
   if (!(await assertDealReadable(req, res, dealId))) return;
   if (!mailId) {
-    res.status(400).json({ message: "Missing mail id" });
+    res.status(400).json({ message: "Missing email log id" });
     return;
   }
   try {
     const deleted = await deleteDealInvestorCommunicationMail(dealId, mailId);
     if (!deleted) {
-      res.status(404).json({ message: "Mail log entry not found" });
+      res.status(404).json({ message: "Email log entry not found" });
       return;
     }
     res.status(200).json({ deleted: true });
   } catch (err) {
     console.error("deleteDealInvestorCommunicationMailHandler:", err);
-    res.status(500).json({ message: "Could not delete mail log entry" });
+    res.status(500).json({ message: "Could not delete email log entry" });
   }
 }

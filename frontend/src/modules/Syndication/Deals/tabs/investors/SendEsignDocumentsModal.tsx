@@ -8,9 +8,12 @@ import type { DealInvestorRow } from "../../types/deal-investors.types"
 import {
   esignCategoriesWithDocuments,
   ESIGN_TEMPLATE_CATEGORIES,
+  esignSelectableFilesForInvestor,
   investorProfileLabelForRow,
   resolveInvestorEsignCategoryId,
 } from "../../utils/esignTemplateCategories"
+import { dealUsesUnifiedEsignTemplate, ESIGN_UNIFIED_CATEGORY, ESIGN_UNIFIED_CATEGORY_ID } from "../../utils/esignUnifiedTemplate"
+import { isDealEsignTemplateReady } from "../../utils/dealEsignTemplatesConfigured"
 import { esignTemplateDisplayName } from "../../utils/esignTemplateDisplay"
 import { investorEsignWasSent } from "../../utils/investorEsignStatus"
 import "./send-esign-documents-modal.css"
@@ -24,7 +27,7 @@ function rowRecipientLabel(row: DealInvestorRow): string {
 }
 
 function fileSelectable(file: DealEsignTemplateFileRecord): boolean {
-  return file.dropboxSignStatus === "ready"
+  return isDealEsignTemplateReady(file)
 }
 
 export interface SendEsignDocumentsModalProps {
@@ -73,6 +76,11 @@ export function SendEsignDocumentsModal({
     }
   }, [open, dealId])
 
+  const usesUnifiedTemplate = useMemo(
+    () => dealUsesUnifiedEsignTemplate(filesByCategory),
+    [filesByCategory],
+  )
+
   const investorCategoryId = useMemo(
     () => (row ? resolveInvestorEsignCategoryId(row) : null),
     [row],
@@ -83,12 +91,32 @@ export function SendEsignDocumentsModal({
     [row],
   )
 
+  const investorTemplatePick = useMemo(
+    () =>
+      row
+        ? esignSelectableFilesForInvestor(row, filesByCategory)
+        : { categoryId: null, categoryLabel: "—", files: [], profileLabel: "—" },
+    [row, filesByCategory],
+  )
+
   const categoriesWithDocs = useMemo(
     () => esignCategoriesWithDocuments(filesByCategory),
     [filesByCategory],
   )
 
   const sections = useMemo(() => {
+    if (usesUnifiedTemplate) {
+      const files = filesByCategory[ESIGN_UNIFIED_CATEGORY_ID] ?? []
+      if (files.length === 0) return []
+      return [
+        {
+          id: ESIGN_UNIFIED_CATEGORY.id,
+          label: ESIGN_UNIFIED_CATEGORY.label,
+          files,
+          isInvestorProfile: true,
+        },
+      ]
+    }
     const list = ESIGN_TEMPLATE_CATEGORIES.map((cat) => ({
       id: cat.id,
       label: cat.label,
@@ -101,7 +129,7 @@ export function SendEsignDocumentsModal({
       return 0
     })
     return list
-  }, [filesByCategory, investorCategoryId])
+  }, [filesByCategory, investorCategoryId, usesUnifiedTemplate])
 
   const allFiles = useMemo(
     () => sections.flatMap((s) => s.files),
@@ -115,6 +143,13 @@ export function SendEsignDocumentsModal({
 
   const defaultSelectedIds = useMemo(() => {
     if (selectableFiles.length === 0) return []
+    if (usesUnifiedTemplate) {
+      return selectableFiles.map((f) => f.id)
+    }
+    if (investorTemplatePick.files.length > 0) {
+      const match = investorTemplatePick.files.filter(fileSelectable)
+      if (match.length > 0) return match.map((f) => f.id)
+    }
     if (investorCategoryId) {
       const match = selectableFiles.filter(
         (f) => f.categoryId === investorCategoryId,
@@ -122,7 +157,12 @@ export function SendEsignDocumentsModal({
       if (match.length > 0) return match.map((f) => f.id)
     }
     return selectableFiles.map((f) => f.id)
-  }, [selectableFiles, investorCategoryId])
+  }, [
+    selectableFiles,
+    investorCategoryId,
+    investorTemplatePick.files,
+    usesUnifiedTemplate,
+  ])
 
   useEffect(() => {
     if (!open || loading || defaultSelectedIds.length === 0) return
@@ -234,13 +274,13 @@ export function SendEsignDocumentsModal({
             </p>
           ) : !hasAnyTemplates ? (
             <p className="deal_esign_notice deal_esign_notice--empty" role="status">
-              No eSign templates are uploaded for this deal yet. Upload PDFs on the
-              eSign Templates tab for each investor profile type.
+              No eSign templates are uploaded for this deal yet. Upload a PDF on the
+              eSign Templates tab.
             </p>
           ) : selectableFiles.length === 0 ? (
             <p className="deal_esign_notice deal_esign_notice--empty" role="status">
-              Uploaded documents need a saved Dropbox Sign template (status Ready)
-              before they can be sent. Complete setup on the eSign Templates tab.
+              Uploaded documents need a saved eSign template (status Ready) before they
+              can be sent. Complete setup on the eSign Templates tab.
             </p>
           ) : (
             <>
@@ -331,7 +371,12 @@ export function SendEsignDocumentsModal({
                 })}
               </div>
 
-              {!investorCategoryId ? (
+              {usesUnifiedTemplate ? (
+                <p className="deal_esign_notice" role="note">
+                  Unified template — investors only see fields scoped to their profile (
+                  {profileLabel}) when signing.
+                </p>
+              ) : !investorCategoryId ? (
                 <p className="deal_esign_notice" role="note">
                   This investor has no profile type set. You can still send any ready
                   document above.

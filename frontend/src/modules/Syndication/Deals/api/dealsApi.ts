@@ -1,4 +1,5 @@
 import { isPlatformAdmin } from "../../../../common/auth/roleUtils"
+import { isAccessibleCompanyId } from "../../../../common/auth/sessionMemberships"
 import {
   organizationIdQueryParam,
   portalAuthHeaders,
@@ -105,8 +106,10 @@ export interface DealDetailApi {
   listRow: DealListRow
 }
 
-function authHeaders(): HeadersInit {
-  return portalAuthHeaders()
+function authHeaders(options?: {
+  omitActiveOrganization?: boolean
+}): HeadersInit {
+  return portalAuthHeaders(options)
 }
 
 /**
@@ -328,6 +331,23 @@ function normalizeDealListRow(
     ...(galleryCoverImageUrl !== undefined
       ? { galleryCoverImageUrl }
       : {}),
+    ...(() => {
+      const v = firstDefined(r, ["rosterReadable", "roster_readable"])
+      if (v === true || v === "true" || v === 1 || v === "1") {
+        return { rosterReadable: true as const }
+      }
+      if (v === false || v === "false" || v === 0 || v === "0") {
+        return { rosterReadable: false as const }
+      }
+      return {}
+    })(),
+    ...(firstDefined(r, ["yourRole", "your_role"]) != null
+      ? {
+          yourRole: str(
+            firstDefined(r, ["yourRole", "your_role"]) ?? raw.yourRole,
+          ),
+        }
+      : {}),
   }
 }
 
@@ -343,22 +363,29 @@ export async function fetchDealsList(options?: {
 }): Promise<DealListRow[]> {
   const base = getApiV1Base()
   if (!base) return []
+  const includeParticipantDeals = options?.includeParticipantDeals === true
   const params = new URLSearchParams()
-  if (options?.includeParticipantDeals === true) {
+  if (includeParticipantDeals) {
     params.set("includeParticipantDeals", "1")
   } else {
     const explicitOrg = options?.organizationId?.trim()
-    if (explicitOrg) {
+    if (explicitOrg && isAccessibleCompanyId(explicitOrg)) {
       params.set("organizationId", explicitOrg)
     } else if (!isPlatformAdmin()) {
       const activeOrg = organizationIdQueryParam()
-      if (activeOrg) params.set("organizationId", activeOrg)
+      if (activeOrg && isAccessibleCompanyId(activeOrg)) {
+        params.set("organizationId", activeOrg)
+      }
     }
   }
   const q = params.toString() ? `?${params.toString()}` : ""
   try {
     const res = await fetch(`${base}/deals${q}`, {
-      headers: { ...authHeaders() },
+      headers: {
+        ...authHeaders(
+          includeParticipantDeals ? { omitActiveOrganization: true } : undefined,
+        ),
+      },
       credentials: "include",
     })
     const data = (await res.json().catch(() => ({}))) as {
@@ -618,7 +645,7 @@ export async function fetchDealById(dealId: string): Promise<DealDetailApi> {
   const base = getApiV1Base()
   if (!base) throw new Error("VITE_BASE_URL is not configured.")
   const res = await fetch(`${base}/deals/${encodeURIComponent(dealId)}`, {
-    headers: { ...authHeaders() },
+    headers: { ...authHeaders({ omitActiveOrganization: true }) },
     credentials: "include",
   })
   const data = (await res.json().catch(() => ({}))) as {
@@ -632,14 +659,27 @@ export async function fetchDealById(dealId: string): Promise<DealDetailApi> {
   return normalizeDealDetailApi(d)
 }
 
+export type OfferingPreviewTokenResponse = {
+  token: string
+  sponsorRef?: string | null
+}
+
 /**
  * Authenticated: encrypted token for LP preview URLs (hides deal UUID).
+ * When the viewer is a sponsor on the deal, also returns a sponsor-specific `ref` token.
  */
-export async function fetchOfferingPreviewToken(dealId: string): Promise<string> {
+export async function fetchOfferingPreviewToken(
+  dealId: string,
+  options?: { sponsorContactId?: string },
+): Promise<OfferingPreviewTokenResponse> {
   const base = getApiV1Base()
   if (!base) throw new Error("VITE_BASE_URL is not configured.")
+  const params = new URLSearchParams()
+  const sponsorContactId = options?.sponsorContactId?.trim()
+  if (sponsorContactId) params.set("sponsor_contact_id", sponsorContactId)
+  const q = params.toString()
   const res = await fetch(
-    `${base}/deals/${encodeURIComponent(dealId)}/offering-preview-token`,
+    `${base}/deals/${encodeURIComponent(dealId)}/offering-preview-token${q ? `?${q}` : ""}`,
     {
       headers: { ...authHeaders() },
       credentials: "include",
@@ -648,6 +688,7 @@ export async function fetchOfferingPreviewToken(dealId: string): Promise<string>
   const data = (await res.json().catch(() => ({}))) as {
     token?: string
     previewToken?: string
+    sponsorRef?: string | null
     message?: string
   }
   if (!res.ok) {
@@ -661,7 +702,13 @@ export async function fetchOfferingPreviewToken(dealId: string): Promise<string>
   if (typeof t !== "string" || !t.trim()) {
     throw new Error("Invalid preview token response.")
   }
-  return t.trim()
+  return {
+    token: t.trim(),
+    sponsorRef:
+      typeof data.sponsorRef === "string" && data.sponsorRef.trim()
+        ? data.sponsorRef.trim()
+        : null,
+  }
 }
 
 export type OfferingPreviewShareEmailFailure = {
@@ -723,13 +770,18 @@ function publicOfferingPortfolioPagePrefix(): string {
   return baseSeg ? `/${baseSeg}` : ""
 }
 
-/** LP share link (no login): `/offering_portfolio?preview=<encrypted token>`. */
-export function buildPublicOfferingPreviewPageUrl(previewToken: string): string {
+/** LP share link (no login): `/offering_portfolio?preview=<encrypted token>[&ref=<sponsor ref>]`. */
+export function buildPublicOfferingPreviewPageUrl(
+  previewToken: string,
+  options?: { sponsorRef?: string | null },
+): string {
   const prefix = publicOfferingPortfolioPagePrefix()
   const origin =
     typeof window !== "undefined" ? window.location.origin : ""
   const params = new URLSearchParams()
   params.set("preview", previewToken)
+  const ref = options?.sponsorRef?.trim()
+  if (ref) params.set("ref", ref)
   return `${origin}${prefix}/offering_portfolio?${params.toString()}`
 }
 
@@ -760,15 +812,28 @@ function isDealUuidForOfferingPreview(id: string): boolean {
  */
 export async function buildDealOfferingPreviewShareUrl(
   dealId: string,
-  options?: { previewToken?: string | null },
+  options?: {
+    previewToken?: string | null
+    sponsorRef?: string | null
+    sponsorContactId?: string
+  },
 ): Promise<string> {
   const id = dealId.trim()
   if (!id) throw new Error("Missing deal id.")
-  const cached = options?.previewToken?.trim()
-  if (cached) return buildPublicOfferingPreviewPageUrl(cached)
+  const cachedToken = options?.previewToken?.trim()
+  const cachedRef = options?.sponsorRef?.trim()
+  if (cachedToken) {
+    return buildPublicOfferingPreviewPageUrl(cachedToken, {
+      sponsorRef: cachedRef,
+    })
+  }
   try {
-    const token = await fetchOfferingPreviewToken(id)
-    return buildPublicOfferingPreviewPageUrl(token)
+    const { token, sponsorRef } = await fetchOfferingPreviewToken(id, {
+      sponsorContactId: options?.sponsorContactId,
+    })
+    return buildPublicOfferingPreviewPageUrl(token, {
+      sponsorRef: cachedRef ?? sponsorRef,
+    })
   } catch {
     if (isDealUuidForOfferingPreview(id))
       return buildLegacyPublicOfferingPreviewPageUrl(id)
@@ -782,15 +847,22 @@ export async function buildDealOfferingPreviewShareUrl(
  */
 export async function fetchPublicOfferingPreview(
   previewQueryValue: string,
+  options?: { sponsorRef?: string | null },
 ): Promise<{
   deal: DealDetailApi
   investorClasses: DealInvestorClass[]
   investorsPayload: DealInvestorsPayload
+  referringSponsorDisplayName?: string
+  referringSponsorRef?: string
 }> {
   const base = getApiV1Base()
   if (!base) throw new Error("VITE_BASE_URL is not configured.")
+  const params = new URLSearchParams()
+  params.set("preview", previewQueryValue)
+  const ref = options?.sponsorRef?.trim()
+  if (ref) params.set("ref", ref)
   const res = await fetch(
-    `${base}/public/offering-preview?preview=${encodeURIComponent(previewQueryValue)}`,
+    `${base}/public/offering-preview?${params.toString()}`,
   )
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
@@ -827,7 +899,27 @@ export async function fetchPublicOfferingPreview(
     kpis: data.kpis,
     investors: data.investors,
   })
-  return { deal, investorClasses, investorsPayload }
+  const referringSponsorDisplayName =
+    typeof data.referringSponsorDisplayName === "string"
+      ? data.referringSponsorDisplayName.trim()
+      : typeof data.referring_sponsor_display_name === "string"
+        ? data.referring_sponsor_display_name.trim()
+        : undefined
+  const referringSponsorRef =
+    typeof data.referringSponsorRef === "string"
+      ? data.referringSponsorRef.trim()
+      : typeof data.referring_sponsor_ref === "string"
+        ? data.referring_sponsor_ref.trim()
+        : undefined
+  return {
+    deal,
+    investorClasses,
+    investorsPayload,
+    ...(referringSponsorDisplayName
+      ? { referringSponsorDisplayName }
+      : {}),
+    ...(referringSponsorRef ? { referringSponsorRef } : {}),
+  }
 }
 
 export async function patchDealInvestorSummary(
@@ -1026,6 +1118,148 @@ export async function syncCompletedEsignDocumentsToDocumentsTab(
     ok: false,
     message:
       data.message || `Could not sync esign documents (${res.status})`,
+  }
+}
+
+export type DealSponsorEsignSignerOption = {
+  rowId: string
+  name: string
+  email: string
+  role: string
+}
+
+export type DealSponsorEsignSignSessionResult =
+  | {
+      ok: true
+      alreadyCompleted: boolean
+      needsSignerSelection?: boolean
+      provider: "signflow" | "dropbox"
+      signUrl: string | null
+      clientId: string | null
+      testMode: boolean
+      configured: boolean
+      signatureRequestId: string
+      embedApiKey?: string | null
+      appBaseUrl?: string | null
+      documentId?: string | null
+      canAssignSigner: boolean
+      signerOptions: DealSponsorEsignSignerOption[]
+      assignedSignerEmail: string
+      assignedSignerName: string
+    }
+  | {
+      ok: false
+      message: string
+      code?: string
+      waitingFor?: "sponsor" | "investor"
+    }
+
+export async function fetchDealSponsorEsignSignSession(
+  dealId: string,
+  signatureRequestId: string,
+  assigneeMemberRowId?: string,
+): Promise<DealSponsorEsignSignSessionResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  }
+  const q = new URLSearchParams()
+  q.set("signatureRequestId", signatureRequestId.trim())
+  if (assigneeMemberRowId?.trim()) {
+    q.set("assigneeMemberRowId", assigneeMemberRowId.trim())
+  }
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/sponsor-esign-sign-session?${q}`,
+    {
+      headers: authHeaders(),
+      credentials: "include",
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  if (!res.ok) {
+    return {
+      ok: false,
+      message:
+        typeof data.message === "string"
+          ? data.message
+          : `Could not load sponsor signing session (${res.status})`,
+      ...(typeof data.code === "string" ? { code: data.code } : {}),
+      ...(data.waitingFor === "sponsor" || data.waitingFor === "investor"
+        ? { waitingFor: data.waitingFor }
+        : {}),
+    }
+  }
+  return {
+    ok: true,
+    alreadyCompleted: Boolean(data.alreadyCompleted),
+    needsSignerSelection: Boolean(data.needsSignerSelection),
+    provider:
+      data.provider === "signflow" || data.provider === "dropbox"
+        ? data.provider
+        : "signflow",
+    signUrl: typeof data.signUrl === "string" ? data.signUrl : null,
+    clientId: typeof data.clientId === "string" ? data.clientId : null,
+    testMode: Boolean(data.testMode),
+    configured: data.configured !== false,
+    signatureRequestId: String(data.signatureRequestId ?? signatureRequestId),
+    embedApiKey:
+      typeof data.embedApiKey === "string" ? data.embedApiKey : null,
+    appBaseUrl: typeof data.appBaseUrl === "string" ? data.appBaseUrl : null,
+    documentId: typeof data.documentId === "string" ? data.documentId : null,
+    canAssignSigner: Boolean(data.canAssignSigner),
+    signerOptions: Array.isArray(data.signerOptions)
+      ? data.signerOptions
+          .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
+          .map((o) => ({
+            rowId: String(o.rowId ?? "").trim(),
+            name: String(o.name ?? "").trim() || "—",
+            email: String(o.email ?? "").trim(),
+            role: String(o.role ?? "").trim() || "Sponsor",
+          }))
+          .filter((o) => o.rowId && o.email)
+      : [],
+    assignedSignerEmail: String(data.assignedSignerEmail ?? "").trim(),
+    assignedSignerName: String(data.assignedSignerName ?? "").trim(),
+  }
+}
+
+export async function postDealSponsorEsignSync(
+  dealId: string,
+  signatureRequestId: string,
+): Promise<
+  | { ok: true; offeringInvestorPreviewJson: string | null }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  }
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/sponsor-esign-sync`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ signatureRequestId }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    offeringInvestorPreviewJson?: string | null
+    message?: string
+  }
+  if (res.status === 200) {
+    return {
+      ok: true,
+      offeringInvestorPreviewJson: data.offeringInvestorPreviewJson ?? null,
+    }
+  }
+  return {
+    ok: false,
+    message:
+      data.message || `Could not sync sponsor eSign (${res.status})`,
   }
 }
 
@@ -1472,7 +1706,8 @@ export async function fetchDealInvestorClasses(
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/investor-classes`,
       {
-        headers: { ...authHeaders() },
+        // Match fetchDealById / fetchDealInvestors — LP invest-now is user-scoped, not active-org-scoped.
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
         credentials: "include",
       },
     )
@@ -1905,6 +2140,10 @@ function emptyInvestorsKpis(): DealInvestorsKpis {
   }
 }
 
+export function emptyDealInvestorsPayload(): DealInvestorsPayload {
+  return { kpis: emptyInvestorsKpis(), investors: [] }
+}
+
 function parseExtraContributionAmountsFromRaw(
   raw: Record<string, unknown>,
 ): string[] {
@@ -2277,9 +2516,27 @@ function normalizeDealMembersResponse(data: unknown): DealMembersPayload {
     "viewerDealMemberRole",
     "viewer_deal_member_role",
   ])
+  const leadSponsorDisplayName = str(
+    firstDefined(d, [
+      "leadSponsorDisplayName",
+      "lead_sponsor_display_name",
+    ]),
+  )
+  const referringSponsorDisplayName = str(
+    firstDefined(d, [
+      "referringSponsorDisplayName",
+      "referring_sponsor_display_name",
+    ]),
+  )
+  const referringSponsorRef = str(
+    firstDefined(d, ["referringSponsorRef", "referring_sponsor_ref"]),
+  )
   return {
     members,
     ...(viewerDealMemberRole !== undefined ? { viewerDealMemberRole } : {}),
+    ...(leadSponsorDisplayName ? { leadSponsorDisplayName } : {}),
+    ...(referringSponsorDisplayName ? { referringSponsorDisplayName } : {}),
+    ...(referringSponsorRef ? { referringSponsorRef } : {}),
   }
 }
 
@@ -2305,7 +2562,7 @@ export async function fetchDealInvestors(
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/investors${q}`,
       {
-        headers: { ...authHeaders() },
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
         credentials: "include",
       },
     )
@@ -2397,14 +2654,19 @@ export async function fetchDealCommitmentAmount(
  */
 export async function fetchDealMembers(
   dealId: string,
+  options?: { referringSponsorRef?: string | null },
 ): Promise<DealMembersPayload> {
   const base = getApiV1Base()
   if (!base) return emptyDealMembersPayload()
   try {
+    const params = new URLSearchParams()
+    const ref = options?.referringSponsorRef?.trim()
+    if (ref) params.set("referring_sponsor_ref", ref)
+    const q = params.toString()
     const res = await fetch(
-      `${base}/deals/${encodeURIComponent(dealId)}/members`,
+      `${base}/deals/${encodeURIComponent(dealId)}/members${q ? `?${q}` : ""}`,
       {
-        headers: { ...authHeaders() },
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
         credentials: "include",
       },
     )
@@ -2413,6 +2675,39 @@ export async function fetchDealMembers(
     return normalizeDealMembersResponse(data)
   } catch {
     return emptyDealMembersPayload()
+  }
+}
+
+/** Resolve sponsor display name from an offering preview `ref` token (Invest Now onboarding). */
+export async function fetchReferringSponsorDisplayName(
+  dealId: string,
+  referringSponsorRef: string,
+): Promise<string | null> {
+  const base = getApiV1Base()
+  const did = dealId.trim()
+  const ref = referringSponsorRef.trim()
+  if (!base || !did || !ref) return null
+  try {
+    const params = new URLSearchParams()
+    params.set("referring_sponsor_ref", ref)
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(did)}/referring-sponsor?${params.toString()}`,
+      {
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok) return null
+    const name =
+      typeof data.referringSponsorDisplayName === "string"
+        ? data.referringSponsorDisplayName.trim()
+        : typeof data.referring_sponsor_display_name === "string"
+          ? data.referring_sponsor_display_name.trim()
+          : ""
+    return name && name !== "—" ? name : null
+  } catch {
+    return null
   }
 }
 
@@ -2497,6 +2792,23 @@ export const DEAL_ESIGN_TEMPLATES_CHANGED_EVENT = "deal-esign-templates-changed"
 
 export type DropboxSignTemplateStatus = "none" | "draft" | "ready"
 
+/** True when template field setup is complete (SignFlow or Dropbox). */
+export function isDealEsignTemplateReady(
+  file: DealEsignTemplateFileRecord | null | undefined,
+): boolean {
+  if (!file) return false
+  if (file.esignProvider === "signflow") {
+    return file.signflowStatus === "ready" && Boolean(file.signflowDocumentId?.trim())
+  }
+  if (file.esignProvider === "dropbox") {
+    return file.dropboxSignStatus === "ready" && Boolean(file.dropboxSignTemplateId?.trim())
+  }
+  return (
+    (file.signflowStatus === "ready" && Boolean(file.signflowDocumentId?.trim())) ||
+    (file.dropboxSignStatus === "ready" && Boolean(file.dropboxSignTemplateId?.trim()))
+  )
+}
+
 export type DealEsignTemplateFileRecord = {
   id: string
   categoryId: string
@@ -2509,6 +2821,13 @@ export type DealEsignTemplateFileRecord = {
   dropboxSignStatus?: DropboxSignTemplateStatus
   dropboxSignTitle?: string
   dropboxSignSavedAt?: string
+  signflowDocumentId?: string
+  signflowStatus?: DropboxSignTemplateStatus
+  signflowTitle?: string
+  signflowSavedAt?: string
+  esignProvider?: "dropbox" | "signflow"
+  signflowWorkflowType?: "parallel" | "sequential"
+  signflowSigningOrder?: "investor_first" | "sponsor_first"
   /** PDF includes appendix W-9 form after the uploaded document. */
   includesW9Appendix?: boolean
   /** True when an investor has a filled preview or signed PDF for this profile template. */
@@ -2519,10 +2838,21 @@ export type DealEsignTemplateFileRecord = {
 export type EsignTemplateUploadMetaInput = {
   templateName: string
   includeQuestionnaire: boolean
+  signflowWorkflowType?: "parallel" | "sequential"
+  signflowSigningOrder?: "investor_first" | "sponsor_first"
 }
 
 export type FetchDealEsignDropboxSignConfigResult =
-  | { ok: true; configured: boolean; clientId: string | null; testMode: boolean }
+  | {
+      ok: true
+      configured: boolean
+      provider?: "signflow" | "dropbox"
+      clientId: string | null
+      testMode: boolean
+      embedApiKey?: string | null
+      appBaseUrl?: string | null
+      baseUrl?: string | null
+    }
   | { ok: false; message: string }
 
 /** Dropbox Sign public config (client id only — API key stays on server). */
@@ -2538,8 +2868,12 @@ export async function fetchDealEsignDropboxSignConfig(): Promise<FetchDealEsignD
     })
     const data = (await res.json().catch(() => ({}))) as {
       configured?: unknown
+      provider?: unknown
       clientId?: unknown
       testMode?: unknown
+      embedApiKey?: unknown
+      appBaseUrl?: unknown
+      baseUrl?: unknown
       message?: unknown
     }
     if (!res.ok) {
@@ -2552,8 +2886,16 @@ export async function fetchDealEsignDropboxSignConfig(): Promise<FetchDealEsignD
     return {
       ok: true,
       configured: Boolean(data.configured),
+      provider:
+        data.provider === "signflow" || data.provider === "dropbox"
+          ? data.provider
+          : undefined,
       clientId: typeof data.clientId === "string" ? data.clientId : null,
       testMode: Boolean(data.testMode),
+      embedApiKey:
+        typeof data.embedApiKey === "string" ? data.embedApiKey : null,
+      appBaseUrl: typeof data.appBaseUrl === "string" ? data.appBaseUrl : null,
+      baseUrl: typeof data.baseUrl === "string" ? data.baseUrl : null,
     }
   } catch {
     return { ok: false, message: "Network error" }
@@ -2563,11 +2905,14 @@ export async function fetchDealEsignDropboxSignConfig(): Promise<FetchDealEsignD
 export type PostDealEsignEmbeddedDraftResult =
   | {
       ok: true
+      provider?: "signflow" | "dropbox"
       editUrl: string
       templateId: string
       expiresAt: number
       clientId: string
       testMode: boolean
+      embedApiKey?: string | null
+      appBaseUrl?: string | null
       hasDocuments: boolean
       filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
     }
@@ -2600,11 +2945,14 @@ export async function postDealEsignEmbeddedDraft(
       },
     )
     const data = (await res.json().catch(() => ({}))) as {
+      provider?: unknown
       editUrl?: unknown
       templateId?: unknown
       expiresAt?: unknown
       clientId?: unknown
       testMode?: unknown
+      embedApiKey?: unknown
+      appBaseUrl?: unknown
       hasDocuments?: unknown
       filesByCategory?: unknown
       message?: unknown
@@ -2621,7 +2969,11 @@ export async function postDealEsignEmbeddedDraft(
     const editUrl = typeof data.editUrl === "string" ? data.editUrl : ""
     const templateId = typeof data.templateId === "string" ? data.templateId : ""
     const clientId = typeof data.clientId === "string" ? data.clientId : ""
-    if (!editUrl || !templateId || !clientId) {
+    const provider =
+      data.provider === "signflow" || data.provider === "dropbox"
+        ? data.provider
+        : undefined
+    if (!editUrl || !templateId || (provider !== "signflow" && !clientId)) {
       return { ok: false, message: "Invalid embedded draft response" }
     }
     const filesByCategory =
@@ -2632,11 +2984,15 @@ export async function postDealEsignEmbeddedDraft(
         : {}
     return {
       ok: true,
+      provider,
       editUrl,
       templateId,
       expiresAt: typeof data.expiresAt === "number" ? data.expiresAt : 0,
       clientId,
       testMode: Boolean(data.testMode),
+      embedApiKey:
+        typeof data.embedApiKey === "string" ? data.embedApiKey : null,
+      appBaseUrl: typeof data.appBaseUrl === "string" ? data.appBaseUrl : null,
       hasDocuments: Boolean(data.hasDocuments),
       filesByCategory,
     }
@@ -2649,6 +3005,7 @@ export type PostDealEsignCompleteEmbeddedTemplateResult =
   | {
       ok: true
       hasDocuments: boolean
+      templatesFullyConfigured?: boolean
       filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
     }
   | { ok: false; message: string }
@@ -2657,7 +3014,12 @@ export type PostDealEsignCompleteEmbeddedTemplateResult =
 export async function postDealEsignCompleteEmbeddedTemplate(
   dealId: string,
   fileId: string,
-  input: { dropboxSignTemplateId: string; title?: string },
+  input: {
+    templateId: string
+    title?: string
+    dropboxSignTemplateId?: string
+    signflowDocumentId?: string
+  },
 ): Promise<PostDealEsignCompleteEmbeddedTemplateResult> {
   const base = getApiV1Base()
   if (!base) {
@@ -2674,13 +3036,16 @@ export async function postDealEsignCompleteEmbeddedTemplate(
         },
         credentials: "include",
         body: JSON.stringify({
-          dropboxSignTemplateId: input.dropboxSignTemplateId.trim(),
+          dropboxSignTemplateId: input.dropboxSignTemplateId?.trim() ?? input.templateId?.trim(),
+          signflowDocumentId: input.signflowDocumentId?.trim() ?? input.templateId?.trim(),
+          templateId: input.templateId?.trim(),
           title: input.title?.trim() ?? "",
         }),
       },
     )
     const data = (await res.json().catch(() => ({}))) as {
       hasDocuments?: unknown
+      templatesFullyConfigured?: unknown
       filesByCategory?: unknown
       message?: unknown
     }
@@ -2700,6 +3065,10 @@ export async function postDealEsignCompleteEmbeddedTemplate(
     return {
       ok: true,
       hasDocuments: Boolean(data.hasDocuments),
+      templatesFullyConfigured:
+        typeof data.templatesFullyConfigured === "boolean"
+          ? data.templatesFullyConfigured
+          : undefined,
       filesByCategory,
     }
   } catch {
@@ -2711,6 +3080,8 @@ export type FetchDealEsignTemplatesResult =
   | {
       ok: true
       hasDocuments: boolean
+      /** Server-computed: every uploaded template is eSign-ready. */
+      templatesFullyConfigured?: boolean
       filesByCategory: Record<string, DealEsignTemplateFileRecord[]>
     }
   | { ok: false; message: string }
@@ -2721,6 +3092,7 @@ export type FetchDealEsignTemplatesResult =
 export async function fetchDealEsignTemplateViewUrl(
   dealId: string,
   fileId: string,
+  options?: { profileId?: string },
 ): Promise<
   | {
       ok: true
@@ -2735,9 +3107,16 @@ export async function fetchDealEsignTemplateViewUrl(
     return { ok: false, message: "API base URL is not configured" }
   }
   try {
+    const params = new URLSearchParams()
+    const profileId = options?.profileId?.trim()
+    if (profileId) params.set("profile_id", profileId)
+    const q = params.toString()
     const res = await fetch(
-      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}/view-url`,
-      { headers: { ...authHeaders() }, credentials: "include" },
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}/view-url${q ? `?${q}` : ""}`,
+      {
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
+        credentials: "include",
+      },
     )
     const data = (await res.json().catch(() => ({}))) as {
       viewUrl?: unknown
@@ -2772,18 +3151,27 @@ export async function fetchDealEsignTemplateViewUrl(
 
 export async function fetchDealEsignTemplates(
   dealId: string,
+  options?: { profileId?: string },
 ): Promise<FetchDealEsignTemplatesResult> {
   const base = getApiV1Base()
   if (!base) {
     return { ok: false, message: "API base URL is not configured" }
   }
   try {
+    const params = new URLSearchParams()
+    const profileId = options?.profileId?.trim()
+    if (profileId) params.set("profile_id", profileId)
+    const q = params.toString()
     const res = await fetch(
-      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates`,
-      { headers: { ...authHeaders() }, credentials: "include" },
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates${q ? `?${q}` : ""}`,
+      {
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
+        credentials: "include",
+      },
     )
     const data = (await res.json().catch(() => ({}))) as {
       hasDocuments?: unknown
+      templatesFullyConfigured?: unknown
       filesByCategory?: unknown
       message?: unknown
     }
@@ -2803,6 +3191,10 @@ export async function fetchDealEsignTemplates(
     return {
       ok: true,
       hasDocuments: Boolean(data.hasDocuments),
+      templatesFullyConfigured:
+        typeof data.templatesFullyConfigured === "boolean"
+          ? data.templatesFullyConfigured
+          : undefined,
       filesByCategory,
     }
   } catch {
@@ -2838,16 +3230,20 @@ export async function postDealEsignTemplateUploads(
   }
   const fd = new FormData()
   fd.append("categoryId", categoryId)
-  for (const u of uploads) fd.append("esignFiles", u.file)
   fd.append(
     "templateMeta",
     JSON.stringify(
       uploads.map((u) => ({
         templateName: u.meta.templateName,
         includeQuestionnaire: u.meta.includeQuestionnaire,
+        signflowWorkflowType: u.meta.signflowWorkflowType,
+        signflowSigningOrder: u.meta.signflowSigningOrder,
       })),
     ),
   )
+  for (const u of uploads) {
+    fd.append("esignFiles", u.file, u.file.name || "template.pdf")
+  }
   try {
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/esign-template-uploads`,
@@ -2864,10 +3260,17 @@ export async function postDealEsignTemplateUploads(
       message?: unknown
     }
     if (!res.ok) {
+      const fromServer =
+        typeof data.message === "string" && data.message.trim()
+          ? data.message.trim()
+          : ""
       return {
         ok: false,
         message:
-          data.message != null ? String(data.message) : "Could not upload eSign templates",
+          fromServer ||
+          (res.status
+            ? `Could not upload eSign template (HTTP ${res.status}).`
+            : "Could not upload eSign templates"),
       }
     }
     const filesByCategory =
@@ -2920,6 +3323,61 @@ export async function patchDealEsignTemplateName(
           data.message != null
             ? String(data.message)
             : "Could not update template name",
+      }
+    }
+    const filesByCategory =
+      data.filesByCategory &&
+      typeof data.filesByCategory === "object" &&
+      !Array.isArray(data.filesByCategory)
+        ? (data.filesByCategory as Record<string, DealEsignTemplateFileRecord[]>)
+        : {}
+    return {
+      ok: true,
+      hasDocuments: Boolean(data.hasDocuments),
+      filesByCategory,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
+export async function patchDealEsignTemplateSigningWorkflow(
+  dealId: string,
+  fileId: string,
+  settings: {
+    signflowWorkflowType: "parallel" | "sequential"
+    signflowSigningOrder: "investor_first" | "sponsor_first"
+  },
+): Promise<FetchDealEsignTemplatesResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}`,
+      {
+        method: "PATCH",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(settings),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      hasDocuments?: unknown
+      filesByCategory?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null
+            ? String(data.message)
+            : "Could not update signing workflow",
       }
     }
     const filesByCategory =
@@ -3161,13 +3619,22 @@ export type DealMyEsignSignSessionResult =
   | {
       ok: true
       alreadyCompleted: boolean
+      provider?: "signflow" | "dropbox"
       signUrl: string | null
       clientId: string | null
       testMode: boolean
       configured: boolean
       signatureRequestId: string | null
+      embedApiKey?: string | null
+      appBaseUrl?: string | null
+      documentId?: string | null
     }
-  | { ok: false; message: string }
+  | {
+      ok: false
+      message: string
+      code?: string
+      waitingFor?: "sponsor" | "investor"
+    }
 
 export type DealMyEsignSyncResult =
   | {
@@ -3221,27 +3688,51 @@ export async function fetchDealMyEsignSignSession(
     )
     const data = (await res.json().catch(() => ({}))) as {
       message?: unknown
+      code?: unknown
+      waitingFor?: unknown
       alreadyCompleted?: boolean
+      provider?: unknown
       signUrl?: string | null
       clientId?: string | null
       testMode?: boolean
       configured?: boolean
       signatureRequestId?: string | null
+      embedApiKey?: string | null
+      appBaseUrl?: string | null
+      documentId?: string | null
     }
     if (!res.ok) {
       const msg =
         data.message != null ? String(data.message) : res.statusText
-      return { ok: false, message: msg || "Could not load signing session" }
+      const code = data.code != null ? String(data.code) : undefined
+      const waitingFor =
+        data.waitingFor === "sponsor" || data.waitingFor === "investor"
+          ? data.waitingFor
+          : undefined
+      return {
+        ok: false,
+        message: msg || "Could not load signing session",
+        ...(code ? { code } : {}),
+        ...(waitingFor ? { waitingFor } : {}),
+      }
     }
     const sessionSig = String(data.signatureRequestId ?? "").trim()
     return {
       ok: true,
       alreadyCompleted: Boolean(data.alreadyCompleted),
+      provider:
+        data.provider === "signflow" || data.provider === "dropbox"
+          ? data.provider
+          : undefined,
       signUrl: data.signUrl ?? null,
       clientId: data.clientId ?? null,
       testMode: Boolean(data.testMode),
       configured: Boolean(data.configured),
       signatureRequestId: sessionSig || sig || null,
+      embedApiKey:
+        typeof data.embedApiKey === "string" ? data.embedApiKey : null,
+      appBaseUrl: typeof data.appBaseUrl === "string" ? data.appBaseUrl : null,
+      documentId: typeof data.documentId === "string" ? data.documentId : null,
     }
   } catch {
     return { ok: false, message: "Network error" }
@@ -3313,11 +3804,15 @@ export async function postDealMyEsignSync(
 export async function postDealMyEsignMarkViewed(
   dealId: string,
   signatureRequestId: string,
+  scope?: DealMyEsignScopeQuery,
 ): Promise<{ ok: boolean; workflowLabel?: string | null }> {
   const base = getApiV1Base()
   if (!base) return { ok: false }
   const sig = signatureRequestId.trim()
   if (!sig) return { ok: false }
+  const uip = scope?.userInvestorProfileId?.trim()
+  const inv = scope?.investmentId?.trim()
+  const profile = scope?.profileId?.trim()
   try {
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(dealId)}/my-esign-mark-viewed`,
@@ -3328,7 +3823,12 @@ export async function postDealMyEsignMarkViewed(
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ signatureRequestId: sig }),
+        body: JSON.stringify({
+          signatureRequestId: sig,
+          ...(uip ? { user_investor_profile_id: uip } : {}),
+          ...(inv ? { investment_id: inv } : {}),
+          ...(profile ? { profile_id: profile } : {}),
+        }),
       },
     )
     const data = (await res.json().catch(() => ({}))) as {

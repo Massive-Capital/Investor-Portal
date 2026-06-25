@@ -3,6 +3,8 @@ import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-inv
 import {
   investorRowCommittedNumeric,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
+import { resolveEsignTemplateForInvestorProfile } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
+import { ESIGN_UNIFIED_CATEGORY_ID } from "@/modules/Syndication/Deals/utils/esignUnifiedTemplate"
 import type { InvestorQuestionnaireConfig } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
 import { sortSections } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
 import { isQuestionnaireSectionVisibleForProfile } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaireProfileVisibility"
@@ -49,12 +51,21 @@ export function esignCategoryIdFromCommitmentProfile(
   return "individual"
 }
 
+/** @deprecated Prefer {@link resolveEsignTemplateForInvestorProfile} with commitment profile id. */
 export function esignTemplateForCategory(
   filesByCategory: Record<string, DealEsignTemplateFileRecord[]>,
   categoryId: string,
+  commitmentProfileId?: string,
 ): DealEsignTemplateFileRecord | undefined {
-  const files = filesByCategory[categoryId] ?? []
-  return files[0]
+  if (commitmentProfileId?.trim()) {
+    return resolveEsignTemplateForInvestorProfile(
+      filesByCategory,
+      commitmentProfileId,
+    )
+  }
+  const unified = filesByCategory[ESIGN_UNIFIED_CATEGORY_ID]?.[0]
+  if (unified) return unified
+  return (filesByCategory[categoryId] ?? [])[0]
 }
 
 /** Keep only documents for the investor's selected profile category (lead sponsor templates). */
@@ -65,7 +76,10 @@ export function filterMyEsignDocumentsForCategory<
   if (!cat) return documents
   return documents.filter((d) => {
     const docCat = d.categoryId?.trim()
-    return !docCat || docCat === cat
+    if (!docCat) return true
+    if (docCat === cat) return true
+    if (docCat === ESIGN_UNIFIED_CATEGORY_ID) return true
+    return false
   })
 }
 

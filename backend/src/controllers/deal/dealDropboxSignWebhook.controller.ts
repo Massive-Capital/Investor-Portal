@@ -71,6 +71,7 @@ export async function postDropboxSignWebhook(
         rosterId: parsed.rosterId || undefined,
         signatureRequestId: parsed.signatureRequestId,
         eventType: parsed.eventType,
+        eventTime: parsed.eventTime,
       });
     }
   } catch (err) {

@@ -202,6 +202,25 @@ export function previewMinimumInvestmentDisplay(
   return "—"
 }
 
+/** Minimum investment for one deal class (Invest Now amount validation). */
+export function minimumInvestmentDisplayForClass(
+  cls: DealInvestorClass | undefined,
+): string {
+  if (!cls) return "—"
+  const raw = cls.minimumInvestment?.trim()
+  if (!raw) return "—"
+  const n = parseMoneyDigits(raw)
+  if (Number.isFinite(n) && n >= 0) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(n)
+  }
+  return formatMoneyFieldDisplay(raw)
+}
+
 /** Sticky sidebar rows (wireframe Section 2). */
 export function buildOfferingSidebarSummaryRows(
   detail: DealDetailApi,

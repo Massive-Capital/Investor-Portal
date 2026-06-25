@@ -1,4 +1,4 @@
-import { ClipboardList, Plus, Upload, Users } from "lucide-react"
+import { ClipboardList, Upload, Users } from "lucide-react"
 
 import {
 
@@ -13,6 +13,7 @@ import {
 } from "react"
 
 import { DropboxSignEmbeddedEditor } from "@/common/components/dropbox-sign-embedded"
+import { SignFlowEmbeddedEditor } from "@/common/components/signflow-embedded"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 
 import { toast } from "@/common/components/Toast"
@@ -53,6 +54,12 @@ import {
   ESIGN_ENTITY_CATEGORIES,
   type EsignEntityCategory,
 } from "./esignEntityCategories"
+import {
+  dealUsesLegacyProfileTemplates,
+  dealUsesUnifiedEsignTemplate,
+  ESIGN_UNIFIED_CATEGORY,
+  ESIGN_UNIFIED_CATEGORY_ID,
+} from "../../utils/esignUnifiedTemplate"
 import { resolveEsignTemplateStageNoticeVariant } from "../../utils/esignTemplateStageNotice"
 import "@/common/components/data-table/data-table.css"
 import "./deal-esign-templates.css"
@@ -87,45 +94,23 @@ interface DealEsignTemplatesTabProps {
 
 
 type EmbeddedEditorSession = {
-
   fileId: string
-
   categoryId: string
-
+  provider?: "signflow" | "dropbox"
   editUrl: string
-
   clientId: string
-
   testMode: boolean
-
   templateId: string
-
+  templateTitle?: string
+  embedApiKey?: string | null
+  appBaseUrl?: string | null
+  sessionLoading?: boolean
 }
 
 function hasAnyEsignTemplateFiles(
   filesByCategory: Record<string, DealEsignTemplateFileRecord[]>,
 ): boolean {
   return Object.values(filesByCategory).some((files) => files.length > 0)
-}
-
-function EsignCreateTemplateButton({
-  onClick,
-  disabled,
-}: {
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      className="um_btn_primary"
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <Plus size={16} strokeWidth={2} aria-hidden />
-      Create template
-    </button>
-  )
 }
 
 function EsignProfilesTableLoader({
@@ -150,6 +135,9 @@ function EsignProfilesTableLoader({
             <th scope="col" className="deal_esign_profiles_th_includes">
               Includes
             </th>
+            <th scope="col" className="deal_esign_profiles_th_workflow">
+              Signing order
+            </th>
             {canUploadDocuments ? (
               <th scope="col" className="deal_esign_profiles_th_status">
                 Status
@@ -171,6 +159,9 @@ function EsignProfilesTableLoader({
               </td>
               <td className="deal_esign_profiles_cell_includes">
                 <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_includes" />
+              </td>
+              <td className="deal_esign_profiles_cell_workflow">
+                <span className="deal_esign_profiles_skeleton deal_esign_profiles_skeleton_workflow" />
               </td>
               {canUploadDocuments ? (
                 <td className="deal_esign_profiles_cell_status">
@@ -252,7 +243,12 @@ function DealEsignTemplatesProfilesTab({
 
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null)
 
-  const [dropboxSignConfigured, setDropboxSignConfigured] = useState(false)
+  const [esignConfigured, setEsignConfigured] = useState(false)
+  const [esignProvider, setEsignProvider] = useState<"signflow" | "dropbox" | null>(
+    null,
+  )
+  const [esignAppBaseUrl, setEsignAppBaseUrl] = useState<string | null>(null)
+  const [esignTestMode, setEsignTestMode] = useState(false)
 
   const [embeddedSession, setEmbeddedSession] = useState<EmbeddedEditorSession | null>(
 
@@ -277,11 +273,18 @@ function DealEsignTemplatesProfilesTab({
     [filesByCategory],
   )
 
-  const categoriesWithoutDocuments = useMemo(
-    () =>
-      ESIGN_ENTITY_CATEGORIES.filter(
-        (cat) => (filesByCategory[cat.id] ?? []).length === 0,
-      ),
+  const usesUnifiedTemplate = useMemo(
+    () => dealUsesUnifiedEsignTemplate(filesByCategory),
+    [filesByCategory],
+  )
+
+  const usesLegacyProfileTemplates = useMemo(
+    () => dealUsesLegacyProfileTemplates(filesByCategory),
+    [filesByCategory],
+  )
+
+  const unifiedTemplateFile = useMemo(
+    () => (filesByCategory[ESIGN_UNIFIED_CATEGORY_ID] ?? [])[0] ?? null,
     [filesByCategory],
   )
 
@@ -316,9 +319,10 @@ function DealEsignTemplatesProfilesTab({
       const cfg = await fetchDealEsignDropboxSignConfig()
 
       if (!cancelled && cfg.ok) {
-
-        setDropboxSignConfigured(cfg.configured)
-
+        setEsignConfigured(cfg.configured)
+        setEsignProvider(cfg.provider ?? null)
+        setEsignAppBaseUrl(cfg.appBaseUrl ?? null)
+        setEsignTestMode(Boolean(cfg.testMode))
       }
 
       await reload()
@@ -335,17 +339,44 @@ function DealEsignTemplatesProfilesTab({
 
   }, [reload])
 
+  useEffect(() => {
+    const base = esignAppBaseUrl?.trim()
+    if (!base || typeof document === "undefined") return
+    let link = document.querySelector<HTMLLinkElement>(
+      'link[data-esign-signflow-preconnect="true"]',
+    )
+    if (!link) {
+      link = document.createElement("link")
+      link.rel = "preconnect"
+      link.dataset.esignSignflowPreconnect = "true"
+      document.head.appendChild(link)
+    }
+    link.href = base
+  }, [esignAppBaseUrl])
+
+  const prefetchSignflowDraft = useCallback(
+    (fileId: string, title: string) => {
+      if (!esignConfigured || esignProvider === "dropbox") return
+      void postDealEsignEmbeddedDraft(dealId, fileId, { title }).then((draft) => {
+        if (draft.ok) {
+          setFilesByCategory(draft.filesByCategory)
+        }
+      })
+    },
+    [dealId, esignConfigured, esignProvider],
+  )
+
   const onCreateTemplate = useCallback(() => {
     if (!canUploadDocuments) return
-    if (categoriesWithoutDocuments.length === 0) {
+    if (usesUnifiedTemplate || usesLegacyProfileTemplates) {
       toast.error(
-        "All profile types have a template",
-        "Remove a template to upload for another profile type.",
+        "Template already exists",
+        "Remove the existing template before uploading another.",
       )
       return
     }
     setCreateModalOpen(true)
-  }, [canUploadDocuments, categoriesWithoutDocuments])
+  }, [canUploadDocuments, usesLegacyProfileTemplates, usesUnifiedTemplate])
 
   const closeCreateModal = useCallback(() => {
     if (uploading) return
@@ -354,23 +385,26 @@ function DealEsignTemplatesProfilesTab({
 
   const onConfirmCreateTemplate = useCallback(
     async (data: EsignCreateTemplateSubmit) => {
-      const existing = filesByCategory[data.categoryId] ?? []
+      const categoryId = data.categoryId.trim() || ESIGN_UNIFIED_CATEGORY_ID
+      const existing = filesByCategory[categoryId] ?? []
       if (existing.length > 0) {
         toast.error(
           "Upload not allowed",
-          "This profile type already has a document. Remove it to upload a new one.",
+          "This deal already has a template. Remove it to upload a new one.",
         )
         return
       }
 
       setUploading(true)
       try {
-        const result = await postDealEsignTemplateUploads(dealId, data.categoryId, [
+        const result = await postDealEsignTemplateUploads(dealId, categoryId, [
           {
             file: data.file,
             meta: {
               templateName: data.templateName,
               includeQuestionnaire: data.includeQuestionnaire,
+              signflowWorkflowType: data.signflowWorkflowType,
+              signflowSigningOrder: data.signflowSigningOrder,
             },
           },
         ])
@@ -379,14 +413,18 @@ function DealEsignTemplatesProfilesTab({
           notifyDealEsignTemplatesChanged(dealId)
           toast.success("Template created")
           setCreateModalOpen(false)
+          const uploaded = result.filesByCategory[categoryId]?.[0]
+          if (uploaded) {
+            prefetchSignflowDraft(uploaded.id, data.templateName.trim())
+          }
         } else {
-          toast.error("Upload failed", result.message)
+          toast.error(result.message || "Upload failed", "Could not create the eSign template.")
         }
       } finally {
         setUploading(false)
       }
     },
-    [dealId, filesByCategory],
+    [dealId, filesByCategory, prefetchSignflowDraft],
   )
 
 
@@ -434,7 +472,7 @@ function DealEsignTemplatesProfilesTab({
   const onRenameTemplate = useCallback(
     (_categoryId: string, file: DealEsignTemplateFileRecord) => {
       if (!canUploadDocuments) return
-      if (file.dropboxSignStatus !== "ready") return
+      if (file.signflowStatus !== "ready" && file.dropboxSignStatus !== "ready") return
       setRenamePending({
         fileId: file.id,
         templateName: esignTemplateDisplayName(file),
@@ -449,13 +487,27 @@ function DealEsignTemplatesProfilesTab({
 
       if (!canUploadDocuments) return
 
-      if (!dropboxSignConfigured) {
+      if (!esignConfigured) {
         toast.error(
-          "Dropbox Sign not configured",
-          "Set DROPBOX_SIGN_API_KEY and DROPBOX_SIGN_CLIENT_ID in backend .env, then restart the API.",
+          "eSign not configured",
+          "Set SIGNFLOW_API_BASE_URL and SIGNFLOW_API_KEY in backend .env (see API_INTEGRATION.md), then restart the API.",
         )
         return
       }
+
+      const displayName = esignTemplateDisplayName(file)
+
+      setEmbeddedSession({
+        fileId: file.id,
+        categoryId: file.categoryId,
+        provider: esignProvider ?? undefined,
+        editUrl: "",
+        clientId: "",
+        testMode: esignTestMode,
+        templateId: "",
+        templateTitle: displayName,
+        sessionLoading: true,
+      })
 
       void (async () => {
 
@@ -464,35 +516,29 @@ function DealEsignTemplatesProfilesTab({
         try {
 
           const draft = await postDealEsignEmbeddedDraft(dealId, file.id, {
-
-            title: esignTemplateDisplayName(file),
-
+            title: displayName,
           })
 
           if (!draft.ok) {
-
+            setEmbeddedSession(null)
             toastTemplateEditorOpenError(draft.message)
-
             return
-
           }
 
           setFilesByCategory(draft.filesByCategory)
 
           setEmbeddedSession({
-
             fileId: file.id,
-
             categoryId: file.categoryId,
-
+            provider: draft.provider ?? esignProvider ?? undefined,
             editUrl: draft.editUrl,
-
             clientId: draft.clientId,
-
             testMode: draft.testMode,
-
             templateId: draft.templateId,
-
+            templateTitle: displayName,
+            embedApiKey: draft.embedApiKey,
+            appBaseUrl: draft.appBaseUrl,
+            sessionLoading: false,
           })
 
         } finally {
@@ -505,7 +551,13 @@ function DealEsignTemplatesProfilesTab({
 
     },
 
-    [canUploadDocuments, dealId, dropboxSignConfigured],
+    [
+      canUploadDocuments,
+      dealId,
+      esignConfigured,
+      esignProvider,
+      esignTestMode,
+    ],
 
   )
 
@@ -554,7 +606,7 @@ function DealEsignTemplatesProfilesTab({
 
           {
 
-            dropboxSignTemplateId: data.templateId,
+            templateId: data.templateId,
 
             title: data.templateInfo?.title,
 
@@ -570,7 +622,10 @@ function DealEsignTemplatesProfilesTab({
 
           notifyDealEsignTemplatesChanged(dealId)
 
-          toast.success("Template saved", "Dropbox Sign template is ready for this deal.")
+          const providerLabel =
+            embeddedSession.provider === "signflow" ? "SignFlow" : "Dropbox Sign"
+
+          toast.success("Template saved", `${providerLabel} template is ready for this deal.`)
 
         } else {
 
@@ -630,67 +685,126 @@ function DealEsignTemplatesProfilesTab({
         />
       ) : (
         <>
-          <div className="deal_esign_header">
-            {/* <h3 className="deal_esign_title">Profiles</h3> */}
-            {canUploadDocuments ? (
-              <EsignCreateTemplateButton
-                onClick={onCreateTemplate}
-                disabled={uploading}
-              />
-            ) : null}
-          </div>
-
-          <div className="deal_esign_profiles_table_wrap">
-            <table className="deal_esign_profiles_table">
-              <thead>
-                <tr>
-                  <th scope="col" className="deal_esign_profiles_th_profile">
-                    Profile
-                  </th>
-                  <th scope="col" className="deal_esign_profiles_th_name">
-                    Template name
-                  </th>
-                  <th scope="col" className="deal_esign_profiles_th_includes">
-                    Includes
-                  </th>
-                  {canUploadDocuments ? (
-                    <th scope="col" className="deal_esign_profiles_th_status">
-                      Status
-                    </th>
-                  ) : null}
-                  <th scope="col" className="deal_esign_profiles_th_actions">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {ESIGN_ENTITY_CATEGORIES.map((cat) => {
-                  const file = (filesByCategory[cat.id] ?? [])[0] ?? null
-                  return (
+          {usesUnifiedTemplate && unifiedTemplateFile ? (
+            <>
+              <p className="deal_esign_unified_hint" role="note">
+                Place fields for every investor profile in one editor session. Use{" "}
+                <strong>Preview Profile Type</strong> in the editor to check field visibility
+                per profile — investors only see fields scoped to their profile when signing.
+              </p>
+              <div className="deal_esign_profiles_table_wrap">
+                <table className="deal_esign_profiles_table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="deal_esign_profiles_th_profile">
+                        Scope
+                      </th>
+                      <th scope="col" className="deal_esign_profiles_th_name">
+                        Template name
+                      </th>
+                      <th scope="col" className="deal_esign_profiles_th_includes">
+                        Includes
+                      </th>
+                      <th scope="col" className="deal_esign_profiles_th_workflow">
+                        Signing order
+                      </th>
+                      {canUploadDocuments ? (
+                        <th scope="col" className="deal_esign_profiles_th_status">
+                          Status
+                        </th>
+                      ) : null}
+                      <th scope="col" className="deal_esign_profiles_th_actions">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     <EsignProfileTemplateRow
-                      key={cat.id}
-                      category={cat}
+                      category={ESIGN_UNIFIED_CATEGORY}
                       dealId={dealId}
-                      file={file}
+                      file={unifiedTemplateFile}
                       canManageDocuments={canUploadDocuments}
                       uploading={uploading}
-                      savingTemplate={file != null && savingTemplateId === file.id}
-                      dropboxSignConfigured={dropboxSignConfigured}
+                      savingTemplate={savingTemplateId === unifiedTemplateFile.id}
+                      dropboxSignConfigured={esignConfigured}
+                      esignProvider={esignProvider}
                       onRemove={() => {
-                        if (file) onRequestRemoveFile(cat.id, file.id)
+                        onRequestRemoveFile(ESIGN_UNIFIED_CATEGORY_ID, unifiedTemplateFile.id)
                       }}
                       onEditTemplate={() => {
-                        if (file) onEditTemplate(cat.id, file)
+                        onEditTemplate(ESIGN_UNIFIED_CATEGORY_ID, unifiedTemplateFile)
                       }}
                       onRenameTemplate={() => {
-                        if (file) onRenameTemplate(cat.id, file)
+                        onRenameTemplate(ESIGN_UNIFIED_CATEGORY_ID, unifiedTemplateFile)
                       }}
                     />
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : usesLegacyProfileTemplates ? (
+            <>
+              <p className="deal_esign_unified_hint deal_esign_unified_hint--legacy" role="note">
+                This deal uses legacy per-profile templates. Create a new unified template
+                after removing these, or continue editing profile-specific documents below.
+              </p>
+              <div className="deal_esign_profiles_table_wrap">
+                <table className="deal_esign_profiles_table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="deal_esign_profiles_th_profile">
+                        Profile
+                      </th>
+                      <th scope="col" className="deal_esign_profiles_th_name">
+                        Template name
+                      </th>
+                      <th scope="col" className="deal_esign_profiles_th_includes">
+                        Includes
+                      </th>
+                      <th scope="col" className="deal_esign_profiles_th_workflow">
+                        Signing order
+                      </th>
+                      {canUploadDocuments ? (
+                        <th scope="col" className="deal_esign_profiles_th_status">
+                          Status
+                        </th>
+                      ) : null}
+                      <th scope="col" className="deal_esign_profiles_th_actions">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ESIGN_ENTITY_CATEGORIES.map((cat) => {
+                      const file = (filesByCategory[cat.id] ?? [])[0] ?? null
+                      return (
+                        <EsignProfileTemplateRow
+                          key={cat.id}
+                          category={cat}
+                          dealId={dealId}
+                          file={file}
+                          canManageDocuments={canUploadDocuments}
+                          uploading={uploading}
+                          savingTemplate={file != null && savingTemplateId === file.id}
+                          dropboxSignConfigured={esignConfigured}
+                          esignProvider={esignProvider}
+                          onRemove={() => {
+                            if (file) onRequestRemoveFile(cat.id, file.id)
+                          }}
+                          onEditTemplate={() => {
+                            if (file) onEditTemplate(cat.id, file)
+                          }}
+                          onRenameTemplate={() => {
+                            if (file) onRenameTemplate(cat.id, file)
+                          }}
+                        />
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
         </>
       )}
 
@@ -698,7 +812,7 @@ function DealEsignTemplatesProfilesTab({
         open={createModalOpen}
         dealId={dealId}
         offeringInvestorPreviewJson={offeringInvestorPreviewJson}
-        categories={categoriesWithoutDocuments}
+        unifiedWorkflow
         uploading={uploading}
         onClose={closeCreateModal}
         onConfirm={onConfirmCreateTemplate}
@@ -725,31 +839,34 @@ function DealEsignTemplatesProfilesTab({
       />
 
       {embeddedSession ? (
-
-        <DropboxSignEmbeddedEditor
-
-          key={`${embeddedSession.fileId}-${embeddedSession.editUrl}`}
-
-          editUrl={embeddedSession.editUrl}
-
-          clientId={embeddedSession.clientId}
-
-          testMode={embeddedSession.testMode}
-
-          onTemplateSaved={handleEmbeddedTemplateSaved}
-
-          onCancel={() => setEmbeddedSession(null)}
-
-          onError={(message) => {
-
-            setEmbeddedSession(null)
-
-            toast.error("Dropbox Sign", message)
-
-          }}
-
-        />
-
+        embeddedSession.provider !== "dropbox" ? (
+          <SignFlowEmbeddedEditor
+            key={`${embeddedSession.fileId}-${embeddedSession.editUrl || "loading"}`}
+            editUrl={embeddedSession.editUrl}
+            documentId={embeddedSession.templateId}
+            templateTitle={embeddedSession.templateTitle}
+            sessionLoading={embeddedSession.sessionLoading}
+            onTemplateSaved={handleEmbeddedTemplateSaved}
+            onCancel={() => setEmbeddedSession(null)}
+            onError={(message) => {
+              setEmbeddedSession(null)
+              toast.error("SignFlow", message)
+            }}
+          />
+        ) : (
+          <DropboxSignEmbeddedEditor
+            key={`${embeddedSession.fileId}-${embeddedSession.editUrl}`}
+            editUrl={embeddedSession.editUrl}
+            clientId={embeddedSession.clientId}
+            testMode={embeddedSession.testMode}
+            onTemplateSaved={handleEmbeddedTemplateSaved}
+            onCancel={() => setEmbeddedSession(null)}
+            onError={(message) => {
+              setEmbeddedSession(null)
+              toast.error("Dropbox Sign", message)
+            }}
+          />
+        )
       ) : null}
 
     </div>

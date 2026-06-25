@@ -1476,7 +1476,7 @@ function ContactsPage() {
                     disabled={loading || selectedContacts.length === 0}
                   >
                     <Send size={18} strokeWidth={2} aria-hidden />
-                    Send mail
+                    Send email
                   </button>
                   <button
                     type="button"
@@ -1880,7 +1880,7 @@ function ContactsPage() {
                   strokeWidth={2}
                   aria-hidden
                 />
-                <span>Send mail</span>
+                <span>Send email</span>
               </h3>
               <button
                 type="button"

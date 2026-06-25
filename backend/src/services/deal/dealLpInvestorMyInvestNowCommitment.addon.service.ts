@@ -10,14 +10,18 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { userInvestorProfiles } from "../../schema/investing.schema/userProfileBook.schema.js";
-import { contact, dealMember, users } from "../../schema/schema.js";
+import { contact, users } from "../../schema/schema.js";
 import { dealLpInvestor, } from "../../schema/deal.schema/deal-lp-investor.schema.js";
 import {
   dealInvestment,
   type DealInvestmentInsert,
 } from "../../schema/deal.schema/deal-investment.schema.js";
 import { committedNumericFromDealInvestmentRow, insertDealInvestment, isLpInvestorRole, LP_INVESTOR_ROLE_STORED, resolveFirstInvestorClassForDeal, resolveInvestorClassForDealInvestment, } from "./dealInvestment.service.js";
+import { resolveInvestNowViewerContactOnDeal } from "./dealInvestNowViewerContact.service.js";
 import { upsertDealLpInvestor } from "./dealLpInvestor.service.js";
+import {
+  resolveOfferingPreviewSponsorAttribution,
+} from "./offeringPreviewSponsorRef.service.js";
 import {
   normalizeInvestorQuestionnaireAnswersInput,
   serializeInvestorQuestionnaireAnswers,
@@ -79,6 +83,10 @@ export type ApplyMyInvestNowCommitmentInput = {
   replaceCommittedAmount?: boolean;
   fundingMethodInBody?: boolean;
   fundingMethod?: string;
+  investorClassInBody?: boolean;
+  investorClass?: string;
+  /** Encrypted `ref=` from the sponsor offering preview link. */
+  referringSponsorRef?: string | null;
 };
 
 function normalizeCommittedAmountStored(
@@ -293,6 +301,13 @@ export async function applyMyInvestNowCommitmentAddon(
         };
     }
     const viewerUserId = String(params.viewerUserId ?? "").trim();
+    const referringSponsor = params.referringSponsorRef
+      ? await resolveOfferingPreviewSponsorAttribution(
+          params.dealId,
+          params.referringSponsorRef,
+        )
+      : null;
+    const addedByUserId = referringSponsor?.sponsorUserId || viewerUserId;
     let questionnaireAnswersJson: string | null = null;
     if (params.questionnaireAnswersInBody) {
       try {
@@ -316,64 +331,18 @@ export async function applyMyInvestNowCommitmentAddon(
         return { ok: false, message: msg };
       }
     }
-    const matchRows = await db
-        .select()
-        .from(dealLpInvestor)
-        .where(eq(dealLpInvestor.dealId, params.dealId));
-    let target;
-    for (const row of matchRows) {
-        const em = await resolveEmailForContactMemberId(row.contactMemberId);
-        if (em === e) {
-            target = row;
-            break;
-        }
-    }
-    let fallbackContactMemberId = "";
-    if (!target && viewerUserId) {
-        const memberRows = await db
-            .select({ contactMemberId: dealMember.contactMemberId })
-            .from(dealMember)
-            .where(eq(dealMember.dealId, params.dealId));
-        let contactMemberId = "";
-        const preferred = new Set([viewerUserId]);
-        const byEmail = await db
-            .select({ id: contact.id })
-            .from(contact)
-            .where(sql `lower(trim(${contact.email})) = ${e}`);
-        for (const row of byEmail) {
-            const cid = String(row.id ?? "").trim();
-            if (cid)
-                preferred.add(cid);
-        }
-        for (const row of memberRows) {
-            const cid = String(row.contactMemberId ?? "").trim();
-            if (!cid)
-                continue;
-            if (preferred.has(cid)) {
-                contactMemberId = cid;
-                break;
-            }
-        }
-        if (!contactMemberId) {
-            for (const row of memberRows) {
-                const cid = String(row.contactMemberId ?? "").trim();
-                if (!cid)
-                    continue;
-                const em = await resolveEmailForContactMemberId(cid);
-                if (em === e) {
-                    contactMemberId = cid;
-                    break;
-                }
-            }
-        }
-        if (contactMemberId)
-            fallbackContactMemberId = contactMemberId;
-    }
-    const targetContactMemberId = target?.contactMemberId || fallbackContactMemberId;
+    const resolvedContact = await resolveInvestNowViewerContactOnDeal({
+            dealId: params.dealId,
+            viewerEmailNorm: e,
+            viewerUserId,
+        });
+    let target = resolvedContact.lpInvestorRow;
+    const targetContactMemberId = resolvedContact.contactMemberId;
     if (!targetContactMemberId) {
         return {
             ok: false,
-            message: "No LP investor record for your account on this deal. Ask your sponsor to add you.",
+            message:
+                "Could not link your account to this deal. Sign in with your investing email and try again.",
         };
     }
     const invCandidates = await db
@@ -430,7 +399,10 @@ export async function applyMyInvestNowCommitmentAddon(
                 message: "Investor profile is required to record your first commitment on this deal.",
             };
         }
-        const icRaw = target?.investorClass?.trim() ?? "";
+        const icRaw =
+          params.investorClassInBody && params.investorClass !== undefined
+            ? String(params.investorClass).trim()
+            : target?.investorClass?.trim() ?? "";
         const classRes = icRaw
             ? await resolveInvestorClassForDealInvestment(params.dealId, icRaw)
             : await resolveFirstInvestorClassForDeal(params.dealId);
@@ -489,7 +461,7 @@ export async function applyMyInvestNowCommitmentAddon(
                     : (sUip.value as string | null) ?? null,
                 investorClass: classRes.storedInvestorClass,
                 sendInvitationMail: "no",
-                addedByUserId: viewerUserId,
+                addedByUserId,
                 emailFromClient: e,
                 roleFromClient: LP_INVESTOR_TABLE_ROLE,
             });
@@ -565,7 +537,7 @@ export async function applyMyInvestNowCommitmentAddon(
                     : (sUip.value as string | null) ?? null,
                 investorClass: classRes.storedInvestorClass,
                 sendInvitationMail: "no",
-                addedByUserId: viewerUserId,
+                addedByUserId,
                 emailFromClient: e,
                 roleFromClient: LP_INVESTOR_TABLE_ROLE,
             });
@@ -617,7 +589,18 @@ export async function applyMyInvestNowCommitmentAddon(
             .where(eq(dealLpInvestor.id, roster.id));
         return { ok: true };
     }
+    let resolvedInvestorClass: string | undefined;
     try {
+        if (params.investorClassInBody && params.investorClass !== undefined) {
+            const classRes = await resolveInvestorClassForDealInvestment(
+                params.dealId,
+                String(params.investorClass),
+            );
+            if (!classRes.ok) {
+                return { ok: false, message: classRes.message };
+            }
+            resolvedInvestorClass = classRes.storedInvestorClass;
+        }
         await db.transaction(async (tx) => {
             await tx.execute(sql `SELECT 1 FROM deal_investment WHERE id = ${inv.id}::uuid FOR UPDATE`);
             const [fresh] = await tx
@@ -676,6 +659,10 @@ export async function applyMyInvestNowCommitmentAddon(
                 (invPatch as { investorW9FormJson?: string | null }).investorW9FormJson =
                   w9FormJson;
             }
+            if (resolvedInvestorClass !== undefined) {
+                (invPatch as { investorClass?: string }).investorClass =
+                  resolvedInvestorClass;
+            }
             await tx
                 .update(dealInvestment)
                 .set(invPatch)
@@ -723,7 +710,7 @@ export async function applyMyInvestNowCommitmentAddon(
                 : (sUip.value as string | null) ?? null,
             investorClass: classRes.storedInvestorClass,
             sendInvitationMail: "no",
-            addedByUserId: viewerUserId,
+            addedByUserId,
             emailFromClient: e,
             roleFromClient: LP_INVESTOR_TABLE_ROLE,
         });
@@ -735,6 +722,9 @@ export async function applyMyInvestNowCommitmentAddon(
         updatedAt: now,
         ...(profileOpt ? { profileId: profileOpt } : {}),
         ...(!sUip.skip ? { userInvestorProfileId: sUip.value as string | null } : {}),
+        ...(resolvedInvestorClass !== undefined
+          ? { investorClass: resolvedInvestorClass }
+          : {}),
     })
         .where(eq(dealLpInvestor.id, target.id));
     return { ok: true };

@@ -10,10 +10,12 @@ import { users } from "../../schema/schema.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
 import type { AddDealFormRow } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
+  assertDealIdReadableOrAssignedParticipant,
   getAddDealFormForViewer,
   getAddDealFormForViewerOrAssignedParticipant,
   getAddDealFormForViewerWithDraftCreatorRepair,
   listDealsForViewer,
+  listDealsForViewerIncludingAssignedParticipation,
   resolveDealViewerScope,
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
@@ -24,6 +26,13 @@ import {
   userHasAccessToOrganization,
 } from "../../services/org/orgResolution.service.js";
 import { sendOfferingPreviewShareEmails } from "../../services/deal/offeringPreviewShareEmail.service.js";
+import {
+  decodeOfferingPreviewSponsorRefParam,
+  mintOfferingPreviewSponsorRef,
+  resolveDealMemberPortalUserId,
+  resolveOfferingPreviewSponsorAttribution,
+} from "../../services/deal/offeringPreviewSponsorRef.service.js";
+import { isPortalUserSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { canInvestorAccessPublicOffering } from "../../constants/deal-lifecycle/index.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
 import {
@@ -236,33 +245,26 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
           ? String(orgQ[0] ?? "").trim()
           : "";
 
-    const requestedOrg = requestedOrganizationIdFromRequest(req);
-    const scope = await resolveDealViewerScope(
-      user.id,
-      user.userRole,
-      requestedOrg,
-    );
-
     const incRaw = req.query.includeParticipantDeals;
     const includeParticipantDeals =
       incRaw === "true" ||
       incRaw === "1" ||
       String(incRaw ?? "").toLowerCase() === "yes";
 
+    const requestedOrg = includeParticipantDeals
+      ? null
+      : requestedOrganizationIdFromRequest(req);
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrg,
+    );
+
     let rows: AddDealFormRow[];
     let includeParticipantViewerEmailNorm = "";
 
-    if (orgParam && DEALS_ORG_UUID_RE.test(orgParam)) {
-      if (!scope.isPlatformAdmin) {
-        const allowed = await userHasAccessToOrganization(user.id, orgParam);
-        if (!allowed) {
-          res.status(403).json({ message: "Not allowed" });
-          return;
-        }
-      }
-      rows = await listAddDealFormsByOrganizationId(orgParam);
-    } else {
-      if (includeParticipantDeals && !scope.seesAllDeals) {
+    if (includeParticipantDeals) {
+      if (!scope.seesAllDeals) {
         const [uRow] = await db
           .select({ email: users.email })
           .from(users)
@@ -282,8 +284,19 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
             ? await listAddDealFormsByIds(participantDealIds)
             : [];
       } else {
-        rows = await listDealsForViewer(scope);
+        rows = await listDealsForViewerIncludingAssignedParticipation(scope);
       }
+    } else if (orgParam && DEALS_ORG_UUID_RE.test(orgParam)) {
+      if (!scope.isPlatformAdmin) {
+        const allowed = await userHasAccessToOrganization(user.id, orgParam);
+        if (!allowed) {
+          res.status(403).json({ message: "Not allowed" });
+          return;
+        }
+      }
+      rows = await listAddDealFormsByOrganizationId(orgParam);
+    } else {
+      rows = await listDealsForViewer(scope);
     }
 
     const dealIds = rows.map((r) => String(r.id ?? ""));
@@ -330,11 +343,18 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
           }).listRow,
           ...enriched,
         };
-        if (!shouldAttachLpRole) return listRow;
-        return {
-          ...listRow,
-          yourRole: lpRoleByDealId.get(id) ?? "LP Investor",
-        };
+        const withRole = !shouldAttachLpRole
+          ? listRow
+          : {
+              ...listRow,
+              yourRole: lpRoleByDealId.get(id) ?? "LP Investor",
+            };
+        if (!includeParticipantDeals) return withRole;
+        const rosterReadable = await assertDealIdReadableOrAssignedParticipant(
+          id,
+          scope,
+        );
+        return { ...withRole, rosterReadable };
       }),
     );
 
@@ -563,6 +583,43 @@ export async function patchDealOfferingOverview(
     }
     console.error("patchDealOfferingOverview:", err);
     res.status(500).json({ message: "Could not update offering overview" });
+  }
+}
+
+export async function getDealOfferingInvestorPreview(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const rawId = req.params.dealId;
+  const dealId = typeof rawId === "string" ? rawId : rawId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  try {
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    const row = await getAddDealFormForViewerOrAssignedParticipant(dealId, scope);
+    if (!row) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    res.status(200).json({
+      offeringInvestorPreviewJson: row.offeringInvestorPreviewJson ?? null,
+    });
+  } catch (err) {
+    console.error("getDealOfferingInvestorPreview:", err);
+    res.status(500).json({
+      message: "Could not load offering investor preview",
+    });
   }
 }
 
@@ -1017,7 +1074,37 @@ export async function getOfferingPreviewToken(
       return;
     }
     const token = encryptOfferingPreviewDealId(dealIdParam);
-    res.status(200).json({ token, previewToken: token });
+    let sponsorRef: string | undefined;
+    const sponsorContactRaw =
+      req.query.sponsor_contact_id ?? req.query.sponsorContactId;
+    const sponsorContactId =
+      typeof sponsorContactRaw === "string"
+        ? sponsorContactRaw.trim()
+        : Array.isArray(sponsorContactRaw) && typeof sponsorContactRaw[0] === "string"
+          ? sponsorContactRaw[0].trim()
+          : "";
+    let sponsorUserId = user.id;
+    if (sponsorContactId) {
+      const resolved = await resolveDealMemberPortalUserId(
+        dealIdParam,
+        sponsorContactId,
+      );
+      if (!resolved) {
+        res.status(400).json({
+          message:
+            "Could not create a sponsor-specific link for that team member.",
+        });
+        return;
+      }
+      sponsorUserId = resolved;
+    } else if (!(await isPortalUserSponsorOnDeal(dealIdParam, user.id))) {
+      sponsorUserId = "";
+    }
+    if (sponsorUserId) {
+      const ref = await mintOfferingPreviewSponsorRef(dealIdParam, sponsorUserId);
+      if (ref) sponsorRef = ref;
+    }
+    res.status(200).json({ token, previewToken: token, sponsorRef });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("OFFERING_PREVIEW_SECRET")) {
@@ -1074,7 +1161,11 @@ export async function postOfferingPreviewShareEmail(
       });
       return;
     }
-    const result = await sendOfferingPreviewShareEmails({ dealId, emails });
+    const result = await sendOfferingPreviewShareEmails({
+      dealId,
+      emails,
+      sharingUserId: user.id,
+    });
     res.status(200).json({
       message:
         result.sent > 0
@@ -1153,6 +1244,14 @@ export async function getPublicOfferingPreview(
     res.status(400).json({ message: "Invalid preview link." });
     return;
   }
+  const refRaw = req.query.ref;
+  const sponsorRefValue = decodeOfferingPreviewSponsorRefParam(
+    typeof refRaw === "string"
+      ? refRaw
+      : Array.isArray(refRaw) && typeof refRaw[0] === "string"
+        ? refRaw[0]
+        : "",
+  );
   try {
     const row = await getAddDealFormById(dealId);
     if (!row) {
@@ -1167,6 +1266,9 @@ export async function getPublicOfferingPreview(
       });
       return;
     }
+    const referringSponsor = sponsorRefValue
+      ? await resolveOfferingPreviewSponsorAttribution(dealId, sponsorRefValue)
+      : null;
     const deal = await mapRowToJsonWithInvestmentCount(row, null);
     const classRows = await listInvestorClassesByDealId(dealId);
     const invRows = await listDealInvestmentsByDealId(dealId, {
@@ -1179,6 +1281,12 @@ export async function getPublicOfferingPreview(
       investorClasses: classRows.map(mapInvestorClassRowToJson),
       kpis,
       investors,
+      ...(referringSponsor
+        ? {
+            referringSponsorDisplayName: referringSponsor.displayName,
+            referringSponsorRef: sponsorRefValue,
+          }
+        : {}),
     });
   } catch (err) {
     console.error("getPublicOfferingPreview:", err);

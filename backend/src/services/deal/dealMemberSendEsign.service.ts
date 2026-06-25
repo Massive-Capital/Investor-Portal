@@ -6,24 +6,61 @@ import {
   buildDealMemberSendEsignEmailHtml,
   buildDealMemberSendEsignEmailText,
 } from "../../functions/dealMemberSendEsign.template.js";
+import { getActiveEsignProvider } from "../../config/esignProvider.config.js";
 import { getAddDealFormById } from "./dealForm.service.js";
 import { buildDealMemberInviteLandingUrl } from "./dealMemberInviteToken.service.js";
+import {
+  applyInvestorPreviewToEsignDocuments,
+  createInvestorSignatureRequestDropbox,
+  type CreateInvestorSignatureRequestResult,
+} from "./dealMemberSendEsignDropbox.service.js";
+import { createInvestorSignatureRequestSignflow } from "./dealMemberSendEsignSignflow.service.js";
+import type { EsignTemplateFileRecord } from "./dealEsignTemplates.service.js";
+import type { InvestorEsignRowTarget } from "./dealMemberEsignStatus.service.js";
+import type { InvestorQuestionnaireAnswersMap } from "./investorQuestionnaireAnswers.service.js";
+import type { InvestorW9FormData } from "./investorW9Form.service.js";
 
-const SENDER_DISPLAY_NAME =
-  process.env.SENDER_DISPLAY_NAME?.trim() || "SyndicationX";
+const SENDER_DISPLAY_NAME = process.env.SENDER_DISPLAY_NAME?.trim() || "SyndicationX";
 
-export interface SendDealMemberSendEsignParams {
+export type { CreateInvestorSignatureRequestResult };
+
+export async function createInvestorSignatureRequest(params: {
+  dealId: string;
+  rosterId: string;
+  toEmail: string;
+  memberDisplayName?: string;
+  dealName: string;
+  selectedFiles: EsignTemplateFileRecord[];
+  esignTarget?: InvestorEsignRowTarget | null;
+  commitmentProfileId?: string;
+  questionnaireAnswers?: InvestorQuestionnaireAnswersMap | null;
+  w9FormData?: InvestorW9FormData | null;
+  investmentId?: string;
+  investorId?: string;
+}): Promise<CreateInvestorSignatureRequestResult | null> {
+  const provider = getActiveEsignProvider();
+  if (provider === "signflow") {
+    return createInvestorSignatureRequestSignflow(params);
+  }
+  if (provider === "dropbox") {
+    return createInvestorSignatureRequestDropbox(params);
+  }
+  return null;
+}
+
+export { applyInvestorPreviewToEsignDocuments };
+
+export {
+  esignDocumentsFromSelectedFiles,
+  esignTemplateDisplayNameForFile,
+} from "./dealMemberSendEsignDropbox.service.js";
+
+export async function sendDealMemberSendEsignEmail(params: {
   dealId: string;
   toEmail: string;
   memberDisplayName?: string;
   documentNames?: string[];
-  /** @deprecated Raw Dropbox sign_url must not be emailed — use signPageUrl. */
-  signUrl?: string;
-}
-
-export async function sendDealMemberSendEsignEmail(
-  params: SendDealMemberSendEsignParams,
-): Promise<{ ok: true } | { ok: false; error: unknown }> {
+}): Promise<{ ok: true } | { ok: false; error: unknown }> {
   const to = params.toEmail.trim().toLowerCase();
   if (!to.includes("@")) {
     return { ok: false, error: new Error("Invalid recipient email") };
@@ -32,7 +69,6 @@ export async function sendDealMemberSendEsignEmail(
   const deal = await getAddDealFormById(params.dealId);
   const dealName = deal?.dealName?.trim() || "this deal";
   const memberDisplayName = params.memberDisplayName?.trim() || "";
-  /** Same deal-invite onboarding link as investor invitation emails (not the eSign document URL). */
   const portalUrl =
     (await buildDealMemberInviteLandingUrl(params.dealId, to)) || "";
 
@@ -47,15 +83,11 @@ export async function sendDealMemberSendEsignEmail(
     }
 
     const subject =
-      process.env.DEAL_MEMBER_ESIGN_SUBJECT?.trim()?.replace(
-        /\{dealName\}/g,
-        dealName,
-      ) || `eSign documents ready — ${dealName}`;
-
+      process.env.DEAL_MEMBER_ESIGN_SUBJECT?.trim()?.replace(/\{dealName\}/g, dealName) ||
+      `eSign documents ready — ${dealName}`;
     const documentNames = (params.documentNames ?? [])
       .map((n) => n.trim())
       .filter(Boolean);
-
     const templateVars = {
       dealName,
       memberDisplayName,
@@ -64,7 +96,6 @@ export async function sendDealMemberSendEsignEmail(
       senderBrand: SENDER_DISPLAY_NAME,
       documentNames,
     };
-
     const ccBcc = outgoingMailCcBcc();
     await transporter.sendMail({
       from: {
@@ -83,7 +114,6 @@ export async function sendDealMemberSendEsignEmail(
       text: buildDealMemberSendEsignEmailText(templateVars),
       html: buildDealMemberSendEsignEmailHtml(templateVars),
     });
-
     return { ok: true };
   } catch (error) {
     return { ok: false, error };

@@ -1093,7 +1093,7 @@ export default function CompanyMembersPage() {
               }}
             >
               <Send size={18} strokeWidth={2} aria-hidden />
-              Send mail
+              Send email
             </button>
             <button
               type="button"
@@ -1126,7 +1126,7 @@ export default function CompanyMembersPage() {
           <p className="um_toolbar_notice cp_company_members_selection_notice" role="status">
             {selectedMemberRows.length} member
             {selectedMemberRows.length === 1 ? "" : "s"} selected. Click{" "}
-            <strong>Send mail</strong> to compose a message for{" "}
+            <strong>Send email</strong> to compose a message for{" "}
             <strong>{titleCompany}</strong>.
           </p>
         ) : null}
@@ -1425,7 +1425,7 @@ export default function CompanyMembersPage() {
                   strokeWidth={2}
                   aria-hidden
                 />
-                <span>Send mail to selected members</span>
+                <span>Send email to selected members</span>
               </h3>
               <button
                 type="button"

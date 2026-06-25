@@ -6,8 +6,8 @@ import type { InvestmentDocumentAudienceContext } from "@/modules/Investing/page
 import {
   dealHasOfferingDocumentSections,
   EMPTY_INVESTMENT_DOCUMENT_AUDIENCE,
+  filterInvestorOfferingDocumentSectionGroups,
   listInvestmentDetailDocumentSectionGroups,
-  type InvestmentDetailDocumentSectionGroup,
 } from "@/modules/Investing/pages/investments/utils/investmentDetailDocuments"
 import { refreshInvestmentDealDocumentsPreview } from "@/modules/Investing/pages/investments/utils/refreshInvestmentDealDocumentsPreview"
 import { bindInvestmentOfferingDocumentsAutoRefresh } from "@/modules/Investing/pages/investments/utils/bindInvestmentOfferingDocumentsAutoRefresh"
@@ -15,34 +15,6 @@ import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "@/modules/Syndication/D
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import "../lp-deal-details.css"
-
-function filterOfferingDocumentSections(
-  sections: InvestmentDetailDocumentSectionGroup[],
-  query: string,
-): InvestmentDetailDocumentSectionGroup[] {
-  const q = query.trim().toLowerCase()
-  return sections
-    .filter((section) => section.totalOnDeal > 0)
-    .map((section) => {
-      if (!q) return section
-      const sectionLabelMatches = section.sectionLabel.toLowerCase().includes(q)
-      const documents = section.documents.filter((d) => {
-        const blob = [d.name, d.sectionLabel, section.sectionLabel]
-          .join(" ")
-          .toLowerCase()
-        return blob.includes(q)
-      })
-      if (sectionLabelMatches) return section
-      return { ...section, documents }
-    })
-    .filter((section) => {
-      if (!q) return true
-      return (
-        section.documents.length > 0 ||
-        section.sectionLabel.toLowerCase().includes(q)
-      )
-    })
-}
 
 type LpDealOfferingDocumentsPanelProps = {
   dealId: string
@@ -132,7 +104,7 @@ export function LpDealOfferingDocumentsPanel({
   )
 
   const filteredOfferingSections = useMemo(
-    () => filterOfferingDocumentSections(offeringDocumentSections, query),
+    () => filterInvestorOfferingDocumentSectionGroups(offeringDocumentSections, query),
     [offeringDocumentSections, query],
   )
 

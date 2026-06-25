@@ -1,4 +1,6 @@
-export type ToastVariant = "success" | "error";
+export type ToastVariant = "success" | "error" | "warning";
+
+export type ToastPlacement = "bottom-right" | "top-center";
 
 export type ToastRecord = {
   id: string;
@@ -6,6 +8,7 @@ export type ToastRecord = {
   title: string;
   description?: string;
   duration: number;
+  placement: ToastPlacement;
 };
 
 let toasts: ToastRecord[] = [];
@@ -36,12 +39,16 @@ export function dismissToast(id: string): void {
 }
 
 function pushToast(
-  partial: Omit<ToastRecord, "id" | "duration"> & { duration?: number },
+  partial: Omit<ToastRecord, "id" | "duration"> & {
+    duration?: number;
+    placement?: ToastPlacement;
+  },
 ): string {
   const id = crypto.randomUUID();
   const duration = partial.duration ?? 5000;
-  const { duration: _d, ...rest } = partial;
-  toasts = [...toasts, { ...rest, id, duration }];
+  const placement = partial.placement ?? "bottom-right";
+  const { duration: _d, placement: _p, ...rest } = partial;
+  toasts = [...toasts, { ...rest, id, duration, placement }];
   emit();
   const tid = window.setTimeout(() => dismissToast(id), duration);
   timeouts.set(id, tid);
@@ -59,6 +66,7 @@ export const toast = {
       title,
       description,
       duration: durationMs,
+      placement: "bottom-right",
     });
   },
   error(title: string, description?: string, durationMs?: number): string {
@@ -67,6 +75,16 @@ export const toast = {
       title,
       description,
       duration: durationMs,
+      placement: "bottom-right",
+    });
+  },
+  warning(title: string, description?: string, durationMs?: number): string {
+    return pushToast({
+      variant: "warning",
+      title,
+      description,
+      duration: durationMs,
+      placement: "top-center",
     });
   },
   dismiss: dismissToast,

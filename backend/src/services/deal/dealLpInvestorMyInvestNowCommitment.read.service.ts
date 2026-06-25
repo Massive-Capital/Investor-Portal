@@ -9,6 +9,11 @@ import {
   type InvestorW9FormData,
 } from "./investorW9Form.service.js";
 import { isLpInvestorRole } from "./dealInvestment.service.js";
+import { resolveInvestNowViewerContactOnDeal } from "./dealInvestNowViewerContact.service.js";
+
+function normContactKey(s: string | null | undefined): string {
+  return String(s ?? "").trim().toLowerCase();
+}
 
 export type MyInvestNowCommitmentReadResult =
   | {
@@ -18,6 +23,7 @@ export type MyInvestNowCommitmentReadResult =
       userInvestorProfileId: string;
       committedAmount: string;
       fundingMethod: string;
+      investorClass: string;
       status: string;
       docSignedDate: string | null;
       questionnaireAnswers: Record<string, string>;
@@ -66,12 +72,25 @@ export async function readMyInvestNowCommitment(
     email,
     userId: viewerUserId,
   });
+  const viewerContact = await resolveInvestNowViewerContactOnDeal({
+    dealId,
+    viewerEmailNorm: email,
+    viewerUserId,
+  });
+  const viewerContactKey = normContactKey(viewerContact.contactMemberId);
 
   const rows = await db
     .select()
     .from(dealInvestment)
     .where(eq(dealInvestment.dealId, dealId))
     .orderBy(desc(dealInvestment.createdAt));
+
+  const rowOwnedByViewer = (row: (typeof rows)[number]): boolean => {
+    const cid = normContactKey(row.contactId);
+    if (!cid) return false;
+    if (contactKeys.has(cid)) return true;
+    return Boolean(viewerContactKey && cid === viewerContactKey);
+  };
 
   let match: (typeof rows)[number] | undefined;
 
@@ -80,13 +99,12 @@ export async function readMyInvestNowCommitment(
       (r) =>
         String(r.id).toLowerCase() === investmentId.toLowerCase() &&
         isLpInvestorRole(r.investor_role) &&
-        contactKeys.has(String(r.contactId ?? "").trim().toLowerCase()),
+        rowOwnedByViewer(r),
     );
   } else {
     for (const r of rows) {
       if (!isLpInvestorRole(r.investor_role)) continue;
-      const cid = String(r.contactId ?? "").trim().toLowerCase();
-      if (!contactKeys.has(cid)) continue;
+      if (!rowOwnedByViewer(r)) continue;
       if (uip) {
         const rowUip = String(r.userInvestorProfileId ?? "").trim().toLowerCase();
         if (rowUip !== uip.toLowerCase()) continue;
@@ -115,6 +133,7 @@ export async function readMyInvestNowCommitment(
     userInvestorProfileId: String(match.userInvestorProfileId ?? "").trim(),
     committedAmount: String(match.commitmentAmount ?? "").trim(),
     fundingMethod: String(match.fundingMethod ?? "").trim(),
+    investorClass: String(match.investorClass ?? "").trim(),
     status: String(match.status ?? "").trim(),
     docSignedDate: match.docSignedDate?.trim() || null,
     questionnaireAnswers: answers ?? {},

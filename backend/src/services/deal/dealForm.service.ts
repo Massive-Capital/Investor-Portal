@@ -22,6 +22,7 @@ import { sanitizeKeyHighlightsJson } from "../../utils/sanitizeKeyHighlightsJson
 import { encryptOfferingPreviewDealId } from "../../utils/offeringPreviewCrypto.js";
 import {
   isDealStatus,
+  isDealStageDraft,
   normalizeDealStageCanonical,
   normalizeDealStatus,
   resolveOfferingStatusForStageChange,
@@ -30,9 +31,12 @@ import {
 } from "../../constants/deal-lifecycle/index.js";
 import {
   dealEsignTemplatesFullyConfigured,
+  formatIncompleteEsignTemplateNames,
   getDealEsignTemplatesState,
+  listIncompleteEsignTemplates,
 } from "./dealEsignTemplates.service.js";
 import { listDealIdsAssignedToUser } from "./assigningDealUser.service.js";
+import { listInvestorClassesByDealId } from "./dealInvestorClass.service.js";
 import {
   isCloudinaryConfigured,
   isCloudinaryDeliveryUrl,
@@ -656,9 +660,14 @@ async function assertOfferingStatusChangeAllowed(params: {
 
   const esignState = await getDealEsignTemplatesState(params.dealId);
   if (!dealEsignTemplatesFullyConfigured(esignState)) {
+    const incomplete = listIncompleteEsignTemplates(esignState);
+    const detail =
+      incomplete.length > 0
+        ? ` Finish setup for: ${formatIncompleteEsignTemplateNames(incomplete)}.`
+        : " Upload at least one PDF template and complete field placement in the e-sign editor.";
     throwOfferingOverviewValidation({
       offering_status:
-        "E-sign templates are not configured for this deal. Create and complete e-sign setup before enabling Open to Investment.",
+        `E-sign templates are not configured for this deal.${detail} Open the template, place signature fields for the investor profiles you support, and click Save template before enabling Open to Investment.`,
     });
   }
 }
@@ -925,11 +934,33 @@ export async function updateDealOfferingOverviewById(
       excludeDealId: id,
     });
   }
+
+  let promotedDealStage: string | undefined;
+  if (patch.offeringStatus !== undefined) {
+    const nextStatus = normalizeDealStatus(patch.offeringStatus);
+    if (
+      nextStatus === "open_investment" &&
+      isDealStageDraft(existing.dealStage)
+    ) {
+      const classes = await listInvestorClassesByDealId(id);
+      if (classes.length === 0) {
+        throwOfferingOverviewValidation({
+          offering_status:
+            "Add at least one investor class before opening to investment.",
+        });
+      }
+      promotedDealStage = normalizeDealStage("capital_raising");
+    }
+  }
+
   const [updated] = await db
     .update(addDealForm)
     .set({
       ...(patch.offeringStatus !== undefined
         ? { offeringStatus: patch.offeringStatus }
+        : {}),
+      ...(promotedDealStage !== undefined
+        ? { dealStage: promotedDealStage }
         : {}),
       ...(patch.offeringVisibility !== undefined
         ? { offeringVisibility: patch.offeringVisibility }

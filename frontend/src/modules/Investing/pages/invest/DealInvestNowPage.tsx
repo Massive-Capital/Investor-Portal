@@ -32,18 +32,26 @@ import {
   fetchDealInvestors,
   fetchDealMembers,
   fetchDealMyEsignDocuments,
+  fetchReferringSponsorDisplayName,
+  isDealEsignTemplateReady,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import { esignCategoryLabel } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
+import { esignTemplateDisplayName } from "@/modules/Syndication/Deals/utils/esignTemplateDisplay"
 import type { InvestorQuestionnaireConfig } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
 import { investorProfileLabel } from "@/modules/Syndication/Deals/constants/investor-profile"
 import {
   EMPTY_INVESTORS_PAYLOAD,
+  minimumInvestmentDisplayForClass,
   previewMinimumInvestmentDisplay,
 } from "@/modules/Syndication/Deals/dealOfferingPreviewShared"
-import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import {
+  emptyDealMembersPayload,
+  type DealInvestorRow,
+} from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealInvestorClass } from "@/modules/Syndication/Deals/types/deal-investor-class.types"
 import { canInvestorCommitInvestOrOnboard } from "@/modules/Syndication/Deals/constants/deal-lifecycle"
 import { dealWorkspacePath } from "@/modules/Syndication/Deals/utils/dealWorkspacePath"
+import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
 import {
   buildBlockedProfileKeysForInvestNow,
   lpProfileUseKey,
@@ -60,9 +68,11 @@ import { investorEsignWasSent } from "@/modules/Syndication/Deals/utils/investor
 import {
   bookProfileTypeDisplayLabel,
   commitmentProfileIdFromBookProfile,
-  resolveInvestNowInvestmentClassLabel,
-  resolveInvestNowSponsorLabel,
+  investNowDefaultInvestorClassId,
+  resolveDealInvestorClassId,
+  pickInvestNowSponsorDisplayName,
 } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
+import { readOfferingPreviewSponsorAttributionForDeal, writeOfferingPreviewSponsorAttribution } from "@/modules/Syndication/Deals/utils/offeringPreviewSponsorRef"
 import {
   buildInvestNowQuestionnairePrefill,
   mergeInvestNowQuestionnaireAnswers,
@@ -107,6 +117,7 @@ import { InvestNowInvestorStep } from "./InvestNowInvestorStep"
 import {
   esignCategoryIdFromCommitmentProfile,
   esignTemplateForCategory,
+  filterMyEsignDocumentsForCategory,
   investNowCommitmentRowIdForScope,
   investNowWorkflowLabelForProfileDocs,
   questionnaireIncludedInInvestNowFlow,
@@ -136,6 +147,13 @@ export function DealInvestNowPage() {
   const location = useLocation()
   const { switchToInvesting } = usePortalMode()
   const investNowNav = readInvestNowLocationState(location.state)
+  const storedSponsorAttribution =
+    readOfferingPreviewSponsorAttributionForDeal(dealId)
+  const referringSponsorRef =
+    investNowNav.referringSponsorRef ?? storedSponsorAttribution?.sponsorRef
+  const referringSponsorDisplayName =
+    investNowNav.referringSponsorDisplayName ??
+    storedSponsorAttribution?.sponsorDisplayName
   const entryMode = investNowNav.mode ?? "fresh"
   const resumeScope = useMemo(
     () => ({
@@ -170,7 +188,7 @@ export function DealInvestNowPage() {
   const [dealName, setDealName] = useState("")
   const [closeDate, setCloseDate] = useState<string | null>(null)
   const [offeringSize, setOfferingSize] = useState("")
-  const [investmentClassLabel, setInvestmentClassLabel] = useState("—")
+  const [selectedInvestorClassId, setSelectedInvestorClassId] = useState("")
   const [sponsorLabel, setSponsorLabel] = useState("—")
 
   const [bookProfileRows, setBookProfileRows] = useState<InvestorProfileListRow[]>(
@@ -213,6 +231,8 @@ export function DealInvestNowPage() {
   const [investNowInvestmentId, setInvestNowInvestmentId] = useState<
     string | null
   >(null)
+  const investNowInvestmentIdRef = useRef<string | null>(null)
+  const esignSendInFlightRef = useRef(false)
   const [webhookSignStatus, setWebhookSignStatus] =
     useState<InvestmentSignStatusPayload | null>(null)
   const [signStatusLoading, setSignStatusLoading] = useState(false)
@@ -220,10 +240,20 @@ export function DealInvestNowPage() {
   const [docSignedDate, setDocSignedDate] = useState("")
 
   const minimumInvestmentHint = useMemo(() => {
-    const display = previewMinimumInvestmentDisplay(investorClasses)
+    const cls = investorClasses.find((c) => c.id === selectedInvestorClassId)
+    const display = minimumInvestmentDisplayForClass(cls)
     if (!display || display === "—") return ""
     return `Minimum is ${display}`
-  }, [investorClasses])
+  }, [investorClasses, selectedInvestorClassId])
+
+  const investmentClassOptions = useMemo(
+    () =>
+      investorClasses.map((c) => ({
+        value: c.id,
+        label: c.name.trim() || "Unnamed class",
+      })),
+    [investorClasses],
+  )
 
   const esignCategoryId = useMemo(
     () => esignCategoryIdFromCommitmentProfile(profileId),
@@ -231,8 +261,8 @@ export function DealInvestNowPage() {
   )
 
   const esignTemplate = useMemo(
-    () => esignTemplateForCategory(esignFilesByCategory, esignCategoryId),
-    [esignFilesByCategory, esignCategoryId],
+    () => esignTemplateForCategory(esignFilesByCategory, esignCategoryId, profileId),
+    [esignFilesByCategory, esignCategoryId, profileId],
   )
 
   const visibleQuestionnaireSections = useMemo(
@@ -323,11 +353,14 @@ export function DealInvestNowPage() {
   }, [flowSteps.length])
 
   const minimumInvestmentAmount = useMemo(() => {
-    const display = previewMinimumInvestmentDisplay(investorClasses)
+    const cls = investorClasses.find((c) => c.id === selectedInvestorClassId)
+    const display = cls
+      ? minimumInvestmentDisplayForClass(cls)
+      : previewMinimumInvestmentDisplay(investorClasses)
     if (!display || display === "—") return null
     const n = parseMoneyDigits(display)
     return Number.isFinite(n) && n > 0 ? n : null
-  }, [investorClasses])
+  }, [investorClasses, selectedInvestorClassId])
 
   const backTo = useMemo(() => {
     if (investNowNav.returnTo) return investNowNav.returnTo
@@ -363,7 +396,9 @@ export function DealInvestNowPage() {
           fetchDealInvestors(dealId, { lpInvestorsOnly: true }).catch(
             () => EMPTY_INVESTORS_PAYLOAD,
           ),
-          fetchDealMembers(dealId).catch(() => ({ members: [] })),
+          fetchDealMembers(dealId, {
+            referringSponsorRef: referringSponsorRef ?? undefined,
+          }).catch(() => emptyDealMembersPayload()),
           fetchMyProfileBook().catch(() => ({
             profiles: [] as InvestorProfileListRow[],
             beneficiaries: [],
@@ -415,13 +450,35 @@ export function DealInvestNowPage() {
           ),
         )
         setInvestorClasses(classes)
-        setSponsorLabel(resolveInvestNowSponsorLabel(deal, members.members))
+        let resolvedReferringSponsorName =
+          members.referringSponsorDisplayName ?? referringSponsorDisplayName
+        if (referringSponsorRef?.trim() && !resolvedReferringSponsorName?.trim()) {
+          resolvedReferringSponsorName =
+            (await fetchReferringSponsorDisplayName(
+              dealId,
+              referringSponsorRef.trim(),
+            )) ?? undefined
+        }
+        setSponsorLabel(
+          pickInvestNowSponsorDisplayName(members, {
+            referringSponsorDisplayName: resolvedReferringSponsorName,
+          }),
+        )
+        if (referringSponsorRef?.trim() && resolvedReferringSponsorName?.trim()) {
+          writeOfferingPreviewSponsorAttribution({
+            dealId,
+            sponsorRef: referringSponsorRef.trim(),
+            sponsorDisplayName: resolvedReferringSponsorName.trim(),
+          })
+        }
 
         const viewerClass = inv.investors.find(
           (r) => String(r.userEmail ?? "").trim().toLowerCase() === em,
         )?.investorClass
-        setInvestmentClassLabel(
-          resolveInvestNowInvestmentClassLabel(classes, null, viewerClass),
+        setSelectedInvestorClassId(
+          investNowDefaultInvestorClassId(classes, {
+            viewerInvestorClass: viewerClass,
+          }),
         )
       } catch {
         if (!cancelled) exitInvestNowFlow({ replace: true })
@@ -435,7 +492,7 @@ export function DealInvestNowPage() {
     return () => {
       cancelled = true
     }
-  }, [dealId, navigate, backTo, entryMode, resumeScope])
+  }, [dealId, navigate, backTo, entryMode, resumeScope, referringSponsorDisplayName, referringSponsorRef])
 
   useEffect(() => {
     if (entryMode !== "resume" || !dealId || loading) return
@@ -446,6 +503,10 @@ export function DealInvestNowPage() {
       const res = await fetchMyLpDealInvestNowCommitment(dealId, resumeScope)
       if (cancelled) return
       if (!res.ok) {
+        if (res.notFound) {
+          setResumeLoading(false)
+          return
+        }
         setResumeLoadError(res.message)
         setResumeLoading(false)
         return
@@ -455,10 +516,19 @@ export function DealInvestNowPage() {
         setSavedUserProfileId(saved.userInvestorProfileId)
       }
       if (saved.profileId) setProfileId(saved.profileId)
-      if (saved.investmentId) setInvestNowInvestmentId(saved.investmentId)
+      if (saved.investmentId) {
+        investNowInvestmentIdRef.current = saved.investmentId
+        setInvestNowInvestmentId(saved.investmentId)
+      }
       const amt = parseMoneyDigits(saved.committedAmount)
       if (Number.isFinite(amt) && amt > 0) setAmount(String(amt))
       if (saved.fundingMethod?.trim()) setFundingMethod(saved.fundingMethod.trim())
+      if (saved.investorClass?.trim()) {
+        setSelectedInvestorClassId((prev) =>
+          resolveDealInvestorClassId(investorClasses, saved.investorClass) ||
+          prev,
+        )
+      }
       if (saved.status?.trim()) setStatus(saved.status.trim())
       if (saved.docSignedDate) setDocSignedDate(saved.docSignedDate.slice(0, 10))
       if (Object.keys(saved.questionnaireAnswers).length > 0) {
@@ -502,18 +572,17 @@ export function DealInvestNowPage() {
     return () => {
       cancelled = true
     }
-  }, [entryMode, dealId, loading, resumeScope, bookProfileRows, bookAddresses])
+  }, [entryMode, dealId, loading, resumeScope, bookProfileRows, bookAddresses, investorClasses])
 
-  const selectedBookProfile = useMemo(
-    () => bookProfileRows.find((p) => p.id === savedUserProfileId),
-    [bookProfileRows, savedUserProfileId],
-  )
+  const profileScopeRef = useRef({ savedUserProfileId: "", profileId: "" })
 
   useEffect(() => {
-    if (!selectedBookProfile) return
-    const next = commitmentProfileIdFromBookProfile(selectedBookProfile)
-    if (next) setProfileId(next)
-  }, [selectedBookProfile])
+    if (!savedUserProfileId.trim()) return
+    const profile = bookProfileRows.find((p) => p.id === savedUserProfileId)
+    if (!profile) return
+    const next = commitmentProfileIdFromBookProfile(profile)
+    if (next) setProfileId((prev) => (prev === next ? prev : next))
+  }, [bookProfileRows, savedUserProfileId])
 
   /** Fresh Invest now: each profile selection starts with an empty amount. */
   useEffect(() => {
@@ -542,6 +611,18 @@ export function DealInvestNowPage() {
   )
 
   useEffect(() => {
+    const nextSaved = savedUserProfileId.trim()
+    const nextProfile = profileId.trim()
+    const prev = profileScopeRef.current
+    const scopeChanged =
+      (prev.savedUserProfileId !== nextSaved || prev.profileId !== nextProfile) &&
+      (prev.savedUserProfileId !== "" || prev.profileId !== "")
+    profileScopeRef.current = {
+      savedUserProfileId: nextSaved,
+      profileId: nextProfile,
+    }
+    if (!scopeChanged) return
+
     setEsignDocuments([])
     setEsignCompleted(false)
     setEsignPending(false)
@@ -549,11 +630,15 @@ export function DealInvestNowPage() {
     setEsignSendOk(false)
     setEsignSendError(null)
     setInvestNowInvestmentId(null)
+    investNowInvestmentIdRef.current = null
     setWebhookSignStatus(null)
   }, [savedUserProfileId, profileId])
 
   useEffect(() => {
-    if (!questionnaireInFlow) setQuestionnaireAnswers({})
+    if (questionnaireInFlow) return
+    setQuestionnaireAnswers((prev) =>
+      Object.keys(prev).length === 0 ? prev : {},
+    )
   }, [questionnaireInFlow])
 
   useEffect(() => {
@@ -682,6 +767,7 @@ export function DealInvestNowPage() {
     ) => {
       const explicit = savedInvestmentId?.trim()
       if (explicit) {
+        investNowInvestmentIdRef.current = explicit
         setInvestNowInvestmentId(explicit)
       } else {
         const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
@@ -690,7 +776,10 @@ export function DealInvestNowPage() {
           profileId: profileId.trim(),
           userInvestorProfileId: savedUserProfileId.trim(),
         })
-        if (rowId) setInvestNowInvestmentId(rowId)
+        if (rowId) {
+          investNowInvestmentIdRef.current = rowId
+          setInvestNowInvestmentId(rowId)
+        }
       }
       sessionDraftRef.current = true
     },
@@ -726,6 +815,9 @@ export function DealInvestNowPage() {
             : fundingMethod.trim()
               ? { fundingMethod: fundingMethod.trim() }
               : {}),
+          ...(selectedInvestorClassId.trim()
+            ? { investorClassId: selectedInvestorClassId.trim() }
+            : {}),
           ...(opts.questionnaireAnswers &&
           Object.keys(opts.questionnaireAnswers).length > 0
             ? { questionnaireAnswers: opts.questionnaireAnswers }
@@ -733,6 +825,7 @@ export function DealInvestNowPage() {
               ? { questionnaireAnswers }
               : {}),
           ...(opts.w9Form ? { w9Form: opts.w9Form } : {}),
+          ...(referringSponsorRef ? { referringSponsorRef } : {}),
         },
       )
       setSubmitting(false)
@@ -749,7 +842,9 @@ export function DealInvestNowPage() {
       fundingMethod,
       questionnaireInFlow,
       questionnaireAnswers,
+      selectedInvestorClassId,
       trackInvestmentRowAfterSave,
+      referringSponsorRef,
     ],
   )
 
@@ -761,7 +856,8 @@ export function DealInvestNowPage() {
         profileId,
         bookProfileRows,
         blockedProfileKeys,
-        investmentClassLabel,
+        selectedInvestorClassId,
+        investorClasses,
         sponsorLabel,
       })
     if (stepError || hasInvestNowFieldErrors(nextFieldErrors)) {
@@ -785,7 +881,8 @@ export function DealInvestNowPage() {
     profileId,
     bookProfileRows,
     blockedProfileKeys,
-    investmentClassLabel,
+    selectedInvestorClassId,
+    investorClasses,
     sponsorLabel,
     reportInvestNowFieldValidation,
     clearInvestNowFieldErrors,
@@ -960,27 +1057,30 @@ export function DealInvestNowPage() {
 
   const loadEsignStepData = useCallback(async (): Promise<boolean> => {
     if (!dealId.trim()) return false
+    if (esignSendInFlightRef.current) return false
+    esignSendInFlightRef.current = true
     setEsignLoading(true)
     setEsignSendError(null)
     setEsignSendOk(false)
-    let trackedInvestmentId = investNowInvestmentId?.trim() || null
+    let trackedInvestmentId = investNowInvestmentIdRef.current?.trim() || null
     const w9Payload = investNowW9FormApiPayload(w9Values)
-    const sendRes = await postMyLpDealInvestNowEsignSend(dealId, {
-      profileId: profileId.trim(),
-      memberDisplayName: investorDisplayName,
-      userInvestorProfileId: savedUserProfileId.trim() || undefined,
-      investmentId: trackedInvestmentId ?? undefined,
-      ...(questionnaireInFlow && Object.keys(questionnaireAnswers).length > 0
-        ? { questionnaireAnswers }
-        : {}),
-      w9Form: w9Payload,
-    })
-    if (!sendRes.ok) {
-      setEsignSendError(sendRes.message)
-      setEsignSendOk(false)
-      setEsignLoading(false)
-      return false
-    } else {
+    try {
+      const sendRes = await postMyLpDealInvestNowEsignSend(dealId, {
+        profileId: profileId.trim(),
+        memberDisplayName: investorDisplayName,
+        userInvestorProfileId: savedUserProfileId.trim() || undefined,
+        investmentId: trackedInvestmentId ?? undefined,
+        ...(questionnaireInFlow && Object.keys(questionnaireAnswers).length > 0
+          ? { questionnaireAnswers }
+          : {}),
+        w9Form: w9Payload,
+      })
+      if (!sendRes.ok) {
+        setEsignSendError(sendRes.message)
+        setEsignSendOk(false)
+        return false
+      }
+
       setEsignSendError(null)
       setEsignSendOk(true)
       const sentSigId = sendRes.signatureRequestId?.trim() || null
@@ -988,58 +1088,88 @@ export function DealInvestNowPage() {
       const invId = sendRes.investmentId?.trim() || null
       if (invId) {
         trackedInvestmentId = invId
+        investNowInvestmentIdRef.current = invId
         setInvestNowInvestmentId(invId)
       }
-    }
-    const docs = await fetchDealMyEsignDocuments(dealId, investNowEsignScope)
-    const profileDocs = docs.documents
-    const fallbackSigId = sendRes.ok
-      ? sendRes.signatureRequestId?.trim() || null
-      : null
-    const profileSignatureRequestId =
-      fallbackSigId ||
-      profileDocs
-        .map((d) => d.signatureRequestId?.trim())
-        .find(Boolean) ||
-      null
-    setEsignDocuments(
-      mapMyEsignDocumentsToInvestNowRows(profileDocs).map((row) => {
+
+      const scopeForFetch = {
+        userInvestorProfileId: savedUserProfileId.trim() || undefined,
+        investmentId: trackedInvestmentId ?? undefined,
+        profileId: profileId.trim() || undefined,
+      }
+      const docs = await fetchDealMyEsignDocuments(dealId, scopeForFetch)
+      const profileDocs = filterMyEsignDocumentsForCategory(
+        docs.documents,
+        esignCategoryIdFromCommitmentProfile(profileId.trim()),
+      )
+      const fallbackSigId = sendRes.signatureRequestId?.trim() || null
+      const profileSignatureRequestId =
+        fallbackSigId ||
+        profileDocs
+          .map((d) => d.signatureRequestId?.trim())
+          .find(Boolean) ||
+        null
+      let mappedRows = mapMyEsignDocumentsToInvestNowRows(profileDocs).map((row) => {
         if (row.status !== "pending" || row.signatureRequestId?.trim()) {
           return row
         }
         if (!fallbackSigId) return row
         return { ...row, signatureRequestId: fallbackSigId }
-      }),
-    )
-    const profileCompleted =
-      profileDocs.length > 0 && profileDocs.every((d) => d.status === "signed")
-    const profilePending =
-      profileDocs.length > 0
-        ? profileDocs.some((d) => d.status !== "signed")
-        : Boolean(
-            sendRes.ok &&
+      })
+      if (
+        mappedRows.length === 0 &&
+        fallbackSigId &&
+        !sendRes.alreadyCompleted
+      ) {
+        const names =
+          sendRes.documentNames?.length > 0
+            ? sendRes.documentNames
+            : [
+                (esignTemplate
+                  ? esignTemplateDisplayName(esignTemplate)
+                  : null) || "Subscription document",
+              ]
+        mappedRows = names.map((name, index) => ({
+          id: `sent-${fallbackSigId}-${index}`,
+          name,
+          url: "",
+          status: "pending" as const,
+          canSign: true,
+          signatureRequestId: fallbackSigId,
+        }))
+      }
+      setEsignDocuments(mappedRows)
+      const profileCompleted =
+        docs.esignCompleted ||
+        (profileDocs.length > 0 && profileDocs.every((d) => d.status === "signed"))
+      const profilePending =
+        profileDocs.length > 0
+          ? profileDocs.some((d) => d.status !== "signed")
+          : Boolean(
               !sendRes.alreadyCompleted &&
-              (sendRes.alreadySent || Boolean(profileSignatureRequestId)),
-          )
-    const completed =
-      profileCompleted ||
-      Boolean(
-        sendRes.ok &&
+                (sendRes.alreadySent || Boolean(profileSignatureRequestId)),
+            )
+      const completed =
+        profileCompleted ||
+        Boolean(
           sendRes.alreadyCompleted &&
-          profileDocs.length > 0 &&
-          profileDocs.every((d) => d.status === "signed"),
-      )
-    setEsignPending(profilePending)
-    setEsignCompleted(completed)
-    setEsignWorkflowLabel(investNowWorkflowLabelForProfileDocs(profileDocs))
-    if (trackedInvestmentId) {
-      await refreshWebhookSignStatus(
-        trackedInvestmentId,
-        profileSignatureRequestId,
-      )
+            profileDocs.length > 0 &&
+            profileDocs.every((d) => d.status === "signed"),
+        )
+      setEsignPending(profilePending)
+      setEsignCompleted(completed)
+      setEsignWorkflowLabel(investNowWorkflowLabelForProfileDocs(profileDocs))
+      if (trackedInvestmentId) {
+        await refreshWebhookSignStatus(
+          trackedInvestmentId,
+          profileSignatureRequestId,
+        )
+      }
+      return completed
+    } finally {
+      esignSendInFlightRef.current = false
+      setEsignLoading(false)
     }
-    setEsignLoading(false)
-    return completed
   }, [
     dealId,
     profileId,
@@ -1053,10 +1183,14 @@ export function DealInvestNowPage() {
     refreshWebhookSignStatus,
   ])
 
+  const loadEsignStepDataRef = useRef(loadEsignStepData)
+  loadEsignStepDataRef.current = loadEsignStepData
+
+  /** Load e-sign step data when entering the step — not on every callback identity change. */
   useEffect(() => {
     if (stepIndex !== esignStepIndex || esignStepIndex < 0 || !dealId) return
-    void loadEsignStepData()
-  }, [stepIndex, esignStepIndex, dealId, loadEsignStepData])
+    void loadEsignStepDataRef.current()
+  }, [stepIndex, esignStepIndex, dealId, profileId, savedUserProfileId])
 
   useEffect(() => {
     const invId = investNowInvestmentId?.trim()
@@ -1085,9 +1219,9 @@ export function DealInvestNowPage() {
   const validateEsignaturesStep = useCallback((): string | null => {
     if (esignLoading) return "Loading e-sign documents…"
     if (!esignTemplate) {
-      return `No eSign template is configured for ${esignProfileLabel} on this deal`
+      return `No eSign document is configured for ${esignProfileLabel} on this deal. Your sponsor must add investor fields for this profile in the eSign template editor.`
     }
-    if (esignTemplate.dropboxSignStatus !== "ready" && !esignCompleted) {
+    if (!isDealEsignTemplateReady(esignTemplate) && !esignCompleted) {
       return "Your subscription document is not ready for signing yet"
     }
     if (!esignSendOk && !esignCompleted && !esignLoading) {
@@ -1194,7 +1328,8 @@ export function DealInvestNowPage() {
         profileId,
         bookProfileRows,
         blockedProfileKeys,
-        investmentClassLabel,
+        selectedInvestorClassId,
+        investorClasses,
         sponsorLabel,
       })
       if (
@@ -1256,10 +1391,10 @@ export function DealInvestNowPage() {
     profileId,
     bookProfileRows,
     blockedProfileKeys,
-    investmentClassLabel,
+    selectedInvestorClassId,
+    investorClasses,
     sponsorLabel,
     fundingMethod,
-    investorClasses,
     minimumInvestmentAmount,
     validateAllQuestionnaireAndW9Fields,
     goToStepIndexForFieldValidation,
@@ -1276,7 +1411,8 @@ export function DealInvestNowPage() {
       profileId,
       bookProfileRows,
       blockedProfileKeys,
-      investmentClassLabel,
+      selectedInvestorClassId,
+    investorClasses,
       sponsorLabel,
     })
     if (
@@ -1368,11 +1504,11 @@ export function DealInvestNowPage() {
     profileId,
     bookProfileRows,
     blockedProfileKeys,
-    investmentClassLabel,
+    selectedInvestorClassId,
+    investorClasses,
     sponsorLabel,
     amount,
     fundingMethod,
-    investorClasses,
     minimumInvestmentAmount,
     validateAllQuestionnaireAndW9Fields,
     validateEsignaturesStep,
@@ -1496,13 +1632,28 @@ export function DealInvestNowPage() {
             investmentClass: fieldErrors[INVEST_NOW_FIELD.investmentClass],
             sponsor: fieldErrors[INVEST_NOW_FIELD.sponsor],
           }}
-          investmentClassLabel={investmentClassLabel}
+          investmentClassOptions={investmentClassOptions}
+          selectedInvestorClassId={selectedInvestorClassId}
+          onInvestorClassChange={(id) => {
+            setSelectedInvestorClassId(id)
+            clearInvestNowFieldErrors(INVEST_NOW_FIELD.investmentClass)
+            if (error) setError("")
+          }}
+          classesLoading={loading}
           sponsorLabel={sponsorLabel}
           loading={submitting}
           disabled={submitting}
           bookLoading={bookLoading}
           error={error}
-          onAddProfile={() => navigate("/investing/profiles/add")}
+          onAddProfile={() =>
+            navigate("/investing/profiles/add", {
+              state: {
+                returnTo: dealId
+                  ? dealInvestNowPath(dealId)
+                  : "/investing/investments",
+              },
+            })
+          }
         />
       )
     }
@@ -1617,6 +1768,7 @@ export function DealInvestNowPage() {
         esignCategoryId={esignCategoryId}
         profileTemplate={esignTemplate}
         profileLabel={esignProfileLabel}
+        commitmentProfileId={profileId}
         questionnaireInFlow={questionnaireInFlow}
         investorDisplayName={investorDisplayName}
         sendError={esignSendError}

@@ -5,6 +5,7 @@ import {
   LP_INVESTORS_ROLE_LABEL,
 } from "@/modules/Syndication/Deals/constants/investor-profile"
 import {
+  emptyDealInvestorsPayload,
   fetchDealInvestors,
   fetchDealMembers,
 } from "@/modules/Syndication/Deals/api/dealsApi"
@@ -20,6 +21,7 @@ import {
   investorRowCommittedNumeric,
   investorRowMatchesViewerEmail,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
+import { investorRowCommittedAmountNumeric } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 
 /**
  * Committed (USD) visible to the signed-in investor (hidden until eSign completes).
@@ -34,6 +36,22 @@ export function committedAmountForViewerEmail(
     if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
     if (!investorCommittedVisibleToViewer(inv)) continue
     sum += investorRowCommittedNumeric(inv)
+  }
+  return sum
+}
+
+/**
+ * Sum committed for the viewer — same values as syndication Investors tab Committed column.
+ */
+export function committedAmountMatchingInvestorsTable(
+  payload: DealInvestorsPayload,
+  viewerEmailNorm: string,
+): number {
+  if (!viewerEmailNorm) return 0
+  let sum = 0
+  for (const inv of payload.investors) {
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
+    sum += investorRowCommittedAmountNumeric(inv)
   }
   return sum
 }
@@ -197,8 +215,7 @@ function viewerOnDealAsInvitedInvestor(
 ): boolean {
   if (!viewerEmailNorm) return false
   for (const m of payload.investors) {
-    const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
-    if (rowEmail !== viewerEmailNorm) continue
+    if (!investorRowMatchesViewerEmail(m, viewerEmailNorm)) continue
     if (m.investorKind === "lp_roster") return true
     if (rowHasLpInvestorRole(m)) return true
     if (m.addedByIsSponsorOnDeal === true) return true
@@ -238,6 +255,30 @@ function investingViewerEmailNorm(): string {
   return getSessionUserEmail().trim().toLowerCase()
 }
 
+/** Skip `/investors` and `/members` prefetch for opportunity-only deals (404 on server). */
+export function dealRowSupportsRosterApiPrefetch(row: DealListRow): boolean {
+  return row.rosterReadable !== false
+}
+
+async function loadDealRosterForInvestingScope(row: DealListRow): Promise<{
+  payload: DealInvestorsPayload
+  members: DealInvestorRow[]
+  leadSponsorDisplayName?: string
+}> {
+  if (!dealRowSupportsRosterApiPrefetch(row)) {
+    return { payload: emptyDealInvestorsPayload(), members: [] }
+  }
+  const [payload, membersResult] = await Promise.all([
+    fetchDealInvestors(row.id, { lpInvestorsOnly: false }),
+    fetchDealMembers(row.id),
+  ])
+  return {
+    payload,
+    members: membersResult.members,
+    leadSponsorDisplayName: membersResult.leadSponsorDisplayName,
+  }
+}
+
 /**
  * `GET /deals` (with `includeParticipantDeals`) already enforces
  * `lpInvestorEmailScopedDealIds` on the server. Session `lp_investor_deal_ids` can
@@ -261,6 +302,9 @@ export async function filterDealListToViewerInvested(
   const toScan = applyLpSessionDealIdScope(rows)
   const withPayload = await Promise.all(
     toScan.map(async (row) => {
+      if (!dealRowSupportsRosterApiPrefetch(row)) {
+        return { row, payload: emptyDealInvestorsPayload() }
+      }
       const payload = await fetchDealInvestors(row.id, {
         lpInvestorsOnly: false,
       })
@@ -297,8 +341,7 @@ export function resolveViewerInvestingDealRoles(
 
   for (const list of [members, investors]) {
     for (const m of list) {
-      const rowEmail = String(m.userEmail ?? "").trim().toLowerCase()
-      if (rowEmail !== viewerEmailNorm) continue
+      if (!investorRowMatchesViewerEmail(m, viewerEmailNorm)) continue
       for (const lab of sponsorRoleLabelsFromRow(m)) sponsorLabels.add(lab)
       if (rowHasLpInvestorRole(m)) isInvestor = true
     }
@@ -333,6 +376,7 @@ export type InvestingDealsPageScopeEntry = {
   row: DealListRow
   payload: DealInvestorsPayload
   members: DealInvestorRow[]
+  leadSponsorDisplayName?: string
 }
 
 /** Deals visible on `/investing/deals` (invested, invited LP, sponsor roster, or assignee). */
@@ -343,11 +387,9 @@ export async function mapInvestingDealsPageScope(
   if (!viewerEmailNorm) return []
   const withPayload = await Promise.all(
     rows.map(async (row) => {
-      const [payload, membersResult] = await Promise.all([
-        fetchDealInvestors(row.id, { lpInvestorsOnly: false }),
-        fetchDealMembers(row.id),
-      ])
-      return { row, payload, members: membersResult.members }
+      const { payload, members, leadSponsorDisplayName } =
+        await loadDealRosterForInvestingScope(row)
+      return { row, payload, members, leadSponsorDisplayName }
     }),
   )
   return withPayload.filter(({ payload, members }) =>
@@ -366,11 +408,9 @@ export async function mapInvestingInvestmentsPageScope(
   if (!viewerEmailNorm) return []
   const withPayload = await Promise.all(
     rows.map(async (row) => {
-      const [payload, membersResult] = await Promise.all([
-        fetchDealInvestors(row.id, { lpInvestorsOnly: false }),
-        fetchDealMembers(row.id),
-      ])
-      return { row, payload, members: membersResult.members }
+      const { payload, members, leadSponsorDisplayName } =
+        await loadDealRosterForInvestingScope(row)
+      return { row, payload, members, leadSponsorDisplayName }
     }),
   )
   return withPayload.filter(({ payload }) =>

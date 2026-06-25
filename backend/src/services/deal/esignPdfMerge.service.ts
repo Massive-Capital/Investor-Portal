@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
 import type { DropboxSignFormFieldPerDocument } from "../esign/dropboxSign.service.js";
+import type { SignFlowField } from "../esign/signflow.service.js";
 import {
   esignQuestionnaireSignatureImageExists,
   esignQuestionnaireSignaturePdfExists,
@@ -19,24 +20,39 @@ const LETTER_WIDTH = 612;
 const LETTER_HEIGHT = 792;
 
 /** Bump when questionnaire page 1 layout changes (stored on template file metadata). */
-export const ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION = 7;
+export const ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION = 9;
 
-/** Vertical stack (top → bottom): sign field, underline, label — left-aligned. */
-const QUESTIONNAIRE_SIGNATURE_STACK = [
-  {
-    label: "Date",
-    apiId: "DateSigned1",
-    fieldType: "date_signed" as const,
-    fieldHeight: 22,
-    required: true,
-  },
-  {
+type QuestionnaireSignatureField = {
+  label: string;
+  apiId: string;
+  fieldType: "date_signed" | "signature" | "text";
+  fieldHeight: number;
+  required: boolean;
+};
+
+/** Signature + date on one row; print name/title below. */
+const QUESTIONNAIRE_SIGNATURE_DATE_ROW: {
+  signature: QuestionnaireSignatureField;
+  date: QuestionnaireSignatureField;
+} = {
+  signature: {
     label: "Authorized Signature",
     apiId: "Signature1",
-    fieldType: "signature" as const,
+    fieldType: "signature",
     fieldHeight: 32,
     required: true,
   },
+  date: {
+    label: "Date",
+    apiId: "DateSigned1",
+    fieldType: "date_signed",
+    fieldHeight: 22,
+    required: true,
+  },
+};
+
+/** Vertical stack (top → bottom) after signature/date row. */
+const QUESTIONNAIRE_SIGNATURE_STACK = [
   {
     label: "Print Name",
     apiId: "FullName1",
@@ -60,10 +76,14 @@ const SIGNATURE_MARGIN_X = 72;
 const SIGNATURE_LINE_WIDTH = LETTER_WIDTH - SIGNATURE_MARGIN_X * 2;
 /** Input box width (underline extends wider on the page). */
 const SIGNATURE_FIELD_WIDTH = 248;
+const SIGNATURE_DATE_ROW_GAP = 24;
+const SIGNATURE_FIELD_WIDTH_IN_ROW = 300;
+const DATE_FIELD_WIDTH_IN_ROW =
+  SIGNATURE_LINE_WIDTH - SIGNATURE_FIELD_WIDTH_IN_ROW - SIGNATURE_DATE_ROW_GAP;
 const SIGNATURE_LABEL_SIZE = 9;
-const SIGNATURE_GAP_FIELD_TO_LINE = 8;
-const SIGNATURE_GAP_LINE_TO_LABEL = 14;
-const SIGNATURE_GAP_BETWEEN_GROUPS = 26;
+const SIGNATURE_GAP_LABEL_TO_LINE = 5;
+const SIGNATURE_GAP_LINE_TO_FIELD = 4;
+const SIGNATURE_GAP_BETWEEN_GROUPS = 22;
 const SIGNATURE_GAP_BELOW_BODY = 36;
 
 /** Layout + Dropbox Sign coords: origin top-left, y increases downward (page param set). */
@@ -76,11 +96,66 @@ type QuestionnaireSignaturePlacement = {
   lineY: number;
   lineWidth: number;
   label: string;
-  labelY: number;
+  labelTop: number;
   apiId: string;
-  fieldType: (typeof QUESTIONNAIRE_SIGNATURE_STACK)[number]["fieldType"];
+  fieldType: QuestionnaireSignatureField["fieldType"];
   required: boolean;
 };
+
+export const QUESTIONNAIRE_SIGNATURE_FIELD_LABELS = [
+  QUESTIONNAIRE_SIGNATURE_DATE_ROW.signature.label,
+  QUESTIONNAIRE_SIGNATURE_DATE_ROW.date.label,
+  ...QUESTIONNAIRE_SIGNATURE_STACK.map((f) => f.label),
+] as const;
+
+function normalizeQuestionnaireSignatureLabel(label: string): string {
+  return String(label ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+export function isQuestionnaireSignatureFieldLabel(label: string): boolean {
+  const n = normalizeQuestionnaireSignatureLabel(label);
+  return QUESTIONNAIRE_SIGNATURE_FIELD_LABELS.some(
+    (known) => normalizeQuestionnaireSignatureLabel(known) === n,
+  );
+}
+
+function pushQuestionnaireSignaturePlacement(
+  placements: QuestionnaireSignaturePlacement[],
+  item: QuestionnaireSignatureField,
+  labelTop: number,
+  fieldX: number,
+  fieldWidth: number,
+  lineWidth: number,
+  fieldTop: number,
+  lineY: number,
+): void {
+  placements.push({
+    fieldX,
+    fieldY: fieldTop,
+    fieldWidth,
+    fieldHeight: item.fieldHeight,
+    lineX: fieldX,
+    lineY,
+    lineWidth,
+    label: item.label,
+    labelTop,
+    apiId: item.apiId,
+    fieldType: item.fieldType,
+    required: item.required,
+  });
+}
+
+function placementGroupBottom(
+  labelTop: number,
+  fieldTop: number,
+  fieldHeight: number,
+): number {
+  return Math.max(labelTop + SIGNATURE_LABEL_SIZE, fieldTop + fieldHeight) +
+    SIGNATURE_GAP_BETWEEN_GROUPS;
+}
 
 function questionnaireBodyEndTop(lineCount: number): number {
   return BODY_TOP + lineCount * BODY_LINE_HEIGHT;
@@ -92,26 +167,57 @@ function buildQuestionnaireSignaturePlacements(
   let cursorTop = bodyEndTop + SIGNATURE_GAP_BELOW_BODY;
   const placements: QuestionnaireSignaturePlacement[] = [];
 
+  const { signature, date } = QUESTIONNAIRE_SIGNATURE_DATE_ROW;
+  const labelTop = cursorTop;
+  const lineY = labelTop + SIGNATURE_LABEL_SIZE + SIGNATURE_GAP_LABEL_TO_LINE;
+  const fieldTop = lineY + SIGNATURE_GAP_LINE_TO_FIELD;
+  const rowHeight = Math.max(signature.fieldHeight, date.fieldHeight);
+  const dateFieldX =
+    SIGNATURE_MARGIN_X + SIGNATURE_FIELD_WIDTH_IN_ROW + SIGNATURE_DATE_ROW_GAP;
+
+  pushQuestionnaireSignaturePlacement(
+    placements,
+    signature,
+    labelTop,
+    SIGNATURE_MARGIN_X,
+    SIGNATURE_FIELD_WIDTH_IN_ROW,
+    SIGNATURE_FIELD_WIDTH_IN_ROW,
+    fieldTop,
+    lineY,
+  );
+  pushQuestionnaireSignaturePlacement(
+    placements,
+    date,
+    labelTop,
+    dateFieldX,
+    DATE_FIELD_WIDTH_IN_ROW,
+    DATE_FIELD_WIDTH_IN_ROW,
+    fieldTop + (rowHeight - date.fieldHeight),
+    lineY,
+  );
+
+  cursorTop = placementGroupBottom(labelTop, fieldTop, rowHeight);
+
   for (const item of QUESTIONNAIRE_SIGNATURE_STACK) {
-    const fieldTop = cursorTop;
-    const fieldBottom = fieldTop + item.fieldHeight;
-    const lineY = fieldBottom + SIGNATURE_GAP_FIELD_TO_LINE;
-    const labelY = lineY + SIGNATURE_GAP_LINE_TO_LABEL;
-    placements.push({
-      fieldX: SIGNATURE_MARGIN_X,
-      fieldY: fieldTop,
-      fieldWidth: SIGNATURE_FIELD_WIDTH,
-      fieldHeight: item.fieldHeight,
-      lineX: SIGNATURE_MARGIN_X,
-      lineY,
-      lineWidth: SIGNATURE_LINE_WIDTH,
-      label: item.label,
-      labelY,
-      apiId: item.apiId,
-      fieldType: item.fieldType,
-      required: item.required,
-    });
-    cursorTop = labelY + SIGNATURE_LABEL_SIZE + SIGNATURE_GAP_BETWEEN_GROUPS;
+    const stackLabelTop = cursorTop;
+    const stackLineY =
+      stackLabelTop + SIGNATURE_LABEL_SIZE + SIGNATURE_GAP_LABEL_TO_LINE;
+    const stackFieldTop = stackLineY + SIGNATURE_GAP_LINE_TO_FIELD;
+    pushQuestionnaireSignaturePlacement(
+      placements,
+      item,
+      stackLabelTop,
+      SIGNATURE_MARGIN_X,
+      SIGNATURE_FIELD_WIDTH,
+      SIGNATURE_LINE_WIDTH,
+      stackFieldTop,
+      stackLineY,
+    );
+    cursorTop = placementGroupBottom(
+      stackLabelTop,
+      stackFieldTop,
+      item.fieldHeight,
+    );
   }
 
   return placements;
@@ -127,6 +233,13 @@ function drawQuestionnaireSignatureBlock(
   bodyEndTop: number,
 ): void {
   for (const row of buildQuestionnaireSignaturePlacements(bodyEndTop)) {
+    page.drawText(row.label, {
+      x: row.lineX,
+      y: pdfYFromTop(row.labelTop + SIGNATURE_LABEL_SIZE),
+      size: SIGNATURE_LABEL_SIZE,
+      font,
+      color: rgb(0, 0, 0),
+    });
     const linePdfY = pdfYFromTop(row.lineY);
     page.drawLine({
       start: { x: row.lineX, y: linePdfY },
@@ -134,14 +247,54 @@ function drawQuestionnaireSignatureBlock(
       thickness: 0.75,
       color: rgb(0, 0, 0),
     });
-    page.drawText(row.label, {
-      x: row.lineX,
-      y: pdfYFromTop(row.labelY + SIGNATURE_LABEL_SIZE),
-      size: SIGNATURE_LABEL_SIZE,
-      font,
-      color: rgb(0, 0, 0),
-    });
   }
+}
+
+function questionnaireSignFlowFieldType(
+  fieldType: QuestionnaireSignatureField["fieldType"],
+): string {
+  if (fieldType === "date_signed") return "date_signed";
+  if (fieldType === "signature") return "signature";
+  return "text";
+}
+
+function signFlowPercentX(pixelX: number): number {
+  return (pixelX / LETTER_WIDTH) * 100;
+}
+
+function signFlowPercentY(pixelY: number): number {
+  return (pixelY / LETTER_HEIGHT) * 100;
+}
+
+function signFlowPercentWidth(pixelWidth: number): number {
+  return (pixelWidth / LETTER_WIDTH) * 100;
+}
+
+function signFlowPercentHeight(pixelHeight: number): number {
+  return (pixelHeight / LETTER_HEIGHT) * 100;
+}
+
+/** SignFlow fields on questionnaire page 1 — aligned to printed labels/lines. */
+export function getInvestorQuestionnaireSignatureSignFlowFields(
+  recipientId: string,
+  pageOffset = 0,
+): SignFlowField[] {
+  const lines = wrapQuestionnaireBodyLines((text, size) => text.length * (size * 0.48));
+  const placements = buildQuestionnaireSignaturePlacements(
+    questionnaireBodyEndTop(lines.length),
+  );
+  const page = Math.max(1, 1 + Math.max(0, Math.floor(pageOffset)));
+  return placements.map((row) => ({
+    type: questionnaireSignFlowFieldType(row.fieldType),
+    label: row.label,
+    x: signFlowPercentX(row.fieldX),
+    y: signFlowPercentY(row.fieldY),
+    width: signFlowPercentWidth(row.fieldWidth),
+    height: signFlowPercentHeight(row.fieldHeight),
+    page,
+    recipientId,
+    required: row.required,
+  }));
 }
 
 /** Dropbox fields aligned to printed lines (top-left coordinate system). */

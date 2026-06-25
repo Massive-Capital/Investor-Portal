@@ -68,3 +68,26 @@ export function cardCompactAmountOrDash(
   if (!text || text === "—") return "—"
   return <CardCompactAmount amount={raw} />
 }
+
+/** Datatable cells: same compact USD as KPI cards (e.g. Remaining), right-aligned. */
+export function TableCompactAmountCell({
+  amount,
+  className,
+}: {
+  amount: string | number | null | undefined
+  className?: string
+}) {
+  const text = String(amount ?? "").trim()
+  if (!text || text === "—") {
+    return <span className={className}>—</span>
+  }
+  return (
+    <span
+      className={["table_compact_amount_cell", className]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <CardCompactAmount amount={amount} />
+    </span>
+  )
+}

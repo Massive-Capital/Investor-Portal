@@ -7,6 +7,11 @@ import {
   buildOfferingPreviewShareEmailText,
 } from "../../functions/offeringPreviewShareEmail.template.js";
 import { encryptOfferingPreviewDealId } from "../../utils/offeringPreviewCrypto.js";
+import {
+  mintOfferingPreviewSponsorRef,
+  publicOfferingPreviewUrlWithRef,
+} from "./offeringPreviewSponsorRef.service.js";
+import { isPortalUserSponsorOnDeal } from "./dealMemberScope.service.js";
 import { getAddDealFormById } from "./dealForm.service.js";
 
 const SENDER_DISPLAY_NAME =
@@ -28,19 +33,11 @@ function dedupeEmails(list: string[]): string[] {
   return out
 }
 
-function publicOfferingPreviewUrl(previewToken: string): string {
-  const base = (
-    process.env.FRONTEND_URL?.trim() ||
-    process.env.BASE_URL?.trim() ||
-    ""
-  ).replace(/\/$/, "")
-  if (!base) {
-    throw new Error("FRONTEND_URL or BASE_URL must be set to send preview links.")
-  }
-  const path =
-    process.env.PUBLIC_OFFERING_PREVIEW_PATH?.trim() || "/offering_portfolio"
-  const pathNorm = path.startsWith("/") ? path : `/${path}`
-  return `${base}${pathNorm}?preview=${encodeURIComponent(previewToken)}`
+function publicOfferingPreviewUrl(
+  previewToken: string,
+  sponsorRef?: string | null,
+): string {
+  return publicOfferingPreviewUrlWithRef(previewToken, sponsorRef);
 }
 
 function subjectForDeal(dealName: string): string {
@@ -52,6 +49,7 @@ function subjectForDeal(dealName: string): string {
 export async function sendOfferingPreviewShareEmails(input: {
   dealId: string
   emails: string[]
+  sharingUserId?: string
 }): Promise<{
   previewUrl: string
   sent: number
@@ -77,7 +75,12 @@ export async function sendOfferingPreviewShareEmails(input: {
   let previewUrl: string
   try {
     const token = encryptOfferingPreviewDealId(dealId)
-    previewUrl = publicOfferingPreviewUrl(token)
+    let sponsorRef: string | null = null
+    const sharerId = String(input.sharingUserId ?? "").trim()
+    if (sharerId && (await isPortalUserSponsorOnDeal(dealId, sharerId))) {
+      sponsorRef = await mintOfferingPreviewSponsorRef(dealId, sharerId)
+    }
+    previewUrl = publicOfferingPreviewUrl(token, sponsorRef)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     throw new Error(

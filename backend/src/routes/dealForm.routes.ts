@@ -1,5 +1,4 @@
 import { Router } from "express";
-import multer from "multer";
 import {
   getDealById,
   getDeals,
@@ -14,7 +13,7 @@ import {
   patchDealInvestorSummary,
   patchDealKeyHighlights,
   patchDealFundingInstructions,
-  // getDealOfferingInvestorPreview,
+  getDealOfferingInvestorPreview,
   patchDealOfferingInvestorPreview,
   patchDealOfferingOverview,
   postDeal,
@@ -41,13 +40,16 @@ import {
   getDealEsignTemplateViewUrl,
   getDealEsignTemplates,
   patchDealEsignTemplate,
-  postDealEsignTemplateUploads,
 } from "../controllers/deal/dealEsignTemplates.controller.js";
 import {
   getDealEsignDropboxSignConfig,
   postDealEsignCompleteEmbeddedTemplate,
   postDealEsignEmbeddedDraft,
 } from "../controllers/deal/dealEsignDropboxSign.controller.js";
+import {
+  getDealEsignSignFlowConfig,
+  getDealEsignSignFlowVerify,
+} from "../controllers/esign/signflow.controller.js";
 import {
   getDealInvestorQuestionnaire,
   putDealInvestorQuestionnaire,
@@ -56,14 +58,18 @@ import {
   deleteDealMember,
   getDealMemberEsignStatus,
   getDealMembers,
+  getDealReferringSponsor,
   postDealMemberInvitationEmail,
   postDealMemberSendEsign,
 } from "../controllers/deal/dealMember.controller.js";
 import {
   getDealMyEsignDocuments,
   getDealMyEsignSignSessionHandler,
+  getDealSponsorEsignSignSessionHandler,
   postDealMyEsignMarkViewed,
   postDealMyEsignSync,
+  postDealSponsorEsignSync,
+  postSyncCompletedEsignDocuments,
 } from "../controllers/deal/dealInvestorEsignDocuments.controller.js";
 import { postDealDocumentSharedNotification } from "../controllers/deal/dealDocumentNotification.controller.js";
 import {
@@ -83,6 +89,7 @@ import {
   getDealInvestorCommunicationMails,
   postDealInvestorCommunicationMail,
 } from "../controllers/deal/dealInvestorCommunicationMail.controller.js";
+import multer from "multer";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -141,6 +148,7 @@ router.delete(
   "/deals/:dealId/investor-communication/mails/:mailId",
   deleteDealInvestorCommunicationMailHandler,
 );
+router.get("/deals/:dealId/referring-sponsor", getDealReferringSponsor);
 router.get("/deals/:dealId/members", getDealMembers);
 router.post(
   "/deals/:dealId/members/export-notify",
@@ -163,7 +171,18 @@ router.get("/deals/:dealId/my-esign-documents", getDealMyEsignDocuments);
 router.post("/deals/:dealId/my-esign-sync", postDealMyEsignSync);
 router.post("/deals/:dealId/my-esign-mark-viewed", postDealMyEsignMarkViewed);
 router.get("/deals/:dealId/my-esign-sign-session", getDealMyEsignSignSessionHandler);
+router.get(
+  "/deals/:dealId/sponsor-esign-sign-session",
+  getDealSponsorEsignSignSessionHandler,
+);
+router.post("/deals/:dealId/sponsor-esign-sync", postDealSponsorEsignSync);
+router.post(
+  "/deals/:dealId/documents/sync-esign-completed",
+  postSyncCompletedEsignDocuments,
+);
 router.get("/deals/esign-templates/dropbox-sign-config", getDealEsignDropboxSignConfig);
+router.get("/deals/esign-templates/signflow-config", getDealEsignSignFlowConfig);
+router.get("/deals/esign-templates/signflow-verify", getDealEsignSignFlowVerify);
 router.get("/deals/:dealId/esign-templates", getDealEsignTemplates);
 router.get(
   "/deals/:dealId/esign-templates/:fileId/view-url",
@@ -172,11 +191,6 @@ router.get(
 router.get(
   "/deals/:dealId/esign-templates/:fileId/view",
   getDealEsignTemplateView,
-);
-router.post(
-  "/deals/:dealId/esign-template-uploads",
-  upload.array("esignFiles"),
-  postDealEsignTemplateUploads,
 );
 router.post(
   "/deals/:dealId/esign-templates/:fileId/embedded-draft",
@@ -225,7 +239,7 @@ router.patch(
 );
 router.get(
   "/deals/:dealId/offering-investor-preview",
-  patchDealOfferingInvestorPreview,
+  getDealOfferingInvestorPreview,
 );
 router.patch(
   "/deals/:dealId/offering-investor-preview",

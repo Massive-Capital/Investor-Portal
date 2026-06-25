@@ -34,6 +34,13 @@ export interface DealListRow {
   city?: string
   /** From list API — investor offering workflow status (`offering_status`). */
   offeringStatus?: string
+  /**
+   * When `includeParticipantDeals` is set: false for dashboard “opportunity” deals
+   * where roster APIs (`/investors`, `/members`) are not readable for this viewer.
+   */
+  rosterReadable?: boolean
+  /** LP / sponsor role label from investing deals list API. */
+  yourRole?: string
   /** From enriched list API (investor class advanced JSON) */
   investmentType?: string
   /** First asset tag from investor class advanced JSON */

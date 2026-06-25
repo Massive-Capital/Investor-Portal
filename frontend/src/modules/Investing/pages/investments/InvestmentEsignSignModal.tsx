@@ -1,6 +1,7 @@
-import { FileSignature, Loader2, X } from "lucide-react"
+import { Clock3, FileSignature, Loader2, X } from "lucide-react"
 import { useCallback, useEffect, useRef, type MouseEvent } from "react"
 import { DropboxSignEmbeddedSigner } from "@/common/components/dropbox-sign-embedded/DropboxSignEmbeddedSigner"
+import { SignFlowEmbeddedSigner } from "@/common/components/signflow-embedded"
 import { toast } from "@/common/components/Toast"
 import "@/modules/Syndication/Deals/deal-esign-ui.css"
 import {
@@ -28,6 +29,7 @@ export function InvestmentEsignSignModal({
   const {
     phase,
     error,
+    waitingFor,
     activeSession,
     embedKey,
     loadSession,
@@ -181,9 +183,34 @@ export function InvestmentEsignSignModal({
             ) : null}
 
             {error && phase === "error" ? (
-              <p className="deal_esign_notice deal_esign_notice--error" role="alert">
-                {error}
-              </p>
+              waitingFor ? (
+                <div
+                  className="deal_esign_sign_gate_notice"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="deal_esign_sign_gate_icon" aria-hidden>
+                    <Clock3 size={18} strokeWidth={2} />
+                  </span>
+                  <div className="deal_esign_sign_gate_copy">
+                    <p className="deal_esign_sign_gate_title">
+                      {waitingFor === "sponsor"
+                        ? "Waiting for sponsor signature"
+                        : "Waiting for investor signature"}
+                    </p>
+                    <p className="deal_esign_sign_gate_message">{error}</p>
+                    <p className="deal_esign_sign_gate_hint">
+                      Signing will unlock automatically once the prior party
+                      completes their signature. You can close this window and
+                      return later.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="deal_esign_notice deal_esign_notice--error" role="alert">
+                  {error}
+                </p>
+              )
             ) : null}
 
             {phase === "completed" ? (
@@ -196,32 +223,56 @@ export function InvestmentEsignSignModal({
               <div className="deal_esign_sign_actions">
                 <button
                   type="button"
-                  className="um_btn_primary"
+                  className={waitingFor ? "um_btn_secondary" : "um_btn_primary"}
                   onClick={() => void loadSession()}
                 >
-                  Try again
+                  {waitingFor ? "Check again" : "Try again"}
                 </button>
               </div>
             ) : null}
 
             {showEmbed && activeSession ? (
               <div className="deal_esign_modal_sign_embed">
-                <DropboxSignEmbeddedSigner
-                  key={`${embedKey}-${activeSession.signUrl}`}
-                  signUrl={activeSession.signUrl}
-                  clientId={activeSession.clientId}
-                  testMode={activeSession.testMode}
-                  useInlineContainer
-                  onOpened={handleOpened}
-                  onSign={handleSignProgress}
-                  onFinish={handleFinish}
-                  onCancel={handleClose}
-                  onError={(msg) => {
-                    setError(msg)
-                    clearEmbed()
-                    toast.error("Signing error", msg)
-                  }}
-                />
+                {activeSession.provider === "signflow" ? (
+                  <SignFlowEmbeddedSigner
+                    key={`${embedKey}-${activeSession.documentId ?? activeSession.signUrl}`}
+                    signUrl={activeSession.signUrl}
+                    documentId={
+                      activeSession.documentId ??
+                      activeSession.signatureRequestId ??
+                      ""
+                    }
+                    embedApiKey={activeSession.embedApiKey}
+                    appBaseUrl={activeSession.appBaseUrl}
+                    useInlineContainer
+                    onOpened={handleOpened}
+                    onSign={handleSignProgress}
+                    onFinish={handleFinish}
+                    onCancel={handleClose}
+                    onError={(msg) => {
+                      setError(msg)
+                      clearEmbed()
+                      toast.error("Signing error", msg)
+                    }}
+                  />
+                ) : (
+                  <DropboxSignEmbeddedSigner
+                    key={`${embedKey}-${activeSession.signUrl}`}
+                    signUrl={activeSession.signUrl}
+                    clientId={activeSession.clientId}
+                    testMode={activeSession.testMode}
+                    useInlineContainer
+                    onOpened={handleOpened}
+                    onSign={handleSignProgress}
+                    onFinish={handleFinish}
+                    onCancel={handleClose}
+                    onError={(msg) => {
+                      setError(msg)
+                      clearEmbed()
+                      toast.error("Signing error", msg)
+                    }}
+                  />
+                )}
               </div>
             ) : null}
           </div>

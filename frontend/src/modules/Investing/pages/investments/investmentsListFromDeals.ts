@@ -3,15 +3,17 @@
  * signed-in user has a positive committed amount on a deal.
  */
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
+import { getSessionUserId } from "@/common/auth/sessionUserId"
 import {
   applyLpSessionDealIdScope,
-  committedAmountForViewerEmail,
+  committedAmountMatchingInvestorsTable,
+  dealIsInViewerInvestmentsListScope,
+  dealRowSupportsRosterApiPrefetch,
   formatViewerInvestingDealRolesLabel,
   mapInvestingInvestmentsPageScope,
   resolveViewerInvestingDealRoles,
   viewerDealHasStartedInvestment,
   viewerDealNeedsOnboarding,
-  viewerHasDealParticipation,
 } from "@/modules/Investing/utils/investingViewerDealScope"
 import type { InvestmentOnboardingBucket } from "./investments.types"
 import {
@@ -25,10 +27,6 @@ import {
 } from "@/modules/Investing/pages/invest/investNowDraftUtils"
 import { investNowDraftProgressFromInvestorRow } from "@/modules/Investing/pages/invest/investNowDraftProgress"
 import {
-  investorCommittedVisibleToViewer,
-  investorRowCommittedNumeric,
-} from "@/modules/Syndication/Deals/utils/investorEsignStatus"
-import {
   fetchDealById,
   fetchDealInvestors,
   fetchDealMembers,
@@ -40,14 +38,15 @@ import type {
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
-import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import { investorRowMatchesViewerEmail } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
+import { investorRowCommittedAmountNumeric } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import {
   fetchUserInvestorProfileNameMap,
   formatInvestedAsFromInv,
   investorCommitmentTypeFromInv,
   profileNameForInvestmentBreakdown,
 } from "./investedAsDisplay"
-import { resolveInvestNowSponsorLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
+import { pickInvestNowLeadSponsorDisplayName } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 import { syncInvestmentDealDocumentPreview } from "./utils/syncInvestmentDealDocumentPreview"
 import { investmentRuntimeIdForDeal, readRuntimeInvestmentRowById } from "./investmentsRuntimeStore"
 import type {
@@ -76,9 +75,9 @@ function positiveViewerCommitments(
 ): DealInvestorRow[] {
   const out: { inv: DealInvestorRow; amt: number }[] = []
   for (const inv of investors) {
-    if (normEmail(String(inv.userEmail ?? "")) !== viewerEmailNorm) continue
-    const amt = parseMoneyDigits(String(inv.committed ?? ""))
-    if (Number.isFinite(amt) && amt > 0) out.push({ inv, amt })
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
+    const amt = investorRowCommittedAmountNumeric(inv)
+    if (amt > 0) out.push({ inv, amt })
   }
   out.sort((a, b) => b.amt - a.amt)
   return out.map((x) => x.inv)
@@ -112,7 +111,7 @@ function viewerRowsForProfileBreakdown(
   const out: DealInvestorRow[] = []
   const seen = new Set<string>()
   for (const inv of investors) {
-    if (normEmail(String(inv.userEmail ?? "")) !== viewerEmailNorm) continue
+    if (!investorRowMatchesViewerEmail(inv, viewerEmailNorm)) continue
     const rowId = String(inv.id ?? "").trim()
     if (rowId) {
       if (seen.has(rowId)) continue
@@ -122,8 +121,7 @@ function viewerRowsForProfileBreakdown(
       out.push(inv)
       continue
     }
-    if (!investorCommittedVisibleToViewer(inv)) continue
-    if (investorRowCommittedNumeric(inv) <= 0) continue
+    if (investorRowCommittedAmountNumeric(inv) <= 0) continue
     out.push(inv)
   }
   return out
@@ -141,7 +139,7 @@ function buildProfileBreakdownForDeal(
 ): InvestmentBreakdownLine[] {
   const out: InvestmentBreakdownLine[] = []
   for (const inv of profileRows) {
-    const amt = investorRowCommittedNumeric(inv)
+    const amt = investorRowCommittedAmountNumeric(inv)
     out.push({
       investmentRowId: String(inv.id ?? "").trim() || undefined,
       userInvestorProfileId:
@@ -201,6 +199,7 @@ function listRowFromDealAndInvestors(
   onboardingBuckets: InvestmentOnboardingBucket[],
   investors: DealInvestorRow[],
   viewerEmailNorm: string,
+  leadSponsorDisplayName?: string,
 ): InvestmentListRow {
   const dealId = listRow.id
   const profileId = inv ? String(inv.profileId ?? "").trim() : ""
@@ -251,10 +250,10 @@ function listRowFromDealAndInvestors(
     secType: listRow.secType,
     propertyName: listRow.propertyName,
     owningEntityName: listRow.owningEntityName,
-    dealSponsorName: resolveInvestNowSponsorLabel(
-      { owningEntityName: listRow.owningEntityName },
+    dealSponsorName: pickInvestNowLeadSponsorDisplayName({
       members,
-    ),
+      leadSponsorDisplayName,
+    }),
     startDateDisplay: listRow.startDateDisplay ?? listRow.createdDateDisplay,
     viewerRolesLabel,
   }
@@ -281,8 +280,8 @@ export async function loadInvestmentListRowsFromDeals(
     nameByUserProfileIdFromBook ??
     (await fetchUserInvestorProfileNameMap())
   const out: InvestmentListRow[] = []
-  for (const { row, payload, members } of scoped) {
-    const committed = committedAmountForViewerEmail(payload, emn)
+  for (const { row, payload, members, leadSponsorDisplayName } of scoped) {
+    const committed = committedAmountMatchingInvestorsTable(payload, emn)
     // `scoped` already passed `dealIsInViewerInvestmentsListScope` (invited, draft, or
     // visible commitment). Do not drop in-progress Invest Now drafts — they have no
     // visible committed amount until e-sign completes.
@@ -308,6 +307,7 @@ export async function loadInvestmentListRowsFromDeals(
         onboardingBucketsForDealPayload(payload, emn),
         payload.investors,
         emn,
+        leadSponsorDisplayName,
       ),
     )
   }
@@ -372,8 +372,37 @@ function defaultDetailRecord(
 }
 
 /**
+ * Route param may be `deal_investment.id`; resolve to parent deal when it is not a deal id.
+ */
+async function resolveDealIdFromInvestmentRowId(
+  investmentRowId: string,
+): Promise<string | undefined> {
+  const key = investmentRowId.trim().toLowerCase()
+  if (!key) return undefined
+  const list = applyLpSessionDealIdScope(
+    await fetchDealsList({ includeParticipantDeals: true }),
+  )
+  for (const row of list) {
+    if (!dealRowSupportsRosterApiPrefetch(row)) continue
+    try {
+      const payload = await fetchDealInvestors(row.id, {
+        lpInvestorsOnly: false,
+      })
+      const ownsRow = payload.investors.some((inv) => {
+        if (String(inv.id ?? "").trim().toLowerCase() !== key) return false
+        return investorRowMatchesViewerEmail(inv, normEmail(getSessionUserEmail()))
+      })
+      if (ownsRow) return row.id.trim()
+    } catch {
+      continue
+    }
+  }
+  return undefined
+}
+
+/**
  * Detail view for a deal the viewer has invested in (server-backed when not in localStorage).
- * `investmentIdOrDealId` may be a deal id or a `runtime-…` id (resolved via local row’s `dealId`).
+ * `investmentIdOrDealId` may be a deal id, `deal_investment.id`, or a `runtime-…` id.
  */
 export async function loadInvestmentDetailFromDeal(
   investmentIdOrDealId: string,
@@ -387,11 +416,12 @@ export async function loadInvestmentDetailFromDeal(
     else return undefined
   }
   const em = getSessionUserEmail()
-  if (!em?.trim()) return undefined
-  const emn = normEmail(em)
+  const emn = em?.trim() ? normEmail(em) : ""
+  if (!emn && !getSessionUserId().trim()) return undefined
   let deal: DealDetailApi
   let payload: Awaited<ReturnType<typeof fetchDealInvestors>>
   let members: DealInvestorRow[]
+  let leadSponsorDisplayName: string | undefined
   try {
     const [dealRow, payloadRow, membersResult] = await Promise.all([
       fetchDealById(did),
@@ -401,12 +431,28 @@ export async function loadInvestmentDetailFromDeal(
     deal = dealRow
     payload = payloadRow
     members = membersResult.members
+    leadSponsorDisplayName = membersResult.leadSponsorDisplayName
   } catch {
-    return undefined
+    const resolvedDealId = await resolveDealIdFromInvestmentRowId(did)
+    if (!resolvedDealId) return undefined
+    did = resolvedDealId
+    try {
+      const [dealRow, payloadRow, membersResult] = await Promise.all([
+        fetchDealById(did),
+        fetchDealInvestors(did, { lpInvestorsOnly: false }),
+        fetchDealMembers(did),
+      ])
+      deal = dealRow
+      payload = payloadRow
+      members = membersResult.members
+      leadSponsorDisplayName = membersResult.leadSponsorDisplayName
+    } catch {
+      return undefined
+    }
   }
   syncInvestmentDealDocumentPreview(did, deal.offeringInvestorPreviewJson ?? null)
-  if (!viewerHasDealParticipation(payload, emn)) return undefined
-  const committed = committedAmountForViewerEmail(payload, emn)
+  if (!dealIsInViewerInvestmentsListScope(payload, emn)) return undefined
+  const committed = committedAmountMatchingInvestorsTable(payload, emn)
   const myCommitments = positiveViewerCommitments(payload.investors, emn)
   const profileRows = viewerRowsForProfileBreakdown(payload.investors, emn)
   const inv = myCommitments[0] ?? profileRows[0]
@@ -424,6 +470,7 @@ export async function loadInvestmentDetailFromDeal(
     onboardingBucketsForDealPayload(payload, emn),
     payload.investors,
     emn,
+    leadSponsorDisplayName,
   )
   const investedAsBreakdown = buildProfileBreakdownForDeal(profileRows, nameMap)
   return defaultDetailRecord(list, deal, investedAsBreakdown)

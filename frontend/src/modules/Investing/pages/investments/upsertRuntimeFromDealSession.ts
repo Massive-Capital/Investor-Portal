@@ -6,7 +6,7 @@
  */
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import {
-  committedAmountForViewerEmail,
+  committedAmountMatchingInvestorsTable,
   viewerHasDealParticipation,
 } from "@/modules/Investing/utils/investingViewerDealScope"
 import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
@@ -17,7 +17,7 @@ import type {
   DealInvestorRow,
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
-import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import { investorRowCommittedAmountNumeric, parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import { upsertRuntimeInvestmentRow } from "./investmentsRuntimeStore"
 
 function normEmail(s: string): string {
@@ -33,9 +33,9 @@ function pickPrimaryViewerRow(
   )
   if (matches.length === 0) return undefined
   matches.sort((a, b) => {
-    const na = parseMoneyDigits(String(a.committed ?? ""))
-    const nb = parseMoneyDigits(String(b.committed ?? ""))
-    return (Number.isFinite(nb) ? nb : 0) - (Number.isFinite(na) ? na : 0)
+    const na = investorRowCommittedAmountNumeric(a)
+    const nb = investorRowCommittedAmountNumeric(b)
+    return nb - na
   })
   return matches[0]
 }
@@ -101,7 +101,7 @@ export function upsertRuntimeForViewerFromInvestorsPayload(
   if (!em?.trim()) return
   const emn = normEmail(em)
   if (!viewerHasDealParticipation(payload, emn)) return
-  const committed = committedAmountForViewerEmail(payload, emn)
+  const committed = committedAmountMatchingInvestorsTable(payload, emn)
   const inv = pickPrimaryViewerRow(payload.investors, emn)
   const deal = dealDetail
   const listRow = deal?.listRow

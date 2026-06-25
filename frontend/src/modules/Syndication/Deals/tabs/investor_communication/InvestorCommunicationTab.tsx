@@ -154,10 +154,10 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
             `${succeeded} deleted, ${failed} failed.`,
           )
         } else if (failed > 0) {
-          toast.error("Could not delete mail log entries", "Try again later.")
+          toast.error("Could not delete email log entries", "Try again later.")
         } else {
           toast.success(
-            ids.length === 1 ? "Mail log entry deleted" : "Mail log entries deleted",
+            ids.length === 1 ? "Email log entry deleted" : "Email log entries deleted",
             ids.length === 1
               ? selectedRows[0]?.subject ?? ""
               : `${ids.length} entries removed.`,
@@ -213,7 +213,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
             checked={allSelected}
             onChange={toggleSelectAllFiltered}
             disabled={loading || filtered.length === 0}
-            aria-label="Select all mail log entries in this list"
+            aria-label="Select all email log entries in this list"
           />
         ),
         align: "center",
@@ -227,7 +227,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
             onChange={() => toggleSelect(row.id)}
             onClick={(e) => e.stopPropagation()}
             disabled={loading}
-            aria-label={`Select mail log ${row.subject?.trim() || row.id}`}
+            aria-label={`Select email log ${row.subject?.trim() || row.id}`}
           />
         ),
       },
@@ -333,10 +333,10 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
   )
 
   const emptyLabel = loading
-    ? "Loading mail log…"
+    ? "Loading email log…"
     : query.trim()
-      ? "No mail entries match your search."
-      : "No investor mail has been sent for this deal yet. Use Send mail to compose a message."
+      ? "No email entries match your search."
+      : "No investor email has been sent for this deal yet. Use Send email to compose a message."
 
   return (
     <div className="deal_inv_populated deal_inv_comm">
@@ -344,13 +344,13 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
         open={bulkDeleteOpen}
         title={
           selectedIds.size === 1
-            ? "Delete mail log entry?"
-            : `Delete ${selectedIds.size} mail log entries?`
+            ? "Delete email log entry?"
+            : `Delete ${selectedIds.size} email log entries?`
         }
         description={
           selectedIds.size === 1
-            ? `Remove "${selectedRows[0]?.subject?.trim() || "this entry"}" from the mail log? This cannot be undone.`
-            : `Remove ${selectedIds.size} selected mail log entries? This cannot be undone.`
+            ? `Remove "${selectedRows[0]?.subject?.trim() || "this entry"}" from the email log? This cannot be undone.`
+            : `Remove ${selectedIds.size} selected email log entries? This cannot be undone.`
         }
         reasonLabel="Reason for deletion"
         reasonPlaceholder="e.g. Logged in error, duplicate send…"
@@ -376,7 +376,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
       <div
         className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel"
         role="region"
-        aria-label="Investor communication mail log"
+        aria-label="Investor communication email log"
       >
         <div
           className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search"
@@ -394,7 +394,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
                 setQuery(e.target.value)
                 setPage(1)
               }}
-              aria-label="Search investor communication mail log"
+              aria-label="Search investor communication email log"
               disabled={loading}
             />
           </div>
@@ -406,7 +406,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
                 onClick={() => setBulkDeleteOpen(true)}
                 disabled={loading}
                 title={`Delete ${selectedIds.size} selected`}
-                aria-label={`Delete ${selectedIds.size} selected mail log entr${selectedIds.size === 1 ? "y" : "ies"}`}
+                aria-label={`Delete ${selectedIds.size} selected email log entr${selectedIds.size === 1 ? "y" : "ies"}`}
               >
                 <Trash2 size={18} strokeWidth={2} aria-hidden />
               </button>
@@ -420,7 +420,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
               }}
             >
               <Send size={18} strokeWidth={2} aria-hidden />
-              Send mail
+              Send email
             </button>
           </div>
         </div>
@@ -446,7 +446,7 @@ export function InvestorCommunicationTab({ dealId }: InvestorCommunicationTabPro
                     setPageSize(size)
                     setPage(1)
                   },
-                  ariaLabel: "Investor communication mail log pagination",
+                  ariaLabel: "Investor communication email log pagination",
                 }
               : undefined
           }

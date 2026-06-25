@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { toast } from "@/common/components/Toast"
 import {
   type ProfileBookSnapshot,
@@ -24,6 +24,10 @@ import "./add-investor-profile-modal.css"
  */
 export function AddInvestorProfilePage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = (
+    location.state as { returnTo?: string } | null
+  )?.returnTo?.trim()
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
   const [savedBeneficiaries, setSavedBeneficiaries] = useState<
     ProfileBookSnapshot["beneficiaries"]
@@ -60,16 +64,16 @@ export function AddInvestorProfilePage() {
   }, [])
 
   const goBack = useCallback(() => {
-    navigate("/investing/profiles")
-  }, [navigate])
+    navigate(returnTo || "/investing/profiles")
+  }, [navigate, returnTo])
 
   const onProfileCreated = useCallback(
     async (p: NewInvestorProfilePayload) => {
       await postInvestorProfile(p)
       toast.success("Profile added", "Your new profile was saved.")
-      navigate("/investing/profiles")
+      navigate(returnTo || "/investing/profiles")
     },
-    [navigate],
+    [navigate, returnTo],
   )
 
   if (loading) {

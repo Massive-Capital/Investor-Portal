@@ -161,7 +161,7 @@ export function InvestorCommunicationRowActions({
                   id={deleteTitleId}
                   className="um_modal_title add_contact_modal_title"
                 >
-                  Delete mail log entry?
+                  Delete email log entry?
                 </h3>
                 <button
                   type="button"
@@ -175,7 +175,7 @@ export function InvestorCommunicationRowActions({
               </div>
               <div className="deals_add_inv_modal_scroll">
                 <p className="deals_suspend_all_modal_message">
-                  Remove this mail log for &quot;{label}&quot;? This cannot be
+                  Remove this email log for &quot;{label}&quot;? This cannot be
                   undone.
                 </p>
               </div>
@@ -303,7 +303,7 @@ export function InvestorCommunicationRowActions({
                           aria-hidden
                         />
                       )}
-                      Resend mail
+                      Resend email
                     </button>
                   </li>
                 ) : null}

@@ -110,52 +110,46 @@
   color: var(--portal-text, #0f172a);
 }
 
-/* Number of units — label left, pill quantity + pill unit dropdown on the right */
+/* Number of units — full-width 50/50 quantity + unit dropdown */
 .deal_asset_attr_tr_num_units {
   align-items: center;
 }
 
 .deal_asset_attr_td_num_units {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
+  display: block;
+  min-width: 0;
 }
 
 .deal_asset_attr_num_units_wrap {
-  display: inline-flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: stretch;
-  gap: 0.5rem;
+  gap: 0.65rem;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
 
-.deal_asset_attr_num_units_wrap .deal_asset_attr_num_units_input {
-  width: auto;
-  min-width: 6.5rem;
-  max-width: 10rem;
-  flex: 0 1 auto;
-  padding: 0.55rem 1.05rem;
-  border-radius: var(--portal-pill-radius, 4px);
+.deal_asset_attr_num_units_wrap .deal_asset_attr_num_units_input,
+.deal_asset_attr_num_units_wrap .deal_asset_attr_num_units_select {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: initial;
+  padding: 0.45em 0.5em;
+  border-radius: var(--portal-card-radius, 4px);
   border: 1px solid var(--portal-border, #e2e8f0);
+  font-family: inherit;
   font-size: 0.875em;
   line-height: 1.25;
   background: var(--portal-surface, #fff);
+  color: var(--portal-text, #0f172a);
 }
 
 .deal_asset_attr_num_units_wrap .deal_asset_attr_num_units_select {
-  flex: 0 1 auto;
-  min-width: min(10rem, 46vw);
-  max-width: 13rem;
-  padding: 0.55rem 2.1rem 0.55rem 1.05rem;
-  border-radius: var(--portal-pill-radius, 4px);
-  border: 1px solid var(--portal-border, #e2e8f0);
-  font-size: 0.875em;
-  line-height: 1.25;
+  padding-right: 2.1rem;
   cursor: pointer;
   appearance: none;
-  background-color: var(--portal-surface, #fff);
-  color: var(--portal-text, #0f172a);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.65rem center;

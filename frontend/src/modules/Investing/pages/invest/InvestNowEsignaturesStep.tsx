@@ -4,6 +4,7 @@ import type { DealEsignTemplateFileRecord } from "@/modules/Syndication/Deals/ap
 import {
   fetchDealEsignTemplateViewUrl,
   fetchDealMyEsignDocuments,
+  isDealEsignTemplateReady,
   postDealMyEsignMarkViewed,
   type DealMyEsignScopeQuery,
 } from "@/modules/Syndication/Deals/api/dealsApi"
@@ -33,6 +34,8 @@ export interface InvestNowEsignaturesStepProps {
   esignCategoryId: string
   profileTemplate: DealEsignTemplateFileRecord | undefined
   profileLabel: string
+  /** Commitment profile id — scopes unified template field visibility. */
+  commitmentProfileId?: string
   /** When false, this profile's e-sign template does not include a questionnaire. */
   questionnaireInFlow?: boolean
   investorDisplayName: string
@@ -70,6 +73,7 @@ export function InvestNowEsignaturesStep({
   esignCategoryId,
   profileTemplate,
   profileLabel,
+  commitmentProfileId,
   questionnaireInFlow = false,
   investorDisplayName,
   sendError,
@@ -103,9 +107,13 @@ export function InvestNowEsignaturesStep({
     [profileTemplate],
   )
 
-  const categoryLabel = esignCategoryLabel(esignCategoryId)
+  const categoryLabel = useMemo(() => {
+    const templateCategory = profileTemplate?.categoryId?.trim()
+    if (templateCategory) return esignCategoryLabel(templateCategory)
+    return esignCategoryLabel(esignCategoryId)
+  }, [profileTemplate, esignCategoryId])
 
-  const profileReady = profileTemplate?.dropboxSignStatus === "ready"
+  const profileReady = isDealEsignTemplateReady(profileTemplate)
 
   const firstPendingSignatureRequestId = useMemo(() => {
     const pending = esignDocuments.find(
@@ -155,7 +163,9 @@ export function InvestNowEsignaturesStep({
     }
     let cancelled = false
     setTemplatePreviewLoading(true)
-    void fetchDealEsignTemplateViewUrl(dealId, fileId).then((res) => {
+      void fetchDealEsignTemplateViewUrl(dealId, fileId, {
+        profileId: commitmentProfileId?.trim(),
+      }).then((res) => {
       if (cancelled) return
       setTemplatePreviewLoading(false)
       setTemplatePreviewUrl(res.ok ? res.viewUrl : null)
@@ -163,7 +173,7 @@ export function InvestNowEsignaturesStep({
     return () => {
       cancelled = true
     }
-  }, [dealId, profileTemplate?.id])
+  }, [dealId, profileTemplate?.id, commitmentProfileId])
 
   const displayDocuments =
     esignDocuments.length > 0
@@ -288,19 +298,22 @@ export function InvestNowEsignaturesStep({
 
       {!profileTemplate && !esignLoading ? (
         <p className="deals_create_hint invest_now_step_desc_warn">
-          No eSign template is uploaded for {profileLabel} on this deal. Contact
-          your sponsor to add a document on the eSign Templates tab.
+          No eSign template is configured for this deal yet. Contact your sponsor to
+          complete setup on the eSign Templates tab
+          {profileLabel && profileLabel !== "—"
+            ? ` (fields for ${profileLabel} are placed on the shared template).`
+            : "."}
         </p>
       ) : null}
 
       {profileTemplate &&
-      profileTemplate.dropboxSignStatus !== "ready" &&
+      !profileReady &&
       !esignPending &&
       !esignCompleted &&
       !sendError ? (
         <p className="deals_create_hint invest_now_step_desc_warn">
-          The template for {profileLabel} is not ready for signing yet. Your
-          sponsor must finish the Dropbox Sign setup on the eSign Templates tab.
+          The subscription document for this deal is not ready for signing yet. Your
+          sponsor must finish eSign setup on the eSign Templates tab.
         </p>
       ) : null}
 
@@ -377,7 +390,7 @@ export function InvestNowEsignaturesStep({
                               doc.signatureRequestId?.trim() ||
                               firstPendingSignatureRequestId
                             if (sig && dealId.trim()) {
-                              void postDealMyEsignMarkViewed(dealId, sig)
+                              void postDealMyEsignMarkViewed(dealId, sig, esignScope)
                             }
                           }}
                         >

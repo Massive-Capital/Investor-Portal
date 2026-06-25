@@ -1,13 +1,11 @@
 import type { Request, Response } from "express";
-import { eq } from "drizzle-orm";
 import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
-import { db } from "../../database/db.js";
-import { users } from "../../schema/schema.js";
+import { resolveLpViewerEmailNorm } from "../../services/deal/dealLpViewerIdentity.service.js";
 import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
@@ -97,16 +95,12 @@ export async function patchDealLpInvestorMyInvestNowAddon(
       return;
     }
 
-    const [uRow] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1);
-    const emailNorm = String(uRow?.email ?? "")
-      .trim()
-      .toLowerCase();
+    const emailNorm = await resolveLpViewerEmailNorm(user.id, user.email);
     if (!emailNorm.includes("@")) {
-      res.status(400).json({ message: "Missing investor email on account" });
+      res.status(400).json({
+        message:
+          "Your account does not have an email address. Add an email to your profile and try again.",
+      });
       return;
     }
 
@@ -139,12 +133,19 @@ export async function patchDealLpInvestorMyInvestNowAddon(
     const hasFundingMethodKey =
       Object.prototype.hasOwnProperty.call(b, "funding_method") ||
       Object.prototype.hasOwnProperty.call(b, "fundingMethod");
+    const hasInvestorClassKey =
+      Object.prototype.hasOwnProperty.call(b, "investor_class") ||
+      Object.prototype.hasOwnProperty.call(b, "investorClass");
     const replaceCommittedAmount =
       b.replace_committed_amount === true ||
       b.replaceCommittedAmount === true ||
       String(b.replace_committed_amount ?? b.replaceCommittedAmount ?? "")
         .trim()
         .toLowerCase() === "true";
+
+    const referringSponsorRefRaw = bodyString(
+      b.referring_sponsor_ref ?? b.referringSponsorRef,
+    ).trim();
 
     const result = await applyMyInvestNowCommitmentAddon({
       dealId: dealId.trim(),
@@ -171,6 +172,11 @@ export async function patchDealLpInvestorMyInvestNowAddon(
       fundingMethod: hasFundingMethodKey
         ? bodyString(b.funding_method ?? b.fundingMethod)
         : undefined,
+      investorClassInBody: hasInvestorClassKey,
+      investorClass: hasInvestorClassKey
+        ? bodyString(b.investor_class ?? b.investorClass)
+        : undefined,
+      referringSponsorRef: referringSponsorRefRaw || undefined,
     });
     if (!result.ok) {
       res.status(400).json({ message: result.message });

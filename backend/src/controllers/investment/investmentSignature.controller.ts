@@ -8,6 +8,11 @@ import {
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { resolvePortalUserContactKeysOnDeal } from "../../services/deal/dealMemberEsignStatus.service.js";
+import { resolveInvestNowViewerContactOnDeal } from "../../services/deal/dealInvestNowViewerContact.service.js";
+import {
+  resolveLpViewerEmailNorm,
+  viewerOwnsContactKey,
+} from "../../services/deal/dealLpViewerIdentity.service.js";
 import {
   getInvestmentSignStatus,
   type InvestmentSignStatusApi,
@@ -15,7 +20,7 @@ import {
 
 async function viewerMayReadInvestmentSignStatus(params: {
   userId: string;
-  userEmail: string;
+  userEmail: string | undefined;
   userRole: string | undefined;
   dealId: string;
   contactId: string;
@@ -25,12 +30,26 @@ async function viewerMayReadInvestmentSignStatus(params: {
     return true;
   }
 
+  const emailNorm = await resolveLpViewerEmailNorm(
+    params.userId,
+    params.userEmail,
+  );
+  if (!emailNorm.includes("@")) return false;
+
   const keys = await resolvePortalUserContactKeysOnDeal(params.dealId, {
-    email: params.userEmail,
+    email: emailNorm,
     userId: params.userId,
   });
-  const cid = params.contactId.trim().toLowerCase();
-  return Boolean(cid && keys.has(cid));
+  const viewerContact = await resolveInvestNowViewerContactOnDeal({
+    dealId: params.dealId,
+    viewerEmailNorm: emailNorm,
+    viewerUserId: params.userId,
+  });
+  return viewerOwnsContactKey(
+    params.contactId,
+    keys,
+    viewerContact.contactMemberId,
+  );
 }
 
 /**
@@ -56,7 +75,7 @@ export async function getInvestmentSignStatusHandler(
     return;
   }
 
-  const email = String(user.email ?? "").trim().toLowerCase();
+  const email = await resolveLpViewerEmailNorm(user.id, user.email);
   if (!email.includes("@")) {
     res.status(400).json({ message: "Your account has no email on file" });
     return;

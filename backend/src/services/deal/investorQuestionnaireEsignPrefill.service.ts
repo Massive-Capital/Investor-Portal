@@ -1,5 +1,6 @@
 import type { DropboxSignFormFieldPerDocument } from "../esign/dropboxSign.service.js";
 import type { DropboxSignPrefillCustomField } from "../esign/dropboxSign.service.js";
+import type { SignFlowField } from "../esign/signflow.service.js";
 import { formatEinDisplay, nineDigitsFromEinInput } from "../../common/tax/usEin.js";
 import type {
   InvestorQuestionnaireJson,
@@ -24,6 +25,22 @@ const COMPUTED_FULL_NAME_FIELD_KEYS = new Set(
     "name",
     "subscriber name",
     "signer name",
+  ].map((s) => normalizeFieldKey(s)),
+);
+
+const COMPUTED_DATE_FIELD_KEYS = new Set(
+  ["date", "datesigned1", "date signed", "signed date"].map((s) =>
+    normalizeFieldKey(s),
+  ),
+);
+
+const COMPUTED_TITLE_FIELD_KEYS = new Set(
+  [
+    "print title (if applicable)",
+    "print title",
+    "title1",
+    "title",
+    "authorized title",
   ].map((s) => normalizeFieldKey(s)),
 );
 
@@ -140,6 +157,18 @@ function resolveFullName(
   return String(memberDisplayName ?? "").trim();
 }
 
+function resolvePrintTitle(formatted: Map<string, string>): string {
+  return (
+    formatted.get("entity_authorized_title") ??
+    formatted.get("ira_entity_account_holder_title") ??
+    ""
+  ).trim();
+}
+
+function resolveSigningDate(): string {
+  return new Date().toLocaleDateString("en-US");
+}
+
 function resolveValueForFieldKey(
   fieldKey: string,
   formatted: Map<string, string>,
@@ -147,6 +176,14 @@ function resolveValueForFieldKey(
 ): string {
   if (COMPUTED_FULL_NAME_FIELD_KEYS.has(fieldKey)) {
     return resolveFullName(formatted, prefillContext?.memberDisplayName);
+  }
+
+  if (COMPUTED_TITLE_FIELD_KEYS.has(fieldKey)) {
+    return resolvePrintTitle(formatted);
+  }
+
+  if (COMPUTED_DATE_FIELD_KEYS.has(fieldKey)) {
+    return resolveSigningDate();
   }
 
   const questionId =
@@ -247,4 +284,54 @@ export function applyQuestionnairePrefillToEsignFormFields({
   });
 
   return { formFields: nextFields, customFields };
+}
+
+function signFlowFieldPrefillType(type: string): boolean {
+  const t = String(type ?? "").trim().toLowerCase();
+  return t === "text" || t === "date" || t === "date_signed";
+}
+
+/**
+ * Pre-fills SignFlow text/date fields on the questionnaire signature page (and
+ * other investor fields whose labels match questionnaire answers).
+ */
+export function applyQuestionnairePrefillToSignFlowFields({
+  fields,
+  config,
+  answers,
+  memberDisplayName,
+  prefillContext,
+}: {
+  fields: SignFlowField[];
+  config: InvestorQuestionnaireJson;
+  answers: InvestorQuestionnaireAnswersMap;
+  memberDisplayName?: string;
+  prefillContext?: EsignQuestionnairePrefillContext;
+}): SignFlowField[] {
+  const ctx: EsignQuestionnairePrefillContext = {
+    memberDisplayName:
+      prefillContext?.memberDisplayName?.trim() || memberDisplayName?.trim(),
+    memberEmail: prefillContext?.memberEmail?.trim(),
+    investmentAmount: prefillContext?.investmentAmount?.trim(),
+  };
+
+  const formatted = buildFormattedAnswerMap(config, answers);
+  if (
+    !formatted.size &&
+    !ctx.memberDisplayName &&
+    !ctx.memberEmail &&
+    !ctx.investmentAmount
+  ) {
+    return fields;
+  }
+
+  return fields.map((field) => {
+    if (!signFlowFieldPrefillType(field.type)) return field;
+
+    const fieldKey = normalizeFieldKey(field.label);
+    const value = resolveValueForFieldKey(fieldKey, formatted, ctx);
+    if (!value) return field;
+
+    return { ...field, value };
+  });
 }

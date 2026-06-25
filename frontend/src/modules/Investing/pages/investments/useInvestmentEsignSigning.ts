@@ -5,10 +5,14 @@ import {
 } from "@/modules/Syndication/Deals/api/dealsApi"
 
 export interface InvestmentEsignActiveSession {
+  provider?: "signflow" | "dropbox"
   signUrl: string
   clientId: string
   testMode: boolean
   signatureRequestId: string | null
+  embedApiKey?: string | null
+  appBaseUrl?: string | null
+  documentId?: string | null
 }
 
 export type InvestmentEsignSignPhase =
@@ -25,6 +29,9 @@ export function useInvestmentEsignSigning(
 ) {
   const [phase, setPhase] = useState<InvestmentEsignSignPhase>("idle")
   const [error, setError] = useState<string | null>(null)
+  const [waitingFor, setWaitingFor] = useState<"sponsor" | "investor" | null>(
+    null,
+  )
   const [activeSession, setActiveSession] =
     useState<InvestmentEsignActiveSession | null>(null)
   const [embedKey, setEmbedKey] = useState(0)
@@ -38,6 +45,7 @@ export function useInvestmentEsignSigning(
     const gen = ++loadGenRef.current
     setPhase("loading")
     setError(null)
+    setWaitingFor(null)
 
     const result = await fetchDealMyEsignSignSession(
       id,
@@ -54,6 +62,11 @@ export function useInvestmentEsignSigning(
 
     if (!result.ok) {
       setError(result.message)
+      setWaitingFor(
+        result.code === "waiting_for_prior_signer" && result.waitingFor
+          ? result.waitingFor
+          : null,
+      )
       setActiveSession(null)
       setPhase("error")
       return false
@@ -72,7 +85,15 @@ export function useInvestmentEsignSigning(
       return false
     }
 
-    if (!result.signUrl?.trim() || !result.clientId?.trim()) {
+    const provider =
+      result.provider ??
+      (result.signUrl?.trim() && !result.clientId?.trim() ? "signflow" : "dropbox")
+
+    if (
+      provider === "signflow"
+        ? !result.signUrl?.trim() && !result.documentId?.trim()
+        : !result.signUrl?.trim() || !result.clientId?.trim()
+    ) {
       setError(
         "Could not start signing. Ask your sponsor to resend the eSign request.",
       )
@@ -82,10 +103,14 @@ export function useInvestmentEsignSigning(
     }
 
     setActiveSession({
-      signUrl: result.signUrl.trim(),
-      clientId: result.clientId.trim(),
+      provider,
+      signUrl: result.signUrl?.trim() || "",
+      clientId: result.clientId?.trim() || "",
       testMode: result.testMode,
       signatureRequestId: result.signatureRequestId?.trim() || null,
+      embedApiKey: result.embedApiKey,
+      appBaseUrl: result.appBaseUrl,
+      documentId: result.documentId,
     })
     setEmbedKey((k) => k + 1)
     setPhase("embed")
@@ -97,6 +122,7 @@ export function useInvestmentEsignSigning(
     loadingRef.current = false
     setPhase("idle")
     setError(null)
+    setWaitingFor(null)
     setActiveSession(null)
     setEmbedKey(0)
   }, [])
@@ -109,6 +135,7 @@ export function useInvestmentEsignSigning(
   return {
     phase,
     error,
+    waitingFor,
     activeSession,
     embedKey,
     loadSession,

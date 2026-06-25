@@ -1,16 +1,11 @@
-import { SESSION_BEARER_KEY } from "../../../../common/auth/sessionKeys"
+import { ensureValidAccessToken } from "../../../../common/auth/portalFetch"
+import { portalAuthHeaders } from "../../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
 import type { DealInvestorsPayload } from "../types/deal-investors.types"
 import { fetchDealInvestors } from "./dealsApi"
 
 function authHeaders(): HeadersInit {
-  const token =
-    typeof sessionStorage !== "undefined"
-      ? sessionStorage.getItem(SESSION_BEARER_KEY)
-      : null
-  const h: HeadersInit = {}
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
+  return portalAuthHeaders({ omitActiveOrganization: true })
 }
 
 export type PatchMyLpDealInvestNowCommitmentResult =
@@ -23,6 +18,7 @@ export type MyLpDealInvestNowCommitmentPayload = {
   userInvestorProfileId: string
   committedAmount: string
   fundingMethod: string
+  investorClass: string
   status: string
   docSignedDate: string | null
   questionnaireAnswers: Record<string, string>
@@ -31,7 +27,7 @@ export type MyLpDealInvestNowCommitmentPayload = {
 
 export type FetchMyLpDealInvestNowCommitmentResult =
   | { ok: true; payload: MyLpDealInvestNowCommitmentPayload }
-  | { ok: false; message: string }
+  | { ok: false; message: string; notFound?: boolean }
 
 export type InvestNowCommitmentScope = {
   userInvestorProfileId?: string
@@ -48,12 +44,15 @@ export type PatchMyLpDealInvestNowCommitmentOptions = {
   questionnaireAnswers?: Record<string, string>
   w9Form?: Record<string, string>
   fundingMethod?: string
+  investorClassId?: string
   /** Profile / questionnaire saves without amount. */
   progressOnly?: boolean
   /** Omit `committed_amount` from the request body. */
   skipCommittedAmount?: boolean
   /** Server sets commitment to this value instead of adding. */
   replaceCommittedAmount?: boolean
+  /** Encrypted sponsor ref from the offering preview link. */
+  referringSponsorRef?: string
 }
 
 export type PostMyLpDealInvestNowEsignSendResult =
@@ -109,6 +108,16 @@ export async function fetchMyLpDealInvestNowCommitment(
           : `Could not load saved progress (${res.status})`
       return { ok: false, message: msg }
     }
+    if (data.found === false) {
+      return {
+        ok: false,
+        notFound: true,
+        message:
+          typeof data.message === "string"
+            ? data.message
+            : "No saved investment progress was found for this profile on this deal.",
+      }
+    }
     const questionnaireRaw = data.questionnaireAnswers ?? data.questionnaire_answers
     const answers: Record<string, string> = {}
     if (questionnaireRaw && typeof questionnaireRaw === "object") {
@@ -132,6 +141,9 @@ export async function fetchMyLpDealInvestNowCommitment(
         ).trim(),
         fundingMethod: String(
           data.fundingMethod ?? data.funding_method ?? "",
+        ).trim(),
+        investorClass: String(
+          data.investorClass ?? data.investor_class ?? "",
         ).trim(),
         status: String(data.status ?? "").trim(),
         docSignedDate:
@@ -179,6 +191,9 @@ export async function patchMyLpDealInvestNowCommitment(
     if (body.fundingMethod?.trim()) {
       bodyObj.funding_method = body.fundingMethod.trim()
     }
+    if (body.investorClassId?.trim()) {
+      bodyObj.investor_class = body.investorClassId.trim()
+    }
     if (body.includeUserInvestorProfileInBody) {
       bodyObj.user_investor_profile_id = (body.userInvestorProfileId ?? "").trim()
     }
@@ -187,6 +202,9 @@ export async function patchMyLpDealInvestNowCommitment(
     }
     if (body.w9Form && Object.keys(body.w9Form).length > 0) {
       bodyObj.w9_form = body.w9Form
+    }
+    if (body.referringSponsorRef?.trim()) {
+      bodyObj.referring_sponsor_ref = body.referringSponsorRef.trim()
     }
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(did)}/lp-investors/my-invest-now-commitment`,
@@ -251,6 +269,9 @@ export async function postMyLpDealInvestNowEsignSend(
   const did = dealId.trim()
   if (!did) return { ok: false, message: "Missing deal id." }
   try {
+    if (!(await ensureValidAccessToken())) {
+      return { ok: false, message: "Your session expired. Sign in again." }
+    }
     const res = await fetch(
       `${base}/deals/${encodeURIComponent(did)}/lp-investors/my-invest-now-esign-send`,
       {

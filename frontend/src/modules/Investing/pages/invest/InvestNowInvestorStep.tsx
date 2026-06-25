@@ -9,7 +9,10 @@ export interface InvestNowInvestorStepProps {
   profileOptions: DropdownSelectOption[]
   savedUserProfileId: string
   onSavedProfileChange: (id: string) => void
-  investmentClassLabel: string
+  investmentClassOptions: DropdownSelectOption[]
+  selectedInvestorClassId: string
+  onInvestorClassChange: (classId: string) => void
+  classesLoading: boolean
   sponsorLabel: string
   loading: boolean
   disabled: boolean
@@ -25,7 +28,10 @@ export function InvestNowInvestorStep({
   profileOptions,
   savedUserProfileId,
   onSavedProfileChange,
-  investmentClassLabel,
+  investmentClassOptions,
+  selectedInvestorClassId,
+  onInvestorClassChange,
+  classesLoading,
   sponsorLabel,
   loading,
   disabled,
@@ -35,6 +41,7 @@ export function InvestNowInvestorStep({
   onAddProfile,
 }: InvestNowInvestorStepProps) {
   const profileFieldId = "invest-now-profile"
+  const classFieldId = "invest-now-investment-class"
   const titleId = "invest-now-step-investor-title"
 
   return (
@@ -67,12 +74,31 @@ export function InvestNowInvestorStep({
         />
       </InvestNowFormField>
 
-      <InvestNowReadonlyField
+      <InvestNowFormField
+        id={classFieldId}
         label="Investment class"
         required
-        value={investmentClassLabel}
         error={fieldErrors.investmentClass}
-      />
+      >
+        <DealsCreateDropdownSelect
+          id={classFieldId}
+          options={investmentClassOptions}
+          value={selectedInvestorClassId}
+          onChange={onInvestorClassChange}
+          placeholder={
+            classesLoading
+              ? "Loading investment classes…"
+              : investmentClassOptions.length === 0
+                ? "No investment classes on this deal"
+                : "Select investment class"
+          }
+          ariaLabel="Investment class"
+          invalid={Boolean(fieldErrors.investmentClass)}
+          disabled={
+            disabled || loading || classesLoading || investmentClassOptions.length === 0
+          }
+        />
+      </InvestNowFormField>
 
       <InvestNowReadonlyField
         label="Sponsor"

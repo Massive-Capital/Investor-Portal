@@ -1070,7 +1070,7 @@
   font-size: var(--deals-label-size);
 }
 
-/* Number of units row: fill value column; keep pills grouped on the right */
+/* Number of units row: full-width 50/50 grid aligned with other fields */
 .deals_add_deal_asset_panel .deal_asset_attr_td_num_units,
 .deals_create_flow .deals_create_deal_section .deal_asset_attr_td_num_units {
   width: 100%;
@@ -1081,8 +1081,9 @@
 .deals_create_flow .deals_create_deal_section .deal_asset_attr_num_units_wrap {
   width: 100%;
   max-width: 100%;
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  justify-content: stretch;
   box-sizing: border-box;
 }
 

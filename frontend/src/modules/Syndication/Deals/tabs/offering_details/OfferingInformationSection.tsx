@@ -4176,13 +4176,20 @@ function ReadOnlyInvestorClassCard({
   dealVisibilityLabel,
   onEdit,
   onDelete,
+  expanded,
+  onToggle,
+  showCollapseControls,
 }: {
   row: DealInvestorClass
   dealStatusLabel: string
   dealVisibilityLabel: string
   onEdit: () => void
   onDelete: () => void
+  expanded: boolean
+  onToggle: () => void
+  showCollapseControls: boolean
 }) {
+  const panelId = `deal-inv-class-panel-${row.id}`
   const showUnits =
     isLpInvestorClass(row) && hasInvestorClassNumberOfUnits(row.numberOfUnits)
   const showPrice =
@@ -4201,15 +4208,40 @@ function ReadOnlyInvestorClassCard({
   )
   const showDistributionSharePct = row.subscriptionType !== "mezzanine"
   return (
-    <div className="deal_inv_class_card" id={`deal-inv-class-${row.id}`}>
-      <div className="deal_inv_class_card_head">
-        <div className="deal_inv_class_card_title_row">
-          <h4 className="deal_inv_class_card_title">{row.name || "—"}</h4>
-        </div>
+    <div
+      className={`deal_inv_class_card deal_offering_section${expanded ? " deal_offering_section_expanded" : ""}`}
+      id={`deal-inv-class-${row.id}`}
+    >
+      <div className="deal_inv_class_card_banner">
+        <button
+          type="button"
+          id={`deal-inv-class-trigger-${row.id}`}
+          className="deal_docs_ui_banner_toggle deal_inv_class_card_title_btn"
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          onClick={onToggle}
+        >
+          {showCollapseControls ? (
+            <span className="deal_docs_ui_banner_chevron_slot" aria-hidden>
+              <ChevronDown
+                size={14}
+                strokeWidth={2.75}
+                className={`deal_docs_ui_banner_chevron${expanded ? " deal_docs_ui_banner_chevron_open" : ""}`}
+              />
+            </span>
+          ) : null}
+          <span className="deal_docs_ui_banner_heading">
+            <span className="deal_docs_ui_banner_title deal_inv_class_card_title">
+              {row.name || "—"}
+            </span>
+          </span>
+        </button>
         <div
           className="deal_inv_class_card_head_actions"
           role="group"
           aria-label={`Actions for ${row.name || "investor class"}`}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -4229,6 +4261,15 @@ function ReadOnlyInvestorClassCard({
           </button>
         </div>
       </div>
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={`deal-inv-class-trigger-${row.id}`}
+        hidden={!expanded}
+        className="deal_offering_panel deal_inv_class_card_panel"
+      >
+        {expanded ? (
+          <>
       <p className="deal_inv_class_meta_line">
         <span>{classTypeOptionLabel(row.subscriptionType)}</span>
         {/* <span className="deal_inv_class_meta_sep">·</span>
@@ -4302,6 +4343,9 @@ function ReadOnlyInvestorClassCard({
             </span>
           </span>
         </div>
+      </div>
+          </>
+        ) : null}
       </div>
     </div>
   )
@@ -5069,6 +5113,32 @@ export function OfferingInformationSection({
     )
   }, [rows, query, dealStatusLabel, dealVisibilityLabel])
 
+  const [expandedClassIds, setExpandedClassIds] = useState<Record<string, boolean>>(
+    {},
+  )
+
+  const filteredClassIdsKey = useMemo(
+    () => filteredRows.map((r) => r.id).join("|"),
+    [filteredRows],
+  )
+
+  const multipleInvestorClasses = filteredRows.length > 1
+
+  useEffect(() => {
+    setExpandedClassIds({})
+  }, [filteredClassIdsKey])
+
+  const toggleInvestorClassExpanded = useCallback(
+    (classId: string) => {
+      if (!multipleInvestorClasses) return
+      setExpandedClassIds((prev) => ({
+        ...prev,
+        [classId]: !(prev[classId] ?? false),
+      }))
+    },
+    [multipleInvestorClasses],
+  )
+
   const allocationTotals = useMemo(
     () => computeInvestorClassAllocationTotals(rows),
     [rows],
@@ -5220,6 +5290,13 @@ export function OfferingInformationSection({
                 row={r}
                 dealStatusLabel={dealStatusLabel}
                 dealVisibilityLabel={dealVisibilityLabel}
+                expanded={
+                  multipleInvestorClasses
+                    ? (expandedClassIds[r.id] ?? false)
+                    : true
+                }
+                showCollapseControls={multipleInvestorClasses}
+                onToggle={() => toggleInvestorClassExpanded(r.id)}
                 onEdit={() =>
                   navigate(
                     `/deals/${encodeURIComponent(dealId)}/investor-classes/${encodeURIComponent(r.id)}/edit`,

@@ -471,17 +471,18 @@ export function DealDetailPage() {
   }, [dealId, navigate])
 
   const handleCopyMemberOfferingLink = useCallback(
-    async (_row: DealInvestorRow) => {
+    async (row: DealInvestorRow) => {
       if (
         !dealId?.trim() ||
         !dealDetailApi ||
         !dealHasOfferingShareLink(dealDetailApi) ||
         isDealOfferingShareBlocked
       )
-      return
+        return
       try {
         const url = await buildDealOfferingPreviewShareUrl(dealId.trim(), {
           previewToken: dealDetailApi.offeringPreviewToken,
+          sponsorContactId: row.contactId?.trim(),
         })
         await navigator.clipboard.writeText(url)
         toast.success(
@@ -554,7 +555,7 @@ export function DealDetailPage() {
         }))
         toast.success(
           "Invitation sent",
-          "The investor invitation email was sent using your server mail settings.",
+          "The investor invitation email was sent using your server email settings.",
         )
         setDealMembersRefreshKey((k) => k + 1)
         void dealInvestorsTabRef.current?.refetchInvestors()
@@ -589,7 +590,7 @@ export function DealDetailPage() {
         }))
         toast.success(
           "Invitation sent",
-          "The deal invitation email was sent (with this row’s role) using your server mail settings.",
+          "The deal invitation email was sent (with this row’s role) using your server email settings.",
         )
         setDealMembersRefreshKey((k) => k + 1)
         void dealInvestorsTabRef.current?.refetchInvestors()
@@ -872,6 +873,7 @@ export function DealDetailPage() {
         ) : activeTab === "documents" && dealDetailApi ? (
           <DealDocumentsTab
             dealId={dealDetailApi.id}
+            dealName={displayName}
             offeringInvestorPreviewJson={dealDetailApi.offeringInvestorPreviewJson}
             investorsListRefreshKey={dealMembersRefreshKey}
             onOfferingPreviewSynced={handleDealPersisted}

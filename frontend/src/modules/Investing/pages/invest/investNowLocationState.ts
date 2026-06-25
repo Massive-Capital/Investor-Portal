@@ -17,6 +17,10 @@ export type InvestNowLocationState = {
   investmentId?: string
   /** Open the wizard on this stepper phase (dashboard progress chips). */
   phaseId?: InvestNowStepperPhase["id"]
+  /** Encrypted sponsor ref from the offering preview link (`?ref=`). */
+  referringSponsorRef?: string
+  /** Resolved sponsor name from the public preview API (optional). */
+  referringSponsorDisplayName?: string
 }
 
 export function readInvestNowLocationState(
@@ -37,5 +41,7 @@ export function readInvestNowLocationState(
     profileId: s.profileId?.trim(),
     investmentId: s.investmentId?.trim(),
     phaseId,
+    referringSponsorRef: s.referringSponsorRef?.trim(),
+    referringSponsorDisplayName: s.referringSponsorDisplayName?.trim(),
   }
 }

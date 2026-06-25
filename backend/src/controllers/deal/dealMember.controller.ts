@@ -12,23 +12,27 @@ import {
 import {
   deleteDealMemberRosterEntry,
   listDealMembersMappedToInvestorApi,
-  markDealMemberInvitationMailSent
+  markDealMemberInvitationMailSent,
+  resolveDealLeadSponsorDisplayName,
 } from "../../services/deal/dealMember.service.js";
 import { sendDealMemberInvitationEmail } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import { isPortalUserSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import {
   dealHasEsignTemplateDocuments,
   getDealEsignTemplatesState,
+  isEsignTemplateReady,
   parseSendEsignFileIds,
   resolveEsignFilesByIds,
 } from "../../services/deal/dealEsignTemplates.service.js";
-import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
+import { getActiveEsignProvider } from "../../config/esignProvider.config.js";
 import { getAddDealFormById } from "../../services/deal/dealForm.service.js";
-import { parseEsignStatusJson } from "../../constants/deal-investor-esign-status.js";
+import { parseEsignStatusJson, esignCategoryFromCommitmentProfileId } from "../../constants/deal-investor-esign-status.js";
 import {
   getInvestorEsignStatusWithDropboxSync,
   syncDealInvestorEsignByTarget,
+  commitmentProfileIdForEsignTarget,
 } from "../../services/deal/dealMemberEsignCompletion.service.js";
+import { resolveEsignFilesForInvestorProfile } from "../../services/deal/dealEsignProfileTemplate.service.js";
 import {
   findInvestorEsignTargetByMetadata,
   markDealInvestorEsignPending,
@@ -40,10 +44,14 @@ import {
   createInvestorSignatureRequest,
   esignDocumentsFromSelectedFiles,
   esignTemplateDisplayNameForFile,
-} from "../../services/deal/dealMemberSendEsignDropbox.service.js";
+} from "../../services/deal/dealMemberSendEsign.service.js";
 import { sendDealMemberSendEsignEmail } from "../../services/deal/dealMemberSendEsign.service.js";
 import { resolveViewerDealMemberRoleOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
+import {
+  decodeOfferingPreviewSponsorRefParam,
+  resolveOfferingPreviewSponsorAttribution,
+} from "../../services/deal/offeringPreviewSponsorRef.service.js";
 
 /**
  * GET /deals/:dealId/members — roster from `deal_member`, merged with investment
@@ -77,10 +85,28 @@ export async function getDealMembers(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    const [members, viewerDealMemberRole] = await Promise.all([
-      listDealMembersMappedToInvestorApi(dealId, user.id),
-      resolveViewerDealMemberRoleOnDeal(dealId, user.id),
-    ]);
+    const refRaw =
+      req.query.referring_sponsor_ref ??
+      req.query.referringSponsorRef ??
+      req.query.ref;
+    const sponsorRef = decodeOfferingPreviewSponsorRefParam(
+      typeof refRaw === "string"
+        ? refRaw
+        : Array.isArray(refRaw) && typeof refRaw[0] === "string"
+          ? refRaw[0]
+          : "",
+    );
+
+    const [members, viewerDealMemberRole, leadSponsorDisplayName] =
+      await Promise.all([
+        listDealMembersMappedToInvestorApi(dealId, user.id),
+        resolveViewerDealMemberRoleOnDeal(dealId, user.id),
+        resolveDealLeadSponsorDisplayName(dealId),
+      ]);
+
+    const referringSponsor = sponsorRef
+      ? await resolveOfferingPreviewSponsorAttribution(dealId, sponsorRef)
+      : null;
     if (process.env.DEAL_MEMBERS_COMMIT_DEBUG === "1") {
       console.log(
         `[deal members commit debug] dealId=${dealId} rows=${members.length}`,
@@ -91,10 +117,84 @@ export async function getDealMembers(
         );
       }
     }
-    res.status(200).json({ members, viewerDealMemberRole });
+    res.status(200).json({
+      members,
+      viewerDealMemberRole,
+      leadSponsorDisplayName: leadSponsorDisplayName || undefined,
+      ...(referringSponsor
+        ? {
+            referringSponsorDisplayName: referringSponsor.displayName,
+            referringSponsorRef: sponsorRef,
+          }
+        : {}),
+    });
   } catch (err) {
     console.error("getDealMembers:", err);
     res.status(500).json({ message: "Could not load deal members" });
+  }
+}
+
+/**
+ * GET /deals/:dealId/referring-sponsor?ref=…
+ * Resolves the sponsor name encoded in an offering preview link for Invest Now onboarding.
+ */
+export async function getDealReferringSponsor(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  const refRaw =
+    req.query.referring_sponsor_ref ??
+    req.query.referringSponsorRef ??
+    req.query.ref;
+  const sponsorRef = decodeOfferingPreviewSponsorRefParam(
+    typeof refRaw === "string"
+      ? refRaw
+      : Array.isArray(refRaw) && typeof refRaw[0] === "string"
+        ? refRaw[0]
+        : "",
+  );
+  if (!sponsorRef) {
+    res.status(400).json({ message: "Missing or invalid ref parameter." });
+    return;
+  }
+  try {
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const referringSponsor = await resolveOfferingPreviewSponsorAttribution(
+      dealId,
+      sponsorRef,
+    );
+    if (!referringSponsor) {
+      res.status(404).json({ message: "Invalid or expired sponsor link." });
+      return;
+    }
+    res.status(200).json({
+      referringSponsorDisplayName: referringSponsor.displayName,
+      referringSponsorRef: sponsorRef,
+    });
+  } catch (err) {
+    console.error("getDealReferringSponsor:", err);
+    res.status(500).json({ message: "Could not resolve referring sponsor." });
   }
 }
 
@@ -275,21 +375,19 @@ export async function postDealMemberSendEsign(
       return;
     }
 
-    const notReady = selectedFiles.filter(
-      (f) => f.dropboxSignStatus !== "ready",
-    );
+    const notReady = selectedFiles.filter((f) => !isEsignTemplateReady(f));
     if (notReady.length > 0) {
       res.status(400).json({
         message:
-          "Each selected document must have a saved Dropbox Sign template before sending",
+          "Each selected document must have a saved eSign template before sending",
       });
       return;
     }
 
-    if (!getDropboxSignConfig()) {
+    if (!getActiveEsignProvider()) {
       res.status(503).json({
         message:
-          "Dropbox Sign is not configured. Set DROPBOX_SIGN_API_KEY and DROPBOX_SIGN_CLIENT_ID to send eSign.",
+          "eSign is not configured. Set SIGNFLOW_API_BASE_URL + SIGNFLOW_API_KEY (see API_INTEGRATION.md) or Dropbox Sign credentials.",
       });
       return;
     }
@@ -310,22 +408,43 @@ export async function postDealMemberSendEsign(
       return;
     }
 
-    if (getDropboxSignConfig()) {
+    if (getActiveEsignProvider()) {
       try {
         await syncDealInvestorEsignByTarget(dealId, esignTarget);
       } catch (err) {
         console.warn("syncDealInvestorEsignByTarget before send:", err);
       }
     }
+    const commitmentProfileId =
+      (await commitmentProfileIdForEsignTarget(dealId, esignTarget)) ?? undefined;
+    const preferredCategoryId =
+      esignCategoryFromCommitmentProfileId(commitmentProfileId) ?? undefined;
     const esignApi = parseEsignStatusJson(
       await readInvestorEsignStatusJson(dealId, esignTarget),
+      preferredCategoryId,
     );
     if (esignApi?.completedAt?.trim()) {
       res.status(400).json({
         message:
-          "E-sign is already completed for this investor. Open the Signed column for status and signed documents.",
+          "E-sign is already completed for this investor's profile. Open the Signed column for status and signed documents.",
       });
       return;
+    }
+
+    if (commitmentProfileId) {
+      const applicable = await resolveEsignFilesForInvestorProfile(
+        esignState.files,
+        commitmentProfileId,
+      );
+      const applicableIds = new Set(applicable.map((f) => f.id));
+      const invalid = selectedFiles.filter((f) => !applicableIds.has(f.id));
+      if (invalid.length > 0 || applicable.length === 0) {
+        res.status(400).json({
+          message:
+            "The selected document is not configured for this investor's profile. Add investor fields for their profile in the eSign template editor.",
+        });
+        return;
+      }
     }
 
     let signatureRequestId: string | undefined;
@@ -340,6 +459,7 @@ export async function postDealMemberSendEsign(
         dealName,
         selectedFiles,
         esignTarget,
+        commitmentProfileId,
       });
       if (!sig) {
         res.status(502).json({

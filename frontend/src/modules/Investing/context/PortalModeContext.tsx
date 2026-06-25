@@ -59,6 +59,9 @@ export function PortalModeProvider({ children }: { children: ReactNode }) {
     writeStoredPortalMode(next)
   }, [])
 
+  const switchToInvesting = useCallback(() => setMode("investing"), [setMode])
+  const switchToSyndicating = useCallback(() => setMode("syndicating"), [setMode])
+
   useEffect(() => {
     if (!isLpInvestorSessionUser()) return
     setModeState("investing")
@@ -69,12 +72,18 @@ export function PortalModeProvider({ children }: { children: ReactNode }) {
     () => ({
       mode,
       setMode,
-      switchToInvesting: () => setMode("investing"),
-      switchToSyndicating: () => setMode("syndicating"),
+      switchToInvesting,
+      switchToSyndicating,
       portalSwitchOverlay,
       setPortalSwitchOverlay,
     }),
-    [mode, portalSwitchOverlay, setMode],
+    [
+      mode,
+      portalSwitchOverlay,
+      setMode,
+      switchToInvesting,
+      switchToSyndicating,
+    ],
   )
   return (
     <PortalModeContext.Provider value={value}>

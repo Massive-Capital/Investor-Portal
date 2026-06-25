@@ -249,6 +249,58 @@ export async function listInvestorVisibleComingSoonDealIds(): Promise<string[]> 
 }
 
 /**
+ * Investing participant deals excluding dashboard “Opportunities” (coming soon /
+ * open for investment) that are visible to any signed-in investor.
+ */
+export async function listDirectInvestingParticipantDealIdsForUser(params: {
+  userId: string;
+  emailNorm: string;
+}): Promise<string[]> {
+  const emailNorm = String(params.emailNorm ?? "").trim().toLowerCase();
+  const userId = String(params.userId ?? "").trim();
+  if (!emailNorm || !userId) return [];
+
+  const [lp, sponsor, sponsorInvited, assigned, investment] =
+    await Promise.all([
+      listDealIdsFromLpInvestorTableForEmail(emailNorm),
+      listDealIdsFromSponsorDealMemberForEmail(emailNorm),
+      listDealIdsFromSponsorInvitedDealMemberForEmail(emailNorm),
+      listDealIdsAssignedToUser(userId),
+      listDealIdsFromDealInvestmentForEmail(emailNorm),
+    ]);
+
+  return [
+    ...new Set([
+      ...lp,
+      ...sponsor,
+      ...sponsorInvited,
+      ...assigned,
+      ...investment,
+    ]),
+  ];
+}
+
+export async function isDealInDirectInvestingParticipationForUser(
+  dealId: string,
+  params: { userId: string; emailNorm: string },
+): Promise<boolean> {
+  const id = String(dealId ?? "").trim();
+  if (!id) return false;
+  const ids = await listDirectInvestingParticipantDealIdsForUser(params);
+  return ids.includes(id);
+}
+
+export async function isDealInInvestingParticipantListForUser(
+  dealId: string,
+  params: { userId: string; emailNorm: string },
+): Promise<boolean> {
+  const id = String(dealId ?? "").trim();
+  if (!id) return false;
+  const ids = await listInvestingParticipantDealIdsForUser(params);
+  return ids.includes(id);
+}
+
+/**
  * Investing → Deals tab: deals the viewer participates in as LP, investor, roster
  * assignee, or sponsor (Lead / Admin / Co-sponsor on `deal_member`), plus visible
  * dashboard opportunity offerings (coming soon + open for investment).
@@ -261,26 +313,12 @@ export async function listInvestingParticipantDealIdsForUser(params: {
   const userId = String(params.userId ?? "").trim();
   if (!emailNorm || !userId) return [];
 
-  const [lp, sponsor, sponsorInvited, assigned, investment, comingSoon] =
-    await Promise.all([
-      listDealIdsFromLpInvestorTableForEmail(emailNorm),
-      listDealIdsFromSponsorDealMemberForEmail(emailNorm),
-      listDealIdsFromSponsorInvitedDealMemberForEmail(emailNorm),
-      listDealIdsAssignedToUser(userId),
-      listDealIdsFromDealInvestmentForEmail(emailNorm),
-      listInvestorVisibleComingSoonDealIds(),
-    ]);
+  const [direct, comingSoon] = await Promise.all([
+    listDirectInvestingParticipantDealIdsForUser({ userId, emailNorm }),
+    listInvestorVisibleComingSoonDealIds(),
+  ]);
 
-  return [
-    ...new Set([
-      ...lp,
-      ...sponsor,
-      ...sponsorInvited,
-      ...assigned,
-      ...investment,
-      ...comingSoon,
-    ]),
-  ];
+  return [...new Set([...direct, ...comingSoon])];
 }
 
 /**

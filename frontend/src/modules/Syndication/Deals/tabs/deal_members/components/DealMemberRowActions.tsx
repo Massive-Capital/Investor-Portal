@@ -463,10 +463,10 @@ export function DealMemberRowActions({
                       />
                     )}
                     {draftRow
-                      ? "Send invitation mail"
+                      ? "Send invitation email"
                       : invitationMailSent
-                        ? "Re-send invitation mail"
-                        : "Send invitation mail"}
+                        ? "Re-send invitation email"
+                        : "Send invitation email"}
                   </button>
                 </li>
                 <li role="none">

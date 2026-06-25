@@ -1,4 +1,8 @@
 import { eq } from "drizzle-orm";
+import {
+  isDealInDirectInvestingParticipationForUser,
+  isDealInInvestingParticipantListForUser,
+} from "../investing/lpInvestorAccess.service.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
 import {
   DEAL_PARTICIPANT,
@@ -34,6 +38,15 @@ import { assignCreatorAsLeadSponsorOnDeal } from "./dealMember.service.js";
 import { listLpInvestorDealIdsForUserEmail } from "../investing/lpInvestorAccess.service.js";
 
 export type { DealViewerScope } from "./dealForm.service.js";
+
+async function viewerEmailNormForScope(scope: DealViewerScope): Promise<string> {
+  const [row] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, scope.userId))
+    .limit(1);
+  return String(row?.email ?? "").trim().toLowerCase();
+}
 
 export async function resolveDealViewerScope(
   userId: string,
@@ -111,7 +124,18 @@ export async function dealAccessibleToViewerScope(
   const dealId = String(deal.id);
   if (await isPortalUserOnDealMemberRoster(dealId, scope.userId)) return true;
   if (scope.lpInvestorEmailScopedDealIds?.length) {
-    return scope.lpInvestorEmailScopedDealIds.includes(dealId);
+    if (scope.lpInvestorEmailScopedDealIds.includes(dealId)) return true;
+    const emailNorm = await viewerEmailNormForScope(scope);
+    if (
+      emailNorm &&
+      (await isDealInDirectInvestingParticipationForUser(dealId, {
+        userId: scope.userId,
+        emailNorm,
+      }))
+    ) {
+      return true;
+    }
+    return false;
   }
   if (scope.coSponsorDashboardDealIds?.length) {
     return scope.coSponsorDashboardDealIds.includes(dealId);
@@ -169,7 +193,7 @@ export async function assertDealIdInViewerScope(
 
 /**
  * Read access: company-scoped deals **or** deals where the user is linked on the
- * roster / investments (`assigning_deal_user`).
+ * roster / investments (`assigning_deal_user` / `deal_investment` / LP roster).
  */
 export async function assertDealIdReadableOrAssignedParticipant(
   dealId: string,
@@ -177,14 +201,28 @@ export async function assertDealIdReadableOrAssignedParticipant(
 ): Promise<boolean> {
   const row = await getAddDealFormById(dealId);
   if (!row) return false;
-  if (scope.lpInvestorEmailScopedDealIds?.length) {
-    return dealAccessibleToViewerScope(row, scope);
-  }
-  if (scope.coSponsorDashboardDealIds?.length) {
-    return dealAccessibleToViewerScope(row, scope);
-  }
   if (await dealAccessibleToViewerScope(row, scope)) return true;
-  return isUserAssignedToDeal(scope.userId, dealId);
+  if (await isUserAssignedToDeal(scope.userId, dealId)) return true;
+  const emailNorm = await viewerEmailNormForScope(scope);
+  if (
+    emailNorm &&
+    (await isDealInDirectInvestingParticipationForUser(dealId, {
+      userId: scope.userId,
+      emailNorm,
+    }))
+  ) {
+    return true;
+  }
+  if (
+    emailNorm &&
+    (await isDealInInvestingParticipantListForUser(dealId, {
+      userId: scope.userId,
+      emailNorm,
+    }))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Same as {@link getAddDealFormForViewer} plus portal users assigned to the deal as investors. */
@@ -192,16 +230,20 @@ export async function getAddDealFormForViewerOrAssignedParticipant(
   dealId: string,
   scope: DealViewerScope,
 ): Promise<AddDealFormRow | undefined> {
-  if (scope.lpInvestorEmailScopedDealIds?.length) {
-    return getAddDealFormForViewer(dealId, scope);
-  }
-  if (scope.coSponsorDashboardDealIds?.length) {
-    return getAddDealFormForViewer(dealId, scope);
-  }
   const row = await getAddDealFormById(dealId);
   if (!row) return undefined;
   if (await dealAccessibleToViewerScope(row, scope)) return row;
   if (await isUserAssignedToDeal(scope.userId, dealId)) return row;
+  const emailNorm = await viewerEmailNormForScope(scope);
+  if (
+    emailNorm &&
+    (await isDealInInvestingParticipantListForUser(dealId, {
+      userId: scope.userId,
+      emailNorm,
+    }))
+  ) {
+    return row;
+  }
   return undefined;
 }
 

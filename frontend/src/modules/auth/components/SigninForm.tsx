@@ -11,7 +11,7 @@ import {
   LockKeyhole,
   Mail,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Input from "../../../common/components/Input";
 import {
   AUTH_RETURN_NEXT_KEY,
@@ -22,7 +22,6 @@ import {
 } from "../../../common/auth/sessionKeys";
 import { storeAuthTokens } from "../../../common/auth/authTokensApi";
 import {
-  SESSION_IDLE_TIMEOUT_NOTICE_KEY,
   touchSessionActivity,
 } from "../../../common/auth/idleSession";
 import { isPlatformAdmin } from "../../../common/auth/roleUtils";
@@ -42,19 +41,7 @@ const SigninForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const resetSuccess = location.state?.resetSuccess;
-  const idleLogout = location.state?.idleLogout === true;
   const apiV1 = getApiV1Base();
-
-  useEffect(() => {
-    if (sessionStorage.getItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY) === "1") {
-      sessionStorage.removeItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY);
-      toast.error(
-        "Session timeout",
-        "You were signed out after 15 minutes of inactivity. Please sign in again.",
-        8000,
-      );
-    }
-  }, []);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -214,6 +201,23 @@ const SigninForm = () => {
           will be taken to the document signing page.
         </p>
       ) : null}
+      {/* Session timeout card — toast at top center is used instead.
+      {showSessionTimeoutCard ? (
+        <div className="auth_session_card" role="status" aria-live="polite">
+          <TriangleAlert
+            className="auth_session_card_icon"
+            size={15}
+            strokeWidth={2}
+            aria-hidden
+          />
+          <p className="auth_session_card_text">
+            <span className="auth_session_card_label">Session timed out.</span>{" "}
+            You were signed out after 15 minutes of inactivity. Sign in again to
+            continue.
+          </p>
+        </div>
+      ) : null}
+      */}
       <form autoComplete="off" onSubmit={handleSubmit}>
         <div className="emailData">
           <Input
@@ -282,31 +286,19 @@ const SigninForm = () => {
           </Link>
         </p>
 
-        {idleLogout && (
-          <div className="authMessage authMessage--error">
-            <CircleAlert className="authMessage__icon" size={16} aria-hidden />
-            <p className="loginSuccess">
-              Session timeout. You were signed out after 15 minutes of
-              inactivity. Sign in again to continue.
-            </p>
-          </div>
-        )}
         {resetSuccess && (
           <div className="authMessage authMessage--success">
             <CheckCircle className="authMessage__icon" size={16} aria-hidden />
-            <p className="loginSuccess">
+            <p className="authMessage__text">
               Password reset successfully. You can sign in with your new
               password.
             </p>
           </div>
         )}
         {isError && (
-          <div
-            className="authMessage authMessage--error"
-            style={{ marginTop: "0.5em", marginBottom: 0 }}
-          >
+          <div className="authMessage authMessage--error">
             <CircleAlert className="authMessage__icon" size={16} aria-hidden />
-            <p className="orgError">{isError}</p>
+            <p className="authMessage__text">{isError}</p>
           </div>
         )}
 

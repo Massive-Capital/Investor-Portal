@@ -1,5 +1,6 @@
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import {
+  investorEsignIsFullyCompletedForRow,
   investorEsignWasSent,
   investorRowCommittedNumeric,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
@@ -67,6 +68,14 @@ export function investNowDraftProgressFromInvestorRow(
   if (investorRowCommittedNumeric(row) > 0) {
     completedPhases = 2
     phaseId = "questionnaire"
+  }
+
+  if (investorEsignWasSent(row) && investorEsignIsFullyCompletedForRow(row)) {
+    return {
+      percent: 100,
+      phaseLabel: phaseLabelFor("esignatures"),
+      phaseId: "esignatures",
+    }
   }
 
   if (investorEsignWasSent(row)) {

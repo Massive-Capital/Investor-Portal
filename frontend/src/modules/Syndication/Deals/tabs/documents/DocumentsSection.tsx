@@ -1,9 +1,11 @@
 import {
   ArrowRightLeft,
+  Check,
   ChevronDown,
   Copy,
   Download,
   Eye,
+  FileSignature,
   Link2,
   ListChecks,
   Loader2,
@@ -30,6 +32,9 @@ import {
   type RefObject,
 } from "react"
 import { createPortal } from "react-dom"
+import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
+import { getSessionUserId } from "@/common/auth/sessionUserId"
+import { isPlatformAdmin } from "@/common/auth/roleUtils"
 import { ConfirmDeleteModal } from "@/common/components/ConfirmDeleteModal"
 import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
 import {
@@ -56,19 +61,32 @@ import {
 } from "../../utils/offeringPreviewDocumentAudience"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
-import {
-  DocumentSharedWithPicker,
+import { DocumentSharedWithPicker,
   sharedAudienceSearchBlob,
   toggleIdInList,
 } from "./DocumentSharedWithPicker"
+import { SponsorEsignSignModal } from "./SponsorEsignSignModal"
+import {
+  parseViewerDealMemberRoleFromApi,
+  resolveViewerDealMemberRole,
+  viewerIsDealSponsorRole,
+  type ViewerDealMemberRole,
+} from "../../utils/dealDetailTabVisibility"
+import {
+  buildDocumentDownloadFilename,
+  downloadDocumentFromUrl,
+} from "../../utils/documentDownloadFilename"
 import {
   DEFAULT_DOCUMENT_SECTION_ID,
   effectiveDocumentSharedWithScope,
   ensureDefaultDocumentSectionInList,
-  isDefaultDocumentSection,
+  isBuiltInDocumentSection,
+  isBuiltInDocumentSectionLabelEditable,
   isAutoManagedDocumentsSection,
+  isEsignTemplateDocumentsSection,
   mergeAutoManagedDocumentSections,
   OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT,
+  orderDocumentSections,
   orderDocumentSectionsWithDefaultFirst,
   parseDocumentSectionsFromPreviewJson,
   documentSectionsEqual,
@@ -91,6 +109,7 @@ import { isOfferingPreviewHydrated } from "../../utils/offeringPreviewRuntimeSto
 
 interface DocumentsSectionProps {
   dealId?: string
+  dealName?: string | null
   offeringInvestorPreviewJson?: string | null
   investorsListRefreshKey?: number
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
@@ -99,6 +118,12 @@ interface DocumentsSectionProps {
 type DocumentMoveItem = {
   sectionId: string
   docId: string
+}
+
+function nestedDocumentNeedsSponsorSign(doc: NestedPreviewDocument): boolean {
+  if (!doc.esignSignatureRequestId?.trim()) return false
+  if (doc.esignSponsorSigned) return false
+  return doc.esignAwaitingSponsorSignature === true || !doc.esignSponsorSigned
 }
 
 function DocumentsTableDocName({ name }: { name: string }) {
@@ -184,11 +209,6 @@ function sectionMatchesLabel(s: OfferingPreviewSection, label: string): boolean 
     s.sectionLabel.trim().toLowerCase() === t ||
     s.documentLabel.trim().toLowerCase() === t
   )
-}
-
-function safeDownloadFilename(name: string): string {
-  const base = name.trim() || "document"
-  return base.replace(/[/\\?%*:|"<>]/g, "-").slice(0, 200)
 }
 
 function appendPdfFilesFromPicker(
@@ -418,11 +438,13 @@ function revokeBlobUrlIfOrphaned(
 
 export function DocumentsSection({
   dealId,
+  dealName,
   offeringInvestorPreviewJson,
   investorsListRefreshKey = 0,
   onOfferingPreviewSynced,
 }: DocumentsSectionProps) {
   const dealIdTrim = dealId?.trim() ?? ""
+  const dealNameTrim = dealName?.trim() || "Deal"
   const addSectionTitleId = useId()
   const sectionNameFieldId = useId()
   const sectionUploadFieldId = useId()
@@ -439,6 +461,10 @@ export function DocumentsSection({
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
     {},
   )
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null)
+  const [editingSectionDraft, setEditingSectionDraft] = useState("")
+  const [sectionRenameBusy, setSectionRenameBusy] = useState(false)
+  const [documentDownloadBusy, setDocumentDownloadBusy] = useState(false)
   const [checkedDocsBySection, setCheckedDocsBySection] = useState<
     Record<string, Record<string, boolean>>
   >({})
@@ -475,6 +501,12 @@ export function DocumentsSection({
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
   const [sponsorRosterRows, setSponsorRosterRows] = useState<DealInvestorRow[]>([])
+  const [viewerDealMemberRole, setViewerDealMemberRole] =
+    useState<ViewerDealMemberRole>(null)
+  const [sponsorSignTarget, setSponsorSignTarget] = useState<{
+    documentName: string
+    signatureRequestId: string
+  } | null>(null)
   const onSyncedRef = useRef(onOfferingPreviewSynced)
   onSyncedRef.current = onOfferingPreviewSynced
   const lastPersistedSectionsSnapshotRef = useRef("")
@@ -485,7 +517,7 @@ export function DocumentsSection({
     )
     const nextSections =
       fromServer.length > 0
-        ? orderDocumentSectionsWithDefaultFirst(fromServer)
+        ? orderDocumentSections(fromServer)
         : readDealDocumentSectionsForWorkspace(dealIdTrim)
     return mergeAutoManagedDocumentSections(
       nextSections,
@@ -565,6 +597,9 @@ export function DocumentsSection({
       setDealClasses(classes)
       setInvestorRows(payload.investors)
       setSponsorRosterRows(membersResult.members)
+      setViewerDealMemberRole(
+        parseViewerDealMemberRoleFromApi(membersResult.viewerDealMemberRole),
+      )
     })()
     return () => {
       cancelled = true
@@ -594,12 +629,108 @@ export function DocumentsSection({
     }
   }, [dealIdTrim, investorsListRefreshKey])
 
+  const sessionEmail = getSessionUserEmail()
+  const sessionUserId = getSessionUserId()
+  const effectiveViewerDealMemberRole = useMemo((): ViewerDealMemberRole => {
+    if (viewerDealMemberRole != null) return viewerDealMemberRole
+    return resolveViewerDealMemberRole(
+      sponsorRosterRows,
+      sessionEmail,
+      sessionUserId,
+    )
+  }, [viewerDealMemberRole, sponsorRosterRows, sessionEmail, sessionUserId])
+
+  const viewerCanSponsorSign = viewerIsDealSponsorRole(
+    effectiveViewerDealMemberRole,
+  )
+
+  const viewerCanRenameDocumentSections =
+    isPlatformAdmin() || viewerCanSponsorSign
+
+  const expandOnlySection = useCallback((sectionId: string) => {
+    setExpandedSections({ [sectionId]: true })
+  }, [])
+
   const toggleSection = useCallback((sectionId: string) => {
     setExpandedSections((prev) => ({
       ...prev,
-      [sectionId]: !(prev[sectionId] ?? true),
+      [sectionId]: !(prev[sectionId] ?? false),
     }))
   }, [])
+
+  const cancelSectionRename = useCallback(() => {
+    if (sectionRenameBusy) return
+    setEditingSectionId(null)
+    setEditingSectionDraft("")
+  }, [sectionRenameBusy])
+
+  const startSectionRename = useCallback((section: OfferingPreviewSection) => {
+    if (!isBuiltInDocumentSectionLabelEditable(section)) return
+    setEditingSectionId(section.id)
+    setEditingSectionDraft(section.sectionLabel.trim())
+  }, [])
+
+  const saveSectionRename = useCallback(() => {
+    const idTrim = dealIdTrim
+    const sectionId = editingSectionId
+    const nextLabel = editingSectionDraft.trim()
+    if (!idTrim || !sectionId || !nextLabel || sectionRenameBusy) return
+    const target = sections.find((s) => s.id === sectionId)
+    if (!target || !isBuiltInDocumentSectionLabelEditable(target)) {
+      cancelSectionRename()
+      return
+    }
+    if (nextLabel === target.sectionLabel.trim()) {
+      cancelSectionRename()
+      return
+    }
+    setSectionRenameBusy(true)
+    const nextSections = orderDocumentSections(
+      sections.map((s) =>
+        s.id !== sectionId
+          ? s
+          : {
+              ...s,
+              sectionLabel: nextLabel,
+              documentLabel: nextLabel,
+            },
+      ),
+    )
+    setSections(nextSections)
+    writeOfferingPreviewSections(idTrim, nextSections, { notify: false })
+    void persistOfferingInvestorPreviewToServer(idTrim, {
+      sections: nextSections,
+      onSuccess: (d) => onSyncedRef.current?.(d),
+    }).finally(() => {
+      setSectionRenameBusy(false)
+      cancelSectionRename()
+    })
+  }, [
+    cancelSectionRename,
+    dealIdTrim,
+    editingSectionDraft,
+    editingSectionId,
+    sectionRenameBusy,
+    sections,
+  ])
+
+  const refreshEsignDocumentsAfterSponsorSign = useCallback(() => {
+    const id = dealIdTrim
+    if (!id) return
+    void (async () => {
+      const sync = await syncCompletedEsignDocumentsToDocumentsTab(id)
+      if (sync.ok && sync.offeringInvestorPreviewJson != null) {
+        applyOfferingInvestorPreviewJsonFromServer(
+          id,
+          sync.offeringInvestorPreviewJson,
+        )
+        setSectionsIfChanged(readDealDocumentSectionsForWorkspace(id))
+        setPreviewHydrated(isOfferingPreviewHydrated(id))
+      }
+      const deal = await fetchDealById(id)
+      if (deal) onSyncedRef.current?.(deal)
+    })()
+  }, [dealIdTrim])
 
   const checkAllInSection = useCallback((sectionId: string, docIds: string[]) => {
     setCheckedDocsBySection((prev) => ({
@@ -616,6 +747,85 @@ export function DocumentsSection({
       return next
     })
   }, [])
+
+  const collectCheckedDownloadItems = useCallback((): Array<{
+    sectionId: string
+    sectionName: string
+    doc: NestedPreviewDocument
+  }> => {
+    const items: Array<{
+      sectionId: string
+      sectionName: string
+      doc: NestedPreviewDocument
+    }> = []
+    for (const section of sections) {
+      const checks = checkedDocsBySection[section.id]
+      if (!checks) continue
+      const sectionName = sectionDisplayLabel(section)
+      for (const doc of section.nestedDocuments) {
+        if (checks[doc.id] && doc.url?.trim()) {
+          items.push({ sectionId: section.id, sectionName, doc })
+        }
+      }
+    }
+    return items
+  }, [sections, checkedDocsBySection])
+
+  const selectedDownloadableCount = useMemo(
+    () => collectCheckedDownloadItems().length,
+    [collectCheckedDownloadItems],
+  )
+
+  const downloadDocuments = useCallback(
+    async (
+      items: Array<{
+        sectionName: string
+        doc: NestedPreviewDocument
+      }>,
+    ) => {
+      if (items.length === 0 || documentDownloadBusy) return
+      const bySection = new Map<string, typeof items>()
+      for (const item of items) {
+        const key = item.sectionName
+        const list = bySection.get(key) ?? []
+        list.push(item)
+        bySection.set(key, list)
+      }
+      setDocumentDownloadBusy(true)
+      try {
+        for (const [, group] of bySection) {
+          const disambiguate = group.length > 1
+          for (const { sectionName, doc } of group) {
+            const url = doc.url?.trim()
+            if (!url) continue
+            const filename = buildDocumentDownloadFilename({
+              dealName: dealNameTrim,
+              sectionName,
+              originalName: doc.name,
+              disambiguate,
+            })
+            await downloadDocumentFromUrl(url, filename)
+          }
+        }
+      } finally {
+        setDocumentDownloadBusy(false)
+      }
+    },
+    [dealNameTrim, documentDownloadBusy],
+  )
+
+  const downloadCheckedDocuments = useCallback(() => {
+    void downloadDocuments(collectCheckedDownloadItems())
+  }, [collectCheckedDownloadItems, downloadDocuments])
+
+  const downloadSingleDocument = useCallback(
+    (sectionName: string, doc: NestedPreviewDocument) => {
+      const url = doc.url?.trim()
+      if (!url) return
+      void downloadDocuments([{ sectionName, doc }])
+    },
+    [downloadDocuments],
+  )
 
   const copyDocLink = useCallback((url: string) => {
     if (!url.trim()) return
@@ -895,10 +1105,7 @@ export function DocumentsSection({
           return next
         })
 
-        setExpandedSections((prev) => ({
-          ...prev,
-          [resolvedSectionId]: true,
-        }))
+        expandOnlySection(resolvedSectionId)
         return null
       } catch (err) {
         return err instanceof Error ? err.message : "Document upload failed."
@@ -906,7 +1113,7 @@ export function DocumentsSection({
         setDocumentUploadBusy(false)
       }
     },
-    [dealIdTrim],
+    [dealIdTrim, expandOnlySection],
   )
 
   const uploadFilesToDefaultSection = useCallback(
@@ -1084,11 +1291,17 @@ export function DocumentsSection({
     if (!deletePending) return
     if (deletePending.kind === "document") {
       removeNestedDocument(deletePending.sectionId, deletePending.docId)
+      expandOnlySection(deletePending.sectionId)
     } else {
       removeSectionById(deletePending.sectionId)
     }
     setDeletePending(null)
-  }, [deletePending, removeNestedDocument, removeSectionById])
+  }, [
+    deletePending,
+    expandOnlySection,
+    removeNestedDocument,
+    removeSectionById,
+  ])
 
   const requestDocumentVisibilityChange = useCallback(
     (
@@ -1148,6 +1361,15 @@ export function DocumentsSection({
         setVisibilityChangePending(null)
       })
   }, [dealIdTrim, sections, visibilityChangePending, visibilitySaveBusy])
+
+  useEffect(() => {
+    if (!editingSectionId || sectionRenameBusy) return
+    function onKeyDown(ev: globalThis.KeyboardEvent) {
+      if (ev.key === "Escape") cancelSectionRename()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [cancelSectionRename, editingSectionId, sectionRenameBusy])
 
   useEffect(() => {
     if (!visibilityChangePending || visibilitySaveBusy) return
@@ -1497,6 +1719,18 @@ export function DocumentsSection({
             <button
               type="button"
               className="deal_docs_toolbar_btn"
+              disabled={selectedDownloadableCount === 0 || documentDownloadBusy}
+              onClick={downloadCheckedDocuments}
+            >
+              <Download size={16} strokeWidth={2} aria-hidden />
+              Download selected
+              {selectedDownloadableCount > 0
+                ? ` (${selectedDownloadableCount})`
+                : ""}
+            </button>
+            <button
+              type="button"
+              className="deal_docs_toolbar_btn"
               disabled={sections.length < 2}
               onClick={() => openMoveSelectedDocumentsModal()}
             >
@@ -1548,11 +1782,17 @@ export function DocumentsSection({
 
       <div className="deal_offering_stack deal_docs_sections_stack" role="list">
           {filteredSections.map((section) => {
-              const isOpen = expandedSections[section.id] ?? true
+              const isOpen = expandedSections[section.id] ?? false
               const n = section.nestedDocuments.length
               const panelId = `${section.id}-docs-panel`
-              const isDefaultSection = isDefaultDocumentSection(section)
+              const isBuiltInSection = isBuiltInDocumentSection(section)
               const isAutoManagedSection = isAutoManagedDocumentsSection(section)
+              const isEsignSection = isEsignTemplateDocumentsSection(section)
+              const canRenameSection =
+                viewerCanRenameDocumentSections &&
+                isBuiltInDocumentSectionLabelEditable(section)
+              const isEditingSection = editingSectionId === section.id
+              const sectionLabel = sectionDisplayLabel(section)
               const selectedInSection = section.nestedDocuments.filter((d) =>
                 Boolean(checkedDocsBySection[section.id]?.[d.id]),
               ).length
@@ -1562,27 +1802,87 @@ export function DocumentsSection({
                   className={`deal_docs_ui_bundle deal_offering_section${isOpen ? " deal_offering_section_expanded" : ""}`}
                   role="listitem"
                 >
-                  <div className="deal_docs_ui_banner" role="region" aria-label={section.sectionLabel}>
-                    <div className="deal_docs_ui_banner_left">
-                      <button
-                        type="button"
-                        className="deal_docs_ui_banner_chevron_btn"
-                        aria-expanded={isOpen}
-                        aria-controls={panelId}
-                        onClick={() => toggleSection(section.id)}
-                        aria-label={isOpen ? "Collapse section" : "Expand section"}
-                      >
+                  <div
+                    className="deal_docs_ui_banner"
+                    role="region"
+                    aria-label={sectionLabel}
+                  >
+                    <button
+                      type="button"
+                      className="deal_docs_ui_banner_toggle"
+                      aria-expanded={isOpen}
+                      aria-controls={panelId}
+                      onClick={() => toggleSection(section.id)}
+                    >
+                      <span className="deal_docs_ui_banner_chevron_slot" aria-hidden>
                         <ChevronDown
                           size={14}
                           strokeWidth={2.75}
-                          aria-hidden
                           className={`deal_docs_ui_banner_chevron${isOpen ? " deal_docs_ui_banner_chevron_open" : ""}`}
                         />
-                      </button>
-                      <div className="deal_docs_ui_banner_heading">
-                        <span className="deal_docs_ui_banner_title">{section.sectionLabel}</span>
+                      </span>
+                      <span className="deal_docs_ui_banner_heading">
+                        {isEditingSection ? (
+                          <span className="deal_docs_ui_banner_title_edit_wrap">
+                            <input
+                              type="text"
+                              className="deal_docs_ui_banner_title_input"
+                              value={editingSectionDraft}
+                              disabled={sectionRenameBusy}
+                              aria-label="Section name"
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) =>
+                                setEditingSectionDraft(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                e.stopPropagation()
+                                if (e.key === "Enter") {
+                                  e.preventDefault()
+                                  saveSectionRename()
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault()
+                                  cancelSectionRename()
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="deal_docs_ui_banner_icon_btn deal_docs_ui_banner_save_btn"
+                              title="Save section name"
+                              aria-label="Save section name"
+                              disabled={sectionRenameBusy}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                saveSectionRename()
+                              }}
+                            >
+                              <Check size={15} strokeWidth={2.5} aria-hidden />
+                            </button>
+                          </span>
+                        ) : (
+                          <span
+                            className={`deal_docs_ui_banner_title${canRenameSection ? " deal_docs_ui_banner_title_editable" : ""}`}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              e.preventDefault()
+                              if (canRenameSection) startSectionRename(section)
+                            }}
+                            title={
+                              canRenameSection
+                                ? "Double-click to edit section name"
+                                : undefined
+                            }
+                          >
+                            {sectionLabel}
+                          </span>
+                        )}
                         {n > 0 ? (
-                          <div className="deal_docs_ui_banner_inline_actions">
+                          <span
+                            className="deal_docs_ui_banner_inline_actions"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
                             {selectedInSection > 0 ? (
                               <>
                                 <button
@@ -1609,6 +1909,29 @@ export function DocumentsSection({
                                     Move selected ({selectedInSection})
                                   </button>
                                 ) : null}
+                                <button
+                                  type="button"
+                                  className="deal_docs_ui_banner_link_btn"
+                                  disabled={documentDownloadBusy}
+                                  onClick={() =>
+                                    void downloadDocuments(
+                                      section.nestedDocuments
+                                        .filter((d) =>
+                                          Boolean(
+                                            checkedDocsBySection[section.id]?.[d.id],
+                                          ),
+                                        )
+                                        .filter((d) => d.url?.trim())
+                                        .map((d) => ({
+                                          sectionName: sectionLabel,
+                                          doc: d,
+                                        })),
+                                    )
+                                  }
+                                >
+                                  <Download size={14} strokeWidth={2} aria-hidden />
+                                  Download selected ({selectedInSection})
+                                </button>
                                 <span
                                   className="deal_docs_ui_banner_inline_sep"
                                   aria-hidden
@@ -1630,37 +1953,55 @@ export function DocumentsSection({
                               <ListChecks size={14} strokeWidth={2} aria-hidden />
                               Select all
                             </button>
-                          </div>
+                          </span>
                         ) : null}
-                      </div>
-                    </div>
-                    <div className="deal_docs_ui_banner_right">
+                      </span>
+                    </button>
+                    <div
+                      className="deal_docs_ui_banner_right"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <span
+                        className="deal_docs_ui_banner_icon_slot"
+                        aria-hidden
+                      />
                       {!isAutoManagedSection ? (
                         <button
                           type="button"
                           className="deal_docs_ui_banner_icon_btn"
-                          aria-label={`Add documents to ${section.sectionLabel}`}
+                          aria-label={`Add documents to ${sectionLabel}`}
                           onClick={() => openUploadDocumentsModal(section)}
                         >
                           <Plus size={18} strokeWidth={2} aria-hidden />
                         </button>
-                      ) : null}
-                      {!isDefaultSection && !isAutoManagedSection ? (
+                      ) : (
+                        <span
+                          className="deal_docs_ui_banner_icon_slot"
+                          aria-hidden
+                        />
+                      )}
+                      {!isBuiltInSection && !isAutoManagedSection ? (
                         <button
                           type="button"
                           className="deal_docs_ui_banner_icon_btn deal_docs_ui_banner_icon_btn_danger"
-                          aria-label={`Delete section ${section.sectionLabel}`}
+                          aria-label={`Delete section ${sectionLabel}`}
                           onClick={() =>
                             setDeletePending({
                               kind: "section",
                               sectionId: section.id,
-                              label: section.sectionLabel,
+                              label: sectionLabel,
                             })
                           }
                         >
                           <Trash2 size={18} strokeWidth={2} aria-hidden />
                         </button>
-                      ) : null}
+                      ) : (
+                        <span
+                          className="deal_docs_ui_banner_icon_slot"
+                          aria-hidden
+                        />
+                      )}
                       <span className="deal_docs_ui_banner_count" aria-live="polite">
                         {n} document{n === 1 ? "" : "s"}
                       </span>
@@ -1688,6 +2029,7 @@ export function DocumentsSection({
                               <th className="deal_docs_ui_th deal_docs_ui_th_date" scope="col">
                                 Date added
                               </th>
+                              {!isEsignSection ? (
                               <th
                                 className="deal_docs_ui_th deal_docs_ui_th_shared_entities"
                                 scope="col"
@@ -1701,12 +2043,13 @@ export function DocumentsSection({
                                       <strong>All Investors</strong>.
                                       Selected audiences only see the file in the LP portal and
                                       shared link when signed in. Leave everything unchecked for all
-                                      viewers allowed by the section&apos;s visibility. Use the mail
+                                      viewers allowed by the section&apos;s visibility. Use the email
                                       icon to email those investors.
                                     </p>
                                   }
                                 />
                               </th>
+                              ) : null}
                               <th className="deal_docs_ui_th deal_docs_ui_th_shared" scope="col">
                                 <DocumentsTableColumnHeader
                                   label="Visibility"
@@ -1790,16 +2133,18 @@ export function DocumentsSection({
                                           </span>
                                         )}
                                         {url ? (
-                                          <a
-                                            href={url}
-                                            download={safeDownloadFilename(d.name)}
-                                            rel="noopener noreferrer"
-                                            className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_link"
+                                          <button
+                                            type="button"
+                                            className="deal_docs_ui_doc_icon_btn"
                                             title="Download"
                                             aria-label={`Download ${d.name}`}
+                                            disabled={documentDownloadBusy}
+                                            onClick={() =>
+                                              downloadSingleDocument(sectionLabel, d)
+                                            }
                                           >
                                             <Download size={16} strokeWidth={2} aria-hidden />
-                                          </a>
+                                          </button>
                                         ) : (
                                           <span
                                             className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_btn_disabled"
@@ -1808,12 +2153,35 @@ export function DocumentsSection({
                                             <Download size={16} strokeWidth={2} />
                                           </span>
                                         )}
+                                        {viewerCanSponsorSign &&
+                                        nestedDocumentNeedsSponsorSign(d) ? (
+                                          <button
+                                            type="button"
+                                            className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_sign_btn"
+                                            title="Sponsor sign"
+                                            aria-label={`Sponsor sign ${d.name}`}
+                                            onClick={() =>
+                                              setSponsorSignTarget({
+                                                documentName: d.name,
+                                                signatureRequestId:
+                                                  d.esignSignatureRequestId!,
+                                              })
+                                            }
+                                          >
+                                            <FileSignature
+                                              size={16}
+                                              strokeWidth={2}
+                                              aria-hidden
+                                            />
+                                          </button>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </td>
                                   <td className="deal_docs_ui_td deal_docs_ui_td_date">
                                     {d.dateAdded}
                                   </td>
+                                  {!isEsignSection ? (
                                   <td className="deal_docs_ui_td deal_docs_ui_td_shared_entities">
                                     <DocumentSharedWithPicker
                                       dealId={dealIdTrim}
@@ -1928,6 +2296,7 @@ export function DocumentsSection({
                                       }}
                                     />
                                   </td>
+                                  ) : null}
                                   <td className="deal_docs_ui_td deal_docs_ui_td_shared">
                                     <div className="deal_docs_ui_shared">
                                       <div className="deal_docs_ui_shared_body">
@@ -2001,6 +2370,29 @@ export function DocumentsSection({
                                   </td>
                                   <td className="deal_docs_ui_td deal_docs_ui_td_actions">
                                     <div className="deal_docs_ui_row_actions">
+                                      {isEsignSection &&
+                                      viewerCanSponsorSign &&
+                                      nestedDocumentNeedsSponsorSign(d) ? (
+                                        <button
+                                          type="button"
+                                          className="deal_docs_ui_row_icon_btn deal_docs_ui_doc_sign_btn"
+                                          title="Sponsor counter-sign"
+                                          aria-label={`Sponsor sign ${d.name}`}
+                                          onClick={() =>
+                                            setSponsorSignTarget({
+                                              documentName: d.name,
+                                              signatureRequestId:
+                                                d.esignSignatureRequestId!,
+                                            })
+                                          }
+                                        >
+                                          <FileSignature
+                                            size={16}
+                                            strokeWidth={2}
+                                            aria-hidden
+                                          />
+                                        </button>
+                                      ) : null}
                                       <button
                                         type="button"
                                         className="deal_docs_ui_row_icon_btn"
@@ -2691,6 +3083,14 @@ export function DocumentsSection({
             document.body,
           )
         : null}
+      <SponsorEsignSignModal
+        open={sponsorSignTarget != null}
+        dealId={dealIdTrim}
+        documentName={sponsorSignTarget?.documentName ?? ""}
+        signatureRequestId={sponsorSignTarget?.signatureRequestId ?? ""}
+        onClose={() => setSponsorSignTarget(null)}
+        onSignedComplete={refreshEsignDocumentsAfterSponsorSign}
+      />
     </div>
   )
 }

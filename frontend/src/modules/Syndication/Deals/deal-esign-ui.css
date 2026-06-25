@@ -37,6 +37,23 @@
   align-items: stretch;
 }
 
+.deal_esign_overlay--template-editor {
+  z-index: 1350;
+  padding: 0.35rem;
+  align-items: stretch;
+}
+
+.um_modal.deal_esign_modal--template-editor {
+  width: min(98vw, 80rem);
+  max-width: min(98vw, 80rem);
+  height: min(96vh, 960px);
+  max-height: min(96vh, 960px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .um_modal.deal_esign_modal--signing .um_modal_head {
   flex-shrink: 0;
   margin-bottom: 0;
@@ -90,6 +107,14 @@
   margin-top: 0;
   border: none;
   border-radius: 0;
+}
+
+.deal_esign_modal_sign_embed .dropbox_sign_embedded_host_inline iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
 }
 
 .deal_esign_modal_sign_embed .x-hellosign-embedded,
@@ -515,6 +540,55 @@
 .deal_esign_notice--empty {
   text-align: center;
   padding: 1.25rem 1rem;
+}
+
+.deal_esign_sign_gate_notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: calc(var(--portal-card-radius, 4px) + 2px);
+  border: 1px solid color-mix(in srgb, #d97706 28%, #fde68a);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #f59e0b 10%, #fff) 0%,
+      #fff 100%
+    );
+}
+
+.deal_esign_sign_gate_icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 16%, #fff);
+  flex-shrink: 0;
+}
+
+.deal_esign_sign_gate_copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.deal_esign_sign_gate_title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: var(--portal-text, #0f172a);
+}
+
+.deal_esign_sign_gate_message,
+.deal_esign_sign_gate_hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--portal-text-muted, #64748b);
 }
 
 .deal_esign_status_row {
@@ -957,4 +1031,33 @@
   margin-top: 0.35rem;
   font-size: 0.75rem;
   color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_modal_doc_name {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.deal_esign_sponsor_picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 28rem;
+}
+
+.deal_esign_sponsor_picker_label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.deal_esign_sponsor_picker_select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--portal-border, #cbd5e1);
+}
+
+.deal_docs_ui_doc_sign_btn {
+  color: var(--portal-primary, #2563eb);
 }

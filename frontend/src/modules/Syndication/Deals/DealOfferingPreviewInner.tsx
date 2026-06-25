@@ -84,7 +84,7 @@ export type DealOfferingPreviewInnerProps = {
   showInvestNowCta: boolean
   /**
    * When set (authenticated preview only), “Invest now” opens this handler instead of
-   * in-page anchor navigation — e.g. LP commitment modal on the investing deal page.
+   * in-page anchor navigation — e.g. navigate to `/deals/:dealId/invest` (wizard step 1).
    */
   onInvestNow?: () => void
   /** Saved Invest Now wizard progress for the signed-in LP (investing deal workspace). */

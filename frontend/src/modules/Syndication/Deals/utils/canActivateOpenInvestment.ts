@@ -13,7 +13,7 @@ export const OPEN_INVESTMENT_DRAFT_STAGE_INFO_TITLE =
   "Deal stage is Draft"
 
 export const OPEN_INVESTMENT_DRAFT_STAGE_INFO_MESSAGE =
-  "While the deal is in Draft, investors cannot access the offering, even when status is set to Open to Investment.\n\nMove the deal to Capital Raising when you are ready to go live."
+  "Saving Open to Investment will move this deal from Draft to Capital Raising so investors can access the offering.\n\nMake sure eSign templates and investor classes are complete, then click Save on this page."
 
 export type CanActivateOpenInvestmentFailureReason = "missing_esign_templates"
 

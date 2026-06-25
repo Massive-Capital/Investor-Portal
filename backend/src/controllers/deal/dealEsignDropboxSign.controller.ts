@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { getActiveEsignProvider } from "../../config/esignProvider.config.js";
 import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdInViewerScope,
@@ -12,9 +13,19 @@ import {
   startDealEsignEmbeddedTemplateDraft,
 } from "../../services/deal/dealEsignDropboxSign.service.js";
 import {
+  completeDealEsignSignflowTemplate,
+  startDealEsignSignflowTemplateDraft,
+} from "../../services/deal/dealEsignSignflow.service.js";
+import { getSignFlowPublicConfig } from "../../config/signflow.config.js";
+import {
+  formatEsignProviderUnreachableMessage,
+  isEsignProviderUnreachableError,
+} from "../../services/esign/esignProviderErrors.js";
+import {
+  dealEsignTemplatesFullyConfigured,
+  dealHasEsignTemplateDocuments,
   getDealEsignTemplatesState,
   groupEsignFilesByCategory,
-  dealHasEsignTemplateDocuments,
 } from "../../services/deal/dealEsignTemplates.service.js";
 
 function bodyString(v: unknown): string {
@@ -40,7 +51,15 @@ export async function getDealEsignDropboxSignConfig(
     res.status(401).json({ message: "Authorization required" });
     return;
   }
-  res.status(200).json(getDealEsignDropboxSignPublicConfig());
+  const provider = getActiveEsignProvider();
+  if (provider === "signflow") {
+    res.status(200).json(getSignFlowPublicConfig());
+    return;
+  }
+  res.status(200).json({
+    ...getDealEsignDropboxSignPublicConfig(),
+    provider: "dropbox",
+  });
 }
 
 /**
@@ -92,19 +111,22 @@ export async function postDealEsignEmbeddedDraft(
       return;
     }
 
-    const result = await startDealEsignEmbeddedTemplateDraft({
-      dealId,
-      fileId,
-      title,
-    });
+    const result =
+      getActiveEsignProvider() === "signflow"
+        ? await startDealEsignSignflowTemplateDraft({ dealId, fileId, title })
+        : await startDealEsignEmbeddedTemplateDraft({ dealId, fileId, title });
 
     const state = await getDealEsignTemplatesState(dealId);
     res.status(200).json({
+      provider: getActiveEsignProvider(),
       editUrl: result.editUrl,
       templateId: result.templateId,
       expiresAt: result.expiresAt,
-      clientId: result.clientId,
+      clientId: "clientId" in result ? result.clientId : null,
       testMode: result.testMode,
+      embedApiKey:
+        "embedApiKey" in result ? result.embedApiKey : null,
+      appBaseUrl: "appBaseUrl" in result ? result.appBaseUrl : null,
       file: result.file,
       hasDocuments: dealHasEsignTemplateDocuments(state),
       filesByCategory: groupEsignFilesByCategory(state),
@@ -113,8 +135,17 @@ export async function postDealEsignEmbeddedDraft(
     const message =
       err instanceof Error ? err.message : "Could not start embedded template editor";
     console.error("postDealEsignEmbeddedDraft:", err);
-    const status = message.includes("not configured") ? 503 : 400;
-    res.status(status).json({ message });
+    const unreachable = isEsignProviderUnreachableError(err);
+    const status =
+      message.includes("not configured") || unreachable ? 503 : 400;
+    const userMessage =
+      unreachable && getActiveEsignProvider() === "signflow"
+        ? formatEsignProviderUnreachableMessage(
+            "signflow",
+            getSignFlowPublicConfig().baseUrl,
+          )
+        : message;
+    res.status(status).json({ message: userMessage });
   }
 }
 
@@ -150,10 +181,21 @@ export async function postDealEsignCompleteEmbeddedTemplate(
   const dropboxSignTemplateId = bodyString(
     b.dropboxSignTemplateId ?? b.template_id ?? b.templateId,
   ).trim();
+  const signflowDocumentId = bodyString(
+    b.signflowDocumentId ?? b.template_id ?? b.templateId,
+  ).trim();
   const title = bodyString(b.title).trim() || undefined;
 
-  if (!dropboxSignTemplateId) {
-    res.status(400).json({ message: "dropboxSignTemplateId is required" });
+  const provider = getActiveEsignProvider();
+  const externalId =
+    provider === "signflow" ? signflowDocumentId : dropboxSignTemplateId;
+  if (!externalId) {
+    res.status(400).json({
+      message:
+        provider === "signflow"
+          ? "signflowDocumentId is required"
+          : "dropboxSignTemplateId is required",
+    });
     return;
   }
 
@@ -175,18 +217,30 @@ export async function postDealEsignCompleteEmbeddedTemplate(
       return;
     }
 
-    const file = await completeDealEsignEmbeddedTemplate({
-      dealId,
-      fileId,
-      dropboxSignTemplateId,
-      title,
-    });
+    const file =
+      provider === "signflow"
+        ? await completeDealEsignSignflowTemplate({
+            dealId,
+            fileId,
+            signflowDocumentId: externalId,
+            title,
+          })
+        : await completeDealEsignEmbeddedTemplate({
+            dealId,
+            fileId,
+            dropboxSignTemplateId: externalId,
+            title,
+          });
 
     const state = await getDealEsignTemplatesState(dealId);
     res.status(200).json({
-      message: "Dropbox Sign template saved",
+      message:
+        provider === "signflow"
+          ? "SignFlow template saved"
+          : "Dropbox Sign template saved",
       file,
       hasDocuments: dealHasEsignTemplateDocuments(state),
+      templatesFullyConfigured: dealEsignTemplatesFullyConfigured(state),
       filesByCategory: groupEsignFilesByCategory(state),
     });
   } catch (err) {

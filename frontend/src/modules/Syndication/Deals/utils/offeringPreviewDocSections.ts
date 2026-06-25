@@ -59,22 +59,37 @@ export function listWorkspaceDocumentsForOfferingPreview(
 ): OfferingPreviewDisplayDocument[] {
   const id = dealId.trim()
   if (!id) return []
+  const sections = readOfferingPreviewSections(id)
   const out: OfferingPreviewDisplayDocument[] = []
-  for (const sec of readOfferingPreviewSections(id)) {
+  const seenIds = new Set<string>()
+
+  const tryAdd = (doc: { id: string; name: string; url: string | null }) => {
+    const docId = doc.id.trim()
+    if (!docId || seenIds.has(docId)) return
+    if (offeringPreviewDocumentExcludedFromInvestorOffering(doc, sections)) return
+    seenIds.add(docId)
+    out.push({ id: doc.id, name: doc.name, url: doc.url })
+  }
+
+  for (const sec of sections) {
+    if (isEsignTemplateDocumentsSection(sec)) continue
     for (const d of sec.nestedDocuments) {
+      if (isInvestorEsignWorkspaceDocument(d)) continue
       const scope = effectiveDocumentSharedWithScope(d, sec)
       if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
-      out.push({ id: d.id, name: d.name, url: d.url })
+      tryAdd(d)
     }
   }
-  if (out.length > 0) return out
-  const flat = readOfferingPreviewDocuments(id)
-  for (const d of flat) {
-    const scope: SectionSharedWithScope =
-      d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
-    if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
-    out.push({ id: d.id, name: d.name, url: d.url })
+
+  if (out.length === 0) {
+    for (const d of readOfferingPreviewDocuments(id)) {
+      const scope: SectionSharedWithScope =
+        d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
+      if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
+      tryAdd(d)
+    }
   }
+
   return out
 }
 
@@ -148,6 +163,13 @@ export type NestedPreviewDocument = {
    * on at least one commitment for this deal (Funding Information PDFs).
    */
   requiresProfileInvestment?: boolean
+  /** Present on auto-synced investor eSign PDFs in Investor e signatures section. */
+  esignSignatureRequestId?: string
+  esignInvestorRowId?: string
+  esignInvestorRowTable?: "investment" | "lp"
+  esignTemplateFileId?: string
+  esignAwaitingSponsorSignature?: boolean
+  esignSponsorSigned?: boolean
 }
 
 export type OfferingPreviewSection = {
@@ -175,11 +197,66 @@ export const DEFAULT_DOCUMENT_SECTION_ID = "default-documents-section"
 /** Label shown in the Documents tab for the default section. */
 export const DEFAULT_DOCUMENT_SECTION_LABEL = "General"
 
+export const OFFERING_DOCUMENTS_SECTION_ID = "offering-documents-section"
+export const OFFERING_DOCUMENTS_SECTION_LABEL = "Offering Documents"
+
+export const MONTHLY_REPORTS_SECTION_ID = "monthly-reports-section"
+export const MONTHLY_REPORTS_SECTION_LABEL = "Monthly Reports"
+
+export const QUARTERLY_REPORTS_SECTION_ID = "quarterly-reports-section"
+export const QUARTERLY_REPORTS_SECTION_LABEL = "Quarterly Reports"
+
+export const K1S_DOCUMENTS_SECTION_ID = "k1s-documents-section"
+export const K1S_DOCUMENTS_SECTION_LABEL = "K1's"
+
+/** Built-in document sections in canonical display order (excludes auto-managed). */
+export const BUILT_IN_DOCUMENT_SECTION_DEFS = [
+  {
+    id: DEFAULT_DOCUMENT_SECTION_ID,
+    sectionLabel: DEFAULT_DOCUMENT_SECTION_LABEL,
+    editable: false,
+  },
+  {
+    id: OFFERING_DOCUMENTS_SECTION_ID,
+    sectionLabel: OFFERING_DOCUMENTS_SECTION_LABEL,
+    editable: true,
+  },
+  {
+    id: MONTHLY_REPORTS_SECTION_ID,
+    sectionLabel: MONTHLY_REPORTS_SECTION_LABEL,
+    editable: true,
+  },
+  {
+    id: QUARTERLY_REPORTS_SECTION_ID,
+    sectionLabel: QUARTERLY_REPORTS_SECTION_LABEL,
+    editable: true,
+  },
+  {
+    id: K1S_DOCUMENTS_SECTION_ID,
+    sectionLabel: K1S_DOCUMENTS_SECTION_LABEL,
+    editable: true,
+  },
+] as const
+
+const BUILT_IN_DOCUMENT_SECTION_IDS = new Set<string>(
+  BUILT_IN_DOCUMENT_SECTION_DEFS.map((d) => d.id),
+)
+
+function builtInSectionLabelKey(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+const BUILT_IN_DOCUMENT_SECTION_LABEL_KEYS = new Set(
+  BUILT_IN_DOCUMENT_SECTION_DEFS.map((d) => builtInSectionLabelKey(d.sectionLabel)),
+)
+
 /** Auto-managed section for investor-completed eSign PDFs. */
 export const ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID =
   "esign-template-documents-section"
 
-export const ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL = "Esign template"
+export const ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL = "Investor e signatures"
+
+const LEGACY_ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL = "Esign template"
 
 /** Auto-managed section for sponsor-saved funding instructions PDF. */
 export const FUNDING_INFORMATION_DOCUMENTS_SECTION_ID =
@@ -206,14 +283,58 @@ export function isFundingInstructionsAutoPdfDocument(
   )
 }
 
+function normalizeEsignSectionLabelKey(label: string): string {
+  return label.trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ")
+}
+
+export function isEsignTemplateSectionLabel(label: string): boolean {
+  const normalized = normalizeEsignSectionLabelKey(label)
+  if (!normalized) return false
+  return (
+    normalized ===
+      normalizeEsignSectionLabelKey(ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL) ||
+    normalized ===
+      normalizeEsignSectionLabelKey(LEGACY_ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL)
+  )
+}
+
 export function isEsignTemplateDocumentsSection(
   s: OfferingPreviewSection,
 ): boolean {
   if (s.id === ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID) return true
-  return (
-    sectionDisplayLabel(s).trim().toLowerCase() ===
-    ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL.toLowerCase()
-  )
+  const idLower = s.id.trim().toLowerCase()
+  if (idLower.startsWith("recovered-investor-e-signature")) return true
+  return isEsignTemplateSectionLabel(sectionDisplayLabel(s))
+}
+
+/** True when a section group must not appear on investor Offering Documents. */
+export function isInvestorOfferingDocumentSectionExcluded(
+  sectionId: string,
+  sectionLabel: string,
+): boolean {
+  if (sectionId.trim() === ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID) return true
+  const idLower = sectionId.trim().toLowerCase()
+  if (idLower.startsWith("recovered-investor-e-signature")) return true
+  return isEsignTemplateSectionLabel(sectionLabel)
+}
+
+/** Auto-synced signed PDFs in the sponsor Documents tab — not LP-offered. */
+export function isInvestorEsignWorkspaceDocument(
+  doc: Pick<
+    NestedPreviewDocument,
+    | "esignSignatureRequestId"
+    | "lpDisplaySectionId"
+    | "esignInvestorRowId"
+    | "esignTemplateFileId"
+  >,
+): boolean {
+  if (doc.esignSignatureRequestId?.trim()) return true
+  if (doc.esignInvestorRowId?.trim()) return true
+  if (doc.esignTemplateFileId?.trim()) return true
+  const lpSectionId = doc.lpDisplaySectionId?.trim()
+  if (!lpSectionId) return false
+  if (lpSectionId === ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID) return true
+  return lpSectionId.toLowerCase().startsWith("recovered-investor-e-signature")
 }
 
 export function isFundingInformationDocumentsSection(
@@ -295,7 +416,9 @@ export function mergeAutoManagedDocumentSections(
   }
   if (!changed) return localSections
 
-  return orderDocumentSectionsWithDefaultFirst([...byId.values()])
+  return orderDocumentSectionsWithDefaultFirst(
+    consolidateInvestorEsignDocumentsIntoAutoSection([...byId.values()]),
+  )
 }
 
 /** Stable JSON snapshot for comparing document section lists. */
@@ -357,8 +480,34 @@ export function applyFundingInformationDocumentsSectionFromPreview(
 export function isDefaultDocumentSection(s: OfferingPreviewSection): boolean {
   if (s.id === DEFAULT_DOCUMENT_SECTION_ID) return true
   return (
-    s.sectionLabel.trim().toLowerCase() ===
-    DEFAULT_DOCUMENT_SECTION_LABEL.toLowerCase()
+    builtInSectionLabelKey(s.sectionLabel) ===
+    builtInSectionLabelKey(DEFAULT_DOCUMENT_SECTION_LABEL)
+  )
+}
+
+export function isBuiltInDocumentSection(s: OfferingPreviewSection): boolean {
+  if (BUILT_IN_DOCUMENT_SECTION_IDS.has(s.id)) return true
+  return BUILT_IN_DOCUMENT_SECTION_LABEL_KEYS.has(
+    builtInSectionLabelKey(sectionDisplayLabel(s)),
+  )
+}
+
+export function isBuiltInDocumentSectionLabelEditable(
+  s: OfferingPreviewSection,
+): boolean {
+  if (isAutoManagedDocumentsSection(s)) return false
+  if (!isBuiltInDocumentSection(s)) return true
+  return !isDefaultDocumentSection(s)
+}
+
+export function builtInDocumentSectionDef(
+  s: OfferingPreviewSection,
+): (typeof BUILT_IN_DOCUMENT_SECTION_DEFS)[number] | undefined {
+  const byId = BUILT_IN_DOCUMENT_SECTION_DEFS.find((d) => d.id === s.id)
+  if (byId) return byId
+  const key = builtInSectionLabelKey(sectionDisplayLabel(s))
+  return BUILT_IN_DOCUMENT_SECTION_DEFS.find(
+    (d) => builtInSectionLabelKey(d.sectionLabel) === key,
   )
 }
 
@@ -368,6 +517,76 @@ export function findDefaultDocumentSection(
   return sections.find(isDefaultDocumentSection)
 }
 
+function createEmptyBuiltInSection(
+  def: (typeof BUILT_IN_DOCUMENT_SECTION_DEFS)[number],
+): OfferingPreviewSection {
+  return {
+    id: def.id,
+    sectionLabel: def.sectionLabel,
+    documentLabel: def.sectionLabel,
+    visibility: sectionSharedWithDisplay("offering_page"),
+    sharedWithScope: "offering_page",
+    requireLpReview: false,
+    dateAdded: formatDateDdMmmYyyy(new Date()),
+    nestedDocuments: [],
+  }
+}
+
+function createEmptyEsignTemplateDocumentsSection(): OfferingPreviewSection {
+  return {
+    id: ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID,
+    sectionLabel: ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL,
+    documentLabel: ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL,
+    visibility: sectionSharedWithDisplay("offering_page"),
+    sharedWithScope: "offering_page",
+    requireLpReview: false,
+    dateAdded: formatDateDdMmmYyyy(new Date()),
+    nestedDocuments: [],
+  }
+}
+
+/**
+ * Investor eSign PDFs must live only in the auto-managed Investor e signatures section.
+ * Removes them from Offering Documents / other sections where reconcile or legacy saves misplaced them.
+ */
+export function consolidateInvestorEsignDocumentsIntoAutoSection(
+  sections: OfferingPreviewSection[],
+): OfferingPreviewSection[] {
+  const esignDocsById = new Map<string, NestedPreviewDocument>()
+  for (const section of sections) {
+    for (const doc of section.nestedDocuments) {
+      if (!isInvestorEsignWorkspaceDocument(doc)) continue
+      const id = doc.id.trim()
+      if (!id) continue
+      esignDocsById.set(id, {
+        ...doc,
+        lpDisplaySectionId: ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID,
+      })
+    }
+  }
+
+  const stripped = sections
+    .filter((s) => !isEsignTemplateDocumentsSection(s))
+    .map((s) => ({
+      ...s,
+      nestedDocuments: s.nestedDocuments.filter(
+        (d) => !isInvestorEsignWorkspaceDocument(d),
+      ),
+    }))
+
+  if (esignDocsById.size === 0) return stripped
+
+  const prior = sections.find((s) => s.id === ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID)
+  stripped.push({
+    ...(prior ?? createEmptyEsignTemplateDocumentsSection()),
+    sectionLabel: ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL,
+    documentLabel: ESIGN_TEMPLATE_DOCUMENTS_SECTION_LABEL,
+    nestedDocuments: [...esignDocsById.values()],
+  })
+
+  return stripped
+}
+
 /** Ensures the default section exists; returns updated list + that section row. */
 export function ensureDefaultDocumentSectionInList(
   sections: OfferingPreviewSection[],
@@ -375,31 +594,60 @@ export function ensureDefaultDocumentSectionInList(
   sections: OfferingPreviewSection[]
   defaultSection: OfferingPreviewSection
 } {
-  const existing = findDefaultDocumentSection(sections)
-  if (existing) {
-    return { sections, defaultSection: existing }
-  }
-  const defaultSection: OfferingPreviewSection = {
-    id: DEFAULT_DOCUMENT_SECTION_ID,
-    sectionLabel: DEFAULT_DOCUMENT_SECTION_LABEL,
-    documentLabel: DEFAULT_DOCUMENT_SECTION_LABEL,
-    visibility: sectionSharedWithDisplay("offering_page"),
-    sharedWithScope: "offering_page",
-    requireLpReview: false,
-    dateAdded: formatDateDdMmmYyyy(new Date()),
-    nestedDocuments: [],
-  }
-  return { sections: [...sections, defaultSection], defaultSection }
+  const { sections: withBuiltIns, defaultSection } =
+    ensureBuiltInDocumentSectionsInList(sections)
+  return { sections: withBuiltIns, defaultSection }
 }
 
-/** Default **General** section first; all other sections follow. */
+/** Ensures all built-in sections exist (General through K1's). */
+export function ensureBuiltInDocumentSectionsInList(
+  sections: OfferingPreviewSection[],
+): {
+  sections: OfferingPreviewSection[]
+  defaultSection: OfferingPreviewSection
+} {
+  const byId = new Map(sections.map((s) => [s.id, s]))
+  let next = [...sections]
+  for (const def of BUILT_IN_DOCUMENT_SECTION_DEFS) {
+    if (!byId.has(def.id)) {
+      const row = createEmptyBuiltInSection(def)
+      byId.set(def.id, row)
+      next = [...next, row]
+    }
+  }
+  const defaultSection =
+    byId.get(DEFAULT_DOCUMENT_SECTION_ID) ??
+    createEmptyBuiltInSection(BUILT_IN_DOCUMENT_SECTION_DEFS[0]!)
+  return { sections: next, defaultSection }
+}
+
+/**
+ * Canonical order: built-in sections, user-created sections, auto-managed at end.
+ */
+export function orderDocumentSections(
+  sections: OfferingPreviewSection[],
+): OfferingPreviewSection[] {
+  const { sections: withBuiltIns } = ensureBuiltInDocumentSectionsInList(sections)
+  const byId = new Map(withBuiltIns.map((s) => [s.id, s]))
+  const builtIn = BUILT_IN_DOCUMENT_SECTION_DEFS.map(
+    (def) => byId.get(def.id) ?? createEmptyBuiltInSection(def),
+  )
+  const builtInIds = new Set<string>(
+    BUILT_IN_DOCUMENT_SECTION_DEFS.map((d) => d.id),
+  )
+  const autoManaged = withBuiltIns.filter(isAutoManagedDocumentsSection)
+  const autoIds = new Set(autoManaged.map((s) => s.id))
+  const custom = withBuiltIns.filter(
+    (s) => !builtInIds.has(s.id) && !autoIds.has(s.id),
+  )
+  return [...builtIn, ...custom, ...autoManaged]
+}
+
+/** @deprecated Use {@link orderDocumentSections}. */
 export function orderDocumentSectionsWithDefaultFirst(
   sections: OfferingPreviewSection[],
 ): OfferingPreviewSection[] {
-  const { sections: withDefault, defaultSection } =
-    ensureDefaultDocumentSectionInList(sections)
-  const others = withDefault.filter((s) => s.id !== defaultSection.id)
-  return [defaultSection, ...others]
+  return orderDocumentSections(sections)
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -448,6 +696,25 @@ function normalizeNested(
   const sharedSponsorUserIds = parseIdListField(raw.sharedSponsorUserIds)
   const sharedWithScope = parseDocumentSharedWithScope(raw.sharedWithScope)
   const requiresProfileInvestment = Boolean(raw.requiresProfileInvestment)
+  const esignSignatureRequestId =
+    typeof raw.esignSignatureRequestId === "string" &&
+    raw.esignSignatureRequestId.trim()
+      ? raw.esignSignatureRequestId.trim()
+      : undefined
+  const esignInvestorRowId =
+    typeof raw.esignInvestorRowId === "string" && raw.esignInvestorRowId.trim()
+      ? raw.esignInvestorRowId.trim()
+      : undefined
+  const esignInvestorRowTable =
+    raw.esignInvestorRowTable === "investment" || raw.esignInvestorRowTable === "lp"
+      ? raw.esignInvestorRowTable
+      : undefined
+  const esignTemplateFileId =
+    typeof raw.esignTemplateFileId === "string" && raw.esignTemplateFileId.trim()
+      ? raw.esignTemplateFileId.trim()
+      : undefined
+  const esignAwaitingSponsorSignature = Boolean(raw.esignAwaitingSponsorSignature)
+  const esignSponsorSigned = Boolean(raw.esignSponsorSigned)
   return {
     id,
     name,
@@ -460,6 +727,12 @@ function normalizeNested(
     sharedSponsorUserIds,
     ...(sharedWithScope ? { sharedWithScope } : {}),
     ...(requiresProfileInvestment ? { requiresProfileInvestment: true } : {}),
+    ...(esignSignatureRequestId ? { esignSignatureRequestId } : {}),
+    ...(esignInvestorRowId ? { esignInvestorRowId } : {}),
+    ...(esignInvestorRowTable ? { esignInvestorRowTable } : {}),
+    ...(esignTemplateFileId ? { esignTemplateFileId } : {}),
+    ...(esignAwaitingSponsorSignature ? { esignAwaitingSponsorSignature: true } : {}),
+    ...(esignSponsorSigned ? { esignSponsorSigned: true } : {}),
   }
 }
 
@@ -547,20 +820,7 @@ function sanitizeSections(list: OfferingPreviewSection[]): OfferingPreviewSectio
       }),
     }
   })
-  return orderDocumentSectionsWithDefaultFirst(mapped)
-}
-
-function maxDateString(dates: string[]): string {
-  let best = 0
-  let bestStr = "—"
-  for (const d of dates) {
-    const t = Date.parse(d)
-    if (Number.isFinite(t) && t >= best) {
-      best = t
-      bestStr = d
-    }
-  }
-  return bestStr
+  return orderDocumentSections(consolidateInvestorEsignDocumentsIntoAutoSection(mapped))
 }
 
 export function migrateFlatDocumentsToSections(
@@ -571,34 +831,38 @@ export function migrateFlatDocumentsToSections(
 
 function migrateFlatToSections(flat: OfferingPreviewDocument[]): OfferingPreviewSection[] {
   if (flat.length === 0) return []
-  const sectionId = `migrated-${Date.now()}`
-  const nestedDocuments: NestedPreviewDocument[] = flat.map((d) => ({
-    id: d.id,
-    name: d.name,
-    url: d.url,
-    dateAdded: d.dateAdded?.trim() || "—",
-    lpDisplaySectionId: sectionId,
-    sharedDealClassIds: [],
-    sharedInvestorIds: [],
-    sharedWithAllInvestors: false,
-    sharedSponsorUserIds: [],
-    ...(d.sharedWithScope ? { sharedWithScope: d.sharedWithScope } : {}),
-  }))
-  const datePool = nestedDocuments.map((d) => d.dateAdded).filter((d) => d !== "—")
-  const dateAdded =
-    datePool.length > 0 ? maxDateString(datePool) : formatDateDdMmmYyyy(new Date())
-  return [
-    {
-      id: sectionId,
-      sectionLabel: "Documents",
-      documentLabel: "Documents",
-      visibility: sectionSharedWithDisplay("offering_page"),
-      sharedWithScope: "offering_page",
-      requireLpReview: false,
-      dateAdded,
-      nestedDocuments,
-    },
-  ]
+  const reconciled = reconcileFlatDocumentsIntoSections([], flat)
+  const assignedIds = new Set(
+    reconciled.flatMap((s) => s.nestedDocuments.map((d) => d.id.trim())),
+  )
+  const orphans = flat.filter(
+    (d) => d.id.trim() && !assignedIds.has(d.id.trim()),
+  )
+  if (orphans.length === 0) {
+    return reconciled
+  }
+
+  const { sections, defaultSection } = ensureDefaultDocumentSectionInList(reconciled)
+  const next = sections.map((s) => {
+    if (s.id !== defaultSection.id) return s
+    const nestedDocuments: NestedPreviewDocument[] = [
+      ...s.nestedDocuments,
+      ...orphans.map((d) => ({
+        id: d.id,
+        name: d.name,
+        url: d.url,
+        dateAdded: d.dateAdded?.trim() || "—",
+        lpDisplaySectionId: defaultSection.id,
+        sharedDealClassIds: [],
+        sharedInvestorIds: [],
+        sharedWithAllInvestors: false,
+        sharedSponsorUserIds: [],
+        ...(d.sharedWithScope ? { sharedWithScope: d.sharedWithScope } : {}),
+      })),
+    ]
+    return { ...s, nestedDocuments }
+  })
+  return next
 }
 
 function previewDocDisplayName(
@@ -618,17 +882,49 @@ export function parseFlatDocumentDisplayName(name: string): {
   sectionLabel: string
   fileName: string
 } {
-  const sep = " — "
-  const idx = name.indexOf(sep)
-  if (idx > 0) {
-    const sectionLabel = name.slice(0, idx).trim()
-    const fileName = name.slice(idx + sep.length).trim()
-    return {
-      sectionLabel,
-      fileName: fileName || name.trim() || "Document",
+  for (const sep of [" — ", " – ", " - "] as const) {
+    const idx = name.indexOf(sep)
+    if (idx > 0) {
+      const sectionLabel = name.slice(0, idx).trim()
+      const fileName = name.slice(idx + sep.length).trim()
+      return {
+        sectionLabel,
+        fileName: fileName || name.trim() || "Document",
+      }
     }
   }
   return { sectionLabel: "", fileName: name.trim() || "Document" }
+}
+
+export function findNestedPreviewDocumentById(
+  sections: OfferingPreviewSection[],
+  documentId: string,
+): NestedPreviewDocument | undefined {
+  const id = documentId.trim()
+  if (!id) return undefined
+  for (const sec of sections) {
+    const match = sec.nestedDocuments.find((d) => d.id.trim() === id)
+    if (match) return match
+  }
+  return undefined
+}
+
+/** Flat or nested preview docs that belong in Investor e signatures — hidden from offering lists. */
+export function offeringPreviewDocumentExcludedFromInvestorOffering(
+  doc: { id: string; name: string },
+  sections: OfferingPreviewSection[],
+): boolean {
+  const id = doc.id.trim()
+  if (id) {
+    for (const sec of sections) {
+      if (!isEsignTemplateDocumentsSection(sec)) continue
+      if (sec.nestedDocuments.some((d) => d.id.trim() === id)) return true
+    }
+  }
+  const nested = findNestedPreviewDocumentById(sections, doc.id)
+  if (nested && isInvestorEsignWorkspaceDocument(nested)) return true
+  const { sectionLabel } = parseFlatDocumentDisplayName(doc.name)
+  return isEsignTemplateSectionLabel(sectionLabel)
 }
 
 /**
@@ -656,6 +952,20 @@ export function reconcileFlatDocumentsIntoSections(
       sectionLabel.trim().length > 0
         ? next.find((s) => sectionDisplayLabel(s) === sectionLabel.trim())
         : undefined
+
+    if (
+      !section &&
+      sectionLabel.trim() &&
+      isEsignTemplateSectionLabel(sectionLabel)
+    ) {
+      section =
+        next.find((s) => s.id === ESIGN_TEMPLATE_DOCUMENTS_SECTION_ID) ??
+        next.find(isEsignTemplateDocumentsSection)
+      if (!section) {
+        section = createEmptyEsignTemplateDocumentsSection()
+        next.push(section)
+      }
+    }
 
     if (!section && sectionLabel.trim()) {
       const recoveredId = `recovered-${sectionLabel.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${fd.id.trim()}`
@@ -688,7 +998,7 @@ export function reconcileFlatDocumentsIntoSections(
     })
   }
 
-  return next
+  return consolidateInvestorEsignDocumentsIntoAutoSection(next)
 }
 
 export function flattenSectionsToPreviewDocs(

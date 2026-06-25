@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { getDropboxSignConfig } from "../../config/dropboxSign.config.js";
+import { getActiveEsignProvider } from "../../config/esignProvider.config.js";
+import { getSignFlowPublicConfig } from "../../config/signflow.config.js";
 import {
   findEsignSendBySignatureRequestId,
   parseEsignStatusBundle,
@@ -9,9 +10,11 @@ import { db } from "../../database/db.js";
 import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
 import { getDealEsignDropboxSignPublicConfig } from "./dealEsignDropboxSign.service.js";
 import {
-  getEmbeddedSignUrl,
-  getFirstSignatureIdFromRequest,
-} from "../esign/dropboxSign.service.js";
+  buildSignFlowSignerEmbedUrl,
+  createSignFlowEmbedSigningSession,
+  evaluateSignFlowRecipientSignAccess,
+  getSignFlowDocument,
+} from "../esign/signflow.service.js";
 import {
   findInvestorEsignTargetForInvestNowCommitment,
   investorEsignTargetHasPositiveCommitment,
@@ -21,19 +24,28 @@ import {
   type InvestNowEsignTargetOpts,
   type InvestorEsignRowTarget,
 } from "./dealMemberEsignStatus.service.js";
+import {
+  getEmbeddedSignUrl,
+  getFirstSignatureIdFromRequest,
+} from "../esign/dropboxSign.service.js";
+
 import { sendMyInvestNowEsignIfNeeded } from "./dealLpInvestNowMyEsignSend.service.js";
 
 export type DealMyEsignSignSessionResult =
   | {
       ok: true;
       alreadyCompleted: boolean;
+      provider: "signflow" | "dropbox";
       signUrl: string | null;
       clientId: string | null;
       testMode: boolean;
       configured: boolean;
       signatureRequestId?: string | null;
+      embedApiKey?: string | null;
+      appBaseUrl?: string | null;
+      documentId?: string | null;
     }
-  | { ok: false; code: "not_found" | "not_pending" | "not_configured"; message: string };
+  | { ok: false; code: "not_found" | "not_pending" | "not_configured" | "waiting_for_prior_signer"; message: string; waitingFor?: "sponsor" | "investor" };
 
 async function resolveSignatureIdForSend(
   send: { signatureId?: string; signatureRequestId?: string },
@@ -58,12 +70,15 @@ export async function getDealMyEsignSignSession(params: {
   InvestNowEsignTargetOpts,
   "userInvestorProfileId" | "investmentId" | "profileId"
 >): Promise<DealMyEsignSignSessionResult> {
-  const publicCfg = getDealEsignDropboxSignPublicConfig();
-  if (!getDropboxSignConfig()) {
+  const provider = getActiveEsignProvider();
+  const signFlowCfg = getSignFlowPublicConfig();
+  const dropboxCfg = getDealEsignDropboxSignPublicConfig();
+
+  if (!provider) {
     return {
       ok: false,
       code: "not_configured",
-      message: "Dropbox Sign is not configured on the server",
+      message: "eSign is not configured on the server",
     };
   }
 
@@ -181,11 +196,69 @@ export async function getDealMyEsignSignSession(params: {
     return {
       ok: true,
       alreadyCompleted: true,
+      provider: provider ?? "dropbox",
       signUrl: null,
-      clientId: publicCfg.clientId,
-      testMode: publicCfg.testMode,
-      configured: publicCfg.configured,
+      clientId: provider === "signflow" ? null : dropboxCfg.clientId,
+      testMode:
+        provider === "signflow" ? signFlowCfg.testMode : dropboxCfg.testMode,
+      configured: true,
       signatureRequestId: sigId || null,
+      embedApiKey: provider === "signflow" ? signFlowCfg.embedApiKey : null,
+      appBaseUrl: provider === "signflow" ? signFlowCfg.appBaseUrl : null,
+      documentId: sigId || null,
+    };
+  }
+
+  if (provider === "signflow") {
+    if (!sigId) {
+      return {
+        ok: false,
+        code: "not_pending",
+        message: "Could not resolve your SignFlow signing session. Ask your sponsor to resend.",
+      };
+    }
+    if (sigId && target) {
+      await markDealInvestorEsignViewed(params.dealId, target, sigId);
+    }
+
+    try {
+      const liveDoc = await getSignFlowDocument(sigId);
+      const access = evaluateSignFlowRecipientSignAccess(liveDoc, email);
+      if (!access.allowed) {
+        return {
+          ok: false,
+          code: "waiting_for_prior_signer",
+          message: access.message,
+          waitingFor: access.waitingFor,
+        };
+      }
+    } catch (err) {
+      console.warn("getSignFlowDocument (sign access gate):", err);
+    }
+
+    let signUrl = buildSignFlowSignerEmbedUrl(sigId);
+    try {
+      const session = await createSignFlowEmbedSigningSession({
+        documentId: sigId,
+        recipientEmail: email,
+      });
+      signUrl = session.signUrl;
+    } catch (err) {
+      console.warn("createSignFlowEmbedSigningSession:", err);
+    }
+
+    return {
+      ok: true,
+      alreadyCompleted: false,
+      provider: "signflow",
+      signUrl,
+      clientId: null,
+      testMode: signFlowCfg.testMode,
+      configured: signFlowCfg.configured,
+      signatureRequestId: sigId,
+      embedApiKey: signFlowCfg.embedApiKey,
+      appBaseUrl: signFlowCfg.appBaseUrl,
+      documentId: sigId,
     };
   }
 
@@ -206,10 +279,11 @@ export async function getDealMyEsignSignSession(params: {
     return {
       ok: true,
       alreadyCompleted: false,
+      provider: "dropbox",
       signUrl,
-      clientId: publicCfg.clientId,
-      testMode: publicCfg.testMode,
-      configured: publicCfg.configured,
+      clientId: dropboxCfg.clientId,
+      testMode: dropboxCfg.testMode,
+      configured: dropboxCfg.configured,
       signatureRequestId: sigId || null,
     };
   } catch (err) {

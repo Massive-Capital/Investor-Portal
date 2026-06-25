@@ -17,8 +17,10 @@ import {
   applyDealsSearchToParams,
   readDealsSearchQuery,
 } from "@/common/deals/dealsSearchQuery"
+import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import {
+  dealRowSupportsRosterApiPrefetch,
   filterDealListToInvestingDealsPage,
   formatViewerInvestingDealRolesLabel,
   resolveViewerInvestingDealRoles,
@@ -58,7 +60,7 @@ import {
   FormTooltip,
   type FormTooltipPanelAlign,
 } from "../../../common/components/form-tooltip/FormTooltip"
-import { getSessionUserEmail } from "../../../common/auth/sessionUserEmail"
+import { TableCompactAmountCell } from "../../../common/components/card-compact-amount/CardCompactAmount"
 import {
   committedSortValue,
   dateSortValue,
@@ -462,6 +464,20 @@ export function DealsListPage({
           : undefined
       const entries = await Promise.all(
         ids.map(async (id) => {
+          const row = filtered.find((r) => r.id === id)
+          if (row && !dealRowSupportsRosterApiPrefetch(row)) {
+            return [
+              id,
+              {
+                committedRaw: "—",
+                fundedRaw: "—",
+                remainingRaw: "—",
+                investorCount: 0,
+                investorClassesLine: "",
+                viewerRolesLabel: "—",
+              },
+            ] as const
+          }
           try {
             const [{ kpis, investors }, classes, membersResult] =
               await Promise.all([
@@ -846,7 +862,11 @@ export function DealsListPage({
         },
         cell: (row) => {
           const m = investorMetricsByDealId[row.id]
-          return formatCommittedCurrency(m?.fundedRaw ?? row.totalAccepted)
+          return (
+            <TableCompactAmountCell
+              amount={m?.fundedRaw ?? row.totalAccepted}
+            />
+          )
         },
       },
       {
@@ -868,7 +888,9 @@ export function DealsListPage({
         },
         cell: (row) => {
           const m = investorMetricsByDealId[row.id]
-          return formatCommittedCurrency(m?.remainingRaw ?? "0")
+          return (
+            <TableCompactAmountCell amount={m?.remainingRaw ?? "0"} />
+          )
         },
       },
       {
@@ -891,7 +913,7 @@ export function DealsListPage({
         cell: (row) => {
           const m = investorMetricsByDealId[row.id]
           const raw = m?.committedRaw ?? row.totalAccepted
-          return formatCommittedCurrency(raw)
+          return <TableCompactAmountCell amount={raw} />
         },
       },
     ]

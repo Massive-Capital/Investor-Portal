@@ -64,7 +64,7 @@ function safeRosterSegment(raw: string): string {
 }
 
 /** Saved copy of the file sent to Dropbox (includes questionnaire pages when merged). */
-async function persistInvestorEsignPreviewPdf(params: {
+export async function persistInvestorEsignPreviewPdf(params: {
   dealId: string;
   rosterId: string;
   buffer: Buffer;
@@ -104,7 +104,7 @@ export function applyInvestorPreviewToEsignDocuments(
  * When the template includes the investor questionnaire and answers exist,
  * prepends a PDF of responses before the prepared template (signature page + subscription).
  */
-export async function createInvestorSignatureRequest(params: {
+export async function createInvestorSignatureRequestDropbox(params: {
   dealId: string;
   rosterId: string;
   toEmail: string;
@@ -377,7 +377,7 @@ async function resolveInvestorEsignFormFields(params: {
  * Builds the investor-facing PDF (questionnaire answers, filled W-9, template body).
  * Saved for sponsor/investor View while pending; sent to Dropbox only when structurally merged.
  */
-async function assembleInvestorSigningPdf(params: {
+export async function assembleInvestorSigningPdf(params: {
   dealId: string;
   selectedFiles: EsignTemplateFileRecord[];
   esignTarget?: InvestorEsignRowTarget | null;
@@ -405,7 +405,8 @@ async function assembleInvestorSigningPdf(params: {
   const file = params.selectedFiles[0];
   if (!isPdfEsignFile(file)) return null;
 
-  const templateId = file.dropboxSignTemplateId?.trim();
+  const templateId =
+    file.signflowDocumentId?.trim() || file.dropboxSignTemplateId?.trim();
   if (!templateId) return null;
 
   let answers =

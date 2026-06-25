@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   IDLE_LOGOUT_MS,
+  markIdleSessionTimeoutNotice,
   msUntilIdleLogout,
-  SESSION_IDLE_TIMEOUT_NOTICE_KEY,
   touchSessionActivity,
 } from "./idleSession";
 import { performPortalLogout } from "./portalLogout";
@@ -42,10 +42,10 @@ export function useIdleLogout(): void {
       if (loggingOutRef.current) return;
       loggingOutRef.current = true;
       clearTimer();
+      markIdleSessionTimeoutNotice();
       try {
         await performPortalLogout();
       } finally {
-        sessionStorage.setItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY, "1");
         navigate("/signin", { replace: true, state: { idleLogout: true } });
       }
     }

@@ -24,6 +24,7 @@ import {
   resolveUsersByContactIds,
   sumCommittedFromInvestorsAddedByMemberContacts,
   totalCommittedByCanonicalKeyFromRows,
+  DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
 } from "./dealInvestment.service.js";
 
 export type UpsertDealMemberInput = {
@@ -443,4 +444,53 @@ export async function deleteDealMemberRosterEntry(
   }
 
   return { ok: false, message: "Member or investment not found" };
+}
+
+function isLeadSponsorStoredRole(role: string | null | undefined): boolean {
+  const t = String(role ?? "").trim().toLowerCase();
+  return t === "lead sponsor" || t === "lead_sponsor";
+}
+
+function rosterPersonDisplayName(row: {
+  displayName?: string;
+  userDisplayName?: string;
+}): string {
+  const display = String(row.displayName ?? "").trim();
+  if (display && display !== "—" && display !== "Draft") return display;
+  const user = String(row.userDisplayName ?? "").trim();
+  if (user && user !== "—") return user;
+  return "";
+}
+
+/**
+ * Lead sponsor person name for investor-facing surfaces (Invest Now, investments list).
+ * Prefers `deal_member` Lead Sponsor; falls back to a matching `deal_investment` row.
+ */
+export async function resolveDealLeadSponsorDisplayName(
+  dealId: string,
+): Promise<string> {
+  const d = String(dealId ?? "").trim();
+  if (!d) return "";
+
+  const members = await listDealMembersMappedToInvestorApi(d);
+  const leadMember = members.find((m) =>
+    isLeadSponsorStoredRole(m.investorRole),
+  );
+  if (leadMember) {
+    const name = rosterPersonDisplayName(leadMember);
+    if (name) return name;
+  }
+
+  const investments = await listDealInvestmentsByDealId(d);
+  const leadInvestment = investments.find(
+    (inv) =>
+      isLeadSponsorStoredRole(inv.investor_role) &&
+      String(inv.contactId ?? "").trim() !==
+        DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
+  );
+  if (!leadInvestment) return "";
+
+  const resolved = await resolveUsersByContactIds([leadInvestment]);
+  const api = mapRowToInvestorApi(leadInvestment, resolved, {});
+  return rosterPersonDisplayName(api);
 }

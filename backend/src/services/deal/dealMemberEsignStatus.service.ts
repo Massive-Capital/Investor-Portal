@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import {
   appendEsignSendToBundle,
   esignBundleHasPending,
@@ -20,6 +20,8 @@ import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
 import { resolveEmailForContactMemberId } from "./dealMemberInvitationEmail.service.js";
 import { isLpInvestorRole } from "./dealInvestment.service.js";
+import { resolveInvestNowViewerContactOnDeal } from "./dealInvestNowViewerContact.service.js";
+import { viewerOwnsContactKey } from "./dealLpViewerIdentity.service.js";
 
 export type InvestorEsignRowTarget = {
   table: "investment" | "lp";
@@ -564,6 +566,57 @@ export async function findInvestorEsignTargetBySignatureRequestId(
   return null;
 }
 
+export type InvestorEsignContext = {
+  dealId: string;
+  target: InvestorEsignRowTarget;
+};
+
+/** Resolve deal + investor row from a SignFlow/Dropbox `signatureRequestId` (webhook lookup). */
+export async function findInvestorEsignContextBySignatureRequestId(
+  signatureRequestId: string,
+): Promise<InvestorEsignContext | null> {
+  const sigId = signatureRequestId.trim();
+  if (!sigId) return null;
+
+  const jsonNeedle = `%"signatureRequestId":"${sigId}"%`;
+
+  const investments = await db
+    .select({
+      id: dealInvestment.id,
+      dealId: dealInvestment.dealId,
+      esignStatusJson: dealInvestment.esignStatusJson,
+    })
+    .from(dealInvestment)
+    .where(like(dealInvestment.esignStatusJson, jsonNeedle))
+    .limit(5);
+
+  for (const row of investments) {
+    const bundle = parseEsignStatusBundle(row.esignStatusJson);
+    if (bundle?.sends.some((s) => s.signatureRequestId?.trim() === sigId)) {
+      return { dealId: row.dealId, target: { table: "investment", id: row.id } };
+    }
+  }
+
+  const lps = await db
+    .select({
+      id: dealLpInvestor.id,
+      dealId: dealLpInvestor.dealId,
+      esignStatusJson: dealLpInvestor.esignStatusJson,
+    })
+    .from(dealLpInvestor)
+    .where(like(dealLpInvestor.esignStatusJson, jsonNeedle))
+    .limit(5);
+
+  for (const row of lps) {
+    const bundle = parseEsignStatusBundle(row.esignStatusJson);
+    if (bundle?.sends.some((s) => s.signatureRequestId?.trim() === sigId)) {
+      return { dealId: row.dealId, target: { table: "lp", id: row.id } };
+    }
+  }
+
+  return null;
+}
+
 export async function findInvestorEsignTargetByMetadata(
   dealId: string,
   rosterId: string,
@@ -605,6 +658,15 @@ export async function findInvestorEsignTargetForInvestNowCommitment(
   opts: InvestNowEsignTargetOpts,
 ): Promise<InvestorEsignRowTarget | null> {
   const contactKeys = await resolvePortalUserContactKeysOnDeal(dealId, opts);
+  const viewerContact = await resolveInvestNowViewerContactOnDeal({
+    dealId,
+    viewerEmailNorm: normEmail(opts.email),
+    viewerUserId: String(opts.userId ?? "").trim(),
+  });
+  const viewerContactKey = normContactKey(viewerContact.contactMemberId);
+
+  const ownsContact = (contactId: string | null | undefined): boolean =>
+    viewerOwnsContactKey(contactId, contactKeys, viewerContactKey);
 
   const investmentId = String(opts.investmentId ?? "").trim();
   if (investmentId) {
@@ -619,7 +681,7 @@ export async function findInvestorEsignTargetForInvestNowCommitment(
       )
       .limit(1);
     const cid = normContactKey(row?.contactId);
-    if (cid && contactKeys.has(cid)) {
+    if (cid && ownsContact(cid)) {
       const target: InvestorEsignRowTarget = {
         table: "investment",
         id: investmentId,
@@ -650,8 +712,7 @@ export async function findInvestorEsignTargetForInvestNowCommitment(
     let matched: InvestorEsignRowTarget | null = null;
     let matchedCreatedMs = -1;
     for (const inv of investments) {
-      const cid = normContactKey(inv.contactId);
-      if (!cid || !contactKeys.has(cid)) continue;
+      if (!ownsContact(inv.contactId)) continue;
       if (normUuidKey(inv.userInvestorProfileId) !== uip) continue;
       if (profileType && String(inv.profileId ?? "").trim() !== profileType) {
         continue;
@@ -675,8 +736,7 @@ export async function findInvestorEsignTargetForInvestNowCommitment(
   let bestCreatedMs = -1;
 
   for (const inv of investments) {
-    const cid = normContactKey(inv.contactId);
-    if (!cid || !contactKeys.has(cid)) continue;
+    if (!ownsContact(inv.contactId)) continue;
     const target: InvestorEsignRowTarget = { table: "investment", id: inv.id };
     if (!(await investorEsignTargetHasPositiveCommitment(dealId, target))) {
       continue;
@@ -781,7 +841,8 @@ export async function resolveInvestorEsignTargetForSignedInInvestor(
 ): Promise<InvestorEsignRowTarget | null> {
   const hasScope =
     Boolean(String(opts.investmentId ?? "").trim()) ||
-    Boolean(String(opts.userInvestorProfileId ?? "").trim());
+    Boolean(String(opts.userInvestorProfileId ?? "").trim()) ||
+    Boolean(String(opts.profileId ?? "").trim());
   if (hasScope) {
     return findInvestorEsignTargetForInvestNowCommitment(dealId, opts);
   }

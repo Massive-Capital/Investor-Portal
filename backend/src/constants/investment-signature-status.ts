@@ -41,6 +41,33 @@ export function mapDropboxEventToInvestmentSignatureStatus(
   }
 }
 
+/** Map SignFlow webhook `event` → stored workflow status. */
+export function mapSignFlowEventToInvestmentSignatureStatus(
+  eventType: string,
+): InvestmentSignatureStatus | null {
+  const e = eventType.trim().toLowerCase();
+  switch (e) {
+    case "document.sent":
+      return "Sent";
+    case "document.viewed":
+      return "Viewed";
+    case "document.completed":
+      return "Completed";
+    default:
+      return null;
+  }
+}
+
+/** Map webhook event from either eSign provider → stored workflow status. */
+export function mapEsignWebhookEventToInvestmentSignatureStatus(
+  eventType: string,
+): InvestmentSignatureStatus | null {
+  return (
+    mapSignFlowEventToInvestmentSignatureStatus(eventType) ??
+    mapDropboxEventToInvestmentSignatureStatus(eventType)
+  );
+}
+
 /** Never downgrade workflow status when multiple events arrive out of order. */
 export function maxInvestmentSignatureStatus(
   current: InvestmentSignatureStatus,

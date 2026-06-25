@@ -1,13 +1,11 @@
 import type { Request, Response } from "express";
-import { eq } from "drizzle-orm";
 import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import {
   assertDealIdReadableOrAssignedParticipant,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
-import { db } from "../../database/db.js";
-import { users } from "../../schema/schema.js";
+import { resolveLpViewerEmailNorm } from "../../services/deal/dealLpViewerIdentity.service.js";
 import { readMyInvestNowCommitment } from "../../services/deal/dealLpInvestorMyInvestNowCommitment.read.service.js";
 
 function queryString(v: unknown): string {
@@ -51,16 +49,12 @@ export async function getDealLpInvestorMyInvestNowCommitment(
       return;
     }
 
-    const [uRow] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1);
-    const emailNorm = String(uRow?.email ?? "")
-      .trim()
-      .toLowerCase();
+    const emailNorm = await resolveLpViewerEmailNorm(user.id, user.email);
     if (!emailNorm.includes("@")) {
-      res.status(400).json({ message: "Missing investor email on account" });
+      res.status(400).json({
+        message:
+          "Your account does not have an email address. Add an email to your profile and try again.",
+      });
       return;
     }
 
@@ -77,16 +71,17 @@ export async function getDealLpInvestorMyInvestNowCommitment(
     });
 
     if (!result.ok) {
-      res.status(404).json({ message: result.message });
+      res.status(200).json({ found: false, message: result.message });
       return;
     }
-
     res.status(200).json({
+      found: true,
       investmentId: result.investmentId,
       profileId: result.profileId,
       userInvestorProfileId: result.userInvestorProfileId,
       committedAmount: result.committedAmount,
       fundingMethod: result.fundingMethod,
+      investorClass: result.investorClass,
       status: result.status,
       docSignedDate: result.docSignedDate,
       questionnaireAnswers: result.questionnaireAnswers,

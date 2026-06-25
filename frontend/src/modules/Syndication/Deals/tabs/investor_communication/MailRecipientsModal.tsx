@@ -136,7 +136,7 @@ export function MailRecipientsModal({
 
   if (!open) return null
 
-  const subjectLabel = subject?.trim() || "Mail recipients"
+  const subjectLabel = subject?.trim() || "Email recipients"
 
   return (
     <div
@@ -184,12 +184,12 @@ export function MailRecipientsModal({
           <div
             className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel deal_inv_comm_recipients_table_panel"
             role="region"
-            aria-label="Mail recipients"
+            aria-label="Email recipients"
           >
             <div
               className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search"
               role="toolbar"
-              aria-label="Search mail recipients"
+              aria-label="Search email recipients"
             >
               <div className="um_search_wrap">
                 <Search className="um_search_icon" size={18} aria-hidden />
@@ -202,7 +202,7 @@ export function MailRecipientsModal({
                     setQuery(e.target.value)
                     setPage(1)
                   }}
-                  aria-label="Search mail recipients"
+                  aria-label="Search email recipients"
                 />
               </div>
             </div>

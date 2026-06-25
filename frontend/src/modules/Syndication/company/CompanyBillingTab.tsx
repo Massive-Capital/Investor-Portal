@@ -47,7 +47,7 @@ const BILLING_PLANS = [
         title: "Contacts & comms",
         items: [
           "Contacts with tags and lists",
-          "Bulk send mail from contacts and deals",
+          "Bulk send email from contacts and deals",
           "5 email templates",
           "255 characters per email template body",
         ],

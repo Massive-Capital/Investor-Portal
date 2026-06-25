@@ -28,3 +28,10 @@
   outline-offset: 2px;
   border-radius: 999px;
 }
+
+.table_compact_amount_cell {
+  display: inline-flex;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
+}

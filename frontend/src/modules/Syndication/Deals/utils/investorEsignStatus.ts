@@ -1,3 +1,4 @@
+import { getSessionUserId } from "../../../../common/auth/sessionUserId"
 import {
   dealAssetRelativePathToUploadsUrl,
   getUploadsPublicOrigin,
@@ -15,6 +16,7 @@ import type {
 } from "../types/deal-investors.types"
 import type { EsignProfileStatusTab } from "./esignTemplateCategories"
 import { resolveInvestorEsignCategoryId } from "./esignTemplateCategories"
+import { esignSendCategoryMatchesInvestorProfile } from "./esignUnifiedTemplate"
 
 export type EsignWorkflowStepKey = "sent" | "viewed" | "signed" | "completed"
 
@@ -56,7 +58,12 @@ function pickWorkflowSendRecord(
 
   const cat = preferredCategoryId?.trim()
   if (cat) {
-    const forCat = sorted.filter((s) => primaryCategoryForSendRecord(s) === cat)
+    const forCat = sorted.filter((s) =>
+      esignSendCategoryMatchesInvestorProfile(
+        primaryCategoryForSendRecord(s),
+        cat,
+      ),
+    )
     if (forCat.length === 0) return null
     const latestCat = forCat[forCat.length - 1]!
     if (strOrNull(latestCat.completedAt ?? latestCat.completed_at)) {
@@ -215,7 +222,18 @@ function parseEsignSendStatusRecord(
   const o = raw as Record<string, unknown>
   const sentAt = strOrNull(o.sentAt ?? o.sent_at)
   if (!sentAt) return null
-  const categoryId = String(o.categoryId ?? o.category_id ?? "").trim()
+  let categoryId = String(o.categoryId ?? o.category_id ?? "").trim()
+  if (!categoryId && Array.isArray(o.documents)) {
+    for (const d of o.documents) {
+      if (!d || typeof d !== "object" || Array.isArray(d)) continue
+      const doc = d as Record<string, unknown>
+      const cid = String(doc.categoryId ?? doc.category_id ?? "").trim()
+      if (cid) {
+        categoryId = cid
+        break
+      }
+    }
+  }
   if (!categoryId) return null
   const documents = Array.isArray(o.documents)
     ? o.documents
@@ -296,17 +314,31 @@ export function parseEsignSendsFromApi(
 export function findEsignSendForCategory(
   sends: DealInvestorEsignSendStatus[],
   categoryId: string,
+  investorLegacyCategoryId?: string | null,
 ): DealInvestorEsignSendStatus | undefined {
   const cat = categoryId.trim()
   if (!cat) return undefined
-  return sends.find((s) => s.categoryId.trim() === cat)
+  const invCat = investorLegacyCategoryId?.trim()
+  return sends.find((s) => {
+    const sendCat = s.categoryId.trim()
+    if (sendCat === cat) return true
+    if (invCat) {
+      return esignSendCategoryMatchesInvestorProfile(sendCat, invCat)
+    }
+    return esignSendCategoryMatchesInvestorProfile(sendCat, cat)
+  })
 }
 
 export function esignStatusForProfileTab(
   tab: EsignProfileStatusTab,
   sends: DealInvestorEsignSendStatus[],
+  investorLegacyCategoryId?: string | null,
 ): DealInvestorEsignStatus | null {
-  const send = findEsignSendForCategory(sends, tab.categoryId)
+  const send = findEsignSendForCategory(
+    sends,
+    tab.categoryId,
+    investorLegacyCategoryId,
+  )
   if (!send?.sentAt?.trim()) return null
   return esignStatusFromSendRecord(send, tab.documents)
 }
@@ -682,7 +714,7 @@ function uploadsUrlFromRelativePath(rel: string): string | null {
 export function resolveEsignSignedPdfUrl(
   status: DealInvestorEsignStatus,
 ): string | null {
-  if (!status.completedAt?.trim()) return null
+  if (!status.completedAt?.trim() && !status.signedAt?.trim()) return null
   const rel = signedPdfRelativePathFromStatus(status)
   if (!rel) return null
   return uploadsUrlFromRelativePath(rel)
@@ -693,7 +725,7 @@ export function resolveEsignSignedPdfUrlForDocument(
   status: DealInvestorEsignStatus,
   doc: { signedRelativePath?: string },
 ): string | null {
-  if (!status.completedAt?.trim()) return null
+  if (!status.completedAt?.trim() && !status.signedAt?.trim()) return null
   const rel = signedPdfRelativePathFromStatus(status, doc)
   if (!rel) return null
   return uploadsUrlFromRelativePath(rel)
@@ -724,7 +756,9 @@ export function investorEsignIsCompleted(
   row: DealInvestorRow,
 ): boolean {
   if (status.completedAt?.trim()) return true
-  return String(row.signedDate ?? "").trim().toLowerCase() === "completed"
+  if (status.signedAt?.trim()) return true
+  const signedLabel = String(row.signedDate ?? "").trim().toLowerCase()
+  return signedLabel === "completed" || signedLabel === "signed"
 }
 
 /** True when this investor row’s eSign workflow is fully completed. */
@@ -737,13 +771,21 @@ export function investorEsignIsFullyCompletedForRow(
   return String(row.signedDate ?? "").trim().toLowerCase() === "completed"
 }
 
+/**
+ * True when the signed-in LP owns this investor row (email and/or portal `contactId`).
+ */
 export function investorRowMatchesViewerEmail(
   row: DealInvestorRow,
   viewerEmailNorm: string,
 ): boolean {
-  if (!viewerEmailNorm) return false
   const em = String(row.userEmail ?? "").trim().toLowerCase()
-  return Boolean(em && em !== "—" && em === viewerEmailNorm)
+  if (viewerEmailNorm && em && em !== "—" && em === viewerEmailNorm) {
+    return true
+  }
+  const viewerUserId = getSessionUserId().trim().toLowerCase()
+  if (!viewerUserId) return false
+  const cid = String(row.contactId ?? "").trim().toLowerCase()
+  return Boolean(cid && cid === viewerUserId)
 }
 
 /** Raw committed on the row (ignores eSign visibility rules). */

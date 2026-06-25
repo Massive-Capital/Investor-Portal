@@ -157,7 +157,7 @@ export async function postDealInvestorCommunicationMail(params: {
       }
     }
     if (!mail) {
-      return { ok: false, message: "Mail sent but log response was invalid." }
+      return { ok: false, message: "Email sent but log response was invalid." }
     }
     return { ok: true, mail }
   } catch {

@@ -1,5 +1,9 @@
 import {
   effectiveDocumentSharedWithScope,
+  isEsignTemplateDocumentsSection,
+  isInvestorEsignWorkspaceDocument,
+  isInvestorOfferingDocumentSectionExcluded,
+  offeringPreviewDocumentExcludedFromInvestorOffering,
   readDealDocumentSectionsForWorkspace,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
@@ -48,6 +52,42 @@ const LP_PORTAL_DOCUMENT_CTX = {
 } as const
 
 export { EMPTY_INVESTMENT_DOCUMENT_AUDIENCE }
+
+/** Offering Documents tab: exclude Investor e signatures and apply search. */
+export function filterInvestorOfferingDocumentSectionGroups(
+  sections: InvestmentDetailDocumentSectionGroup[],
+  query: string,
+): InvestmentDetailDocumentSectionGroup[] {
+  const q = query.trim().toLowerCase()
+  return sections
+    .filter(
+      (section) =>
+        !isInvestorOfferingDocumentSectionExcluded(
+          section.sectionId,
+          section.sectionLabel,
+        ),
+    )
+    .filter((section) => section.totalOnDeal > 0)
+    .map((section) => {
+      if (!q) return section
+      const sectionLabelMatches = section.sectionLabel.toLowerCase().includes(q)
+      const documents = section.documents.filter((d) => {
+        const blob = [d.name, d.sectionLabel, section.sectionLabel]
+          .join(" ")
+          .toLowerCase()
+        return blob.includes(q)
+      })
+      if (sectionLabelMatches) return section
+      return { ...section, documents }
+    })
+    .filter((section) => {
+      if (!q) return section.documents.length > 0
+      return (
+        section.documents.length > 0 ||
+        section.sectionLabel.toLowerCase().includes(q)
+      )
+    })
+}
 
 function sortDocumentsByName(
   a: InvestmentDetailDocumentRow,
@@ -111,9 +151,18 @@ export function listInvestmentDetailDocumentSectionGroups(
   const sections = readDocumentSectionsForInvestorListing(id)
   for (const sec of sections) {
     const sl = sectionDisplayLabel(sec)
+    if (
+      isEsignTemplateDocumentsSection(sec) ||
+      isInvestorOfferingDocumentSectionExcluded(sec.id, sl)
+    ) {
+      continue
+    }
     const rows: InvestmentDetailDocumentRow[] = []
-    const totalOnDeal = sec.nestedDocuments.length
-    for (const d of sec.nestedDocuments) {
+    const nestedOnDeal = sec.nestedDocuments.filter(
+      (d) => !isInvestorEsignWorkspaceDocument(d),
+    )
+    const totalOnDeal = nestedOnDeal.length
+    for (const d of nestedOnDeal) {
       if (!documentVisibleToInvestorOnLpPortal(d, sec, audience)) continue
       const scope = effectiveDocumentSharedWithScope(d, sec)
       pushRow(rows, {
@@ -140,6 +189,7 @@ export function listInvestmentDetailDocumentSectionGroups(
     const seenLegacyIds = new Set<string>()
     for (const d of readOfferingPreviewDocuments(id)) {
       if (seenLegacyIds.has(d.id)) continue
+      if (offeringPreviewDocumentExcludedFromInvestorOffering(d, sections)) continue
       const scope: SectionSharedWithScope =
         d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
       if (!sectionVisibleOnOfferingPreview(scope, LP_PORTAL_DOCUMENT_CTX)) continue
@@ -204,9 +254,24 @@ export function listDocumentsForInvestmentDetail(
 }
 
 export function dealHasOfferingDocumentsOnDeal(dealId: string): boolean {
-  return readDocumentSectionsForInvestorListing(dealId).some(
-    (section) => section.nestedDocuments.length > 0,
-  )
+  const id = dealId?.trim() ?? ""
+  if (!id) return false
+  const sections = readDocumentSectionsForInvestorListing(id)
+  for (const section of sections) {
+    if (isEsignTemplateDocumentsSection(section)) continue
+    if (
+      section.nestedDocuments.some((doc) => !isInvestorEsignWorkspaceDocument(doc))
+    ) {
+      return true
+    }
+  }
+  for (const doc of readOfferingPreviewDocuments(id)) {
+    if (offeringPreviewDocumentExcludedFromInvestorOffering(doc, sections)) {
+      continue
+    }
+    return true
+  }
+  return false
 }
 
 export function dealHasOfferingDocumentSections(dealId: string): boolean {

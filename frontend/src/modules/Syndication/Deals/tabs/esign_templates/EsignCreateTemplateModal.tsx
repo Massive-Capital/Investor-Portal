@@ -1,4 +1,6 @@
 import {
+  ArrowLeft,
+  ChevronRight,
   ClipboardList,
   CloudUpload,
   FileText,
@@ -6,7 +8,6 @@ import {
   FolderOpen,
   Loader2,
   Type,
-  Users,
   X,
 } from "lucide-react"
 import {
@@ -22,10 +23,17 @@ import {
 } from "react"
 import type { LucideIcon } from "lucide-react"
 import { createPortal } from "react-dom"
+import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
 import { toast } from "@/common/components/Toast"
 import { OFFERING_PREVIEW_SECTIONS_CHANGED_EVENT } from "../../utils/offeringPreviewDocSections"
 import { applyOfferingInvestorPreviewJsonFromServer } from "../../utils/offeringPreviewServerState"
 import type { EsignEntityCategory } from "./esignEntityCategories"
+import { ESIGN_UNIFIED_CATEGORY_ID } from "../../utils/esignUnifiedTemplate"
+import {
+  DEFAULT_ESIGN_SIGNFLOW_SIGNING_ORDER,
+  DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
+} from "../../utils/esignSigningWorkflow"
+import { EsignSigningWorkflowPicker } from "./EsignSigningWorkflowPicker"
 import {
   dealHasAnySectionDocuments,
   fetchDealDocumentAsPdfFile,
@@ -40,11 +48,17 @@ export type EsignCreateTemplateSubmit = {
   file: File
   templateName: string
   includeQuestionnaire: boolean
+  signflowWorkflowType: "parallel" | "sequential"
+  signflowSigningOrder: "investor_first" | "sponsor_first"
 }
 
 type DocumentSourceMode = "upload" | "deal"
 
 const UPLOAD_ACCEPT = ".pdf,application/pdf"
+
+const EMPTY_ESIGN_CATEGORIES: EsignEntityCategory[] = []
+
+type CreateTemplateStep = 1 | 2
 
 function defaultTemplateName(file: File): string {
   const base = file.name.replace(/\.[^.]+$/, "").trim()
@@ -236,24 +250,57 @@ function DealDocumentPicker({
   )
 }
 
+function CreateTemplateSection({
+  id,
+  title,
+  description,
+  Icon,
+  children,
+}: {
+  id: string
+  title: string
+  description?: string
+  Icon: LucideIcon
+  children: ReactNode
+}) {
+  return (
+    <section
+      className="deal_esign_create_section"
+      aria-labelledby={`${id}-heading`}
+    >
+      <div className="deal_esign_create_section_head">
+        <span className="deal_esign_create_section_badge" aria-hidden>
+          <Icon size={17} strokeWidth={2} />
+        </span>
+        <div className="deal_esign_create_section_head_copy">
+          <h3 id={`${id}-heading`} className="deal_esign_create_section_title">
+            {title}
+          </h3>
+          {description ? (
+            <p className="deal_esign_create_section_desc">{description}</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="deal_esign_create_section_body">{children}</div>
+    </section>
+  )
+}
+
 function CreateTemplateField({
   id,
   label,
-  Icon,
   children,
   hint,
 }: {
   id: string
   label: string
-  Icon: LucideIcon
   children: ReactNode
   hint?: string
 }) {
   return (
-    <div className="um_field add_contact_field_tight deal_esign_create_field">
-      <label htmlFor={id} className="um_field_label_row">
-        <Icon className="um_field_label_icon" size={17} strokeWidth={2} aria-hidden />
-        <span>{label}</span>
+    <div className="um_field deal_esign_create_field">
+      <label htmlFor={id} className="um_label">
+        {label}
       </label>
       {children}
       {hint ? <p className="deal_esign_create_field_hint">{hint}</p> : null}
@@ -265,7 +312,10 @@ export interface EsignCreateTemplateModalProps {
   open: boolean
   dealId: string
   offeringInvestorPreviewJson?: string | null
-  categories: EsignEntityCategory[]
+  /** Legacy per-profile upload — omit when using unified workflow. */
+  categories?: EsignEntityCategory[]
+  /** One template for all investor profiles (SignFlow profile-scoped fields). */
+  unifiedWorkflow?: boolean
   uploading: boolean
   onClose: () => void
   onConfirm: (data: EsignCreateTemplateSubmit) => void | Promise<void>
@@ -275,43 +325,67 @@ export function EsignCreateTemplateModal({
   open,
   dealId,
   offeringInvestorPreviewJson,
-  categories,
+  categories = EMPTY_ESIGN_CATEGORIES,
+  unifiedWorkflow = false,
   uploading,
   onClose,
   onConfirm,
 }: EsignCreateTemplateModalProps) {
   const formId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const wasOpenRef = useRef(false)
   const [categoryId, setCategoryId] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [templateName, setTemplateName] = useState("")
   const [includeQuestionnaire, setIncludeQuestionnaire] = useState(false)
+  const [signflowWorkflowType, setSignflowWorkflowType] = useState<
+    "parallel" | "sequential"
+  >(DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE)
+  const [signflowSigningOrder, setSignflowSigningOrder] = useState<
+    "investor_first" | "sponsor_first"
+  >(DEFAULT_ESIGN_SIGNFLOW_SIGNING_ORDER)
   const [documentSource, setDocumentSource] = useState<DocumentSourceMode>("upload")
   const [dealDocuments, setDealDocuments] = useState<DealDocumentPickOption[]>([])
   const [selectedDealDocumentId, setSelectedDealDocumentId] = useState("")
   const [resolvingDocument, setResolvingDocument] = useState(false)
+  const [step, setStep] = useState<CreateTemplateStep>(1)
 
   const refreshDealDocuments = useCallback(() => {
     setDealDocuments(listDealPdfDocumentsForEsignTemplate(dealId))
   }, [dealId])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      wasOpenRef.current = false
+      return
+    }
+
+    const isOpening = !wasOpenRef.current
+    wasOpenRef.current = true
+
     const id = dealId?.trim() ?? ""
     if (id) {
       applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson, {
         notify: false,
       })
     }
-    setCategoryId(categories[0]?.id ?? "")
+    refreshDealDocuments()
+
+    if (!isOpening) return
+
+    setCategoryId(
+      unifiedWorkflow ? ESIGN_UNIFIED_CATEGORY_ID : (categories[0]?.id ?? ""),
+    )
     setFile(null)
     setTemplateName("")
     setIncludeQuestionnaire(false)
+    setSignflowWorkflowType(DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE)
+    setSignflowSigningOrder(DEFAULT_ESIGN_SIGNFLOW_SIGNING_ORDER)
     setSelectedDealDocumentId("")
     setResolvingDocument(false)
-    refreshDealDocuments()
+    setStep(1)
     setDocumentSource(dealHasAnySectionDocuments(dealId) ? "deal" : "upload")
-  }, [open, categories, dealId, offeringInvestorPreviewJson, refreshDealDocuments])
+  }, [open, categories, unifiedWorkflow, dealId, offeringInvestorPreviewJson, refreshDealDocuments])
 
   useEffect(() => {
     if (!open) return
@@ -362,89 +436,162 @@ export function EsignCreateTemplateModal({
 
   const busy = uploading || resolvingDocument
 
+  const resolvedCategoryId = unifiedWorkflow
+    ? ESIGN_UNIFIED_CATEGORY_ID
+    : categoryId.trim()
+
   const hasDocument =
     documentSource === "upload"
       ? Boolean(file)
       : Boolean(selectedDealDocumentId)
 
+  const canAdvanceStep1 =
+    hasDocument &&
+    Boolean(resolvedCategoryId) &&
+    Boolean(templateName.trim()) &&
+    !busy
+
+  const performSubmit = useCallback(async () => {
+    if (!hasDocument || !resolvedCategoryId || !templateName.trim() || busy) return
+
+    let submitFile = file
+    if (documentSource === "deal") {
+      const picked = dealDocuments.find((d) => d.id === selectedDealDocumentId)
+      if (!picked) return
+      setResolvingDocument(true)
+      try {
+        submitFile = await fetchDealDocumentAsPdfFile(picked)
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not load the selected document."
+        toast.error("Document unavailable", message)
+        return
+      } finally {
+        setResolvingDocument(false)
+      }
+    }
+
+    if (!submitFile) return
+    await onConfirm({
+      categoryId: resolvedCategoryId,
+      file: submitFile,
+      templateName: templateName.trim(),
+      includeQuestionnaire,
+      signflowWorkflowType,
+      signflowSigningOrder,
+    })
+  }, [
+    busy,
+    resolvedCategoryId,
+    dealDocuments,
+    documentSource,
+    file,
+    hasDocument,
+    includeQuestionnaire,
+    onConfirm,
+    selectedDealDocumentId,
+    signflowSigningOrder,
+    signflowWorkflowType,
+    templateName,
+  ])
+
   const handleSubmit = useCallback(
     async (e?: FormEvent) => {
       e?.preventDefault()
-      if (!hasDocument || !categoryId.trim() || !templateName.trim() || busy) return
-
-      let submitFile = file
-      if (documentSource === "deal") {
-        const picked = dealDocuments.find((d) => d.id === selectedDealDocumentId)
-        if (!picked) return
-        setResolvingDocument(true)
-        try {
-          submitFile = await fetchDealDocumentAsPdfFile(picked)
-        } catch (err) {
-          const message =
-            err instanceof Error ? err.message : "Could not load the selected document."
-          toast.error("Document unavailable", message)
+      if (step === 1) {
+        if (!canAdvanceStep1) return
+        if (unifiedWorkflow) {
+          setStep(2)
           return
-        } finally {
-          setResolvingDocument(false)
         }
+        await performSubmit()
+        return
       }
-
-      if (!submitFile) return
-      await onConfirm({
-        categoryId,
-        file: submitFile,
-        templateName: templateName.trim(),
-        includeQuestionnaire,
-      })
+      await performSubmit()
     },
-    [
-      busy,
-      categoryId,
-      dealDocuments,
-      documentSource,
-      file,
-      hasDocument,
-      includeQuestionnaire,
-      onConfirm,
-      selectedDealDocumentId,
-      templateName,
-    ],
+    [canAdvanceStep1, performSubmit, step, unifiedWorkflow],
   )
 
   if (!open || typeof document === "undefined") return null
 
-  const canSubmit =
-    hasDocument &&
-    Boolean(categoryId) &&
-    Boolean(templateName.trim()) &&
-    !busy
-
   const documentPickId = `${formId}-document-pick`
   const dealDocumentSelectId = `${formId}-deal-document`
+  const showStepper = unifiedWorkflow
 
   return createPortal(
     <div
-      className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_esign_upload_overlay"
+      className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost deal_esign_upload_overlay deal_esign_create_modal_overlay"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
       <div
-        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_esign_upload_modal deal_esign_create_modal"
+        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_esign_create_modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${formId}-title`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="um_modal_head add_contact_modal_head">
-          <h3
-            id={`${formId}-title`}
-            className="um_modal_title add_contact_modal_title um_title_with_icon"
-          >
-            <FileUp className="um_title_icon" size={20} strokeWidth={2} aria-hidden />
-            <span>Create template</span>
-          </h3>
+          <div className="add_contact_modal_head_main">
+            <FormHeadingWithInfo
+              as="h2"
+              id={`${formId}-title`}
+              className="um_modal_title add_contact_modal_title"
+              title="Create template"
+              leadingIcon={FileUp}
+              info={
+                <p>
+                  Upload a PDF and configure signing for this deal. In the
+                  editor, assign each field to Investor or Sponsor and set its
+                  profile scope.
+                </p>
+              }
+            />
+            {/* Set how investor and sponsor signatures are collected. */}
+            {showStepper ? (
+              <div
+                className="add_contact_stepper deal_esign_create_stepper"
+                role="group"
+                aria-label="Create template progress"
+              >
+                <div
+                  className={
+                    step === 1
+                      ? "add_contact_step_node add_contact_step_node_active"
+                      : "add_contact_step_node add_contact_step_node_done"
+                  }
+                >
+                  <span
+                    className="add_contact_step_dot"
+                    aria-current={step === 1 ? "step" : undefined}
+                  >
+                    1
+                  </span>
+                  <span className="add_contact_step_label">Template</span>
+                </div>
+                <span
+                  className={
+                    step === 2
+                      ? "add_contact_step_line add_contact_step_line_active"
+                      : "add_contact_step_line"
+                  }
+                  aria-hidden
+                />
+                <div
+                  className={
+                    step === 2
+                      ? "add_contact_step_node add_contact_step_node_active"
+                      : "add_contact_step_node"
+                  }
+                >
+                  <span className="add_contact_step_dot">2</span>
+                  <span className="add_contact_step_label">Signing order</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="um_modal_close"
@@ -463,143 +610,234 @@ export function EsignCreateTemplateModal({
         >
           <div className="deals_add_inv_modal_scroll deal_esign_create_modal_body">
             <div className="deal_esign_create_modal_fields">
-              <CreateTemplateField
-                id={`${formId}-profile`}
-                label="Profile"
-                Icon={Users}
-              >
-                <select
-                  id={`${formId}-profile`}
-                  className="um_field_select deals_add_inv_field_control"
-                  value={categoryId}
-                  disabled={busy || categories.length === 0}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                >
-                  {categories.length === 0 ? (
-                    <option value="">No profiles available</option>
-                  ) : (
-                    categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.label}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </CreateTemplateField>
+              {step === 1 ? (
+                <>
+                  <CreateTemplateSection
+                    id={`${formId}-document`}
+                    title="Document source"
+                    description="Use a PDF from this deal or upload one from your computer."
+                    Icon={FileText}
+                  >
+                    <DocumentSourceToggle
+                      value={documentSource}
+                      disabled={busy}
+                      hasDealDocuments={dealHasAnySectionDocuments(dealId)}
+                      onChange={onDocumentSourceChange}
+                    />
+                    {documentSource === "deal" ? (
+                      <DealDocumentPicker
+                        id={dealDocumentSelectId}
+                        options={dealDocuments}
+                        value={selectedDealDocumentId}
+                        disabled={busy}
+                        onChange={onDealDocumentChange}
+                      />
+                    ) : (
+                      <DocumentUploadZone
+                        id={documentPickId}
+                        file={file}
+                        disabled={busy}
+                        inputRef={fileInputRef}
+                        onPickClick={() => fileInputRef.current?.click()}
+                        onFileChange={onFileChange}
+                      />
+                    )}
+                  </CreateTemplateSection>
 
-              <CreateTemplateField
-                id={documentPickId}
-                label="Document"
-                Icon={FileText}
-                hint="Choose an existing deal PDF or upload one from your computer."
-              >
-                <DocumentSourceToggle
-                  value={documentSource}
-                  disabled={busy}
-                  hasDealDocuments={dealHasAnySectionDocuments(dealId)}
-                  onChange={onDocumentSourceChange}
-                />
-                {documentSource === "deal" ? (
-                  <DealDocumentPicker
-                    id={dealDocumentSelectId}
-                    options={dealDocuments}
-                    value={selectedDealDocumentId}
+                  <CreateTemplateSection
+                    id={`${formId}-details`}
+                    title="Template details"
+                    description="How this template appears in your eSign library."
+                    Icon={Type}
+                  >
+                    {!unifiedWorkflow ? (
+                      <CreateTemplateField
+                        id={`${formId}-profile`}
+                        label="Investor profile"
+                      >
+                        <select
+                          id={`${formId}-profile`}
+                          className="um_field_select deals_add_inv_field_control deal_esign_create_control"
+                          value={categoryId}
+                          disabled={busy || categories.length === 0}
+                          onChange={(e) => setCategoryId(e.target.value)}
+                        >
+                          {categories.length === 0 ? (
+                            <option value="">No profiles available</option>
+                          ) : (
+                            categories.map((cat) => (
+                              <option key={cat.id} value={cat.id}>
+                                {cat.label}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </CreateTemplateField>
+                    ) : null}
+
+                    <CreateTemplateField
+                      id={`${formId}-name`}
+                      label="Template name"
+                    >
+                      <input
+                        id={`${formId}-name`}
+                        type="text"
+                        className="deals_add_inv_input deals_add_inv_field_control deal_esign_create_control"
+                        value={templateName}
+                        disabled={busy}
+                        placeholder="e.g. Subscription agreement"
+                        onChange={(e) => setTemplateName(e.target.value)}
+                      />
+                    </CreateTemplateField>
+                  </CreateTemplateSection>
+
+                  {/* Additional options section header removed — questionnaire toggle only */}
+                  <label
+                    className={`deal_esign_create_option_row${
+                      includeQuestionnaire
+                        ? " deal_esign_create_option_row--checked"
+                        : ""
+                    }`}
+                  >
+                    <span className="deal_esign_create_option_icon" aria-hidden>
+                      <ClipboardList size={18} strokeWidth={2} />
+                    </span>
+                    <span className="deal_esign_create_option_copy">
+                      <span className="deal_esign_create_option_title">
+                        Include investor questionnaire signature page
+                      </span>
+                      <span className="deal_esign_create_option_desc">
+                        Appends the questionnaire signature page to this template
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="deal_esign_create_option_checkbox"
+                      checked={includeQuestionnaire}
+                      disabled={busy}
+                      onChange={(e) => setIncludeQuestionnaire(e.target.checked)}
+                    />
+                  </label>
+                </>
+              ) : (
+                <div className="deal_esign_create_step_workflow">
+                  <EsignSigningWorkflowPicker
+                    variant="modal"
+                    value={{
+                      signflowWorkflowType,
+                      signflowSigningOrder,
+                    }}
+                    onChange={(next) => {
+                      setSignflowWorkflowType(next.signflowWorkflowType)
+                      setSignflowSigningOrder(next.signflowSigningOrder)
+                    }}
                     disabled={busy}
-                    onChange={onDealDocumentChange}
                   />
-                ) : (
-                  <DocumentUploadZone
-                    id={documentPickId}
-                    file={file}
-                    disabled={busy}
-                    inputRef={fileInputRef}
-                    onPickClick={() => fileInputRef.current?.click()}
-                    onFileChange={onFileChange}
-                  />
-                )}
-              </CreateTemplateField>
-
-              <CreateTemplateField
-                id={`${formId}-name`}
-                label="Template name"
-                Icon={Type}
-              >
-                <input
-                  id={`${formId}-name`}
-                  type="text"
-                  className="deals_add_inv_input deals_add_inv_field_control"
-                  value={templateName}
-                  disabled={busy}
-                  placeholder="e.g. Subscription agreement"
-                  onChange={(e) => setTemplateName(e.target.value)}
-                />
-              </CreateTemplateField>
-
-              <label className="deal_esign_create_option_row">
-                <span className="deal_esign_create_option_icon" aria-hidden>
-                  <ClipboardList size={18} strokeWidth={2} />
-                </span>
-                <span className="deal_esign_create_option_copy">
-                  <span className="deal_esign_create_option_title">
-                    Include investor questionnaire signature page
-                  </span>
-                  <span className="deal_esign_create_option_desc">
-                    Adds the questionnaire signature page to this template
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  className="deal_esign_create_option_checkbox"
-                  checked={includeQuestionnaire}
-                  disabled={busy}
-                  onChange={(e) => setIncludeQuestionnaire(e.target.checked)}
-                />
-              </label>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="um_modal_actions add_contact_modal_actions">
+          <div className="um_modal_actions add_contact_modal_actions deal_esign_create_modal_actions">
             <button
               type="button"
               className="um_btn_secondary"
               disabled={busy}
               onClick={onClose}
             >
-              <X size={16} strokeWidth={2} aria-hidden />
-              Close
+              Cancel
             </button>
-            <button
-              type="submit"
-              className="um_btn_primary"
-              disabled={!canSubmit}
-            >
-              {resolvingDocument ? (
-                <>
-                  <Loader2
-                    size={16}
-                    strokeWidth={2}
-                    aria-hidden
-                    className="add_contact_modal_btn_spin"
-                  />
-                  Loading document…
-                </>
-              ) : uploading ? (
-                <>
-                  <Loader2
-                    size={16}
-                    strokeWidth={2}
-                    aria-hidden
-                    className="add_contact_modal_btn_spin"
-                  />
-                  Uploading…
-                </>
+            <div className="add_contact_modal_actions_trailing">
+              {step === 2 ? (
+                <button
+                  type="button"
+                  className="um_btn_secondary"
+                  disabled={busy}
+                  onClick={() => setStep(1)}
+                >
+                  <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+                  Back
+                </button>
+              ) : null}
+              {step === 1 ? (
+                unifiedWorkflow ? (
+                  <button
+                    type="submit"
+                    className="um_btn_primary"
+                    disabled={!canAdvanceStep1}
+                  >
+                    Next
+                    <ChevronRight size={18} strokeWidth={2} aria-hidden />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="um_btn_primary"
+                    disabled={!canAdvanceStep1}
+                  >
+                    {resolvingDocument ? (
+                      <>
+                        <Loader2
+                          size={16}
+                          strokeWidth={2}
+                          aria-hidden
+                          className="add_contact_modal_btn_spin"
+                        />
+                        Loading document…
+                      </>
+                    ) : uploading ? (
+                      <>
+                        <Loader2
+                          size={16}
+                          strokeWidth={2}
+                          aria-hidden
+                          className="add_contact_modal_btn_spin"
+                        />
+                        Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <FileUp size={16} strokeWidth={2} aria-hidden />
+                        Create template
+                      </>
+                    )}
+                  </button>
+                )
               ) : (
-                <>
-                  <FileUp size={16} strokeWidth={2} aria-hidden />
-                  Create template
-                </>
+                <button
+                  type="submit"
+                  className="um_btn_primary"
+                  disabled={busy}
+                >
+                  {resolvingDocument ? (
+                    <>
+                      <Loader2
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                        className="add_contact_modal_btn_spin"
+                      />
+                      Loading document…
+                    </>
+                  ) : uploading ? (
+                    <>
+                      <Loader2
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                        className="add_contact_modal_btn_spin"
+                      />
+                      Uploading…
+                    </>
+                  ) : (
+                    <>
+                      <FileUp size={16} strokeWidth={2} aria-hidden />
+                      Create template
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+            </div>
           </div>
         </form>
       </div>

@@ -1,10 +1,49 @@
 /** Inactivity limit before automatic sign-out (matches access token lifetime). */
+import { toast } from "../components/Toast/toastStore";
+
 export const IDLE_LOGOUT_MS = 15 * 60 * 1000;
 
 export const SESSION_LAST_ACTIVITY_KEY = "lastActivityAt";
 
 /** Set before redirecting to sign-in after idle logout; triggers session timeout toast. */
 export const SESSION_IDLE_TIMEOUT_NOTICE_KEY = "idleSessionTimeoutNotice";
+
+let idleTimeoutToastShownThisLoad = false;
+
+export function markIdleSessionTimeoutNotice(): void {
+  if (typeof sessionStorage === "undefined") return;
+  sessionStorage.setItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY, "1");
+}
+
+/** Show session-timeout toast once per full page load (survives StrictMode remounts). */
+export function showIdleSessionTimeoutToastIfNeeded(
+  fromNavigation = false,
+): boolean {
+  if (idleTimeoutToastShownThisLoad) return false;
+
+  const fromStorage =
+    typeof sessionStorage !== "undefined" &&
+    sessionStorage.getItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY) === "1";
+
+  if (!fromStorage && !fromNavigation) return false;
+
+  idleTimeoutToastShownThisLoad = true;
+  if (fromStorage && typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem(SESSION_IDLE_TIMEOUT_NOTICE_KEY);
+  }
+
+  toast.warning(
+    "Session timed out",
+    "You were signed out after 15 minutes of inactivity. Sign in again to continue.",
+    8000,
+  );
+
+  return true;
+}
+
+export function resetIdleSessionTimeoutToastGuard(): void {
+  idleTimeoutToastShownThisLoad = false;
+}
 
 export function touchSessionActivity(): void {
   if (typeof sessionStorage === "undefined") return;

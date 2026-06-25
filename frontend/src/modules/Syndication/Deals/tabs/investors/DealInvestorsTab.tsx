@@ -654,7 +654,7 @@ function DealInvestorsPopulated({
     return rows.filter((r) => {
       if (q) {
         const mailLabel =
-          r.invitationMailSent === true ? "mail sent" : "not sent";
+          r.invitationMailSent === true ? "email sent" : "not sent";
         const haystack =
           `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel} ${investorFundedColumnLabel(r)}`.toLowerCase();
         if (!haystack.includes(q)) return false;
@@ -1069,7 +1069,8 @@ function DealInvestorsPopulated({
         header: "Committed",
         align: "right",
         thClassName: "deals_th_align_right",
-        sortValue: (row) => displayInvestorCommittedAmount(row),
+        sortValue: (row) =>
+          parseMoneyDigits(displayInvestorCommittedAmount(row)),
         tdClassName: "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
         cell: (row) => <DealInvestorCommittedAmountCell row={row} />,
       },
@@ -1116,7 +1117,7 @@ function DealInvestorsPopulated({
       },
       {
         id: "mailStatus",
-        header: "Mail status",
+        header: "Email status",
         sortValue: (row) =>
           row.id === ADD_MEMBER_DRAFT_ROW_ID
             ? -1
@@ -1353,7 +1354,7 @@ function DealInvestorsPopulated({
                   strokeWidth={2}
                   aria-hidden
                 />
-                <span>Send mail</span>
+                <span>Send email</span>
               </h3>
               <button
                 type="button"
@@ -1539,7 +1540,7 @@ function DealInvestorsPopulated({
                 disabled={selectedInvestorRows.length === 0}
               >
                 <Send size={18} strokeWidth={2} aria-hidden />
-                Send mail
+                Send email
               </button>
               <button
                 type="button"

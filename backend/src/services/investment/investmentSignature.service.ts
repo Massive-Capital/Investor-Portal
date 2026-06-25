@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import {
   type InvestmentSignatureStatus,
-  mapDropboxEventToInvestmentSignatureStatus,
+  mapEsignWebhookEventToInvestmentSignatureStatus,
   maxInvestmentSignatureStatus,
 } from "../../constants/investment-signature-status.js";
 import { db } from "../../database/db.js";
@@ -185,7 +185,7 @@ export async function recordInvestmentSignatureOnCreate(params: {
   });
 }
 
-/** Apply a verified Dropbox Sign webhook event to `investment_signatures`. */
+/** Apply a verified eSign webhook event to `investment_signatures`. */
 export async function applyInvestmentSignatureWebhookEvent(params: {
   signatureRequestId: string;
   eventType: string;
@@ -193,7 +193,7 @@ export async function applyInvestmentSignatureWebhookEvent(params: {
   eventTime?: string;
 }): Promise<{ updated: boolean; investmentId: string | null }> {
   const signatureRequestId = params.signatureRequestId.trim();
-  const mapped = mapDropboxEventToInvestmentSignatureStatus(params.eventType);
+  const mapped = mapEsignWebhookEventToInvestmentSignatureStatus(params.eventType);
   if (!signatureRequestId || !mapped) {
     return { updated: false, investmentId: null };
   }

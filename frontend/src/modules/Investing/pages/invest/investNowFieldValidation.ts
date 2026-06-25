@@ -48,6 +48,8 @@ export function investNowFieldPreferSelector(fieldKey: string): string | null {
   switch (fieldKey) {
     case INVEST_NOW_FIELD.profile:
       return "#invest-now-profile"
+    case INVEST_NOW_FIELD.investmentClass:
+      return "#invest-now-investment-class"
     case INVEST_NOW_FIELD.amount:
       return "#invest-now-amount"
     case INVEST_NOW_FIELD.fundingMethod:
@@ -69,7 +71,8 @@ export function validateInvestNowInvestorFields({
   profileId,
   bookProfileRows,
   blockedProfileKeys,
-  investmentClassLabel,
+  selectedInvestorClassId,
+  investorClasses,
   sponsorLabel,
 }: {
   bookLoading: boolean
@@ -77,7 +80,8 @@ export function validateInvestNowInvestorFields({
   profileId: string
   bookProfileRows: InvestorProfileListRow[]
   blockedProfileKeys: Set<string>
-  investmentClassLabel: string
+  selectedInvestorClassId: string
+  investorClasses: DealInvestorClass[]
   sponsorLabel: string
 }): { fieldErrors: InvestNowFieldErrors; stepError: string | null } {
   if (bookLoading) {
@@ -112,9 +116,16 @@ export function validateInvestNowInvestorFields({
     }
   }
 
-  if (!investmentClassLabel.trim() || investmentClassLabel === "—") {
+  if (!selectedInvestorClassId.trim()) {
     fieldErrors[INVEST_NOW_FIELD.investmentClass] =
-      "No investment class is configured for this deal"
+      investorClasses.length === 0
+        ? "No investment classes are configured for this deal"
+        : "Select an investment class"
+  } else if (
+    !investorClasses.some((c) => c.id === selectedInvestorClassId.trim())
+  ) {
+    fieldErrors[INVEST_NOW_FIELD.investmentClass] =
+      "Selected investment class is not available on this deal"
   }
   if (!sponsorLabel.trim() || sponsorLabel === "—") {
     fieldErrors[INVEST_NOW_FIELD.sponsor] =

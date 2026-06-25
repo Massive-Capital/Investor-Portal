@@ -5,6 +5,12 @@ import {
   NUMBER_UNIT_SUFFIXES,
   type AssetAttributeRow,
 } from "../types/deal-asset.types"
+import {
+  formatNumberOfUnitsTypingInput,
+  moneyAmountOnBlurTwoDecimals,
+  moneyAmountOnChange,
+  blurFormatNumberOfUnitsInput,
+} from "../utils/offeringMoneyFormat"
 import "./asset-additional-info.css"
 
 function patchRow(
@@ -65,7 +71,6 @@ export function AssetAdditionalInfoSection({
           </>
         )
       case "text":
-      case "money":
         return (
           <input
             type="text"
@@ -73,6 +78,30 @@ export function AssetAdditionalInfoSection({
             value={r.value}
             onChange={(e) =>
               onChange(patchRow(rows, r.id, { value: e.target.value }))
+            }
+            aria-label={`${r.label} value`}
+          />
+        )
+      case "money":
+        return (
+          <input
+            type="text"
+            inputMode="decimal"
+            className="deal_asset_attr_input"
+            value={r.value}
+            onChange={(e) =>
+              onChange(
+                patchRow(rows, r.id, {
+                  value: moneyAmountOnChange(e.target.value),
+                }),
+              )
+            }
+            onBlur={(e) =>
+              onChange(
+                patchRow(rows, r.id, {
+                  value: moneyAmountOnBlurTwoDecimals(e.target.value),
+                }),
+              )
             }
             aria-label={`${r.label} value`}
           />
@@ -86,7 +115,18 @@ export function AssetAdditionalInfoSection({
               className="deal_asset_attr_input deal_asset_attr_input_num deal_asset_attr_num_units_input"
               value={r.value}
               onChange={(e) =>
-                onChange(patchRow(rows, r.id, { value: e.target.value }))
+                onChange(
+                  patchRow(rows, r.id, {
+                    value: formatNumberOfUnitsTypingInput(e.target.value),
+                  }),
+                )
+              }
+              onBlur={(e) =>
+                onChange(
+                  patchRow(rows, r.id, {
+                    value: blurFormatNumberOfUnitsInput(e.target.value),
+                  }),
+                )
               }
               aria-label={`${r.label} amount`}
             />

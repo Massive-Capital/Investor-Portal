@@ -485,11 +485,46 @@ a.deal_offering_add_ic_btn.um_btn_primary {
   box-sizing: border-box;
 }
 
-.deal_inv_class_card_head {
+.deal_inv_class_card.deal_offering_section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.deal_inv_class_card_banner {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75em;
+  gap: 0.5rem 0.85rem;
+  padding: 0.7rem 1.1em;
+  background: color-mix(
+    in srgb,
+    var(--sidebar-bg-color, #131b2e) 5%,
+    var(--portal-surface, #fff)
+  );
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--portal-border, #e2e8f0) 82%, transparent);
+}
+
+.deal_offering_section_expanded.deal_inv_class_card .deal_inv_class_card_banner {
+  background: var(--portal-surface, #fff);
+}
+
+.deal_inv_class_card .deal_docs_ui_banner_toggle.deal_inv_class_card_title_btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+
+.deal_inv_class_card .deal_inv_class_card_title {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 700;
+}
+
+.deal_inv_class_card_panel.deal_offering_panel {
+  padding: 0 1.1em 1.05em;
+  border-top: none;
 }
 
 .deal_inv_class_card_head_actions {

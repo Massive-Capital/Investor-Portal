@@ -142,10 +142,14 @@ export function mergeInvestNowQuestionnaireAnswers(
   current: InvestNowQuestionnaireAnswers,
   prefill: InvestNowQuestionnaireAnswers,
 ): InvestNowQuestionnaireAnswers {
+  let changed = false
   const next = { ...current }
   for (const [key, value] of Object.entries(prefill)) {
     if (!value.trim()) continue
-    if (!String(next[key] ?? "").trim()) next[key] = value
+    if (!String(next[key] ?? "").trim()) {
+      next[key] = value
+      changed = true
+    }
   }
-  return next
+  return changed ? next : current
 }
