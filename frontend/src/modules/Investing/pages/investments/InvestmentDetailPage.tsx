@@ -20,10 +20,16 @@ import {
   findInvestorRowForInvestNowScope,
   isInvestNowDraftInvestorRow,
 } from "@/modules/Investing/pages/invest/investNowDraftUtils"
+import { investNowDraftProgressFromInvestorRow } from "@/modules/Investing/pages/invest/investNowDraftProgress"
 import { fetchDealInvestors } from "@/modules/Syndication/Deals/api/dealsApi"
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { EntityAvatarNameCell } from "@/common/components/entity-avatar/EntityAvatarNameCell"
+import {
+  CardCompactAmount,
+  TableCompactAmountCell,
+} from "@/common/components/card-compact-amount/CardCompactAmount"
 import { ViewReadonlyField } from "@/common/components/ViewReadonlyField"
+import { formatCardCompactUsdExact } from "@/common/utils/cardCompactUsdAmount"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   DataTable,
@@ -53,14 +59,7 @@ import { resolveInvestmentDealId } from "./utils/resolveInvestmentDealId"
 import "./investment-detail.css"
 
 function formatInvDetailUsd(n: number): string {
-  const abs = Math.abs(n)
-  const formatted = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(abs)
-  return n < 0 ? `(${formatted})` : formatted
+  return formatCardCompactUsdExact(n)
 }
 
 function formatInvDetailDateTime(iso: string | undefined): string {
@@ -233,17 +232,6 @@ function readDebtInfoForDetail(d: InvestmentDetailRecord): DebtInfoFields {
   return normalizeDebtFields(base)
 }
 
-function formatMoneyDigits(raw: string): string {
-  const n = Number.parseFloat(String(raw ?? "").replace(/[^0-9.-]/g, ""))
-  if (!Number.isFinite(n)) return raw || ""
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n)
-}
-
 function displayOrDash(v: string): string {
   const t = String(v ?? "").trim()
   return t || "—"
@@ -284,9 +272,15 @@ function DetailReadonlyCurrency({
   value: string
 }) {
   const t = String(value ?? "").trim()
-  const display = t ? formatMoneyDigits(t) : "—"
+  if (!t) {
+    return <ViewReadonlyField Icon={DollarSign} label={label} value="—" />
+  }
   return (
-    <ViewReadonlyField Icon={DollarSign} label={label} value={display} />
+    <ViewReadonlyField
+      Icon={DollarSign}
+      label={label}
+      value={<CardCompactAmount amount={t} />}
+    />
   )
 }
 
@@ -417,12 +411,9 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
   const navigate = useNavigate()
   const { switchToInvesting } = usePortalMode()
   const list = d.list
-  const investedDisplay = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(list.investedAmount)
+  const investedAmountNode = (
+    <CardCompactAmount amount={list.investedAmount} />
+  )
 
   const [propertyStatus, setPropertyStatus] = useState(() =>
     readPropertyStatusForDetail(d.id, d.propertyStatus),
@@ -549,7 +540,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.investedAmount,
-        cell: (r) => formatInvDetailUsd(r.investedAmount),
+        cell: (r) => <TableCompactAmountCell amount={r.investedAmount} />,
       },
       {
         id: "investedOn",
@@ -642,6 +633,12 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
     (line: InvestmentBreakdownLine) => {
       const id = dealId?.trim()
       if (!id) return
+      const draftRow = dealInvestorRows.find(
+        (row) => row.id === line.investmentRowId,
+      )
+      const phaseId = draftRow
+        ? investNowDraftProgressFromInvestorRow(draftRow).phaseId
+        : undefined
       switchToInvesting()
       navigate(dealInvestNowPath(id), {
         state: {
@@ -650,10 +647,11 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
           investmentId: line.investmentRowId,
           userInvestorProfileId: line.userInvestorProfileId,
           profileId: line.commitmentProfileId,
+          phaseId,
         } satisfies InvestNowLocationState,
       })
     },
-    [dealId, d.id, navigate, switchToInvesting],
+    [dealId, d.id, dealInvestorRows, navigate, switchToInvesting],
   )
 
   const profileBreakdownColumnsWithActions: DataTableColumn<InvestmentBreakdownLine>[] =
@@ -841,7 +839,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                   <ViewReadonlyField
                     Icon={DollarSign}
                     label="Invested amount"
-                    value={investedDisplay}
+                    value={investedAmountNode}
                   />
                   {!hasRoleBreakdownTable ? (
                     <ViewReadonlyField
@@ -970,7 +968,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
                           strokeWidth={2}
                           aria-hidden
                         />
-                        Invested: {investedDisplay}
+                        Invested: {investedAmountNode}
                       </span>
                     </div>
                     <div className="um_search_wrap">
@@ -1002,7 +1000,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               ) : (
                 <div className="investment_detail_inv_profile_solo">
                   <p className="investing_profiles_lead" aria-live="polite">
-                    <strong>Invested amount</strong> {investedDisplay}
+                    <strong>Invested amount</strong> {investedAmountNode}
                   </p>
                   <p className="investing_profiles_lead" aria-live="polite">
                     <strong>Invested as</strong> {investedAsLine}

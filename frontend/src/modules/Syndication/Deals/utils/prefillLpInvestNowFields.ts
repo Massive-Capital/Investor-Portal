@@ -4,6 +4,18 @@ import { resolveInvestmentStatusSelectValue } from "../constants/investment-stat
 import type { DealInvestorsPayload } from "../types/deal-investors.types"
 import { parseMoneyDigits } from "./offeringMoneyFormat"
 
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Calendar date for Invest Now forms — ignores eSign workflow markers (`pending`, `completed`). */
+export function parseInvestNowDocSignedCalendarDate(
+  raw: string | null | undefined,
+): string {
+  const s = String(raw ?? "").trim()
+  if (!s) return ""
+  const day = s.slice(0, 10)
+  return ISO_DAY_RE.test(day) ? day : ""
+}
+
 export interface LpInvestNowPrefill {
   profileId: string
   userInvestorProfileId: string
@@ -38,12 +50,7 @@ export function getLpInvestNowPrefillFromPayload(
   const status = resolveInvestmentStatusSelectValue(
     String(row.status ?? "").trim(),
   )
-  let docSignedDate = ""
-  const iso = String(row.docSignedDateIso ?? "").trim()
-  if (iso) {
-    const d = iso.slice(0, 10)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) docSignedDate = d
-  }
+  let docSignedDate = parseInvestNowDocSignedCalendarDate(row.docSignedDateIso)
   const vid = String(row.id ?? "").trim()
   return {
     profileId,

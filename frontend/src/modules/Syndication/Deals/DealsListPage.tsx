@@ -65,7 +65,6 @@ import {
   committedSortValue,
   dateSortValue,
   dealTypeDisplayLabel,
-  formatCommittedCurrency,
   formatDealListDateDisplay,
   secTypeDisplayLabel,
 } from "./dealsListDisplay"
@@ -825,7 +824,7 @@ export function DealsListPage({
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => committedSortValue(row.raiseTarget),
-        cell: (row) => formatCommittedCurrency(row.raiseTarget),
+        cell: (row) => <TableCompactAmountCell amount={row.raiseTarget} />,
       },
       {
         id: "softCommitted",
@@ -841,7 +840,7 @@ export function DealsListPage({
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric deals_td_align_right",
         sortValue: (row) => committedSortValue(row.totalInProgress),
-        cell: (row) => formatCommittedCurrency(row.totalInProgress),
+        cell: (row) => <TableCompactAmountCell amount={row.totalInProgress} />,
       },
       {
         id: "funded",

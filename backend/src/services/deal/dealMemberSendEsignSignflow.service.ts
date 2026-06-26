@@ -13,12 +13,13 @@ import {
 } from "../../constants/esignSigningWorkflow.js";
 
 import type { CreateInvestorSignatureRequestResult } from "./dealMemberSendEsignDropbox.service.js";
+import {
+  assembleInvestorSigningPdf,
+  buildEsignPrefillContext,
+  persistInvestorEsignPreviewPdf,
+} from "./dealMemberSendEsignDropbox.service.js";
 
-import { persistInvestorEsignPreviewPdf } from "./dealMemberSendEsignDropbox.service.js";
-
-import { assembleInvestorSigningPdf } from "./dealMemberSendEsignDropbox.service.js";
-
-import { remapSignFlowFieldsToSigningPdf } from "./esignPdfPageMap.service.js";
+import { remapSignFlowFieldsToSigningPdf, dedupeSignFlowFieldsByPlacement } from "./esignPdfPageMap.service.js";
 
 import {
   ensureEsignTemplatePdfPrepared,
@@ -62,6 +63,8 @@ import {
   signFlowInvestorTemplateHasFieldsForProfile,
 
   signFlowTemplateHasSponsorFields,
+
+  type SignFlowField,
 
   type SignFlowRecipient,
 
@@ -301,82 +304,74 @@ export async function createInvestorSignatureRequestSignflow(params: {
 
   }
 
-  let investorFields = templateInvestorFields;
+  const answerPageCount = assembled?.answerPageCount ?? 0;
+  const questionnaireSigningPage = Math.max(1, answerPageCount + 1);
 
+  let questionnaireFields: SignFlowField[] = [];
   if (includeQuestionnaire) {
-
-    investorFields = [
-
-      ...getInvestorQuestionnaireSignatureSignFlowFields(
-
-        investorRecipientId,
-
-        0,
-
-      ).map((field) => ({ ...field, templatePage: 1 })),
-
-      ...templateInvestorFields,
-
-    ];
-
+    questionnaireFields = getInvestorQuestionnaireSignatureSignFlowFields(
+      investorRecipientId,
+      0,
+    ).map((field) => ({
+      ...field,
+      page: questionnaireSigningPage,
+      templatePage: 1,
+    }));
   }
-
-  const questionnaireAnswers = normalizeInvestorQuestionnaireAnswersInput(
-
-    params.questionnaireAnswers ??
-
-      (params.esignTarget
-
-        ? await readInvestorQuestionnaireAnswersForTarget(
-
-            params.dealId,
-
-            params.esignTarget,
-
-          )
-
-        : null),
-
-  );
-
-  if (questionnaireAnswers && Object.keys(questionnaireAnswers).length) {
-
-    const config = await getDealInvestorQuestionnaireState(params.dealId);
-
-    investorFields = applyQuestionnairePrefillToSignFlowFields({
-
-      fields: investorFields,
-
-      config,
-
-      answers: questionnaireAnswers,
-
-      memberDisplayName: params.memberDisplayName,
-
-    });
-
-  }
-
-
-
-  const includeSponsor = signFlowTemplateHasSponsorFields(templateDoc);
-
-  let sponsorFields = includeSponsor
-    ? mapSignFlowTemplateFieldsForSponsor(templateDoc, sponsorRecipientId)
-    : [];
-
-  let includeSponsorOnSend = includeSponsor && sponsorFields.length > 0;
 
   const templateState = await getDealEsignTemplatesState(params.dealId);
   const { absolutePath: templateReferencePath } =
     await ensureEsignTemplatePdfPrepared(params.dealId, file, templateState);
   const templateReferencePdf = await readFile(templateReferencePath);
 
-  investorFields = await remapSignFlowFieldsToSigningPdf(
-    investorFields,
+  let templateFields = await remapSignFlowFieldsToSigningPdf(
+    templateInvestorFields,
     templateReferencePdf,
     pdfBuffer,
   );
+
+  if (includeQuestionnaire) {
+    templateFields = templateFields.filter(
+      (field) => Math.floor(field.page) !== questionnaireSigningPage,
+    );
+  }
+
+  let investorFields = [...questionnaireFields, ...templateFields];
+
+  const questionnaireAnswers = normalizeInvestorQuestionnaireAnswersInput(
+    params.questionnaireAnswers ??
+      (params.esignTarget
+        ? await readInvestorQuestionnaireAnswersForTarget(
+            params.dealId,
+            params.esignTarget,
+          )
+        : null),
+  );
+
+  const config = await getDealInvestorQuestionnaireState(params.dealId);
+  const prefillContext = await buildEsignPrefillContext({
+    dealId: params.dealId,
+    esignTarget: params.esignTarget,
+    memberDisplayName: params.memberDisplayName,
+    memberEmail: signerEmail,
+  });
+  investorFields = applyQuestionnairePrefillToSignFlowFields({
+    fields: investorFields,
+    config,
+    answers: questionnaireAnswers ?? {},
+    memberDisplayName: params.memberDisplayName,
+    prefillContext,
+  });
+
+  investorFields = dedupeSignFlowFieldsByPlacement(investorFields);
+
+  const includeSponsor = signFlowTemplateHasSponsorFields(templateDoc);
+  let sponsorFields = includeSponsor
+    ? mapSignFlowTemplateFieldsForSponsor(templateDoc, sponsorRecipientId)
+    : [];
+
+  let includeSponsorOnSend = includeSponsor && sponsorFields.length > 0;
+
   if (sponsorFields.length > 0) {
     sponsorFields = await remapSignFlowFieldsToSigningPdf(
       sponsorFields,
@@ -386,18 +381,12 @@ export async function createInvestorSignatureRequestSignflow(params: {
   }
 
   const workflowType = resolveEsignSignflowWorkflowType(file);
-
   const signingOrder = resolveEsignSignflowSigningOrder(file);
 
   const { investorOrder, sponsorOrder } = resolveSignFlowRecipientOrders(
-
     workflowType,
-
     signingOrder,
-
   );
-
-
 
   const recipients: SignFlowRecipient[] = [
 
@@ -443,9 +432,10 @@ export async function createInvestorSignatureRequestSignflow(params: {
     }
   }
 
-  const fields = [...investorFields, ...sponsorFields];
-
-
+  const fields = dedupeSignFlowFieldsByPlacement([
+    ...investorFields,
+    ...sponsorFields,
+  ]);
 
   const { documentId } = await sendSignFlowDocumentForSigning({
 

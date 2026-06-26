@@ -10,6 +10,23 @@ import {
 } from "./investorW9Form.service.js";
 import { isLpInvestorRole } from "./dealInvestment.service.js";
 import { resolveInvestNowViewerContactOnDeal } from "./dealInvestNowViewerContact.service.js";
+import {
+  isDocSignedEsignCompleted,
+  isDocSignedEsignPending,
+} from "../../constants/deal-doc-signed.js";
+
+const DOC_SIGNED_ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function investNowCalendarDocSignedDate(
+  raw: string | null | undefined,
+): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s || isDocSignedEsignPending(s) || isDocSignedEsignCompleted(s)) {
+    return null;
+  }
+  const day = s.slice(0, 10);
+  return DOC_SIGNED_ISO_DAY_RE.test(day) ? day : null;
+}
 
 function normContactKey(s: string | null | undefined): string {
   return String(s ?? "").trim().toLowerCase();
@@ -135,7 +152,7 @@ export async function readMyInvestNowCommitment(
     fundingMethod: String(match.fundingMethod ?? "").trim(),
     investorClass: String(match.investorClass ?? "").trim(),
     status: String(match.status ?? "").trim(),
-    docSignedDate: match.docSignedDate?.trim() || null,
+    docSignedDate: investNowCalendarDocSignedDate(match.docSignedDate),
     questionnaireAnswers: answers ?? {},
     w9Form: w9FormForClient(match.investorW9FormJson),
   };

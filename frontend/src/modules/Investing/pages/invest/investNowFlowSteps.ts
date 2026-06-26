@@ -59,7 +59,7 @@ export function investNowFlowStepSubtitle(step: InvestNowFlowStep): string {
   if (step.kind === "w9") {
     return "Complete the W-9 form below. This is a requirement from the IRS to collect taxpayer information."
   }
-  return "Review and sign the subscription documents for your investor profile."
+  return "Review and sign the subscription documents for this deal."
 }
 
 export type InvestNowStepperPhase = {

@@ -74,7 +74,6 @@ export function InvestNowEsignaturesStep({
   profileTemplate,
   profileLabel,
   commitmentProfileId,
-  questionnaireInFlow = false,
   investorDisplayName,
   sendError,
   esignSendOk,
@@ -207,11 +206,7 @@ export function InvestNowEsignaturesStep({
     <InvestNowStepLayout
       titleId="invest-now-step-esignatures-title"
       title="E-signatures"
-      hint={
-        questionnaireInFlow
-          ? `Review and sign the subscription document your lead sponsor configured for ${profileLabel} on this deal’s eSign Templates tab. Questionnaire steps use the same profile-specific settings from your sponsor.`
-          : `Review and sign the subscription document your lead sponsor configured for ${profileLabel} on this deal’s eSign Templates tab.`
-      }
+      hint="Review and sign the subscription document your lead sponsor configured on this deal’s eSign Templates tab. Your profile was already selected in step 1."
       error={error}
     >
       {sendError && !esignLoading ? (

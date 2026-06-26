@@ -414,6 +414,42 @@ export function investorRowShowsEsignStatusLink(
   return investorEsignWasSent(row)
 }
 
+/** Investor finished signing; sponsor counter-signature is still required. */
+export function investorRowAwaitingSponsorCounterSign(
+  row: DealInvestorRow,
+): boolean {
+  const sends = parseEsignSendsFromApi(null, row.esignStatusBundleJson)
+  if (
+    sends.some(
+      (send) =>
+        Boolean(send.signedAt?.trim()) && !send.completedAt?.trim(),
+    )
+  ) {
+    return true
+  }
+  const status = resolveInvestorRowEsignStatus(row)
+  return Boolean(status?.signedAt?.trim() && !status?.completedAt?.trim())
+}
+
+export function investorRowLatestEsignSignedAt(
+  row: DealInvestorRow,
+): string | null {
+  const sends = parseEsignSendsFromApi(null, row.esignStatusBundleJson)
+  let best: string | null = null
+  let bestMs = -1
+  for (const send of sends) {
+    const signedAt = send.signedAt?.trim()
+    if (!signedAt) continue
+    const ms = Date.parse(signedAt)
+    if (!Number.isNaN(ms) && ms > bestMs) {
+      bestMs = ms
+      best = signedAt
+    }
+  }
+  if (best) return best
+  return resolveInvestorRowEsignStatus(row)?.signedAt?.trim() || null
+}
+
 export interface DealEsignDropboxSignerDetail {
   signatureId: string | null
   signerName: string | null

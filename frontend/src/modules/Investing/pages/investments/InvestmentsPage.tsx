@@ -40,6 +40,7 @@ import {
 } from "./investmentOnboardingBucket"
 import type { InvestNowLocationState } from "@/modules/Investing/pages/invest/investNowLocationState"
 import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/investNowDraftProgress"
+import type { InvestNowStepperPhase } from "@/modules/Investing/pages/invest/investNowFlowSteps"
 import { getMergedInvestmentListRows } from "./investmentsRuntimeData"
 import type { InvestmentListRow } from "./investments.types"
 import "@/common/components/data-table/data-table.css"
@@ -62,17 +63,6 @@ function parseInvestmentsTab(value: string | null): InvestmentsPageTab {
   if (value === "pending") return "pending"
   // Legacy `?tab=investments` / `deals` — default to Active tab.
   return "in_progress"
-}
-
-function formatUsd(n: number): string {
-  const abs = Math.abs(n)
-  const formatted = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(abs)
-  return n < 0 ? `(${formatted})` : formatted
 }
 
 /** Deal name cell — same avatar + link layout as {@link DealsListPage} `DealListNameCell`. */
@@ -441,7 +431,11 @@ export default function InvestmentsPage() {
   )
 
   const openInvestNowResume = useCallback(
-    (dealId: string, scope?: InvestmentListRow["investNowResumeScope"]) => {
+    (
+      dealId: string,
+      scope?: InvestmentListRow["investNowResumeScope"],
+      phaseId?: InvestNowStepperPhase["id"],
+    ) => {
       const id = dealId.trim()
       if (!id) return
       switchToInvesting()
@@ -452,6 +446,7 @@ export default function InvestmentsPage() {
           investmentId: scope?.investmentId,
           userInvestorProfileId: scope?.userInvestorProfileId,
           profileId: scope?.profileId,
+          phaseId,
         } satisfies InvestNowLocationState,
       })
     },
@@ -626,7 +621,12 @@ export default function InvestmentsPage() {
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric",
         sortValue: (r) => r.distributedAmount,
-        cell: (r) => formatUsd(r.distributedAmount),
+        cell: (r) =>
+          r.distributedAmount > 0 ? (
+            <TableCompactAmountCell amount={r.distributedAmount} />
+          ) : (
+            "—"
+          ),
       },
       {
         id: "currentValuation",
@@ -677,7 +677,11 @@ export default function InvestmentsPage() {
                 onResumeInvesting={
                   showResume
                     ? () =>
-                        openInvestNowResume(dealId, r.investNowResumeScope)
+                        openInvestNowResume(
+                          dealId,
+                          r.investNowResumeScope,
+                          r.investNowDraftProgress?.phaseId,
+                        )
                     : undefined
                 }
               />

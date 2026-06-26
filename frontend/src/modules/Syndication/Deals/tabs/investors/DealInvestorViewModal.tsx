@@ -15,13 +15,13 @@ import {
 } from "lucide-react"
 import { useEffect } from "react"
 import { createPortal } from "react-dom"
+import { CardCompactAmount } from "../../../../../common/components/card-compact-amount/CardCompactAmount"
 import { ViewReadonlyField } from "../../../../../common/components/ViewReadonlyField"
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import { investorRoleLabel } from "../../constants/investor-profile"
 import { investorSignedColumnDisplay } from "../../utils/investorEsignStatus"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
-import { formatMoneyFieldDisplay } from "../../utils/offeringMoneyFormat"
 import "../../../usermanagement/user_management.css"
 import "../../deals-list.css"
 
@@ -154,7 +154,7 @@ export function DealInvestorViewModal({
             <ViewReadonlyField
               Icon={DollarSign}
               label="Committed"
-              value={formatMoneyFieldDisplay(investorRow.committed)}
+              value={<CardCompactAmount amount={investorRow.committed} />}
             />
             <ViewReadonlyField
               Icon={Calendar}

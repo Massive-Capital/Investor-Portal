@@ -21,6 +21,10 @@ export interface StoredDealInvestorEsignSend {
   signatureId?: string;
   /** Primary profile for this send (from template category). */
   categoryId?: string;
+  /** Bumped when stored investor PDF format changes (see persistSignedPdf). */
+  investorPdfVersion?: number;
+  /** Fully executed PDF (investor + sponsor). Sponsor workspace only. */
+  fullSignedRelativePath?: string;
   documents?: DealInvestorEsignDocumentRef[];
 }
 
@@ -126,6 +130,14 @@ function parseSendRecord(o: Record<string, unknown>): StoredDealInvestorEsignSen
         .filter((d): d is DealInvestorEsignDocumentRef => d != null)
     : [];
   const categoryId = String(o.categoryId ?? o.category_id ?? "").trim();
+  const investorPdfVersionRaw = o.investorPdfVersion ?? o.investor_pdf_version;
+  const investorPdfVersion =
+    investorPdfVersionRaw != null && investorPdfVersionRaw !== ""
+      ? Number(investorPdfVersionRaw)
+      : undefined;
+  const fullSignedRelativePath = String(
+    o.fullSignedRelativePath ?? o.full_signed_relative_path ?? "",
+  ).trim();
   return {
     sentAt,
     viewedAt: o.viewedAt ? String(o.viewedAt).trim() : null,
@@ -136,6 +148,10 @@ function parseSendRecord(o: Record<string, unknown>): StoredDealInvestorEsignSen
       : undefined,
     signatureId: o.signatureId ? String(o.signatureId).trim() : undefined,
     ...(categoryId ? { categoryId } : {}),
+    ...(Number.isFinite(investorPdfVersion)
+      ? { investorPdfVersion: investorPdfVersion as number }
+      : {}),
+    ...(fullSignedRelativePath ? { fullSignedRelativePath } : {}),
     documents,
   };
 }

@@ -1,10 +1,12 @@
-import { Info } from "lucide-react"
 import type { ReactNode } from "react"
+import { FormTooltip } from "../form-tooltip/FormTooltip"
 import { parseMoneyDigits } from "../../../modules/Syndication/Deals/utils/offeringMoneyFormat"
 import {
   formatCardCompactUsdDisplay,
   formatCardCompactUsdExact,
+  formatTableCompactUsdDisplay,
   shouldShowCardCompactUsdTooltip,
+  type CompactUsdDisplayMode,
 } from "../../utils/cardCompactUsdAmount"
 import "./card-compact-amount.css"
 
@@ -12,6 +14,10 @@ type Props = {
   amount: number | string | null | undefined
   className?: string
   valueClassName?: string
+  /** Tooltip panel alignment (default `end` for right-aligned table cells). */
+  tooltipPanelAlign?: "start" | "center" | "end"
+  /** `table` always shows 2 decimal places below $1M. */
+  displayMode?: CompactUsdDisplayMode
 }
 
 function parseAmount(amount: number | string | null | undefined): number {
@@ -19,10 +25,52 @@ function parseAmount(amount: number | string | null | undefined): number {
   return parseMoneyDigits(String(amount ?? ""))
 }
 
+function CompactAmountValue({
+  display,
+  exact,
+  showTooltip,
+  className,
+  valueClassName,
+  tooltipPanelAlign = "end",
+}: {
+  display: string
+  exact: string
+  showTooltip: boolean
+  className?: string
+  valueClassName?: string
+  tooltipPanelAlign?: "start" | "center" | "end"
+}) {
+  return (
+    <span className={["card_compact_amount", className].filter(Boolean).join(" ")}>
+      <span
+        className={["card_compact_amount_value", valueClassName]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {display}
+      </span>
+      {showTooltip ? (
+        <FormTooltip
+          label={`Exact amount: ${exact}`}
+          content={
+            <p className="card_compact_amount_tooltip_p">{exact}</p>
+          }
+          placement="top"
+          panelAlign={tooltipPanelAlign}
+          openOnHover
+          className="card_compact_amount_info"
+        />
+      ) : null}
+    </span>
+  )
+}
+
 export function CardCompactAmount({
   amount,
   className,
   valueClassName,
+  tooltipPanelAlign,
+  displayMode = "default",
 }: Props) {
   const raw = String(amount ?? "").trim()
   if (!raw || raw === "—") {
@@ -34,29 +82,22 @@ export function CardCompactAmount({
     return <span className={valueClassName ?? className}>{raw}</span>
   }
 
-  const display = formatCardCompactUsdDisplay(n)
+  const display =
+    displayMode === "table"
+      ? formatTableCompactUsdDisplay(n)
+      : formatCardCompactUsdDisplay(n)
   const exact = formatCardCompactUsdExact(n)
-  const showInfo = shouldShowCardCompactUsdTooltip(n)
+  const showTooltip = shouldShowCardCompactUsdTooltip(n)
 
   return (
-    <span className={["card_compact_amount", className].filter(Boolean).join(" ")}>
-      <span
-        className={["card_compact_amount_value", valueClassName]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        {display}
-      </span>
-      {showInfo ? (
-        <span
-          className="card_compact_amount_info"
-          title={exact}
-          aria-label={`Exact amount: ${exact}`}
-        >
-          <Info size={14} strokeWidth={2} aria-hidden />
-        </span>
-      ) : null}
-    </span>
+    <CompactAmountValue
+      display={display}
+      exact={exact}
+      showTooltip={showTooltip}
+      className={className}
+      valueClassName={valueClassName}
+      tooltipPanelAlign={tooltipPanelAlign}
+    />
   )
 }
 
@@ -69,7 +110,7 @@ export function cardCompactAmountOrDash(
   return <CardCompactAmount amount={raw} />
 }
 
-/** Datatable cells: same compact USD as KPI cards (e.g. Remaining), right-aligned. */
+/** Datatable cells: compact USD with 2 decimals below $1M, right-aligned. */
 export function TableCompactAmountCell({
   amount,
   className,
@@ -87,7 +128,11 @@ export function TableCompactAmountCell({
         .filter(Boolean)
         .join(" ")}
     >
-      <CardCompactAmount amount={amount} />
+      <CardCompactAmount
+        amount={amount}
+        displayMode="table"
+        tooltipPanelAlign="end"
+      />
     </span>
   )
 }

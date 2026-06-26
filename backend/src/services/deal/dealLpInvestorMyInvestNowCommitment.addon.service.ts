@@ -9,6 +9,10 @@
  */
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
+import {
+  isDocSignedEsignCompleted,
+  isDocSignedEsignPending,
+} from "../../constants/deal-doc-signed.js";
 import { userInvestorProfiles } from "../../schema/investing.schema/userProfileBook.schema.js";
 import { contact, users } from "../../schema/schema.js";
 import { dealLpInvestor, } from "../../schema/deal.schema/deal-lp-investor.schema.js";
@@ -148,6 +152,9 @@ function normalizeDocSignedDateParam(raw: unknown) {
     const s = String(raw ?? "").trim();
     if (!s)
         return { ok: true, value: null };
+    if (isDocSignedEsignPending(s) || isDocSignedEsignCompleted(s)) {
+        return { ok: true, value: undefined };
+    }
     if (DOC_SIGNED_ISO_DAY_RE.test(s))
         return { ok: true, value: s };
     return {

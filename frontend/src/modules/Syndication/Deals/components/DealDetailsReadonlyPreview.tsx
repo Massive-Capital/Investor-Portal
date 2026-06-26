@@ -13,13 +13,11 @@ import {
   Users,
   Wallet,
 } from "lucide-react"
+import { CardCompactAmount } from "../../../../common/components/card-compact-amount/CardCompactAmount"
 import { ViewReadonlyField } from "../../../../common/components/ViewReadonlyField"
 import { dealStageLabel } from "../../dealsDashboardUtils"
 import type { DealDetailApi } from "../api/dealsApi"
-import {
-  formatCommittedCurrency,
-  formatDealListDateDisplay,
-} from "../dealsListDisplay"
+import { formatDealListDateDisplay } from "../dealsListDisplay"
 
 function displayOrDash(v: string | null | undefined): string {
   const t = String(v ?? "").trim()
@@ -102,12 +100,12 @@ export function DealDetailsReadonlyPreviewFields({
       <ViewReadonlyField
         Icon={Wallet}
         label="Raise target"
-        value={formatCommittedCurrency(lr.raiseTarget)}
+        value={<CardCompactAmount amount={lr.raiseTarget} />}
       />
       <ViewReadonlyField
         Icon={DollarSign}
         label="Committed"
-        value={formatCommittedCurrency(lr.totalAccepted)}
+        value={<CardCompactAmount amount={lr.totalAccepted} />}
       />
       <ViewReadonlyField
         Icon={Users}

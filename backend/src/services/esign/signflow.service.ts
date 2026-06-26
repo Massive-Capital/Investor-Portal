@@ -1119,19 +1119,9 @@ export async function downloadSignFlowRecipientSignedPdfBuffer(
   return Buffer.from(await res.arrayBuffer());
 }
 
-/**
- * Full combined PDF when all signers are done; otherwise the investor's signed
- * copy when sequential workflow leaves sponsor pending.
- */
-export async function downloadSignFlowBestAvailableSignedPdfBuffer(
+async function resolveSignedInvestorRecipientId(
   documentId: string,
-): Promise<Buffer> {
-  try {
-    return await downloadSignFlowSignedPdfBuffer(documentId);
-  } catch (err) {
-    if (!isSignFlowNotAllSignedError(err)) throw err;
-  }
-
+): Promise<string> {
   const doc = await getSignFlowDocument(documentId);
   let signedInvestorId =
     (doc.recipients ?? []).find(
@@ -1160,14 +1150,38 @@ export async function downloadSignFlowBestAvailableSignedPdfBuffer(
 
   if (!signedInvestorId) {
     throw new Error(
-      "NOT_ALL_SIGNED: Not all recipients have signed yet",
+      "INVESTOR_NOT_SIGNED: Investor has not signed this document yet",
     );
   }
 
+  return signedInvestorId;
+}
+
+/** Investor-only signed PDF (their certificate of completion, no sponsor audit). */
+export async function downloadSignFlowInvestorSignedPdfBuffer(
+  documentId: string,
+): Promise<Buffer> {
+  const signedInvestorId = await resolveSignedInvestorRecipientId(documentId);
   return downloadSignFlowRecipientSignedPdfBuffer(
     documentId,
     signedInvestorId,
   );
+}
+
+/**
+ * Full combined PDF when all signers are done; otherwise the investor's signed
+ * copy when sequential workflow leaves sponsor pending.
+ */
+export async function downloadSignFlowBestAvailableSignedPdfBuffer(
+  documentId: string,
+): Promise<Buffer> {
+  try {
+    return await downloadSignFlowSignedPdfBuffer(documentId);
+  } catch (err) {
+    if (!isSignFlowNotAllSignedError(err)) throw err;
+  }
+
+  return downloadSignFlowInvestorSignedPdfBuffer(documentId);
 }
 
 export type SignFlowDocumentSummary = {

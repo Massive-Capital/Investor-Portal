@@ -1,4 +1,5 @@
 const ONE_MILLION = 1_000_000
+const ONE_BILLION = 1_000_000_000
 
 /** Full USD for tooltips (always 2 fraction digits). */
 export function formatCardCompactUsdExact(n: number): string {
@@ -10,31 +11,62 @@ export function formatCardCompactUsdExact(n: number): string {
   }).format(Number.isFinite(n) ? n : 0)
 }
 
-function formatMillionsCompact(n: number): string {
-  const millions = n / ONE_MILLION
-  const rounded = Math.round(millions * 100) / 100
+function formatFullUsdBelowCompact(n: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function formatFullUsdTable(n: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function formatScaledCompact(
+  n: number,
+  divisor: number,
+  suffix: "M" | "B",
+): string {
+  const scaled = Math.abs(n) / divisor
+  const rounded = Math.round(scaled * 100) / 100
   const [whole, fracRaw = ""] = rounded.toFixed(2).split(".")
   const frac = fracRaw.replace(/0+$/, "")
   const core = frac ? `${whole}.${frac}` : whole
-  return `$${core}M`
+  const prefix = n < 0 ? "-$" : "$"
+  return `${prefix}${core}${suffix}`
+}
+
+export type CompactUsdDisplayMode = "default" | "table"
+
+function formatCompactUsdDisplay(n: number, mode: CompactUsdDisplayMode): string {
+  if (!Number.isFinite(n)) return "—"
+  const abs = Math.abs(n)
+  if (abs >= ONE_BILLION) return formatScaledCompact(n, ONE_BILLION, "B")
+  if (abs >= ONE_MILLION) return formatScaledCompact(n, ONE_MILLION, "M")
+  return mode === "table" ? formatFullUsdTable(n) : formatFullUsdBelowCompact(n)
 }
 
 /**
- * Card display: full number below $1M; compact `$1M`, `$10M`, `$1.01M`, `$1.1M` at/above $1M.
+ * Read-only display: full amount below $1M; `$1M`, `$1.5M`, `$2.3B` at/above $1M.
  */
 export function formatCardCompactUsdDisplay(n: number): string {
-  if (!Number.isFinite(n)) return "—"
-  if (Math.abs(n) < ONE_MILLION) {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }).format(n)
-  }
-  return formatMillionsCompact(n)
+  return formatCompactUsdDisplay(n, "default")
 }
 
+/** Datatable cells: always 2 fraction digits below $1M. */
+export function formatTableCompactUsdDisplay(n: number): string {
+  return formatCompactUsdDisplay(n, "table")
+}
+
+/** True when letter abbreviation is used (show exact amount in tooltip). */
 export function shouldShowCardCompactUsdTooltip(n: number): boolean {
-  return Number.isFinite(n) && Math.abs(n) >= ONE_MILLION
+  if (!Number.isFinite(n)) return false
+  return Math.abs(n) >= ONE_MILLION
 }

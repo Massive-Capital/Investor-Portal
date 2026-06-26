@@ -45,6 +45,9 @@ export type EsignDocumentTrailSummaryEvent = {
   timestamp: string | null;
 };
 
+/** Investor portal stores investor-facing PDFs — not sponsor envelope audit trails. */
+export type EsignDocumentTrailAudience = "investor" | "full";
+
 export type EsignDocumentTrailModel = {
   envelopeId: string;
   subject: string;
@@ -486,6 +489,59 @@ function pickOriginatorFromSignFlow(doc: SignFlowDocument): {
   };
 }
 
+function isInvestorRoleLabel(roleLabel: string): boolean {
+  return roleLabel.trim().toLowerCase() === "investor";
+}
+
+function filterSignersForAudience(
+  signers: EsignDocumentTrailSigner[],
+  audience: EsignDocumentTrailAudience,
+): EsignDocumentTrailSigner[] {
+  if (audience === "full") return signers;
+  const investors = signers.filter((s) => isInvestorRoleLabel(s.roleLabel));
+  return investors.length > 0 ? investors : signers.slice(0, 1);
+}
+
+function pickInvestorSigner(
+  signers: EsignDocumentTrailSigner[],
+): EsignDocumentTrailSigner | null {
+  return (
+    signers.find((s) => isInvestorRoleLabel(s.roleLabel)) ?? signers[0] ?? null
+  );
+}
+
+function buildInvestorSummaryEvents(params: {
+  sentAt: string | null;
+  signedAt: string | null;
+  completedAt: string | null;
+}): EsignDocumentTrailSummaryEvent[] {
+  const events: EsignDocumentTrailSummaryEvent[] = [];
+  if (params.sentAt) {
+    events.push({
+      label: "Envelope Sent",
+      status: "Hashed/Encrypted",
+      timestamp: params.sentAt,
+    });
+  }
+  const signedAt = params.signedAt?.trim() || null;
+  const completedAt = params.completedAt?.trim() || null;
+  if (signedAt) {
+    events.push({
+      label: "Signing Complete",
+      status: "Security Checked",
+      timestamp: signedAt,
+    });
+  }
+  if (completedAt && completedAt !== signedAt) {
+    events.push({
+      label: "Completed",
+      status: "Security Checked",
+      timestamp: completedAt,
+    });
+  }
+  return events;
+}
+
 function buildSummaryEvents(params: {
   sentAt: string | null;
   completedAt: string | null;
@@ -523,7 +579,9 @@ export async function buildEsignDocumentTrailModel(params: {
   signatureRequestId: string;
   send?: StoredDealInvestorEsignSend | null;
   documentPages: number;
+  audience?: EsignDocumentTrailAudience;
 }): Promise<EsignDocumentTrailModel | null> {
+  const audience = params.audience ?? "investor";
   const dealId = params.dealId.trim();
   const signatureRequestId = params.signatureRequestId.trim();
   if (!dealId || !signatureRequestId) return null;
@@ -545,15 +603,33 @@ export async function buildEsignDocumentTrailModel(params: {
   if (provider === "signflow") {
     try {
       const doc = await getSignFlowDocument(signatureRequestId);
-      const signers = buildSignersFromSignFlow(doc, send);
-      const originator = pickOriginatorFromSignFlow(doc);
+      const allSigners = buildSignersFromSignFlow(doc, send);
+      const signers = filterSignersForAudience(allSigners, audience);
+      const investorSigner = pickInvestorSigner(signers);
+      const originator =
+        audience === "investor" && investorSigner
+          ? { name: investorSigner.name, email: investorSigner.email }
+          : pickOriginatorFromSignFlow(doc);
       const signedCount = signers.filter((s) => s.signedAt).length;
+      const investorSignedAt = investorSigner?.signedAt?.trim() || null;
       const status =
-        String(doc.status ?? "").trim().toLowerCase() === "completed"
-          ? "Completed"
-          : signedCount > 0
+        audience === "investor"
+          ? investorSignedAt
             ? "Signed"
-            : "Sent";
+            : "Sent"
+          : String(doc.status ?? "").trim().toLowerCase() === "completed"
+            ? "Completed"
+            : signedCount > 0
+              ? "Signed"
+              : "Sent";
+      const recordHolderName =
+        audience === "investor" && investorSigner
+          ? investorSigner.name
+          : originator.name;
+      const recordHolderEmail =
+        audience === "investor" && investorSigner
+          ? investorSigner.email
+          : originator.email;
       return {
         envelopeId: signatureRequestId,
         subject,
@@ -570,17 +646,26 @@ export async function buildEsignDocumentTrailModel(params: {
         originatorAddress: "Address N/A",
         originatorIp: "N/A",
         recordStatus: "Original",
-        recordHolderName: originator.name,
-        recordHolderEmail: originator.email,
+        recordHolderName,
+        recordHolderEmail,
         recordLocation: PLATFORM_NAME,
         recordTimestamp: sentAt || doc.createdAt?.trim() || null,
         signers,
-        summaryEvents: buildSummaryEvents({
-          sentAt: sentAt || doc.createdAt?.trim() || null,
-          completedAt:
-            completedAt ||
-            (status === "Completed" ? doc.updatedAt ?? null : null),
-        }),
+        summaryEvents:
+          audience === "investor"
+            ? buildInvestorSummaryEvents({
+                sentAt: sentAt || doc.createdAt?.trim() || null,
+                signedAt: investorSignedAt || send?.signedAt?.trim() || null,
+                completedAt:
+                  completedAt ||
+                  (status === "Completed" ? doc.updatedAt ?? null : null),
+              })
+            : buildSummaryEvents({
+                sentAt: sentAt || doc.createdAt?.trim() || null,
+                completedAt:
+                  completedAt ||
+                  (status === "Completed" ? doc.updatedAt ?? null : null),
+              }),
       };
     } catch (err) {
       console.warn("buildEsignDocumentTrailModel (SignFlow):", err);
@@ -588,16 +673,31 @@ export async function buildEsignDocumentTrailModel(params: {
   } else {
     try {
       const detail = await getSignatureRequestDetail(signatureRequestId);
-      const signers = buildSignersFromDropbox(detail, send);
-      const originator = signers[0] ?? {
-        name: "Deal sponsor",
-        email: "—",
-      };
+      const allSigners = buildSignersFromDropbox(detail, send);
+      const signers = filterSignersForAudience(allSigners, audience);
+      const investorSigner = pickInvestorSigner(signers);
+      const originator =
+        audience === "investor" && investorSigner
+          ? { name: investorSigner.name, email: investorSigner.email }
+          : (signers[0] ?? {
+              name: "Deal sponsor",
+              email: "—",
+            });
       const signedCount = signers.filter((s) => s.signedAt).length;
+      const investorSignedAt = investorSigner?.signedAt?.trim() || null;
       return {
         envelopeId: detail.signatureRequestId,
         subject,
-        status: detail.isComplete ? "Completed" : signedCount > 0 ? "Signed" : "Sent",
+        status:
+          audience === "investor"
+            ? investorSignedAt
+              ? "Signed"
+              : "Sent"
+            : detail.isComplete
+              ? "Completed"
+              : signedCount > 0
+                ? "Signed"
+                : "Sent",
         documentPages: Math.max(1, params.documentPages),
         signatureCount: signedCount,
         certificatePages: 1,
@@ -610,15 +710,29 @@ export async function buildEsignDocumentTrailModel(params: {
         originatorAddress: "Address N/A",
         originatorIp: "N/A",
         recordStatus: "Original",
-        recordHolderName: originator.name,
-        recordHolderEmail: originator.email,
+        recordHolderName:
+          audience === "investor" && investorSigner
+            ? investorSigner.name
+            : originator.name,
+        recordHolderEmail:
+          audience === "investor" && investorSigner
+            ? investorSigner.email
+            : originator.email,
         recordLocation: PLATFORM_NAME,
         recordTimestamp: sentAt || detail.createdAt?.trim() || null,
         signers,
-        summaryEvents: buildSummaryEvents({
-          sentAt: sentAt || detail.createdAt?.trim() || null,
-          completedAt: completedAt || detail.completeAt?.trim() || null,
-        }),
+        summaryEvents:
+          audience === "investor"
+            ? buildInvestorSummaryEvents({
+                sentAt: sentAt || detail.createdAt?.trim() || null,
+                signedAt: investorSignedAt || send?.signedAt?.trim() || null,
+                completedAt:
+                  completedAt || detail.completeAt?.trim() || null,
+              })
+            : buildSummaryEvents({
+                sentAt: sentAt || detail.createdAt?.trim() || null,
+                completedAt: completedAt || detail.completeAt?.trim() || null,
+              }),
       };
     } catch (err) {
       console.warn("buildEsignDocumentTrailModel (Dropbox):", err);
@@ -657,6 +771,7 @@ export async function appendEsignDocumentTrailCertificate(
     dealId: string;
     signatureRequestId: string;
     send?: StoredDealInvestorEsignSend | null;
+    audience?: EsignDocumentTrailAudience;
   },
 ): Promise<Buffer> {
   const mainDoc = await PDFDocument.load(signedPdf, { ignoreEncryption: true });
@@ -666,6 +781,7 @@ export async function appendEsignDocumentTrailCertificate(
     signatureRequestId: params.signatureRequestId,
     send: params.send ?? null,
     documentPages,
+    audience: params.audience ?? "investor",
   });
   if (!model) return signedPdf;
 

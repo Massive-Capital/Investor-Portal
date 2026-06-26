@@ -24,6 +24,7 @@ import {
   parseEsignStatusBundle,
   parseEsignStatusJson,
   type DealInvestorEsignSendStatusApi,
+  type StoredDealInvestorEsignBundle,
   type StoredDealInvestorEsignSend,
 } from "../../constants/deal-investor-esign-status.js";
 import {
@@ -35,7 +36,8 @@ import {
 } from "../esign/dropboxSign.service.js";
 import { isEsignProviderUnreachableError } from "../esign/esignProviderErrors.js";
 import {
-  downloadSignFlowBestAvailableSignedPdfBuffer,
+  downloadSignFlowInvestorSignedPdfBuffer,
+  downloadSignFlowSignedPdfBuffer,
   getSignFlowDocumentSummary,
   signFlowSummaryInvestorHasSigned,
   type SignFlowDocumentSummary,
@@ -151,31 +153,64 @@ async function flattenSignedPdfBuffer(buffer: Buffer): Promise<Buffer> {
   }
 }
 
+const INVESTOR_SIGNED_PDF_VERSION = 2;
+
+type SignedPdfAudience = "investor" | "full";
+
+function existingInvestorSignedRelativePath(
+  send: StoredDealInvestorEsignSend | null | undefined,
+): string {
+  return (
+    send?.documents?.find((d) => d.signedRelativePath?.trim())?.signedRelativePath?.trim() ??
+    ""
+  );
+}
+
+async function downloadSignedPdfBufferForAudience(
+  signatureRequestId: string,
+  audience: SignedPdfAudience,
+): Promise<Buffer> {
+  const provider = getActiveEsignProvider();
+  if (provider === "signflow") {
+    return audience === "full"
+      ? downloadSignFlowSignedPdfBuffer(signatureRequestId)
+      : downloadSignFlowInvestorSignedPdfBuffer(signatureRequestId);
+  }
+  return downloadSignatureRequestPdfBuffer(signatureRequestId);
+}
+
 async function persistSignedPdf(params: {
   dealId: string;
   rosterId: string;
   signatureRequestId: string;
   send?: StoredDealInvestorEsignSend | null;
+  audience: SignedPdfAudience;
 }): Promise<string> {
-  const provider = getActiveEsignProvider();
-  const downloaded =
-    provider === "signflow"
-      ? await downloadSignFlowBestAvailableSignedPdfBuffer(params.signatureRequestId)
-      : await downloadSignatureRequestPdfBuffer(params.signatureRequestId);
+  const downloaded = await downloadSignedPdfBufferForAudience(
+    params.signatureRequestId,
+    params.audience,
+  );
   const flattened = await flattenSignedPdfBuffer(downloaded);
   let pdf = flattened;
-  try {
-    pdf = await appendEsignDocumentTrailCertificate(flattened, {
-      dealId: params.dealId,
-      signatureRequestId: params.signatureRequestId,
-      send: params.send ?? null,
-    });
-  } catch (err) {
-    console.warn("appendEsignDocumentTrailCertificate:", err);
+  const provider = getActiveEsignProvider();
+  // SignFlow embeds role-appropriate certificates in provider PDFs.
+  if (provider === "dropbox") {
+    try {
+      pdf = await appendEsignDocumentTrailCertificate(flattened, {
+        dealId: params.dealId,
+        signatureRequestId: params.signatureRequestId,
+        send: params.send ?? null,
+        audience: params.audience === "full" ? "full" : "investor",
+      });
+    } catch (err) {
+      console.warn("appendEsignDocumentTrailCertificate:", err);
+    }
   }
   const dealFolder = await resolveDealStorageFolderName(params.dealId);
   const rosterFolder = safeRosterSegment(params.rosterId);
-  const fileName = `signed-${Date.now()}.pdf`;
+  const filePrefix =
+    params.audience === "full" ? "signed-full" : "signed-investor";
+  const fileName = `${filePrefix}-${Date.now()}.pdf`;
   const relativePath = dealAssetsRelativePath(
     dealFolder,
     ESIGN_SIGNED_FOLDER,
@@ -187,6 +222,126 @@ async function persistSignedPdf(params: {
   await mkdir(path.dirname(abs), { recursive: true });
   await writeFile(abs, pdf);
   return relativePath;
+}
+
+function withInvestorSignedPdfFields(
+  current: StoredDealInvestorEsignSend,
+  signedRelativePath: string,
+): Partial<StoredDealInvestorEsignSend> {
+  return {
+    investorPdfVersion: INVESTOR_SIGNED_PDF_VERSION,
+    documents: (current.documents ?? []).map((d) => ({
+      ...d,
+      signedRelativePath,
+    })),
+  };
+}
+
+function withFullSignedPdfFields(
+  fullSignedRelativePath: string,
+): Partial<StoredDealInvestorEsignSend> {
+  return { fullSignedRelativePath };
+}
+
+async function persistInvestorAndFullSignedPdfs(params: {
+  dealId: string;
+  rosterId: string;
+  signatureRequestId: string;
+  send: StoredDealInvestorEsignSend;
+  includeFull: boolean;
+}): Promise<{ investorPath?: string; fullPath?: string }> {
+  const result: { investorPath?: string; fullPath?: string } = {};
+  const existingInvestor = existingInvestorSignedRelativePath(params.send);
+  if (existingInvestor) {
+    result.investorPath = existingInvestor;
+  } else {
+    try {
+      result.investorPath = await persistSignedPdf({
+        dealId: params.dealId,
+        rosterId: params.rosterId,
+        signatureRequestId: params.signatureRequestId,
+        send: params.send,
+        audience: "investor",
+      });
+    } catch (err) {
+      console.warn("persistSignedPdf (investor):", err);
+    }
+  }
+
+  const existingFull = params.send.fullSignedRelativePath?.trim();
+  if (existingFull) {
+    result.fullPath = existingFull;
+    return result;
+  }
+
+  if (!params.includeFull) return result;
+
+  try {
+    result.fullPath = await persistSignedPdf({
+      dealId: params.dealId,
+      rosterId: params.rosterId,
+      signatureRequestId: params.signatureRequestId,
+      send: params.send,
+      audience: "full",
+    });
+  } catch (err) {
+    console.warn("persistSignedPdf (full):", err);
+  }
+  return result;
+}
+
+function esignBundleNeedsLegacyInvestorPdfRefresh(
+  bundle: StoredDealInvestorEsignBundle,
+): boolean {
+  if (getActiveEsignProvider() !== "signflow") return false;
+  return bundle.sends.some((s) => {
+    if (s.investorPdfVersion === INVESTOR_SIGNED_PDF_VERSION) return false;
+    if (!s.signedAt?.trim() && !s.completedAt?.trim()) return false;
+    return (s.documents ?? []).some((d) => Boolean(d.signedRelativePath?.trim()));
+  });
+}
+
+/** Re-download SignFlow PDF without portal cert overlay for sends stored before v2. */
+async function refreshLegacySignFlowInvestorPdfIfNeeded(params: {
+  dealId: string;
+  target: InvestorEsignRowTarget;
+  signatureRequestId: string;
+  send: StoredDealInvestorEsignSend;
+}): Promise<string | undefined> {
+  if (getActiveEsignProvider() !== "signflow") return undefined;
+  if (params.send.investorPdfVersion === INVESTOR_SIGNED_PDF_VERSION) {
+    return undefined;
+  }
+  if (!params.send.signedAt?.trim() && !params.send.completedAt?.trim()) {
+    return undefined;
+  }
+  const hasPath = (params.send.documents ?? []).some((d) =>
+    Boolean(d.signedRelativePath?.trim()),
+  );
+  if (!hasPath) return undefined;
+
+  try {
+    const signedRelativePath = await persistSignedPdf({
+      dealId: params.dealId,
+      rosterId: params.target.id,
+      signatureRequestId: params.signatureRequestId,
+      send: params.send,
+      audience: "investor",
+    });
+    await updateDealInvestorEsignSend(
+      params.dealId,
+      params.target,
+      params.signatureRequestId,
+      (current) => ({
+        ...current,
+        ...withInvestorSignedPdfFields(current, signedRelativePath),
+      }),
+    );
+    return signedRelativePath;
+  } catch (err) {
+    console.warn("refreshLegacySignFlowInvestorPdfIfNeeded:", err);
+    return undefined;
+  }
 }
 
 async function applyProgressFromDropbox(
@@ -214,17 +369,13 @@ async function applyProgressFromDropbox(
     const rosterId = target.id;
     const completedAt =
       summary.completeAt ?? summary.lastSignedAt ?? new Date().toISOString();
-    let signedRelativePath: string | undefined;
-    try {
-      signedRelativePath = await persistSignedPdf({
-        dealId,
-        rosterId,
-        signatureRequestId: sigId,
-        send: existing,
-      });
-    } catch (err) {
-      console.warn("persistSignedPdf:", err);
-    }
+    const pdfs = await persistInvestorAndFullSignedPdfs({
+      dealId,
+      rosterId,
+      signatureRequestId: sigId,
+      send: existing,
+      includeFull: true,
+    });
 
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
@@ -232,15 +383,21 @@ async function applyProgressFromDropbox(
       signedAt: summary.lastSignedAt ?? current.signedAt ?? completedAt,
       completedAt,
       signatureRequestId: sigId,
-      documents: (current.documents ?? []).map((d) => ({
-        ...d,
-        ...(signedRelativePath ? { signedRelativePath } : {}),
-      })),
+      ...(pdfs.investorPath
+        ? withInvestorSignedPdfFields(current, pdfs.investorPath)
+        : {}),
+      ...(pdfs.fullPath ? withFullSignedPdfFields(pdfs.fullPath) : {}),
     }));
     return true;
   }
 
   if (shouldComplete && alreadyComplete) {
+    await ensureFullSignedPdfStoredForCompletedSend(
+      dealId,
+      target,
+      sigId,
+      existing,
+    );
     return true;
   }
 
@@ -261,6 +418,7 @@ async function applyProgressFromDropbox(
           rosterId: target.id,
           signatureRequestId: sigId,
           send: existing,
+          audience: "investor",
         });
       } catch (err) {
         console.warn("persistSignedPdf (signed, not yet completed):", err);
@@ -272,10 +430,9 @@ async function applyProgressFromDropbox(
       viewedAt: current.viewedAt ?? progressViewed,
       signedAt: current.signedAt ?? progressSigned,
       signatureRequestId: sigId,
-      documents: (current.documents ?? []).map((d) => ({
-        ...d,
-        ...(signedRelativePath ? { signedRelativePath } : {}),
-      })),
+      ...(signedRelativePath
+        ? withInvestorSignedPdfFields(current, signedRelativePath)
+        : {}),
     }));
     return true;
   }
@@ -338,17 +495,13 @@ async function applyProgressFromSignFlow(
   if (shouldComplete && !alreadyComplete) {
     const rosterId = target.id;
     const completedAt = summary.lastSignedAt ?? new Date().toISOString();
-    let signedRelativePath: string | undefined;
-    try {
-      signedRelativePath = await persistSignedPdf({
-        dealId,
-        rosterId,
-        signatureRequestId: sigId,
-        send: existing,
-      });
-    } catch (err) {
-      console.warn("persistSignedPdf (SignFlow):", err);
-    }
+    const pdfs = await persistInvestorAndFullSignedPdfs({
+      dealId,
+      rosterId,
+      signatureRequestId: sigId,
+      send: existing,
+      includeFull: true,
+    });
 
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
@@ -356,15 +509,27 @@ async function applyProgressFromSignFlow(
       signedAt: summary.lastSignedAt ?? current.signedAt ?? completedAt,
       completedAt,
       signatureRequestId: sigId,
-      documents: (current.documents ?? []).map((d) => ({
-        ...d,
-        ...(signedRelativePath ? { signedRelativePath } : {}),
-      })),
+      ...(pdfs.investorPath
+        ? withInvestorSignedPdfFields(current, pdfs.investorPath)
+        : {}),
+      ...(pdfs.fullPath ? withFullSignedPdfFields(pdfs.fullPath) : {}),
     }));
     return true;
   }
 
   if (shouldComplete && alreadyComplete) {
+    await refreshLegacySignFlowInvestorPdfIfNeeded({
+      dealId,
+      target,
+      signatureRequestId: sigId,
+      send: existing,
+    });
+    await ensureFullSignedPdfStoredForCompletedSend(
+      dealId,
+      target,
+      sigId,
+      existing,
+    );
     return true;
   }
 
@@ -391,6 +556,7 @@ async function applyProgressFromSignFlow(
           rosterId: target.id,
           signatureRequestId: sigId,
           send: existing,
+          audience: "investor",
         });
       } catch (err) {
         console.warn("persistSignedPdf (SignFlow, signed, not yet completed):", err);
@@ -402,10 +568,9 @@ async function applyProgressFromSignFlow(
       viewedAt: current.viewedAt ?? progressViewed,
       signedAt: current.signedAt ?? progressSigned,
       signatureRequestId: sigId,
-      documents: (current.documents ?? []).map((d) => ({
-        ...d,
-        ...(signedRelativePath ? { signedRelativePath } : {}),
-      })),
+      ...(signedRelativePath
+        ? withInvestorSignedPdfFields(current, signedRelativePath)
+        : {}),
     }));
     return true;
   }
@@ -430,6 +595,40 @@ async function applyProgressFromActiveProvider(
     return applyProgressFromSignFlow(dealId, target, signatureRequestId, opts);
   }
   return applyProgressFromDropbox(dealId, target, signatureRequestId, opts);
+}
+
+/** Persist fully-executed PDF for sponsor workspace after all signers complete. */
+async function ensureFullSignedPdfStoredForCompletedSend(
+  dealId: string,
+  target: InvestorEsignRowTarget,
+  signatureRequestId: string,
+  existing: StoredDealInvestorEsignSend,
+): Promise<boolean> {
+  if (existing.fullSignedRelativePath?.trim()) return true;
+  if (!existing.completedAt?.trim()) return false;
+
+  try {
+    const fullSignedRelativePath = await persistSignedPdf({
+      dealId,
+      rosterId: target.id,
+      signatureRequestId,
+      send: existing,
+      audience: "full",
+    });
+    await updateDealInvestorEsignSend(
+      dealId,
+      target,
+      signatureRequestId,
+      (current) => ({
+        ...current,
+        ...withFullSignedPdfFields(fullSignedRelativePath),
+      }),
+    );
+    return true;
+  } catch (err) {
+    console.warn("ensureFullSignedPdfStoredForCompletedSend:", err);
+    return false;
+  }
 }
 
 /** Persist signed PDF locally once the investor has signed (full completion optional). */
@@ -470,6 +669,7 @@ async function ensureSignedPdfStoredForSignedSend(
       rosterId: target.id,
       signatureRequestId,
       send: existing,
+      audience: "investor",
     });
     await updateDealInvestorEsignSend(
       dealId,
@@ -477,10 +677,7 @@ async function ensureSignedPdfStoredForSignedSend(
       signatureRequestId,
       (current) => ({
         ...current,
-        documents: (current.documents ?? []).map((d) => ({
-          ...d,
-          signedRelativePath,
-        })),
+        ...withInvestorSignedPdfFields(current, signedRelativePath),
       }),
     );
     return true;
@@ -575,7 +772,8 @@ export async function maybeSyncDealInvestorEsignByTarget(
   if (
     !bundle ||
     (!esignBundleNeedsDropboxSync(bundle) &&
-      !esignBundleNeedsStoredPdfSync(bundle))
+      !esignBundleNeedsStoredPdfSync(bundle) &&
+      !esignBundleNeedsLegacyInvestorPdfRefresh(bundle))
   ) {
     return;
   }
@@ -759,6 +957,22 @@ export async function syncDealInvestorEsignByTarget(
           signatureRequestId,
           sendFresh,
         )) || changed;
+      changed =
+        (await refreshLegacySignFlowInvestorPdfIfNeeded({
+          dealId,
+          target,
+          signatureRequestId,
+          send: sendFresh,
+        })) !== undefined || changed;
+      if (sendFresh.completedAt?.trim()) {
+        changed =
+          (await ensureFullSignedPdfStoredForCompletedSend(
+            dealId,
+            target,
+            signatureRequestId,
+            sendFresh,
+          )) || changed;
+      }
     }
   }
   if (changed || shouldSyncDocumentsTab) {
@@ -925,6 +1139,13 @@ export async function listMyEsignDocumentsForInvestor(
         );
         if (!hasPath) {
           await ensureSignedPdfStoredForSignedSend(dealId, target, sig, send);
+        } else {
+          await refreshLegacySignFlowInvestorPdfIfNeeded({
+            dealId,
+            target,
+            signatureRequestId: sig,
+            send,
+          });
         }
       }
       statusRaw = await readInvestorEsignStatusJson(dealId, target);

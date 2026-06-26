@@ -57,6 +57,7 @@ import {
   lpProfileUseKey,
 } from "@/modules/Syndication/Deals/utils/lpInvestNowProfileBlocking"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import { parseInvestNowDocSignedCalendarDate } from "@/modules/Syndication/Deals/utils/prefillLpInvestNowFields"
 import { recordRecentlyViewedDeal } from "@/modules/Investing/pages/dashboard/recentlyViewedDeals"
 import { readInvestNowLocationState } from "./investNowLocationState"
 import { investNowStepIndexFromSavedProgress } from "./investNowSavedStep"
@@ -530,7 +531,7 @@ export function DealInvestNowPage() {
         )
       }
       if (saved.status?.trim()) setStatus(saved.status.trim())
-      if (saved.docSignedDate) setDocSignedDate(saved.docSignedDate.slice(0, 10))
+      setDocSignedDate(parseInvestNowDocSignedCalendarDate(saved.docSignedDate))
       if (Object.keys(saved.questionnaireAnswers).length > 0) {
         setQuestionnaireAnswers(saved.questionnaireAnswers)
       }
@@ -804,7 +805,7 @@ export function DealInvestNowPage() {
         {
           profileId: profileId.trim(),
           status: submitStatus,
-          docSignedDate: docSignedDate.trim(),
+          docSignedDate: parseInvestNowDocSignedCalendarDate(docSignedDate),
           includeUserInvestorProfileInBody: true,
           userInvestorProfileId: savedUserProfileId.trim(),
           progressOnly: opts.progressOnly,
@@ -1405,50 +1406,7 @@ export function DealInvestNowPage() {
 
   const onFinish = useCallback(async () => {
     if (finishStartedRef.current) return
-    const investorValidation = validateInvestNowInvestorFields({
-      bookLoading,
-      savedUserProfileId,
-      profileId,
-      bookProfileRows,
-      blockedProfileKeys,
-      selectedInvestorClassId,
-    investorClasses,
-      sponsorLabel,
-    })
-    if (
-      investorValidation.stepError ||
-      hasInvestNowFieldErrors(investorValidation.fieldErrors)
-    ) {
-      setStepIndex(0)
-      reportInvestNowFieldValidation(investorValidation.fieldErrors, {
-        stepError: investorValidation.stepError,
-      })
-      return
-    }
-    const investmentFieldErrors = validateInvestNowInvestmentFields({
-      amount,
-      fundingMethod,
-      investorClasses,
-      minimumInvestmentAmount,
-    })
-    if (hasInvestNowFieldErrors(investmentFieldErrors)) {
-      setStepIndex(1)
-      reportInvestNowFieldValidation(investmentFieldErrors)
-      return
-    }
-    const documentsValidation = validateAllQuestionnaireAndW9Fields()
-    if (
-      documentsValidation.stepError ||
-      hasInvestNowFieldErrors(documentsValidation.fieldErrors)
-    ) {
-      goToStepIndexForFieldValidation(documentsValidation.fieldErrors)
-      window.setTimeout(() => {
-        reportInvestNowFieldValidation(documentsValidation.fieldErrors, {
-          stepError: documentsValidation.stepError,
-        })
-      }, 80)
-      return
-    }
+    // Finish runs only on the e-sign step — do not re-open step 1 (profile picker).
     const esignErr = validateEsignaturesStep()
     if (esignErr) {
       if (esignStepIndex >= 0) setStepIndex(esignStepIndex)
@@ -1499,25 +1457,12 @@ export function DealInvestNowPage() {
     switchToInvesting()
     navigate("/investing/investments", { replace: true })
   }, [
-    bookLoading,
-    savedUserProfileId,
-    profileId,
-    bookProfileRows,
-    blockedProfileKeys,
-    selectedInvestorClassId,
-    investorClasses,
-    sponsorLabel,
-    amount,
-    fundingMethod,
-    minimumInvestmentAmount,
-    validateAllQuestionnaireAndW9Fields,
     validateEsignaturesStep,
-    goToStepIndexForFieldValidation,
-    reportInvestNowFieldValidation,
     esignStepIndex,
     dealId,
     profileId,
     dealName,
+    amount,
     offeringSize,
     closeDate,
     navigate,

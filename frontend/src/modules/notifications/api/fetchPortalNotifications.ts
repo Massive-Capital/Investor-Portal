@@ -10,7 +10,9 @@ import {
 import { esignCategoryLabel } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
 import { investorRowIsFundApproved } from "@/modules/Syndication/Deals/utils/dealInvestorTableDisplay"
 import {
+  investorRowAwaitingSponsorCounterSign,
   investorRowCommittedNumeric,
+  investorRowLatestEsignSignedAt,
   investorRowMatchesViewerEmail,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
@@ -115,6 +117,19 @@ async function collectLpInvestorNotifications(
   })
 }
 
+function formatInvestorWhoPhrase(investors: { displayName?: string | null }[]): string {
+  const names = investors
+    .map((inv) => inv.displayName?.trim())
+    .filter((n) => n && n !== "—")
+    .slice(0, 2)
+  const extra = investors.length - names.length
+  if (names.length === 0) {
+    return `${investors.length} investor${investors.length === 1 ? "" : "s"}`
+  }
+  if (extra > 0) return `${names.join(", ")} and ${extra} more`
+  return names.join(" and ")
+}
+
 async function collectSponsorNotifications(
   out: NotificationDraft[],
 ): Promise<void> {
@@ -129,31 +144,43 @@ async function collectSponsorNotifications(
     if (!dealId) return
     const dealName = deal.dealName?.trim() || "Deal"
     const payload = await fetchDealInvestors(dealId)
-    const pending = payload.investors.filter((inv) => {
+    const investors = payload.investors
+
+    const awaitingCounterSign = investors.filter((inv) => {
+      if (investorRowCommittedNumeric(inv) <= 0) return false
+      return investorRowAwaitingSponsorCounterSign(inv)
+    })
+    if (awaitingCounterSign.length > 0) {
+      const who = formatInvestorWhoPhrase(awaitingCounterSign)
+      const latestSigned = awaitingCounterSign
+        .map(investorRowLatestEsignSignedAt)
+        .map((t) => t?.trim())
+        .filter((t): t is string => Boolean(t))
+        .sort((a, b) => Date.parse(b) - Date.parse(a))[0]
+      out.push({
+        id: `esign-counter-sign:${dealId}`,
+        title: "Investor signed — your signature needed",
+        message: `${who} signed e-sign documents on ${dealName}. Open Documents to counter-sign.`,
+        category: "document",
+        createdAt: isoOrNow(latestSigned),
+        href: `/deals/${encodeURIComponent(dealId)}?tab=documents`,
+      })
+    }
+
+    const pendingFund = investors.filter((inv) => {
       const committed = investorRowCommittedNumeric(inv)
       return committed > 0 && !investorRowIsFundApproved(inv)
     })
-    if (pending.length === 0) return
+    if (pendingFund.length === 0) return
 
-    const names = pending
-      .map((inv) => inv.displayName?.trim())
-      .filter((n) => n && n !== "—")
-      .slice(0, 2)
-    const extra = pending.length - names.length
-    const who =
-      names.length === 0
-        ? `${pending.length} investor${pending.length === 1 ? "" : "s"}`
-        : extra > 0
-          ? `${names.join(", ")} and ${extra} more`
-          : names.join(" and ")
-
+    const who = formatInvestorWhoPhrase(pendingFund)
     out.push({
       id: `fund-approval-sponsor:${dealId}`,
       title: "Fund approval needed",
-      message: `${who} on ${dealName} ${pending.length === 1 ? "needs" : "need"} fund approval.`,
+      message: `${who} on ${dealName} ${pendingFund.length === 1 ? "needs" : "need"} fund approval.`,
       category: "deal",
       createdAt: isoOrNow(
-        pending[0]?.fundApprovedAtIso ?? pending[0]?.signedDate,
+        pendingFund[0]?.fundApprovedAtIso ?? pendingFund[0]?.signedDate,
       ),
       href: `/deals/${encodeURIComponent(dealId)}?tab=investors`,
     })

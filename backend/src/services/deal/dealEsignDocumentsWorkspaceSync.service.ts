@@ -51,17 +51,26 @@ function sendHasStoredOrRecordedSignature(
 function listSignedEsignDocumentsForSend(
   send: StoredDealInvestorEsignSend,
   signatureRequestId: string,
+  opts?: { preferFullSignedCopy?: boolean },
 ): Array<{ fileId: string; name: string; url: string | null }> {
   if (!sendHasStoredOrRecordedSignature(send)) return [];
   const docs = send.documents ?? [];
   if (docs.length === 0) return [];
 
-  const sharedPath = docs.find((d) => d.signedRelativePath?.trim())?.signedRelativePath;
+  const investorPath =
+    docs.find((d) => d.signedRelativePath?.trim())?.signedRelativePath?.trim() ??
+    "";
+  const fullPath = send.fullSignedRelativePath?.trim() ?? "";
+  const sharedPath =
+    opts?.preferFullSignedCopy && fullPath ? fullPath : investorPath;
   const sharedUrl = sharedPath ? uploadPublicUrl(sharedPath) : null;
   const sig = signatureRequestId.trim();
 
   return docs.map((d) => {
-    const rel = d.signedRelativePath?.trim() || sharedPath?.trim();
+    const rel =
+      (opts?.preferFullSignedCopy && fullPath ? fullPath : "") ||
+      d.signedRelativePath?.trim() ||
+      sharedPath;
     const url = rel ? uploadPublicUrl(rel) : sharedUrl;
     const compositeId = sig && d.fileId ? `${sig}::${d.fileId}` : d.fileId;
     return {
@@ -320,8 +329,10 @@ async function collectCompletedEsignNestedDocuments(
   for (const send of bundle.sends) {
     if (!sendReadyForInvestorEsignDocumentsSection(send)) continue;
     const sig = send.signatureRequestId?.trim() ?? "";
-    const signedDocs = listSignedEsignDocumentsForSend(send, sig);
     const sponsorState = await resolveEsignSponsorSignState(send);
+    const signedDocs = listSignedEsignDocumentsForSend(send, sig, {
+      preferFullSignedCopy: sponsorState.sponsorSigned,
+    });
     const completedAt =
       send.signedAt?.trim() ||
       send.completedAt?.trim() ||

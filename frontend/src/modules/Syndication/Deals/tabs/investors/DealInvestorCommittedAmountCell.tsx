@@ -38,9 +38,9 @@ export function DealInvestorCommittedAmountCell({
   return (
     <span className={wrapClass} title={title}>
       <span className="inline-flex items-center justify-end gap-0.5 flex-nowrap min-w-0 w-full">
-        <CardCompactAmount amount={split.snapshot} />
+        <CardCompactAmount amount={split.snapshot} displayMode="table" />
         <span aria-hidden> + </span>
-        <CardCompactAmount amount={split.incremental} />
+        <CardCompactAmount amount={split.incremental} displayMode="table" />
       </span>
     </span>
   )

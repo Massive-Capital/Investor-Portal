@@ -252,7 +252,7 @@ async function resolveInvestorW9FormData(params: {
   return readInvestorW9FormForTarget(params.dealId, params.esignTarget);
 }
 
-async function buildEsignPrefillContext(params: {
+export async function buildEsignPrefillContext(params: {
   dealId: string;
   esignTarget?: InvestorEsignRowTarget | null;
   memberDisplayName?: string;
