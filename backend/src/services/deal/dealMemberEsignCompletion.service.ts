@@ -38,7 +38,10 @@ import { isEsignProviderUnreachableError } from "../esign/esignProviderErrors.js
 import {
   downloadSignFlowInvestorSignedPdfBuffer,
   downloadSignFlowSignedPdfBuffer,
+  getSignFlowDocument,
   getSignFlowDocumentSummary,
+  isSignFlowInvestorNotSignedError,
+  signFlowDocumentInvestorHasSigned,
   signFlowSummaryInvestorHasSigned,
   type SignFlowDocumentSummary,
 } from "../esign/signflow.service.js";
@@ -321,6 +324,11 @@ async function refreshLegacySignFlowInvestorPdfIfNeeded(params: {
   if (!hasPath) return undefined;
 
   try {
+    const doc = await getSignFlowDocument(params.signatureRequestId);
+    if (!signFlowDocumentInvestorHasSigned(doc)) {
+      return undefined;
+    }
+
     const signedRelativePath = await persistSignedPdf({
       dealId: params.dealId,
       rosterId: params.target.id,
@@ -339,6 +347,12 @@ async function refreshLegacySignFlowInvestorPdfIfNeeded(params: {
     );
     return signedRelativePath;
   } catch (err) {
+    if (
+      isEsignProviderUnreachableError(err) ||
+      isSignFlowInvestorNotSignedError(err)
+    ) {
+      return undefined;
+    }
     console.warn("refreshLegacySignFlowInvestorPdfIfNeeded:", err);
     return undefined;
   }
@@ -456,7 +470,7 @@ function workflowTimestampsFromSignFlow(
 ): { viewedAt: string | null; signedAt: string | null } {
   return {
     viewedAt: summary.lastViewedAt?.trim() || null,
-    signedAt: summary.lastSignedAt?.trim() || null,
+    signedAt: summary.investorLastSignedAt?.trim() || null,
   };
 }
 
@@ -506,7 +520,11 @@ async function applyProgressFromSignFlow(
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
       viewedAt: current.viewedAt ?? summary.lastViewedAt ?? completedAt,
-      signedAt: summary.lastSignedAt ?? current.signedAt ?? completedAt,
+      signedAt:
+        summary.investorLastSignedAt ??
+        current.signedAt ??
+        summary.lastSignedAt ??
+        completedAt,
       completedAt,
       signatureRequestId: sigId,
       ...(pdfs.investorPath
@@ -543,12 +561,11 @@ async function applyProgressFromSignFlow(
 
   if (progressViewed || progressSigned || signersSigned) {
     let signedRelativePath: string | undefined;
-    const investorSigned =
-      signFlowSummaryInvestorHasSigned(summary) ||
-      Boolean(existing.signedAt?.trim());
+    const investorSigned = signFlowSummaryInvestorHasSigned(summary);
     if (
       !hasStoredSignedPdf &&
-      (summary.isComplete || signersSigned || progressSigned || investorSigned)
+      investorSigned &&
+      (summary.isComplete || signersSigned || progressSigned)
     ) {
       try {
         signedRelativePath = await persistSignedPdf({
@@ -559,14 +576,21 @@ async function applyProgressFromSignFlow(
           audience: "investor",
         });
       } catch (err) {
-        console.warn("persistSignedPdf (SignFlow, signed, not yet completed):", err);
+        if (!isSignFlowInvestorNotSignedError(err)) {
+          console.warn(
+            "persistSignedPdf (SignFlow, signed, not yet completed):",
+            err,
+          );
+        }
       }
     }
 
     await updateDealInvestorEsignSend(dealId, target, sigId, (current) => ({
       ...current,
       viewedAt: current.viewedAt ?? progressViewed,
-      signedAt: current.signedAt ?? progressSigned,
+      signedAt: investorSigned
+        ? (current.signedAt ?? progressSigned)
+        : (progressSigned ?? null),
       signatureRequestId: sigId,
       ...(signedRelativePath
         ? withInvestorSignedPdfFields(current, signedRelativePath)
@@ -646,14 +670,8 @@ async function ensureSignedPdfStoredForSignedSend(
 
   if (getActiveEsignProvider() === "signflow") {
     try {
-      const summary = await getSignFlowDocumentSummary(signatureRequestId);
-      const investorSigned = signFlowSummaryInvestorHasSigned(summary);
-      if (
-        !summary.isComplete &&
-        !signFlowSignersAllSigned(summary.signers) &&
-        !investorSigned &&
-        !existing.signedAt?.trim()
-      ) {
+      const doc = await getSignFlowDocument(signatureRequestId);
+      if (!signFlowDocumentInvestorHasSigned(doc)) {
         return false;
       }
     } catch (err) {
@@ -682,7 +700,9 @@ async function ensureSignedPdfStoredForSignedSend(
     );
     return true;
   } catch (err) {
-    console.warn("ensureSignedPdfStoredForSignedSend:", err);
+    if (!isSignFlowInvestorNotSignedError(err)) {
+      console.warn("ensureSignedPdfStoredForSignedSend:", err);
+    }
     return false;
   }
 }

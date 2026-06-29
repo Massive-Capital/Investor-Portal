@@ -10,7 +10,6 @@ import { db } from "../../database/db.js";
 import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
 import { getDealEsignDropboxSignPublicConfig } from "./dealEsignDropboxSign.service.js";
 import {
-  buildSignFlowSignerEmbedUrl,
   createSignFlowEmbedSigningSession,
   evaluateSignFlowRecipientSignAccess,
   getSignFlowDocument,
@@ -236,30 +235,36 @@ export async function getDealMyEsignSignSession(params: {
       console.warn("getSignFlowDocument (sign access gate):", err);
     }
 
-    let signUrl = buildSignFlowSignerEmbedUrl(sigId);
     try {
       const session = await createSignFlowEmbedSigningSession({
         documentId: sigId,
         recipientEmail: email,
       });
-      signUrl = session.signUrl;
+      return {
+        ok: true,
+        alreadyCompleted: false,
+        provider: "signflow",
+        signUrl: session.signUrl,
+        clientId: null,
+        testMode: signFlowCfg.testMode,
+        configured: signFlowCfg.configured,
+        signatureRequestId: sigId,
+        embedApiKey: signFlowCfg.embedApiKey,
+        appBaseUrl: signFlowCfg.appBaseUrl,
+        documentId: sigId,
+      };
     } catch (err) {
       console.warn("createSignFlowEmbedSigningSession:", err);
+      const message =
+        err instanceof Error ? err.message : "Could not load SignFlow signing session";
+      return {
+        ok: false,
+        code: "not_pending",
+        message: message.includes("SignFlow")
+          ? message
+          : "Could not open SignFlow signing. Confirm SignFlow is running and try again.",
+      };
     }
-
-    return {
-      ok: true,
-      alreadyCompleted: false,
-      provider: "signflow",
-      signUrl,
-      clientId: null,
-      testMode: signFlowCfg.testMode,
-      configured: signFlowCfg.configured,
-      signatureRequestId: sigId,
-      embedApiKey: signFlowCfg.embedApiKey,
-      appBaseUrl: signFlowCfg.appBaseUrl,
-      documentId: sigId,
-    };
   }
 
   const signatureId = await resolveSignatureIdForSend(send);

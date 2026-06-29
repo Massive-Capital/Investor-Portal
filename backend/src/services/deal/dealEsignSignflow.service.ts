@@ -54,6 +54,13 @@ async function applyTemplateSigningWorkflowToSignFlowDoc(
   );
 }
 
+function normalizeQuestionnaireSignatureFieldLabel(label: string): string {
+  return String(label ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 async function ensureSignFlowQuestionnaireSignatureFields(
   documentId: string,
   includeQuestionnaire: boolean,
@@ -62,18 +69,32 @@ async function ensureSignFlowQuestionnaireSignatureFields(
 
   const doc = await getSignFlowDocument(documentId);
   const existing = doc.fields ?? [];
-  const hasQuestionnaireFields = existing.some(
-    (field) =>
-      Math.max(1, Math.floor(Number(field.page) || 1)) === 1 &&
-      isQuestionnaireSignatureFieldLabel(String(field.label ?? "")),
-  );
-  if (hasQuestionnaireFields) return;
-
   const investorRecipientId = resolveSignFlowInvestorRecipientId(doc);
   const preset = getInvestorQuestionnaireSignatureSignFlowFields(
     investorRecipientId,
     0,
   );
+
+  const existingPage1QuestionnaireLabels = new Set(
+    existing
+      .filter(
+        (field) =>
+          Math.max(1, Math.floor(Number(field.page) || 1)) === 1 &&
+          isQuestionnaireSignatureFieldLabel(String(field.label ?? "")),
+      )
+      .map((field) =>
+        normalizeQuestionnaireSignatureFieldLabel(String(field.label ?? "")),
+      ),
+  );
+
+  const missingPreset = preset.filter(
+    (field) =>
+      !existingPage1QuestionnaireLabels.has(
+        normalizeQuestionnaireSignatureFieldLabel(field.label),
+      ),
+  );
+  if (missingPreset.length === 0) return;
+
   const otherFields = normalizeSignFlowFieldRecipientIds(
     doc,
     existing.filter(
@@ -82,9 +103,21 @@ async function ensureSignFlowQuestionnaireSignatureFields(
         !isQuestionnaireSignatureFieldLabel(String(field.label ?? "")),
     ),
   );
+  const keptPage1QuestionnaireFields = normalizeSignFlowFieldRecipientIds(
+    doc,
+    existing.filter(
+      (field) =>
+        Math.max(1, Math.floor(Number(field.page) || 1)) === 1 &&
+        isQuestionnaireSignatureFieldLabel(String(field.label ?? "")),
+    ),
+  );
 
   await patchSignFlowDocument(documentId, {
-    fields: normalizeSignFlowFieldRecipientIds(doc, [...preset, ...otherFields]),
+    fields: normalizeSignFlowFieldRecipientIds(doc, [
+      ...otherFields,
+      ...keptPage1QuestionnaireFields,
+      ...missingPreset,
+    ]),
   });
 }
 

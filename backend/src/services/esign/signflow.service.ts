@@ -1078,6 +1078,11 @@ export function isSignFlowNotAllSignedError(err: unknown): boolean {
   return message.includes("NOT_ALL_SIGNED");
 }
 
+export function isSignFlowInvestorNotSignedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return message.includes("INVESTOR_NOT_SIGNED");
+}
+
 function signFlowRecipientSigningStatusSigned(recipient: {
   signed?: boolean;
   signingStatus?: string;
@@ -1190,7 +1195,10 @@ export type SignFlowDocumentSummary = {
   isComplete: boolean;
   isDeclined: boolean;
   lastViewedAt: string | null;
+  /** Latest signature from any signer (sponsor or investor). */
   lastSignedAt: string | null;
+  /** Latest signature from an investor-role signer only. */
+  investorLastSignedAt: string | null;
   signers: Array<{
     recipientId: string | null;
     signerName: string | null;
@@ -1268,6 +1276,7 @@ export async function getSignFlowDocumentSummary(
     isDeclined: status === "declined",
     lastViewedAt: null,
     lastSignedAt,
+    investorLastSignedAt: investorSignedAt,
     signers,
   };
 }

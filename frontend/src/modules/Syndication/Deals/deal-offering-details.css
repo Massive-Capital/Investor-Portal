@@ -1223,7 +1223,8 @@ a.deal_offering_add_ic_header.um_btn_primary {
   box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
 }
 
-.deal_offering_announcement_textarea {
+.deal_offering_announcement_textarea,
+.app_shell .deal_offering_announcement_textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 0.55em 0.75em;
@@ -1234,7 +1235,7 @@ a.deal_offering_add_ic_header.um_btn_primary {
   font-style: normal;
   font-size: 0.875rem;
   color: var(--portal-text, #0f172a);
-  resize: none;
+  resize: vertical;
   min-height: 5.5rem;
 }
 

@@ -253,7 +253,8 @@ function drawQuestionnaireSignatureBlock(
 function questionnaireSignFlowFieldType(
   fieldType: QuestionnaireSignatureField["fieldType"],
 ): string {
-  if (fieldType === "date_signed") return "date_signed";
+  // SignFlow embed uses `date` (Dropbox preset fields use `date_signed`).
+  if (fieldType === "date_signed") return "date";
   if (fieldType === "signature") return "signature";
   return "text";
 }

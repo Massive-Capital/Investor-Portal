@@ -195,12 +195,14 @@ function signFlowFieldsSamePlacement(a: SignFlowField, b: SignFlowField): boolea
   const typeB = String(b.type ?? "")
     .trim()
     .toLowerCase();
-  if (typeA === typeB) return true;
 
   const types = new Set([typeA, typeB]);
+  // Signature + date sit on the same row — never treat as duplicate placements.
   if (types.has("signature") && (types.has("date_signed") || types.has("date"))) {
-    return true;
+    return false;
   }
+
+  if (typeA === typeB) return true;
 
   return false;
 }

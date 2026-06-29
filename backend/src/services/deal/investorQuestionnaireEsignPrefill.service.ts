@@ -316,14 +316,6 @@ export function applyQuestionnairePrefillToSignFlowFields({
   };
 
   const formatted = buildFormattedAnswerMap(config, answers);
-  if (
-    !formatted.size &&
-    !ctx.memberDisplayName &&
-    !ctx.memberEmail &&
-    !ctx.investmentAmount
-  ) {
-    return fields;
-  }
 
   return fields.map((field) => {
     if (!signFlowFieldPrefillType(field.type)) return field;

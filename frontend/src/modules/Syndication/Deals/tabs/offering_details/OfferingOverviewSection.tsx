@@ -27,7 +27,10 @@ import {
 } from "../../types/deal-asset.types"
 import { DEAL_FORM_TYPE_OPTIONS } from "../../types/deals.types"
 import { SEC_TYPE_OPTIONS } from "../../constants/sec-type-options"
-import { isLpInvestorClass } from "../../utils/investorClassOverviewFields"
+import {
+  computeInvestorClassPricePerUnitFromForm,
+  isLpInvestorClass,
+} from "../../utils/investorClassOverviewFields"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import {
   blurFormatMoneyInput,
@@ -191,7 +194,15 @@ function mergeOverviewDraftWithClasses(
       row.minimumInvestment ?? "",
     ),
     classNumberOfUnits: blurFormatNumberOfUnitsInput(row.numberOfUnits ?? ""),
-    classPricePerUnit: blurFormatMoneyInput(row.pricePerUnit ?? ""),
+    classPricePerUnit: isLpInvestorClass(row)
+      ? computeInvestorClassPricePerUnitFromForm({
+          offeringSize: blurFormatMoneyInput(row.offeringSize ?? ""),
+          raiseAmountDistributions: blurFormatMoneyInput(
+            row.raiseAmountDistributions ?? "",
+          ),
+          numberOfUnits: blurFormatNumberOfUnitsInput(row.numberOfUnits ?? ""),
+        })
+      : blurFormatMoneyInput(row.pricePerUnit ?? ""),
     classInvestmentType: investmentTypeFromClassRow(row),
   }
 }
@@ -204,6 +215,27 @@ function isMoneyFieldEmpty(raw: string): boolean {
   return String(raw ?? "")
     .replace(/[$,\s]/g, "")
     .trim() === ""
+}
+
+function overviewDraftPricePerUnit(draft: OverviewDraft): string {
+  return computeInvestorClassPricePerUnitFromForm({
+    offeringSize: draft.classOfferingSize,
+    raiseAmountDistributions: "",
+    numberOfUnits: draft.classNumberOfUnits,
+  })
+}
+
+function withOverviewAutoPricePerUnit(
+  patch: Partial<OverviewDraft>,
+  current: OverviewDraft,
+  isLpClass: boolean,
+): OverviewDraft {
+  const merged = { ...current, ...patch }
+  if (!isLpClass) return merged
+  return {
+    ...merged,
+    classPricePerUnit: overviewDraftPricePerUnit(merged),
+  }
 }
 
 function draftEqual(a: OverviewDraft, b: OverviewDraft): boolean {
@@ -607,7 +639,9 @@ export function OfferingOverviewSection({
         form.offeringSize = draft.classOfferingSize
         form.minimumInvestment = draft.classMinimumInvestment
         form.numberOfUnits = draft.classNumberOfUnits
-        form.pricePerUnit = draft.classPricePerUnit
+        form.pricePerUnit = isLpInvestorClass(row)
+          ? overviewDraftPricePerUnit(draft)
+          : draft.classPricePerUnit
         form.advanced.investmentType = draft.classInvestmentType.trim() || "equity"
         try {
           await updateDealInvestorClass(
@@ -1164,9 +1198,19 @@ export function OfferingOverviewSection({
                             classNumberOfUnits: blurFormatNumberOfUnitsInput(
                               row.numberOfUnits ?? "",
                             ),
-                            classPricePerUnit: blurFormatMoneyInput(
-                              row.pricePerUnit ?? "",
-                            ),
+                            classPricePerUnit: isLpInvestorClass(row)
+                              ? computeInvestorClassPricePerUnitFromForm({
+                                  offeringSize: blurFormatMoneyInput(
+                                    row.offeringSize ?? "",
+                                  ),
+                                  raiseAmountDistributions: blurFormatMoneyInput(
+                                    row.raiseAmountDistributions ?? "",
+                                  ),
+                                  numberOfUnits: blurFormatNumberOfUnitsInput(
+                                    row.numberOfUnits ?? "",
+                                  ),
+                                })
+                              : blurFormatMoneyInput(row.pricePerUnit ?? ""),
                             classInvestmentType:
                               investmentTypeFromClassRow(row),
                           }
@@ -1258,16 +1302,28 @@ export function OfferingOverviewSection({
                   }
                   onChange={(e) => {
                     setClassOfferingSizeError(undefined)
-                    setDraft((d) => ({
-                      ...d,
-                      classOfferingSize: formatCurrencyUsdTypeInput(e.target.value),
-                    }))
+                    setDraft((d) =>
+                      withOverviewAutoPricePerUnit(
+                        {
+                          classOfferingSize: formatCurrencyUsdTypeInput(
+                            e.target.value,
+                          ),
+                        },
+                        d,
+                        isSelectedLpClass,
+                      ),
+                    )
                   }}
                   onBlur={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      classOfferingSize: blurFormatMoneyInput(e.target.value),
-                    }))
+                    setDraft((d) =>
+                      withOverviewAutoPricePerUnit(
+                        {
+                          classOfferingSize: blurFormatMoneyInput(e.target.value),
+                        },
+                        d,
+                        isSelectedLpClass,
+                      ),
+                    )
                   }
                   autoComplete="off"
                   aria-label="Offering size"
@@ -1304,20 +1360,30 @@ export function OfferingOverviewSection({
                     aria-disabled={classFieldsDisabled}
                     value={draft.classNumberOfUnits}
                     onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        classNumberOfUnits: formatNumberOfUnitsTypingInput(
-                          e.target.value,
+                      setDraft((d) =>
+                        withOverviewAutoPricePerUnit(
+                          {
+                            classNumberOfUnits: formatNumberOfUnitsTypingInput(
+                              e.target.value,
+                            ),
+                          },
+                          d,
+                          isSelectedLpClass,
                         ),
-                      }))
+                      )
                     }
                     onBlur={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        classNumberOfUnits: blurFormatNumberOfUnitsInput(
-                          e.target.value,
+                      setDraft((d) =>
+                        withOverviewAutoPricePerUnit(
+                          {
+                            classNumberOfUnits: blurFormatNumberOfUnitsInput(
+                              e.target.value,
+                            ),
+                          },
+                          d,
+                          isSelectedLpClass,
                         ),
-                      }))
+                      )
                     }
                     autoComplete="off"
                     aria-label="Number of units"
@@ -1345,22 +1411,11 @@ export function OfferingOverviewSection({
                     disabled={classFieldsDisabled}
                     aria-disabled={classFieldsDisabled}
                     value={draft.classPricePerUnit}
-                    onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        classPricePerUnit: formatCurrencyUsdTypeInput(
-                          e.target.value,
-                        ),
-                      }))
-                    }
-                    onBlur={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        classPricePerUnit: blurFormatMoneyInput(e.target.value),
-                      }))
-                    }
+                    readOnly
+                    aria-readonly
+                    tabIndex={-1}
                     autoComplete="off"
-                    aria-label="Price per unit"
+                    aria-label="Price per unit (calculated from offering size and number of units)"
                   />
                 </div>
               </div>

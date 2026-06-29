@@ -77,6 +77,7 @@ import {
 } from "../../utils/offeringOverviewForm"
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import {
+  computeInvestorClassPricePerUnitFromForm,
   hasInvestorClassNumberOfUnits,
   hasInvestorClassPricePerUnit,
   isLpInvestorClass,
@@ -2383,7 +2384,7 @@ function formatMoneyFieldForSave(raw: string): string {
 function formatInvestorClassMoneyFields(
   form: DealInvestorClassFormValues,
 ): DealInvestorClassFormValues {
-  return {
+  const formatted = {
     ...form,
     offeringSize: formatMoneyFieldForSave(form.offeringSize),
     raiseAmountDistributions: formatMoneyFieldForSave(
@@ -2400,6 +2401,13 @@ function formatInvestorClassMoneyFields(
       ),
     },
   }
+  if (isLpInvestorClass(form)) {
+    return {
+      ...formatted,
+      pricePerUnit: computeInvestorClassPricePerUnitFromForm(formatted),
+    }
+  }
+  return formatted
 }
 
 function billingRaiseQuotaForSave(form: DealInvestorClassFormValues): string {
@@ -2666,7 +2674,7 @@ function emptyForm(): DealInvestorClassFormValues {
 }
 
 function rowToForm(row: DealInvestorClass): DealInvestorClassFormValues {
-  return {
+  const form: DealInvestorClassFormValues = {
     name: row.name,
     subscriptionType: row.subscriptionType,
     entityName: row.entityName,
@@ -2688,6 +2696,10 @@ function rowToForm(row: DealInvestorClass): DealInvestorClassFormValues {
       ),
     },
   }
+  if (isLpInvestorClass(row)) {
+    form.pricePerUnit = computeInvestorClassPricePerUnitFromForm(form)
+  }
+  return form
 }
 
 function InvestorClassModalFormBody({
@@ -2751,6 +2763,20 @@ function InvestorClassModalFormBody({
 
   function patchAdvanced(p: Partial<InvestorClassAdvancedForm>) {
     setForm({ advanced: { ...form.advanced, ...p } })
+  }
+
+  function setFormWithAutoPricePerUnit(
+    patch: Partial<DealInvestorClassFormValues>,
+  ) {
+    const merged = { ...form, ...patch }
+    if (!isLpLayout) {
+      setForm(patch)
+      return
+    }
+    setForm({
+      ...patch,
+      pricePerUnit: computeInvestorClassPricePerUnitFromForm(merged),
+    })
   }
 
   function addLpHurdle() {
@@ -3222,14 +3248,14 @@ function InvestorClassModalFormBody({
               onChange={(e) => {
                 onClearError?.()
                 const offeringSize = formatCurrencyUsdTypeInput(e.target.value)
-                setForm({
+                setFormWithAutoPricePerUnit({
                   offeringSize,
                   raiseAmountDistributions: offeringSize,
                 })
               }}
               onBlur={(e) => {
                 const offeringSize = blurFormatMoneyInput(e.target.value)
-                setForm({
+                setFormWithAutoPricePerUnit({
                   offeringSize,
                   raiseAmountDistributions: offeringSize,
                 })
@@ -3272,14 +3298,14 @@ function InvestorClassModalFormBody({
               aria-invalid={Boolean(fieldErrors?.raiseDistributions) || undefined}
               onChange={(e) => {
                 onClearError?.()
-                setForm({
+                setFormWithAutoPricePerUnit({
                   raiseAmountDistributions: formatCurrencyUsdTypeInput(
                     e.target.value,
                   ),
                 })
               }}
               onBlur={(e) =>
-                setForm({
+                setFormWithAutoPricePerUnit({
                   raiseAmountDistributions: blurFormatMoneyInput(
                     e.target.value,
                   ),
@@ -3960,12 +3986,12 @@ function InvestorClassModalFormBody({
                     disabled={disabled}
                     aria-invalid={Boolean(fieldErrors?.numberOfUnits) || undefined}
                     onChange={(e) =>
-                      setForm({
+                      setFormWithAutoPricePerUnit({
                         numberOfUnits: formatNumberOfUnitsTypingInput(e.target.value),
                       })
                     }
                     onBlur={(e) =>
-                      setForm({
+                      setFormWithAutoPricePerUnit({
                         numberOfUnits: blurFormatNumberOfUnitsInput(e.target.value),
                       })
                     }
@@ -3984,7 +4010,10 @@ function InvestorClassModalFormBody({
                       <InfoIconPanel
                         ariaLabel="More information: Price per unit"
                         infoContent={
-                          <p>Nominal price per unit for this class.</p>
+                          <p>
+                            Automatically calculated as raise amount ÷ number
+                            of units.
+                          </p>
                         }
                       />
                     </span>
@@ -3996,17 +4025,10 @@ function InvestorClassModalFormBody({
                     inputMode="decimal"
                     placeholder="$1,000"
                     value={form.pricePerUnit}
+                    readOnly
                     disabled={disabled}
-                    onChange={(e) =>
-                      setForm({
-                        pricePerUnit: formatCurrencyUsdTypeInput(e.target.value),
-                      })
-                    }
-                    onBlur={(e) =>
-                      setForm({
-                        pricePerUnit: blurFormatMoneyInput(e.target.value),
-                      })
-                    }
+                    aria-readonly
+                    tabIndex={-1}
                   />
                   {/* Manage unit price over time — not wired yet
                   <div className="deal_inv_ic_price_action_row">
@@ -4192,8 +4214,16 @@ function ReadOnlyInvestorClassCard({
   const panelId = `deal-inv-class-panel-${row.id}`
   const showUnits =
     isLpInvestorClass(row) && hasInvestorClassNumberOfUnits(row.numberOfUnits)
+  const pricePerUnitDisplay = isLpInvestorClass(row)
+    ? computeInvestorClassPricePerUnitFromForm({
+        offeringSize: row.offeringSize,
+        raiseAmountDistributions: row.raiseAmountDistributions,
+        numberOfUnits: row.numberOfUnits,
+      })
+    : row.pricePerUnit
   const showPrice =
-    isLpInvestorClass(row) && hasInvestorClassPricePerUnit(row.pricePerUnit)
+    isLpInvestorClass(row) &&
+    hasInvestorClassPricePerUnit(pricePerUnitDisplay)
   const maxInvestmentDisplay = maximumInvestmentFromAdvancedJson(
     row.advancedOptionsJson,
   )
@@ -4324,7 +4354,7 @@ function ReadOnlyInvestorClassCard({
             <div className="deal_inv_class_detail_item">
               <dt>Price / unit</dt>
               <dd>
-                <CardCompactAmount amount={row.pricePerUnit} />
+                <CardCompactAmount amount={pricePerUnitDisplay} />
               </dd>
             </div>
           ) : null}
