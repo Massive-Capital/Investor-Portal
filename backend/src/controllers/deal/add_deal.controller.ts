@@ -1360,7 +1360,8 @@ export async function postDeal(req: Request, res: Response): Promise<void> {
     zipCode: bodyString(b.zip_code ?? b.zipCode),
   };
 
-  const fileList = optionalDealMultipartFiles(req);
+  const fileList = optionalDealMultipartFiles(req, res);
+  if (fileList == null) return;
 
   try {
     const [actor] = await db
@@ -1440,7 +1441,8 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
     zipCode: bodyString(b.zip_code ?? b.zipCode),
   };
 
-  const fileList = optionalDealMultipartFiles(req);
+  const fileList = optionalDealMultipartFiles(req, res);
+  if (fileList == null) return;
 
   try {
     const scope = await resolveDealViewerScope(

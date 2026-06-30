@@ -28,6 +28,10 @@ export type SigninFailure = {
 
 export type SigninResult = SigninSuccess | SigninFailure;
 
+/** Generic credential failure — do not reveal whether the email exists. */
+export const INVALID_SIGNIN_CREDENTIALS_MESSAGE =
+  "Invalid email or password";
+
 /**
  * Sign-in by email only (username lookup disabled).
  */
@@ -60,12 +64,12 @@ export async function signInWithPassword(
       .limit(1);
     const row = rows[0];
     if (!row) {
-      return { ok: false, message: "User not found" };
+      return { ok: false, message: INVALID_SIGNIN_CREDENTIALS_MESSAGE };
     }
     const user_table = row.user;
 
     if (!user_table.passwordHash || user_table.passwordHash.trim() === "") {
-      return { ok: false, message: "User not found" };
+      return { ok: false, message: INVALID_SIGNIN_CREDENTIALS_MESSAGE };
     }
 
     const user = await db
@@ -75,7 +79,7 @@ export async function signInWithPassword(
       .limit(1);
     const usertable = user[0];
     if (!usertable) {
-      return { ok: false, message: "User not found" };
+      return { ok: false, message: INVALID_SIGNIN_CREDENTIALS_MESSAGE };
     }
 
     const passwordMatch = await bcrypt.compare(
@@ -83,7 +87,7 @@ export async function signInWithPassword(
       user_table.passwordHash,
     );
     if (!passwordMatch) {
-      return { ok: false, message: "Password is mismatched" };
+      return { ok: false, message: INVALID_SIGNIN_CREDENTIALS_MESSAGE };
     }
 
     const signupCompleted = String(usertable.userSignupCompleted ?? "")

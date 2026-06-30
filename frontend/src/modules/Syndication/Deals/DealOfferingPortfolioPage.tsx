@@ -808,6 +808,7 @@ export function DealOfferingPortfolioPage() {
           publicOfferingSignInState={publicOfferingSignInState}
           onPersistSharedOfferingAuthIntent={persistSharedOfferingAuthIntent}
           galleryUsesPersistedSourcesOnly={isPublicOfferingRoute}
+          publicPreviewUploadToken={previewQueryValue}
         />
 
         {!isPublicOfferingRoute && shareModalOpen

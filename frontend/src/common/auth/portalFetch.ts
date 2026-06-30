@@ -1,9 +1,9 @@
 import { decodeJwtPayload } from "../../modules/auth/utils/decode-jwt-payload"
 import {
   getStoredAccessToken,
-  getStoredRefreshToken,
   refreshAuthTokens,
 } from "./authTokensApi"
+import { getApiV1Base } from "../utils/apiBaseUrl"
 import { clearLastSessionActivity, markIdleSessionTimeoutNotice } from "./idleSession"
 import { portalAuthHeaders } from "./portalAuthHeaders"
 import { clearPortalSessionStorage } from "./sessionKeys"
@@ -34,7 +34,7 @@ function isAuthExemptUrl(url: string): boolean {
 
 /** Single-flight refresh so parallel 401s share one token exchange. */
 export async function tryRefreshAccessTokenOnce(): Promise<boolean> {
-  if (!getStoredRefreshToken()) return false
+  if (!getApiV1Base()) return false
   if (!refreshInFlight) {
     refreshInFlight = refreshAuthTokens().finally(() => {
       refreshInFlight = null

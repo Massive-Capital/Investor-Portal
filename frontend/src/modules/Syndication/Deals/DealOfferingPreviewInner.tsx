@@ -101,6 +101,8 @@ export type DealOfferingPreviewInnerProps = {
    * When false, the same sources as Offering details → Gallery are used (local asset previews in this browser).
    */
   galleryUsesPersistedSourcesOnly?: boolean
+  /** Encrypted `?preview=` token for anonymous `/uploads/` gallery access. */
+  publicPreviewUploadToken?: string | null
   /** When false, the bento Documents block is omitted (e.g. sectioned list shown elsewhere). */
   showDocumentsSection?: boolean
   /** Replaces the default bento Documents block (e.g. LP investing sectioned list). */
@@ -123,6 +125,7 @@ export function DealOfferingPreviewInner({
   publicOfferingSignInState,
   onPersistSharedOfferingAuthIntent,
   galleryUsesPersistedSourcesOnly = false,
+  publicPreviewUploadToken = null,
   offeringStatusRules: offeringStatusRulesProp,
   showDocumentsSection = true,
   documentsSection,
@@ -221,8 +224,14 @@ export function DealOfferingPreviewInner({
     () =>
       orderedGalleryUrlsForOffering(detail, {
         persistedOnly: galleryUsesPersistedSourcesOnly,
+        previewToken: isPublicOfferingRoute ? publicPreviewUploadToken : null,
       }),
-    [detail, galleryUsesPersistedSourcesOnly],
+    [
+      detail,
+      galleryUsesPersistedSourcesOnly,
+      isPublicOfferingRoute,
+      publicPreviewUploadToken,
+    ],
   )
   const investorPreviewVisibility = useMemo(
     () =>
