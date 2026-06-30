@@ -35,7 +35,7 @@ import {
   viewerHasNonCoSponsorDealMemberRole,
 } from "./dealMemberScope.service.js";
 import { assignCreatorAsLeadSponsorOnDeal } from "./dealMember.service.js";
-import { listLpInvestorDealIdsForUserEmail } from "../investing/lpInvestorAccess.service.js";
+import { listLpInvestorDealIdsForUserEmail, listInvestorSponsorScopedDealIdsForUser } from "../investing/lpInvestorAccess.service.js";
 
 export type { DealViewerScope } from "./dealForm.service.js";
 
@@ -89,6 +89,12 @@ export async function resolveDealViewerScope(
     !isPlatformAdminRole(role) &&
     !isCompanyAdminRole(role);
 
+  let lpInvestorEmailScopedDealIds: string[] | null = null;
+  if (applyLpEmailScope) {
+    lpInvestorEmailScopedDealIds =
+      await listInvestorSponsorScopedDealIdsForUser(emailNorm);
+  }
+
   let coSponsorDashboardDealIds: string[] | null = null;
   if (
     !applyLpEmailScope &&
@@ -111,7 +117,7 @@ export async function resolveDealViewerScope(
     isPlatformAdmin,
     seesAllDeals,
     assignedParticipationOnly,
-    lpInvestorEmailScopedDealIds: applyLpEmailScope ? lpDealIds : null,
+    lpInvestorEmailScopedDealIds,
     coSponsorDashboardDealIds,
   };
 }

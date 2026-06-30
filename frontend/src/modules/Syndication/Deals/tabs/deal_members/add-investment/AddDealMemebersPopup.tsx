@@ -90,8 +90,11 @@ import "./add_deal_modal.css"
 const INVESTOR_CLASS_UNAVAILABLE_HINT =
   "Please complete the Classes section to assign an investor class."
 
-const INVITATION_EMAILS_UNAVAILABLE_HINT =
+const INVITATION_EMAILS_UNAVAILABLE_HINT_MEMBER =
   "Invitation emails are unavailable while the deal is in draft or required deal details are incomplete. Finalize the deal before sending invitations. You can still choose No below."
+
+const INVITATION_EMAILS_UNAVAILABLE_HINT_INVESTOR =
+  "Invitation emails are unavailable while required deal details are incomplete. Complete the deal details before sending invitations. You can still choose No below."
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
@@ -225,8 +228,8 @@ interface AddInvestmentModalProps {
     detail?: { createdInvestment?: boolean },
   ) => void | Promise<void>
   /**
-   * While the deal is in draft / incomplete, do not send invitation emails
-   * (save/autosave forces `send_invitation_mail` off).
+   * When true, do not send invitation emails (save/autosave forces
+   * `send_invitation_mail` off). Draft deals may still invite investors.
    */
   dealBlocksInvitationEmails?: boolean
 }
@@ -1554,12 +1557,21 @@ export function AddInvestmentModal({
                           <InfoIconPanel
                             ariaLabel="More information: Invitation emails"
                             infoContent={
-                              <>
-                                Invitation emails are unavailable while the deal is
-                                in draft or required deal details are incomplete.
-                                Finalize the deal before sending invitations. You
-                                can still choose <strong>No</strong> below.
-                              </>
+                              isInvestorEntry ? (
+                                <>
+                                  Invitation emails are unavailable while required
+                                  deal details are incomplete. Complete the deal
+                                  details before sending invitations. You can still
+                                  choose <strong>No</strong> below.
+                                </>
+                              ) : (
+                                <>
+                                  Invitation emails are unavailable while the deal is
+                                  in draft or required deal details are incomplete.
+                                  Finalize the deal before sending invitations. You
+                                  can still choose <strong>No</strong> below.
+                                </>
+                              )
                             }
                           />
                         </span>
@@ -1567,7 +1579,9 @@ export function AddInvestmentModal({
                     </div>
                     {dealBlocksInvitationEmails ? (
                       <p id="add-inv-send-invite-hint" className="visually_hidden">
-                        {INVITATION_EMAILS_UNAVAILABLE_HINT}
+                        {isInvestorEntry
+                          ? INVITATION_EMAILS_UNAVAILABLE_HINT_INVESTOR
+                          : INVITATION_EMAILS_UNAVAILABLE_HINT_MEMBER}
                       </p>
                     ) : null}
                     <div className="portal_yesno_field_block">

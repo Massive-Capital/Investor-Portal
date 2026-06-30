@@ -443,8 +443,8 @@ export type DealViewerScope = {
   /** Invited deal members (`deal_participant`): only roster-linked deals. */
   assignedParticipationOnly: boolean;
   /**
-   * When set, user may only see these deals (`deal_lp_investor` email + LP Investor role).
-   * Platform/company admins are not scoped here.
+   * When set, user may only see deals tied to sponsor(s) who invited or added them
+   * (full sponsor roster — not organization-wide). Platform/company admins excluded upstream.
    */
   lpInvestorEmailScopedDealIds: string[] | null;
   /**

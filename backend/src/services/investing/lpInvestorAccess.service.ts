@@ -218,9 +218,194 @@ export async function listDealIdsFromSponsorDealMemberForEmail(
   ];
 }
 
+const SPONSOR_DEAL_MEMBER_ROLES_SQL = `'lead sponsor', 'admin sponsor', 'co-sponsor', 'co sponsor'`;
+
+/**
+ * Portal user ids of sponsors who invited or linked this investor — from
+ * `deal_lp_investor.added_by`, `deal_member.added_by`, or `contact.created_by`
+ * (first-time platform invite), where the user is a sponsor on a deal roster.
+ */
+async function listSponsorUserIdsForInvestorEmail(
+  emailNorm: string,
+): Promise<string[]> {
+  const e = String(emailNorm ?? "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return [];
+  const res = await pool.query<{ sponsor_user_id: string }>(
+    `SELECT DISTINCT adder_u.id::text AS sponsor_user_id
+     FROM deal_lp_investor lp
+     INNER JOIN users viewer_u ON lower(trim(viewer_u.email)) = $1
+     INNER JOIN users adder_u ON adder_u.id = lp.added_by
+     INNER JOIN deal_member dm_sponsor ON
+       dm_sponsor.deal_id = lp.deal_id
+       AND lower(trim(dm_sponsor.deal_member_role)) IN (
+         ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
+       )
+       AND (
+         trim(dm_sponsor.contact_member_id) = adder_u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm_sponsor.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(adder_u.email))
+         )
+       )
+     WHERE lp.added_by IS NOT NULL
+       AND (
+         trim(lp.contact_member_id) = viewer_u.id::text
+         OR (
+           nullif(trim(lp.email), '') IS NOT NULL
+           AND lower(trim(lp.email)) = $1
+         )
+         OR EXISTS (
+           SELECT 1 FROM contact c2
+           WHERE c2.id::text = trim(both from lp.contact_member_id)
+             AND lower(trim(c2.email)) = $1
+         )
+       )
+
+     UNION
+
+     SELECT DISTINCT adder_u.id::text AS sponsor_user_id
+     FROM deal_member dm_investor
+     INNER JOIN users viewer_u ON lower(trim(viewer_u.email)) = $1
+     INNER JOIN users adder_u ON adder_u.id = dm_investor.added_by
+     INNER JOIN deal_member dm_sponsor ON
+       dm_sponsor.deal_id = dm_investor.deal_id
+       AND lower(trim(dm_sponsor.deal_member_role)) IN (
+         ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
+       )
+       AND (
+         trim(dm_sponsor.contact_member_id) = adder_u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm_sponsor.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(adder_u.email))
+         )
+       )
+     WHERE dm_investor.added_by IS NOT NULL
+       AND (
+         trim(dm_investor.contact_member_id) = viewer_u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c2
+           WHERE c2.id::text = trim(both from dm_investor.contact_member_id)
+             AND lower(trim(c2.email)) = $1
+         )
+       )
+
+     UNION
+
+     SELECT DISTINCT creator_u.id::text AS sponsor_user_id
+     FROM contact c_inv
+     INNER JOIN users viewer_u ON lower(trim(viewer_u.email)) = $1
+     INNER JOIN users creator_u ON creator_u.id = c_inv.created_by
+     WHERE lower(trim(c_inv.email)) = $1
+       AND EXISTS (
+         SELECT 1 FROM deal_member dm
+         WHERE lower(trim(dm.deal_member_role)) IN (
+           ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
+         )
+         AND (
+           trim(dm.contact_member_id) = creator_u.id::text
+           OR EXISTS (
+             SELECT 1 FROM contact c_s
+             WHERE c_s.id::text = trim(both from dm.contact_member_id)
+               AND lower(trim(c_s.email)) = lower(trim(creator_u.email))
+           )
+         )
+       )`,
+    [e],
+  );
+  return [
+    ...new Set(
+      res.rows
+        .map((r) => String(r.sponsor_user_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** All deal ids where any of these portal users is Lead / Admin / Co-sponsor on the roster. */
+async function listDealIdsWhereSponsorUsersOnRoster(
+  sponsorUserIds: string[],
+): Promise<string[]> {
+  const sponsors = [
+    ...new Set(sponsorUserIds.map((id) => String(id ?? "").trim()).filter(Boolean)),
+  ];
+  if (sponsors.length === 0) return [];
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT dm.deal_id::text AS deal_id
+     FROM deal_member dm
+     WHERE lower(trim(dm.deal_member_role)) IN (
+       ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
+     )
+     AND (
+       trim(dm.contact_member_id) = ANY($1::text[])
+       OR EXISTS (
+         SELECT 1 FROM users su
+         INNER JOIN contact c ON c.id::text = trim(both from dm.contact_member_id)
+         WHERE su.id::text = ANY($1::text[])
+           AND lower(trim(c.email)) = lower(trim(su.email))
+       )
+     )`,
+    [sponsors],
+  );
+  return [
+    ...new Set(
+      res.rows.map((r) => String(r.deal_id ?? "").trim()).filter(Boolean),
+    ),
+  ];
+}
+
+/**
+ * Every deal an invited LP may see: all roster deals for sponsor(s) who added or
+ * invited them — not organization-wide and not limited to deals they were named on.
+ */
+export async function listInvestorSponsorScopedDealIdsForUser(
+  emailNorm: string,
+): Promise<string[]> {
+  const e = String(emailNorm ?? "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return [];
+  const sponsorUserIds = await listSponsorUserIdsForInvestorEmail(e);
+  if (sponsorUserIds.length === 0) {
+    return listDealIdsFromLpInvestorTableForEmail(e);
+  }
+  return listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
+}
+
+/** Opportunity deal ids where at least one linked sponsor is on the deal roster. */
+async function filterDealIdsToThoseWithSponsorUsersOnRoster(
+  dealIds: string[],
+  sponsorUserIds: string[],
+): Promise<string[]> {
+  const ids = [...new Set(dealIds.map((id) => String(id ?? "").trim()).filter(Boolean))];
+  if (ids.length === 0) return [];
+  const sponsorScoped = await listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
+  const allowed = new Set(sponsorScoped);
+  return ids.filter((id) => allowed.has(id));
+}
+
 /**
  * Investor dashboard “Opportunities” — coming soon (preview) and open-for-investment
- * offerings visible on the portal (not draft / closed / past).
+ * offerings where a sponsor linked to this investor is on the deal roster.
+ */
+export async function listInvestorVisibleComingSoonDealIdsForUser(
+  emailNorm: string,
+): Promise<string[]> {
+  const e = String(emailNorm ?? "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return [];
+  const [allOpportunityIds, sponsorUserIds] = await Promise.all([
+    listInvestorVisibleComingSoonDealIds(),
+    listSponsorUserIdsForInvestorEmail(e),
+  ]);
+  if (sponsorUserIds.length === 0) return [];
+  return filterDealIdsToThoseWithSponsorUsersOnRoster(
+    allOpportunityIds,
+    sponsorUserIds,
+  );
+}
+
+/**
+ * All investor-dashboard opportunity offerings (not draft / closed / past).
+ * Prefer {@link listInvestorVisibleComingSoonDealIdsForUser} for LP viewers.
  */
 export async function listInvestorVisibleComingSoonDealIds(): Promise<string[]> {
   const rows = await db
@@ -250,7 +435,7 @@ export async function listInvestorVisibleComingSoonDealIds(): Promise<string[]> 
 
 /**
  * Investing participant deals excluding dashboard “Opportunities” (coming soon /
- * open for investment) that are visible to any signed-in investor.
+ * open for investment) scoped to the investor’s linked sponsors.
  */
 export async function listDirectInvestingParticipantDealIdsForUser(params: {
   userId: string;
@@ -301,9 +486,8 @@ export async function isDealInInvestingParticipantListForUser(
 }
 
 /**
- * Investing → Deals tab: deals the viewer participates in as LP, investor, roster
- * assignee, or sponsor (Lead / Admin / Co-sponsor on `deal_member`), plus visible
- * dashboard opportunity offerings (coming soon + open for investment).
+ * Investing dashboard + `/investing/deals`: direct LP participation **plus every deal**
+ * on the roster of sponsor(s) who invited or added this investor (not org-wide).
  */
 export async function listInvestingParticipantDealIdsForUser(params: {
   userId: string;
@@ -313,12 +497,12 @@ export async function listInvestingParticipantDealIdsForUser(params: {
   const userId = String(params.userId ?? "").trim();
   if (!emailNorm || !userId) return [];
 
-  const [direct, comingSoon] = await Promise.all([
+  const [direct, sponsorScoped] = await Promise.all([
     listDirectInvestingParticipantDealIdsForUser({ userId, emailNorm }),
-    listInvestorVisibleComingSoonDealIds(),
+    listInvestorSponsorScopedDealIdsForUser(emailNorm),
   ]);
 
-  return [...new Set([...direct, ...comingSoon])];
+  return [...new Set([...direct, ...sponsorScoped])];
 }
 
 /**
@@ -372,8 +556,8 @@ export async function resolveLpInvestorSessionFlags(emailNorm: string): Promise<
   lp_investor_deal_ids: string[];
   lp_investor_role_display: string | null;
 }> {
-  const dealIds = await listLpInvestorDealIdsForUserEmail(emailNorm);
-  if (dealIds.length === 0) {
+  const lpRows = await listLpInvestorDealIdsForUserEmail(emailNorm);
+  if (lpRows.length === 0) {
     return {
       lp_investor_nav: false,
       lp_investor_deal_ids: [],
@@ -381,6 +565,7 @@ export async function resolveLpInvestorSessionFlags(emailNorm: string): Promise<
     };
   }
 
+  const dealIds = await listInvestorSponsorScopedDealIdsForUser(emailNorm);
   const lp_investor_role_display = "LP Investor";
 
   return {

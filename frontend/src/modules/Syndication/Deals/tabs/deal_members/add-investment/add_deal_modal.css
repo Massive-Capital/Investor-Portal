@@ -489,7 +489,8 @@
 /* Invalid field — Add contact & other forms sharing this modal shell */
 .deals_add_inv_modal_panel .um_field input.um_field_input_invalid,
 .deals_add_inv_modal_panel .um_field select.um_field_input_invalid,
-.deals_add_inv_modal_panel .um_field textarea.um_field_input_invalid {
+.deals_add_inv_modal_panel .um_field textarea.um_field_input_invalid,
+.deals_add_inv_modal_panel .portal_dropdown_select_trigger_invalid {
   border-color: #dc2626;
 }
 

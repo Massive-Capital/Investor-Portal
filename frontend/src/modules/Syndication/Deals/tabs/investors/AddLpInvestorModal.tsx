@@ -24,6 +24,10 @@ import {
   type DropdownSelectSection,
 } from "../../../../../common/components/dropdown-select"
 import { toast } from "../../../../../common/components/Toast"
+import {
+  lpInvestorValidationPreferSelector,
+  presentFormValidationError,
+} from "../../../../../common/utils/formValidationFocus"
 import { AddContactPanel } from "../../../contacts/components/AddContactPanel"
 import { createContact, fetchContacts } from "../../../contacts/api/contactsApi"
 import type { ContactRow } from "../../../contacts/types/contact.types"
@@ -64,13 +68,76 @@ const INVESTOR_CLASS_UNAVAILABLE_HINT =
   "Please complete the Classes section to assign an investor class."
 
 const INVITATION_EMAILS_UNAVAILABLE_HINT =
-  "Invitation emails are unavailable while the deal is in draft or required deal details are incomplete. Finalize the deal before sending invitations. You can still choose No below."
+  "Invitation emails are unavailable while required deal details are incomplete. Complete the deal details before sending invitations. You can still choose No below."
 
 const PREFIX_CONTACT = "contact:"
 const PREFIX_USER = "user:"
 
 const DROPDOWN_TRIGGER_PILL =
   "um_field_select deals_add_inv_field_control deals_add_inv_field_pill"
+
+type LpInvestorFieldErrors = {
+  contactId?: string
+  profileId?: string
+  investorClass?: string
+}
+
+function RequiredMark() {
+  return (
+    <span className="contacts_required" aria-hidden>
+      {" "}
+      *
+    </span>
+  )
+}
+
+function firstLpInvestorFieldErrorMessage(
+  errors: LpInvestorFieldErrors,
+): string {
+  return (
+    errors.contactId ??
+    errors.investorClass ??
+    errors.profileId ??
+    ""
+  )
+}
+
+function validateLpInvestorForm(input: {
+  contactId: string
+  profileId: string
+  investorClassId: string
+  sendInvitationMail: "yes" | "no"
+  dealClasses: DealInvestorClass[]
+  dealBlocksInvitationEmails: boolean
+  selectedContactAlreadyOnDeal: boolean
+}): LpInvestorFieldErrors {
+  const errors: LpInvestorFieldErrors = {}
+  if (!input.contactId.trim()) {
+    errors.contactId = "Select an investor."
+  } else if (input.selectedContactAlreadyOnDeal) {
+    errors.contactId = INVESTOR_ALREADY_ON_DEAL_MESSAGE
+  }
+  if (input.dealClasses.length === 0) {
+    errors.investorClass =
+      "Add at least one investor class in Offering Details before adding an LP investor."
+  } else {
+    const classId = input.investorClassId.trim()
+    if (!classId) {
+      errors.investorClass = "Select an investor class."
+    } else if (!input.dealClasses.some((c) => c.id === classId)) {
+      errors.investorClass = "Select a valid investor class from this deal."
+    }
+  }
+  if (
+    !input.dealBlocksInvitationEmails &&
+    input.sendInvitationMail === "yes" &&
+    !input.profileId.trim()
+  ) {
+    errors.profileId =
+      "Select an investor profile before choosing to send the invitation email."
+  }
+  return errors
+}
 
 function lpRosterStorageKey(dealId: string): string {
   const safe = dealId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80)
@@ -154,7 +221,7 @@ export interface AddLpInvestorModalProps {
   /** Same chrome as add — edit an existing `deal_lp_investor` row from the Investors table. */
   mode?: "add" | "edit"
   editRow?: DealInvestorRow | null
-  /** When deal is draft/incomplete, block invitation toggles (same as Add investment). */
+  /** When required deal details are incomplete, block invitation toggles. */
   dealBlocksInvitationEmails?: boolean
   /**
    * Investors tab “Continue editing” on the session draft row: restore contact + optional
@@ -195,6 +262,7 @@ export function AddLpInvestorModal({
 }: AddLpInvestorModalProps) {
   const isEditMode = mode === "edit" && editRow != null
   const titleId = useId()
+  const formRef = useRef<HTMLFormElement>(null)
   const [contactId, setContactId] = useState("")
   const [contactDisplayName, setContactDisplayName] = useState("")
   const [contactEmail, setContactEmail] = useState("")
@@ -204,6 +272,7 @@ export function AddLpInvestorModal({
   )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<LpInvestorFieldErrors>({})
   const [memberRows, setMemberRows] = useState<Record<string, unknown>[]>([])
   const [contactRows, setContactRows] = useState<ContactRow[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
@@ -248,6 +317,21 @@ export function AddLpInvestorModal({
   )
   const lpPostInFlightRef = useRef(false)
   const lpAutosaveInFlightRef = useRef(false)
+
+  const profileRequiredForInvite =
+    !dealBlocksInvitationEmails && sendInvitationMail === "yes"
+
+  const clearFieldError = useCallback(
+    (key: keyof LpInvestorFieldErrors) => {
+      setFieldErrors((prev) => {
+        if (!prev[key]) return prev
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -294,6 +378,7 @@ export function AddLpInvestorModal({
       setInvestorClassId("")
       setSendInvitationMail("yes")
       setError(null)
+      setFieldErrors({})
       setBackendLpRosterId(null)
       backendLpRosterIdRef.current = null
       return
@@ -314,6 +399,7 @@ export function AddLpInvestorModal({
       setSendInvitationMail("no")
       setInvestorClassId(resolveLpInvestorClassId(editRow, dealClasses))
       setError(null)
+      setFieldErrors({})
       setBackendLpRosterId(editRow.id)
       backendLpRosterIdRef.current = editRow.id
       return
@@ -346,6 +432,7 @@ export function AddLpInvestorModal({
           setInvestorClassId(dealClasses[0]?.id ?? "")
         }
         setError(null)
+        setFieldErrors({})
         /** Only `deal_lp_investor` ids — never `backendInvestmentId` (different table / PUT route). */
         const bid = draft?.backendLpInvestorId?.trim()
         if (bid) {
@@ -367,6 +454,7 @@ export function AddLpInvestorModal({
     setInvestorClassId(dealClasses[0]?.id ?? "")
     setSendInvitationMail(dealBlocksInvitationEmails ? "no" : "yes")
     setError(null)
+    setFieldErrors({})
     const stored = loadLpRosterId(dealId)
     if (stored) {
       setBackendLpRosterId(stored)
@@ -408,6 +496,7 @@ export function AddLpInvestorModal({
         setContactDisplayName("")
         setContactEmail("")
         setError(null)
+        clearFieldError("contactId")
         return
       }
       if (raw.startsWith(PREFIX_CONTACT)) {
@@ -424,7 +513,7 @@ export function AddLpInvestorModal({
               excludeRowIdForDuplicateGate,
             )
           ) {
-            setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+            setFieldErrors({ contactId: INVESTOR_ALREADY_ON_DEAL_MESSAGE })
             toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
             return
           }
@@ -433,6 +522,7 @@ export function AddLpInvestorModal({
           setContactDisplayName(display.split(" — ")[0]?.trim() || display)
           setContactEmail(email)
           setError(null)
+          clearFieldError("contactId")
         }
         return
       }
@@ -451,7 +541,7 @@ export function AddLpInvestorModal({
             excludeRowIdForDuplicateGate,
           )
         ) {
-          setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+          setFieldErrors({ contactId: INVESTOR_ALREADY_ON_DEAL_MESSAGE })
           toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
           return
         }
@@ -463,6 +553,7 @@ export function AddLpInvestorModal({
         setContactDisplayName(display)
         setContactEmail(email)
         setError(null)
+        clearFieldError("contactId")
         return
       }
       const fallbackOpt = MEMBER_SELECT_OPTIONS.find((o) => o.value === userId)
@@ -478,7 +569,7 @@ export function AddLpInvestorModal({
             excludeRowIdForDuplicateGate,
           )
         ) {
-          setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+          setFieldErrors({ contactId: INVESTOR_ALREADY_ON_DEAL_MESSAGE })
           toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
           return
         }
@@ -486,12 +577,14 @@ export function AddLpInvestorModal({
         setContactDisplayName(parts[0]?.trim() || userId)
         setContactEmail(email)
         setError(null)
+        clearFieldError("contactId")
         return
       }
       setContactId(userId)
       setContactDisplayName("")
       setContactEmail("")
       setError(null)
+      clearFieldError("contactId")
     },
     [
       contactRows,
@@ -499,6 +592,7 @@ export function AddLpInvestorModal({
       isEditMode,
       investorRosterForGate,
       excludeRowIdForDuplicateGate,
+      clearFieldError,
     ],
   )
 
@@ -583,11 +677,12 @@ export function AddLpInvestorModal({
     setContactId(contact.id)
     setContactDisplayName(namePart)
     setContactEmail(contact.email.trim())
+    clearFieldError("contactId")
     toast.success(
       "Contact added",
       `${namePart} is selected as the investor for this deal.`,
     )
-  }, [])
+  }, [clearFieldError])
 
   const handleAddContactSave = useCallback(
     async (contact: Omit<ContactRow, "id" | "createdByDisplayName">) => {
@@ -709,40 +804,31 @@ export function AddLpInvestorModal({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!contactId.trim()) {
-      setError("Select an investor.")
+    const validationErrors = validateLpInvestorForm({
+      contactId,
+      profileId,
+      investorClassId,
+      sendInvitationMail,
+      dealClasses,
+      dealBlocksInvitationEmails,
+      selectedContactAlreadyOnDeal,
+    })
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors)
+      const message = firstLpInvestorFieldErrorMessage(validationErrors)
+      if (validationErrors.contactId && selectedContactAlreadyOnDeal) {
+        toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+      }
+      presentFormValidationError({
+        container: formRef.current,
+        message,
+        preferSelector: lpInvestorValidationPreferSelector(message),
+      })
       return
     }
-    if (selectedContactAlreadyOnDeal) {
-      setError(INVESTOR_ALREADY_ON_DEAL_MESSAGE)
-      toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
-      return
-    }
-    if (dealClasses.length === 0) {
-      setError(
-        "Add at least one investor class in Offering Details before adding an LP investor.",
-      )
-      return
-    }
+    setFieldErrors({})
+
     const classId = investorClassId.trim()
-    if (!classId) {
-      setError("Select an investor class.")
-      return
-    }
-    if (!dealClasses.some((c) => c.id === classId)) {
-      setError("Select a valid investor class from this deal.")
-      return
-    }
-    if (
-      !dealBlocksInvitationEmails &&
-      sendInvitationMail === "yes" &&
-      !profileId.trim()
-    ) {
-      setError(
-        "Select an investor profile before choosing to send the invitation email.",
-      )
-      return
-    }
 
     const values: AddInvestmentFormValues = {
       offeringId: "primary",
@@ -828,6 +914,7 @@ export function AddLpInvestorModal({
         </div>
 
         <form
+          ref={formRef}
           className="deals_add_inv_modal_form"
           onSubmit={handleSubmit}
           noValidate
@@ -843,7 +930,10 @@ export function AddLpInvestorModal({
               <div className="um_field">
                 <label htmlFor="lp-inv-member" className="um_field_label_row">
                   <UserRound className="um_field_label_icon" size={17} aria-hidden />
-                  <span>Investors</span>
+                  <span>
+                    Investors
+                    <RequiredMark />
+                  </span>
                 </label>
                 <DropdownSelect
                   {...MODAL_DROPDOWN_SELECT_PROPS}
@@ -851,6 +941,7 @@ export function AddLpInvestorModal({
                   sections={memberDropdownSections}
                   value={memberSelectValue}
                   disabled={membersLoading}
+                  invalid={Boolean(fieldErrors.contactId)}
                   onChange={(v) => patchMemberById(v)}
                   placeholder={
                     membersLoading
@@ -858,15 +949,22 @@ export function AddLpInvestorModal({
                       : "Select contact or member"
                   }
                   ariaLabel="Investor or contact"
+                  ariaDescribedBy={
+                    fieldErrors.contactId ? "lp-inv-member-err" : undefined
+                  }
                   header={{
                     label: "+ Add Contact",
                     onClick: () => setAddContactModalOpen(true),
                   }}
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
-                {selectedContactAlreadyOnDeal ? (
-                  <p className="um_msg_error deals_add_inv_field_hint" role="alert">
-                    {INVESTOR_ALREADY_ON_DEAL_MESSAGE}
+                {fieldErrors.contactId ? (
+                  <p
+                    id="lp-inv-member-err"
+                    className="um_field_hint um_field_hint_error"
+                    role="alert"
+                  >
+                    {fieldErrors.contactId}
                   </p>
                 ) : null}
               </div>
@@ -889,7 +987,10 @@ export function AddLpInvestorModal({
               <div className="um_field">
                 <label htmlFor="lp-inv-profile" className="um_field_label_row">
                   <IdCard className="um_field_label_icon" size={17} aria-hidden />
-                  <span>Profile</span>
+                  <span>
+                    Profile
+                    {profileRequiredForInvite ? <RequiredMark /> : null}
+                  </span>
                 </label>
                 <DropdownSelect
                   {...MODAL_DROPDOWN_SELECT_PROPS}
@@ -899,10 +1000,18 @@ export function AddLpInvestorModal({
                     label: o.label,
                   }))}
                   value={profileId}
-                  onChange={(v) => setProfileId(v)}
+                  invalid={Boolean(fieldErrors.profileId)}
+                  onChange={(v) => {
+                    setProfileId(v)
+                    clearFieldError("profileId")
+                  }}
                   placeholder="Select profile"
                   ariaLabel="Profile"
-                  ariaDescribedBy="lp-inv-profile-hint"
+                  ariaDescribedBy={
+                    fieldErrors.profileId
+                      ? "lp-inv-profile-err"
+                      : "lp-inv-profile-hint"
+                  }
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
                 <p
@@ -913,12 +1022,24 @@ export function AddLpInvestorModal({
                   Used for investor identity and invitation email context when you notify
                   them about being added to the deal.
                 </p>
+                {fieldErrors.profileId ? (
+                  <p
+                    id="lp-inv-profile-err"
+                    className="um_field_hint um_field_hint_error"
+                    role="alert"
+                  >
+                    {fieldErrors.profileId}
+                  </p>
+                ) : null}
               </div>
 
               <div className="um_field">
                 <label htmlFor="lp-inv-class" className="um_field_label_row">
                   <Tag className="um_field_label_icon" size={17} aria-hidden />
-                  <span>Investor class</span>
+                  <span>
+                    Investor class
+                    <RequiredMark />
+                  </span>
                   {noDealClasses ? (
                     <span className="deals_add_inv_label_info">
                       <InfoIconPanel
@@ -934,17 +1055,34 @@ export function AddLpInvestorModal({
                   options={investorClassOptions}
                   value={investorClassId}
                   disabled={noDealClasses}
-                  onChange={(v) => setInvestorClassId(v)}
+                  invalid={Boolean(fieldErrors.investorClass)}
+                  onChange={(v) => {
+                    setInvestorClassId(v)
+                    clearFieldError("investorClass")
+                  }}
                   placeholder="Select investor class"
                   ariaLabel="Investor class"
                   ariaDescribedBy={
-                    noDealClasses ? "lp-inv-class-hint" : undefined
+                    fieldErrors.investorClass
+                      ? "lp-inv-class-err"
+                      : noDealClasses
+                        ? "lp-inv-class-hint"
+                        : undefined
                   }
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
                 {noDealClasses ? (
                   <p id="lp-inv-class-hint" className="visually_hidden">
                     {INVESTOR_CLASS_UNAVAILABLE_HINT}
+                  </p>
+                ) : null}
+                {fieldErrors.investorClass ? (
+                  <p
+                    id="lp-inv-class-err"
+                    className="um_field_hint um_field_hint_error"
+                    role="alert"
+                  >
+                    {fieldErrors.investorClass}
                   </p>
                 ) : null}
               </div>
@@ -969,9 +1107,9 @@ export function AddLpInvestorModal({
                         ariaLabel="More information: Invitation emails"
                         infoContent={
                           <>
-                            Invitation emails are unavailable while the deal is in
-                            draft or required deal details are incomplete. Finalize
-                            the deal before sending invitations. You can still choose{" "}
+                            Invitation emails are unavailable while required deal
+                            details are incomplete. Complete the deal details before
+                            sending invitations. You can still choose{" "}
                             <strong>No</strong> below.
                           </>
                         }
@@ -988,7 +1126,10 @@ export function AddLpInvestorModal({
                   <YesNoCardRadioGroup
                     name="lp-inv-send-invitation"
                     value={sendInvitationMail}
-                    onChange={setSendInvitationMail}
+                    onChange={(v) => {
+                      setSendInvitationMail(v)
+                      if (v === "no") clearFieldError("profileId")
+                    }}
                     yesIsCommon
                     variant="mail"
                     disabled={dealBlocksInvitationEmails}

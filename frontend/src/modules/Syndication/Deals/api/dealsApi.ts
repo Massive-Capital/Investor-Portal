@@ -1890,6 +1890,21 @@ export function dealDetailFieldForCreateWizard(
 }
 
 /**
+ * True when required deal fields still hold autosave placeholders (see
+ * {@link buildCreateDealFormDataForAutosave}). Ignores lifecycle stage — sponsors may
+ * invite investors while the deal is still in Draft.
+ */
+export function areRequiredDealDetailFieldsIncomplete(
+  d: DealDetailApi,
+): boolean {
+  if (isAutosavePlaceholderStored(String(d.secType ?? ""))) return true
+  if (isAutosavePlaceholderStored(String(d.owningEntityName ?? ""))) return true
+  if (isAutosavePlaceholderStored(String(d.propertyName ?? ""))) return true
+  if (isAutosavePlaceholderStored(String(d.city ?? ""))) return true
+  return false
+}
+
+/**
  * True when the create/edit deal form is not fully completed: lifecycle stage is Draft
  * and/or required fields still hold autosave placeholders (see
  * {@link buildCreateDealFormDataForAutosave}).
@@ -1897,11 +1912,7 @@ export function dealDetailFieldForCreateWizard(
 export function isDealDetailFormIncomplete(d: DealDetailApi): boolean {
   const stage = String(d.dealStage ?? "").trim().toLowerCase()
   if (stage === "draft") return true
-  if (isAutosavePlaceholderStored(String(d.secType ?? ""))) return true
-  if (isAutosavePlaceholderStored(String(d.owningEntityName ?? ""))) return true
-  if (isAutosavePlaceholderStored(String(d.propertyName ?? ""))) return true
-  if (isAutosavePlaceholderStored(String(d.city ?? ""))) return true
-  return false
+  return areRequiredDealDetailFieldsIncomplete(d)
 }
 
 /**

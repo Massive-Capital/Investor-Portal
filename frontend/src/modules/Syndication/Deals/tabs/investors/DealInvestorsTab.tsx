@@ -84,15 +84,16 @@ import {
   upsertRuntimeFromViewerAddInvestmentForm,
 } from "@/modules/Investing/pages/investments/upsertRuntimeFromDealSession";
 import {
+  areRequiredDealDetailFieldsIncomplete,
   fetchDealInvestorClasses,
   fetchDealInvestors,
-  isDealDetailFormIncomplete,
   postDealInvestment,
   postDealLpInvestor,
   putDealInvestment,
   putDealLpInvestor,
   type DealDetailApi,
 } from "../../api/dealsApi";
+import { isDealStageDraft } from "../../constants/deal-lifecycle";
 import type { DealInvestorClass } from "../../types/deal-investor-class.types";
 import {
   investorProfileIdFromLabel,
@@ -2092,6 +2093,17 @@ export const DealInvestorsTab = forwardRef<
   /** Investors table/KPI (`modalOnly` false): always use Add/Edit Investor chrome. Deal Members tab (`modalOnly` true) follows parent `addInvestmentEntry` for Add/Edit Member vs shared flows. */
   const addEntryForModal = modalOnly ? addInvestmentEntry : "investor";
 
+  const requiredDealDetailsIncomplete =
+    dealDetail != null && areRequiredDealDetailFieldsIncomplete(dealDetail);
+
+  const addModalBlocksInvites =
+    requiredDealDetailsIncomplete ||
+    (addEntryForModal === "member" &&
+      dealDetail != null &&
+      isDealStageDraft(dealDetail.dealStage));
+
+  const lpBlocksInvites = requiredDealDetailsIncomplete;
+
   const refreshInvestorsFromApi = useCallback(async () => {
     const data = await fetchDealInvestors(dealId, { lpInvestorsOnly: true });
     setPayload(data);
@@ -2145,22 +2157,9 @@ export const DealInvestorsTab = forwardRef<
         );
         if (detail?.createdInvestment) onInvestorsChanged?.();
       }}
-      dealBlocksInvitationEmails={
-        dealDetail != null &&
-        (String(dealDetail.dealStage ?? "")
-          .trim()
-          .toLowerCase() === "draft" ||
-          isDealDetailFormIncomplete(dealDetail))
-      }
+      dealBlocksInvitationEmails={addModalBlocksInvites}
     />
   );
-
-  const lpBlocksInvites =
-    dealDetail != null &&
-    (String(dealDetail.dealStage ?? "")
-      .trim()
-      .toLowerCase() === "draft" ||
-      isDealDetailFormIncomplete(dealDetail));
 
   const existingInvestorRowsForAddModal = useMemo(
     () => mergedInvestors.filter((r) => r.id !== ADD_MEMBER_DRAFT_ROW_ID),

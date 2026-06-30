@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   IDLE_LOGOUT_MS,
   markIdleSessionTimeoutNotice,
@@ -26,6 +26,7 @@ const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
  */
 export function useIdleLogout(): void {
   const navigate = useNavigate();
+  const location = useLocation();
   const loggingOutRef = useRef(false);
   const timeoutRef = useRef<number | null>(null);
   const lastTouchRef = useRef(0);
@@ -79,7 +80,7 @@ export function useIdleLogout(): void {
       }
     }
 
-    touchSessionActivity();
+    // Do not reset activity on mount/navigation — honor elapsed idle time first.
     scheduleLogout();
 
     for (const event of ACTIVITY_EVENTS) {
@@ -94,5 +95,5 @@ export function useIdleLogout(): void {
       }
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [navigate]);
+  }, [navigate, location.key]);
 }
