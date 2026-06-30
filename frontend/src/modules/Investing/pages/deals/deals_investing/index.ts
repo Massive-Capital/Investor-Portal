@@ -1,1 +1,0 @@
-export { InvestingDealsListPage } from "./InvestingDealsListPage"

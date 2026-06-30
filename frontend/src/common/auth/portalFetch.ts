@@ -1,6 +1,7 @@
 import { decodeJwtPayload } from "../../modules/auth/utils/decode-jwt-payload"
 import {
   getStoredAccessToken,
+  getStoredRefreshToken,
   refreshAuthTokens,
 } from "./authTokensApi"
 import { getApiV1Base } from "../utils/apiBaseUrl"
