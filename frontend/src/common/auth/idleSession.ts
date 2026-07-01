@@ -72,3 +72,8 @@ export function msUntilIdleLogout(now = Date.now()): number {
   const remaining = IDLE_LOGOUT_MS - (now - last);
   return remaining > 0 ? remaining : 0;
 }
+
+/** True when no user/API activity for {@link IDLE_LOGOUT_MS}. */
+export function isSessionIdle(now = Date.now()): boolean {
+  return msUntilIdleLogout(now) <= 0;
+}

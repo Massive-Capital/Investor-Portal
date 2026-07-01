@@ -77,9 +77,15 @@ export async function getMyProfileBook(req: Request, res: Response): Promise<voi
 export async function postMyProfileBookProfile(req: Request, res: Response): Promise<void> {
   const userId = await requireUser(req, res);
   if (!userId) return;
-  const body = req.body as { profileName?: unknown; profileType?: unknown; profileWizardState?: unknown };
+  const body = req.body as {
+    profileName?: unknown;
+    profileType?: unknown;
+    profileWizardState?: unknown;
+    autosave?: unknown;
+  };
   const profileName = typeof body.profileName === "string" ? body.profileName : "";
   const profileType = typeof body.profileType === "string" ? body.profileType : "";
+  const autosave = body.autosave === true || body.autosave === "true";
   const wiz = bodyProfileWizardStateJson(
     body as unknown as Record<string, unknown>,
   );
@@ -92,6 +98,7 @@ export async function postMyProfileBookProfile(req: Request, res: Response): Pro
       profileName,
       profileType,
       profileWizardState: wiz.json,
+      autosave,
     });
     if (!row) {
       res.status(404).json({ message: "User not found" });
@@ -156,24 +163,38 @@ export async function putMyProfileBookProfile(
     profileType?: unknown;
     lastEditReason?: unknown;
     profileWizardState?: unknown;
+    autosave?: unknown;
+    isDraft?: unknown;
   };
   const profileName = typeof body.profileName === "string" ? body.profileName : "";
   const profileType = typeof body.profileType === "string" ? body.profileType : "";
   const lastEditReason = typeof body.lastEditReason === "string" ? body.lastEditReason : "";
+  const autosave = body.autosave === true || body.autosave === "true";
   if (!profileName.trim()) {
     res.status(400).json({ message: "Profile name is required" });
     return;
   }
-  if (!lastEditReason.trim()) {
-    res.status(400).json({ message: "Reason for this change is required" });
-    return;
+  if (!autosave && !lastEditReason.trim()) {
+    const rawBody = body as unknown as Record<string, unknown>;
+    const completingDraft = rawBody.isDraft === false;
+    if (!completingDraft) {
+      res.status(400).json({ message: "Reason for this change is required" });
+      return;
+    }
   }
   const rawBody = body as unknown as Record<string, unknown>;
   let updatePayload: Parameters<typeof updateInvestorProfileForUser>[2] = {
     profileName,
     profileType,
     lastEditReason,
+    autosave,
   };
+  if (Object.prototype.hasOwnProperty.call(rawBody, "isDraft")) {
+    updatePayload = {
+      ...updatePayload,
+      isDraft: rawBody.isDraft === true || rawBody.isDraft === "true" ? true : false,
+    };
+  }
   if (Object.prototype.hasOwnProperty.call(rawBody, "profileWizardState")) {
     const wiz = bodyProfileWizardStateJson({
       ...rawBody,

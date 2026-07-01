@@ -166,6 +166,7 @@ function mapRowToJson(
     offeringOverviewAssetIds: parseStoredOfferingOverviewAssetIds(
       row.offeringOverviewAssetIds,
     ),
+    offeringOverviewClassId: row.offeringOverviewClassId ?? null,
     offeringGalleryPaths: parseStoredOfferingGalleryPaths(
       row.offeringGalleryPaths,
     ),
@@ -541,6 +542,20 @@ export async function patchDealOfferingOverview(
       return;
     }
     patchIn.offeringOverviewAssetIdsJson = JSON.stringify(n.ids);
+  }
+  if (
+    "offering_overview_class_id" in b ||
+    "offeringOverviewClassId" in b
+  ) {
+    const raw = b.offering_overview_class_id ?? b.offeringOverviewClassId;
+    if (raw === null || raw === "") {
+      patchIn.offeringOverviewClassId = null;
+    } else if (typeof raw === "string") {
+      patchIn.offeringOverviewClassId = raw.trim();
+    } else {
+      res.status(400).json({ message: "offering_overview_class_id must be a UUID string or null." });
+      return;
+    }
   }
 
   const sanitized = sanitizeOfferingOverviewPatch(patchIn);

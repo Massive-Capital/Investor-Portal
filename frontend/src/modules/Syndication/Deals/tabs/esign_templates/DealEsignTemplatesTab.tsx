@@ -354,16 +354,71 @@ function DealEsignTemplatesProfilesTab({
     link.href = base
   }, [esignAppBaseUrl])
 
-  const prefetchSignflowDraft = useCallback(
-    (fileId: string, title: string) => {
-      if (!esignConfigured || esignProvider === "dropbox") return
-      void postDealEsignEmbeddedDraft(dealId, fileId, { title }).then((draft) => {
-        if (draft.ok) {
-          setFilesByCategory(draft.filesByCategory)
-        }
+  const openEmbeddedTemplateEditor = useCallback(
+    (file: Pick<DealEsignTemplateFileRecord, "id" | "categoryId">, displayName: string) => {
+      if (!canUploadDocuments) return
+      if (!esignConfigured) {
+        toast.error(
+          "eSign not configured",
+          "Set SIGNFLOW_API_BASE_URL and SIGNFLOW_API_KEY in backend .env (see API_INTEGRATION.md), then restart the API.",
+        )
+        return
+      }
+
+      const title = displayName.trim() || "Template"
+
+      setEmbeddedSession({
+        fileId: file.id,
+        categoryId: file.categoryId,
+        provider: esignProvider ?? undefined,
+        editUrl: "",
+        clientId: "",
+        testMode: esignTestMode,
+        templateId: "",
+        templateTitle: title,
+        sessionLoading: true,
       })
+
+      void (async () => {
+        setSavingTemplateId(file.id)
+        try {
+          const draft = await postDealEsignEmbeddedDraft(dealId, file.id, {
+            title,
+          })
+
+          if (!draft.ok) {
+            setEmbeddedSession(null)
+            toastTemplateEditorOpenError(draft.message)
+            return
+          }
+
+          setFilesByCategory(draft.filesByCategory)
+
+          setEmbeddedSession({
+            fileId: file.id,
+            categoryId: file.categoryId,
+            provider: draft.provider ?? esignProvider ?? undefined,
+            editUrl: draft.editUrl,
+            clientId: draft.clientId,
+            testMode: draft.testMode,
+            templateId: draft.templateId,
+            templateTitle: title,
+            embedApiKey: draft.embedApiKey,
+            appBaseUrl: draft.appBaseUrl,
+            sessionLoading: false,
+          })
+        } finally {
+          setSavingTemplateId(null)
+        }
+      })()
     },
-    [dealId, esignConfigured, esignProvider],
+    [
+      canUploadDocuments,
+      dealId,
+      esignConfigured,
+      esignProvider,
+      esignTestMode,
+    ],
   )
 
   const onCreateTemplate = useCallback(() => {
@@ -411,11 +466,12 @@ function DealEsignTemplatesProfilesTab({
         if (result.ok) {
           setFilesByCategory(result.filesByCategory)
           notifyDealEsignTemplatesChanged(dealId)
-          toast.success("Template created")
           setCreateModalOpen(false)
           const uploaded = result.filesByCategory[categoryId]?.[0]
           if (uploaded) {
-            prefetchSignflowDraft(uploaded.id, data.templateName.trim())
+            openEmbeddedTemplateEditor(uploaded, data.templateName.trim())
+          } else {
+            toast.success("Template created")
           }
         } else {
           toast.error(result.message || "Upload failed", "Could not create the eSign template.")
@@ -424,7 +480,7 @@ function DealEsignTemplatesProfilesTab({
         setUploading(false)
       }
     },
-    [dealId, filesByCategory, prefetchSignflowDraft],
+    [dealId, filesByCategory, openEmbeddedTemplateEditor],
   )
 
 
@@ -485,79 +541,11 @@ function DealEsignTemplatesProfilesTab({
 
     (_categoryId: string, file: DealEsignTemplateFileRecord) => {
 
-      if (!canUploadDocuments) return
-
-      if (!esignConfigured) {
-        toast.error(
-          "eSign not configured",
-          "Set SIGNFLOW_API_BASE_URL and SIGNFLOW_API_KEY in backend .env (see API_INTEGRATION.md), then restart the API.",
-        )
-        return
-      }
-
-      const displayName = esignTemplateDisplayName(file)
-
-      setEmbeddedSession({
-        fileId: file.id,
-        categoryId: file.categoryId,
-        provider: esignProvider ?? undefined,
-        editUrl: "",
-        clientId: "",
-        testMode: esignTestMode,
-        templateId: "",
-        templateTitle: displayName,
-        sessionLoading: true,
-      })
-
-      void (async () => {
-
-        setSavingTemplateId(file.id)
-
-        try {
-
-          const draft = await postDealEsignEmbeddedDraft(dealId, file.id, {
-            title: displayName,
-          })
-
-          if (!draft.ok) {
-            setEmbeddedSession(null)
-            toastTemplateEditorOpenError(draft.message)
-            return
-          }
-
-          setFilesByCategory(draft.filesByCategory)
-
-          setEmbeddedSession({
-            fileId: file.id,
-            categoryId: file.categoryId,
-            provider: draft.provider ?? esignProvider ?? undefined,
-            editUrl: draft.editUrl,
-            clientId: draft.clientId,
-            testMode: draft.testMode,
-            templateId: draft.templateId,
-            templateTitle: displayName,
-            embedApiKey: draft.embedApiKey,
-            appBaseUrl: draft.appBaseUrl,
-            sessionLoading: false,
-          })
-
-        } finally {
-
-          setSavingTemplateId(null)
-
-        }
-
-      })()
+      openEmbeddedTemplateEditor(file, esignTemplateDisplayName(file))
 
     },
 
-    [
-      canUploadDocuments,
-      dealId,
-      esignConfigured,
-      esignProvider,
-      esignTestMode,
-    ],
+    [openEmbeddedTemplateEditor],
 
   )
 

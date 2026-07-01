@@ -140,7 +140,12 @@ function buildFormattedAnswerMap(
     const id = question.id.trim();
     if (!id) continue;
     const formatted = formatAnswerForEsign(question, answers[id]);
-    if (formatted) out.set(id, formatted);
+    if (!formatted) continue;
+    out.set(id, formatted);
+    const labelKey = normalizeFieldKey(question.label);
+    if (labelKey) out.set(labelKey, formatted);
+    const idAsLabelKey = normalizeFieldKey(id);
+    if (idAsLabelKey) out.set(idAsLabelKey, formatted);
   }
   return out;
 }
@@ -184,6 +189,10 @@ function resolveValueForFieldKey(
 
   if (COMPUTED_DATE_FIELD_KEYS.has(fieldKey)) {
     return resolveSigningDate();
+  }
+
+  if (formatted.has(fieldKey)) {
+    return formatted.get(fieldKey) ?? "";
   }
 
   const questionId =

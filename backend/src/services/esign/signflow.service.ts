@@ -31,6 +31,12 @@ async function parseSignFlowError(res: Response): Promise<string> {
     const body = (await res.json()) as SignFlowErrorBody;
     const msg = body.error?.message?.trim();
     const code = body.error?.code?.trim();
+    if (res.status === 401) {
+      return (
+        msg ||
+        "SignFlow API key is invalid. Copy an API key from SignFlow → API Keys and set SIGNFLOW_API_KEY in backend/.env.local."
+      );
+    }
     if (msg && code) return `${code}: ${msg}`;
     if (msg) return msg;
   } catch {
@@ -271,6 +277,7 @@ export async function createSignFlowEmbedSigningSession(params: {
   documentId: string;
   recipientEmail?: string;
   recipientId?: string;
+  profileType?: string;
 }): Promise<{ token: string; signUrl: string }> {
   const documentId = params.documentId.trim();
   if (!documentId) {
@@ -280,8 +287,10 @@ export async function createSignFlowEmbedSigningSession(params: {
   const body: Record<string, string> = {};
   const email = params.recipientEmail?.trim().toLowerCase();
   const recipientId = params.recipientId?.trim();
+  const profileType = params.profileType?.trim();
   if (email) body.recipientEmail = email;
   if (recipientId) body.recipientId = recipientId;
+  if (profileType) body.profileType = profileType;
   if (!email && !recipientId) {
     throw new Error("recipientEmail or recipientId is required");
   }
@@ -300,9 +309,13 @@ export async function createSignFlowEmbedSigningSession(params: {
     throw new Error("SignFlow returned an incomplete embed signing session");
   }
 
+  const cfg = requireSignFlowConfig();
+  const baseSignUrl =
+    result?.signUrl?.trim() || buildSignFlowSignerEmbedUrl(token);
+
   return {
     token,
-    signUrl: result?.signUrl?.trim() || buildSignFlowSignerEmbedUrl(token),
+    signUrl: enrichSignFlowEmbedSignUrl(baseSignUrl, cfg.embedApiKey),
   };
 }
 
@@ -575,6 +588,26 @@ export function buildSignFlowEditorUrl(documentId: string): string {
 export function buildSignFlowSignerEmbedUrl(signingToken: string): string {
   const { appBaseUrl } = requireSignFlowConfig();
   return `${appBaseUrl}/embed/sign/${encodeURIComponent(signingToken.trim())}`;
+}
+
+/** Adds embed apiKey to SignFlow signer iframe URLs when configured. */
+export function enrichSignFlowEmbedSignUrl(
+  signUrl: string,
+  embedApiKey?: string | null,
+): string {
+  const raw = signUrl.trim();
+  if (!raw) return raw;
+  const key = embedApiKey?.trim();
+  if (!key) return raw;
+  try {
+    const u = new URL(raw);
+    if (!u.searchParams.has("apiKey")) {
+      u.searchParams.set("apiKey", key);
+    }
+    return u.toString();
+  } catch {
+    return raw;
+  }
 }
 
 /** Shifts page numbers when answer pages are prepended; x/y/width/height stay as placed. */

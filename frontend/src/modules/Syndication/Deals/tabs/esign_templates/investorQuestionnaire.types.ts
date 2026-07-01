@@ -114,7 +114,7 @@ export const DEFAULT_INVESTOR_QUESTIONNAIRE_QUESTIONS: InvestorQuestionnaireQues
       id: "state_residency_duration",
       sectionId: "personal",
       label:
-        "How long have you been a resident of your state of residence?",
+        "How long have you been a resident of your state of residence? (years)",
       sortOrder: 4,
       required: true,
       fieldType: "text",
@@ -589,6 +589,54 @@ export function questionsForSection(
   return [...questions]
     .filter((q) => q.sectionId === sectionId)
     .sort((a, b) => a.sortOrder - b.sortOrder)
+}
+
+export const PURCHASER_REPRESENTATIVE_QUESTION_ID =
+  "relationship_purchaser_representative"
+
+/** Shown only when Purchaser Representative is Yes. */
+export const PURCHASER_REPRESENTATIVE_DETAIL_QUESTION_IDS = [
+  "relationship_consultant_name",
+  "relationship_consultant_phone",
+  "relationship_consultant_firm",
+  "relationship_address",
+] as const
+
+export function isPurchaserRepresentativeDetailQuestion(
+  questionId: string,
+): boolean {
+  return (
+    PURCHASER_REPRESENTATIVE_DETAIL_QUESTION_IDS as readonly string[]
+  ).includes(questionId)
+}
+
+export function purchaserRepresentativeSelected(
+  answers: Record<string, string>,
+): boolean {
+  return (
+    answers[PURCHASER_REPRESENTATIVE_QUESTION_ID]?.trim().toLowerCase() ===
+    "yes"
+  )
+}
+
+/** Investor onboarding: consultant fields depend on Purchaser Representative answer. */
+export function isInvestorQuestionnaireQuestionVisible(
+  question: Pick<InvestorQuestionnaireQuestion, "id">,
+  answers: Record<string, string>,
+): boolean {
+  if (!isPurchaserRepresentativeDetailQuestion(question.id)) return true
+  return purchaserRepresentativeSelected(answers)
+}
+
+export function pruneHiddenInvestorQuestionnaireAnswers(
+  answers: Record<string, string>,
+): Record<string, string> {
+  if (purchaserRepresentativeSelected(answers)) return answers
+  const next = { ...answers }
+  for (const id of PURCHASER_REPRESENTATIVE_DETAIL_QUESTION_IDS) {
+    delete next[id]
+  }
+  return next
 }
 
 const DEFAULT_QUESTION_BY_ID = new Map(

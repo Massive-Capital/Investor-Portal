@@ -16,7 +16,10 @@ export type SignFlowEmbeddedEditorProps = {
   templateTitle?: string
   /** True while waiting for the server to return an embed URL (first-time setup). */
   sessionLoading?: boolean
-  onTemplateSaved: (data: { templateId: string }) => void
+  onTemplateSaved: (data: {
+    templateId: string
+    templateInfo?: { title?: string }
+  }) => void
   onCancel?: () => void
   onError?: (message: string) => void
 }
@@ -24,6 +27,9 @@ export type SignFlowEmbeddedEditorProps = {
 /**
  * SignFlow template field editor — premium full-screen popup with embedded builder.
  */
+const EMBED_SAVE_DISABLED_HINT =
+  "Place at least one field for both Investor and Sponsor"
+
 export function SignFlowEmbeddedEditor({
   editUrl,
   documentId,
@@ -36,6 +42,7 @@ export function SignFlowEmbeddedEditor({
   const savedRef = useRef(false)
   const [iframeLoaded, setIframeLoaded] = useState(false)
   const [builderReady, setBuilderReady] = useState(false)
+  const [canSaveTemplate, setCanSaveTemplate] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const url = editUrl?.trim()
@@ -46,23 +53,55 @@ export function SignFlowEmbeddedEditor({
     savedRef.current = false
     setIframeLoaded(false)
     setBuilderReady(false)
+    setCanSaveTemplate(false)
     setSaving(false)
   }, [url, docId])
 
+  const completeTemplateSave = useCallback(
+    (payload?: { documentId?: string; title?: string }) => {
+      const templateId = payload?.documentId?.trim() || docId
+      if (!templateId || savedRef.current || saving) return
+      savedRef.current = true
+      setSaving(true)
+      const title = payload?.title?.trim() || displayTitle
+      onTemplateSaved({
+        templateId,
+        templateInfo: title ? { title } : undefined,
+      })
+    },
+    [displayTitle, docId, onTemplateSaved, saving],
+  )
+
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { source?: string; event?: string; message?: string } | undefined
-      if (!data || data.source !== 'signflow-embed') return
-      if (data.event === 'builder-ready' || data.event === 'builder-document-loaded') {
+      const data = event.data as {
+        source?: string
+        event?: string
+        message?: string
+        canSaveTemplate?: boolean
+        documentId?: string
+        title?: string
+      } | undefined
+      if (!data || data.source !== "signflow-embed") return
+      if (data.event === "builder-ready" || data.event === "builder-document-loaded") {
         setBuilderReady(true)
       }
-      if (data.event === 'builder-error') {
-        onError?.(data.message ?? 'Could not load the SignFlow template editor')
+      if (data.event === "builder-template-state") {
+        setCanSaveTemplate(Boolean(data.canSaveTemplate))
+      }
+      if (data.event === "builder-save-template") {
+        completeTemplateSave({
+          documentId: data.documentId,
+          title: data.title,
+        })
+      }
+      if (data.event === "builder-error") {
+        onError?.(data.message ?? "Could not load the SignFlow template editor")
       }
     }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [onError])
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [completeTemplateSave, onError])
 
   useEffect(() => {
     if (!url || sessionLoading) return
@@ -88,11 +127,18 @@ export function SignFlowEmbeddedEditor({
   }, [onCancel, saving])
 
   const handleSave = useCallback(() => {
-    if (!docId || savedRef.current || saving) return
-    savedRef.current = true
-    setSaving(true)
-    onTemplateSaved({ templateId: docId })
-  }, [docId, onTemplateSaved, saving])
+    if (!canSaveTemplate) return
+    completeTemplateSave({ documentId: docId, title: displayTitle })
+  }, [canSaveTemplate, completeTemplateSave, displayTitle, docId])
+
+  const saveDisabled =
+    saving ||
+    sessionLoading ||
+    !url ||
+    !docId ||
+    !iframeLoaded ||
+    !builderReady ||
+    !canSaveTemplate
 
   const handleBackdropMouseDown = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
@@ -206,7 +252,8 @@ export function SignFlowEmbeddedEditor({
               type="button"
               className="signflow_editor_btn signflow_editor_btn--primary"
               onClick={handleSave}
-              disabled={saving || sessionLoading || !url || !docId || !iframeLoaded || !builderReady}
+              disabled={saveDisabled}
+              title={!canSaveTemplate ? EMBED_SAVE_DISABLED_HINT : undefined}
             >
               {saving ? (
                 <Loader2

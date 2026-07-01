@@ -6,7 +6,10 @@ import {
   questionsForSection,
   type InvestorQuestionnaireConfig,
 } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
-import { formatInvestNowW9AddressLine } from "./investNowW9FormUtils"
+import {
+  formatInvestNowW9AddressLine,
+  ssnFromProfileWizard,
+} from "./investNowW9FormUtils"
 import type { InvestNowQuestionnaireAnswers } from "./investNowQuestionnaireValidation"
 
 function readWizardState(
@@ -71,6 +74,7 @@ function personalPrefillValue(
     lastName: string
     telephone: string
     addressLine: string
+    ssn: string
   },
 ): string | undefined {
   switch (questionId) {
@@ -83,7 +87,7 @@ function personalPrefillValue(
     case "address":
       return ctx.addressLine || undefined
     case "social_security_number":
-      return undefined
+      return ctx.ssn || undefined
     default:
       return undefined
   }
@@ -113,8 +117,9 @@ export function buildInvestNowQuestionnairePrefill({
   const telephone = resolveTelephone(wizard)
   const taxAddr = resolveTaxAddress(wizard, addresses)
   const addressLine = taxAddr ? formatAddressLine(taxAddr) : ""
+  const ssn = ssnFromProfileWizard(wizard)
 
-  const ctx = { firstName, lastName, telephone, addressLine }
+  const ctx = { firstName, lastName, telephone, addressLine, ssn }
 
   const questionIds = config
     ? questionsForSection(config.questions, sectionId).map((q) => q.id)

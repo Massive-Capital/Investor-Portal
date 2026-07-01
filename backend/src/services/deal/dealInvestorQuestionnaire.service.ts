@@ -178,7 +178,7 @@ export const DEFAULT_INVESTOR_QUESTIONNAIRE_QUESTIONS: InvestorQuestionnaireQues
       id: "state_residency_duration",
       sectionId: "personal",
       label:
-        "How long have you been a resident of your state of residence?",
+        "How long have you been a resident of your state of residence? (years)",
       sortOrder: 4,
       required: true,
       fieldType: "text",

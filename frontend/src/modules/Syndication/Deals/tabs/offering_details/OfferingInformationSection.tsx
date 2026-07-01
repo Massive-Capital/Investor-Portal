@@ -45,6 +45,7 @@ import {
 import {
   computeInvestorClassAllocationTotals,
   computeInvestorClassAllocationTotalsForForm,
+  investorClassRemainderPercentsForNewClass,
   validateInvestorClassAllocationForSave,
   type InvestorClassAllocationTotals,
 } from "../../utils/investorClassAllocationTotals"
@@ -124,7 +125,10 @@ export const EQUITY_CLASS_NAME_OPTIONS: DealIcSelectOption[] = [
     value: "Class A - Limited Partners",
     label: "Class A - Limited Partners",
   },
-  { value: "General Partners", label: "General Partners" },
+  {
+    value: "Class B - General Partners",
+    label: "Class B - General Partners",
+  },
   { value: "Mezzanine", label: "Mezzanine" },
 ]
 
@@ -2396,9 +2400,10 @@ function formatInvestorClassMoneyFields(
     pricePerUnit: formatMoneyFieldForSave(form.pricePerUnit),
     advanced: {
       ...form.advanced,
-      maximumInvestment: formatMoneyFieldForSave(
-        form.advanced.maximumInvestment,
-      ),
+      maximumInvestment:
+        form.subscriptionType === "gp"
+          ? blurFormatNumberOfUnitsInput(form.advanced.maximumInvestment)
+          : formatMoneyFieldForSave(form.advanced.maximumInvestment),
     },
   }
   if (isLpInvestorClass(form)) {
@@ -2432,7 +2437,13 @@ function advancedOptionsForSave(
       advanced.preferredReturnAccruesOn,
     )
   }
-  if (form.subscriptionType === "gp") return advanced
+  if (form.subscriptionType === "gp") {
+    const sharesRaw = advanced.maximumInvestment.trim()
+    if (sharesRaw !== "") {
+      advanced.maximumInvestment = blurFormatNumberOfUnitsInput(sharesRaw)
+    }
+    return advanced
+  }
   const maxRaw = stripMoneyInput(advanced.maximumInvestment)
   if (maxRaw !== "") {
     advanced.maximumInvestment = blurFormatMoneyInput(advanced.maximumInvestment)
@@ -2603,7 +2614,10 @@ function validateInvestorClassAdvancedStep(
   ) {
     return "Number of units is required."
   }
-  if (!form.advanced.waitlistStatus.trim()) {
+  if (
+    form.subscriptionType !== "gp" &&
+    !form.advanced.waitlistStatus.trim()
+  ) {
     return "Waitlist status is required (Advanced)."
   }
   return null
@@ -2673,6 +2687,26 @@ function emptyForm(): DealInvestorClassFormValues {
   }
 }
 
+/** Prefill ownership / distribution % as 100 minus totals from all existing classes. */
+function emptyFormForNewInvestorClass(
+  existingClasses: readonly DealInvestorClass[],
+): DealInvestorClassFormValues {
+  const base = emptyForm()
+  const { entityLegalOwnershipPct, distributionSharePct } =
+    investorClassRemainderPercentsForNewClass(existingClasses)
+  if (!entityLegalOwnershipPct && !distributionSharePct) return base
+
+  return {
+    ...base,
+    advanced: {
+      ...base.advanced,
+      entityLegalOwnershipPct,
+      distributionSharePct:
+        distributionSharePct || entityLegalOwnershipPct,
+    },
+  }
+}
+
 function rowToForm(row: DealInvestorClass): DealInvestorClassFormValues {
   const form: DealInvestorClassFormValues = {
     name: row.name,
@@ -2691,9 +2725,13 @@ function rowToForm(row: DealInvestorClass): DealInvestorClassFormValues {
     visibility: row.visibility,
     advanced: {
       ...parseAdvancedJson(row.advancedOptionsJson),
-      maximumInvestment: maximumInvestmentFromAdvancedJson(
-        row.advancedOptionsJson,
-      ),
+      maximumInvestment:
+        row.subscriptionType === "gp"
+          ? blurFormatNumberOfUnitsInput(
+              parseAdvancedJson(row.advancedOptionsJson).maximumInvestment ??
+                "",
+            )
+          : maximumInvestmentFromAdvancedJson(row.advancedOptionsJson),
     },
   }
   if (isLpInvestorClass(row)) {
@@ -3587,7 +3625,9 @@ function InvestorClassModalFormBody({
                   <p>
                     {isMezzanineLayout
                       ? "Investment type, unit pricing, target IRR, assets, and waitlist."
-                      : "Investment structure, economics, waitlist, and hurdle waterfalls when applicable."}
+                      : isGpLayout
+                        ? "Investment structure, economics, and assets for this class."
+                        : "Investment structure, economics, waitlist, and hurdle waterfalls when applicable."}
                   </p>
                 }
               />
@@ -3934,19 +3974,23 @@ function InvestorClassModalFormBody({
                       id={`${idPrefix}-adv-max-inv`}
                       type="text"
                       className={advInputCtl}
-                      inputMode="decimal"
+                      inputMode="numeric"
+                      placeholder="0"
+                      autoComplete="off"
                       value={form.advanced.maximumInvestment}
                       disabled={disabled}
                       onChange={(e) =>
                         patchAdvanced({
-                          maximumInvestment: formatCurrencyUsdTypeInput(
+                          maximumInvestment: formatNumberOfUnitsTypingInput(
                             e.target.value,
                           ),
                         })
                       }
                       onBlur={(e) =>
                         patchAdvanced({
-                          maximumInvestment: blurFormatMoneyInput(e.target.value),
+                          maximumInvestment: blurFormatNumberOfUnitsInput(
+                            e.target.value,
+                          ),
                         })
                       }
                     />
@@ -4090,8 +4134,9 @@ function InvestorClassModalFormBody({
                   title="Operations"
                   info={
                     <p>
-                      Link assets and control waitlist availability for this
-                      class.
+                      {isGpLayout
+                        ? "Link assets to this class."
+                        : "Link assets and control waitlist availability for this class."}
                     </p>
                   }
                 />
@@ -4121,6 +4166,7 @@ function InvestorClassModalFormBody({
               />
                 </div>
 
+                {!isGpLayout ? (
                 <div className="um_field add_contact_field_tight deal_inv_ic_adv_field">
               <label
                 className="um_field_label_row"
@@ -4167,6 +4213,7 @@ function InvestorClassModalFormBody({
               </select>
               <InvestorClassFieldError message={fieldErrors?.advWaitlist} />
                 </div>
+                ) : null}
               </div>
             </section>
           </div>
@@ -4464,9 +4511,12 @@ export function AddInvestorClassPanel({
 
   const dealAssetRows = useDealAssetsForInvestorClass(dealId)
 
+  const existingClassesRef = useRef(existingClasses)
+  existingClassesRef.current = existingClasses
+
   useEffect(() => {
     if (!visible) return
-    setForm(emptyForm())
+    setForm(emptyFormForNewInvestorClass(existingClassesRef.current))
     setErr(null)
     setFieldErrors({})
   }, [visible, dealId])

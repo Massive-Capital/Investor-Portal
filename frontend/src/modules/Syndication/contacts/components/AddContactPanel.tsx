@@ -37,7 +37,7 @@ import {
   nationalDigitsFromStoredPhone,
   nationalTenDigitsFromRawInput,
 } from "../../../../common/phone/usPhoneNumber"
-import { focusFirstFormErrorAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
+import { focusFirstFormErrorAfterUpdate, scrollMultiStepFormToTopAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
 import { fetchMyProfile } from "../../../myaccount/accountApi"
 import { getSessionUserDisplayName } from "../../../../common/auth/sessionUserDisplayName"
 import type { ContactRow } from "../types/contact.types"
@@ -413,6 +413,7 @@ export function AddContactPanel({
   const [ownerInput, setOwnerInput] = useState("")
   const ownerComboboxRef = useRef<HTMLInputElement>(null)
   const contactFormRef = useRef<HTMLFormElement>(null)
+  const stepScrollBootRef = useRef(true)
   const [editReason, setEditReason] = useState("")
   const [fieldError, setFieldError] = useState<{
     firstName?: string
@@ -476,10 +477,19 @@ export function AddContactPanel({
       setSubmitError(null)
       setSubmitting(false)
       setStep(1)
+      stepScrollBootRef.current = true
     } else {
       reset()
     }
   }, [open, contactToEdit?.id, reset, contactToEdit])
+
+  useEffect(() => {
+    if (stepScrollBootRef.current) {
+      stepScrollBootRef.current = false
+      return
+    }
+    scrollMultiStepFormToTopAfterUpdate({ container: contactFormRef.current })
+  }, [step])
 
   useEffect(() => {
     if (!open || contactToEdit) return

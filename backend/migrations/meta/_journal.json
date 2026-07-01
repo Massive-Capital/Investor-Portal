@@ -393,6 +393,20 @@
       "when": 1893350000000,
       "tag": "0056_user_auth_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1893400000000,
+      "tag": "0057_offering_overview_class_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1893450000000,
+      "tag": "0058_user_investor_profile_is_draft",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from "react"
 import { createPortal } from "react-dom"
@@ -26,13 +27,18 @@ import {
   MapPin,
   Phone,
   Search,
-  Plus,
   UserPlus,
   UserRound,
   X,
   Save,
 } from "lucide-react"
 import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
+import { scrollMultiStepFormToTopAfterUpdate } from "@/common/utils/scrollToFirstFormError"
+import { getApiV1Base } from "@/common/utils/apiBaseUrl"
+import {
+  abaRoutingNumberFieldError,
+  digitsFromAbaRoutingInput,
+} from "@/common/bank/usAbaRoutingNumber"
 import { UsPhoneInput } from "@/common/components/UsPhoneInput"
 import { toast } from "@/common/components/Toast"
 import {
@@ -46,8 +52,20 @@ import { AddBeneficiaryModal } from "./AddBeneficiaryModal"
 import {
   type ProfileBookSnapshot,
   postBeneficiary,
+  postInvestorProfile,
   postSavedAddress,
+  putInvestorProfile,
 } from "./investingProfileBookApi"
+import {
+  ADD_PROFILE_WIZARD_STEP_KEY,
+  addProfileDraftHasContent,
+  AUTOSAVE_DEFAULT_PROFILE_NAME,
+  clearAddProfileDraft,
+  loadAddProfileDraft,
+  notifyProfileBookRefetch,
+  readWizardStepFromSavedForm,
+  saveAddProfileDraft,
+} from "./addProfileFormDraftStorage"
 import type { AddressFormDraft } from "./address.types"
 import {
   getEmailFieldError,
@@ -76,7 +94,8 @@ import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "./add-investor-profile-modal.css"
 import "./investing-profiles-form-modals.css"
-import "./investing-profiles-form-modals.css"
+
+/* @refresh reset */
 
 const PROFILE_TYPE_INDIVIDUAL = "Individual"
 const PROFILE_TYPE_JOINT_TENANCY = "Joint tenancy"
@@ -201,6 +220,16 @@ function formToJsonSnapshot(f: FormState): Record<string, unknown> {
   return JSON.parse(JSON.stringify(f)) as Record<string, unknown>
 }
 
+function profileWizardStateForPersist(
+  f: FormState,
+  wizardStep: number,
+): Record<string, unknown> {
+  return {
+    ...formToJsonSnapshot(normalizeFormPhonesForPersist(f)),
+    [ADD_PROFILE_WIZARD_STEP_KEY]: wizardStep,
+  }
+}
+
 /** Persist U.S. phones as E.164 in wizard JSON (`phone2`, `beneficiary.phone`). */
 function normalizeFormPhonesForPersist(f: FormState): FormState {
   const p2d = nationalTenDigitsFromRawInput(f.phone2)
@@ -292,10 +321,7 @@ function invClass(base: string, hasError: boolean) {
 }
 
 function achRoutingNumberError(raw: string): string | undefined {
-  const digits = raw.replace(/\D/g, "")
-  if (!digits) return REQUIRED_MSG
-  if (digits.length !== 9) return "Enter a valid 9-digit routing number."
-  return undefined
+  return abaRoutingNumberFieldError(raw, { required: true }) ?? undefined
 }
 
 function achAccountNumberError(raw: string): string | undefined {
@@ -526,7 +552,7 @@ function AchDistributionBankFields({
           onChange={(e) =>
             patch(
               {
-                achRoutingNumber: e.target.value.replace(/\D/g, "").slice(0, 9),
+                achRoutingNumber: digitsFromAbaRoutingInput(e.target.value),
               },
               "achRoutingNumber",
             )
@@ -621,8 +647,17 @@ interface AddInvestorProfileModalProps {
    */
   editTarget?: InvestorProfileListRow | null
   /** Fired with display fields after validation; parent may persist the profile. May return a Promise. */
-  onProfileCreated?: (p: NewInvestorProfilePayload) => void | Promise<void>
+  onProfileCreated?: (
+    p: NewInvestorProfilePayload,
+    opts?: { existingId?: string },
+  ) => void | Promise<void>
   onProfileUpdated?: (id: string, p: UpdateInvestorProfilePayload) => void | Promise<void>
+  /**
+   * Fresh `/investing/profiles/add` without `resume=1`: empty form; session draft stays for the list row.
+   * With `resume=1`, restore session (or `resumeFromProfile` when the API row exists but session was cleared).
+   */
+  resumeDraft?: boolean
+  resumeFromProfile?: InvestorProfileListRow | null
   /**
    * `inline`: in-tab panel. `page`: full-page like Create deal (parent supplies shell).
    * @default "modal"
@@ -845,6 +880,11 @@ function buildDisplayProfileName(f: FormState): string {
     .join(" ")
 }
 
+function buildProfileNameForPersist(f: FormState): string {
+  const name = buildDisplayProfileName(f)
+  return name === "—" ? AUTOSAVE_DEFAULT_PROFILE_NAME : name
+}
+
 /**
  * Best-effort seed of wizard fields from API list row (only `profileName` and `profileType` are stored).
  * Keeps the same UI as "Add profile" while filling in obvious splits of the display name.
@@ -915,16 +955,33 @@ export function AddInvestorProfileModal({
   onProfileCreated,
   onProfileUpdated,
   variant = "modal",
+  resumeDraft = false,
+  resumeFromProfile = null,
 }: AddInvestorProfileModalProps) {
   const isListInline = variant === "inline"
   const isPage = variant === "page"
   const isNonModalLayout = isListInline || isPage
   const isEdit = mode === "edit"
+  const enableAddDraftAutosave = isPage && !isEdit
   const [form, setForm] = useState<FormState>(initialState)
   const [fieldError, setFieldError] = useState<AddProfileFieldErrors>({})
   const [step, setStep] = useState(1)
+  const profileFormRef = useRef<HTMLFormElement>(null)
+  const stepScrollBootRef = useRef(true)
   const [lastEditReason, setLastEditReason] = useState("")
   const [lastEditReasonError, setLastEditReasonError] = useState<string | null>(null)
+  const [backendProfileId, setBackendProfileId] = useState<string | null>(null)
+  const backendProfileIdRef = useRef<string | null>(null)
+  const createPostInFlightRef = useRef(false)
+  const backendAutosaveInFlightRef = useRef(false)
+  const addProfileDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const backendAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestAddProfileDraftRef = useRef({
+    form: initialState,
+    step: 1,
+    backendProfileId: null as string | null,
+  })
+  const skipOverwriteEmptySessionDraftRef = useRef(false)
 
   const activeSavedBeneficiaries = useMemo(
     () => savedBeneficiaries.filter((b) => !b.archived),
@@ -1014,14 +1071,43 @@ export function AddInvestorProfileModal({
   }, [step, isEdit, isJointTenancy, isEntity, isIndividual, totalSteps])
 
   useEffect(() => {
+    latestAddProfileDraftRef.current = { form, step, backendProfileId }
+  }, [form, step, backendProfileId])
+
+  const persistAddProfileDraftNow = useCallback(() => {
+    if (!enableAddDraftAutosave) return
+    const { form: f, step: st, backendProfileId: bid } =
+      latestAddProfileDraftRef.current
+    const payload = {
+      form: profileWizardStateForPersist(f, st),
+      step: st,
+      ...(bid ? { backendProfileId: bid } : {}),
+    }
+    if (
+      skipOverwriteEmptySessionDraftRef.current &&
+      !addProfileDraftHasContent(payload)
+    ) {
+      return
+    }
+    skipOverwriteEmptySessionDraftRef.current = false
+    saveAddProfileDraft(payload)
+  }, [enableAddDraftAutosave])
+
+  const handleClose = useCallback(() => {
+    persistAddProfileDraftNow()
+    onClose()
+  }, [persistAddProfileDraftNow, onClose])
+
+  useEffect(() => {
     if (!open) return
     setFieldError({})
     setSsnVisible(false)
     setSpouseSsnVisible(false)
     setLastEditReason("")
     setLastEditReasonError(null)
-    setStep(1)
+    stepScrollBootRef.current = true
     if (isEdit && editTarget) {
+      setStep(1)
       const t = (editTarget.profileType || "").trim()
       const isJoint = t === PROFILE_TYPE_JOINT_TENANCY
       const isEnt = t === PROFILE_TYPE_ENTITY
@@ -1042,14 +1128,262 @@ export function AddInvestorProfileModal({
           ...(clearBen ? { beneficiary: null, beneficiaryPickId: "" } : {}),
         })
       }
-    } else {
-      setForm(initialState)
+      setBackendProfileId(null)
+      backendProfileIdRef.current = null
+      skipOverwriteEmptySessionDraftRef.current = false
+      return
     }
-  }, [open, isEdit, editTarget])
+    if (!isEdit && enableAddDraftAutosave && resumeDraft) {
+      skipOverwriteEmptySessionDraftRef.current = false
+      const restored = loadAddProfileDraft()
+      const apiProfileId = resumeFromProfile?.id?.trim() ?? ""
+
+      if (apiProfileId && resumeFromProfile) {
+        if (
+          restored &&
+          addProfileDraftHasContent(restored) &&
+          restored.backendProfileId?.trim() === apiProfileId
+        ) {
+          const fromWizard = partialFormFromSavedWizard(restored.form)
+          const restoredStep =
+            restored.step >= 1
+              ? restored.step
+              : readWizardStepFromSavedForm(restored.form) ?? 1
+          setForm({ ...initialState, ...fromWizard })
+          setStep(restoredStep)
+          setBackendProfileId(apiProfileId)
+          backendProfileIdRef.current = apiProfileId
+          return
+        }
+        const t = (resumeFromProfile.profileType || "").trim()
+        const isJoint = t === PROFILE_TYPE_JOINT_TENANCY
+        const isEnt = t === PROFILE_TYPE_ENTITY
+        const fromWizard = partialFormFromSavedWizard(
+          resumeFromProfile.profileWizardState ?? null,
+        )
+        const clearBen = isJoint || isEnt
+        let nextForm: FormState
+        if (Object.keys(fromWizard).length > 0) {
+          nextForm = {
+            ...initialState,
+            ...fromWizard,
+            ...(clearBen ? { beneficiary: null, beneficiaryPickId: "" } : {}),
+          }
+        } else {
+          nextForm = {
+            ...initialState,
+            ...seedFormFromListRow(resumeFromProfile),
+            ...(clearBen ? { beneficiary: null, beneficiaryPickId: "" } : {}),
+          }
+        }
+        const sessionForApi = loadAddProfileDraft()
+        const stepFromSession =
+          sessionForApi?.backendProfileId?.trim() === resumeFromProfile.id &&
+          sessionForApi.step >= 1
+            ? sessionForApi.step
+            : null
+        const wizardRaw = resumeFromProfile.profileWizardState
+        const stepFromWizard =
+          wizardRaw != null &&
+          typeof wizardRaw === "object" &&
+          !Array.isArray(wizardRaw)
+            ? readWizardStepFromSavedForm(wizardRaw as Record<string, unknown>)
+            : null
+        const nextStep = stepFromSession ?? stepFromWizard ?? 1
+        setForm(nextForm)
+        setStep(nextStep)
+        setBackendProfileId(resumeFromProfile.id)
+        backendProfileIdRef.current = resumeFromProfile.id
+        saveAddProfileDraft({
+          form: profileWizardStateForPersist(nextForm, nextStep),
+          step: nextStep,
+          backendProfileId: resumeFromProfile.id,
+        })
+        return
+      }
+
+      if (restored && addProfileDraftHasContent(restored)) {
+        const fromWizard = partialFormFromSavedWizard(restored.form)
+        const restoredStep =
+          restored.step >= 1
+            ? restored.step
+            : readWizardStepFromSavedForm(restored.form) ?? 1
+        setForm({ ...initialState, ...fromWizard })
+        setStep(restoredStep)
+        const bid = restored.backendProfileId?.trim()
+        if (bid) {
+          setBackendProfileId(bid)
+          backendProfileIdRef.current = bid
+        } else {
+          setBackendProfileId(null)
+          backendProfileIdRef.current = null
+        }
+        return
+      }
+      setForm(initialState)
+      setStep(1)
+      setBackendProfileId(null)
+      backendProfileIdRef.current = null
+      return
+    }
+    if (!isEdit && enableAddDraftAutosave) {
+      skipOverwriteEmptySessionDraftRef.current = true
+    }
+    setStep(1)
+    setForm(initialState)
+    setBackendProfileId(null)
+    backendProfileIdRef.current = null
+  }, [open, isEdit, editTarget, enableAddDraftAutosave, resumeDraft, resumeFromProfile])
+
+  /** Autosave add-profile wizard draft in sessionStorage (page add flow only). */
+  useEffect(() => {
+    if (!open || !enableAddDraftAutosave) {
+      if (addProfileDraftTimerRef.current) {
+        clearTimeout(addProfileDraftTimerRef.current)
+        addProfileDraftTimerRef.current = null
+      }
+      return
+    }
+    if (addProfileDraftTimerRef.current) clearTimeout(addProfileDraftTimerRef.current)
+    addProfileDraftTimerRef.current = setTimeout(() => {
+      addProfileDraftTimerRef.current = null
+      const { form: f, step: st, backendProfileId: bid } =
+        latestAddProfileDraftRef.current
+      const payload = {
+        form: profileWizardStateForPersist(f, st),
+        step: st,
+        ...(bid ? { backendProfileId: bid } : {}),
+      }
+      if (
+        skipOverwriteEmptySessionDraftRef.current &&
+        !addProfileDraftHasContent(payload)
+      ) {
+        return
+      }
+      skipOverwriteEmptySessionDraftRef.current = false
+      saveAddProfileDraft(payload)
+    }, 500)
+    return () => {
+      if (addProfileDraftTimerRef.current) {
+        clearTimeout(addProfileDraftTimerRef.current)
+        addProfileDraftTimerRef.current = null
+      }
+      const { form: f, step: st, backendProfileId: bid } =
+        latestAddProfileDraftRef.current
+      const payload = {
+        form: profileWizardStateForPersist(f, st),
+        step: st,
+        ...(bid ? { backendProfileId: bid } : {}),
+      }
+      if (
+        skipOverwriteEmptySessionDraftRef.current &&
+        !addProfileDraftHasContent(payload)
+      ) {
+        return
+      }
+      skipOverwriteEmptySessionDraftRef.current = false
+      saveAddProfileDraft(payload)
+    }
+  }, [open, enableAddDraftAutosave, form, step, backendProfileId])
+
+  /** Debounced POST (first save) or PUT — persists wizard progress for the profiles table. */
+  useEffect(() => {
+    if (!getApiV1Base() || !open || !enableAddDraftAutosave) {
+      if (backendAutosaveTimerRef.current) {
+        clearTimeout(backendAutosaveTimerRef.current)
+        backendAutosaveTimerRef.current = null
+      }
+      return
+    }
+    if (backendAutosaveTimerRef.current) clearTimeout(backendAutosaveTimerRef.current)
+    backendAutosaveTimerRef.current = setTimeout(() => {
+      backendAutosaveTimerRef.current = null
+      void (async () => {
+        const { form: f, step: st } = latestAddProfileDraftRef.current
+        const draftCheck = {
+          form: profileWizardStateForPersist(f, st),
+          step: st,
+        }
+        if (!addProfileDraftHasContent(draftCheck)) return
+
+        const profileName = buildProfileNameForPersist(f)
+        const profileType = f.profileType.trim() || "—"
+        const profileWizardState = profileWizardStateForPersist(f, st)
+        const persistedId = backendProfileIdRef.current
+
+        if (persistedId) {
+          if (backendAutosaveInFlightRef.current) return
+          backendAutosaveInFlightRef.current = true
+          try {
+            await putInvestorProfile(persistedId, {
+              profileName,
+              profileType,
+              profileWizardState,
+              autosave: true,
+            })
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              console.warn(
+                "[Add profile] Autosave failed:",
+                e instanceof Error ? e.message : e,
+              )
+            }
+          } finally {
+            backendAutosaveInFlightRef.current = false
+          }
+          return
+        }
+
+        if (createPostInFlightRef.current) return
+        createPostInFlightRef.current = true
+        backendAutosaveInFlightRef.current = true
+        try {
+          const row = await postInvestorProfile({
+            profileName,
+            profileType,
+            profileWizardState,
+            autosave: true,
+          })
+          backendProfileIdRef.current = row.id
+          setBackendProfileId(row.id)
+          saveAddProfileDraft({
+            form: profileWizardState,
+            step: st,
+            backendProfileId: row.id,
+          })
+          notifyProfileBookRefetch()
+        } catch (e) {
+          if (import.meta.env.DEV) {
+            console.warn(
+              "[Add profile] Autosave failed:",
+              e instanceof Error ? e.message : e,
+            )
+          }
+        } finally {
+          createPostInFlightRef.current = false
+          backendAutosaveInFlightRef.current = false
+        }
+      })()
+    }, 1200)
+    return () => {
+      if (backendAutosaveTimerRef.current) {
+        clearTimeout(backendAutosaveTimerRef.current)
+        backendAutosaveTimerRef.current = null
+      }
+    }
+  }, [open, enableAddDraftAutosave, form, step, backendProfileId])
 
   useEffect(() => {
     if (!isIndividual && !isJointTenancy && !isEntity && step > 1) setStep(1)
   }, [isIndividual, isJointTenancy, isEntity, step])
+
+  useEffect(() => {
+    if (stepScrollBootRef.current) {
+      stepScrollBootRef.current = false
+      return
+    }
+    scrollMultiStepFormToTopAfterUpdate({ container: profileFormRef.current })
+  }, [step])
 
   /** Keep mailing id aligned when “same as tax” (incl. profiles saved before id was mirrored). */
   useEffect(() => {
@@ -1070,11 +1404,11 @@ export function AddInvestorProfileModal({
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose()
+      if (e.key === "Escape") handleClose()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, onClose])
+  }, [open, handleClose])
 
   useEffect(() => {
     if (!open || isNonModalLayout) return
@@ -1316,8 +1650,24 @@ export function AddInvestorProfileModal({
 
   const goNext = useCallback(() => {
     if (!validateStep()) return
-    setStep((s) => Math.min(effectiveMaxStep, s + 1))
-  }, [validateStep, effectiveMaxStep])
+    const nextStep = Math.min(effectiveMaxStep, step + 1)
+    latestAddProfileDraftRef.current = {
+      ...latestAddProfileDraftRef.current,
+      form,
+      step: nextStep,
+    }
+    setStep(nextStep)
+    if (enableAddDraftAutosave) {
+      persistAddProfileDraftNow()
+    }
+  }, [
+    validateStep,
+    effectiveMaxStep,
+    step,
+    form,
+    enableAddDraftAutosave,
+    persistAddProfileDraftNow,
+  ])
 
   const goBack = useCallback(() => {
     setFieldError({})
@@ -1496,12 +1846,16 @@ export function AddInvestorProfileModal({
   }
 
   function rejectDuplicateProfile(profileName: string, profileType: string): boolean {
+    const excludeId =
+      isEdit && editTarget
+        ? editTarget.id
+        : backendProfileIdRef.current?.trim() || undefined
     if (
       hasActiveProfileDuplicate(
         existingProfiles,
         profileName,
         profileType,
-        isEdit && editTarget ? editTarget.id : undefined,
+        excludeId,
       )
     ) {
       toast.error("Duplicate profile", PROFILE_DUPLICATE_MESSAGE)
@@ -1521,12 +1875,14 @@ export function AddInvestorProfileModal({
     const payload: NewInvestorProfilePayload = {
       profileName,
       profileType,
-      profileWizardState: formToJsonSnapshot(normalizeFormPhonesForPersist(form)),
+      profileWizardState: profileWizardStateForPersist(form, step),
     }
+    const existingId = backendProfileIdRef.current?.trim() || undefined
     if (onProfileCreated) {
       void (async () => {
         try {
-          await onProfileCreated(payload)
+          await onProfileCreated(payload, existingId ? { existingId } : undefined)
+          if (enableAddDraftAutosave) clearAddProfileDraft()
           onClose()
         } catch (e) {
           toast.error(
@@ -1540,6 +1896,7 @@ export function AddInvestorProfileModal({
         "Profile added",
         "Your new profile was saved. (No handler — data not persisted.)",
       )
+      if (enableAddDraftAutosave) clearAddProfileDraft()
       onClose()
     }
   }
@@ -1563,7 +1920,7 @@ export function AddInvestorProfileModal({
       profileName,
       profileType,
       lastEditReason: lastEditReason.trim(),
-      profileWizardState: formToJsonSnapshot(normalizeFormPhonesForPersist(form)),
+      profileWizardState: profileWizardStateForPersist(form, step),
     }
     if (onProfileUpdated) {
       void (async () => {
@@ -1644,6 +2001,7 @@ export function AddInvestorProfileModal({
   function renderFormPanel() {
     const formNode = (
         <form
+          ref={profileFormRef}
           className={
             isPage ? "deals_add_deal_asset_form" : "deals_add_inv_modal_form"
           }
@@ -2998,8 +3356,8 @@ export function AddInvestorProfileModal({
         >
           <button
             type="button"
-            className="um_btn_secondary"
-            onClick={onClose}
+            className="um_btn_secondary add_contact_modal_actions_leading"
+            onClick={handleClose}
             aria-label="Close"
           >
             <X size={16} strokeWidth={2} aria-hidden />
@@ -3041,14 +3399,14 @@ export function AddInvestorProfileModal({
                 className="um_btn_primary"
                 onClick={() => void handleSubmit()}
               >
-                <Plus size={18} strokeWidth={2} aria-hidden />
-                Add profile
+                <Save size={16} strokeWidth={2} aria-hidden />
+                Save
               </button>
             )}
             {isEdit && step === totalSteps && (isIndividual || isJointTenancy || isEntity) && (
               <button type="button" className="um_btn_primary" onClick={() => void handleEditSave()}>
-                <Save size={18} strokeWidth={2} aria-hidden />
-                Save changes
+                <Save size={16} strokeWidth={2} aria-hidden />
+                Save
               </button>
             )}
           </div>
@@ -3088,7 +3446,7 @@ export function AddInvestorProfileModal({
           <button
             type="button"
             className="um_modal_close"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="Close"
           >
             <X size={20} strokeWidth={2} aria-hidden />
@@ -3109,7 +3467,7 @@ export function AddInvestorProfileModal({
                 <button
                   type="button"
                   className="deals_list_back_circle"
-                  onClick={onClose}
+                  onClick={handleClose}
                   aria-label="Back to profiles"
                 >
                   <ArrowLeft size={20} strokeWidth={2} aria-hidden />
@@ -3160,7 +3518,7 @@ export function AddInvestorProfileModal({
       className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
       role="presentation"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (e.target === e.currentTarget) handleClose()
       }}
     >
       {renderFormPanel()}
@@ -3171,3 +3529,5 @@ export function AddInvestorProfileModal({
   </>
   )
 }
+
+export default AddInvestorProfileModal

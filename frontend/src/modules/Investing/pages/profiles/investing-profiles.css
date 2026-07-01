@@ -178,11 +178,41 @@
 .investing_profiles_page
   .investing_profiles_table_panel
   .um_td_user.investing_profiles_td_name
-  .um_user_meta {
+  .um_user_meta.investing_profiles_name_meta {
   flex: none;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
+}
+
+.investing_profiles_page
+  .investing_profiles_table_panel
+  .investing_profiles_name_primary {
+  min-width: 0;
+  width: 100%;
+}
+
+.investing_profiles_page
+  .investing_profiles_table_panel
+  .investing_profiles_name_primary.deals_list_name_with_draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+
+.investing_profiles_page
+  .investing_profiles_table_panel
+  .investing_profiles_name_primary.deals_list_name_with_draft
+  .deals_table_name_link,
+.investing_profiles_page
+  .investing_profiles_table_panel
+  .investing_profiles_name_primary.deals_list_name_with_draft
+  button.deals_table_name_link {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .investing_profiles_page .investing_profiles_table_panel .investing_profiles_name_text,

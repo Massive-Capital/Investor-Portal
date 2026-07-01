@@ -144,6 +144,34 @@ function sumExistingRowsForAllocation(
   }
 }
 
+function formatRemainderPercent(allocatedTotal: number): string {
+  if (!Number.isFinite(allocatedTotal) || allocatedTotal <= 0) return ""
+  const remainder = roundPctTotal(
+    Math.max(0, Math.min(100, 100 - allocatedTotal)),
+  )
+  return `${remainder.toFixed(2)}%`
+}
+
+/**
+ * Default ownership / distribution % when adding a class: 100 minus the sum of all
+ * existing classes (not just the first).
+ */
+export function investorClassRemainderPercentsForNewClass(
+  existingRows: readonly DealInvestorClass[],
+): { entityLegalOwnershipPct: string; distributionSharePct: string } {
+  if (!existingRows.length) {
+    return { entityLegalOwnershipPct: "", distributionSharePct: "" }
+  }
+  const { legalOwnershipTotal, distributionShareTotal } =
+    sumExistingRowsForAllocation(existingRows)
+  const entityLegalOwnershipPct = formatRemainderPercent(legalOwnershipTotal)
+  const distAllocated =
+    distributionShareTotal > 0 ? distributionShareTotal : legalOwnershipTotal
+  const distributionSharePct =
+    formatRemainderPercent(distAllocated) || entityLegalOwnershipPct
+  return { entityLegalOwnershipPct, distributionSharePct }
+}
+
 /** Validate proposed class % against all other classes on the deal (create / edit save). */
 export function validateInvestorClassAllocationForSave({
   existingRows,

@@ -848,7 +848,12 @@ export type OfferingOverviewPatchInput = {
   dealType?: string;
   /** JSON array string for `offering_overview_asset_ids` column */
   offeringOverviewAssetIdsJson?: string;
+  /** Investor class id for offering overview / public offering economics */
+  offeringOverviewClassId?: string | null;
 };
+
+const OFFERING_OVERVIEW_CLASS_ID_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function sanitizeOfferingOverviewPatch(
   patch: OfferingOverviewPatchInput,
@@ -906,6 +911,20 @@ export function sanitizeOfferingOverviewPatch(
       return { ok: false, message: "offering_overview_asset_ids must be valid JSON." };
     }
     out.offeringOverviewAssetIdsJson = j;
+  }
+  if (patch.offeringOverviewClassId !== undefined) {
+    if (patch.offeringOverviewClassId === null) {
+      out.offeringOverviewClassId = null;
+    } else {
+      const v = String(patch.offeringOverviewClassId ?? "").trim();
+      if (!v) {
+        out.offeringOverviewClassId = null;
+      } else if (!OFFERING_OVERVIEW_CLASS_ID_UUID_RE.test(v)) {
+        return { ok: false, message: "Invalid offering overview class id." };
+      } else {
+        out.offeringOverviewClassId = v;
+      }
+    }
   }
   if (Object.keys(out).length === 0) {
     return { ok: false, message: "No valid fields to update." };
@@ -975,6 +994,9 @@ export async function updateDealOfferingOverviewById(
       ...(patch.dealType !== undefined ? { dealType: patch.dealType } : {}),
       ...(patch.offeringOverviewAssetIdsJson !== undefined
         ? { offeringOverviewAssetIds: patch.offeringOverviewAssetIdsJson }
+        : {}),
+      ...(patch.offeringOverviewClassId !== undefined
+        ? { offeringOverviewClassId: patch.offeringOverviewClassId }
         : {}),
     })
     .where(eq(addDealForm.id, id))

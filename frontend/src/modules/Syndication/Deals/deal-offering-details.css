@@ -2013,6 +2013,13 @@ a.deal_offering_add_ic_header.um_btn_primary {
   box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgb(17 24 39 / 8%));
 }
 
+.deal_fi_field_error {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--portal-danger, #b91c1c);
+}
+
 .deal_fi_wire_radios {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

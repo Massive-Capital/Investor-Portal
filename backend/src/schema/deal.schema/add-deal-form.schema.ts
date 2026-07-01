@@ -56,6 +56,8 @@ export const addDealForm = pgTable("add_deal_form", {
   offeringOverviewAssetIds: text("offering_overview_asset_ids")
     .notNull()
     .default("[]"),
+  /** Investor class highlighted on offering overview / public offering page. */
+  offeringOverviewClassId: uuid("offering_overview_class_id"),
   /** JSON string array: relative paths under uploads (same segments as `asset_image_path`) for offering gallery / public preview. */
   offeringGalleryPaths: text("offering_gallery_paths").notNull().default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true })

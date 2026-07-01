@@ -12,7 +12,7 @@ import {
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { FormHeadingWithInfo } from "../../../../common/components/form-heading/FormHeadingWithInfo"
 import { toast } from "../../../../common/components/Toast"
-import { focusFirstFormErrorAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
+import { focusFirstFormErrorAfterUpdate, scrollMultiStepFormToTopAfterUpdate } from "../../../../common/utils/scrollToFirstFormError"
 import {
   assetImagePathsToUrls,
   getApiV1Base,
@@ -149,6 +149,7 @@ export function CreateDealPage() {
    */
   const skipOverwriteEmptySessionDraftRef = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
+  const stepScrollBootRef = useRef(true)
 
   useLayoutEffect(() => {
     if (editDealId) {
@@ -233,6 +234,14 @@ export function CreateDealPage() {
       cancelled = true
     }
   }, [editDealId, navigate, postSavePath])
+
+  useEffect(() => {
+    if (stepScrollBootRef.current) {
+      stepScrollBootRef.current = false
+      return
+    }
+    scrollMultiStepFormToTopAfterUpdate({ container: formRef.current })
+  }, [step])
 
   backendDealIdRef.current = backendDealId
   assetImagesRef.current = assetImages

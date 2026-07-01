@@ -125,6 +125,34 @@
 }
 
 /* Add profile uses same `um_modal_actions` / add_contact footer pattern as Add contact. */
+.investing_add_profile_form_panel .add_contact_modal_actions,
+.investing_add_address_form_panel .add_contact_modal_actions,
+.investing_add_beneficiary_form_panel .add_contact_modal_actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.investing_add_profile_form_panel .add_contact_modal_actions_leading,
+.investing_add_address_form_panel .add_contact_modal_actions_leading,
+.investing_add_beneficiary_form_panel .add_contact_modal_actions_leading {
+  margin-right: auto;
+}
+
+.investing_add_profile_form_panel .add_contact_modal_actions_trailing,
+.investing_add_address_form_panel .add_contact_modal_actions_trailing,
+.investing_add_beneficiary_form_panel .add_contact_modal_actions_trailing {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
 
 /* Info (i) directly after the label text (with icon row: field icon | text | (i)) */
 .investing_field_hint {

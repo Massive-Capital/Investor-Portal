@@ -15,7 +15,7 @@ import {
   type FormEvent,
 } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
-import { focusFirstFormErrorAfterUpdate } from "../../../common/utils/scrollToFirstFormError"
+import { focusFirstFormErrorAfterUpdate, scrollMultiStepFormToTopAfterUpdate } from "../../../common/utils/scrollToFirstFormError"
 import {
   buildDealDetailReturnSearch,
   type DealDetailReturnState,
@@ -79,6 +79,7 @@ export function AddDealAssetPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
+  const stepScrollBootRef = useRef(true)
 
   const dealDetailPath =
     dealId != null && dealId !== ""
@@ -205,6 +206,14 @@ export function AddDealAssetPage() {
     setStep(1)
     setAssetErrors({})
   }, [dealId, isEdit])
+
+  useEffect(() => {
+    if (stepScrollBootRef.current) {
+      stepScrollBootRef.current = false
+      return
+    }
+    scrollMultiStepFormToTopAfterUpdate({ container: formRef.current })
+  }, [step])
 
   const patchAsset = useCallback((patch: Partial<AssetStepDraft>) => {
     setAssetDraft((d) => ({ ...d, ...patch }))

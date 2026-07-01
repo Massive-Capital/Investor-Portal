@@ -5,6 +5,7 @@ import {
   Eye,
   MoreHorizontal,
   Pencil,
+  Play,
 } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
@@ -32,6 +33,7 @@ export function InvestingProfilesRowActions({
   displayName,
   kind,
   archived: archivedProp = false,
+  incompleteDraft = false,
   onSetArchived,
   onView,
   onEdit,
@@ -40,12 +42,15 @@ export function InvestingProfilesRowActions({
   displayName: string
   kind: RowEntityKind
   archived?: boolean
+  /** Incomplete add-profile or session draft — show Resume instead of Edit. */
+  incompleteDraft?: boolean
   onSetArchived?: (archived: boolean) => void
   onView?: () => void
   onEdit?: () => void
   onExport?: () => void
 }) {
   const { viewTitle, editTitle, archiveTitle, exportTitle } = labels(kind)
+  const resumeLabel = incompleteDraft ? "Resume" : editTitle
   const archived = Boolean(archivedProp)
   const canToggleArchive = Boolean(onSetArchived)
   const nameFallback =
@@ -182,17 +187,26 @@ export function InvestingProfilesRowActions({
                   onClick={() =>
                     run(() => {
                       if (onEdit) onEdit()
-                      else toast.success(editTitle, apiHint("edit"))
+                      else toast.success(resumeLabel, apiHint("edit"))
                     })
                   }
                 >
-                  <Pencil
-                    className="um_kebab_menuitem_icon"
-                    size={16}
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                  Edit
+                  {incompleteDraft ? (
+                    <Play
+                      className="um_kebab_menuitem_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  ) : (
+                    <Pencil
+                      className="um_kebab_menuitem_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  )}
+                  {resumeLabel}
                 </button>
               </li>
               <li role="none">

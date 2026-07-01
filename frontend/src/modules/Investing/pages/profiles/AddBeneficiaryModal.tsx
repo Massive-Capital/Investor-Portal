@@ -16,7 +16,6 @@ import {
   MapPin,
   Phone,
   Shield,
-  Plus,
   Save,
   UserRound,
   X,
@@ -445,18 +444,18 @@ export function AddBeneficiaryModal({
           </div>
 
           <div className="um_modal_actions add_contact_modal_actions">
-            <button type="button" className="um_btn_secondary" onClick={onClose}>
+            <button
+              type="button"
+              className="um_btn_secondary add_contact_modal_actions_leading"
+              onClick={onClose}
+            >
               <X size={16} strokeWidth={2} aria-hidden />
               Close
             </button>
             <div className="add_contact_modal_actions_trailing">
               <button type="submit" className="um_btn_primary">
-                {isEdit ? (
-                  <Save size={18} strokeWidth={2} aria-hidden />
-                ) : (
-                  <Plus size={18} strokeWidth={2} aria-hidden />
-                )}
-                {isEdit ? "Save changes" : "Add beneficiary"}
+                <Save size={16} strokeWidth={2} aria-hidden />
+                Save
               </button>
             </div>
           </div>

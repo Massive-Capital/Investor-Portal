@@ -13,6 +13,7 @@ import {
 import { formatEinInput } from "@/common/tax/usEin"
 import { formatSsnItinInput } from "@/common/tax/usSsnItin"
 import {
+  pruneHiddenInvestorQuestionnaireAnswers,
   resolveQuestionForDisplay,
   type InvestorQuestionnaireQuestion,
 } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
@@ -57,7 +58,12 @@ export function InvestNowQuestionnaireField({
   const ariaInvalid = invalid || undefined
 
   function patch(nextValue: string) {
-    onChange({ ...answers, [question.id]: nextValue })
+    onChange(
+      pruneHiddenInvestorQuestionnaireAnswers({
+        ...answers,
+        [question.id]: nextValue,
+      }),
+    )
   }
 
   function toggleCheckbox(option: string, checked: boolean) {

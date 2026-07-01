@@ -167,6 +167,7 @@ export async function createInvestorSignatureRequestDropbox(params: {
       dealId: params.dealId,
       templateId: assembled.templateId,
       answerPageCount: assembled.answerPageCount,
+      esignTarget: params.esignTarget,
       questionnaireAnswers: assembled.answers,
       memberDisplayName: params.memberDisplayName,
       prefillContext,
@@ -334,6 +335,7 @@ async function resolveInvestorEsignFormFields(params: {
   templateId: string;
   /** Investor answer pages prepended before the sponsor template in the signing PDF. */
   answerPageCount: number;
+  esignTarget?: InvestorEsignRowTarget | null;
   questionnaireAnswers?: InvestorQuestionnaireAnswersMap | null;
   memberDisplayName?: string;
   prefillContext?: EsignQuestionnairePrefillContext;
@@ -357,7 +359,13 @@ async function resolveInvestorEsignFormFields(params: {
   /** Investor signing uses only sponsor-placed fields from the Dropbox template (investor role). */
 
   const answers = normalizeInvestorQuestionnaireAnswersInput(
-    params.questionnaireAnswers,
+    params.questionnaireAnswers ??
+      (params.esignTarget
+        ? await readInvestorQuestionnaireAnswersForTarget(
+            params.dealId,
+            params.esignTarget,
+          )
+        : null),
   );
   if (!answers || !Object.keys(answers).length) {
     return { formFields, customFields: [] };

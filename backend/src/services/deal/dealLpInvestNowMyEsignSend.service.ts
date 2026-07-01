@@ -14,6 +14,7 @@ import {
 } from "./dealEsignTemplates.service.js";
 import {
   normalizeInvestorQuestionnaireAnswersInput,
+  saveInvestorQuestionnaireAnswersForTarget,
 } from "./investorQuestionnaireAnswers.service.js";
 import { normalizeInvestorW9FormInput } from "./investorW9Form.service.js";
 import {
@@ -214,6 +215,21 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
   const dealName = deal?.dealName?.trim() || "Deal";
   const rosterId = target.id;
 
+  const questionnaireAnswers = normalizeInvestorQuestionnaireAnswersInput(
+    params.questionnaireAnswers,
+  );
+  if (questionnaireAnswers) {
+    try {
+      await saveInvestorQuestionnaireAnswersForTarget(
+        dealId,
+        target,
+        questionnaireAnswers,
+      );
+    } catch (err) {
+      console.warn("saveInvestorQuestionnaireAnswersForTarget (Invest Now eSign):", err);
+    }
+  }
+
   let signatureRequestId: string | undefined;
   let signatureId: string | undefined;
   let investorPreviewRelativePath: string | undefined;
@@ -230,9 +246,7 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
       selectedFiles,
       esignTarget: target,
       commitmentProfileId: params.profileId,
-      questionnaireAnswers: normalizeInvestorQuestionnaireAnswersInput(
-        params.questionnaireAnswers,
-      ),
+      questionnaireAnswers,
       w9FormData: normalizeInvestorW9FormInput(params.w9Form) ?? undefined,
       investmentId: investmentIdForTarget ?? undefined,
       investorId: params.viewerUserId,

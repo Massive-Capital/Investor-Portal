@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
+import { scrollMultiStepFormToTopAfterUpdate } from "../../../common/utils/scrollToFirstFormError"
 import {
   buildDealDetailReturnSearch,
   type DealDetailReturnState,
@@ -27,6 +28,7 @@ export function EditDealInvestorClassPage() {
   const [rows, setRows] = useState<DealInvestorClass[]>([])
   const [loading, setLoading] = useState(true)
   const [pipelineStep, setPipelineStep] = useState<InvestorClassPipelineStep>(1)
+  const stepScrollBootRef = useRef(true)
   const [, setVisitedPipelineSteps] =
     useState<ReadonlySet<InvestorClassPipelineStep>>(
       INVESTOR_CLASS_PIPELINE_STEPS_ALL,
@@ -78,7 +80,16 @@ export function EditDealInvestorClassPage() {
   useEffect(() => {
     setPipelineStep(1)
     setVisitedPipelineSteps(INVESTOR_CLASS_PIPELINE_STEPS_ALL)
+    stepScrollBootRef.current = true
   }, [dealId, classId])
+
+  useEffect(() => {
+    if (stepScrollBootRef.current) {
+      stepScrollBootRef.current = false
+      return
+    }
+    scrollMultiStepFormToTopAfterUpdate()
+  }, [pipelineStep])
 
   const editingRow = useMemo(() => {
     if (!classId || rows.length === 0) return null

@@ -3,6 +3,7 @@ import { isAccessibleCompanyId } from "../../../../common/auth/sessionMembership
 import {
   organizationIdQueryParam,
   portalAuthHeaders,
+  PORTAL_OMIT_ACTIVE_ORG_HEADER,
 } from "../../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../../common/utils/apiBaseUrl"
 import {
@@ -94,6 +95,8 @@ export interface DealDetailApi {
   internalName?: string
   /** Asset row ids selected for offering overview (persisted). */
   offeringOverviewAssetIds?: string[]
+  /** Investor class selected on Offering overview (drives public offering economics). */
+  offeringOverviewClassId?: string | null
   /** Upload-relative paths for offering gallery (persisted for public preview). */
   offeringGalleryPaths?: string[]
   /** Encrypted `preview` query value; persisted on `add_deal_form` for share links. */
@@ -109,7 +112,11 @@ export interface DealDetailApi {
 function authHeaders(options?: {
   omitActiveOrganization?: boolean
 }): HeadersInit {
-  return portalAuthHeaders(options)
+  const h = { ...portalAuthHeaders(options) } as Record<string, string>
+  if (options?.omitActiveOrganization) {
+    h[PORTAL_OMIT_ACTIVE_ORG_HEADER] = "1"
+  }
+  return h
 }
 
 /**
@@ -552,6 +559,16 @@ export function normalizeDealDetailApi(
     }
   }
 
+  const offeringOverviewClassIdRaw = firstDefined(d, [
+    "offeringOverviewClassId",
+    "offering_overview_class_id",
+  ])
+  const offeringOverviewClassId =
+    offeringOverviewClassIdRaw != null &&
+    String(offeringOverviewClassIdRaw).trim() !== ""
+      ? str(offeringOverviewClassIdRaw)
+      : null
+
   const galleryPathsRaw = firstDefined(d, [
     "offeringGalleryPaths",
     "offering_gallery_paths",
@@ -629,6 +646,7 @@ export function normalizeDealDetailApi(
     showOnInvestbase,
     internalName,
     offeringOverviewAssetIds,
+    offeringOverviewClassId,
     offeringGalleryPaths,
     assetImagePath,
     addressLine1,
@@ -1269,6 +1287,7 @@ export type OfferingOverviewPayload = {
   dealName: string
   dealType: string
   offeringOverviewAssetIds: string[]
+  offeringOverviewClassId?: string | null
 }
 
 export async function patchDealOfferingOverview(
@@ -1297,6 +1316,11 @@ export async function patchDealOfferingOverview(
           deal_name: payload.dealName,
           deal_type: payload.dealType,
           offering_overview_asset_ids: payload.offeringOverviewAssetIds,
+          ...(payload.offeringOverviewClassId !== undefined
+            ? {
+                offering_overview_class_id: payload.offeringOverviewClassId,
+              }
+            : {}),
         }),
       },
     )

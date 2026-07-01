@@ -99,6 +99,7 @@ export function normalizeInvestorProfileListRow(
       r.dateCreated ?? r.date_created ?? r.created_at ?? "",
     ).trim() || "—",
     archived: Boolean(r.archived),
+    isDraft: Boolean(r.isDraft ?? r.is_draft),
     lastEditReason:
       (r.lastEditReason ?? r.last_edit_reason) != null
         ? String(r.lastEditReason ?? r.last_edit_reason)
@@ -149,6 +150,7 @@ export async function postInvestorProfile(
       profileName: body.profileName,
       profileType: body.profileType,
       profileWizardState: body.profileWizardState,
+      ...(body.autosave ? { autosave: true } : {}),
     }),
     credentials: "include",
   })
@@ -175,8 +177,11 @@ export async function putInvestorProfile(
       body: JSON.stringify({
         profileName: body.profileName,
         profileType: body.profileType,
-        lastEditReason: body.lastEditReason,
+        ...(body.lastEditReason != null ? { lastEditReason: body.lastEditReason } : {}),
         profileWizardState: body.profileWizardState,
+        ...(body.autosave ? { autosave: true } : {}),
+        ...(body.isDraft === false ? { isDraft: false } : {}),
+        ...(body.isDraft === true ? { isDraft: true } : {}),
       }),
       credentials: "include",
     },

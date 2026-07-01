@@ -1,5 +1,9 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
-import { isLpInvestorSessionUser, isPlatformAdmin } from "@/common/auth/roleUtils"
+import {
+  getLpInvestorDealIdsFromSession,
+  isLpInvestorSessionUser,
+  isPlatformAdmin,
+} from "@/common/auth/roleUtils"
 import { fetchPlatformSignupNotifications } from "./fetchPlatformSignupNotifications"
 import { getMergedInvestmentListRows } from "@/modules/Investing/pages/investments/investmentsRuntimeData"
 import {
@@ -198,6 +202,11 @@ async function collectPlatformAdminSignupNotifications(
   out.push(...signupNotes)
 }
 
+function viewerHasLpNotificationScope(): boolean {
+  if (isLpInvestorSessionUser()) return true
+  return getLpInvestorDealIdsFromSession().length > 0
+}
+
 export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
   const out: NotificationDraft[] = []
   const isLpOnly = isLpInvestorSessionUser()
@@ -208,11 +217,14 @@ export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
       collectPlatformAdminSignupNotifications(out),
     ])
   } else {
-    await Promise.all([
+    const tasks: Promise<void>[] = [
       collectSponsorNotifications(out),
-      collectLpInvestorNotifications(out),
       collectPlatformAdminSignupNotifications(out),
-    ])
+    ]
+    if (viewerHasLpNotificationScope()) {
+      tasks.push(collectLpInvestorNotifications(out))
+    }
+    await Promise.all(tasks)
   }
 
   const byId = new Map<string, NotificationDraft>()

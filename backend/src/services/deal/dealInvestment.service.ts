@@ -96,6 +96,24 @@ const PROFILE_LABEL: Record<string, string> = {
 export const DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER =
   "__portal_investment_autosave__";
 
+function isLpSubscriptionType(subscriptionType: string): boolean {
+  return subscriptionType.trim().toLowerCase() === "lp";
+}
+
+function isMezzanineSubscriptionType(subscriptionType: string): boolean {
+  return subscriptionType.trim().toLowerCase() === "mezzanine";
+}
+
+function isInvestorOnboardingSubscriptionType(subscriptionType: string): boolean {
+  return (
+    isLpSubscriptionType(subscriptionType) ||
+    isMezzanineSubscriptionType(subscriptionType)
+  );
+}
+
+const LP_ONBOARDING_CLASS_UNAVAILABLE_MESSAGE =
+  "General partner classes are not available during investor onboarding. Select a limited partner (LP) or mezzanine class.";
+
 export async function resolveFirstInvestorClassForDeal(
   dealId: string,
 ): Promise<
@@ -114,9 +132,33 @@ export async function resolveFirstInvestorClassForDeal(
   return { ok: true, storedInvestorClass: name || first.id };
 }
 
+/** First LP or mezzanine class for investor onboarding when no class is selected yet. */
+export async function resolveFirstLpInvestorClassForDeal(
+  dealId: string,
+): Promise<
+  { ok: true; storedInvestorClass: string } | { ok: false; message: string }
+> {
+  const classes = await listInvestorClassesByDealId(dealId);
+  const onboardingClasses = classes.filter((c) =>
+    isInvestorOnboardingSubscriptionType(c.subscriptionType),
+  );
+  if (onboardingClasses.length === 0) {
+    return {
+      ok: false,
+      message:
+        "No limited partner (LP) or mezzanine investment classes are available for investor onboarding on this deal.",
+    };
+  }
+  const first = onboardingClasses[0]!;
+  const name = first.name?.trim();
+  return { ok: true, storedInvestorClass: name || first.id };
+}
+
 export type ResolveInvestorClassOpts = {
   /** Deal team / sponsor members may omit class until Classes are configured. */
   optional?: boolean;
+  /** Investor onboarding: LP and mezzanine classes only (GP excluded). */
+  lpOnboardingOnly?: boolean;
 };
 
 export async function resolveInvestorClassForDealInvestment(
@@ -155,6 +197,12 @@ export async function resolveInvestorClassForDealInvestment(
 
   const byId = classes.find((c) => c.id === t);
   if (byId) {
+    if (
+      opts?.lpOnboardingOnly &&
+      !isInvestorOnboardingSubscriptionType(byId.subscriptionType)
+    ) {
+      return { ok: false, message: LP_ONBOARDING_CLASS_UNAVAILABLE_MESSAGE };
+    }
     const name = byId.name?.trim();
     return {
       ok: true,
@@ -165,6 +213,12 @@ export async function resolveInvestorClassForDealInvestment(
   const norm = (s: string) => s.trim().toLowerCase();
   const byName = classes.find((c) => norm(c.name) === norm(t));
   if (byName) {
+    if (
+      opts?.lpOnboardingOnly &&
+      !isInvestorOnboardingSubscriptionType(byName.subscriptionType)
+    ) {
+      return { ok: false, message: LP_ONBOARDING_CLASS_UNAVAILABLE_MESSAGE };
+    }
     const name = byName.name?.trim();
     return {
       ok: true,

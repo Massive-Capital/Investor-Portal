@@ -279,15 +279,6 @@ export function InvestNowEsignaturesStep({
             Your subscription document is ready. Open the signing form to complete
             your signature.
           </p>
-          <button
-            type="button"
-            className="um_btn_primary invest_now_esign_sign_btn"
-            disabled={disabled}
-            onClick={() => openSignModal(firstPendingSignatureRequestId)}
-          >
-            <FileSignature size={18} strokeWidth={2} aria-hidden />
-            Sign
-          </button>
         </div>
       ) : null}
 

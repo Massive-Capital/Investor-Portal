@@ -26,6 +26,8 @@ export const userInvestorProfiles = pgTable("user_investor_profiles", {
   addedBy: varchar("added_by", { length: 255 }).notNull().default(""),
   investmentsCount: integer("investments_count").notNull().default(0),
   archived: boolean("archived").notNull().default(false),
+  /** True while add-profile wizard autosave is in progress; cleared on final Save. */
+  isDraft: boolean("is_draft").notNull().default(false),
   lastEditReason: text("last_edit_reason"),
   /**
    * Multi-step add/edit form as JSON; matches the portal “Add profile” wizard (names, SSN, distribution, etc.).

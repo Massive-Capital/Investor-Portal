@@ -6,6 +6,7 @@ import {
   parseEsignStatusBundle,
   pickPendingEsignSend,
 } from "../../constants/deal-investor-esign-status.js";
+import { portalProfileIdToSignFlowProfileType } from "../../constants/esignProfileTypes.js";
 import { db } from "../../database/db.js";
 import { dealInvestment } from "../../schema/deal.schema/deal-investment.schema.js";
 import { getDealEsignDropboxSignPublicConfig } from "./dealEsignDropboxSign.service.js";
@@ -236,9 +237,32 @@ export async function getDealMyEsignSignSession(params: {
     }
 
     try {
+      let resolvedCommitmentProfileId = String(params.profileId ?? "").trim();
+      if (
+        !resolvedCommitmentProfileId &&
+        commitmentTarget?.table === "investment"
+      ) {
+        const [invProfile] = await db
+          .select({ profileId: dealInvestment.profileId })
+          .from(dealInvestment)
+          .where(
+            and(
+              eq(dealInvestment.id, commitmentTarget.id),
+              eq(dealInvestment.dealId, dealId),
+            ),
+          )
+          .limit(1);
+        resolvedCommitmentProfileId = String(invProfile?.profileId ?? "").trim();
+      }
+      const investorProfileType = portalProfileIdToSignFlowProfileType(
+        resolvedCommitmentProfileId,
+      );
       const session = await createSignFlowEmbedSigningSession({
         documentId: sigId,
         recipientEmail: email,
+        ...(investorProfileType
+          ? { profileType: investorProfileType }
+          : {}),
       });
       return {
         ok: true,

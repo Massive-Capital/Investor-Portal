@@ -219,7 +219,7 @@ export function EsignSigningWorkflowPicker({
                 Investor first
               </span>
               <span className="deal_esign_workflow_sequence_desc">
-                All investors may sign in any order; sponsor signs after at least one investor finishes.
+                After all investors sign, the sponsor signs.
               </span>
             </button>
 

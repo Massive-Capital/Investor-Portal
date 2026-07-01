@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { IdCard, MapPin, Plus, Users } from "lucide-react"
-import { EntityAvatarNameCell } from "@/common/components/entity-avatar/EntityAvatarNameCell"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { FilePenLine, IdCard, MapPin, Plus, Users } from "lucide-react"
+import {
+  AvatarInitialsRing,
+  EntityAvatarNameCell,
+} from "@/common/components/entity-avatar/EntityAvatarNameCell"
 import { ActiveArchivedTabs } from "@/common/components/active-archived-tabs/ActiveArchivedTabs"
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "@/common/components/Toast"
@@ -24,6 +27,16 @@ import {
   nationalDigitsFromStoredPhone,
 } from "@/common/phone/usPhoneNumber"
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage"
+import {
+  ADD_PROFILE_DRAFT_UPDATED_EVENT,
+  PROFILE_BOOK_REFETCH_EVENT,
+} from "./addProfileFormDraftStorage"
+import {
+  ADD_PROFILE_DRAFT_ROW_ID,
+  buildAddProfileDraftListRow,
+  isInvestorProfileListRowIncomplete,
+} from "./addProfileDraftListRow"
+import { loadAddProfileDraft } from "./addProfileFormDraftStorage"
 import { getMergedInvestmentListRows } from "../investments/investmentsRuntimeData"
 import type { InvestmentListRow } from "../investments/investments.types"
 import {
@@ -97,11 +110,65 @@ const PROFILES_TABLE_COL_WIDTH = {
   actions: "5rem",
 } as const
 
+function ProfileListNameCell({
+  row,
+  resumeHref,
+  onView,
+}: {
+  row: InvestorProfileListRow
+  resumeHref?: string
+  onView: () => void
+}) {
+  const isIncomplete = isInvestorProfileListRowIncomplete(row)
+  const nameLink = resumeHref ? (
+    <Link className="deals_table_name_link investing_profiles_name_text" to={resumeHref}>
+      {row.profileName?.trim() || "—"}
+    </Link>
+  ) : (
+    <button
+      type="button"
+      className="deals_table_name_link investing_profiles_name_text um_user_meta_username"
+      onClick={onView}
+    >
+      {row.profileName?.trim() || "—"}
+    </button>
+  )
+
+  return (
+    <div className="um_user_cell investing_profiles_name_cell">
+      <AvatarInitialsRing name={row.profileName?.trim() || "?"} />
+      <div className="um_user_meta investing_profiles_name_meta">
+        <div
+          className={[
+            "investing_profiles_name_primary",
+            isIncomplete ? "deals_list_name_with_draft" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {nameLink}
+          {isIncomplete ? (
+            <span
+              className="deals_list_draft_icon deals_list_draft_icon--draft"
+              title="Incomplete draft"
+            >
+              <FilePenLine size={14} strokeWidth={2} aria-hidden />
+              <span className="deals_list_sr_only">Draft</span>
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /**
  * LP investing shell: `/investing/profiles` — profiles, beneficiaries, and saved addresses.
  */
 export default function InvestingProfilesPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const hideAddProfileDraftRow = location.pathname === "/investing/profiles/add"
   const [activeTab, setActiveTab] = useState<ProfilesTab>("my-profiles")
   const [addBenOpen, setAddBenOpen] = useState(false)
   const [addAddressOpen, setAddAddressOpen] = useState(false)
@@ -133,6 +200,20 @@ export default function InvestingProfilesPage() {
   const [viewModal, setViewModal] = useState<ViewModalState>(null)
   const [editBeneficiary, setEditBeneficiary] = useState<BeneficiaryListRow | null>(null)
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null)
+  const [addProfileDraftTick, setAddProfileDraftTick] = useState(0)
+
+  const reloadProfileBook = useCallback(() => {
+    void (async () => {
+      try {
+        const book = await fetchMyProfileBook()
+        setProfiles(book.profiles)
+        setBeneficiaries(book.beneficiaries)
+        setSavedAddresses(book.addresses)
+      } catch {
+        // keep prior rows
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -190,6 +271,24 @@ export default function InvestingProfilesPage() {
       window.removeEventListener(DEALS_LIST_REFETCH_EVENT, onDealsListRefetch)
     }
   }, [])
+
+  useEffect(() => {
+    function onProfileDraftUpdated() {
+      setAddProfileDraftTick((t) => t + 1)
+    }
+    function onProfileBookRefetch() {
+      reloadProfileBook()
+    }
+    window.addEventListener(ADD_PROFILE_DRAFT_UPDATED_EVENT, onProfileDraftUpdated)
+    window.addEventListener(PROFILE_BOOK_REFETCH_EVENT, onProfileBookRefetch)
+    return () => {
+      window.removeEventListener(
+        ADD_PROFILE_DRAFT_UPDATED_EVENT,
+        onProfileDraftUpdated,
+      )
+      window.removeEventListener(PROFILE_BOOK_REFETCH_EVENT, onProfileBookRefetch)
+    }
+  }, [reloadProfileBook])
 
   const profilesDisplay = useMemo(
     () =>
@@ -367,6 +466,43 @@ export default function InvestingProfilesPage() {
     })
   }, [query, profilesByStatus])
 
+  const sessionAddProfileDraftRow = useMemo((): InvestorProfileListRow | null => {
+    void addProfileDraftTick
+    return buildAddProfileDraftListRow(profilesDisplay)
+  }, [addProfileDraftTick, profilesDisplay])
+
+  const displayProfiles = useMemo(() => {
+    const base = filteredProfiles
+    if (
+      activeTab !== "my-profiles" ||
+      profilesStatusTab !== "active" ||
+      hideAddProfileDraftRow ||
+      !sessionAddProfileDraftRow
+    ) {
+      return base
+    }
+    const q = query.trim().toLowerCase()
+    if (
+      q &&
+      !(sessionAddProfileDraftRow.profileName ?? "").toLowerCase().includes(q)
+    ) {
+      return base
+    }
+    const sessionBackendId = loadAddProfileDraft()?.backendProfileId?.trim()
+    const withoutApiDuplicate =
+      sessionBackendId != null && sessionBackendId !== ""
+        ? base.filter((r) => r.id !== sessionBackendId)
+        : base
+    return [sessionAddProfileDraftRow, ...withoutApiDuplicate]
+  }, [
+    filteredProfiles,
+    activeTab,
+    profilesStatusTab,
+    hideAddProfileDraftRow,
+    sessionAddProfileDraftRow,
+    query,
+  ])
+
   useEffect(() => {
     setPage(1)
   }, [query, profiles.length, profilesStatusTab])
@@ -374,16 +510,16 @@ export default function InvestingProfilesPage() {
   useEffect(() => {
     const totalPages = Math.max(
       1,
-      Math.ceil(filteredProfiles.length / pageSize),
+      Math.ceil(displayProfiles.length / pageSize),
     )
     if (page > totalPages) setPage(totalPages)
-  }, [filteredProfiles.length, pageSize, page])
+  }, [displayProfiles.length, pageSize, page])
 
   const profilesPagination = useMemo(
     () => ({
       page,
       pageSize,
-      totalItems: filteredProfiles.length,
+      totalItems: displayProfiles.length,
       onPageChange: setPage,
       onPageSizeChange: (n: number) => {
         setPageSize(n)
@@ -391,7 +527,7 @@ export default function InvestingProfilesPage() {
       },
       ariaLabel: "Profiles table pagination",
     }),
-    [page, pageSize, filteredProfiles.length],
+    [page, pageSize, displayProfiles.length],
   )
 
   const beneficiariesByStatus = useMemo(() => {
@@ -562,6 +698,14 @@ export default function InvestingProfilesPage() {
     setViewModal({ kind: "profile", row })
   }, [])
 
+  const profileResumeHref = useCallback((row: InvestorProfileListRow): string | undefined => {
+    if (row.id === ADD_PROFILE_DRAFT_ROW_ID) return "/investing/profiles/add?resume=1"
+    if (row.isDraft) {
+      return `/investing/profiles/add?resume=1&profileId=${encodeURIComponent(row.id)}`
+    }
+    return undefined
+  }, [])
+
   const profileColumns: DataTableColumn<InvestorProfileListRow>[] = useMemo(
     () => [
       {
@@ -572,11 +716,10 @@ export default function InvestingProfilesPage() {
         sortValue: (r) => (r.profileName ?? "").toLowerCase(),
         tdClassName: "um_td_user investing_profiles_td_name",
         cell: (r) => (
-          <EntityAvatarNameCell
-            displayName={r.profileName ?? ""}
-            onClick={() => openProfileView(r)}
-            linkClassName="deals_table_name_link investing_profiles_name_text um_user_meta_username"
-            cellClassName="investing_profiles_name_cell"
+          <ProfileListNameCell
+            row={r}
+            resumeHref={profileResumeHref(r)}
+            onView={() => openProfileView(r)}
           />
         ),
       },
@@ -611,7 +754,10 @@ export default function InvestingProfilesPage() {
         header: "Date created",
         colWidth: PROFILES_TABLE_COL_WIDTH.dateCreated,
         sortValue: (r) => Date.parse(r.dateCreated) || 0,
-        cell: (r) => formatProfileListDate(r.dateCreated),
+        cell: (r) =>
+          isInvestorProfileListRowIncomplete(r)
+            ? "Draft"
+            : formatProfileListDate(r.dateCreated),
       },
       {
         id: "actions",
@@ -625,15 +771,34 @@ export default function InvestingProfilesPage() {
             displayName={row.profileName}
             kind="profile"
             archived={Boolean(row.archived)}
-            onSetArchived={(v) => setProfileArchived(row.id, v)}
-            onView={() => openProfileView(row)}
-            onEdit={() => void navigate(`/investing/profiles/${encodeURIComponent(row.id)}/edit`)}
+            incompleteDraft={isInvestorProfileListRowIncomplete(row)}
+            onSetArchived={
+              row.id === ADD_PROFILE_DRAFT_ROW_ID
+                ? undefined
+                : (v) => setProfileArchived(row.id, v)
+            }
+            onView={() => {
+              const resumeTo = profileResumeHref(row)
+              if (resumeTo) {
+                void navigate(resumeTo)
+                return
+              }
+              openProfileView(row)
+            }}
+            onEdit={() => {
+              const resumeTo = profileResumeHref(row)
+              if (resumeTo) {
+                void navigate(resumeTo)
+                return
+              }
+              void navigate(`/investing/profiles/${encodeURIComponent(row.id)}/edit`)
+            }}
             onExport={() => exportInvestorProfileRow(row)}
           />
         ),
       },
     ],
-    [setProfileArchived, navigate, openProfileView],
+    [setProfileArchived, navigate, openProfileView, profileResumeHref],
   )
 
   const beneficiaryColumns: DataTableColumn<BeneficiaryListRow>[] = useMemo(
@@ -919,7 +1084,7 @@ export default function InvestingProfilesPage() {
               membersTableClassName="um_table_members deal_inv_table"
               stickyFirstColumn={false}
               columns={profileColumns}
-              rows={filteredProfiles}
+              rows={displayProfiles}
               isLoading={bookLoading}
               getRowKey={(r, i) => r.id || `profile-row-${i}`}
               emptyLabel={
@@ -931,7 +1096,7 @@ export default function InvestingProfilesPage() {
               }
               initialSort={{ columnId: "dateCreated", direction: "desc" }}
               pagination={
-                filteredProfiles.length > 0 ? profilesPagination : undefined
+                displayProfiles.length > 0 ? profilesPagination : undefined
               }
             />
               </div>

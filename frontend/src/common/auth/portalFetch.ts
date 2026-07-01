@@ -5,8 +5,12 @@ import {
   refreshAuthTokens,
 } from "./authTokensApi"
 import { getApiV1Base } from "../utils/apiBaseUrl"
-import { clearLastSessionActivity, markIdleSessionTimeoutNotice } from "./idleSession"
-import { portalAuthHeaders } from "./portalAuthHeaders"
+import {
+  clearLastSessionActivity,
+  markIdleSessionTimeoutNotice,
+  touchSessionActivity,
+} from "./idleSession"
+import { portalAuthHeaders, ACTIVE_ORGANIZATION_HEADER, PORTAL_OMIT_ACTIVE_ORG_HEADER } from "./portalAuthHeaders"
 import { clearPortalSessionStorage } from "./sessionKeys"
 
 let refreshInFlight: Promise<boolean> | null = null
@@ -65,9 +69,19 @@ export function handleAuthSessionExpired(): void {
   window.location.assign(`/signin${next}`)
 }
 
+function shouldOmitActiveOrganization(init?: RequestInit): boolean {
+  const headers = new Headers(init?.headers)
+  return headers.get(PORTAL_OMIT_ACTIVE_ORG_HEADER) === "1"
+}
+
 function mergeFreshAuthHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers)
-  const auth = portalAuthHeaders()
+  const omitActiveOrganization = shouldOmitActiveOrganization(init)
+  if (omitActiveOrganization) {
+    headers.delete(PORTAL_OMIT_ACTIVE_ORG_HEADER)
+    headers.delete(ACTIVE_ORGANIZATION_HEADER)
+  }
+  const auth = portalAuthHeaders({ omitActiveOrganization })
   for (const [key, value] of Object.entries(auth)) {
     if (value != null && value !== "") {
       headers.set(key, String(value))
@@ -105,6 +119,10 @@ export async function portalFetch(
     credentials: init?.credentials ?? "include",
   })
 
+  if (isApi && !isAuthExemptUrl(url) && response.ok) {
+    touchSessionActivity();
+  }
+
   if (
     !isApi ||
     response.status !== 401 ||
@@ -121,11 +139,15 @@ export async function portalFetch(
   }
 
   const retryInit = markRetried({ ...(init ?? {}) })
-  return nativeFetch(input, {
+  const retryResponse = await nativeFetch(input, {
     ...retryInit,
     headers: mergeFreshAuthHeaders(retryInit),
     credentials: retryInit.credentials ?? "include",
   })
+  if (isApi && !isAuthExemptUrl(url) && retryResponse.ok) {
+    touchSessionActivity();
+  }
+  return retryResponse
 }
 
 /** Patch global fetch so existing API modules get refresh-on-401 without refactors. */
@@ -161,7 +183,9 @@ export async function ensureValidAccessToken(): Promise<boolean> {
   const expired = expMs > 0 && expMs <= Date.now()
 
   if (expired || missingJti || expiresSoon) {
-    return tryRefreshAccessTokenOnce()
+    const refreshed = await tryRefreshAccessTokenOnce()
+    if (refreshed) touchSessionActivity()
+    return refreshed
   }
 
   return true

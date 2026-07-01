@@ -144,7 +144,7 @@ function stateFromDetail(d: DealDetailApi): OverviewDraft {
     dealName: d.dealName?.trim() || "",
     dealType: (d.dealType ?? "").trim(),
     selectedAssetIds: [...(d.offeringOverviewAssetIds ?? [])],
-    selectedClassId: "",
+    selectedClassId: d.offeringOverviewClassId?.trim() || "",
     classOfferingSize: "",
     classMinimumInvestment: "",
     classNumberOfUnits: "",
@@ -173,7 +173,9 @@ function mergeOverviewDraftWithClasses(
   const pick =
     prev.selectedClassId && classes.some((c) => c.id === prev.selectedClassId)
       ? prev.selectedClassId
-      : classes[0]!.id
+      : base.selectedClassId && classes.some((c) => c.id === base.selectedClassId)
+        ? base.selectedClassId
+        : classes[0]!.id
   const row = classes.find((c) => c.id === pick)
   if (!row) {
     return {
@@ -405,6 +407,7 @@ export function OfferingOverviewSection({
     detail.dealType,
     detail.secType,
     detail.closeDate,
+    detail.offeringOverviewClassId,
     sortedIdsKey(detail.offeringOverviewAssetIds ?? []),
     classes,
   ])
@@ -618,6 +621,7 @@ export function OfferingOverviewSection({
           dealName: name,
           dealType: draft.dealType.trim(),
           offeringOverviewAssetIds: draft.selectedAssetIds,
+          offeringOverviewClassId: draft.selectedClassId || null,
         })
         if (!res.ok) {
           const nameErr = res.fieldErrors?.deal_name
@@ -655,15 +659,31 @@ export function OfferingOverviewSection({
           )
           return
         }
-        try {
-          dealOut = await fetchDealById(detail.id)
-        } catch (e) {
-          toast.error(
-            e instanceof Error
-              ? e.message
-              : "Saved class fields but could not reload the deal.",
-          )
-          return
+        if (overviewBitsEqual) {
+          const classIdRes = await patchDealOfferingOverview(detail.id, {
+            offeringStatus: draft.offeringStatus,
+            offeringVisibility: draft.offeringVisibility,
+            dealName: draft.dealName.trim(),
+            dealType: draft.dealType.trim(),
+            offeringOverviewAssetIds: draft.selectedAssetIds,
+            offeringOverviewClassId: draft.selectedClassId || null,
+          })
+          if (!classIdRes.ok) {
+            toast.error(classIdRes.message)
+            return
+          }
+          dealOut = classIdRes.deal
+        } else {
+          try {
+            dealOut = await fetchDealById(detail.id)
+          } catch (e) {
+            toast.error(
+              e instanceof Error
+                ? e.message
+                : "Saved class fields but could not reload the deal.",
+            )
+            return
+          }
         }
       }
 

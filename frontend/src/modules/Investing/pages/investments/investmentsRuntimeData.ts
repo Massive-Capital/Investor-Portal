@@ -182,13 +182,20 @@ function collapseInvestmentsListRowsByDeal(
 }
 
 export async function getMergedInvestmentListRows(): Promise<InvestmentListRow[]> {
-  const nameByBook = await fetchUserInvestorProfileNameMap()
   const [fromApi, fromLocal] = await Promise.all([
-    loadInvestmentListRowsFromDeals(nameByBook),
+    loadInvestmentListRowsFromDeals(),
     Promise.resolve(readRuntimeInvestmentRows()),
   ])
   const merged = mergeInvestmentLists(fromApi, fromLocal)
   const collapsed = collapseInvestmentsListRowsByDeal(merged)
+  const needsProfileBook = collapsed.some(
+    (r) =>
+      (r.userInvestorProfileId ?? "").trim() ||
+      (r.commitmentProfileId ?? "").trim(),
+  )
+  const nameByBook = needsProfileBook
+    ? await fetchUserInvestorProfileNameMap()
+    : new Map<string, string>()
   return collapsed.map((r) => enrichInvestmentListRow(r, nameByBook))
 }
 

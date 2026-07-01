@@ -244,6 +244,7 @@ export type ProfileBookSnapshot = {
     investmentsCount: number;
     dateCreated: string;
     archived: boolean;
+    isDraft: boolean;
     lastEditReason: string | null;
     /** Add-profile wizard; maps to DB `form_snapshot` (jsonb). */
     profileWizardState: unknown | null;
@@ -326,7 +327,14 @@ export async function getProfileBookForUser(
 
 export async function createInvestorProfileForUser(
   userId: string,
-  input: { profileName: string; profileType: string; profileWizardState: string | null },
+  input: {
+    profileName: string;
+    profileType: string;
+    profileWizardState: string | null;
+    isDraft?: boolean;
+    /** When true, skip duplicate name+type check (in-progress wizard autosave). */
+    autosave?: boolean;
+  },
 ): Promise<ProfileBookSnapshot["profiles"][0] | null> {
   const [u] = await db
     .select({
@@ -341,7 +349,12 @@ export async function createInvestorProfileForUser(
 
   const profileName = (input.profileName ?? "").trim() || "—";
   const profileType = (input.profileType ?? "").trim() || "—";
-  if (await activeProfileDuplicateExists(userId, profileName, profileType)) {
+  const autosave = Boolean(input.autosave);
+  const isDraft = autosave || Boolean(input.isDraft);
+  if (
+    !autosave &&
+    (await activeProfileDuplicateExists(userId, profileName, profileType))
+  ) {
     throw new InvestorProfileDuplicateError();
   }
 
@@ -355,6 +368,7 @@ export async function createInvestorProfileForUser(
       profileName,
       profileType,
       addedBy,
+      isDraft,
       formSnapshot,
       ...distributionBankDbValues(distributionBank),
     })
@@ -538,6 +552,7 @@ function mapProfileRow(
     investmentsCount: row.investmentsCount,
     dateCreated: row.createdAt.toISOString(),
     archived: row.archived,
+    isDraft: row.isDraft,
     lastEditReason: row.lastEditReason != null && String(row.lastEditReason).trim()
       ? String(row.lastEditReason).trim()
       : null,
@@ -583,14 +598,32 @@ export async function updateInvestorProfileForUser(
   input: {
     profileName: string;
     profileType: string;
-    lastEditReason: string;
+    lastEditReason?: string;
     /** Omit to leave `form_snapshot` unchanged. */
     profileWizardState?: string | null;
+    /** Debounced wizard autosave — no audit reason required. */
+    autosave?: boolean;
+    /** Explicit `false` clears draft on final Save from the add wizard. */
+    isDraft?: boolean;
   },
 ): Promise<ProfileBookSnapshot["profiles"][0] | null> {
   const profileName = (input.profileName ?? "").trim() || "—";
   const profileType = (input.profileType ?? "").trim() || "—";
-  if (await activeProfileDuplicateExists(userId, profileName, profileType, profileId)) {
+  const autosave = Boolean(input.autosave);
+
+  const [existing] = await db
+    .select({ isDraft: userInvestorProfiles.isDraft })
+    .from(userInvestorProfiles)
+    .where(
+      and(eq(userInvestorProfiles.id, profileId), eq(userInvestorProfiles.userId, userId)),
+    )
+    .limit(1);
+  if (!existing) return null;
+
+  if (
+    !autosave &&
+    (await activeProfileDuplicateExists(userId, profileName, profileType, profileId))
+  ) {
     throw new InvestorProfileDuplicateError();
   }
 
@@ -604,6 +637,16 @@ export async function updateInvestorProfileForUser(
   const distributionBank = hasWizard
     ? distributionBankFromFormSnapshot(formSnapshot)
     : null;
+
+  let nextIsDraft = existing.isDraft;
+  if (autosave) {
+    nextIsDraft = true;
+  } else if (input.isDraft === false) {
+    nextIsDraft = false;
+  } else if (input.isDraft === true) {
+    nextIsDraft = true;
+  }
+
   const [row] = await db
     .update(userInvestorProfiles)
     .set(
@@ -611,6 +654,7 @@ export async function updateInvestorProfileForUser(
         ? {
             profileName,
             profileType,
+            isDraft: nextIsDraft,
             lastEditReason: reason || null,
             formSnapshot,
             ...distributionBankDbValues(distributionBank!),
@@ -618,6 +662,7 @@ export async function updateInvestorProfileForUser(
         : {
             profileName,
             profileType,
+            isDraft: nextIsDraft,
             lastEditReason: reason || null,
           },
     )

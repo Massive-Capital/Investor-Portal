@@ -5,11 +5,44 @@ import {
   parseNumberOfUnitsDigits,
 } from "./offeringMoneyFormat"
 
+function normalizedSubscriptionType(
+  row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
+): string {
+  return row?.subscriptionType?.trim().toLowerCase() ?? ""
+}
+
 /** `subscriptionType` from Add investor class → Class type = LP. */
 export function isLpInvestorClass(
   row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
 ): boolean {
-  return row?.subscriptionType?.trim().toLowerCase() === "lp"
+  return normalizedSubscriptionType(row) === "lp"
+}
+
+/** Class type = GP (General Partner). */
+export function isGpInvestorClass(
+  row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
+): boolean {
+  return normalizedSubscriptionType(row) === "gp"
+}
+
+/** Class type = Mezzanine. */
+export function isMezzanineInvestorClass(
+  row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
+): boolean {
+  return normalizedSubscriptionType(row) === "mezzanine"
+}
+
+/** LP and mezzanine — selectable during investor onboarding (GP excluded). */
+export function isInvestorOnboardingSelectableClass(
+  row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
+): boolean {
+  return isLpInvestorClass(row) || isMezzanineInvestorClass(row)
+}
+
+export function investorOnboardingSelectableClasses(
+  classes: DealInvestorClass[],
+): DealInvestorClass[] {
+  return classes.filter((c) => isInvestorOnboardingSelectableClass(c))
 }
 
 export function hasInvestorClassNumberOfUnits(
