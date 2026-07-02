@@ -14,6 +14,7 @@ import {
   parseEsignStatusJson,
   pickEsignFieldsFromInvestmentRows,
 } from "../../constants/deal-investor-esign-status.js";
+import { assertEligibleForNewDealRosterAdd } from "../user/portalUserRosterGuard.service.js";
 import { syncDealInvestorEsignStatusesForDeal } from "./dealMemberEsignCompletion.service.js";
 import { sqlPreserveSendInvitationMailOnUpsert } from "./dealMember.service.js";
 import {
@@ -566,6 +567,11 @@ export async function upsertDealLpInvestor(
 
   if (!cid) throw new Error("contact_member_id required");
 
+  const existing = await findDealLpInvestorByDealAndContact(dealId, cid);
+  if (!existing) {
+    await assertEligibleForNewDealRosterAdd(cid);
+  }
+
   const send =
     String(input.sendInvitationMail ?? "").toLowerCase() === "yes"
       ? "yes"
@@ -636,7 +642,10 @@ export async function updateDealLpInvestorById(
   const roleToStore = fromClientRole || LP_INVESTOR_TABLE_ROLE;
 
   const [existing] = await db
-    .select({ sendInvitationMail: dealLpInvestor.sendInvitationMail })
+    .select({
+      sendInvitationMail: dealLpInvestor.sendInvitationMail,
+      contactMemberId: dealLpInvestor.contactMemberId,
+    })
     .from(dealLpInvestor)
     .where(
       and(
@@ -645,6 +654,10 @@ export async function updateDealLpInvestorById(
       ),
     )
     .limit(1);
+  const prevContactId = String(existing?.contactMemberId ?? "").trim();
+  if (prevContactId.toLowerCase() !== cid.toLowerCase()) {
+    await assertEligibleForNewDealRosterAdd(cid);
+  }
   const sendToStore =
     send === "yes"
       ? "yes"

@@ -45,7 +45,7 @@ import CompanyMembersPage from "./modules/Syndication/company/CompanyMembersPage
 import CompanyDealsPage from "./modules/Syndication/company/CompanyDealsPage";
 import CustomerCompanyLayout from "./modules/Syndication/company/CustomerCompanyLayout";
 import MembersLayout from "./modules/Syndication/usermanagement/MembersLayout";
-import UserManagementPage from "./modules/Syndication/usermanagement/UserManagementPage";
+import { UserManagementPage } from "./modules/Syndication/usermanagement/UserManagementPage";
 import ContactsPage from "./modules/Syndication/contacts/ContactsPage";
 import EmailTemplatesPage from "./modules/Syndication/contacts/EmailTemplatesPage";
 import EmailTemplateNewPage from "./modules/Syndication/contacts/EmailTemplateNewPage";

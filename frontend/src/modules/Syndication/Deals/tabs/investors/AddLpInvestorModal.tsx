@@ -41,7 +41,8 @@ import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
 import type { AddInvestmentFormValues } from "../deal_members/add-investment/add_deal_member_types"
 import { loadAddMemberDraft } from "../deal_members/add-investment/addMemberFormDraftStorage"
 import {
-  alreadyAddedOptionLabel,
+  buildContactRosterDropdownOption,
+  buildDirectoryMemberRosterDropdownOption,
   INVESTOR_ALREADY_ON_DEAL_MESSAGE,
   isContactAlreadyOnDealRoster,
   type RosterRowForDuplicateCheck,
@@ -628,11 +629,12 @@ export function AddLpInvestorModal({
           const value = `${PREFIX_CONTACT}${c.id}`
           const baseLabel = contactOptionLabel(c)
           const onDeal = isAlreadyOnInvestorsList(c.id, c.email ?? "")
+          const meta = buildContactRosterDropdownOption(baseLabel, c, onDeal)
           return {
             value,
             label: baseLabel,
-            disabled: onDeal,
-            ...(onDeal ? { labelContent: alreadyAddedOptionLabel(baseLabel) } : {}),
+            disabled: meta.disabled,
+            labelContent: meta.labelContent,
           }
         }),
       })
@@ -648,13 +650,16 @@ export function AddLpInvestorModal({
             const dirRow = memberRows.find((x) => String(x.id) === o.value)
             const email = dirRow ? String(dirRow.email ?? "").trim() : ""
             const onDeal = isAlreadyOnInvestorsList(o.value, email)
+            const meta = buildDirectoryMemberRosterDropdownOption(
+              o.label,
+              dirRow ?? {},
+              onDeal,
+            )
             return {
               value,
               label: o.label,
-              disabled: onDeal,
-              ...(onDeal
-                ? { labelContent: alreadyAddedOptionLabel(o.label) }
-                : {}),
+              disabled: meta.disabled,
+              labelContent: meta.labelContent,
             }
           }),
       })
@@ -697,6 +702,7 @@ export function AddLpInvestorModal({
   useEffect(() => {
     if (!getApiV1Base()) return
     if (!open) return
+    if (membersLoading) return
     if (dealClasses.length === 0) return
     const hasContent =
       contactId.trim().length > 0 || sendInvitationMail === "yes"
@@ -799,6 +805,9 @@ export function AddLpInvestorModal({
     dealBlocksInvitationEmails,
     profileId,
     selectedContactAlreadyOnDeal,
+    membersLoading,
+    contactRows,
+    memberRows,
   ])
 
   async function handleSubmit(e: FormEvent) {
@@ -818,6 +827,11 @@ export function AddLpInvestorModal({
       const message = firstLpInvestorFieldErrorMessage(validationErrors)
       if (validationErrors.contactId && selectedContactAlreadyOnDeal) {
         toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
+      } else if (
+        validationErrors.contactId &&
+        validationErrors.contactId !== "Select an investor."
+      ) {
+        toast.error("Cannot add investor", validationErrors.contactId)
       }
       presentFormValidationError({
         container: formRef.current,

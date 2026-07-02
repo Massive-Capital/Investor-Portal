@@ -9,6 +9,7 @@ import {
   committedAmountMatchingInvestorsTable,
   dealIsInViewerInvestmentsListScope,
   dealRowSupportsRosterApiPrefetch,
+  filterDealListRowsVisibleToInvestors,
   formatViewerInvestingDealRolesLabel,
   mapInvestingInvestmentsPageScope,
   resolveViewerInvestingDealRoles,
@@ -379,8 +380,10 @@ async function resolveDealIdFromInvestmentRowId(
 ): Promise<string | undefined> {
   const key = investmentRowId.trim().toLowerCase()
   if (!key) return undefined
-  const list = applyLpSessionDealIdScope(
-    await fetchDealsList({ includeParticipantDeals: true }),
+  const list = filterDealListRowsVisibleToInvestors(
+    applyLpSessionDealIdScope(
+      await fetchDealsList({ includeParticipantDeals: true }),
+    ),
   )
   for (const row of list) {
     if (!dealRowSupportsRosterApiPrefetch(row)) continue

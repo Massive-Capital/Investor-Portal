@@ -80,6 +80,8 @@ export const addDealForm = pgTable("add_deal_form", {
    * (section tabs + per-section question cards).
    */
   investorQuestionnaireJson: text("investor_questionnaire_json"),
+  /** Syndication deals list: Active vs Archives tab. */
+  archived: boolean("archived").notNull().default(false),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

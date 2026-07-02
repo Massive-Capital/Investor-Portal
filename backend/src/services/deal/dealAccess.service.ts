@@ -28,6 +28,7 @@ import {
   listAddDealFormsForViewer,
   type DealViewerScope,
 } from "./dealForm.service.js";
+import { isAddDealFormIncomplete } from "./dealFormCompleteness.service.js";
 import {
   isPortalUserOnDealMemberRoster,
   listDealIdsFromDealMemberRosterForUser,
@@ -122,6 +123,44 @@ export async function resolveDealViewerScope(
   };
 }
 
+/** Syndication workspace (org, roster sponsor, platform admin) — not LP-only access. */
+export async function viewerHasSyndicationDealWorkspaceAccess(
+  deal: AddDealFormRow,
+  scope: DealViewerScope,
+): Promise<boolean> {
+  const dealId = String(deal.id);
+  if (scope.seesAllDeals) return true;
+  if (await isPortalUserOnDealMemberRoster(dealId, scope.userId)) return true;
+  if (scope.coSponsorDashboardDealIds?.includes(dealId)) return true;
+  if (
+    scope.organizationId &&
+    (await isAddDealFormInOrganizationScope(deal, scope.organizationId))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+async function investorParticipantMayReadDeal(
+  deal: AddDealFormRow,
+  scope: DealViewerScope,
+): Promise<boolean> {
+  if (!isAddDealFormIncomplete(deal)) return true;
+  return viewerHasSyndicationDealWorkspaceAccess(deal, scope);
+}
+
+/** Investing lists: hide draft / incomplete deals unless viewer has sponsor workspace access. */
+export async function filterDealsVisibleToInvestorParticipants(
+  rows: AddDealFormRow[],
+  scope: DealViewerScope,
+): Promise<AddDealFormRow[]> {
+  const out: AddDealFormRow[] = [];
+  for (const row of rows) {
+    if (await investorParticipantMayReadDeal(row, scope)) out.push(row);
+  }
+  return out;
+}
+
 export async function dealAccessibleToViewerScope(
   deal: AddDealFormRow | undefined | null,
   scope: DealViewerScope,
@@ -207,6 +246,7 @@ export async function assertDealIdReadableOrAssignedParticipant(
 ): Promise<boolean> {
   const row = await getAddDealFormById(dealId);
   if (!row) return false;
+  if (!(await investorParticipantMayReadDeal(row, scope))) return false;
   if (await dealAccessibleToViewerScope(row, scope)) return true;
   if (await isUserAssignedToDeal(scope.userId, dealId)) return true;
   const emailNorm = await viewerEmailNormForScope(scope);
@@ -238,6 +278,7 @@ export async function getAddDealFormForViewerOrAssignedParticipant(
 ): Promise<AddDealFormRow | undefined> {
   const row = await getAddDealFormById(dealId);
   if (!row) return undefined;
+  if (!(await investorParticipantMayReadDeal(row, scope))) return undefined;
   if (await dealAccessibleToViewerScope(row, scope)) return row;
   if (await isUserAssignedToDeal(scope.userId, dealId)) return row;
   const emailNorm = await viewerEmailNormForScope(scope);

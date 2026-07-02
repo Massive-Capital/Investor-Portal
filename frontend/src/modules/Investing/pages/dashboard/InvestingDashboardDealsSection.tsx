@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail";
+import { filterDealListRowsVisibleToInvestors } from "@/modules/Investing/utils/investingViewerDealScope";
 import { isPlatformAdmin } from "@/common/auth/roleUtils";
 import { TabsScrollStrip } from "@/common/components/tabs-scroll-strip/TabsScrollStrip";
 import {
@@ -124,6 +125,9 @@ async function loadDealsByBucket(
   let list = await fetchDealsList(
     platformAdminViewer ? undefined : { includeParticipantDeals: true },
   );
+  if (!platformAdminViewer) {
+    list = filterDealListRowsVisibleToInvestors(list);
+  }
   list = list.filter((row) => {
     const effective = effectiveOfferingStatusForAccess(
       row.dealStage,

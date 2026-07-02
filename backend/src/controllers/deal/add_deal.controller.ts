@@ -16,6 +16,7 @@ import {
   getAddDealFormForViewerWithDraftCreatorRepair,
   listDealsForViewer,
   listDealsForViewerIncludingAssignedParticipation,
+  filterDealsVisibleToInvestorParticipants,
   resolveDealViewerScope,
   type DealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
@@ -54,6 +55,7 @@ import {
   updateDealOfferingOverviewById,
   type OfferingOverviewFieldErrors,
   updateDealOfferingGalleryPathsById,
+  updateDealArchivedById,
   sanitizeOfferingOverviewPatch,
   normalizeOverviewAssetIdsFromBody,
   parseStoredOfferingOverviewAssetIds,
@@ -172,6 +174,7 @@ function mapRowToJson(
     ),
     offeringPreviewToken: row.offeringPreviewToken ?? null,
     offeringInvestorPreviewJson: row.offeringInvestorPreviewJson ?? null,
+    archived: Boolean(row.archived),
     createdAt: row.createdAt?.toISOString?.() ?? String(row.createdAt),
     listRow: {
       id: row.id,
@@ -202,6 +205,7 @@ function mapRowToJson(
       city: row.city,
       galleryCoverImageUrl: row.galleryCoverImageUrl ?? "",
       offeringStatus: row.offeringStatus ?? "draft_hidden",
+      archived: Boolean(row.archived),
     },
   };
 }
@@ -298,6 +302,10 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
       rows = await listAddDealFormsByOrganizationId(orgParam);
     } else {
       rows = await listDealsForViewer(scope);
+    }
+
+    if (includeParticipantDeals && rows.length > 0) {
+      rows = await filterDealsVisibleToInvestorParticipants(rows, scope);
     }
 
     const dealIds = rows.map((r) => String(r.id ?? ""));
@@ -1088,6 +1096,13 @@ export async function getOfferingPreviewToken(
       });
       return;
     }
+    if (visible.archived) {
+      res.status(403).json({
+        message:
+          "Offering preview links are not available for archived deals.",
+      });
+      return;
+    }
     const token = encryptOfferingPreviewDealId(dealIdParam);
     let sponsorRef: string | undefined;
     const sponsorContactRaw =
@@ -1173,6 +1188,13 @@ export async function postOfferingPreviewShareEmail(
       res.status(403).json({
         message:
           "Offering preview emails are not available while the deal is in Draft.",
+      });
+      return;
+    }
+    if (visible.archived) {
+      res.status(403).json({
+        message:
+          "Offering preview emails are not available for archived deals.",
       });
       return;
     }
@@ -1532,6 +1554,64 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
     }
     console.error("putDeal:", err);
     res.status(500).json({ message: "Could not update deal" });
+  }
+}
+
+export async function patchDealArchived(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const rawId = req.params.dealId;
+  const dealId = typeof rawId === "string" ? rawId : rawId?.[0];
+  if (!dealId) {
+    res.status(400).json({ message: "Missing deal id" });
+    return;
+  }
+  const b = req.body as Record<string, unknown>;
+  const archived = parseBoolField(b.archived ?? b.isArchived);
+  if (archived === undefined) {
+    res.status(400).json({ message: "Field archived (boolean) is required" });
+    return;
+  }
+
+  try {
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    const visible = await getAddDealFormForViewer(dealId, scope);
+    if (!visible) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const updated = await updateDealArchivedById(dealId, archived);
+    if (!updated) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const n =
+      (await countDealLpInvestorsByDealIdsForViewer([dealId], scope)).get(
+        dealId,
+      ) ?? 0;
+    const enriched = await enrichDealListRowForApi(updated);
+    const listRow = {
+      ...mapRowToJson(updated, { investmentRowCount: n }).listRow,
+      ...enriched,
+      archived: Boolean(updated.archived),
+    };
+    res.status(200).json({
+      message: archived ? "Deal archived" : "Deal restored",
+      deal: listRow,
+    });
+  } catch (err) {
+    console.error("patchDealArchived:", err);
+    res.status(500).json({ message: "Could not update deal archive status" });
   }
 }
 

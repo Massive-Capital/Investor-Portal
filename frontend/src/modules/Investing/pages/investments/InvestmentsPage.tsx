@@ -43,6 +43,9 @@ import type { InvestNowDraftProgress } from "@/modules/Investing/pages/invest/in
 import type { InvestNowStepperPhase } from "@/modules/Investing/pages/invest/investNowFlowSteps"
 import { getMergedInvestmentListRows } from "./investmentsRuntimeData"
 import type { InvestmentListRow } from "./investments.types"
+import {
+  investmentRowArchivedForInvestorView,
+} from "@/modules/Investing/utils/investorDealArchiveView"
 import "@/common/components/data-table/data-table.css"
 import "./investments-page.css"
 
@@ -323,7 +326,7 @@ export default function InvestmentsPage() {
     let pending = 0
     let archived = 0
     for (const r of rows) {
-      if (r.archived) {
+      if (investmentRowArchivedForInvestorView(r)) {
         archived++
         continue
       }
@@ -339,10 +342,10 @@ export default function InvestmentsPage() {
 
   const rowsForTab = useMemo(() => {
     if (activeTab === "archives") {
-      return rows.filter((r) => Boolean(r.archived))
+      return rows.filter((r) => investmentRowArchivedForInvestorView(r))
     }
     return rows.filter((r) => {
-      if (r.archived) return false
+      if (investmentRowArchivedForInvestorView(r)) return false
       return investmentRowMatchesOnboardingTab(
         r,
         activeTab === "pending" ? "pending" : "in_progress",
@@ -652,15 +655,16 @@ export default function InvestmentsPage() {
           const dealId = (r.dealId ?? r.id ?? "").trim()
           if (!dealId) return null
           const onPendingTab = activeTab === "pending"
+          const investorArchived = investmentRowArchivedForInvestorView(r)
           const showResume =
-            !r.archived &&
+            !investorArchived &&
             onPendingTab &&
             Boolean(r.hasInvestNowDraft && r.investNowResumeScope)
           const showInvestNow =
-            !r.archived &&
+            !investorArchived &&
             (onPendingTab ? !showResume : activeTab === "in_progress")
           const actionsDisabled =
-            Boolean(r.archived) || (!showResume && !showInvestNow)
+            investorArchived || (!showResume && !showInvestNow)
           return (
             <div className="deal_members_actions_cell">
               {/* Preview deal action disabled for investments table */}
@@ -669,7 +673,7 @@ export default function InvestmentsPage() {
                 dealId={dealId}
                 dealName={r.investmentName}
                 dealStage={r.status}
-                archived={Boolean(r.archived)}
+                archived={investorArchived}
                 actionsDisabled={actionsDisabled}
                 onInvestNow={
                   showInvestNow ? () => openInvestNowFresh(dealId) : undefined

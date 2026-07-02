@@ -11,6 +11,7 @@ import {
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
 import { users } from "../../schema/auth.schema/signin.js";
 import { contact } from "../../schema/contact.schema.js";
+import { assertEligibleForNewDealRosterAdd } from "../user/portalUserRosterGuard.service.js";
 import {
   applyTotalCommittedToDealInvestmentRowForCanonical,
   enrichInvestorRolesForDealRows,
@@ -177,6 +178,17 @@ export async function upsertDealMemberForDeal(
 ): Promise<void> {
   const cid = input.contactMemberId.trim();
   if (!cid) return;
+
+  const [existing] = await db
+    .select({ contactMemberId: dealMember.contactMemberId })
+    .from(dealMember)
+    .where(
+      and(eq(dealMember.dealId, dealId), eq(dealMember.contactMemberId, cid)),
+    )
+    .limit(1);
+  if (!existing) {
+    await assertEligibleForNewDealRosterAdd(cid);
+  }
 
   const send = sendInvitationYesFromInput(input.sendInvitationMail);
   const now = new Date();

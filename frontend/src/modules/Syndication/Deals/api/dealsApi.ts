@@ -106,6 +106,8 @@ export interface DealDetailApi {
    * Synced to the server for the shared preview link.
    */
   offeringInvestorPreviewJson?: string | null
+  /** Archived deals are hidden from active lists; offering share is disabled. */
+  archived?: boolean
   listRow: DealListRow
 }
 
@@ -537,6 +539,18 @@ export function normalizeDealDetailApi(
     String(offeringInvestorPreviewJsonRaw).trim() !== ""
       ? str(offeringInvestorPreviewJsonRaw)
       : null
+  const archivedRaw = firstDefined(d, ["archived", "is_archived", "isArchived"])
+  const archivedFromListRow =
+    d.listRow &&
+    typeof d.listRow === "object" &&
+    Boolean((d.listRow as { archived?: boolean }).archived)
+  const archived =
+    archivedRaw === true ||
+    archivedRaw === "true" ||
+    archivedRaw === 1 ||
+    archivedRaw === "1" ||
+    Boolean(d.archived) ||
+    archivedFromListRow
   const assetIdsRaw = firstDefined(d, [
     "offeringOverviewAssetIds",
     "offering_overview_asset_ids",
@@ -656,6 +670,7 @@ export function normalizeDealDetailApi(
     ...(offeringSize !== undefined ? { offeringSize } : {}),
     offeringPreviewToken,
     offeringInvestorPreviewJson,
+    archived,
   }
 }
 
@@ -1970,11 +1985,8 @@ export function buildCreateDealFormDataForAutosave(
   imageOpts?: CreateDealMultipartImageOptions,
 ): FormData {
   const dealName = deal.dealName.trim() || AUTOSAVE_DEFAULT_DEAL_NAME
-  const dealStageRaw = deal.dealStage || "Draft"
-  const dealStage =
-    typeof dealStageRaw === "string" && dealStageRaw.trim()
-      ? dealStageRaw
-      : "Draft"
+  /** Do not default — create autosave waits until the sponsor picks a stage explicitly. */
+  const dealStage = String(deal.dealStage ?? "").trim()
   const secType = deal.secType.trim() || AUTOSAVE_PLACEHOLDER_TEXT
   const owningEntityName =
     deal.owningEntityName.trim() || AUTOSAVE_PLACEHOLDER_TEXT
@@ -2155,6 +2167,51 @@ export async function deleteDeal(
   return {
     ok: false,
     message: data.message || `Could not delete deal (${res.status})`,
+  }
+}
+
+export async function patchDealArchived(
+  dealId: string,
+  archived: boolean,
+): Promise<
+  | { ok: true; deal: DealListRow }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  if (!base)
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/archived`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ archived }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    message?: string
+    deal?: unknown
+  }
+  if (!res.ok) {
+    return {
+      ok: false,
+      message: data.message || `Could not update deal (${res.status})`,
+    }
+  }
+  const raw = data.deal
+  if (!raw || typeof raw !== "object") {
+    return { ok: false, message: "Invalid response from server." }
+  }
+  return {
+    ok: true,
+    deal: normalizeDealListRow(
+      raw as Partial<DealListRow> & Record<string, unknown>,
+      0,
+    ),
   }
 }
 

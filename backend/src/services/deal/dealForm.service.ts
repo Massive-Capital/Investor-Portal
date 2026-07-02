@@ -612,6 +612,20 @@ export async function updateDealGalleryCoverById(
   return updated;
 }
 
+export async function updateDealArchivedById(
+  id: string,
+  archived: boolean,
+): Promise<AddDealFormRow | undefined> {
+  const existing = await getAddDealFormById(id);
+  if (!existing) return undefined;
+  const [updated] = await db
+    .update(addDealForm)
+    .set({ archived })
+    .where(eq(addDealForm.id, id))
+    .returning();
+  return updated;
+}
+
 export async function updateDealAnnouncementById(
   id: string,
   title: string | null,

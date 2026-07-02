@@ -128,11 +128,18 @@ export function CreateDealPage() {
   )
   const backendDealIdRef = useRef<string | null>(null)
   const createPostInFlightRef = useRef(false)
+  /** Set when autosave was skipped because the initial POST was still running. */
+  const pendingBackendAutosaveRef = useRef(false)
   const backendAutosaveInFlightRef = useRef(false)
   const galleryUploadInFlightRef = useRef(false)
   const uploadedImageKeysRef = useRef<Set<string>>(new Set())
   const assetImagesRef = useRef<File[]>([])
   const backendAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  /** Backend autosave uses this after deal stage is unchanged briefly (avoids persisting a flicker). */
+  const persistableDealStageRef = useRef<DealStageOption | "">("")
+  const dealStageStabilizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   )
   const latestCreateDealDraftRef = useRef({
@@ -261,6 +268,27 @@ export function CreateDealPage() {
     backendDealId,
   }
 
+  /** Wait until deal stage stops changing before backend autosave may persist it. */
+  useEffect(() => {
+    if (dealStageStabilizeTimerRef.current) {
+      clearTimeout(dealStageStabilizeTimerRef.current)
+      dealStageStabilizeTimerRef.current = null
+    }
+    const next = dealDraft.dealStage
+    persistableDealStageRef.current = ""
+    if (!next?.trim()) return
+    dealStageStabilizeTimerRef.current = setTimeout(() => {
+      dealStageStabilizeTimerRef.current = null
+      persistableDealStageRef.current = next
+    }, 800)
+    return () => {
+      if (dealStageStabilizeTimerRef.current) {
+        clearTimeout(dealStageStabilizeTimerRef.current)
+        dealStageStabilizeTimerRef.current = null
+      }
+    }
+  }, [dealDraft.dealStage])
+
   /** Edit flow: defer stage change on autosave until user confirms on Save. */
   function dealDraftForBackendPersist(deal: DealStepDraft): DealStepDraft {
     if (!editDealId || !initialDealStageCanonical) return deal
@@ -272,6 +300,15 @@ export function CreateDealPage() {
       }
     }
     return deal
+  }
+
+  /** Create flow: only persist deal stage after it stops changing (hover-then-pick another option). */
+  function dealDraftForCreateAutosave(deal: DealStepDraft): DealStepDraft | null {
+    const stage = persistableDealStageRef.current?.trim()
+      ? persistableDealStageRef.current
+      : deal.dealStage
+    if (!String(stage ?? "").trim()) return null
+    return dealDraftForBackendPersist({ ...deal, dealStage: stage })
   }
 
   /** Upload each picked file at most once (autosave + Save share this). */
@@ -403,8 +440,14 @@ export function CreateDealPage() {
           if (!createDealDraftHasContent(draftCheck)) return
         }
 
+        const dealForPersist =
+          editDealId != null
+            ? dealDraftForBackendPersist(deal)
+            : dealDraftForCreateAutosave(deal)
+        if (!dealForPersist) return
+
         const formData = buildCreateDealFormDataForAutosave(
-          dealDraftForBackendPersist(deal),
+          dealForPersist,
           asset,
           [],
           imageOpts,
@@ -461,13 +504,18 @@ export function CreateDealPage() {
           return
         }
 
-        if (createPostInFlightRef.current) return
+        if (createPostInFlightRef.current) {
+          pendingBackendAutosaveRef.current = true
+          return
+        }
         createPostInFlightRef.current = true
         backendAutosaveInFlightRef.current = true
+        let createdDealId: string | null = null
         try {
           const result = await createDealMultipart(formData)
           if (result.ok) {
               if (result.dealId) {
+                createdDealId = result.dealId
                 backendDealIdRef.current = result.dealId
                 setBackendDealId(result.dealId)
                 saveCreateDealDraft({
@@ -487,6 +535,27 @@ export function CreateDealPage() {
         } finally {
           createPostInFlightRef.current = false
           backendAutosaveInFlightRef.current = false
+        }
+
+        if (createdDealId && pendingBackendAutosaveRef.current) {
+          pendingBackendAutosaveRef.current = false
+          const latest = latestCreateDealDraftRef.current
+          const dealForFlush = dealDraftForCreateAutosave(latest.deal)
+          if (dealForFlush) {
+            const flushData = buildCreateDealFormDataForAutosave(
+              dealForFlush,
+              latest.asset,
+              [],
+            )
+            backendAutosaveInFlightRef.current = true
+            try {
+              await updateDealMultipart(createdDealId, flushData)
+            } finally {
+              backendAutosaveInFlightRef.current = false
+            }
+          }
+        } else {
+          pendingBackendAutosaveRef.current = false
         }
       })()
     }, 1200)

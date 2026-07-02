@@ -403,12 +403,38 @@
 
 .email_template_new_title_icon {
   flex-shrink: 0;
-  color: var(--portal-primary, #2563eb);
+  color: var(--portal-gold-accent, #d4af37);
 }
 
 .email_template_new_form {
   padding: 1.25rem 1.25rem 1.5rem;
   box-sizing: border-box;
+}
+
+.email_template_new_form .um_field .um_field_label_row,
+.email_template_new_form .um_field > span.um_field_label_row {
+  color: var(--portal-form-label-color, var(--portal-text-muted));
+}
+
+.email_template_new_form .um_input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55em 1em;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-pill-radius, var(--ui-button-border-radius, 4px));
+  font-family: inherit;
+  font-size: 1em;
+  color: var(--portal-text, #0f172a);
+  background: var(--portal-surface, #fff);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.email_template_new_form .um_input:focus-visible {
+  outline: none;
+  border-color: var(--portal-text-muted);
+  box-shadow: var(--portal-field-focus-shadow, 0 0 0 2px rgba(212, 175, 55, 0.25));
 }
 
 .email_template_new_form .um_field {
@@ -663,6 +689,106 @@
   animation: email_template_new_btn_spin 0.85s linear infinite;
 }
 
+:root[data-theme="dark"] .email_template_new_title.deals_list_title {
+  color: var(--font-color-title, var(--portal-text));
+}
+
+:root[data-theme="dark"] .email_template_new_form .um_field .um_field_label_row,
+:root[data-theme="dark"] .email_template_new_form .um_field > span.um_field_label_row {
+  color: var(--portal-form-label-color, var(--portal-text-muted));
+}
+
+:root[data-theme="dark"] .email_template_new_form .um_input {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--portal-border);
+  color: var(--portal-text);
+}
+
+:root[data-theme="dark"] .email_template_new_form .um_input::placeholder {
+  color: var(--portal-text-muted);
+}
+
+:root[data-theme="dark"] .email_template_new_form .um_input:focus-visible {
+  box-shadow: var(
+    --portal-field-focus-shadow-dark,
+    0 0 0 2px rgba(212, 175, 55, 0.2)
+  );
+}
+
+:root[data-theme="dark"] .email_template_attachment_dropzone {
+  border-color: var(--portal-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="dark"] .email_template_attachment_dropzone:hover,
+:root[data-theme="dark"] .email_template_attachment_dropzone--focus {
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 55%,
+    var(--portal-border)
+  );
+  background: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 10%,
+    rgba(255, 255, 255, 0.04)
+  );
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--portal-gold-accent, #d4af37) 14%, transparent);
+}
+
+:root[data-theme="dark"] .email_template_attachment_dropzone_title {
+  color: var(--portal-text);
+}
+
+:root[data-theme="dark"] .email_template_attachment_file_row {
+  border-color: var(--portal-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="dark"] .email_template_attachment_file_name {
+  color: var(--portal-text);
+}
+
+:root[data-theme="dark"] .email_template_attachment_file_btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--portal-border);
+  color: var(--portal-text-muted);
+}
+
+:root[data-theme="dark"] .email_template_attachment_file_btn:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 40%,
+    var(--portal-border)
+  );
+  color: var(--portal-gold-accent, #d4af37);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme="dark"] .email_template_attachment_file_btn--danger:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--portal-danger, #ffb4ab) 45%,
+    var(--portal-border)
+  );
+  color: var(--portal-danger, #ffb4ab);
+  background: color-mix(
+    in srgb,
+    var(--portal-danger, #ffb4ab) 12%,
+    transparent
+  );
+}
+
+:root[data-theme="dark"] .email_templates_body_html {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--portal-border);
+  color: var(--portal-text);
+}
+
+:root[data-theme="dark"] .email_templates_edit_meta strong {
+  color: var(--portal-text);
+}
+
 /* Tags / Lists / Contacts tables — action cells are icon-only buttons */
 .contacts_row_icon_actions {
   display: inline-flex;
@@ -747,11 +873,14 @@
 .contacts_label_modal.um_modal {
   max-width: min(26rem, 100%);
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .contacts_label_modal_head.um_modal_head {
   align-items: flex-start;
   gap: 0.5rem;
+  margin-bottom: 1em;
 }
 
 .contacts_label_modal_title.um_modal_title {
@@ -762,12 +891,19 @@
 }
 
 .contacts_label_modal_title_icon.um_title_icon {
-  flex-shrink: 0;
-  color: var(--portal-primary, #2563eb);
+  color: var(--portal-gold-accent, #d4af37);
 }
 
 .contacts_label_modal_field .um_field_label_row {
   align-items: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--portal-form-label-color, var(--portal-text-muted));
+  margin-bottom: 0.35em;
+}
+
+.contacts_label_modal_field .um_field_label_icon {
+  color: var(--portal-text-muted);
 }
 
 .contacts_label_modal_textarea.um_field_textarea {
@@ -780,6 +916,7 @@
 .contacts_label_modal_actions.um_modal_actions {
   flex-wrap: wrap;
   gap: 0.5rem;
+  margin-top: 0.25em;
 }
 
 .contacts_label_modal_actions .um_btn_primary,
@@ -790,26 +927,40 @@
 }
 
 .contacts_label_modal_form {
-  padding: 0 1.25rem 1.25rem;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0;
 }
 
-/* Tag / list flows — override global `.um_field` pill inputs (user_management.css) */
-.contacts_label_modal .contacts_label_modal_field.um_field label {
-  display: flex;
-  align-items: center;
-  gap: 0.45em;
+.contacts_label_modal .contacts_label_modal_field.um_field {
+  margin-bottom: 1em;
 }
 
-.contacts_label_modal .contacts_label_modal_field.um_field input {
-  width: unset !important;
-  max-width: 100%;
-  min-width: 0;
-  padding: 0 !important;
-  border-radius: 0 !important;
+.contacts_label_modal .contacts_label_modal_field.um_field:last-of-type {
+  margin-bottom: 0;
+}
+
+.contacts_label_modal .contacts_label_modal_field.um_field input:not([type="checkbox"]) {
+  width: 100%;
   box-sizing: border-box;
+  padding: 0.55em 1em;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-pill-radius, var(--ui-button-border-radius, 4px));
+  font-family: inherit;
+  font-size: 1em;
+  color: var(--portal-text, #0f172a);
+  background: var(--portal-surface, #fff);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.contacts_label_modal .contacts_label_modal_field.um_field input:not([type="checkbox"]):disabled,
+.contacts_label_modal .contacts_label_modal_textarea.um_field_textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  background: var(--portal-muted-bg, #f8fafc);
 }
 
 .add_contact_panel .add_contact_multiselect_field.um_field label {
@@ -1699,6 +1850,28 @@
 :root[data-theme="dark"] .contacts_chips_combobox {
   border-color: rgba(255, 255, 255, 0.12);
   background: var(--portal-surface, #1e293b);
+}
+
+:root[data-theme="dark"] .contacts_label_modal .contacts_label_modal_field.um_field input:not([type="checkbox"]),
+:root[data-theme="dark"] .contacts_label_modal .contacts_label_modal_textarea.um_field_textarea {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--portal-border);
+  color: var(--portal-text);
+}
+
+:root[data-theme="dark"] .contacts_label_modal .contacts_label_modal_field.um_field input:not([type="checkbox"]):disabled,
+:root[data-theme="dark"] .contacts_label_modal .contacts_label_modal_textarea.um_field_textarea:disabled {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:root[data-theme="dark"] .contacts_label_modal .contacts_label_modal_field .um_field_label_row,
+:root[data-theme="dark"] .contacts_label_modal .contacts_label_modal_field .um_field_label_icon {
+  color: var(--portal-form-label-color, var(--portal-text-muted));
+}
+
+:root[data-theme="dark"] .contacts_label_modal input::placeholder,
+:root[data-theme="dark"] .contacts_label_modal textarea::placeholder {
+  color: var(--portal-text-muted);
 }
 
 /* Suspend / activate contact modal */

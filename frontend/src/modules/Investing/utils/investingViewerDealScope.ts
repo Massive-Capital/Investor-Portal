@@ -14,6 +14,7 @@ import type {
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
+import { isDealListRowIncomplete } from "@/modules/Syndication/Deals/api/dealsApi"
 import { dealHasInvestNowDraftForViewer } from "@/modules/Investing/pages/invest/investNowDraftUtils"
 import {
   investorCommittedVisibleToViewer,
@@ -22,6 +23,13 @@ import {
   investorRowMatchesViewerEmail,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import { investorRowCommittedAmountNumeric } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+
+/** Draft / incomplete create-deal wizard rows are sponsor-only — hide from investors. */
+export function filterDealListRowsVisibleToInvestors(
+  rows: DealListRow[],
+): DealListRow[] {
+  return rows.filter((row) => !isDealListRowIncomplete(row))
+}
 
 /**
  * Committed (USD) visible to the signed-in investor (hidden until eSign completes).
@@ -299,7 +307,9 @@ export async function filterDealListToViewerInvested(
 ): Promise<DealListRow[]> {
   const viewerEmailNorm = investingViewerEmailNorm()
   if (!viewerEmailNorm) return []
-  const toScan = applyLpSessionDealIdScope(rows)
+  const toScan = filterDealListRowsVisibleToInvestors(
+    applyLpSessionDealIdScope(rows),
+  )
   const withPayload = await Promise.all(
     toScan.map(async (row) => {
       if (!dealRowSupportsRosterApiPrefetch(row)) {
@@ -385,8 +395,9 @@ export async function mapInvestingDealsPageScope(
 ): Promise<InvestingDealsPageScopeEntry[]> {
   const viewerEmailNorm = investingViewerEmailNorm()
   if (!viewerEmailNorm) return []
+  const investorVisible = filterDealListRowsVisibleToInvestors(rows)
   const withPayload = await Promise.all(
-    rows.map(async (row) => {
+    investorVisible.map(async (row) => {
       const { payload, members, leadSponsorDisplayName } =
         await loadDealRosterForInvestingScope(row)
       return { row, payload, members, leadSponsorDisplayName }
@@ -406,8 +417,9 @@ export async function mapInvestingInvestmentsPageScope(
 ): Promise<InvestingDealsPageScopeEntry[]> {
   const viewerEmailNorm = investingViewerEmailNorm()
   if (!viewerEmailNorm) return []
+  const investorVisible = filterDealListRowsVisibleToInvestors(rows)
   const withPayload = await Promise.all(
-    rows.map(async (row) => {
+    investorVisible.map(async (row) => {
       const { payload, members, leadSponsorDisplayName } =
         await loadDealRosterForInvestingScope(row)
       return { row, payload, members, leadSponsorDisplayName }

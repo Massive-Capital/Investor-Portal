@@ -24,6 +24,10 @@ import {
   updateMyCommittedAmountForLpDeal,
   upsertDealLpInvestor,
 } from "../../services/deal/dealLpInvestor.service.js";
+import {
+  assertEligibleForNewDealRosterAdd,
+  isDealRosterEligibilityError,
+} from "../../services/user/portalUserRosterGuard.service.js";
 
 function bodyString(v: unknown): string {
   if (typeof v === "string") return v;
@@ -120,6 +124,14 @@ export async function postDealLpInvestor(
       }
     }
 
+    const existingForContact = await findDealLpInvestorByDealAndContact(
+      dealId,
+      contactId,
+    );
+    if (!existingForContact) {
+      await assertEligibleForNewDealRosterAdd(contactId.trim());
+    }
+
     const row = await upsertDealLpInvestor(dealId, {
       contactMemberId: contactId.trim(),
       contactDisplayName: contactDisplayName.trim(),
@@ -154,6 +166,10 @@ export async function postDealLpInvestor(
       investor: inv ?? null,
     });
   } catch (err) {
+    if (isDealRosterEligibilityError(err)) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     console.error("postDealLpInvestor:", err);
     res.status(500).json({ message: "Could not save LP investor" });
   }
@@ -287,6 +303,10 @@ export async function putDealLpInvestor(
       investor: inv ?? null,
     });
   } catch (err) {
+    if (isDealRosterEligibilityError(err)) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     console.error("putDealLpInvestor:", err);
     res.status(500).json({ message: "Could not update LP investor" });
   }

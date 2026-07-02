@@ -38,8 +38,8 @@ import {
   fetchDealMembers,
   fetchDealsList,
   isDealListRowIncomplete,
+  patchDealArchived,
 } from "./api/dealsApi"
-import { isDealStageDraft } from "./constants/deal-lifecycle/deal-stage"
 import {
   clearCreateDealDraft,
   CREATE_DEAL_DRAFT_UPDATED_EVENT,
@@ -139,10 +139,9 @@ function DealTableColumnHeader({
 
 function DealListNameCell({ row }: { row: DealListRow }) {
   const isSessionDraft = row.id === CREATE_DEAL_DRAFT_ROW_ID
-  const isIncomplete = isDealListRowIncomplete(row)
-  /** Stage column already shows Draft — icon only for session draft or incomplete non-draft rows. */
+  /** Pen icon while create wizard is in progress or required deal fields are still incomplete. */
   const showDraftMarker =
-    isSessionDraft || (isIncomplete && !isDealStageDraft(row.dealStage))
+    isSessionDraft || isDealListRowIncomplete(row)
 
   const nameLink = isSessionDraft ? (
     <Link className="deals_table_name_link" to="/deals/create?resume=1">
@@ -607,12 +606,31 @@ export function DealsListPage({
   }
 
   function handleSuspendAllConfirm() {
-    setRows((prev) =>
-      prev.map((r) =>
-        suspendAllIds.includes(r.id) ? { ...r, archived: true } : r,
-      ),
-    )
-    handleSuspendAllCancel()
+    void (async () => {
+      const ids = [...suspendAllIds]
+      const n = ids.length
+      const results = await Promise.all(
+        ids.map((id) => patchDealArchived(id, true)),
+      )
+      const failed = results.find((r) => !r.ok)
+      if (failed) {
+        toast.error("Could not archive deals", failed.message)
+        const list = await loadDealsList()
+        setRows(list)
+        handleSuspendAllCancel()
+        return
+      }
+      setRows((prev) =>
+        prev.map((r) =>
+          ids.includes(r.id) ? { ...r, archived: true } : r,
+        ),
+      )
+      handleSuspendAllCancel()
+      toast.success(
+        "Deals archived",
+        `Moved ${n} deal${n === 1 ? "" : "s"} to Archives.`,
+      )
+    })()
   }
 
   const columns: DataTableColumn<DealListRow>[] = useMemo(() => {
@@ -947,20 +965,38 @@ export function DealsListPage({
                   ? undefined
                   : () => setPreviewDealId(row.id)
               }
-              onArchived={() =>
-                setRows((prev) =>
-                  prev.map((r) =>
-                    r.id === row.id ? { ...r, archived: true } : r,
-                  ),
-                )
-              }
-              onRestored={() =>
-                setRows((prev) =>
-                  prev.map((r) =>
-                    r.id === row.id ? { ...r, archived: false } : r,
-                  ),
-                )
-              }
+              onArchived={() => {
+                void (async () => {
+                  const name = row.dealName?.trim() || "Deal"
+                  const result = await patchDealArchived(row.id, true)
+                  if (!result.ok) {
+                    toast.error("Could not archive deal", result.message)
+                    return
+                  }
+                  setRows((prev) =>
+                    prev.map((r) =>
+                      r.id === row.id ? { ...r, archived: true } : r,
+                    ),
+                  )
+                  toast.success("Deal archived", `${name} moved to Archives.`)
+                })()
+              }}
+              onRestored={() => {
+                void (async () => {
+                  const name = row.dealName?.trim() || "Deal"
+                  const result = await patchDealArchived(row.id, false)
+                  if (!result.ok) {
+                    toast.error("Could not restore deal", result.message)
+                    return
+                  }
+                  setRows((prev) =>
+                    prev.map((r) =>
+                      r.id === row.id ? { ...r, archived: false } : r,
+                    ),
+                  )
+                  toast.success("Deal restored", `${name} is active again.`)
+                })()
+              }}
               onDeleted={async () => {
                 if (row.id === CREATE_DEAL_DRAFT_ROW_ID) {
                   clearCreateDealDraft()

@@ -2,6 +2,7 @@ import type { DropboxSignFormFieldPerDocument } from "../esign/dropboxSign.servi
 import type { DropboxSignPrefillCustomField } from "../esign/dropboxSign.service.js";
 import type { SignFlowField } from "../esign/signflow.service.js";
 import { formatEinDisplay, nineDigitsFromEinInput } from "../../common/tax/usEin.js";
+import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import type {
   InvestorQuestionnaireJson,
   InvestorQuestionnaireQuestion,
@@ -128,6 +129,11 @@ function formatAnswerForEsign(
     return value;
   }
 
+  if (question.fieldType === "date") {
+    const formatted = formatDdMmmYyyy(value);
+    return formatted === "—" ? value : formatted;
+  }
+
   return value.replace(/\s+/g, " ").trim();
 }
 
@@ -171,7 +177,7 @@ function resolvePrintTitle(formatted: Map<string, string>): string {
 }
 
 function resolveSigningDate(): string {
-  return new Date().toLocaleDateString("en-US");
+  return formatDdMmmYyyy(new Date());
 }
 
 function resolveValueForFieldKey(

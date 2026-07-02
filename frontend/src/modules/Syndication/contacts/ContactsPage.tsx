@@ -23,6 +23,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -76,6 +77,7 @@ import {
   loadEmailTemplates,
   type EmailTemplateRow,
 } from "./emailTemplatesStorage"
+import "../Deals/deals-list.css"
 import "./contacts.css"
 import "../Deals/deal-investors-tab.css"
 import "../Deals/deals-list.css"
@@ -188,6 +190,7 @@ function TagsCell({ items }: { items: string[] }) {
 
 function ContactsPage() {
   const navigate = useNavigate()
+  const suspendAllTitleId = useId()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<ContactRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -209,6 +212,8 @@ function ContactsPage() {
   const [suspendReason, setSuspendReason] = useState("")
   const [suspendSaving, setSuspendSaving] = useState(false)
   const [suspendErr, setSuspendErr] = useState("")
+  const [suspendAllOpen, setSuspendAllOpen] = useState(false)
+  const [suspendAllBusy, setSuspendAllBusy] = useState(false)
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -458,7 +463,71 @@ function ContactsPage() {
   }, [searchParams, setSearchParams])
 
   function handleSuspendAll() {
-    setToolbarNotice("Bulk suspend is not available yet.")
+    if (contactsListTab !== "active" || tabRows.length === 0) return
+    setToolbarNotice("")
+    setSuspendAllOpen(true)
+  }
+
+  function closeSuspendAllModal() {
+    if (suspendAllBusy) return
+    setSuspendAllOpen(false)
+  }
+
+  function confirmSuspendAll() {
+    if (contactsListTab !== "active" || tabRows.length === 0) return
+    const targets = [...tabRows]
+    const n = targets.length
+    setSuspendAllBusy(true)
+    void (async () => {
+      try {
+        const results = await Promise.allSettled(
+          targets.map((row) => patchContactStatus(row.id, "suspended")),
+        )
+        const updatedById = new Map<string, ContactRow>()
+        let failed = 0
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            updatedById.set(result.value.id, result.value)
+          } else {
+            failed += 1
+          }
+        }
+        if (updatedById.size > 0) {
+          setRows((prev) =>
+            prev.map((r) => updatedById.get(r.id) ?? r),
+          )
+        }
+        setSelectedContactIds(new Set())
+        setSuspendAllOpen(false)
+        if (failed > 0) {
+          const succeeded = updatedById.size
+          toast.error(
+            "Could not suspend all contacts",
+            succeeded > 0
+              ? `Suspended ${succeeded} of ${n}; ${failed} failed. Refresh and try again for the rest.`
+              : "None of the contacts could be suspended. Try again.",
+          )
+          if (succeeded > 0) {
+            toast.success(
+              "Contacts suspended",
+              `Moved ${succeeded} contact${succeeded === 1 ? "" : "s"} to Archived.`,
+            )
+          }
+          return
+        }
+        toast.success(
+          "Contacts suspended",
+          `Moved ${n} contact${n === 1 ? "" : "s"} to Archived.`,
+        )
+      } catch (err) {
+        toast.error(
+          "Could not suspend contacts",
+          err instanceof Error ? err.message : "Please try again.",
+        )
+      } finally {
+        setSuspendAllBusy(false)
+      }
+    })()
   }
 
   const selectedContacts = useMemo(
@@ -583,6 +652,10 @@ function ContactsPage() {
   async function handleSave(contact: Omit<ContactRow, "id" | "createdByDisplayName">) {
     const created = await createContact(contact)
     setRows((prev) => [created, ...prev])
+    toast.success(
+      "Contact added",
+      `${contactDisplayName(created)} is in your contact list.`,
+    )
   }
 
   const handleUpdate = useCallback(
@@ -2030,6 +2103,65 @@ function ContactsPage() {
         onClose={() => setSendMailEmailPreview(null)}
         onSaved={handleSendMailPreviewSaved}
       />
+
+      {suspendAllOpen ? (
+        <div
+          className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeSuspendAllModal()
+          }}
+        >
+          <div
+            className="um_modal um_modal_view deals_add_inv_modal_panel deals_suspend_all_modal_panel"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={suspendAllTitleId}
+          >
+            <div className="um_modal_head">
+              <h3 id={suspendAllTitleId} className="um_modal_title">
+                Suspend all contacts?
+              </h3>
+              <button
+                type="button"
+                className="um_modal_close"
+                onClick={closeSuspendAllModal}
+                disabled={suspendAllBusy}
+                aria-label="Close"
+              >
+                <X size={20} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
+            <div className="deals_suspend_all_modal_body">
+              <p className="deals_suspend_all_modal_message">
+                Suspend {tabRows.length} active contact
+                {tabRows.length === 1 ? "" : "s"}? They will move to the
+                Archived tab and can be activated again later.
+              </p>
+            </div>
+            <div className="um_modal_actions add_contact_modal_actions">
+              <button
+                type="button"
+                className="um_btn_secondary"
+                onClick={closeSuspendAllModal}
+                disabled={suspendAllBusy}
+              >
+                <X size={16} strokeWidth={2} aria-hidden />
+                Close
+              </button>
+              <button
+                type="button"
+                className="um_btn_primary"
+                onClick={confirmSuspendAll}
+                disabled={suspendAllBusy}
+              >
+                <Ban size={16} strokeWidth={2} aria-hidden />
+                {suspendAllBusy ? "Suspending…" : "Suspend all"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {suspendRow ? (
         <div

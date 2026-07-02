@@ -1,13 +1,13 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { inProgressNotCountersignedForViewer } from "@/modules/Investing/pages/dashboard/investingDashboardDealBucket"
-import { applyLpSessionDealIdScope } from "@/modules/Investing/utils/investingViewerDealScope"
+import { applyLpSessionDealIdScope, filterDealListRowsVisibleToInvestors } from "@/modules/Investing/utils/investingViewerDealScope"
 import { fetchDealInvestors, fetchDealsList } from "@/modules/Syndication/Deals/api/dealsApi"
 import { formatUsdDashboardAmount } from "@/modules/Syndication/Deals/dealsDashboardMoney"
 import type { DealInvestorsPayload } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 
 export interface InvestingDashboardMetrics {
-  /** Active (non-archived) deals in investing scope */
+  /** Deals in investing scope where you have committed capital (includes sponsor-archived). */
   dealCount: number
   totalInvestedDisplay: string
   totalDistributedDisplay: string
@@ -79,10 +79,12 @@ export async function loadInvestingDashboardMetrics(): Promise<InvestingDashboar
     }
   }
 
-  const list = applyLpSessionDealIdScope(
-    await fetchDealsList({ includeParticipantDeals: true }),
+  const list = filterDealListRowsVisibleToInvestors(
+    applyLpSessionDealIdScope(
+      await fetchDealsList({ includeParticipantDeals: true }),
+    ),
   )
-  const active = list.filter((r) => !r.archived)
+  const active = list
   if (active.length === 0) {
     return {
       dealCount: 0,

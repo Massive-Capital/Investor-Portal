@@ -56,7 +56,7 @@ import { CompanyOfferingsPageTab } from "./CompanyOfferingsPageTab";
 import { CompanyBillingTab } from "./CompanyBillingTab";
 import { CompanySettingsTabPanel } from "./CompanySettingsTabPanel";
 import { ExportCompaniesModal } from "./ExportCompaniesModal";
-import UserManagementPage from "../usermanagement/UserManagementPage";
+import { UserManagementPage } from "../usermanagement/UserManagementPage";
 import {
   buildCompaniesCsv,
   downloadCompaniesCsv,

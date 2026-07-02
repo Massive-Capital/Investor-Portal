@@ -17,6 +17,10 @@ import { db, pool } from "../../database/db.js";
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
 import { contact } from "../../schema/schema.js";
 import { listDealIdsAssignedToUser } from "../deal/assigningDealUser.service.js";
+import {
+  filterDealIdsVisibleToInvestors,
+  isAddDealFormIncomplete,
+} from "../deal/dealFormCompleteness.service.js";
 
 /** Stored `deal_lp_investor.role` values treated as LP Investor for nav + deal scope. */
 export function isLpInvestorRoleInLpTable(role: string | null | undefined): boolean {
@@ -365,10 +369,11 @@ export async function listInvestorSponsorScopedDealIdsForUser(
   const e = String(emailNorm ?? "").trim().toLowerCase();
   if (!e || !e.includes("@")) return [];
   const sponsorUserIds = await listSponsorUserIdsForInvestorEmail(e);
-  if (sponsorUserIds.length === 0) {
-    return listDealIdsFromLpInvestorTableForEmail(e);
-  }
-  return listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
+  const raw =
+    sponsorUserIds.length === 0
+      ? await listDealIdsFromLpInvestorTableForEmail(e)
+      : await listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
+  return filterDealIdsVisibleToInvestors(raw);
 }
 
 /** Opportunity deal ids where at least one linked sponsor is on the deal roster. */
@@ -413,12 +418,17 @@ export async function listInvestorVisibleComingSoonDealIds(): Promise<string[]> 
       id: addDealForm.id,
       dealStage: addDealForm.dealStage,
       offeringStatus: addDealForm.offeringStatus,
+      secType: addDealForm.secType,
+      owningEntityName: addDealForm.owningEntityName,
+      propertyName: addDealForm.propertyName,
+      city: addDealForm.city,
     })
     .from(addDealForm)
     .where(ne(addDealForm.dealStage, "draft"));
 
   const out: string[] = [];
   for (const row of rows) {
+    if (isAddDealFormIncomplete(row)) continue;
     if (
       !isInvestorDashboardOpportunityOffering(
         row.dealStage,
@@ -454,7 +464,7 @@ export async function listDirectInvestingParticipantDealIdsForUser(params: {
       listDealIdsFromDealInvestmentForEmail(emailNorm),
     ]);
 
-  return [
+  const merged = [
     ...new Set([
       ...lp,
       ...sponsor,
@@ -463,6 +473,7 @@ export async function listDirectInvestingParticipantDealIdsForUser(params: {
       ...investment,
     ]),
   ];
+  return filterDealIdsVisibleToInvestors(merged);
 }
 
 export async function isDealInDirectInvestingParticipationForUser(

@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
 import { formatEinDisplay, nineDigitsFromEinInput } from "../../common/tax/usEin.js";
+import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import type {
   InvestorQuestionnaireJson,
   InvestorQuestionnaireQuestion,
@@ -114,6 +115,11 @@ function formatAnswerForPdf(
       return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
     }
     return value;
+  }
+
+  if (question.fieldType === "date") {
+    const formatted = formatDdMmmYyyy(value);
+    return formatted === "—" ? value : formatted;
   }
 
   return value.replace(/\s+/g, " ").trim();
@@ -286,7 +292,7 @@ export async function buildInvestorQuestionnaireAnswersPdf(params: {
   if (params.investorName?.trim()) {
     metaParts.push(`Investor: ${params.investorName.trim()}`);
   }
-  metaParts.push(`Completed: ${new Date().toLocaleDateString("en-US")}`);
+  metaParts.push(`Completed: ${formatDdMmmYyyy(new Date())}`);
   drawWrappedBlock(
     writer,
     metaParts.join("  ·  "),

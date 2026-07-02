@@ -267,7 +267,7 @@ export function ExportInvestmentsModal({
         <ExportModalFooter onClose={onClose}>
           <button
             type="button"
-            className="deals_export_modal_btn_secondary"
+            className="um_btn_secondary"
             onClick={handleExportSelected}
             disabled={selectedIds.size === 0}
           >
@@ -275,7 +275,7 @@ export function ExportInvestmentsModal({
           </button>
           <button
             type="button"
-            className="deals_export_modal_btn_primary"
+            className="um_btn_primary"
             onClick={handleExportAll}
             disabled={investments.length === 0}
           >

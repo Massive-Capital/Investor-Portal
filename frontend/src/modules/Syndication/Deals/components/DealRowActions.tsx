@@ -68,9 +68,9 @@ export function DealRowActions({
   const navigate = useNavigate()
   const confirmTitleId = useId()
   const [open, setOpen] = useState(false)
-  const [confirmKind, setConfirmKind] = useState<null | "archive" | "delete">(
-    null,
-  )
+  const [confirmKind, setConfirmKind] = useState<
+    null | "archive" | "delete" | "restore"
+  >(null)
   const [reason, setReason] = useState("")
   const [reasonError, setReasonError] = useState<string | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -204,10 +204,9 @@ export function DealRowActions({
   }
 
   function handleRestoreDeal() {
-    const label = dealName.trim() || "this deal"
-    if (!window.confirm(`Restore “${label}” to active deals?`)) return
     close()
-    onRestored?.()
+    if (draftRow) return
+    setConfirmKind("restore")
   }
 
   function handleDeleteDeal() {
@@ -216,6 +215,11 @@ export function DealRowActions({
   }
 
   function handleConfirmDangerAction() {
+    if (confirmKind === "restore") {
+      closeConfirm()
+      onRestored?.()
+      return
+    }
     if (!reason.trim()) {
       setReasonError("Reason is required.")
       return
@@ -406,11 +410,13 @@ export function DealRowActions({
                   >
                     {confirmKind === "archive"
                       ? "Archive this deal?"
-                      : draftRow
-                        ? "Discard unsaved draft?"
-                        : isLifecycleDraftDeal
-                          ? "Delete this draft deal?"
-                          : "Delete this deal?"}
+                      : confirmKind === "restore"
+                        ? "Restore this deal?"
+                        : draftRow
+                          ? "Discard unsaved draft?"
+                          : isLifecycleDraftDeal
+                            ? "Delete this draft deal?"
+                            : "Delete this deal?"}
                   </h3>
                   <button
                     type="button"
@@ -425,35 +431,41 @@ export function DealRowActions({
                   <p className="deals_suspend_all_modal_message">
                     {confirmKind === "archive"
                       ? `Archive “${dealName.trim() || "this deal"}”? It will move to Archives and can be restored later.`
-                      : draftRow
-                        ? `Discard the in-progress “${dealName.trim() || "Untitled deal"}” wizard? Unsaved work on this device will be cleared. This cannot be undone.`
-                        : `Delete “${dealName.trim() || "this deal"}”? This action cannot be undone.`}
+                      : confirmKind === "restore"
+                        ? `Restore “${dealName.trim() || "this deal"}” to active deals?`
+                        : draftRow
+                          ? `Discard the in-progress “${dealName.trim() || "Untitled deal"}” wizard? Unsaved work on this device will be cleared. This cannot be undone.`
+                          : `Delete “${dealName.trim() || "this deal"}”? This action cannot be undone.`}
                   </p>
-                  <label className="deals_create_label" style={{ marginTop: "0.8em" }}>
-                    <span className="form_label_inline_row">
-                      Reason <span className="deal_inv_required">*</span>
-                    </span>
-                    <textarea
-                      className="deals_create_input"
-                      rows={3}
-                      value={reason}
-                      onChange={(e) => {
-                        setReason(e.target.value)
-                        if (reasonError) setReasonError(null)
-                      }}
-                      placeholder={
-                        confirmKind === "archive"
-                          ? "Why are you archiving this deal?"
-                          : draftRow
-                            ? "Why are you discarding this draft?"
-                            : "Why are you deleting this deal?"
-                      }
-                    />
-                  </label>
-                  {reasonError ? (
-                    <p className="deals_create_field_error" role="alert">
-                      {reasonError}
-                    </p>
+                  {confirmKind !== "restore" ? (
+                    <>
+                      <label className="deals_create_label" style={{ marginTop: "0.8em" }}>
+                        <span className="form_label_inline_row">
+                          Reason <span className="deal_inv_required">*</span>
+                        </span>
+                        <textarea
+                          className="deals_create_input"
+                          rows={3}
+                          value={reason}
+                          onChange={(e) => {
+                            setReason(e.target.value)
+                            if (reasonError) setReasonError(null)
+                          }}
+                          placeholder={
+                            confirmKind === "archive"
+                              ? "Why are you archiving this deal?"
+                              : draftRow
+                                ? "Why are you discarding this draft?"
+                                : "Why are you deleting this deal?"
+                          }
+                        />
+                      </label>
+                      {reasonError ? (
+                        <p className="deals_create_field_error" role="alert">
+                          {reasonError}
+                        </p>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
                 <div className="um_modal_actions add_contact_modal_actions">
@@ -474,6 +486,11 @@ export function DealRowActions({
                       <>
                         <Archive size={16} strokeWidth={2} aria-hidden />
                         Archive
+                      </>
+                    ) : confirmKind === "restore" ? (
+                      <>
+                        <ArchiveRestore size={16} strokeWidth={2} aria-hidden />
+                        Restore
                       </>
                     ) : draftRow ? (
                       <>

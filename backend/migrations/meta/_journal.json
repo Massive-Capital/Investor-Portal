@@ -407,6 +407,13 @@
       "when": 1893450000000,
       "tag": "0058_user_investor_profile_is_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1893500000000,
+      "tag": "0059_add_deal_form_archived",
+      "breakpoints": true
     }
   ]
 }

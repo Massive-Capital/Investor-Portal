@@ -31,6 +31,10 @@ import {
 } from "../../services/deal/dealInvestment.service.js";
 import { sendDealFundApprovedNotification } from "../../services/deal/dealFundApprovedEmail.service.js";
 import { upsertDealMemberForDeal } from "../../services/deal/dealMember.service.js";
+import {
+  assertEligibleForNewDealRosterAdd,
+  isDealRosterEligibilityError,
+} from "../../services/user/portalUserRosterGuard.service.js";
 import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import { isPortalUserLeadOrAdminSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { dealInvestmentEsignIsFullyCompleted } from "../../constants/deal-investor-esign-status.js";
@@ -337,6 +341,15 @@ export async function putDealInvestment(
       return;
     }
 
+    const contactIsPlaceholder =
+      contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
+    if (!contactIsPlaceholder) {
+      const prevContactId = String(existing.contactId ?? "").trim();
+      if (prevContactId.toLowerCase() !== contactId.trim().toLowerCase()) {
+        await assertEligibleForNewDealRosterAdd(contactId.trim());
+      }
+    }
+
     const fundApproved = fundApprovedFromRequestBody(b, existing.fundApproved);
     const fundApprovedBecameTrue = fundApproved && !existing.fundApproved;
     if (fundApprovedBecameTrue) {
@@ -433,8 +446,6 @@ export async function putDealInvestment(
       res.status(404).json({ message: "Investment not found" });
       return;
     }
-    const contactIsPlaceholder =
-      contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
     if (!contactIsPlaceholder && !isLpInvestorRole(investor_role)) {
       await upsertDealMemberForDeal(dealId, {
         contactMemberId: contactId,
@@ -519,6 +530,10 @@ export async function putDealInvestment(
       });
     }
   } catch (err) {
+    if (isDealRosterEligibilityError(err)) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     console.error("putDealInvestment:", err);
     res.status(500).json({ message: "Could not update investment" });
   }
@@ -614,6 +629,12 @@ export async function postDealInvestment(
     }
     const resolvedInvestorClass = classResolution.storedInvestorClass;
 
+    const contactIsPlaceholder =
+      contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
+    if (!contactIsPlaceholder) {
+      await assertEligibleForNewDealRosterAdd(contactId.trim());
+    }
+
     const fundApproved = fundApprovedFromRequestBody(b, false);
     if (fundApproved && !autosave) {
       if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
@@ -668,8 +689,6 @@ export async function postDealInvestment(
       },
     });
 
-    const contactIsPlaceholder =
-      contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
     if (!contactIsPlaceholder) {
       await upsertDealMemberForDeal(dealId, {
         contactMemberId: contactId,
@@ -738,6 +757,10 @@ export async function postDealInvestment(
       investor,
     });
   } catch (err) {
+    if (isDealRosterEligibilityError(err)) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
     console.error("postDealInvestment:", err);
     res.status(500).json({ message: "Could not save investment" });
   }

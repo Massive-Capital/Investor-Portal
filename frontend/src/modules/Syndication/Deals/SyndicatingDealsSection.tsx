@@ -34,7 +34,7 @@ import {
 } from "./api/dealsApi";
 import { DEALS_LIST_REFETCH_EVENT } from "./createDealFormDraftStorage";
 import { dateSortValue, formatDealListDateDisplay } from "./dealsListDisplay";
-import { filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope";
+import { filterDealListRowsVisibleToInvestors, filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope";
 import {
   getDealStatusRules,
   getInvestorDealCardPresentation,
@@ -316,6 +316,9 @@ export function SyndicatingDealsSection({
       let list = await fetchDealsList(
         includeParticipantDeals ? { includeParticipantDeals: true } : undefined,
       );
+      if (includeParticipantDeals) {
+        list = filterDealListRowsVisibleToInvestors(list);
+      }
       if (onlyDealsWithViewerCommitment && list.length > 0)
         list = await filterDealListToViewerInvested(list);
       if (filterOfferingDashboardVisibility) {
@@ -377,6 +380,9 @@ export function SyndicatingDealsSection({
             ? { includeParticipantDeals: true }
             : undefined,
         );
+        if (includeParticipantDeals) {
+          list = filterDealListRowsVisibleToInvestors(list);
+        }
         if (onlyDealsWithViewerCommitment && list.length > 0)
           list = await filterDealListToViewerInvested(list);
         if (filterOfferingDashboardVisibility) {

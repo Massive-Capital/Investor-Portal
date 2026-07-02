@@ -16,6 +16,7 @@ import {
   getDealOfferingInvestorPreview,
   patchDealOfferingInvestorPreview,
   patchDealOfferingOverview,
+  patchDealArchived,
   postDeal,
   putDeal,
   deleteDeal,
@@ -257,6 +258,7 @@ router.post(
 );
 router.patch("/deals/:dealId/offering-gallery", patchDealOfferingGallery);
 router.patch("/deals/:dealId/offering-overview", patchDealOfferingOverview);
+router.patch("/deals/:dealId/archived", patchDealArchived);
 router.get(
   "/deals/:dealId/offering-preview-token",
   getOfferingPreviewToken,

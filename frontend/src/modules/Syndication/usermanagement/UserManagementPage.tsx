@@ -1,10 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type FormEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
@@ -440,6 +442,7 @@ export default function UserManagementPage({
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   const apiV1 = getApiV1Base();
   const navigate = useNavigate();
+  const suspendAllTitleId = useId();
 
   const currentUserId = useMemo(() => {
     if (!token) return "";
@@ -627,6 +630,10 @@ export default function UserManagementPage({
   const [suspendReason, setSuspendReason] = useState("");
   const [suspendSaving, setSuspendSaving] = useState(false);
   const [suspendErr, setSuspendErr] = useState("");
+  const [suspendAllOpen, setSuspendAllOpen] = useState(false);
+  const [suspendAllReason, setSuspendAllReason] = useState("");
+  const [suspendAllErr, setSuspendAllErr] = useState("");
+  const [suspendAllBusy, setSuspendAllBusy] = useState(false);
   const kebabPortalRef = useRef<HTMLUListElement | null>(null);
   const kebabTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -690,6 +697,15 @@ export default function UserManagementPage({
         selectedMemberRowIds.has(rowStableId(row, i)),
       ),
     [sortedRows, selectedMemberRowIds],
+  );
+  const membersToSuspend = useMemo(
+    () =>
+      sortedRows.filter(
+        (row) =>
+          !memberRowIsInactive(row) &&
+          !memberRowIsCurrentUser(row, currentUserId),
+      ),
+    [sortedRows, currentUserId],
   );
   const senderEmail = useMemo(() => getCurrentSessionUserEmail(), []);
   const selectedTemplate = useMemo(
@@ -945,7 +961,104 @@ export default function UserManagementPage({
   }
 
   function handleSuspendAll() {
-    setToolbarNotice("Bulk suspend is not available yet.");
+    if (membersToSuspend.length === 0) return;
+    setToolbarNotice("");
+    setSuspendAllErr("");
+    setSuspendAllReason("");
+    setSuspendAllOpen(true);
+  }
+
+  function closeSuspendAllModal() {
+    if (suspendAllBusy) return;
+    setSuspendAllOpen(false);
+    setSuspendAllErr("");
+    setSuspendAllReason("");
+  }
+
+  async function confirmSuspendAll(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !apiV1 || membersToSuspend.length === 0) return;
+    const reason = suspendAllReason.trim();
+    if (!reason) {
+      setSuspendAllErr("Please enter a reason for suspending these members.");
+      return;
+    }
+    setSuspendAllBusy(true);
+    setSuspendAllErr("");
+    const targets = [...membersToSuspend];
+    const n = targets.length;
+    let failed = 0;
+    const updatedUsers: Record<string, Record<string, unknown>> = {};
+    try {
+      for (const row of targets) {
+        const id = String(row.id ?? "").trim();
+        if (!id) {
+          failed += 1;
+          continue;
+        }
+        const res = await fetch(`${apiV1}/users/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            userStatus: "inactive",
+            reason,
+            action: MEMBER_AUDIT_ACTION_SUSPEND,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          user?: Record<string, unknown>;
+        };
+        if (!res.ok) {
+          failed += 1;
+          continue;
+        }
+        if (data.user && typeof data.user === "object") {
+          updatedUsers[id] = data.user;
+          syncSessionUserDetailsById(id, data.user);
+        }
+      }
+      if (Object.keys(updatedUsers).length > 0) {
+        setMemberRows((prev) =>
+          prev.map((r) => {
+            const id = String(r.id ?? "").trim();
+            const u = updatedUsers[id];
+            return u ? { ...r, ...u } : r;
+          }),
+        );
+      }
+      setSelectedMemberRowIds(new Set());
+      setSuspendAllOpen(false);
+      setSuspendAllReason("");
+      const succeeded = n - failed;
+      if (failed > 0) {
+        toast.error(
+          "Could not suspend all members",
+          succeeded > 0
+            ? `Suspended ${succeeded} of ${n}; ${failed} failed. Refresh and try again for the rest.`
+            : "None of the members could be suspended. Try again.",
+        );
+        if (succeeded > 0) {
+          toast.success(
+            "Members suspended",
+            `Marked ${succeeded} member${succeeded === 1 ? "" : "s"} inactive.`,
+          );
+        }
+        return;
+      }
+      toast.success(
+        "Members suspended",
+        `Marked ${n} member${n === 1 ? "" : "s"} inactive.`,
+      );
+    } catch {
+      setSuspendAllErr("Unable to connect.");
+      toast.error("Could not suspend members", "Unable to connect.");
+    } finally {
+      setSuspendAllBusy(false);
+    }
   }
 
   const openSendMailModal = useCallback(() => {
@@ -1520,7 +1633,7 @@ export default function UserManagementPage({
               type="button"
               className="um_btn_toolbar"
               onClick={handleSuspendAll}
-              disabled={membersLoading}
+              disabled={membersLoading || membersToSuspend.length === 0}
             >
               <Ban size={18} strokeWidth={2} aria-hidden />
               Suspend All
@@ -2602,6 +2715,91 @@ export default function UserManagementPage({
         members={sortedRows}
         organizationScope={organizationDisplayScope}
       />
+      {suspendAllOpen ? (
+        <div
+          className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeSuspendAllModal();
+          }}
+        >
+          <div
+            className="um_modal um_modal_view deals_add_inv_modal_panel deals_suspend_all_modal_panel"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={suspendAllTitleId}
+          >
+            <div className="um_modal_head">
+              <h3 id={suspendAllTitleId} className="um_modal_title">
+                Suspend all members?
+              </h3>
+              <button
+                type="button"
+                className="um_modal_close"
+                onClick={closeSuspendAllModal}
+                disabled={suspendAllBusy}
+                aria-label="Close"
+              >
+                <X size={20} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
+            <form onSubmit={(e) => void confirmSuspendAll(e)}>
+              <div className="deals_suspend_all_modal_body">
+                <p className="deals_suspend_all_modal_message">
+                  Mark {membersToSuspend.length} active member
+                  {membersToSuspend.length === 1 ? "" : "s"} inactive? Your own
+                  account is excluded. You can activate members again from the
+                  row menu.
+                </p>
+                <div className="um_field contacts_suspend_reason_field">
+                  <label htmlFor="um-suspend-all-reason">Reason</label>
+                  <textarea
+                    id="um-suspend-all-reason"
+                    className="um_field_textarea contacts_suspend_reason_textarea"
+                    rows={3}
+                    value={suspendAllReason}
+                    onChange={(e) => {
+                      setSuspendAllReason(e.target.value);
+                      setSuspendAllErr("");
+                    }}
+                    disabled={suspendAllBusy}
+                    placeholder="Why are these members being suspended?"
+                  />
+                </div>
+                {suspendAllErr ? (
+                  <p
+                    className="um_msg_error um_modal_form_error contacts_suspend_modal_error"
+                    role="alert"
+                  >
+                    {suspendAllErr}
+                  </p>
+                ) : null}
+              </div>
+              <div className="um_modal_actions add_contact_modal_actions">
+                <button
+                  type="button"
+                  className="um_btn_secondary"
+                  onClick={closeSuspendAllModal}
+                  disabled={suspendAllBusy}
+                >
+                  <X size={16} strokeWidth={2} aria-hidden />
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  className="um_btn_primary"
+                  disabled={suspendAllBusy || !suspendAllReason.trim()}
+                >
+                  <Ban size={16} strokeWidth={2} aria-hidden />
+                  {suspendAllBusy ? "Suspending…" : "Suspend all"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
+
+export { UserManagementPage };

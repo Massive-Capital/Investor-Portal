@@ -67,6 +67,10 @@ import {
 
 import type { AddInvestmentFormValues } from "./add_deal_member_types"
 import {
+  buildContactRosterDropdownOption,
+  buildDirectoryMemberRosterDropdownOption,
+} from "./dealRosterContactDuplicate"
+import {
   addMemberDraftEligibleForBackendAutosave,
   addMemberDraftHasContent,
   clearAddMemberDraft,
@@ -130,16 +134,6 @@ function memberOptionFromUser(
     return { value: id, label: fallback }
   }
   return { value: id, label }
-}
-
-/** Rich dropdown row: name/email + subtle “Already added” (deal roster). */
-function alreadyAddedOptionLabel(baseLabel: string) {
-  return (
-    <span className="portal_dropdown_select_option_label_row">
-      <span className="portal_dropdown_select_option_label_text">{baseLabel}</span>
-      <span className="portal_dropdown_select_option_suffix">Already added</span>
-    </span>
-  )
 }
 
 /** Field row matching Add contact (`um_field` + `um_field_label_row`). */
@@ -517,6 +511,7 @@ export function AddInvestmentModal({
   useEffect(() => {
     if (!getApiV1Base()) return
     if (!open || mode !== "add") return
+    if (membersLoading) return
     if (!investorClassesReady) return
     if (isInvestorEntry && dealClasses.length === 0) return
 
@@ -670,6 +665,9 @@ export function AddInvestmentModal({
     refreshMemberRosterForGate,
     dealBlocksInvitationEmails,
     isInvestorEntry,
+    membersLoading,
+    contactRows,
+    memberRows,
   ])
 
   useEffect(() => {
@@ -941,13 +939,18 @@ export function AddInvestmentModal({
           const value = `${PREFIX_CONTACT}${c.id}`
           const baseLabel = contactOptionLabel(c)
           const onDeal = isAlreadyOnDealRoster(c.id, c.email ?? "")
-          const disabled =
-            optionDisabledForLeadSponsorConflict(value) || onDeal
+          const lsConflict = optionDisabledForLeadSponsorConflict(value)
+          const meta = buildContactRosterDropdownOption(
+            baseLabel,
+            c,
+            onDeal,
+            lsConflict,
+          )
           return {
             value,
             label: baseLabel,
-            disabled,
-            ...(onDeal ? { labelContent: alreadyAddedOptionLabel(baseLabel) } : {}),
+            disabled: meta.disabled,
+            labelContent: meta.labelContent,
           }
         }),
       })
@@ -961,13 +964,18 @@ export function AddInvestmentModal({
           const dirRow = memberRows.find((x) => String(x.id) === o.value)
           const email = dirRow ? String(dirRow.email ?? "").trim() : ""
           const onDeal = isAlreadyOnDealRoster(o.value, email)
-          const disabled =
-            optionDisabledForLeadSponsorConflict(value) || onDeal
+          const lsConflict = optionDisabledForLeadSponsorConflict(value)
+          const meta = buildDirectoryMemberRosterDropdownOption(
+            o.label,
+            dirRow ?? {},
+            onDeal,
+            lsConflict,
+          )
           return {
             value,
             label: o.label,
-            disabled,
-            ...(onDeal ? { labelContent: alreadyAddedOptionLabel(o.label) } : {}),
+            disabled: meta.disabled,
+            labelContent: meta.labelContent,
           }
         })
       sections.push({

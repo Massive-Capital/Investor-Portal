@@ -366,6 +366,18 @@ async function ensureDealInvestmentInvestNowColumns(): Promise<void> {
 
 
 
+async function ensureDealFormArchivedColumn(): Promise<void> {
+
+  await pool.query(
+
+    `ALTER TABLE add_deal_form ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false`,
+
+  );
+
+}
+
+
+
 async function runMigrations(): Promise<void> {
 
   const migrationsFolder = path.resolve(__dirname, "..", "migrations");
@@ -375,6 +387,8 @@ async function runMigrations(): Promise<void> {
   await ensureInvestorQuestionnaireColumn();
 
   await ensureDealInvestmentInvestNowColumns();
+
+  await ensureDealFormArchivedColumn();
 
   console.log("Database migrations applied.");
 

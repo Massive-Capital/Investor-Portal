@@ -154,6 +154,12 @@ export function DealOfferingPortfolioPage() {
       setLpShareTokenError(false)
       return
     }
+    if (detail?.archived) {
+      setLpShareToken(null)
+      setLpShareSponsorRef(null)
+      setLpShareTokenError(false)
+      return
+    }
     let cancelled = false
     setLpShareToken(null)
     setLpShareSponsorRef(null)
@@ -174,7 +180,7 @@ export function DealOfferingPortfolioPage() {
     return () => {
       cancelled = true
     }
-  }, [dealIdFromRoute, isPublicOfferingRoute])
+  }, [dealIdFromRoute, isPublicOfferingRoute, detail?.archived])
 
   const shareLinkLoading =
     !isPublicOfferingRoute &&
@@ -349,6 +355,7 @@ export function DealOfferingPortfolioPage() {
 
   const isDealShareBlocked = isDealStageOfferingShareBlocked(detail?.dealStage)
   const dealShareBlockedStageLabel = dealStageLabel(detail?.dealStage)
+  const isDealArchived = Boolean(detail?.archived)
 
   const sharePreviewActionsDisabled =
     isDealShareBlocked ||
@@ -643,7 +650,7 @@ export function DealOfferingPortfolioPage() {
           ) : null}
         </header>
 
-        {!isPublicOfferingRoute ? (
+        {!isPublicOfferingRoute && detail && !isDealArchived ? (
           <section className="deal_offer_pf_share_section" aria-label="Share preview">
             <div className="um_panel deal_offer_pf_share">
               <div className="deal_offer_pf_share_header">
