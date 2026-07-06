@@ -8,7 +8,7 @@ import {
 } from "@/modules/Syndication/Deals/tabs/esign_templates/investorQuestionnaire.types"
 import {
   formatInvestNowW9AddressLine,
-  ssnFromProfileWizard,
+  ssnFromAnyInvestorProfile,
 } from "./investNowW9FormUtils"
 import type { InvestNowQuestionnaireAnswers } from "./investNowQuestionnaireValidation"
 
@@ -117,7 +117,7 @@ export function buildInvestNowQuestionnairePrefill({
   const telephone = resolveTelephone(wizard)
   const taxAddr = resolveTaxAddress(wizard, addresses)
   const addressLine = taxAddr ? formatAddressLine(taxAddr) : ""
-  const ssn = ssnFromProfileWizard(wizard)
+  const ssn = ssnFromAnyInvestorProfile(profiles)
 
   const ctx = { firstName, lastName, telephone, addressLine, ssn }
 

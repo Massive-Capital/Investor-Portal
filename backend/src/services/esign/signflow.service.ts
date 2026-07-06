@@ -26,6 +26,10 @@ function buildUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/$/, "")}${normalizedPath}`;
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function parseSignFlowError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as SignFlowErrorBody;
@@ -35,6 +39,18 @@ async function parseSignFlowError(res: Response): Promise<string> {
       return (
         msg ||
         "SignFlow API key is invalid. Copy an API key from SignFlow → API Keys and set SIGNFLOW_API_KEY in backend/.env.local."
+      );
+    }
+    if (res.status === 429) {
+      return (
+        msg ||
+        "SignFlow is temporarily busy (rate limit). Wait a moment and try again."
+      );
+    }
+    if (res.status === 404) {
+      return (
+        msg ||
+        "SignFlow document not found. Ask your sponsor to resend the eSign request."
       );
     }
     if (msg && code) return `${code}: ${msg}`;
@@ -52,6 +68,7 @@ async function parseSignFlowError(res: Response): Promise<string> {
 export async function signflowRequest<T = unknown>(
   path: string,
   options: RequestInit = {},
+  attempt = 0,
 ): Promise<T | null> {
   const { baseUrl, apiKey } = requireSignFlowConfig();
   const url = buildUrl(baseUrl, path);
@@ -70,6 +87,11 @@ export async function signflowRequest<T = unknown>(
       );
     }
     throw err;
+  }
+
+  if (response.status === 429 && attempt < 3) {
+    await sleepMs(400 * (attempt + 1));
+    return signflowRequest<T>(path, options, attempt + 1);
   }
 
   if (!response.ok) {
@@ -324,8 +346,68 @@ function isSignFlowWaitingForPriorSignerError(err: unknown): boolean {
   return (
     message.includes("WAITING_FOR_PRIOR_SIGNER") ||
     message.toLowerCase().includes("investor must sign") ||
-    message.toLowerCase().includes("must sign first")
+    message.toLowerCase().includes("must sign first") ||
+    message.toLowerCase().includes("prior signer")
   );
+}
+
+export function mapSignFlowEmbedSessionError(
+  err: unknown,
+  baseUrl?: string | null,
+): {
+  code: "not_configured" | "not_pending" | "waiting_for_prior_signer";
+  message: string;
+  waitingFor?: "sponsor" | "investor" | "prior_investor";
+} {
+  const message =
+    err instanceof Error ? err.message.trim() : String(err ?? "").trim();
+
+  if (isSignFlowWaitingForPriorSignerError(err)) {
+    const waitingFor: "sponsor" | "investor" | "prior_investor" =
+      message.toLowerCase().includes("sponsor") ? "sponsor" : "prior_investor";
+    return {
+      code: "waiting_for_prior_signer",
+      message:
+        message ||
+        "Your documents are not ready for signature yet. We will notify you when it is your turn to sign.",
+      waitingFor,
+    };
+  }
+
+  if (isEsignProviderUnreachableError(err)) {
+    const url = baseUrl?.trim() || "SIGNFLOW_API_BASE_URL";
+    return {
+      code: "not_configured",
+      message: `SignFlow API is not reachable at ${url}. Start the SignFlow backend on port 5007 and the SignFlow UI on port 5177, then try again.`,
+    };
+  }
+
+  if (
+    message.includes("429") ||
+    message.toLowerCase().includes("rate limit") ||
+    message.toLowerCase().includes("temporarily busy")
+  ) {
+    return {
+      code: "not_configured",
+      message:
+        "SignFlow is temporarily busy. Wait a few seconds and click Try again.",
+    };
+  }
+
+  if (message) {
+    return {
+      code: "not_pending",
+      message: message.includes("SignFlow")
+        ? message
+        : `SignFlow signing error: ${message}`,
+    };
+  }
+
+  return {
+    code: "not_pending",
+    message:
+      "Could not open SignFlow signing. Confirm SignFlow is running on port 5007 and the SignFlow UI on port 5177, then try again.",
+  };
 }
 
 /**
@@ -740,17 +822,10 @@ export function signFlowInvestorPhaseComplete(doc: SignFlowDocument): boolean {
   );
 }
 
-/** True when sequential workflow assigns sponsor a lower order than every investor. */
+/** True when recipient order assigns sponsor a lower order than every investor. */
 export function signFlowSponsorSignsBeforeInvestor(
   doc: SignFlowDocument,
 ): boolean {
-  const workflowType = String(
-    doc.workflowType ?? DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
-  )
-    .trim()
-    .toLowerCase();
-  if (workflowType !== "sequential") return false;
-
   const investors = (doc.recipients ?? []).filter((r) =>
     matchSignFlowPartyRole(r, "investor"),
   );
@@ -766,18 +841,39 @@ export function signFlowSponsorSignsBeforeInvestor(
   return sponsorOrder < minInvestorOrder;
 }
 
-/** True when sponsor must wait for investor signature (sequential, investor-first). */
-export function signFlowCounterSignRequiresInvestorSigned(
+/** True when recipient order assigns investor before sponsor on this document. */
+export function signFlowInvestorSignsBeforeSponsor(
   doc: SignFlowDocument,
 ): boolean {
-  if (signFlowSponsorSignsBeforeInvestor(doc)) return false;
+  const investors = (doc.recipients ?? []).filter((r) =>
+    matchSignFlowPartyRole(r, "investor"),
+  );
+  const sponsor = (doc.recipients ?? []).find((r) =>
+    matchSignFlowPartyRole(r, "sponsor"),
+  );
+  if (investors.length === 0 || !sponsor) return false;
+
+  const sponsorOrder = Number(sponsor.order) || 2;
+  const minInvestorOrder = Math.min(
+    ...investors.map((r) => Number(r.order) || 1),
+  );
+  if (minInvestorOrder < sponsorOrder) return true;
+
   const workflowType = String(
     doc.workflowType ?? DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
   )
     .trim()
     .toLowerCase();
-  if (workflowType !== "sequential") return false;
-  return true;
+  // Legacy parallel sends used order 1 for both parties — still investor-first.
+  return workflowType === "parallel" && minInvestorOrder === sponsorOrder;
+}
+
+/** True when sponsor must wait for investor signature (investor-first by order). */
+export function signFlowCounterSignRequiresInvestorSigned(
+  doc: SignFlowDocument,
+): boolean {
+  if (signFlowSponsorSignsBeforeInvestor(doc)) return false;
+  return signFlowInvestorSignsBeforeSponsor(doc);
 }
 
 export function signFlowTemplateHasSponsorFields(
@@ -989,21 +1085,12 @@ function matchSignFlowPartyRole(
   );
 }
 
-/** Blocks embedded signing when sequential workflow has not reached this recipient's turn. */
+/** Blocks embedded signing when recipient order has not reached this party's turn. */
 export function evaluateSignFlowRecipientSignAccess(
   doc: SignFlowDocument,
   recipientEmail: string,
   opts?: { investorHasCompletedSignature?: boolean },
 ): SignFlowRecipientSignAccess {
-  const workflowType = String(
-    doc.workflowType ?? DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
-  )
-    .trim()
-    .toLowerCase();
-  if (workflowType !== "sequential") {
-    return { allowed: true };
-  }
-
   const email = recipientEmail.trim().toLowerCase();
   const recipients = doc.recipients ?? [];
   if (!email || recipients.length === 0) {

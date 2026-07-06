@@ -490,6 +490,18 @@ export async function postDealMemberSendEsign(
       signatureId,
     });
 
+    try {
+      const { notifySequentialInvestorsSignTurnAvailable } = await import(
+        "../../services/deal/dealEsignStageNotificationEmail.service.js"
+      );
+      await notifySequentialInvestorsSignTurnAvailable(dealId);
+    } catch (err) {
+      console.warn(
+        "notifySequentialInvestorsSignTurnAvailable (member send esign):",
+        err,
+      );
+    }
+
     const result = await sendDealMemberSendEsignEmail({
       dealId,
       toEmail: toEmail.trim(),

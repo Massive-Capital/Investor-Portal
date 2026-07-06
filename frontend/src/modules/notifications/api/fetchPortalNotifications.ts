@@ -8,16 +8,27 @@ import { fetchPlatformSignupNotifications } from "./fetchPlatformSignupNotificat
 import { getMergedInvestmentListRows } from "@/modules/Investing/pages/investments/investmentsRuntimeData"
 import {
   fetchDealInvestors,
+  fetchDealMembers,
   fetchDealMyEsignDocuments,
   fetchDealsList,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import { esignCategoryLabel } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
 import { investorRowIsFundApproved } from "@/modules/Syndication/Deals/utils/dealInvestorTableDisplay"
+import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import {
+  dealRowSupportsRosterApiPrefetch,
+  filterDealListRowsVisibleToInvestors,
+  resolveViewerInvestingDealRoles,
+  viewerDealNeedsOnboarding,
+} from "@/modules/Investing/utils/investingViewerDealScope"
+import {
+  allInvestorsInvestorPhaseComplete,
   investorRowAwaitingSponsorCounterSign,
   investorRowCommittedNumeric,
+  investorRowInvestorPhaseSigned,
   investorRowLatestEsignSignedAt,
   investorRowMatchesViewerEmail,
+  investorEsignWasSent,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import type { PortalNotification } from "../types/notification.types"
@@ -37,6 +48,111 @@ function isoOrNow(iso: string | null | undefined): string {
 }
 
 type NotificationDraft = Omit<PortalNotification, "read">
+
+function viewerMatchingDealRows(
+  rows: DealInvestorRow[],
+  viewerEmail: string,
+): DealInvestorRow[] {
+  return rows.filter((r) => investorRowMatchesViewerEmail(r, viewerEmail))
+}
+
+function latestInviteTimestamp(
+  rows: DealInvestorRow[],
+  fallback?: string | null,
+): string {
+  let best: string | null = null
+  let bestMs = -1
+  for (const row of rows) {
+    const iso = row.investedAtIso?.trim()
+    if (!iso) continue
+    const ms = Date.parse(iso)
+    if (!Number.isNaN(ms) && ms > bestMs) {
+      bestMs = ms
+      best = iso
+    }
+  }
+  return isoOrNow(best ?? fallback)
+}
+
+/** Alert when the signed-in user was invited to a deal (email sent or LP roster invite). */
+async function collectDealInvitationNotifications(
+  out: NotificationDraft[],
+): Promise<void> {
+  const viewerEmail = getSessionUserEmail().trim().toLowerCase()
+  if (!viewerEmail) return
+
+  const deals = filterDealListRowsVisibleToInvestors(
+    await fetchDealsList({ includeParticipantDeals: true }),
+  ).slice(0, 24)
+
+  if (deals.length === 0) return
+
+  await mapWithConcurrency(deals, 4, async (deal) => {
+    const dealId = deal.id.trim()
+    if (!dealId || !dealRowSupportsRosterApiPrefetch(deal)) return
+
+    const dealName = deal.dealName?.trim() || "Deal"
+    const [investorsPayload, membersPayload] = await Promise.all([
+      fetchDealInvestors(dealId),
+      fetchDealMembers(dealId),
+    ])
+
+    const investorMatches = viewerMatchingDealRows(
+      investorsPayload.investors,
+      viewerEmail,
+    )
+    const memberMatches = viewerMatchingDealRows(
+      membersPayload.members,
+      viewerEmail,
+    )
+    const allMatches = [...investorMatches, ...memberMatches]
+
+    const invitationMailSent = allMatches.some(
+      (r) => r.invitationMailSent === true,
+    )
+    const invitedAsLp = viewerDealNeedsOnboarding(
+      investorsPayload,
+      viewerEmail,
+    )
+
+    if (!invitationMailSent && !invitedAsLp) return
+
+    const roles = resolveViewerInvestingDealRoles(
+      membersPayload.members,
+      investorsPayload.investors,
+      viewerEmail,
+      investorsPayload,
+    )
+    const sponsorLabels = roles.sponsorRoleLabels
+    const createdAt = latestInviteTimestamp(allMatches, deal.createdAt)
+
+    let href: string
+    let message: string
+
+    if (sponsorLabels.length > 0 && !invitedAsLp) {
+      href = `/deals/${encodeURIComponent(dealId)}`
+      message =
+        sponsorLabels.length === 1
+          ? `You've been invited to ${dealName} as ${sponsorLabels[0]}. Open the deal workspace to get started.`
+          : `You've been invited to ${dealName} (${sponsorLabels.join(", ")}). Open the deal workspace to get started.`
+    } else if (invitedAsLp) {
+      href = `/investing/investments/${encodeURIComponent(dealId)}`
+      message = `You've been invited to participate in ${dealName} as an investor. Complete onboarding to review the offering and invest.`
+    } else {
+      href = `/investing/investments/${encodeURIComponent(dealId)}`
+      message = `You've been invited to participate in ${dealName}. Sign in to review the offering and next steps.`
+    }
+
+    out.push({
+      id: `deal-invite:${dealId}`,
+      title: "You've been invited to a deal",
+      message,
+      category: "deal",
+      createdAt,
+      href,
+    })
+  })
+}
 
 async function collectLpInvestorNotifications(
   out: NotificationDraft[],
@@ -65,31 +181,38 @@ async function collectLpInvestorNotifications(
       fetchDealInvestors(dealId),
     ])
 
-    const pendingDocs = esign.documents.filter((d) => d.status !== "signed")
-    for (const doc of pendingDocs) {
-      const docLabel = capitalizeFirst(doc.name || "Document")
-      const categoryLabel = doc.categoryId
-        ? esignCategoryLabel(doc.categoryId)
-        : ""
-      out.push({
-        id: `esign-pending:${dealId}:${doc.fileId}`,
-        title: "Signature required",
-        message: categoryLabel
-          ? `${docLabel} (${categoryLabel}) on ${dealName}.`
-          : `${docLabel} on ${dealName} is waiting for your signature.`,
-        category: "document",
-        createdAt: isoOrNow(esign.sentAt),
-        href: `/investing/investments/${encodeURIComponent(dealId)}?tab=documents`,
-      })
+    const pendingDocs = esign.documents.filter(
+      (d) => d.status !== "signed" && d.signatureRequestId?.trim(),
+    )
+    const canSignNow =
+      esign.sequentialSignTurnOpen !== false && pendingDocs.length > 0
+
+    if (canSignNow) {
+      for (const doc of pendingDocs) {
+        const docLabel = capitalizeFirst(doc.name || "Document")
+        const categoryLabel = doc.categoryId
+          ? esignCategoryLabel(doc.categoryId)
+          : ""
+        out.push({
+          id: `esign-pending:${dealId}:${doc.fileId}`,
+          title: "Documents ready to sign",
+          message: categoryLabel
+            ? `${docLabel} (${categoryLabel}) on ${dealName} is ready for your signature.`
+            : `${docLabel} on ${dealName} is ready for your signature.`,
+          category: "document",
+          createdAt: isoOrNow(esign.sentAt),
+          href: `/investing/investments/${encodeURIComponent(dealId)}?tab=documents`,
+        })
+      }
     }
 
-    if (pendingDocs.length === 0 && esign.esignPending) {
+    if (esign.completedAt?.trim()) {
       out.push({
-        id: `esign-pending:${dealId}:workflow`,
-        title: "E-signatures in progress",
-        message: `Complete your e-sign packet on ${dealName}.`,
+        id: `esign-sponsor-signed:${dealId}`,
+        title: "Documents fully executed",
+        message: `Your sponsor counter-signed eSign documents on ${dealName}. They are available in Offering Documents.`,
         category: "document",
-        createdAt: isoOrNow(esign.sentAt),
+        createdAt: isoOrNow(esign.completedAt),
         href: `/investing/investments/${encodeURIComponent(dealId)}?tab=documents`,
       })
     }
@@ -150,11 +273,36 @@ async function collectSponsorNotifications(
     const payload = await fetchDealInvestors(dealId)
     const investors = payload.investors
 
+    const allInvestorsSigned = allInvestorsInvestorPhaseComplete(investors)
+
+    const investorSigned = investors.filter((inv) => {
+      if (investorRowCommittedNumeric(inv) <= 0) return false
+      if (!investorEsignWasSent(inv)) return false
+      return investorRowInvestorPhaseSigned(inv)
+    })
+
+    if (investorSigned.length > 0 && !allInvestorsSigned) {
+      const who = formatInvestorWhoPhrase(investorSigned)
+      const latestSigned = investorSigned
+        .map(investorRowLatestEsignSignedAt)
+        .map((t) => t?.trim())
+        .filter((t): t is string => Boolean(t))
+        .sort((a, b) => Date.parse(b) - Date.parse(a))[0]
+      out.push({
+        id: `esign-investor-signed:${dealId}`,
+        title: "Investor signed eSign documents",
+        message: `${who} signed on ${dealName}. Remaining investors must sign before documents appear for your counter-signature (sequential workflow).`,
+        category: "document",
+        createdAt: isoOrNow(latestSigned),
+        href: `/deals/${encodeURIComponent(dealId)}?tab=investors`,
+      })
+    }
+
     const awaitingCounterSign = investors.filter((inv) => {
       if (investorRowCommittedNumeric(inv) <= 0) return false
       return investorRowAwaitingSponsorCounterSign(inv)
     })
-    if (awaitingCounterSign.length > 0) {
+    if (awaitingCounterSign.length > 0 && allInvestorsSigned) {
       const who = formatInvestorWhoPhrase(awaitingCounterSign)
       const latestSigned = awaitingCounterSign
         .map(investorRowLatestEsignSignedAt)
@@ -210,6 +358,8 @@ function viewerHasLpNotificationScope(): boolean {
 export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
   const out: NotificationDraft[] = []
   const isLpOnly = isLpInvestorSessionUser()
+
+  await collectDealInvitationNotifications(out)
 
   if (isLpOnly) {
     await Promise.all([

@@ -103,6 +103,7 @@ import {
   buildInvestNowW9Prefill,
   investNowW9FormApiPayload,
   mergeInvestNowW9Values,
+  ssnFromAnyInvestorProfile,
 } from "./investNowW9FormUtils"
 import {
   type InvestNowFieldErrors,
@@ -233,6 +234,9 @@ export function DealInvestNowPage() {
   const [esignSignatureRequestId, setEsignSignatureRequestId] = useState<
     string | null
   >(null)
+  const [sequentialSignTurnOpen, setSequentialSignTurnOpen] = useState(true)
+  const [awaitingSequentialSignTurn, setAwaitingSequentialSignTurn] =
+    useState(false)
   const [investNowInvestmentId, setInvestNowInvestmentId] = useState<
     string | null
   >(null)
@@ -641,34 +645,23 @@ export function DealInvestNowPage() {
     setFundingMethod("")
   }, [savedUserProfileId, entryMode])
 
-  /** Sync SSN from the selected investing profile when the profile changes. */
+  /** Prefill SSN from the user's earliest saved profile; never overwrite session entries. */
   useEffect(() => {
-    const ssn = savedUserProfileId.trim()
-      ? (buildInvestNowQuestionnairePrefill({
-          profiles: bookProfileRows,
-          addresses: bookAddresses,
-          savedUserProfileId,
-          config: questionnaireConfig,
-          sectionId: "personal",
-        }).social_security_number ?? "")
-      : ""
-    setW9Values((prev) => (prev.ssn === ssn ? prev : { ...prev, ssn }))
+    const knownSsn = ssnFromAnyInvestorProfile(bookProfileRows)
+    if (!knownSsn) return
+
+    setW9Values((prev) => {
+      if (prev.ssn.trim()) return prev
+      return prev.ssn === knownSsn ? prev : { ...prev, ssn: knownSsn }
+    })
     setQuestionnaireAnswers((prev) => {
       const current = String(prev.social_security_number ?? "").trim()
-      if (!ssn) {
-        if (!current) return prev
-        const { social_security_number: _omit, ...rest } = prev
-        return rest
-      }
-      if (current === ssn) return prev
-      return { ...prev, social_security_number: ssn }
+      if (current) return prev
+      return current === knownSsn
+        ? prev
+        : { ...prev, social_security_number: knownSsn }
     })
-  }, [
-    savedUserProfileId,
-    bookProfileRows,
-    bookAddresses,
-    questionnaireConfig,
-  ])
+  }, [savedUserProfileId, bookProfileRows])
 
   const investNowEsignScope = useMemo(
     () => ({
@@ -1139,6 +1132,9 @@ export function DealInvestNowPage() {
   const loadEsignStepData = useCallback(async (): Promise<boolean> => {
     if (!dealId.trim()) return false
     if (esignSendInFlightRef.current) return false
+    const commitmentProfileId = profileId.trim()
+    if (!commitmentProfileId) return false
+    if (resumeLoading || bookLoading) return false
     esignSendInFlightRef.current = true
     setEsignLoading(true)
     setEsignSendError(null)
@@ -1146,8 +1142,27 @@ export function DealInvestNowPage() {
     let trackedInvestmentId = investNowInvestmentIdRef.current?.trim() || null
     const w9Payload = investNowW9FormApiPayload(w9Values)
     try {
+      if (!trackedInvestmentId && savedUserProfileId.trim()) {
+        const n = parseMoneyDigits(String(amount).trim())
+        if (Number.isFinite(n) && n > 0) {
+          const saveErr = await persistInvestNowProgress({
+            committedAmount: String(n),
+            w9Form: w9Payload,
+            ...(Object.keys(questionnaireAnswers).length > 0
+              ? { questionnaireAnswers }
+              : {}),
+          })
+          if (saveErr) {
+            setEsignSendError(saveErr)
+            setEsignSendOk(false)
+            return false
+          }
+          trackedInvestmentId = investNowInvestmentIdRef.current?.trim() || null
+        }
+      }
+
       const sendRes = await postMyLpDealInvestNowEsignSend(dealId, {
-        profileId: profileId.trim(),
+        profileId: commitmentProfileId,
         memberDisplayName: investorDisplayName,
         userInvestorProfileId: savedUserProfileId.trim() || undefined,
         investmentId: trackedInvestmentId ?? undefined,
@@ -1179,6 +1194,9 @@ export function DealInvestNowPage() {
         profileId: profileId.trim() || undefined,
       }
       const docs = await fetchDealMyEsignDocuments(dealId, scopeForFetch)
+      setSequentialSignTurnOpen(docs.sequentialSignTurnOpen !== false)
+      setAwaitingSequentialSignTurn(Boolean(docs.awaitingSequentialSignTurn))
+      const signTurnOpen = docs.sequentialSignTurnOpen !== false
       const profileDocs = filterMyEsignDocumentsForCategory(
         docs.documents,
         esignCategoryIdFromCommitmentProfile(profileId.trim()),
@@ -1215,8 +1233,8 @@ export function DealInvestNowPage() {
           name,
           url: "",
           status: "pending" as const,
-          canSign: true,
-          signatureRequestId: fallbackSigId,
+          canSign: signTurnOpen,
+          signatureRequestId: signTurnOpen ? fallbackSigId : undefined,
         }))
       }
       setEsignDocuments(mappedRows)
@@ -1262,6 +1280,10 @@ export function DealInvestNowPage() {
     w9Values,
     investNowInvestmentId,
     refreshWebhookSignStatus,
+    resumeLoading,
+    bookLoading,
+    amount,
+    persistInvestNowProgress,
   ])
 
   const loadEsignStepDataRef = useRef(loadEsignStepData)
@@ -1270,8 +1292,18 @@ export function DealInvestNowPage() {
   /** Load e-sign step data when entering the step — not on every callback identity change. */
   useEffect(() => {
     if (stepIndex !== esignStepIndex || esignStepIndex < 0 || !dealId) return
+    if (resumeLoading || bookLoading) return
+    if (!profileId.trim()) return
     void loadEsignStepDataRef.current()
-  }, [stepIndex, esignStepIndex, dealId, profileId, savedUserProfileId])
+  }, [
+    stepIndex,
+    esignStepIndex,
+    dealId,
+    profileId,
+    savedUserProfileId,
+    resumeLoading,
+    bookLoading,
+  ])
 
   useEffect(() => {
     const invId = investNowInvestmentId?.trim()
@@ -1807,6 +1839,8 @@ export function DealInvestNowPage() {
         esignDocuments={esignDocuments}
         esignPending={esignPending}
         esignCompleted={esignCompleted}
+        sequentialSignTurnOpen={sequentialSignTurnOpen}
+        awaitingSequentialSignTurn={awaitingSequentialSignTurn}
         esignWorkflowLabel={esignWorkflowLabel}
         webhookSignStatus={webhookSignStatus}
         signStatusLoading={signStatusLoading}

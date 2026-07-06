@@ -14,6 +14,8 @@ import {
   createSignFlowEmbedSigningSession,
   evaluateSignFlowRecipientSignAccess,
   getSignFlowDocument,
+  mapSignFlowEmbedSessionError,
+  resolveSignFlowInvestorRecipientId,
 } from "../esign/signflow.service.js";
 import {
   findInvestorEsignTargetForInvestNowCommitment,
@@ -30,6 +32,7 @@ import {
 } from "../esign/dropboxSign.service.js";
 
 import { sendMyInvestNowEsignIfNeeded } from "./dealLpInvestNowMyEsignSend.service.js";
+import { evaluateDealSequentialInvestorSignAccess } from "./dealSequentialEsignWorkflow.service.js";
 
 export type DealMyEsignSignSessionResult =
   | {
@@ -45,7 +48,7 @@ export type DealMyEsignSignSessionResult =
       appBaseUrl?: string | null;
       documentId?: string | null;
     }
-  | { ok: false; code: "not_found" | "not_pending" | "not_configured" | "waiting_for_prior_signer"; message: string; waitingFor?: "sponsor" | "investor" };
+  | { ok: false; code: "not_found" | "not_pending" | "not_configured" | "waiting_for_prior_signer"; message: string; waitingFor?: "sponsor" | "investor" | "prior_investor" };
 
 async function resolveSignatureIdForSend(
   send: { signatureId?: string; signatureRequestId?: string },
@@ -192,6 +195,19 @@ export async function getDealMyEsignSignSession(params: {
 
   const sigId = send.signatureRequestId?.trim() ?? "";
 
+  const sequentialAccess = await evaluateDealSequentialInvestorSignAccess(
+    dealId,
+    target,
+  );
+  if (!sequentialAccess.allowed) {
+    return {
+      ok: false,
+      code: "waiting_for_prior_signer",
+      message: sequentialAccess.message,
+      waitingFor: "prior_investor",
+    };
+  }
+
   if (send.completedAt?.trim()) {
     return {
       ok: true,
@@ -221,19 +237,28 @@ export async function getDealMyEsignSignSession(params: {
       await markDealInvestorEsignViewed(params.dealId, target, sigId);
     }
 
+    let liveDoc;
     try {
-      const liveDoc = await getSignFlowDocument(sigId);
-      const access = evaluateSignFlowRecipientSignAccess(liveDoc, email);
-      if (!access.allowed) {
-        return {
-          ok: false,
-          code: "waiting_for_prior_signer",
-          message: access.message,
-          waitingFor: access.waitingFor,
-        };
-      }
+      liveDoc = await getSignFlowDocument(sigId);
     } catch (err) {
-      console.warn("getSignFlowDocument (sign access gate):", err);
+      console.warn("getSignFlowDocument (sign session):", err);
+      const mapped = mapSignFlowEmbedSessionError(err, signFlowCfg.baseUrl);
+      return {
+        ok: false,
+        code: mapped.code,
+        message: mapped.message,
+        ...(mapped.waitingFor ? { waitingFor: mapped.waitingFor } : {}),
+      };
+    }
+
+    const access = evaluateSignFlowRecipientSignAccess(liveDoc, email);
+    if (!access.allowed) {
+      return {
+        ok: false,
+        code: "waiting_for_prior_signer",
+        message: access.message,
+        waitingFor: access.waitingFor,
+      };
     }
 
     try {
@@ -257,9 +282,11 @@ export async function getDealMyEsignSignSession(params: {
       const investorProfileType = portalProfileIdToSignFlowProfileType(
         resolvedCommitmentProfileId,
       );
+      const investorRecipientId = resolveSignFlowInvestorRecipientId(liveDoc);
       const session = await createSignFlowEmbedSigningSession({
         documentId: sigId,
         recipientEmail: email,
+        recipientId: investorRecipientId,
         ...(investorProfileType
           ? { profileType: investorProfileType }
           : {}),
@@ -279,14 +306,12 @@ export async function getDealMyEsignSignSession(params: {
       };
     } catch (err) {
       console.warn("createSignFlowEmbedSigningSession:", err);
-      const message =
-        err instanceof Error ? err.message : "Could not load SignFlow signing session";
+      const mapped = mapSignFlowEmbedSessionError(err, signFlowCfg.baseUrl);
       return {
         ok: false,
-        code: "not_pending",
-        message: message.includes("SignFlow")
-          ? message
-          : "Could not open SignFlow signing. Confirm SignFlow is running and try again.",
+        code: mapped.code,
+        message: mapped.message,
+        ...(mapped.waitingFor ? { waitingFor: mapped.waitingFor } : {}),
       };
     }
   }

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import * as nodePath from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getUploadsPhysicalRoot } from "../../config/uploadPaths.js";
@@ -27,6 +27,7 @@ import {
   ensureEsignTemplatePdfPrepared,
   getDealEsignTemplatesState,
   isPdfEsignFile,
+  readEsignTemplatePdfBuffer,
   type EsignTemplateFileRecord,
 } from "./dealEsignTemplates.service.js";
 import {
@@ -448,12 +449,14 @@ export async function assembleInvestorSigningPdf(params: {
   const savePreview = needsCustomDropboxFile;
 
   const esignState = await getDealEsignTemplatesState(params.dealId);
-  const { absolutePath } = await ensureEsignTemplatePdfPrepared(
+  await ensureEsignTemplatePdfPrepared(
     params.dealId,
     file,
     esignState,
   );
-  let templateSigningBuffer: Buffer = Buffer.from(await readFile(absolutePath));
+  let templateSigningBuffer: Buffer = Buffer.from(
+    await readEsignTemplatePdfBuffer(file.relativePath),
+  );
 
   if (w9Data) {
     if (file.includesW9Appendix) {

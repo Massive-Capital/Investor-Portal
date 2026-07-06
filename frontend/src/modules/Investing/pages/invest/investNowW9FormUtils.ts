@@ -63,6 +63,28 @@ export function ssnFromProfileWizard(
   return formatSsnItinInput(raw)
 }
 
+function profileCreatedAtMs(profile: InvestorProfileListRow): number {
+  const t = Date.parse(profile.dateCreated)
+  return Number.isFinite(t) ? t : 0
+}
+
+/**
+ * Earliest non-empty SSN saved on any investing profile for this user.
+ * Used so W-9 and onboarding keep the same SSN across profile switches.
+ */
+export function ssnFromAnyInvestorProfile(
+  profiles: InvestorProfileListRow[],
+): string {
+  const ordered = [...profiles]
+    .filter((p) => !p.archived)
+    .sort((a, b) => profileCreatedAtMs(a) - profileCreatedAtMs(b))
+  for (const profile of ordered) {
+    const ssn = ssnFromProfileWizard(readWizardState(profile))
+    if (ssn) return ssn
+  }
+  return ""
+}
+
 function joinNameParts(parts: string[]): string {
   return parts.map((p) => p.trim()).filter(Boolean).join(" ")
 }
@@ -209,12 +231,13 @@ export function buildInvestNowW9Prefill({
       next = { ...next, ...investNowW9ValuesFromAddress(addr) }
     }
 
-    const ssn = ssnFromProfileWizard(wizard)
-    if (ssn) next = { ...next, ssn }
   } else {
     const sessionName = sessionDisplayName()
     if (sessionName) next = { ...next, name: sessionName }
   }
+
+  const knownSsn = ssnFromAnyInvestorProfile(profiles)
+  if (knownSsn) next = { ...next, ssn: knownSsn }
 
   const fromQuestionnaire = prefillFromQuestionnaire(questionnaireAnswers)
   next = mergeInvestNowW9Values(next, {

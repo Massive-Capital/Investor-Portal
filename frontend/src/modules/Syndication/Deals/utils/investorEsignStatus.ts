@@ -414,6 +414,23 @@ export function investorRowShowsEsignStatusLink(
   return investorEsignWasSent(row)
 }
 
+export function investorRowInvestorPhaseSigned(row: DealInvestorRow): boolean {
+  const status = resolveInvestorRowEsignStatus(row)
+  return Boolean(status?.signedAt?.trim() || status?.completedAt?.trim())
+}
+
+/** All investors with eSign sent have finished the investor signing step. */
+export function allInvestorsInvestorPhaseComplete(
+  investors: DealInvestorRow[],
+): boolean {
+  const withEsign = investors.filter(
+    (inv) =>
+      investorEsignWasSent(inv) && investorRowCommittedNumeric(inv) > 0,
+  )
+  if (withEsign.length === 0) return false
+  return withEsign.every((inv) => investorRowInvestorPhaseSigned(inv))
+}
+
 /** Investor finished signing; sponsor counter-signature is still required. */
 export function investorRowAwaitingSponsorCounterSign(
   row: DealInvestorRow,

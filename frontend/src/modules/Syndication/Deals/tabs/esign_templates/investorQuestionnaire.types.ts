@@ -142,7 +142,7 @@ export const DEFAULT_INVESTOR_QUESTIONNAIRE_QUESTIONS: InvestorQuestionnaireQues
     {
       id: "social_security_number",
       sectionId: "personal",
-      label: "Social security number",
+      label: "Social Security Number",
       sortOrder: 7,
       required: true,
       fieldType: "ssn",

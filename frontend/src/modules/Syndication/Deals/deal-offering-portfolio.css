@@ -697,6 +697,46 @@ html.deal_offer_pf_sticky_scroll body {
   gap: 0.65rem;
 }
 
+/* Preview offering gallery — same inline carousel as dashboard deal cards */
+.deal_offer_pf_carousel_hero {
+  position: relative;
+  width: 100%;
+  min-height: min(16rem, 48vw);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--portal-card-radius, 4px);
+  background: var(--portal-primary-soft, #f1f5f9);
+}
+
+.deal_offer_pf_carousel_hero .deal_card_media--hero {
+  position: absolute;
+  inset: 0;
+  flex: none;
+  max-width: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  aspect-ratio: auto;
+}
+
+.deal_offer_pf_carousel_hero .deal_card_cover {
+  transition: transform 0.45s ease;
+}
+
+.deal_offer_pf_carousel_hero:hover .deal_card_cover {
+  transform: scale(1.03);
+}
+
+.deal_offer_pf_carousel_hero .deal_card_carousel_image_btn:hover .deal_card_cover {
+  transform: scale(1.03);
+}
+
+@media (hover: none) {
+  .deal_offer_pf_carousel_hero .deal_card_carousel_btn {
+    opacity: 1;
+  }
+}
+
 .deal_offer_pf_wireframe .deal_offer_pf_media_thumb_row {
   width: 100%;
   max-width: 100%;

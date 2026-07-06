@@ -1,15 +1,9 @@
-import { readFile } from "node:fs/promises";
-
 import { getSignFlowConfig } from "../../config/signflow.config.js";
 
 import {
-
   resolveEsignSignflowSigningOrder,
-
   resolveEsignSignflowWorkflowType,
-
   resolveSignFlowRecipientOrders,
-
 } from "../../constants/esignSigningWorkflow.js";
 
 import type { CreateInvestorSignatureRequestResult } from "./dealMemberSendEsignDropbox.service.js";
@@ -26,6 +20,7 @@ import {
   getDealEsignTemplatesState,
   isEsignTemplateReady,
   isPdfEsignFile,
+  readEsignTemplatePdfBuffer,
   resolveEsignTemplateExternalId,
   type EsignTemplateFileRecord,
 } from "./dealEsignTemplates.service.js";
@@ -176,17 +171,13 @@ export async function createInvestorSignatureRequestSignflow(params: {
 
     const state = await getDealEsignTemplatesState(params.dealId);
 
-    const { absolutePath } = await ensureEsignTemplatePdfPrepared(
-
+    await ensureEsignTemplatePdfPrepared(
       params.dealId,
-
       file,
-
       state,
-
     );
 
-    pdfBuffer = await readFile(absolutePath);
+    pdfBuffer = await readEsignTemplatePdfBuffer(file.relativePath);
 
   }
 
@@ -320,9 +311,8 @@ export async function createInvestorSignatureRequestSignflow(params: {
   }
 
   const templateState = await getDealEsignTemplatesState(params.dealId);
-  const { absolutePath: templateReferencePath } =
-    await ensureEsignTemplatePdfPrepared(params.dealId, file, templateState);
-  const templateReferencePdf = await readFile(templateReferencePath);
+  await ensureEsignTemplatePdfPrepared(params.dealId, file, templateState);
+  const templateReferencePdf = await readEsignTemplatePdfBuffer(file.relativePath);
 
   let templateFields = await remapSignFlowFieldsToSigningPdf(
     templateInvestorFields,

@@ -216,7 +216,7 @@ function SidebarNavGroup({
 }
 
 const platformAdminNavItems: NavItemLink[] = [
-  { label: "Metrics", to: "/metrics", icon: BarChart3 },
+  { label: "Platform Metrics", to: "/metrics", icon: BarChart3 },
 ]
 
 const sharedSidebarItems: NavItem[] = [
@@ -519,7 +519,7 @@ function PageLayoutInner() {
   )
 }
 
-function PageLayout() {
+export function PageLayout() {
   return (
     <PortalModeProvider>
       <NotificationsProvider>
@@ -528,5 +528,3 @@ function PageLayout() {
     </PortalModeProvider>
   )
 }
-
-export default PageLayout

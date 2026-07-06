@@ -201,7 +201,7 @@ export function validateInvestNowW9Fields(
 
   const ssnErr = ssnItinFieldError(values.ssn, {
     required: true,
-    requiredMessage: "Enter your social security number",
+    requiredMessage: "Enter your Social Security Number",
   })
   if (ssnErr) {
     fieldErrors[INVEST_NOW_FIELD.w9Ssn] = ssnErr

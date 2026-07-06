@@ -45,7 +45,11 @@ import {
   signFlowSummaryInvestorHasSigned,
   type SignFlowDocumentSummary,
 } from "../esign/signflow.service.js";
-import { syncCompletedEsignDocumentsToDocumentsTab } from "./dealEsignDocumentsWorkspaceSync.service.js";
+import {
+  resolveEsignSponsorSignState,
+  syncCompletedEsignDocumentsToDocumentsTab,
+} from "./dealEsignDocumentsWorkspaceSync.service.js";
+import { runEsignStageNotificationsForTarget } from "./dealEsignStageNotificationEmail.service.js";
 import { appendEsignDocumentTrailCertificate } from "./esignDocumentTrailPdf.service.js";
 
 function latestWorkflowIso(
@@ -109,6 +113,12 @@ import {
   getDealEsignTemplatesState,
 } from "./dealEsignTemplates.service.js";
 import {
+  dealHasSequentialInvestorFirstEsign,
+  dealHasInvestorFirstCounterSignEsign,
+  evaluateDealSequentialInvestorSignAccess,
+  sequentialWorkflowInvestorPortalDocsGateOpen,
+} from "./dealSequentialEsignWorkflow.service.js";
+import {
   findInvestorEsignTargetBySignatureRequestId,
   markDealInvestorEsignSignedOptimistic,
   readInvestorEsignStatusJson,
@@ -128,6 +138,39 @@ export type MyEsignDocumentListItem = {
   categoryId?: string;
   signatureRequestId?: string;
 };
+
+function listSignedEsignDocumentsForSend(
+  send: StoredDealInvestorEsignSend,
+  signatureRequestId: string,
+  opts?: { preferFullSignedCopy?: boolean },
+): Array<{ fileId: string; name: string; url: string | null }> {
+  if (!sendHasStoredOrRecordedSignature(send)) return [];
+  const docs = send.documents ?? [];
+  if (docs.length === 0) return [];
+
+  const investorPath =
+    docs.find((d) => d.signedRelativePath?.trim())?.signedRelativePath?.trim() ??
+    "";
+  const fullPath = send.fullSignedRelativePath?.trim() ?? "";
+  const sharedPath =
+    opts?.preferFullSignedCopy && fullPath ? fullPath : investorPath;
+  const sharedUrl = sharedPath ? uploadPublicUrl(sharedPath) : null;
+  const sig = signatureRequestId.trim();
+
+  return docs.map((d) => {
+    const rel =
+      (opts?.preferFullSignedCopy && fullPath ? fullPath : "") ||
+      d.signedRelativePath?.trim() ||
+      sharedPath;
+    const url = rel ? uploadPublicUrl(rel) : sharedUrl;
+    const compositeId = sig && d.fileId ? `${sig}::${d.fileId}` : d.fileId;
+    return {
+      fileId: compositeId,
+      name: d.name,
+      url: url || null,
+    };
+  });
+}
 
 function uploadPublicUrl(relativePath: string): string {
   const rel = relativePath.replace(/^\/+/, "").replace(/^uploads\//i, "");
@@ -1001,6 +1044,11 @@ export async function syncDealInvestorEsignByTarget(
     } catch (err) {
       console.warn("syncCompletedEsignDocumentsToDocumentsTab:", err);
     }
+    try {
+      await runEsignStageNotificationsForTarget(dealId, target);
+    } catch (err) {
+      console.warn("runEsignStageNotificationsForTarget:", err);
+    }
   }
   return changed;
 }
@@ -1059,30 +1107,6 @@ function sendHasStoredOrRecordedSignature(
   return (send.documents ?? []).some((d) => Boolean(d.signedRelativePath?.trim()));
 }
 
-function listSignedEsignDocumentsForSend(
-  send: StoredDealInvestorEsignSend,
-  signatureRequestId: string,
-): Array<{ fileId: string; name: string; url: string | null }> {
-  if (!sendHasStoredOrRecordedSignature(send)) return [];
-  const docs = send.documents ?? [];
-  if (docs.length === 0) return [];
-
-  const sharedPath = docs.find((d) => d.signedRelativePath?.trim())?.signedRelativePath;
-  const sharedUrl = sharedPath ? uploadPublicUrl(sharedPath) : null;
-  const sig = signatureRequestId.trim();
-
-  return docs.map((d) => {
-    const rel = d.signedRelativePath?.trim() || sharedPath?.trim();
-    const url = rel ? uploadPublicUrl(rel) : sharedUrl;
-    const compositeId = sig && d.fileId ? `${sig}::${d.fileId}` : d.fileId;
-    return {
-      fileId: compositeId,
-      name: d.name,
-      url: url || null,
-    };
-  });
-}
-
 /** @deprecated Prefer listSignedEsignDocumentsForSend — kept for callers expecting completedAt. */
 export function listCompletedEsignDocumentsForSend(
   send: StoredDealInvestorEsignSend,
@@ -1120,8 +1144,12 @@ function resolveEsignDocumentListUrl(
   const sharedSignedPath = (send.documents ?? []).find((d) =>
     Boolean(d.signedRelativePath?.trim()),
   )?.signedRelativePath;
+  const fullSignedPath = send.fullSignedRelativePath?.trim() ?? "";
   const signedRel =
-    sendDoc?.signedRelativePath?.trim() || sharedSignedPath?.trim() || "";
+    fullSignedPath ||
+    sendDoc?.signedRelativePath?.trim() ||
+    sharedSignedPath?.trim() ||
+    "";
   if (signedRel) return uploadPublicUrl(signedRel);
 
   const investorSigned = sendHasStoredOrRecordedSignature(send);
@@ -1176,6 +1204,14 @@ export async function listMyEsignDocumentsForInvestor(
   if (!bundle?.sends.length) return [];
 
   const templates = await getDealEsignTemplatesState(dealId);
+  const isSequentialQueue = await dealHasSequentialInvestorFirstEsign(dealId);
+  const investorFirstCounterSign =
+    await dealHasInvestorFirstCounterSignEsign(dealId);
+  const allInvestorsGateOpen =
+    await sequentialWorkflowInvestorPortalDocsGateOpen(dealId);
+  const signTurnOpen = target
+    ? (await evaluateDealSequentialInvestorSignAccess(dealId, target)).allowed
+    : true;
   const out: MyEsignDocumentListItem[] = [];
 
   for (const send of bundle.sends) {
@@ -1184,14 +1220,26 @@ export async function listMyEsignDocumentsForInvestor(
       send.categoryId?.trim() ||
       send.documents?.find((d) => d.categoryId?.trim())?.categoryId?.trim() ||
       "";
+    const sponsorState = investorFirstCounterSign
+      ? await resolveEsignSponsorSignState(send)
+      : { sponsorSigned: true, awaitingSponsorSignature: false };
 
     if (sendHasStoredOrRecordedSignature(send)) {
-      const signed = listSignedEsignDocumentsForSend(send, sig);
       const fullyCompleted = Boolean(send.completedAt?.trim());
       const investorSigned = Boolean(send.signedAt?.trim());
       const status =
         fullyCompleted || investorSigned ? ("signed" as const) : ("pending" as const);
       const investorCanSign = status === "pending";
+      /** E-signatures tab: show this investor's signed PDF as soon as they sign. */
+      const revealDoc = true;
+      const canSignNow =
+        investorCanSign && signTurnOpen && Boolean(sig);
+
+      if (!revealDoc && !canSignNow) continue;
+
+      const signed = listSignedEsignDocumentsForSend(send, sig, {
+        preferFullSignedCopy: sponsorState.sponsorSigned,
+      });
       for (const d of signed) {
         out.push({
           fileId: d.fileId,
@@ -1199,7 +1247,7 @@ export async function listMyEsignDocumentsForInvestor(
           url: resolveEsignDocumentListUrl(send, d, templates),
           status,
           ...(categoryId ? { categoryId } : {}),
-          ...(investorCanSign && sig ? { signatureRequestId: sig } : {}),
+          ...(canSignNow && sig ? { signatureRequestId: sig } : {}),
         });
       }
       continue;
@@ -1213,20 +1261,23 @@ export async function listMyEsignDocumentsForInvestor(
         d.templateRelativePath?.trim() ||
         template?.relativePath?.trim() ||
         "";
-      const url = resolveEsignDocumentListUrl(
+      const previewUrl = resolveEsignDocumentListUrl(
         send,
         { fileId: compositeId, url: rel ? uploadPublicUrl(rel) : null },
         templates,
       );
+      const canSignNow = Boolean(sig) && signTurnOpen;
+      if (isSequentialQueue && !allInvestorsGateOpen && !canSignNow) continue;
+
       out.push({
         fileId: compositeId,
         name: d.name,
-        url,
+        url: isSequentialQueue && !allInvestorsGateOpen ? null : previewUrl,
         status: "pending",
         ...(categoryId || d.categoryId?.trim()
           ? { categoryId: categoryId || d.categoryId?.trim() }
           : {}),
-        ...(sig ? { signatureRequestId: sig } : {}),
+        ...(canSignNow && sig ? { signatureRequestId: sig } : {}),
       });
     }
   }

@@ -189,7 +189,7 @@ export function InvestNowW9Form({
 
       <InvestNowFormField
         id={ssnId}
-        label="Social security number"
+        label="Social Security Number"
         required
         error={fieldErrors["w9-ssn"]}
       >

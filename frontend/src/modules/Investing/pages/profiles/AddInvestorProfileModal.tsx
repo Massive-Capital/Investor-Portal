@@ -73,6 +73,7 @@ import {
 } from "./profileContactValidation"
 import { BENEFICIARY_LEGAL_DISCLAIMER } from "./beneficiary-legal"
 import { formatSsnItinInput, ssnItinFieldError } from "@/common/tax/usSsnItin"
+import { ssnFromAnyInvestorProfile } from "@/modules/Investing/pages/invest/investNowW9FormUtils"
 import { InvestingFormField } from "./InvestingFormField"
 import { SavedAddressSelect } from "./SavedAddressSelect"
 import { YesNoCardRadioGroup } from "@/common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
@@ -213,6 +214,22 @@ const initialState = {
 }
 
 type FormState = typeof initialState
+
+function mergeKnownSsnIntoForm(
+  form: FormState,
+  existingProfiles: InvestorProfileListRow[],
+): FormState {
+  if (form.ssn.trim()) return form
+  const knownSsn = ssnFromAnyInvestorProfile(existingProfiles)
+  if (!knownSsn) return form
+  return { ...form, ssn: knownSsn }
+}
+
+function addProfileFormWithKnownSsn(
+  existingProfiles: InvestorProfileListRow[],
+): FormState {
+  return mergeKnownSsnIntoForm(initialState, existingProfiles)
+}
 
 const FORM_STATE_KEYS = Object.keys(initialState) as (keyof FormState)[]
 
@@ -1149,7 +1166,7 @@ export function AddInvestorProfileModal({
             restored.step >= 1
               ? restored.step
               : readWizardStepFromSavedForm(restored.form) ?? 1
-          setForm({ ...initialState, ...fromWizard })
+          setForm(mergeKnownSsnIntoForm({ ...initialState, ...fromWizard }, existingProfiles))
           setStep(restoredStep)
           setBackendProfileId(apiProfileId)
           backendProfileIdRef.current = apiProfileId
@@ -1190,7 +1207,7 @@ export function AddInvestorProfileModal({
             ? readWizardStepFromSavedForm(wizardRaw as Record<string, unknown>)
             : null
         const nextStep = stepFromSession ?? stepFromWizard ?? 1
-        setForm(nextForm)
+        setForm(mergeKnownSsnIntoForm(nextForm, existingProfiles))
         setStep(nextStep)
         setBackendProfileId(resumeFromProfile.id)
         backendProfileIdRef.current = resumeFromProfile.id
@@ -1208,7 +1225,7 @@ export function AddInvestorProfileModal({
           restored.step >= 1
             ? restored.step
             : readWizardStepFromSavedForm(restored.form) ?? 1
-        setForm({ ...initialState, ...fromWizard })
+        setForm(mergeKnownSsnIntoForm({ ...initialState, ...fromWizard }, existingProfiles))
         setStep(restoredStep)
         const bid = restored.backendProfileId?.trim()
         if (bid) {
@@ -1220,7 +1237,7 @@ export function AddInvestorProfileModal({
         }
         return
       }
-      setForm(initialState)
+      setForm(addProfileFormWithKnownSsn(existingProfiles))
       setStep(1)
       setBackendProfileId(null)
       backendProfileIdRef.current = null
@@ -1230,10 +1247,10 @@ export function AddInvestorProfileModal({
       skipOverwriteEmptySessionDraftRef.current = true
     }
     setStep(1)
-    setForm(initialState)
+    setForm(addProfileFormWithKnownSsn(existingProfiles))
     setBackendProfileId(null)
     backendProfileIdRef.current = null
-  }, [open, isEdit, editTarget, enableAddDraftAutosave, resumeDraft, resumeFromProfile])
+  }, [open, isEdit, editTarget, enableAddDraftAutosave, resumeDraft, resumeFromProfile, existingProfiles])
 
   /** Autosave add-profile wizard draft in sessionStorage (page add flow only). */
   useEffect(() => {

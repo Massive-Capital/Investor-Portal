@@ -1303,6 +1303,18 @@ export function DocumentsSection({
     removeSectionById,
   ])
 
+  const promptDeleteDocument = useCallback(
+    (sectionId: string, doc: NestedPreviewDocument) => {
+      setDeletePending({
+        kind: "document",
+        sectionId,
+        docId: doc.id,
+        label: doc.name,
+      })
+    },
+    [],
+  )
+
   const requestDocumentVisibilityChange = useCallback(
     (
       sectionId: string,
@@ -2175,6 +2187,23 @@ export function DocumentsSection({
                                             />
                                           </button>
                                         ) : null}
+                                        {!isAutoManagedSection ? (
+                                          <button
+                                            type="button"
+                                            className="deal_docs_ui_doc_icon_btn deal_docs_ui_doc_icon_btn_danger"
+                                            title="Delete document"
+                                            aria-label={`Delete ${d.name}`}
+                                            onClick={() =>
+                                              promptDeleteDocument(section.id, d)
+                                            }
+                                          >
+                                            <Trash2
+                                              size={16}
+                                              strokeWidth={2}
+                                              aria-hidden
+                                            />
+                                          </button>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </td>
@@ -2433,24 +2462,6 @@ export function DocumentsSection({
                                           aria-hidden
                                         />
                                       </button>
-                                      {!isAutoManagedSection ? (
-                                      <button
-                                        type="button"
-                                        className="deal_docs_ui_row_icon_btn deal_docs_ui_row_icon_btn_danger"
-                                        title="Remove document"
-                                        aria-label={`Remove ${d.name}`}
-                                        onClick={() =>
-                                          setDeletePending({
-                                            kind: "document",
-                                            sectionId: section.id,
-                                            docId: d.id,
-                                            label: d.name,
-                                          })
-                                        }
-                                      >
-                                        <Trash2 size={16} strokeWidth={2} aria-hidden />
-                                      </button>
-                                      ) : null}
                                     </div>
                                   </td>
                                 </tr>

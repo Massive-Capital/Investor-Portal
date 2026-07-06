@@ -19,7 +19,7 @@ import ResetPasswordPage from "./modules/auth/pages/ResetPasswordPage";
 import PrivacyPolicy from "./modules/auth/components/PrivacyPolicy";
 import TermsService from "./modules/auth/components/TermsService";
 import PageNotFound from "./common/PageNotFound";
-import PageLayout from "./common/layout/PageLayout";
+import { PageLayout } from "./common/layout/PageLayout";
 import SponsorDashboardPage from "./modules/Syndication/Dashboard/SponsorDashboardPage";
 import DealsLayout from "./modules/Syndication/Deals/DealsLayout";
 import { CreateDealPage } from "./modules/Syndication/Deals/deal_create/CreateDealPage";

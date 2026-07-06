@@ -1184,7 +1184,7 @@ export type DealSponsorEsignSignSessionResult =
       ok: false
       message: string
       code?: string
-      waitingFor?: "sponsor" | "investor"
+      waitingFor?: "sponsor" | "investor" | "prior_investor"
     }
 
 export async function fetchDealSponsorEsignSignSession(
@@ -1217,7 +1217,9 @@ export async function fetchDealSponsorEsignSignSession(
           ? data.message
           : `Could not load sponsor signing session (${res.status})`,
       ...(typeof data.code === "string" ? { code: data.code } : {}),
-      ...(data.waitingFor === "sponsor" || data.waitingFor === "investor"
+      ...(data.waitingFor === "sponsor" ||
+      data.waitingFor === "investor" ||
+      data.waitingFor === "prior_investor"
         ? { waitingFor: data.waitingFor }
         : {}),
     }
@@ -3700,6 +3702,14 @@ export type DealMyEsignDocumentsResult = {
   documents: DealMyEsignDocument[]
   esignCompleted: boolean
   esignPending: boolean
+  /** Sequential eSign: signed PDFs hidden until every investor has signed. */
+  investorPortalDocumentsGateOpen?: boolean
+  /** Sequential eSign: investor may sign now (prior signers finished). */
+  sequentialSignTurnOpen?: boolean
+  /** Sequential eSign: waiting for prior signers — no Sign action yet. */
+  awaitingSequentialSignTurn?: boolean
+  /** Sequential eSign: investor signed; waiting for sponsor counter-sign on their packet. */
+  awaitingSponsorCounterSign?: boolean
   /** Sent | Viewed | Signed | Completed — same workflow as Investors tab Signed column. */
   workflowLabel?: string | null
   completedAt?: string | null
@@ -3725,7 +3735,7 @@ export type DealMyEsignSignSessionResult =
       ok: false
       message: string
       code?: string
-      waitingFor?: "sponsor" | "investor"
+      waitingFor?: "sponsor" | "investor" | "prior_investor"
     }
 
 export type DealMyEsignSyncResult =
@@ -3798,7 +3808,9 @@ export async function fetchDealMyEsignSignSession(
         data.message != null ? String(data.message) : res.statusText
       const code = data.code != null ? String(data.code) : undefined
       const waitingFor =
-        data.waitingFor === "sponsor" || data.waitingFor === "investor"
+        data.waitingFor === "sponsor" ||
+        data.waitingFor === "investor" ||
+        data.waitingFor === "prior_investor"
           ? data.waitingFor
           : undefined
       return {
@@ -3972,6 +3984,10 @@ export async function fetchDealMyEsignDocuments(
       }>
       esignCompleted?: boolean
       esignPending?: boolean
+      investorPortalDocumentsGateOpen?: boolean
+      sequentialSignTurnOpen?: boolean
+      awaitingSequentialSignTurn?: boolean
+      awaitingSponsorCounterSign?: boolean
       workflowLabel?: string | null
       completedAt?: string | null
       sentAt?: string | null
@@ -4012,6 +4028,11 @@ export async function fetchDealMyEsignDocuments(
       documents,
       esignCompleted: Boolean(data.esignCompleted),
       esignPending: Boolean(data.esignPending),
+      investorPortalDocumentsGateOpen:
+        data.investorPortalDocumentsGateOpen !== false,
+      sequentialSignTurnOpen: data.sequentialSignTurnOpen !== false,
+      awaitingSequentialSignTurn: Boolean(data.awaitingSequentialSignTurn),
+      awaitingSponsorCounterSign: Boolean(data.awaitingSponsorCounterSign),
       workflowLabel: data.workflowLabel ?? null,
       completedAt: data.completedAt ?? null,
       sentAt: data.sentAt ?? null,

@@ -20,6 +20,27 @@ function bodyString(v: unknown): string {
   return "";
 }
 
+function investNowEsignSendHttpStatus(message: string): number {
+  const m = message.toLowerCase();
+  if (
+    m.includes("not configured") ||
+    m.includes("not reachable") ||
+    m.includes("temporarily unavailable") ||
+    m.includes("429") ||
+    m.includes("too many requests") ||
+    m.includes("rate limit")
+  ) {
+    return 503;
+  }
+  if (
+    m.includes("save your investment") ||
+    m.includes("enter your investment amount")
+  ) {
+    return 409;
+  }
+  return 400;
+}
+
 /**
  * POST /deals/:dealId/lp-investors/my-invest-now-esign-send
  * Investor self-serve: send profile-matched eSign templates after Invest Now commitment.
@@ -101,7 +122,9 @@ export async function postDealLpInvestorMyInvestNowEsignSend(
     });
 
     if (!result.ok) {
-      res.status(400).json({ message: result.message });
+      res.status(investNowEsignSendHttpStatus(result.message)).json({
+        message: result.message,
+      });
       return;
     }
 

@@ -114,7 +114,7 @@ export default function PlatformMetricsPage() {
               strokeWidth={1.75}
               aria-hidden
             />
-            Platform metrics
+            Platform Metrics
           </h2>
           <div className="pm_header_actions">
             <Link

@@ -83,6 +83,38 @@ async function ensureInvestmentSignatureTracked(params: {
   return investmentId;
 }
 
+async function resolveInvestNowEsignTarget(
+  dealId: string,
+  params: {
+    email: string;
+    viewerUserId: string;
+    profileId: string;
+    userInvestorProfileId?: string | null;
+    investmentId?: string | null;
+  },
+) {
+  const scoped = {
+    email: params.email,
+    userId: params.viewerUserId,
+    profileId: params.profileId,
+    userInvestorProfileId: params.userInvestorProfileId,
+    investmentId: params.investmentId,
+  };
+  let target = await findInvestorEsignTargetForInvestNowCommitment(
+    dealId,
+    scoped,
+  );
+  if (!target && params.investmentId?.trim()) {
+    target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
+      email: params.email,
+      userId: params.viewerUserId,
+      profileId: params.profileId,
+      userInvestorProfileId: params.userInvestorProfileId,
+    });
+  }
+  return target;
+}
+
 /**
  * Creates a Dropbox Sign request for the signed-in investor's profile template
  * during Invest Now (no sponsor action required).
@@ -159,9 +191,9 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
 
   const sendCategoryId = selectedFiles[0]!.categoryId.trim() || categoryId;
 
-  const target = await findInvestorEsignTargetForInvestNowCommitment(dealId, {
+  const target = await resolveInvestNowEsignTarget(dealId, {
     email,
-    userId: params.viewerUserId,
+    viewerUserId: params.viewerUserId,
     profileId: params.profileId,
     userInvestorProfileId: params.userInvestorProfileId,
     investmentId: params.investmentId,
@@ -291,6 +323,15 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
     signatureRequestId,
     signatureId,
   });
+
+  try {
+    const { notifySequentialInvestorsSignTurnAvailable } = await import(
+      "./dealEsignStageNotificationEmail.service.js"
+    );
+    await notifySequentialInvestorsSignTurnAvailable(dealId);
+  } catch (err) {
+    console.warn("notifySequentialInvestorsSignTurnAvailable (Invest Now send):", err);
+  }
 
   let trackedInvestmentId = investmentIdForTarget;
   if (signatureRequestId) {
