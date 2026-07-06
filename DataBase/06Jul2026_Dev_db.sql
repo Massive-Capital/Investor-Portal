@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict K7NxytrAiVOgzW5NGMtutUG3fpw984ja0yxG87utlQMYqepde1D2qWaWPeMti6P
+\restrict NBSupAsBKiA3vi7Y3k5edUFWEs255wOyZxz0NKkj6I7tKtRbdibv21AYdw6G5v0
 
 -- Dumped from database version 17.8
 -- Dumped by pg_dump version 17.8
@@ -107,11 +107,20 @@ CREATE TABLE public.add_deal_form (
     esign_templates_json text,
     investor_questionnaire_json text,
     funding_instructions_json text,
+    offering_overview_class_id uuid,
+    archived boolean DEFAULT false NOT NULL,
     CONSTRAINT add_deal_form_deal_stage_check CHECK ((deal_stage = ANY (ARRAY['draft'::text, 'Draft'::text, 'raising_capital'::text, 'capital_raising'::text, 'asset_managing'::text, 'managing_asset'::text, 'liquidated'::text])))
 );
 
 
 ALTER TABLE public.add_deal_form OWNER TO postgres;
+
+--
+-- Name: COLUMN add_deal_form.archived; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.add_deal_form.archived IS 'When true, deal appears under Archives instead of Active on the syndication deals list.';
+
 
 --
 -- Name: assigning_deal_user; Type: TABLE; Schema: public; Owner: postgres
@@ -570,7 +579,8 @@ CREATE TABLE public.user_investor_profiles (
     ach_bank_account_type character varying(32) DEFAULT ''::character varying NOT NULL,
     bank_account_query text DEFAULT ''::text NOT NULL,
     check_payee_name character varying(255) DEFAULT ''::character varying NOT NULL,
-    check_mailing_address_id uuid
+    check_mailing_address_id uuid,
+    is_draft boolean DEFAULT false NOT NULL
 );
 
 
@@ -630,6 +640,13 @@ COMMENT ON COLUMN public.user_investor_profiles.ach_bank_name IS 'Financial inst
 --
 
 COMMENT ON COLUMN public.user_investor_profiles.ach_bank_account_type IS 'e.g. checking | savings when distribution_method is ach.';
+
+
+--
+-- Name: COLUMN user_investor_profiles.is_draft; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.user_investor_profiles.is_draft IS 'True while the add-profile wizard is in progress (autosave); false after explicit Save.';
 
 
 --
@@ -778,6 +795,9 @@ COPY drizzle.__drizzle_migrations (id, hash, created_at) FROM stdin;
 54	11dcb08ba41ff2d76539561bf8aa6e53630604492ef49996374b2e9216cac194	1893250000000
 55	a8008897fb8eb820d6318cac46a28d4f1e745cd58950af59bd71865c44e81fc6	1893300000000
 56	4626f2016d5da4fc2c3c50602ecdfa2dd462afadc0eb7a8fe3dd938726f62fc5	1893350000000
+57	9670e3435dc0c673c90626bd26a505fc579bcac28f05587f55f0db058c29817e	1893400000000
+58	7295b507b204e204f9dd943c673f3fd43894ad783b013ff95f4ae5698c2ae156	1893450000000
+59	4f1da9dc9d7b421338fcf8f655308c04fc9ea8551bdcdb3d006016a42ffd119e	1893500000000
 \.
 
 
@@ -785,7 +805,7 @@ COPY drizzle.__drizzle_migrations (id, hash, created_at) FROM stdin;
 -- Data for Name: add_deal_form; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.add_deal_form (id, organization_id, deal_name, deal_type, deal_stage, sec_type, close_date, owning_entity_name, funds_required_before_gp_sign, auto_send_funding_instructions, property_name, country, address_line_1, address_line_2, city, state, zip_code, asset_image_path, investor_summary_html, gallery_cover_image_url, key_highlights_json, deal_announcement_title, deal_announcement_message, offering_status, offering_visibility, show_on_investbase, internal_name, offering_overview_asset_ids, offering_gallery_paths, created_at, offering_preview_token, offering_investor_preview_json, esign_templates_json, investor_questionnaire_json, funding_instructions_json) FROM stdin;
+COPY public.add_deal_form (id, organization_id, deal_name, deal_type, deal_stage, sec_type, close_date, owning_entity_name, funds_required_before_gp_sign, auto_send_funding_instructions, property_name, country, address_line_1, address_line_2, city, state, zip_code, asset_image_path, investor_summary_html, gallery_cover_image_url, key_highlights_json, deal_announcement_title, deal_announcement_message, offering_status, offering_visibility, show_on_investbase, internal_name, offering_overview_asset_ids, offering_gallery_paths, created_at, offering_preview_token, offering_investor_preview_json, esign_templates_json, investor_questionnaire_json, funding_instructions_json, offering_overview_class_id, archived) FROM stdin;
 \.
 
 
@@ -802,8 +822,7 @@ COPY public.assigning_deal_user (deal_id, user_id, user_added_deal) FROM stdin;
 --
 
 COPY public.companies (id, name, status, created_at, updated_at) FROM stdin;
-380a60f3-6ebf-43d4-9949-f4ee012eb426	Massive Capital	active	2026-06-26 10:38:03.483343+05:30	2026-06-26 10:38:03.483343+05:30
-3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mock Organization 01	active	2026-06-25 15:39:12.580697+05:30	2026-06-26 10:39:22.498+05:30
+3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Massive Capital	active	2026-06-25 15:39:12.580697+05:30	2026-07-06 15:44:30.74326+05:30
 \.
 
 
@@ -812,8 +831,6 @@ COPY public.companies (id, name, status, created_at, updated_at) FROM stdin;
 --
 
 COPY public.company_admin_audit_logs (id, actor_user_id, target_company_id, action, reason, changes_json, created_at) FROM stdin;
-de08ed9c-2e41-4692-8d29-45a4010a2a89	b2c15cb6-1678-4819-9d24-6fdd8d192064	3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	company_edit	e	{"name": {"to": "SyndicationX", "from": "Massive Capital"}}	2026-06-26 10:39:03.29989+05:30
-d50644a6-53ae-431b-8a3b-eb7e0a45741c	b2c15cb6-1678-4819-9d24-6fdd8d192064	3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	company_edit	Edit	{"name": {"to": "Mock Organization 01", "from": "SyndicationX"}}	2026-06-26 10:39:22.499495+05:30
 \.
 
 
@@ -942,84 +959,29 @@ COPY public.platform_signup_notification (id, user_id, contact_id, signup_kind, 
 --
 
 COPY public.soc_auth_audit_logs (id, event, outcome, http_status, duration_ms, method, path, identifier, client_ip, requested_machine_ip, request_url, user_agent, user_id, created_at) FROM stdin;
-0d82812f-7ace-4d77-9da8-b08eacc937c1	deal.list	auth_failure	401	537	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:33:58.897552+05:30
-da9e9de5-6d2c-4018-8a10-8cd3aeb0f8de	company.public_branding	client_error	404	160	GET	/api/v1/public/company-branding/7bd985e4-2127-417a-8f68-29bd1fea814d	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/public/company-branding/7bd985e4-2127-417a-8f68-29bd1fea814d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:34:01.337513+05:30
-34576799-61e3-4ded-8d35-6ff513a8f396	http.get.api.v1.deals.:id.esign-templates	auth_failure	401	16	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:34:01.389031+05:30
-eac0ef0f-646d-4ed9-9ea6-6c8c4dfd63dd	deal.read	auth_failure	401	14	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:34:01.55861+05:30
-157775d3-9ffb-4641-83ae-b509b9b26f2b	http.get.api.v1.deals.:id.esign-templates	auth_failure	401	5	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:34:01.634915+05:30
-186990fd-647b-40c9-9380-4b4bcd667d00	http.post.api.v1.auth.refresh	auth_failure	401	6	POST	/api/v1/auth/refresh	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/refresh	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:34:01.782038+05:30
-b7698df4-de41-4a93-b02a-f5c0f5d10bbc	deal.read	auth_failure	401	5	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	a71b40fd-7e8d-4dbe-bba5-4b69f8c10fea	2026-06-26 10:34:01.810579+05:30
-aafbf543-70ef-415b-84f1-3b0efddf95a2	auth.signin	auth_failure	401	73	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-06-26 10:34:21.96977+05:30
-55771bf6-6e92-458c-aa6a-1bd697640735	auth.signin	auth_failure	401	6	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-06-26 10:34:27.485807+05:30
-06523dde-0bcc-4784-93a3-58fe46a7a3e9	auth.signin	auth_failure	401	148	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-06-26 10:34:51.968892+05:30
-ad4a7098-45bf-42de-a0eb-6599da43f5df	auth.signin	success	200	539	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-06-26 10:38:32.272395+05:30
-47ab1433-6e42-4eac-9ef5-595cb8f271fa	http.get.api.v1.platform.signup-notifications	success	200	138	GET	/api/v1/platform/signup-notifications	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/platform/signup-notifications	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:32.531278+05:30
-d535148f-56ad-4523-90d2-8b530b5f9b0d	company.public_branding	success	200	162	GET	/api/v1/public/company-branding/380a60f3-6ebf-43d4-9949-f4ee012eb426	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/public/company-branding/380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:32.557721+05:30
-71579455-762e-4f71-a15b-7aa46aa2099e	deal.read	client_error	404	113	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:32.763264+05:30
-b29a6223-7eb7-441b-bdfe-1495f22fd6ff	company.public_branding	success	200	419	GET	/api/v1/public/company-branding/380a60f3-6ebf-43d4-9949-f4ee012eb426	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/public/company-branding/380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:32.893795+05:30
-0621e91d-0f6c-4174-9167-f35b98a3f1c2	deal.list	success	200	264	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.045016+05:30
-0e9eefef-fb4d-4875-aeb7-e02e868bf334	deal.members_list	client_error	404	600	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/members	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/members	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.050072+05:30
-880c836e-66fd-4d08-8951-01c3b5924176	http.get.api.v1.deals.:id.esign-templates	client_error	404	670	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.179184+05:30
-eb9c115e-281b-476b-904e-0f3cff397f4d	deal.read	client_error	404	648	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.209625+05:30
-821de24d-735d-46fb-bdaf-8f29912ff287	http.get.api.v1.deals.:id.esign-templates	client_error	404	714	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/esign-templates	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.213106+05:30
-d5c86447-ffbf-4bf8-8f86-70b5bfb7a247	investing.profile_book_read	success	200	179	GET	/api/v1/investing/my-profile-book	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/investing/my-profile-book	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.256784+05:30
-ec03a5af-e7a3-47fa-9932-edf08131dd6e	investing.profile_book_read	success	304	48	GET	/api/v1/investing/my-profile-book	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/investing/my-profile-book	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.336981+05:30
-541318e0-ffa0-4553-be52-d65c2afa8f3b	deal.list	success	200	496	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.402258+05:30
-7003c166-bfee-4d83-9f9a-7f7fd9eeb513	http.get.api.v1.platform.signup-notifications	success	304	335	GET	/api/v1/platform/signup-notifications	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/platform/signup-notifications	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.43775+05:30
-ea327675-a6b0-4a23-928e-339addca8655	company.list	success	200	161	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:36.963418+05:30
-0c43d33e-91db-4df2-b29f-27e2de1ca91e	deal.list	success	304	155	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.450297+05:30
-47ef6590-6abf-4897-be97-5695384da262	deal.members_list	client_error	404	262	GET	/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/members	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals/a433939d-9f88-41bd-912a-f4e95f1b6407/members	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.455499+05:30
-aa434892-fc31-4a5b-b985-92038c66944a	deal.list	success	200	9	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:35.003142+05:30
-4c9428c0-680d-48c3-b5e0-250e6353aed5	deal.list	success	304	9	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:35.023087+05:30
-bcb24ca1-12f5-4562-b06d-07288ba9ed1c	http.post.api.v1.auth.activity.page-view	success	200	54	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:35.452916+05:30
-cc085193-77dd-4f6d-85dc-18ac9114b554	company.list	success	304	24	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:37.008201+05:30
-afc164cc-683a-4959-9d54-496b2d20792f	http.post.api.v1.auth.activity.page-view	success	200	10	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:37.182491+05:30
-6d40219f-43e2-4c4a-b61d-c24a503d9c17	company.list	success	304	22	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:41.801406+05:30
-18d162d5-2c6b-4bb1-88e3-f78ba2f10ebd	user_admin.list	success	200	81	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:41.841709+05:30
-59e97fc7-ae8f-4c49-a0d8-dca1b90c72fc	user_admin.list	success	304	18	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:41.873414+05:30
-1f5db178-2668-4861-929e-26766f2db532	http.post.api.v1.auth.activity.page-view	success	200	11	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:42.147741+05:30
-18c2b14e-d7a6-4bca-ade7-7a19ec454c4a	company.list	success	304	23	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:43.736448+05:30
-4bebe720-b8e5-4174-b93f-f9251519e026	http.post.api.v1.auth.activity.page-view	success	200	35	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:44.02781+05:30
-f4b7097d-1330-4cca-9e33-233f8a81c0c9	company.list	success	304	21	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:44.810057+05:30
-b9ea367e-2679-4eed-9cd7-fe9cb6ad877c	user_admin.list	success	200	84	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:44.845324+05:30
-6954323a-fca2-49cc-8830-121dba4df814	user_admin.list	success	304	12	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:44.881505+05:30
-7714e8ba-4463-4a99-bfb0-239240646fb9	http.post.api.v1.auth.activity.page-view	success	200	10	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:45.097797+05:30
-8bca97f6-0d46-4a61-acf5-d7485f179c05	company.list	success	304	36	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:46.415156+05:30
-e453f5bb-970f-4292-b958-bd75c2da1f92	http.post.api.v1.auth.activity.page-view	success	200	8	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:46.66587+05:30
-7f3e5c6f-2857-42b8-9af6-66b4de52fb1a	deal.list	success	200	57	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:33.471771+05:30
-96a23ca6-c9b9-49e8-b887-ebf55abead0f	company.list	success	304	24	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:43.690272+05:30
-873a290d-f132-49e3-ba03-977de4e8e369	company.list	success	304	13	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:44.775546+05:30
-144440d0-f725-4475-9e70-e1d8ec8580da	company.list	success	304	10	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:41.771895+05:30
-dd3854e5-e75b-42fd-bf4c-8371fc704dd2	company.list	success	304	19	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:46.360754+05:30
-3553759e-7278-4c05-a81f-ceef16c9bb62	company.update	success	200	345	PATCH	/api/v1/companies/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:03.379625+05:30
-de3e4815-8b85-47db-93ab-9dc48c10e855	company.list	success	200	641	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:04.040262+05:30
-ccdb5128-760a-4570-ba1f-459b1938d2b2	company.update	success	200	146	PATCH	/api/v1/companies/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:22.508635+05:30
-207a1752-5e47-420f-8485-3d84165852c2	company.list	success	200	237	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:22.756513+05:30
-2e6aa4c4-5271-421d-9d02-060ea6d37cec	user_admin.list	success	304	122	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:26.467694+05:30
-6882a475-2778-4e34-8127-5ef5ad1b9b7f	user_admin.list	success	304	17	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:26.4936+05:30
-36333dd5-822e-4738-b334-c63378c46df4	company.list	success	304	233	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:26.587676+05:30
-bd7e3419-df34-4635-b270-adcd24767792	company.list	success	304	11	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:26.606706+05:30
-e34e795c-5de4-4809-9fad-0e85e2ec07bc	http.post.api.v1.auth.activity.page-view	success	200	51	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:26.767459+05:30
-de03697d-75ba-4803-9c19-4d6f7b84e131	company.list	success	304	51	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:30.259377+05:30
-5e141196-1524-42ea-b3a0-e6b075a797be	company.list	success	304	7	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:30.450008+05:30
-04937438-06d9-4b26-b80e-58eb3c0caa00	http.post.api.v1.auth.activity.page-view	success	200	73	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:30.456304+05:30
-c8c944f5-a925-4c16-a354-8e8da1779a13	company.workspace_settings_read	success	200	20	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/email	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/email	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.376287+05:30
-0f561583-cb40-4c6d-84fa-3d47d1173c4f	company.workspace_settings_read	success	200	36	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/offerings	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/offerings	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.409188+05:30
-4d5f58e4-33e8-4711-bc5b-ba5bef1892a6	company.workspace_settings_read	success	200	79	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/settings	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/settings	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.426491+05:30
-758d22ba-069e-4f54-bac7-b9be543bfd90	company.workspace_settings_read	success	304	20	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/email	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/email	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.476314+05:30
-7cdba532-7f3f-4ba2-b953-6e1833e07ba7	company.workspace_settings_read	success	304	17	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/settings	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/settings	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.529322+05:30
-93474d2b-4a76-4391-abfc-1ceecd24c2b4	company.workspace_settings_read	success	304	25	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/offerings	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/offerings	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.537798+05:30
-802af1cd-7614-43a8-a793-043aba273f08	company.workspace_settings_read	success	304	10	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/contact	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/contact	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.645047+05:30
-d96dcbc1-462e-480a-98a7-a95e14dd6dca	company.workspace_settings_read	success	200	229	GET	/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/contact	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies/380a60f3-6ebf-43d4-9949-f4ee012eb426/workspace-settings/contact	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.598258+05:30
-e4e8e34a-8449-4414-801b-17e7180f5880	user_admin.list	success	304	365	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.747191+05:30
-b82bfced-2071-45e5-8183-14e1edb89a86	http.post.api.v1.auth.activity.page-view	success	200	29	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.790027+05:30
-1a014ef9-b940-48b7-b023-a7bc4d0766d3	company.list	success	304	453	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.837813+05:30
-7c44ec48-0adf-4161-b269-2cf7090c5a4c	company.list	success	304	61	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.907594+05:30
-e451450d-d068-41e5-ae16-039ffab3cefd	user_admin.list	success	304	112	GET	/api/v1/users	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/users?organizationId=380a60f3-6ebf-43d4-9949-f4ee012eb426	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:32.875905+05:30
-b2ea67fb-a7be-406c-9bd1-11eb8dca8c31	company.list	success	304	77	GET	/api/v1/companies	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:39:33.592308+05:30
-094c31d2-90da-4dc8-b094-257fec9d6397	http.post.api.v1.auth.activity.page-view	success	200	15	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:40:11.093898+05:30
-e7ff6553-c38d-420d-8ce0-dbffd93b4402	deal.list	success	304	407	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:40:11.208044+05:30
-cddd6779-c05f-4589-8f17-989e8ad49386	deal.list	success	304	150	GET	/api/v1/deals	\N	127.0.0.1	192.168.0.13	http://127.0.0.1:5004/api/v1/deals	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:40:11.374966+05:30
+7aa0c1cb-e619-4634-b198-9aff01b28f80	auth.signin	auth_failure	401	177	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-07-06 15:46:21.229017+05:30
+18a75e0a-72b9-4667-9719-54711670767b	auth.signin	auth_failure	401	78	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-07-06 15:47:00.779436+05:30
+a4c9a821-470e-45f9-b75f-ef06cc36d90b	auth.signin	success	200	1502	POST	/api/v1/auth/signin	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/auth/signin	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	\N	2026-07-06 15:47:21.477741+05:30
+168c5957-2bd0-4167-accd-5051b38aee0b	company.public_branding	success	200	96	GET	/api/v1/public/company-branding/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/public/company-branding/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:21.783583+05:30
+e3520e5a-7511-426e-8ba0-f525871c59cf	deal.list	success	304	303	GET	/api/v1/deals	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.694978+05:30
+fa0704b0-262b-4235-aec5-4a678837bc81	company.public_branding	success	200	63	GET	/api/v1/public/company-branding/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/public/company-branding/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:21.748009+05:30
+0600f21c-7386-4e1a-9e33-6b77ebcbe2b1	http.get.api.v1.platform.metrics.funding	success	200	1457	GET	/api/v1/platform/metrics/funding	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/metrics/funding?period=30d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.270003+05:30
+9d9629b2-52f9-4b85-85f2-adffcd2cb6ab	http.get.api.v1.platform.metrics.funding	success	304	78	GET	/api/v1/platform/metrics/funding	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/metrics/funding?period=30d	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.411214+05:30
+b9452103-486a-4cd5-ae10-9dac96251ff0	http.get.api.v1.platform.metrics.user-activity	success	200	1647	GET	/api/v1/platform/metrics/user-activity	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/metrics/user-activity	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.389113+05:30
+cd890d26-116f-46e4-98e5-034f41c81946	http.get.api.v1.platform.metrics.user-activity	success	304	295	GET	/api/v1/platform/metrics/user-activity	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/metrics/user-activity	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.745131+05:30
+d39d5fa2-1fe4-47fc-bad0-cbccf9bc20e3	http.get.api.v1.platform.metrics	success	200	1994	GET	/api/v1/platform/metrics	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/metrics	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.708775+05:30
+f197cee8-d422-4468-9702-bd7507103dc1	deal.list	success	200	1893	GET	/api/v1/deals	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.727224+05:30
+77441d76-d4fc-459e-a72d-f670e7ea21a1	deal.list	success	304	92	GET	/api/v1/deals	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:23.898991+05:30
+3ba6f5a3-6641-45a4-9f78-cde1e98097a1	company.list	success	200	191	GET	/api/v1/companies	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.321173+05:30
+4f62d432-a2c8-4f92-ae22-797cee77ee00	deal.list	success	304	331	GET	/api/v1/deals	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/deals?includeParticipantDeals=1	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.359341+05:30
+355abc11-62d0-45c9-8a38-63d92b162b5d	http.get.api.v1.platform.signup-notifications	success	304	584	GET	/api/v1/platform/signup-notifications	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/signup-notifications	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.434902+05:30
+267270a2-8e1a-4fb7-b85d-cfd457da4206	http.get.api.v1.platform.metrics	success	304	622	GET	/api/v1/platform/metrics	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/metrics	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.407821+05:30
+e56fc336-d6ef-4258-b84d-54102facaaae	company.list	success	304	164	GET	/api/v1/companies	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/companies	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.545199+05:30
+1bf83e5b-1263-477e-b511-d8bd68ccaee9	http.post.api.v1.auth.activity.page-view	success	200	48	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.549596+05:30
+f63e9652-29da-4da0-8c04-150293fc70d7	http.get.api.v1.platform.signup-notifications	success	304	125	GET	/api/v1/platform/signup-notifications	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/platform/signup-notifications	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:24.598819+05:30
+8c3e4f5b-761a-4d5d-83fb-c364bef83636	deal.list	success	200	55	GET	/api/v1/deals	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/deals	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:27.824168+05:30
+71788178-8765-450e-a97e-40b54366a115	deal.list	success	304	35	GET	/api/v1/deals	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/deals	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:27.959477+05:30
+393b034c-2109-4027-a41e-62f7db9699ae	http.post.api.v1.auth.activity.page-view	success	200	26	POST	/api/v1/auth/activity/page-view	\N	127.0.0.1	192.168.100.172	http://127.0.0.1:5004/api/v1/auth/activity/page-view	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:28.194787+05:30
 \.
 
 
@@ -1028,8 +990,18 @@ cddd6779-c05f-4589-8f17-989e8ad49386	deal.list	success	304	150	GET	/api/v1/deals
 --
 
 COPY public.user_auth_tokens (id, user_id, token_type, token_hash, expires_at, revoked_at, replaced_by_id, portal_session_id, user_agent, client_ip, created_at) FROM stdin;
-901293ac-f6dc-4e43-a53d-d5679d8f3ea7	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	741efaf60602a66d829bdb8afb883ae33099cadfdeccb1a90e86c14f6b968503	2026-06-26 10:53:31.987+05:30	\N	\N	8ca247a9-24c3-4215-bc44-df896d33728c	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 10:38:31.996358+05:30
-e341b4f3-3775-4ba3-a124-ed1c4edd6fa4	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	89337786de4b96871ed64f2d55ac004aa9176f5bcc58501f98d6b302efaeb400	2026-07-03 10:38:31.987+05:30	\N	\N	8ca247a9-24c3-4215-bc44-df896d33728c	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 10:38:32.027627+05:30
+28d891ac-0f0c-4166-a9d3-a972396cd934	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	add7ad5ccacecb77fb93721503c3401752a1af038c2fa703e888ca0d20527d2e	2026-07-01 16:08:20.297+05:30	\N	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-07-01 15:53:20.303511+05:30
+0d4a2c92-4d79-4074-a12b-cb7b6bdc25b1	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	ace87ef8a469658e74546baebd2d9089dd0e065da135fb21e9a4df204f9bc69d	2026-07-08 15:53:20.297+05:30	2026-07-01 17:00:01.094+05:30	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-07-01 15:53:20.323334+05:30
+f5d1ba7a-ab75-4ce0-aca2-16880b5a1d95	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	cae6eff5b9a4a0ab8326d14cf5b6800f4545d5309a7e67d403f8c3bdd38f62b9	2026-07-02 17:30:26.774+05:30	\N	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-07-02 17:15:26.785553+05:30
+901293ac-f6dc-4e43-a53d-d5679d8f3ea7	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	741efaf60602a66d829bdb8afb883ae33099cadfdeccb1a90e86c14f6b968503	2026-06-26 10:53:31.987+05:30	\N	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 10:38:31.996358+05:30
+e341b4f3-3775-4ba3-a124-ed1c4edd6fa4	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	89337786de4b96871ed64f2d55ac004aa9176f5bcc58501f98d6b302efaeb400	2026-07-03 10:38:31.987+05:30	\N	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 10:38:32.027627+05:30
+7427a0b8-59e2-45ee-a56d-8f55e667468b	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	d8f77d6a7ad88f738a70d74348b09a45e2b5ee1312f6545a30f0e6caefbc8de0	2026-06-26 17:23:22.884+05:30	2026-06-26 17:21:18.417+05:30	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 17:08:22.893515+05:30
+bb91050f-9275-4806-836a-8f1655641d09	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	ff4bbb40a6b8b761f3f843e4ffc2d57ea37312ddca685db19bd87524a9adb15d	2026-07-03 17:08:22.884+05:30	2026-06-26 17:21:18.423+05:30	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 17:08:22.922679+05:30
+887d2d3e-d16a-4d72-aeef-6cf35cb24dcb	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	fae2c37b44be9e34376e68d3da498e3d7b929c6211914b04f4711aea6b7bf514	2026-06-26 17:36:37.249+05:30	\N	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 17:21:37.252122+05:30
+beec36ae-2372-4828-a345-6b99eb5b154c	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	16438c33088b672e386f9edf5cd35aa02bf563ff804c338990f623e5497bc130	2026-07-03 17:21:37.249+05:30	2026-06-26 17:40:21.352+05:30	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-06-26 17:21:37.259344+05:30
+1d89dbe8-c195-4512-99df-6d135a3ed229	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	91d8740193491cc63e83398e182716a2c3181abaa4c86d9b017b73b6493794c9	2026-07-09 17:15:26.774+05:30	2026-07-02 17:45:37.211+05:30	\N	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-07-02 17:15:26.888557+05:30
+0d7a009e-0bc3-4226-8b9b-d57478641600	b2c15cb6-1678-4819-9d24-6fdd8d192064	access	c1aae95673e42ff2fbeebc340a73eb206b91beca0b7d95a90c3c5b8281ff0506	2026-07-06 16:02:20.529+05:30	\N	\N	496ee6db-6a99-43f7-900c-8a6042396242	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-07-06 15:47:20.615609+05:30
+34e65ab9-e1c5-47cb-bd93-ed84217b5747	b2c15cb6-1678-4819-9d24-6fdd8d192064	refresh	8e30af7b077dc403ef28b62b3d27e0013f79af59701b1516f512c7afcc81bd63	2026-07-13 15:47:20.53+05:30	\N	\N	496ee6db-6a99-43f7-900c-8a6042396242	Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:152.0) Gecko/20100101 Firefox/152.0	127.0.0.1	2026-07-06 15:47:21.096727+05:30
 \.
 
 
@@ -1053,7 +1025,7 @@ COPY public.user_company_membership (id, user_id, company_id, role, created_at, 
 -- Data for Name: user_investor_profiles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.user_investor_profiles (id, user_id, profile_name, profile_type, added_by, investments_count, archived, created_at, last_edit_reason, form_snapshot, distribution_method, ach_routing_number, ach_account_number, ach_bank_address, ach_bank_name, ach_bank_account_type, bank_account_query, check_payee_name, check_mailing_address_id) FROM stdin;
+COPY public.user_investor_profiles (id, user_id, profile_name, profile_type, added_by, investments_count, archived, created_at, last_edit_reason, form_snapshot, distribution_method, ach_routing_number, ach_account_number, ach_bank_address, ach_bank_name, ach_bank_account_type, bank_account_query, check_payee_name, check_mailing_address_id, is_draft) FROM stdin;
 \.
 
 
@@ -1062,11 +1034,8 @@ COPY public.user_investor_profiles (id, user_id, profile_name, profile_type, add
 --
 
 COPY public.user_page_navigations (id, user_id, session_id, page_path, page_label, visit_count, updated_at) FROM stdin;
-402f0cdd-3b0d-4df4-a8a1-8ba3186e1c6a	b2c15cb6-1678-4819-9d24-6fdd8d192064	8ca247a9-24c3-4215-bc44-df896d33728c	/customers/3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d/members	Company members	1	2026-06-26 10:38:45.089899+05:30
-1d41f5f4-37d1-4b10-846f-dd9461204b88	b2c15cb6-1678-4819-9d24-6fdd8d192064	8ca247a9-24c3-4215-bc44-df896d33728c	/customers/380a60f3-6ebf-43d4-9949-f4ee012eb426/members	Company members	2	2026-06-26 10:39:26.761385+05:30
-0983dd79-193a-46f4-a4bb-d84bdc84c154	b2c15cb6-1678-4819-9d24-6fdd8d192064	8ca247a9-24c3-4215-bc44-df896d33728c	/customers	Customers	4	2026-06-26 10:39:30.452098+05:30
-502c03ee-dd70-433c-be03-c2903af73673	b2c15cb6-1678-4819-9d24-6fdd8d192064	8ca247a9-24c3-4215-bc44-df896d33728c	/settings	Settings	1	2026-06-26 10:39:32.780942+05:30
-f10be359-933d-4b9e-86ee-17dae63681e7	b2c15cb6-1678-4819-9d24-6fdd8d192064	8ca247a9-24c3-4215-bc44-df896d33728c	/deals	My deals	2	2026-06-26 10:40:11.086752+05:30
+ab379ee5-834b-47df-abb0-8f717ac4b754	b2c15cb6-1678-4819-9d24-6fdd8d192064	496ee6db-6a99-43f7-900c-8a6042396242	/customers	Customers	1	2026-07-06 15:47:24.523854+05:30
+95b69601-8190-4417-8bcb-11c6c644e021	b2c15cb6-1678-4819-9d24-6fdd8d192064	496ee6db-6a99-43f7-900c-8a6042396242	/deals	My deals	1	2026-07-06 15:47:28.185102+05:30
 \.
 
 
@@ -1075,7 +1044,7 @@ f10be359-933d-4b9e-86ee-17dae63681e7	b2c15cb6-1678-4819-9d24-6fdd8d192064	8ca247
 --
 
 COPY public.user_portal_sessions (id, user_id, login_at, logout_at) FROM stdin;
-8ca247a9-24c3-4215-bc44-df896d33728c	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-06-26 10:38:32.20988+05:30	\N
+496ee6db-6a99-43f7-900c-8a6042396242	b2c15cb6-1678-4819-9d24-6fdd8d192064	2026-07-06 15:47:21.293906+05:30	\N
 \.
 
 
@@ -1092,7 +1061,7 @@ COPY public.user_saved_addresses (id, user_id, full_name_or_company, country, st
 --
 
 COPY public.users (id, email, username, password_hash, role, user_status, user_signup_completed, organization_id, first_name, last_name, phone, created_at, updated_at, invite_expires_at) FROM stdin;
-b2c15cb6-1678-4819-9d24-6fdd8d192064	platform.admin@example.com	platformadmin	$2b$10$QmNT14.W23/q0zAPzlrS.eb.VFJ0T11sXfMtS6o/EEDVA3WGtpEda	platform_admin	active	true	380a60f3-6ebf-43d4-9949-f4ee012eb426	Platform	Admin		2026-06-26 10:38:03.483343+05:30	2026-06-26 10:38:03.483343+05:30	\N
+b2c15cb6-1678-4819-9d24-6fdd8d192064	platform.admin@example.com	platformadmin	$2b$10$QfelUjm0clYJXwKvnsns8uelVjJi28CJUK16qjQOGe4Fam/Q8ujee	platform_admin	active	true	3f8a9c1e-2b4d-4f6a-8c7e-1d0e9a8b7c6d	Platform	Admin		2026-06-26 10:38:03.483343+05:30	2026-07-06 15:44:30.74326+05:30	\N
 \.
 
 
@@ -1100,7 +1069,7 @@ b2c15cb6-1678-4819-9d24-6fdd8d192064	platform.admin@example.com	platformadmin	$2
 -- Name: __drizzle_migrations_id_seq; Type: SEQUENCE SET; Schema: drizzle; Owner: postgres
 --
 
-SELECT pg_catalog.setval('drizzle.__drizzle_migrations_id_seq', 56, true);
+SELECT pg_catalog.setval('drizzle.__drizzle_migrations_id_seq', 59, true);
 
 
 --
@@ -1927,5 +1896,5 @@ ALTER TABLE ONLY public.users
 -- PostgreSQL database dump complete
 --
 
-\unrestrict K7NxytrAiVOgzW5NGMtutUG3fpw984ja0yxG87utlQMYqepde1D2qWaWPeMti6P
+\unrestrict NBSupAsBKiA3vi7Y3k5edUFWEs255wOyZxz0NKkj6I7tKtRbdibv21AYdw6G5v0
 
