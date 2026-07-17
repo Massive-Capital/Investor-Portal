@@ -852,6 +852,12 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       });
       const data = (await res.json().catch(() => ({}))) as {
         message?: string;
+        ghlProvisioning?: {
+          enabled?: boolean;
+          ok?: boolean;
+          message?: string;
+          locationId?: string;
+        };
       };
       if (!res.ok) {
         const msg = data.message || "Could not create company";
@@ -862,6 +868,16 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
       const okMsg = data.message || "Company created";
       setAddOk(okMsg);
       toast.success("Company created", okMsg);
+      const ghl = data.ghlProvisioning;
+      if (ghl?.enabled && ghl.ok === false) {
+        toast.error(
+          "CRM sub-account not created",
+          ghl.message ??
+            "Check GHL_PER_ORG_LOCATIONS, GHL_COMPANY_ID, and agency API key in backend/.env.local.",
+        );
+      } else if (ghl?.enabled && ghl.ok === true) {
+        toast.success("CRM sub-account created", ghl.locationId ?? "GoHighLevel location ready");
+      }
       setAddName("");
       void loadCompanies();
       setTimeout(() => closeAddModal(), 800);

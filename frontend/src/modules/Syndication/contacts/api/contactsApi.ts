@@ -55,7 +55,11 @@ export async function fetchContacts(): Promise<ContactRow[]> {
   const base = getApiV1Base()
   if (!base) return []
   try {
-    const res = await fetch(`${base}/contacts`, {
+    const params = new URLSearchParams()
+    const oid = organizationIdQueryParam()
+    if (oid) params.set("organizationId", oid)
+    const q = params.toString()
+    const res = await fetch(`${base}/contacts${q ? `?${q}` : ""}`, {
       headers: { ...authHeaders() },
       credentials: "include",
     })

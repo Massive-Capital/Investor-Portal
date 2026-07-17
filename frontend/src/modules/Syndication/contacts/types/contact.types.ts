@@ -1,5 +1,7 @@
 export type ContactStatus = "active" | "suspended"
 
+export type ContactSource = "local" | "ghl"
+
 export interface ContactRow {
   id: string
   firstName: string
@@ -20,4 +22,24 @@ export interface ContactRow {
   createdAt?: string
   /** Rows in deal_investment with contact_id = this contact id (viewer deal scope) */
   dealCount?: number
+  /** Present when the row is sourced from GoHighLevel CRM */
+  source?: ContactSource
+  /** GoHighLevel contact id when `source` is `ghl` */
+  ghlId?: string
+  /** GHL rows are read-only in SyndicationX */
+  readOnly?: boolean
+  /** Original GHL lead source label */
+  ghlSource?: string
+  companyName?: string
+  address?: string
+  city?: string
+  state?: string
+  country?: string
+  postalCode?: string
+  website?: string
+  timezone?: string
+  assignedTo?: string
+  contactType?: string
+  customFields?: Array<{ label: string; value: string }>
+  updatedAt?: string
 }

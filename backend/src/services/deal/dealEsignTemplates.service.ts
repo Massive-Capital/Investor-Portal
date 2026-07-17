@@ -31,6 +31,7 @@ import {
   type EsignSignflowSigningOrder,
   type EsignSignflowWorkflowType,
 } from "../../constants/esignSigningWorkflow.js";
+import type { SignFlowField } from "../esign/signflow.service.js";
 import {
   buildStoredAssetName,
   type DealMemoryUploadFile,
@@ -76,6 +77,28 @@ export type EsignTemplateFileRecord = {
   signflowWorkflowType?: EsignSignflowWorkflowType;
   /** When sequential — who signs first. */
   signflowSigningOrder?: EsignSignflowSigningOrder;
+  /** Sponsor-placed SignFlow fields snapshot (persisted when template is saved). */
+  signflowTemplateFields?: SignFlowField[];
+  /**
+   * SynX-side bindings for sponsor-added investor data fields.
+   * Survives SignFlow embed saves that may strip custom props like dataKey/profileTypes.
+   */
+  signflowInvestorDataFieldBindings?: SignflowInvestorDataFieldBinding[];
+  /**
+   * Set after the first auto-place / questionnaire seed onto the SignFlow draft.
+   * Resume must not re-seed once this is set, or deleted fields reappear.
+   */
+  signflowFieldsSeededAt?: string;
+};
+
+/** Binding for a sponsor-placed investor data field (Choose field panel). */
+export type SignflowInvestorDataFieldBinding = {
+  dataKey: string;
+  esignLabel: string;
+  profileTypes: string[];
+  page: number;
+  x: number;
+  y: number;
 };
 
 export function resolveEsignTemplateProvider(

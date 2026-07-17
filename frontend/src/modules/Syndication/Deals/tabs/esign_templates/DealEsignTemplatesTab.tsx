@@ -834,6 +834,8 @@ function DealEsignTemplatesProfilesTab({
             documentId={embeddedSession.templateId}
             templateTitle={embeddedSession.templateTitle}
             sessionLoading={embeddedSession.sessionLoading}
+            dealId={dealId}
+            fileId={embeddedSession.fileId}
             onTemplateSaved={handleEmbeddedTemplateSaved}
             onCancel={() => setEmbeddedSession(null)}
             onError={(message) => {

@@ -8,6 +8,13 @@ import {
   users,
   type CompanyRow,
 } from "../../schema/schema.js";
+import {
+  provisionGhlLocationForCompany,
+  queueGhlLocationProvision,
+} from "../ghl/ghlLocation.service.js";
+import {
+  isGhlPerOrgLocationsEnabled,
+} from "../../config/ghl.config.js";
 
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,6 +30,10 @@ export type CompanyWithStats = {
   id: string;
   name: string;
   status: string;
+  ghlLocationId: string | null;
+  ghlLocationStatus: string;
+  ghlLocationError: string | null;
+  ghlLocationProvisionedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   userCount: number;
@@ -69,6 +80,7 @@ export async function ensureCompanyRowForOrganizationId(
         updatedAt: now,
       })
       .onConflictDoNothing({ target: companies.id });
+    queueGhlLocationProvision(oid);
   } catch (err) {
     console.error("ensureCompanyRowForOrganizationId:", err);
   }
@@ -87,6 +99,10 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
         id: companies.id,
         name: companies.name,
         status: companies.status,
+        ghlLocationId: companies.ghlLocationId,
+        ghlLocationStatus: companies.ghlLocationStatus,
+        ghlLocationError: companies.ghlLocationError,
+        ghlLocationProvisionedAt: companies.ghlLocationProvisionedAt,
         createdAt: companies.createdAt,
         updatedAt: companies.updatedAt,
       })
@@ -164,6 +180,11 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
   });
 }
 
+export type CompanyGhlProvisioningResult =
+  | { enabled: false }
+  | { enabled: true; ok: true; locationId: string }
+  | { enabled: true; ok: false; message: string };
+
 export async function createCompany(name: string) {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -194,7 +215,33 @@ export async function createCompany(name: string) {
         message: "Could not create company",
       };
     }
-    return { ok: true as const, company: row };
+
+    let ghlProvisioning: CompanyGhlProvisioningResult = { enabled: false };
+    if (isGhlPerOrgLocationsEnabled()) {
+      const prov = await provisionGhlLocationForCompany(row.id);
+      if (prov.ok) {
+        ghlProvisioning = {
+          enabled: true,
+          ok: true,
+          locationId: prov.locationId,
+        };
+      } else {
+        console.warn(`[ghl-location] company ${row.id}: ${prov.message}`);
+        ghlProvisioning = { enabled: true, ok: false, message: prov.message };
+      }
+      const [updated] = await db
+        .select()
+        .from(companies)
+        .where(eq(companies.id, row.id))
+        .limit(1);
+      return {
+        ok: true as const,
+        company: updated ?? row,
+        ghlProvisioning,
+      };
+    }
+
+    return { ok: true as const, company: row, ghlProvisioning };
   } catch (err: unknown) {
     const code =
       err && typeof err === "object" && "code" in err

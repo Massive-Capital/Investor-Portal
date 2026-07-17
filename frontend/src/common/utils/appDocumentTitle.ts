@@ -37,6 +37,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/members": "Members",
 
   "/contacts": "All contacts",
+  "/contacts/crm": "CRM",
   "/contacts/email-templates": "Email Templates",
   "/contacts/email-templates/new": "New email template",
 

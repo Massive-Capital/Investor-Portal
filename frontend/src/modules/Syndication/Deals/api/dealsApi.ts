@@ -3104,6 +3104,69 @@ export type PostDealEsignCompleteEmbeddedTemplateResult =
     }
   | { ok: false; message: string }
 
+export type PostDealEsignAddInvestorDataFieldResult =
+  | {
+      ok: true
+      esignLabel: string
+      label: string
+      fieldCount: number
+    }
+  | { ok: false; message: string }
+
+/** Place an investor-profile data field onto the open SignFlow draft. */
+export async function postDealEsignAddInvestorDataField(
+  dealId: string,
+  fileId: string,
+  fieldKey: string,
+  profileIds?: string[],
+): Promise<PostDealEsignAddInvestorDataFieldResult> {
+  const base = getApiV1Base()
+  if (!base) {
+    return { ok: false, message: "API base URL is not configured" }
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/esign-templates/${encodeURIComponent(fileId)}/add-investor-data-field`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          fieldKey,
+          profileIds: profileIds ?? [],
+        }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      esignLabel?: unknown
+      label?: unknown
+      fieldCount?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message:
+          data.message != null
+            ? String(data.message)
+            : "Could not add investor data field",
+      }
+    }
+    return {
+      ok: true,
+      esignLabel:
+        typeof data.esignLabel === "string" ? data.esignLabel : fieldKey,
+      label: typeof data.label === "string" ? data.label : fieldKey,
+      fieldCount: typeof data.fieldCount === "number" ? data.fieldCount : 0,
+    }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
 /** Persists template_id after sponsor saves in embedded editor. */
 export async function postDealEsignCompleteEmbeddedTemplate(
   dealId: string,
@@ -3573,6 +3636,7 @@ export type InvestorQuestionnaireQuestion = {
   subtext?: string
   options?: string[]
   isDefault?: boolean
+  investorProfileFieldKey?: string
 }
 
 export type InvestorQuestionnaireProfileSectionVisibility = Record<

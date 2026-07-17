@@ -84,6 +84,8 @@ import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js"
 
 import platformRoutes from "./routes/platformRoutes.routes.js";
 
+import ghlRoutes from "./routes/ghl.routes.js";
+
 import { postDropboxSignWebhook } from "./controllers/deal/dealDropboxSignWebhook.controller.js";
 
 import { postSignFlowWebhook } from "./controllers/deal/dealSignflowWebhook.controller.js";
@@ -95,6 +97,8 @@ import { dropboxSignWebhookUpload } from "./middleware/dropboxSignWebhook.middle
 import investmentSignatureRoutes from "./routes/investmentSignature.routes.js";
 
 import { getSignFlowPublicConfig } from "./config/signflow.config.js";
+
+import { getGhlPublicConfig } from "./config/ghl.config.js";
 
 
 
@@ -296,6 +300,8 @@ app.use("/api/v1", [
 
   platformRoutes,
 
+  ghlRoutes,
+
 ]);
 
 
@@ -331,6 +337,32 @@ if (signFlowCfg.configured) {
   console.log(
 
     "SignFlow not configured — set SIGNFLOW_API_BASE_URL and SIGNFLOW_API_KEY (see API_INTEGRATION.md).",
+
+  );
+
+}
+
+
+
+const ghlCfg = getGhlPublicConfig();
+
+if (ghlCfg.configured) {
+
+  console.log(`GoHighLevel configured → location ${ghlCfg.locationId}`);
+
+} else if (ghlCfg.hasPrivateIntegrationKey && !ghlCfg.hasLocationId) {
+
+  console.log(
+
+    "GoHighLevel private integration key set — add GHL_LOCATION_ID in backend/.env.local to enable sync.",
+
+  );
+
+} else {
+
+  console.log(
+
+    "GoHighLevel not configured — set PRIVATE_INTEGRATION_KEY and GHL_LOCATION_ID in backend/.env.local.",
 
   );
 

@@ -78,6 +78,7 @@ import {
 import { readOfferingPreviewSponsorAttributionForDeal, writeOfferingPreviewSponsorAttribution } from "@/modules/Syndication/Deals/utils/offeringPreviewSponsorRef"
 import {
   buildInvestNowQuestionnairePrefill,
+  buildQuestionnaireAddressPrefillFromW9,
   mergeInvestNowQuestionnaireAnswers,
 } from "./investNowQuestionnairePrefill"
 import {
@@ -711,7 +712,6 @@ export function DealInvestNowPage() {
       addresses: bookAddresses,
       savedUserProfileId,
       config: questionnaireConfig,
-      sectionId: "personal",
     })
     setQuestionnaireAnswers((prev) =>
       mergeInvestNowQuestionnaireAnswers(prev, prefill),
@@ -758,6 +758,15 @@ export function DealInvestNowPage() {
     bookAddresses,
     questionnaireAnswers,
   ])
+
+  useEffect(() => {
+    if (!savedUserProfileId.trim()) return
+    const addressPrefill = buildQuestionnaireAddressPrefillFromW9(w9Values)
+    if (Object.keys(addressPrefill).length === 0) return
+    setQuestionnaireAnswers((prev) =>
+      mergeInvestNowQuestionnaireAnswers(prev, addressPrefill),
+    )
+  }, [savedUserProfileId, w9Values])
 
   useEffect(() => {
     if (stepIndex !== w9StepIndex || w9StepIndex < 0 || !savedUserProfileId.trim()) {

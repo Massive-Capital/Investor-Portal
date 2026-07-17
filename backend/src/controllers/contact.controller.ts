@@ -68,6 +68,8 @@ async function resolveOrganizationIdForContactLabels(
   const selfOrg = row?.organizationId ? String(row.organizationId).trim() : "";
   if (isPlatformAdminRole(role)) {
     if (fromQuery && ORG_UUID_RE.test(fromQuery)) return fromQuery;
+    const requested = requestedOrganizationIdFromRequest(req);
+    if (requested && ORG_UUID_RE.test(requested)) return requested;
     return null;
   }
   const requested = requestedOrganizationIdFromRequest(req);
@@ -328,7 +330,6 @@ export async function getContacts(
       actorUserId: user.id,
       resultCount: contacts.length,
     });
-    console.log("Fetched Contacts:", contacts);
     res.status(200).json({ contacts });
   } catch (err) {
     console.error("getContacts:", err);
@@ -482,6 +483,7 @@ export async function patchContact(req: Request, res: Response): Promise<void> {
         lastEditReason: editReason,
       },
       user.userRole,
+      requestedOrganizationIdFromRequest(req),
     );
     if (!updated) {
       res.status(404).json({ message: "Contact not found or access denied" });
@@ -539,6 +541,7 @@ export async function patchContactStatus(
       contactId,
       status,
       user.userRole,
+      requestedOrganizationIdFromRequest(req),
     );
     if (!updated) {
       res.status(404).json({ message: "Contact not found or access denied" });

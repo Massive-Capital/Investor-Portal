@@ -414,6 +414,13 @@
       "when": 1893500000000,
       "tag": "0059_add_deal_form_archived",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1893550000000,
+      "tag": "0060_companies_ghl_location",
+      "breakpoints": true
     }
   ]
 }

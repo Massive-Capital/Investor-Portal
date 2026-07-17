@@ -120,6 +120,126 @@
   cursor: not-allowed;
 }
 
+.signflow_editor_body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.signflow_editor_data_panel {
+  flex: 0 0 17.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem 0.95rem;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
+  overflow: auto;
+}
+
+.signflow_editor_data_panel_head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #1d4ed8;
+}
+
+.signflow_editor_data_panel_title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.signflow_editor_data_panel_desc,
+.signflow_editor_data_panel_hint {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.signflow_editor_data_panel_label {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.signflow_editor_data_panel_select {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: #0f172a;
+}
+
+.signflow_editor_data_panel_profiles {
+  margin: 0.15rem 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.signflow_editor_data_panel_profiles:disabled {
+  opacity: 0.65;
+}
+
+.signflow_editor_data_panel_profiles .signflow_editor_data_panel_label {
+  padding: 0;
+  float: none;
+}
+
+.signflow_editor_data_panel_profiles_hint {
+  margin: 0.2rem 0 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.signflow_editor_data_panel_profile_list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.signflow_editor_data_panel_profile_option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #334155;
+  cursor: pointer;
+}
+
+.signflow_editor_data_panel_profile_option:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.signflow_editor_data_panel_profile_option input {
+  margin-top: 0.1rem;
+  flex: 0 0 auto;
+}
+
+.signflow_editor_data_panel_add {
+  width: 100%;
+  justify-content: center;
+}
+
 .signflow_editor_workspace {
   position: relative;
   flex: 1;
@@ -127,6 +247,25 @@
   display: flex;
   flex-direction: column;
   background: #334155;
+}
+
+.signflow_editor_iframe_stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .signflow_editor_body {
+    flex-direction: column;
+  }
+
+  .signflow_editor_data_panel {
+    flex: 0 0 auto;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
 }
 
 .signflow_editor_iframe {
@@ -137,6 +276,14 @@
   border: 0;
   display: block;
   background: #334155;
+}
+
+.signflow_editor_iframe--preload {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .signflow_editor_loading {

@@ -1,5 +1,3 @@
-import type { DropboxSignFormFieldPerDocument } from "../esign/dropboxSign.service.js";
-import type { DropboxSignPrefillCustomField } from "../esign/dropboxSign.service.js";
 import type { SignFlowField } from "../esign/signflow.service.js";
 import { formatEinDisplay, nineDigitsFromEinInput } from "../../common/tax/usEin.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
@@ -8,6 +6,14 @@ import type {
   InvestorQuestionnaireQuestion,
 } from "./dealInvestorQuestionnaire.service.js";
 import type { InvestorQuestionnaireAnswersMap } from "./investorQuestionnaireAnswers.service.js";
+import {
+  ESIGN_LABEL_TO_PROFILE_KEY,
+  esignInvestorDataAnswerKey,
+  getEsignInvestorDataField,
+  normalizeEsignFieldLabel,
+} from "./esignInvestorDataFieldCatalog.js";
+import type { DropboxSignFormFieldPerDocument } from "../esign/dropboxSign.service.js";
+import type { DropboxSignPrefillCustomField } from "../esign/dropboxSign.service.js";
 
 function normalizeFieldKey(raw: string): string {
   return String(raw ?? "")
@@ -56,7 +62,26 @@ const FIELD_KEY_TO_QUESTION_ID: Record<string, string> = {
   [normalizeFieldKey("Phone")]: "telephone",
   [normalizeFieldKey("Phone Number")]: "telephone",
   [normalizeFieldKey("Address")]: "address",
-  [normalizeFieldKey("Mailing Address")]: "address",
+  [normalizeFieldKey("Mailing Address")]: "mailing_address",
+  [normalizeFieldKey("Home Address")]: "address",
+  [normalizeFieldKey("Residential Address")]: "address",
+  [normalizeFieldKey("Investor Address")]: "address",
+  [normalizeFieldKey("Subscriber Address")]: "address",
+  [normalizeFieldKey("Tax Address")]: "address",
+  [normalizeFieldKey("Street Address")]: "address",
+  [normalizeFieldKey("Street")]: "street_line",
+  [normalizeFieldKey("Street Line")]: "street_line",
+  [normalizeFieldKey("Address Line 1")]: "street_line",
+  [normalizeFieldKey("Address Line 2")]: "street_line_2",
+  [normalizeFieldKey("City")]: "city",
+  [normalizeFieldKey("State")]: "state",
+  [normalizeFieldKey("Zip")]: "zip",
+  [normalizeFieldKey("Zip Code")]: "zip",
+  [normalizeFieldKey("ZIP")]: "zip",
+  [normalizeFieldKey("ZIP Code")]: "zip",
+  [normalizeFieldKey("City State Zip")]: "city_state_zip",
+  [normalizeFieldKey("City, State, Zip")]: "city_state_zip",
+  [normalizeFieldKey("City State ZIP")]: "city_state_zip",
   [normalizeFieldKey("SSN")]: "social_security_number",
   [normalizeFieldKey("TIN")]: "social_security_number",
   [normalizeFieldKey("Social Security Number")]: "social_security_number",
@@ -64,17 +89,57 @@ const FIELD_KEY_TO_QUESTION_ID: Record<string, string> = {
   [normalizeFieldKey("Date of Birth")]: "birth_date",
   [normalizeFieldKey("Entity Legal Name")]: "entity_full_legal_name",
   [normalizeFieldKey("Entity Name")]: "entity_full_legal_name",
+  [normalizeFieldKey("Full legal name of entity")]: "entity_full_legal_name",
+  [normalizeFieldKey("Office address")]: "entity_office_address",
+  [normalizeFieldKey("Entity Office Address")]: "entity_office_address",
+  [normalizeFieldKey("Office Address")]: "entity_office_address",
+  [normalizeFieldKey("Business Address")]: "entity_office_address",
+  [normalizeFieldKey("IRA entity office address")]: "ira_entity_office_address",
+  [normalizeFieldKey("IRA Entity Office Address")]: "ira_entity_office_address",
+  [normalizeFieldKey("IRA Office Address")]: "ira_entity_office_address",
+  [normalizeFieldKey("Relationship Address")]: "relationship_address",
+  [normalizeFieldKey("Consultant Address")]: "relationship_address",
+  [normalizeFieldKey("Business phone number")]: "entity_business_phone",
+  [normalizeFieldKey("Business Phone")]: "entity_business_phone",
+  [normalizeFieldKey("Formation date")]: "entity_formation_date",
+  [normalizeFieldKey("Jurisdiction country")]: "entity_jurisdiction_country",
+  [normalizeFieldKey("Jurisdiction state")]: "entity_jurisdiction_state",
+  [normalizeFieldKey("Tax identification number")]: "entity_tax_id",
+  [normalizeFieldKey("EIN")]: "entity_tax_id",
+  [normalizeFieldKey("Authorized individual name")]: "entity_authorized_name",
+  [normalizeFieldKey("Authorized individual title")]: "entity_authorized_title",
+  [normalizeFieldKey("IRA entity name")]: "ira_entity_name",
+  [normalizeFieldKey("IRA Entity Name")]: "ira_entity_name",
+  [normalizeFieldKey("IRA custodian EIN")]: "ira_entity_custodian_ein",
+  [normalizeFieldKey("IRA partner EIN")]: "ira_entity_partner_ein",
+  [normalizeFieldKey("IRA account holder's name")]: "ira_entity_account_holder_name",
+  [normalizeFieldKey("IRA account holder's title")]: "ira_entity_account_holder_title",
+  [normalizeFieldKey("Incorporation country")]: "ira_entity_incorporation_country",
+  [normalizeFieldKey("Incorporation state")]: "ira_entity_incorporation_state",
   [normalizeFieldKey("Email")]: "email",
   [normalizeFieldKey("Email Address")]: "email",
   [normalizeFieldKey("Investment Amount")]: "investment_amount",
   [normalizeFieldKey("Commitment Amount")]: "investment_amount",
   [normalizeFieldKey("Amount")]: "investment_amount",
+  [normalizeFieldKey("ACH Routing Number")]: "ach_routing_number",
+  [normalizeFieldKey("ACH Account Number")]: "ach_account_number",
+  [normalizeFieldKey("Bank Name")]: "ach_bank_name",
+  [normalizeFieldKey("Check Payee Name")]: "check_payee_name",
+  [normalizeFieldKey("Beneficiary Name")]: "beneficiary_full_name",
 };
 
 export type EsignQuestionnairePrefillContext = {
   memberDisplayName?: string;
   memberEmail?: string;
   investmentAmount?: string;
+  addressLine?: string;
+  mailingAddressLine?: string;
+  streetLine?: string;
+  streetLine2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  cityStateZip?: string;
 };
 
 function formatAnswerForEsign(
@@ -142,6 +207,10 @@ function buildFormattedAnswerMap(
   answers: InvestorQuestionnaireAnswersMap,
 ): Map<string, string> {
   const out = new Map<string, string>();
+  const questionById = new Map(
+    config.questions.map((q) => [q.id.trim(), q] as const),
+  );
+
   for (const question of config.questions) {
     const id = question.id.trim();
     if (!id) continue;
@@ -153,6 +222,24 @@ function buildFormattedAnswerMap(
     const idAsLabelKey = normalizeFieldKey(id);
     if (idAsLabelKey) out.set(idAsLabelKey, formatted);
   }
+
+  // Include profile/e-sign-only answers (ACH, beneficiary, mailing, etc.) that are
+  // not questionnaire questions — sponsors place these as PDF field labels.
+  for (const [rawId, rawValue] of Object.entries(answers)) {
+    const id = rawId.trim();
+    if (!id || out.has(id)) continue;
+    const question = questionById.get(id);
+    const formatted = question
+      ? formatAnswerForEsign(question, rawValue)
+      : String(rawValue ?? "")
+          .replace(/\s+/g, " ")
+          .trim();
+    if (!formatted) continue;
+    out.set(id, formatted);
+    const idAsLabelKey = normalizeFieldKey(id);
+    if (idAsLabelKey) out.set(idAsLabelKey, formatted);
+  }
+
   return out;
 }
 
@@ -178,6 +265,40 @@ function resolvePrintTitle(formatted: Map<string, string>): string {
 
 function resolveSigningDate(): string {
   return formatDdMmmYyyy(new Date());
+}
+
+function resolveAddressFromContext(
+  questionId: string,
+  prefillContext?: EsignQuestionnairePrefillContext,
+): string {
+  if (!prefillContext) return "";
+  switch (questionId) {
+    case "address":
+    case "entity_office_address":
+    case "ira_entity_office_address":
+      return prefillContext.addressLine?.trim() ?? "";
+    case "mailing_address":
+    case "relationship_address":
+      return (
+        prefillContext.mailingAddressLine?.trim() ||
+        prefillContext.addressLine?.trim() ||
+        ""
+      );
+    case "street_line":
+      return prefillContext.streetLine?.trim() ?? "";
+    case "street_line_2":
+      return prefillContext.streetLine2?.trim() ?? "";
+    case "city":
+      return prefillContext.city?.trim() ?? "";
+    case "state":
+      return prefillContext.state?.trim() ?? "";
+    case "zip":
+      return prefillContext.zip?.trim() ?? "";
+    case "city_state_zip":
+      return prefillContext.cityStateZip?.trim() ?? "";
+    default:
+      return "";
+  }
 }
 
 function resolveValueForFieldKey(
@@ -217,6 +338,17 @@ function resolveValueForFieldKey(
     if (amt) return amt;
   }
 
+  if (questionId === "mailing_address") {
+    const mailing =
+      prefillContext?.mailingAddressLine?.trim() ||
+      prefillContext?.addressLine?.trim() ||
+      "";
+    if (mailing) return mailing;
+  }
+
+  const fromAddressContext = resolveAddressFromContext(questionId, prefillContext);
+  if (fromAddressContext) return fromAddressContext;
+
   for (const [qid, value] of formatted.entries()) {
     if (normalizeFieldKey(qid) === fieldKey) return value;
   }
@@ -255,6 +387,7 @@ export function applyQuestionnairePrefillToEsignFormFields({
   prefillContext?: EsignQuestionnairePrefillContext;
 }): QuestionnaireEsignPrefillResult {
   const ctx: EsignQuestionnairePrefillContext = {
+    ...prefillContext,
     memberDisplayName:
       prefillContext?.memberDisplayName?.trim() || memberDisplayName?.trim(),
     memberEmail: prefillContext?.memberEmail?.trim(),
@@ -266,7 +399,9 @@ export function applyQuestionnairePrefillToEsignFormFields({
     !formatted.size &&
     !ctx.memberDisplayName &&
     !ctx.memberEmail &&
-    !ctx.investmentAmount
+    !ctx.investmentAmount &&
+    !ctx.addressLine &&
+    !ctx.mailingAddressLine
   ) {
     return { formFields, customFields: [] };
   }
@@ -324,6 +459,7 @@ export function applyQuestionnairePrefillToSignFlowFields({
   prefillContext?: EsignQuestionnairePrefillContext;
 }): SignFlowField[] {
   const ctx: EsignQuestionnairePrefillContext = {
+    ...prefillContext,
     memberDisplayName:
       prefillContext?.memberDisplayName?.trim() || memberDisplayName?.trim(),
     memberEmail: prefillContext?.memberEmail?.trim(),
@@ -334,6 +470,33 @@ export function applyQuestionnairePrefillToSignFlowFields({
 
   return fields.map((field) => {
     if (!signFlowFieldPrefillType(field.type)) return field;
+
+    const catalogKey =
+      field.dataKey?.trim() ||
+      ESIGN_LABEL_TO_PROFILE_KEY[
+        normalizeEsignFieldLabel(String(field.label ?? ""))
+      ];
+    if (catalogKey) {
+      const catalog = getEsignInvestorDataField(catalogKey);
+      if (catalog) {
+        const answerKey = esignInvestorDataAnswerKey(catalog);
+        const fromAnswerKey =
+          formatted.get(answerKey) ||
+          formatted.get(normalizeFieldKey(answerKey)) ||
+          "";
+        if (fromAnswerKey.trim()) {
+          return { ...field, dataKey: catalog.key, value: fromAnswerKey.trim() };
+        }
+        const viaLabel = resolveValueForFieldKey(
+          normalizeFieldKey(catalog.esignLabel),
+          formatted,
+          ctx,
+        );
+        if (viaLabel.trim()) {
+          return { ...field, dataKey: catalog.key, value: viaLabel.trim() };
+        }
+      }
+    }
 
     const fieldKey = normalizeFieldKey(field.label);
     const value = resolveValueForFieldKey(fieldKey, formatted, ctx);

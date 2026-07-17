@@ -35,6 +35,7 @@ import {
   type ContactRow,
 } from "../../schema/contact.schema.js";
 import { syncOrganizationContactLabels } from "./organizationContactLabels.service.js";
+import { queueGhlContactRowSync } from "../ghl/ghlContactSync.service.js";
 import {
   canonicalUsPhoneKey10,
   parseUsPhoneToE164,
@@ -313,6 +314,33 @@ function excludePlatformAdminOnlyContactsWhere(): SQL {
   return eq(contact.platformAdminOnly, false);
 }
 
+function buildOrganizationContactsWhere(
+  orgId: string,
+  viewerUserId: string,
+  memberIds: string[],
+): SQL {
+  const ids = [...new Set([...memberIds, viewerUserId])];
+  return or(
+    eq(contact.organizationId, orgId),
+    eq(contact.createdBy, viewerUserId),
+    and(isNull(contact.organizationId), inArray(contact.createdBy, ids))!,
+  )!;
+}
+
+async function contactRowBelongsToOrganization(
+  row: ContactRow,
+  orgId: string,
+  viewerUserId: string,
+): Promise<boolean> {
+  if (row.organizationId === orgId) return true;
+  if (viewerUserId === row.createdBy) return true;
+  if (!row.organizationId) {
+    const memberIds = await userIdsInOrganization(orgId);
+    return memberIds.includes(row.createdBy);
+  }
+  return false;
+}
+
 export async function ensureSelfRegisteredInvestorContact(params: {
   userId: string;
   emailNorm: string;
@@ -352,7 +380,8 @@ export async function ensureSelfRegisteredInvestorContact(params: {
         ...(phoneStored ? { phone: phoneStored } : {}),
       })
       .where(eq(contact.id, existing.id))
-      .returning({ id: contact.id });
+      .returning();
+    if (updated) queueGhlContactRowSync(updated);
     return sponsorOwned ? null : String(updated?.id ?? existing.id).trim() || null;
   }
 
@@ -373,7 +402,8 @@ export async function ensureSelfRegisteredInvestorContact(params: {
       isPortalUser: true,
       platformAdminOnly: true,
     })
-    .returning({ id: contact.id });
+    .returning();
+  if (inserted) queueGhlContactRowSync(inserted);
   return String(inserted?.id ?? "").trim() || null;
 }
 
@@ -549,12 +579,13 @@ export async function insertContact(params: {
     tags: params.input.tags,
     lists: params.input.lists,
   });
+  queueGhlContactRowSync(inserted);
   return inserted;
 }
 
 /**
  * All Contacts list:
- * - **platform_admin**: every CRM row, no extra filters.
+ * - **platform_admin**: contacts for the active organization workspace (same org pool as company admin).
  * - Users tied to a company: contacts with **`organization_id` = viewer’s org**, plus **legacy**
  *   rows (`organization_id` null) whose `created_by` is anyone in that org.
  * - No company / org: only contacts they created themselves.
@@ -586,15 +617,28 @@ export async function listContactsForViewerScoped(
     );
 
   const vis =
-    isCompanyAdminRole(ctx.roleForScope) || sponsorTeamSeesFullCrm
+    isCompanyAdminRole(ctx.roleForScope) ||
+    isPlatformAdminRole(ctx.roleForScope) ||
+    sponsorTeamSeesFullCrm
       ? fullOrgContactListVisibilityWhere(ctx.viewerEmailNorm)
       : contactsVisibilityWhereForRole(ctx.roleForScope, ctx.viewerEmailNorm);
 
-  if (isPlatformAdminRole(ctx.roleForScope)) {
-    return db.select().from(contact).orderBy(desc(contact.createdAt));
-  }
-
   const orgId = ctx.organizationId;
+
+  if (isPlatformAdminRole(ctx.roleForScope)) {
+    if (!orgId) return [];
+    const memberIds = await userIdsInOrganization(orgId);
+    const orgScope = buildOrganizationContactsWhere(
+      orgId,
+      viewerUserId,
+      memberIds,
+    );
+    return db
+      .select()
+      .from(contact)
+      .where(and(orgScope, excludePlatformAdminOnlyContactsWhere())!)
+      .orderBy(desc(contact.createdAt));
+  }
 
   if (!orgId) {
     return db
@@ -611,14 +655,8 @@ export async function listContactsForViewerScoped(
   }
 
   const memberIds = await userIdsInOrganization(orgId);
-  /** Always include the viewer (e.g. company_admin with null `organization_id` still creates contacts). */
-  const ids = [...new Set([...memberIds, viewerUserId])];
 
-  const orgScope = or(
-    eq(contact.organizationId, orgId),
-    eq(contact.createdBy, viewerUserId),
-    and(isNull(contact.organizationId), inArray(contact.createdBy, ids))!,
-  )!;
+  const orgScope = buildOrganizationContactsWhere(orgId, viewerUserId, memberIds);
 
   const parts: SQL[] = [
     orgScope,
@@ -721,8 +759,8 @@ function fillDealCountMapFromExecute(
 }
 
 /**
- * CRM contacts for All Contacts. **platform_admin** gets unfiltered rows; other roles follow
- * {@link listContactsForViewerScoped} (visibility + org scope).
+ * CRM contacts for All Contacts. Scoped to the viewer's active organization;
+ * **platform_admin** follows the same org pool when a workspace org is selected.
  */
 export async function listContactsForViewer(
   viewerUserId: string,
@@ -758,7 +796,10 @@ async function viewerCanAccessContactCreator(
     viewerRole,
     requestedOrganizationId,
   );
-  if (isPlatformAdminRole(ctx.roleForScope)) return true;
+  if (isPlatformAdminRole(ctx.roleForScope)) {
+    if (!ctx.organizationId) return false;
+    return userHasAccessToOrganization(createdByUserId, ctx.organizationId);
+  }
   if (viewerUserId === createdByUserId) return true;
   const orgId = ctx.organizationId;
   if (!orgId) return false;
@@ -767,17 +808,29 @@ async function viewerCanAccessContactCreator(
   return creatorOrgId === orgId;
 }
 
-/** Same rules as list scope: platform admin, creator, shared `organization_id`, or legacy creator-org match. */
+/** Same rules as list scope: creator, shared `organization_id`, or legacy creator-org match. */
 async function viewerCanAccessContactRow(
   viewerUserId: string,
   row: ContactRow,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<boolean> {
-  const ctx = await getViewerContactScopeContext(viewerUserId, viewerRole);
+  const ctx = await getViewerContactScopeContext(
+    viewerUserId,
+    viewerRole,
+    requestedOrganizationId,
+  );
   if (isPlatformAdminOnlyContactRow(row)) {
-    return isPlatformAdminRole(ctx.roleForScope);
+    return isPlatformAdminRole(ctx.roleForScope) && !ctx.organizationId;
   }
-  if (isPlatformAdminRole(ctx.roleForScope)) return true;
+  if (isPlatformAdminRole(ctx.roleForScope)) {
+    if (!ctx.organizationId) return false;
+    return contactRowBelongsToOrganization(
+      row,
+      ctx.organizationId,
+      viewerUserId,
+    );
+  }
   if (
     await viewerShouldSeeOnlySelfCreatedContacts(
       viewerUserId,
@@ -799,6 +852,7 @@ async function viewerCanAccessContactRow(
     viewerUserId,
     row.createdBy,
     viewerRole,
+    requestedOrganizationId,
   );
 }
 
@@ -819,10 +873,18 @@ export async function updateContactFieldsForViewer(
   contactId: string,
   fields: UpdateContactFieldsInput,
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<ContactRow | null> {
   const row = await getContactById(contactId);
   if (!row) return null;
-  if (!(await viewerCanAccessContactRow(viewerUserId, row, viewerRole)))
+  if (
+    !(await viewerCanAccessContactRow(
+      viewerUserId,
+      row,
+      viewerRole,
+      requestedOrganizationId,
+    ))
+  )
     return null;
 
   const phoneStored = normalizeContactPhoneForWrite(fields.phone);
@@ -860,6 +922,7 @@ export async function updateContactFieldsForViewer(
     tags: fields.tags,
     lists: fields.lists,
   });
+  queueGhlContactRowSync(updated);
   return updated;
 }
 
@@ -868,10 +931,18 @@ export async function patchContactStatusForViewer(
   contactId: string,
   status: "active" | "suspended",
   viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
 ): Promise<ContactRow | null> {
   const row = await getContactById(contactId);
   if (!row) return null;
-  if (!(await viewerCanAccessContactRow(viewerUserId, row, viewerRole)))
+  if (
+    !(await viewerCanAccessContactRow(
+      viewerUserId,
+      row,
+      viewerRole,
+      requestedOrganizationId,
+    ))
+  )
     return null;
   const [updated] = await db
     .update(contact)

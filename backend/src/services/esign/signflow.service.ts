@@ -157,6 +157,11 @@ export type SignFlowField = {
   required?: boolean;
   profileType?: SignFlowProfileType;
   profileTypes?: SignFlowProfileType[];
+  /**
+   * Catalog key for sponsor-added investor data fields (e.g. firstName).
+   * Used to prefill from the investor profile when the label alone is ambiguous.
+   */
+  dataKey?: string;
   /** Pre-filled value for text/date fields when sending for signing. */
   value?: string;
   /** Sponsor template page (1-based) where the field was placed. */
@@ -212,7 +217,7 @@ export async function sendSignFlowDocumentForSigning(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       recipients: params.recipients,
-      fields: params.fields,
+      fields: normalizeSignFlowFieldsForApi(params.fields),
       workflowType: params.workflowType ?? DEFAULT_ESIGN_SIGNFLOW_WORKFLOW_TYPE,
       emailSubject: params.emailSubject,
       emailMessage: params.emailMessage,
@@ -255,6 +260,7 @@ export type SignFlowDocument = {
     required?: boolean;
     profileType?: string;
     profileTypes?: string[];
+    dataKey?: string;
     value?: string;
     templatePage?: number;
     pageHash?: string;
@@ -710,6 +716,91 @@ function signFlowFieldCoordinate(value: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** SignFlow signing API expects `date_signed` (embed builder may emit `date`). */
+export function normalizeSignFlowFieldTypeForApi(type: string): string {
+  const t = String(type ?? "").trim().toLowerCase();
+  if (t === "date") return "date_signed";
+  return String(type ?? "text").trim() || "text";
+}
+
+export function normalizeSignFlowFieldsForApi(
+  fields: SignFlowField[],
+): SignFlowField[] {
+  return fields.map((field) => ({
+    ...field,
+    type: normalizeSignFlowFieldTypeForApi(String(field.type ?? "text")),
+  }));
+}
+
+/**
+ * Resolve template fields for send/sign.
+ * Live SignFlow is the base (respects sponsor deletes). SynX snapshot/bindings
+ * only fill in sponsor-added catalog fields that are missing from live.
+ */
+export function resolveSignFlowTemplateDocumentFields(
+  file: {
+    signflowStatus?: string;
+    signflowTemplateFields?: SignFlowField[];
+    signflowInvestorDataFieldBindings?: Array<{
+      dataKey?: string;
+      esignLabel?: string;
+      page?: number;
+      x?: number;
+      y?: number;
+    }>;
+  },
+  templateDoc: SignFlowDocument,
+): SignFlowDocument {
+  const stored = file.signflowTemplateFields ?? [];
+  const live = (templateDoc.fields ?? []) as SignFlowField[];
+
+  if (!live.length && stored.length) {
+    return { ...templateDoc, fields: stored };
+  }
+  if (!stored.length) return templateDoc;
+
+  const bindingKeys = new Set(
+    (file.signflowInvestorDataFieldBindings ?? [])
+      .map((b) => String(b.dataKey ?? "").trim())
+      .filter(Boolean),
+  );
+  if (!bindingKeys.size) return templateDoc;
+
+  const liveHasCatalogKey = (dataKey: string) =>
+    live.some((field) => String(field.dataKey ?? "").trim() === dataKey);
+
+  const liveHasPlacement = (field: SignFlowField) =>
+    live.some((existing) => {
+      const pageA = Math.max(1, Math.floor(Number(existing.page) || 1));
+      const pageB = Math.max(
+        1,
+        Math.floor(Number(field.templatePage ?? field.page) || 1),
+      );
+      if (pageA !== pageB) return false;
+      return (
+        Math.abs(Number(existing.x) - Number(field.x)) < 1.5 &&
+        Math.abs(Number(existing.y) - Number(field.y)) < 1.5 &&
+        String(existing.label ?? "").trim().toLowerCase() ===
+          String(field.label ?? "").trim().toLowerCase()
+      );
+    });
+
+  const missingCatalogFields = stored.filter((field) => {
+    const dataKey = String(field.dataKey ?? "").trim();
+    if (!dataKey || !bindingKeys.has(dataKey)) return false;
+    if (liveHasCatalogKey(dataKey)) return false;
+    if (liveHasPlacement(field)) return false;
+    return true;
+  });
+
+  if (!missingCatalogFields.length) return templateDoc;
+
+  return {
+    ...templateDoc,
+    fields: [...live, ...missingCatalogFields],
+  };
+}
+
 export function findSignFlowTemplateRecipient(
   template: SignFlowDocument,
   roleKeys: string[],
@@ -907,9 +998,13 @@ export function mapSignFlowTemplateFieldsForInvestor(
       "recipient_a",
     ]) ?? template.recipients?.[0];
   const sourceRecipientId = investorTemplateRecipient?.id?.trim() ?? "";
+  const recipients = template.recipients ?? [];
 
   return (template.fields ?? [])
     .filter((f) => {
+      const party = signFlowFieldRecipientParty(f, recipients);
+      if (party === "sponsor") return false;
+      if (party === "investor") return true;
       const rid = String(f.recipientId ?? "").trim();
       if (rid && sourceRecipientId && rid !== sourceRecipientId) {
         return false;
@@ -933,7 +1028,7 @@ export function mapSignFlowTemplateFieldsForInvestor(
         ),
       );
       return {
-        type: String(f.type ?? "signature"),
+        type: normalizeSignFlowFieldTypeForApi(String(f.type ?? "signature")),
         label: String(f.label ?? "Field"),
         x: signFlowFieldCoordinate(f.x, 10),
         y: signFlowFieldCoordinate(f.y, 10),
@@ -942,8 +1037,11 @@ export function mapSignFlowTemplateFieldsForInvestor(
         page: templatePage,
         templatePage,
         ...(f.pageHash?.trim() ? { pageHash: f.pageHash.trim() } : {}),
+        ...(f.dataKey?.trim() ? { dataKey: f.dataKey.trim() } : {}),
+        ...(f.value?.trim() ? { value: f.value.trim() } : {}),
         recipientId: investorRecipientId,
-        required: f.required !== false,
+        // Sponsor-added catalog fields (dataKey) always count for the investor.
+        required: f.dataKey?.trim() ? true : f.required !== false,
         ...(profileTypes ? { profileTypes } : {}),
         ...(profileType ? { profileType } : {}),
       };

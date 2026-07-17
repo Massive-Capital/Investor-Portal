@@ -2018,6 +2018,31 @@
   margin-bottom: 0.35em;
 }
 
+.contacts_crm_page .contacts_crm_filters_row {
+  align-items: center;
+}
+
+.contacts_crm_page .contacts_crm_hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.contacts_crm_page .contacts_crm_empty_hint {
+  margin: 1rem 1.1rem 1.25rem;
+}
+
+.contacts_crm_page .contacts_crm_row_clickable {
+  cursor: pointer;
+}
+
+.contacts_view_loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
 .contacts_send_mail_template_select_row {
   display: flex;
   align-items: center;

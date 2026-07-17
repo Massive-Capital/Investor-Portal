@@ -71,6 +71,12 @@ const QUESTIONNAIRE_SIGNATURE_STACK = [
 
 const BODY_TOP = 110;
 const BODY_LINE_HEIGHT = 14;
+/**
+ * Wrapped line count for {@link QUESTIONNAIRE_BODY} at 10pt Helvetica / 504pt width.
+ * Must stay in sync with pdf-lib wrapping in {@link buildQuestionnaireSignaturePagePdfTextOnly}.
+ * Bump {@link ESIGN_QUESTIONNAIRE_PAGE_LAYOUT_VERSION} when body text or margins change.
+ */
+const QUESTIONNAIRE_BODY_WRAPPED_LINE_COUNT = 7;
 
 const SIGNATURE_MARGIN_X = 72;
 const SIGNATURE_LINE_WIDTH = LETTER_WIDTH - SIGNATURE_MARGIN_X * 2;
@@ -159,6 +165,19 @@ function placementGroupBottom(
 
 function questionnaireBodyEndTop(lineCount: number): number {
   return BODY_TOP + lineCount * BODY_LINE_HEIGHT;
+}
+
+let cachedQuestionnaireBodyEndTop: number | null = null;
+
+function resolveQuestionnaireBodyEndTop(): number {
+  return (
+    cachedQuestionnaireBodyEndTop ??
+    questionnaireBodyEndTop(QUESTIONNAIRE_BODY_WRAPPED_LINE_COUNT)
+  );
+}
+
+function getQuestionnaireSignaturePlacements(): QuestionnaireSignaturePlacement[] {
+  return buildQuestionnaireSignaturePlacements(resolveQuestionnaireBodyEndTop());
 }
 
 function buildQuestionnaireSignaturePlacements(
@@ -280,10 +299,7 @@ export function getInvestorQuestionnaireSignatureSignFlowFields(
   recipientId: string,
   pageOffset = 0,
 ): SignFlowField[] {
-  const lines = wrapQuestionnaireBodyLines((text, size) => text.length * (size * 0.48));
-  const placements = buildQuestionnaireSignaturePlacements(
-    questionnaireBodyEndTop(lines.length),
-  );
+  const placements = getQuestionnaireSignaturePlacements();
   const page = Math.max(1, 1 + Math.max(0, Math.floor(pageOffset)));
   return placements.map((row) => ({
     type: questionnaireSignFlowFieldType(row.fieldType),
@@ -302,11 +318,7 @@ export function getInvestorQuestionnaireSignatureSignFlowFields(
 export function getInvestorQuestionnaireSignatureFormFields(
   pageOffset = 0,
 ): DropboxSignFormFieldPerDocument[] {
-  const lines = wrapQuestionnaireBodyLines((text, size) => text.length * (size * 0.48));
-  const placements = buildQuestionnaireSignaturePlacements(
-    questionnaireBodyEndTop(lines.length),
-  );
-  const fields = placementsToDropboxFormFields(placements);
+  const fields = placementsToDropboxFormFields(getQuestionnaireSignaturePlacements());
   if (pageOffset <= 0) {
     if (!cachedQuestionnaireSignatureFormFields) {
       cachedQuestionnaireSignatureFormFields = fields;
@@ -450,6 +462,7 @@ async function buildQuestionnaireSignaturePagePdfTextOnly(): Promise<Buffer> {
     bodyEndTop += BODY_LINE_HEIGHT;
   }
 
+  cachedQuestionnaireBodyEndTop = bodyEndTop;
   drawQuestionnaireSignatureBlock(page, regular, bodyEndTop);
   cachedQuestionnaireSignatureFormFields = placementsToDropboxFormFields(
     buildQuestionnaireSignaturePlacements(bodyEndTop),
@@ -468,6 +481,7 @@ export async function loadInvestorQuestionnaireSignaturePagePdf(): Promise<Buffe
   }
   cachedQuestionnaireSignaturePagePdf = null;
   cachedQuestionnaireSignatureFormFields = null;
+  cachedQuestionnaireBodyEndTop = null;
 
   if (esignQuestionnaireSignatureUseImageAsset()) {
     if (esignQuestionnaireSignaturePdfExists()) {

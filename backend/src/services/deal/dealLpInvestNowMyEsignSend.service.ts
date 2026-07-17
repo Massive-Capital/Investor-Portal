@@ -17,6 +17,7 @@ import {
   saveInvestorQuestionnaireAnswersForTarget,
 } from "./investorQuestionnaireAnswers.service.js";
 import { normalizeInvestorW9FormInput } from "./investorW9Form.service.js";
+import { enrichQuestionnaireAnswersFromInvestorProfile } from "./investorProfileQuestionnairePrefill.service.js";
 import {
   findInvestorEsignTargetForInvestNowCommitment,
   markDealInvestorEsignPending,
@@ -247,9 +248,14 @@ export async function sendMyInvestNowEsignIfNeeded(params: {
   const dealName = deal?.dealName?.trim() || "Deal";
   const rosterId = target.id;
 
-  const questionnaireAnswers = normalizeInvestorQuestionnaireAnswersInput(
-    params.questionnaireAnswers,
-  );
+  const questionnaireAnswers = await enrichQuestionnaireAnswersFromInvestorProfile({
+    viewerUserId: params.viewerUserId,
+    userInvestorProfileId: params.userInvestorProfileId,
+    answers: normalizeInvestorQuestionnaireAnswersInput(
+      params.questionnaireAnswers,
+    ),
+    dealId,
+  });
   if (questionnaireAnswers) {
     try {
       await saveInvestorQuestionnaireAnswersForTarget(

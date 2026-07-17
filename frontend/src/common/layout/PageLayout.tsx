@@ -7,6 +7,7 @@ import {
   ContactRound,
   Files,
   LayoutDashboard,
+  LayoutGrid,
   Mails,
   Settings,
   Star,
@@ -51,7 +52,7 @@ type NavItemLink = { label: string; to: string; icon: SidebarIcon }
 
 type NavItemGroup = { label: string; icon: SidebarIcon; submenu: NavSubItem[] }
 
-/** Top-level link, or a collapsible group (e.g. Contacts → All contacts, Email Templates). */
+/** Top-level link, or a collapsible group (e.g. Contacts → CRM, All contacts, Email Templates). */
 type NavItem = NavItemLink | NavItemGroup
 
 /** Deals list, create, or deal detail — not investor-emails / reporting (their own nav items). */
@@ -131,7 +132,7 @@ function SidebarNavItem({
 }
 
 /**
- * Collapsible sidebar group (e.g. Contacts: All contacts + Email Templates).
+ * Collapsible sidebar group (e.g. Contacts: CRM + All contacts + Email Templates).
  */
 function SidebarNavGroup({
   label,
@@ -226,6 +227,7 @@ const sharedSidebarItems: NavItem[] = [
     label: "Contacts",
     icon: ContactRound,
     submenu: [
+      { label: "CRM", to: "/contacts/crm", icon: LayoutGrid },
       { label: "All contacts", to: "/contacts", icon: Users },
       { label: "Email Templates", to: "/contacts/email-templates", icon: Mails },
     ],
@@ -308,7 +310,7 @@ function PageLayoutInner() {
   const sidebarItems: NavItem[] = [
     ...platformMetricsNav,
     sharedSidebarItems[0],
-    // [1] is Contacts group (sub: All contacts, Email Templates)
+    // [1] is Contacts group (sub: CRM, All contacts, Email Templates)
     sharedSidebarItems[1],
     ...syndicationPortalNavItems,
     ...sharedSidebarTail,

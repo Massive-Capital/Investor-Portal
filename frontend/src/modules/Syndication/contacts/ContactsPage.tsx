@@ -46,6 +46,8 @@ import {
 } from "../../../common/components/usage-filter-tabs/UsageFilterTabs"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
+import { PORTAL_ACTIVE_COMPANY_CHANGED_EVENT } from "../../../common/auth/setActiveCompany"
+import { getSessionOrganizationCompanyId } from "../../../common/auth/sessionOrganization"
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
 import "../usermanagement/user_management.css"
 import {
@@ -193,6 +195,9 @@ function ContactsPage() {
   const suspendAllTitleId = useId()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<ContactRow[]>([])
+  const [orgScopeKey, setOrgScopeKey] = useState(
+    () => getSessionOrganizationCompanyId() ?? "",
+  )
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
   const [contactToEdit, setContactToEdit] = useState<ContactRow | null>(null)
@@ -445,6 +450,16 @@ function ContactsPage() {
       setDbCatalogListNames(dbLists)
     } finally {
       setLoading(false)
+    }
+  }, [orgScopeKey])
+
+  useEffect(() => {
+    const syncOrgScope = () => {
+      setOrgScopeKey(getSessionOrganizationCompanyId() ?? "")
+    }
+    window.addEventListener(PORTAL_ACTIVE_COMPANY_CHANGED_EVENT, syncOrgScope)
+    return () => {
+      window.removeEventListener(PORTAL_ACTIVE_COMPANY_CHANGED_EVENT, syncOrgScope)
     }
   }, [])
 

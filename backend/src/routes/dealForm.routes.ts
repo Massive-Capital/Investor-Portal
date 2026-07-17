@@ -44,6 +44,8 @@ import {
 } from "../controllers/deal/dealEsignTemplates.controller.js";
 import {
   getDealEsignDropboxSignConfig,
+  getDealEsignInvestorDataFields,
+  postDealEsignAddInvestorDataField,
   postDealEsignCompleteEmbeddedTemplate,
   postDealEsignEmbeddedDraft,
 } from "../controllers/deal/dealEsignDropboxSign.controller.js";
@@ -200,6 +202,14 @@ router.post(
 router.post(
   "/deals/:dealId/esign-templates/:fileId/complete-embedded-template",
   postDealEsignCompleteEmbeddedTemplate,
+);
+router.get(
+  "/deals/:dealId/esign-templates/investor-data-fields",
+  getDealEsignInvestorDataFields,
+);
+router.post(
+  "/deals/:dealId/esign-templates/:fileId/add-investor-data-field",
+  postDealEsignAddInvestorDataField,
 );
 router.patch(
   "/deals/:dealId/esign-templates/:fileId",
