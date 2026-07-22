@@ -37,11 +37,14 @@ import {
   getDealAssetPersisted,
   primaryDealAssetRowId,
   serializeAdditionalInfo,
-  upsertDealAssetPersisted,
   type AssetAttributeRow,
   type DealAssetPersisted,
   type DealAssetRow,
 } from "./types/deal-asset.types"
+import {
+  saveDealAssetToServer,
+  syncDealAssetsFromServer,
+} from "./utils/dealAssetsServerSync"
 import { zipCodeFieldError } from "./utils/dealZipCode"
 import { dedupeGalleryUrlsPreserveOrder, collectGalleryPathsFromDealAssetsMap } from "./utils/offeringGalleryUrls"
 import { emptyAssetStepDraft, type AssetStepDraft } from "./types/deals.types"
@@ -115,21 +118,22 @@ export function AddDealAssetPage() {
     setLoadError(null)
 
     const primaryId = primaryDealAssetRowId(dealId)
-    const persisted = getDealAssetPersisted(dealId, assetId)
 
-    if (persisted) {
-      setAssetDraft(persisted.draft)
-      setAttrRows(normalizeAssetAttributeMoneyRows(persisted.attrRows))
+    void (async () => {
+      try {
+        await syncDealAssetsFromServer(dealId)
+        if (cancelled) return
 
-      if (assetId === primaryId) {
-        const saved = persisted.imagePreviewDataUrls
-        const fromSaved = Array.isArray(saved) ? saved : []
-        /** After Save asset, `imagePreviewDataUrls` is the source of truth — server `assetImagePath` is append-only and would show removed files again. */
-        if (Array.isArray(persisted.imagePreviewDataUrls)) {
-          setExistingImageUrls(dedupeGalleryUrlsPreserveOrder([...fromSaved]))
-          setHydrated(true)
-        } else {
-          void (async () => {
+        const persisted = getDealAssetPersisted(dealId, assetId)
+        if (persisted) {
+          setAssetDraft(persisted.draft)
+          setAttrRows(normalizeAssetAttributeMoneyRows(persisted.attrRows))
+          const saved = persisted.imagePreviewDataUrls
+          const fromSaved = Array.isArray(saved) ? saved : []
+          if (
+            assetId === primaryId &&
+            !Array.isArray(persisted.imagePreviewDataUrls)
+          ) {
             try {
               const detail = await fetchDealById(dealId)
               if (cancelled) return
@@ -140,58 +144,41 @@ export function AddDealAssetPage() {
                 ),
               )
             } catch {
-              if (!cancelled) {
-                setExistingImageUrls(
-                  dedupeGalleryUrlsPreserveOrder(
-                    Array.isArray(saved) ? saved : [],
-                  ),
-                )
-              }
-            } finally {
-              if (!cancelled) setHydrated(true)
+              if (!cancelled)
+                setExistingImageUrls(dedupeGalleryUrlsPreserveOrder(fromSaved))
             }
-          })()
+          } else {
+            setExistingImageUrls(dedupeGalleryUrlsPreserveOrder(fromSaved))
+          }
+          return
         }
-      } else {
-        const saved = persisted.imagePreviewDataUrls
-        setExistingImageUrls(
-          dedupeGalleryUrlsPreserveOrder(Array.isArray(saved) ? saved : []),
-        )
-        setHydrated(true)
-      }
 
-      return () => {
-        cancelled = true
-      }
-    }
-
-    if (assetId === primaryId) {
-      void (async () => {
-        try {
+        if (assetId === primaryId) {
           const detail = await fetchDealById(dealId)
           if (cancelled) return
           const { asset } = mapDealDetailApiToCreateDrafts(detail)
           setAssetDraft(asset)
           setAttrRows(createDefaultAssetAttributeRows())
           setExistingImageUrls(
-            dedupeGalleryUrlsPreserveOrder(assetImagePathsToUrls(detail.assetImagePath)),
+            dedupeGalleryUrlsPreserveOrder(
+              assetImagePathsToUrls(detail.assetImagePath),
+            ),
           )
-        } catch {
-          if (!cancelled)
-            setLoadError("Could not load this deal. Try again from the deal page.")
-        } finally {
-          if (!cancelled) setHydrated(true)
+          return
         }
-      })()
-      return () => {
-        cancelled = true
-      }
-    }
 
-    setLoadError(
-      "This asset is no longer available to edit. Return to the deal and refresh.",
-    )
-    setHydrated(true)
+        if (!cancelled)
+          setLoadError(
+            "This asset is no longer available to edit. Return to the deal and refresh.",
+          )
+      } catch {
+        if (!cancelled)
+          setLoadError("Could not load this asset. Try again from the deal page.")
+      } finally {
+        if (!cancelled) setHydrated(true)
+      }
+    })()
+
     return () => {
       cancelled = true
     }
@@ -318,14 +305,22 @@ export function AddDealAssetPage() {
         attrRows,
         imagePreviewDataUrls,
       }
-      upsertDealAssetPersisted(dealId, entry)
+      const saved = await saveDealAssetToServer(dealId, entry)
+      if (!saved.ok) {
+        setAssetImageFiles(filesToUpload)
+        toast.error(
+          saved.message ||
+            "Could not save asset to the server. Check your connection and try again.",
+        )
+        return
+      }
 
       const galleryPaths = collectGalleryPathsFromDealAssetsMap(dealId)
       const gallerySync = await patchDealOfferingGallery(dealId, galleryPaths)
       if (!gallerySync.ok) {
         toast.error(
           gallerySync.message ||
-            "Asset saved locally but gallery could not be synced. Try saving again.",
+            "Asset saved but gallery could not be synced. Try saving again.",
         )
         return
       }

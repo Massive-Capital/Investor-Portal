@@ -82,6 +82,16 @@ export const addDealForm = pgTable("add_deal_form", {
   investorQuestionnaireJson: text("investor_questionnaire_json"),
   /** Syndication deals list: Active vs Archives tab. */
   archived: boolean("archived").notNull().default(false),
+  /**
+   * JSON: Class Setup deal-level config (`targetRaise`, `latestChanges`, etc.).
+   * Per-class economic terms remain on `deal_investor_class` / advanced_options_json.
+   */
+  classSetupJson: text("class_setup_json").notNull().default("{}"),
+  /**
+   * JSON: Distribution Setup — `waterfalls.operating` / `waterfalls.capital`
+   * payment rows. Split cascade derived from class_setup_json.promote.
+   */
+  distributionSetupJson: text("distribution_setup_json").notNull().default("{}"),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

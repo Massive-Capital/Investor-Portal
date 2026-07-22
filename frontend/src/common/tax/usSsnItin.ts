@@ -24,6 +24,60 @@ export function formatSsnItinInput(raw: string): string {
   return formatSsnItinDisplay(nineDigitsFromSsnItinInput(raw))
 }
 
+/**
+ * Mask SSN / ITIN for display — only the last 4 digits visible.
+ * Idempotent for already-masked values.
+ * Examples: "" → ""; "1234" → "••••1234"; "123456789" → "•••-••-6789".
+ */
+export function maskSsnItinLast4(raw: string): string {
+  const s = String(raw ?? "").trim()
+  if (!s) return ""
+  const compact = s.replace(/\s/g, "")
+  const alreadyMasked = /^[X•x*]{3}-?[X•x*]{2}-?\d{4}$/.test(compact)
+  if (alreadyMasked) {
+    const last4 = compact.replace(/\D/g, "").slice(-4)
+    return last4 ? `•••-••-${last4}` : ""
+  }
+  const d = nineDigitsFromSsnItinInput(s)
+  if (!d) return ""
+  if (d.length <= 4) return `••••${d}`
+  return `•••-••-${d.slice(-4)}`
+}
+
+/** True when a field/answer key or label is an SSN / ITIN identifier. */
+export function isSsnItinFieldKey(raw: string): boolean {
+  const normalized = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+  const compact = normalized.replace(/_/g, "")
+  if (
+    compact === "ssn" ||
+    compact === "itin" ||
+    compact === "tin" ||
+    compact === "spousessn" ||
+    compact === "socialsecurity" ||
+    compact === "socialsecuritynumber" ||
+    compact === "ssnitin"
+  ) {
+    return true
+  }
+  const label = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+  return (
+    label === "ssn" ||
+    label === "itin" ||
+    label === "tin" ||
+    label === "ssn / itin" ||
+    label === "ssn/itin" ||
+    label === "social security number" ||
+    label === "social security" ||
+    label === "spouse ssn"
+  )
+}
+
 function parseSsnParts(d: string) {
   return {
     area: Number.parseInt(d.slice(0, 3), 10),

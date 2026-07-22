@@ -32,11 +32,29 @@ export function isMezzanineInvestorClass(
   return normalizedSubscriptionType(row) === "mezzanine"
 }
 
+/** Class type = Preferred Equity (fixed return, no ownership). */
+export function isPreferredEquityInvestorClass(
+  row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
+): boolean {
+  return normalizedSubscriptionType(row) === "preferred_equity"
+}
+
+/** Fixed-return stack positions (no equity ownership %). */
+export function isFixedReturnInvestorClass(
+  row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
+): boolean {
+  return isMezzanineInvestorClass(row) || isPreferredEquityInvestorClass(row)
+}
+
 /** LP and mezzanine — selectable during investor onboarding (GP excluded). */
 export function isInvestorOnboardingSelectableClass(
   row: Pick<DealInvestorClass, "subscriptionType"> | undefined,
 ): boolean {
-  return isLpInvestorClass(row) || isMezzanineInvestorClass(row)
+  return (
+    isLpInvestorClass(row) ||
+    isMezzanineInvestorClass(row) ||
+    isPreferredEquityInvestorClass(row)
+  )
 }
 
 export function investorOnboardingSelectableClasses(

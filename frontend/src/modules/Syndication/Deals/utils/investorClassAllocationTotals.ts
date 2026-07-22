@@ -131,6 +131,7 @@ function sumExistingRowsForAllocation(
       "entity_legal_ownership_pct",
     )
     if (row.subscriptionType === "mezzanine") continue
+    if (row.subscriptionType === "preferred_equity") continue
     distributionShareTotal += readPctFromAdvancedJson(
       raw,
       "distributionSharePct",
@@ -190,7 +191,9 @@ export function validateInvestorClassAllocationForSave({
   const legalOwnershipTotal = roundPctTotal(
     existing.legalOwnershipTotal + parsePctNumber(entityLegalOwnershipPct),
   )
-  const includeDistribution = subscriptionType !== "mezzanine"
+  const includeDistribution =
+    subscriptionType !== "mezzanine" &&
+    subscriptionType !== "preferred_equity"
   const distributionShareTotal = includeDistribution
     ? roundPctTotal(
         existing.distributionShareTotal + parsePctNumber(distributionSharePct),
@@ -272,6 +275,7 @@ export function computeInvestorClassAllocationTotals(
       "entity_legal_ownership_pct",
     )
     if (row.subscriptionType === "mezzanine") continue
+    if (row.subscriptionType === "preferred_equity") continue
     trackDistribution = true
     distributionShareTotal += readPctFromAdvancedJson(
       raw,
@@ -303,11 +307,15 @@ export function computeInvestorClassAllocationTotalsWithDraft({
   editingClassId?: string
 }): InvestorClassAllocationTotals {
   const existing = sumExistingRowsForAllocation(existingRows, editingClassId)
-  const includeDistribution = subscriptionType !== "mezzanine"
+  const includeDistribution =
+    subscriptionType !== "mezzanine" &&
+    subscriptionType !== "preferred_equity"
   const trackDistribution =
     existingRows.some(
       (r) =>
-        r.id !== editingClassId && r.subscriptionType !== "mezzanine",
+        r.id !== editingClassId &&
+        r.subscriptionType !== "mezzanine" &&
+        r.subscriptionType !== "preferred_equity",
     ) || includeDistribution
 
   return buildInvestorClassAllocationTotalsFromSums({

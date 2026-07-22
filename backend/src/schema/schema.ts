@@ -5,12 +5,25 @@ export {
   type UserAuthTokenInsert,
 } from "./auth.schema/userAuthTokens.schema.js";
 export { companies, type CompanyRow } from "./company.schema/company.js";
+export {
+  companyBillingInvoices,
+  companyBillingEvents,
+  companyBillingPaymentMethods,
+  type CompanyBillingInvoiceRow,
+  type CompanyBillingEventRow,
+  type CompanyBillingPaymentMethodRow,
+} from "./company.schema/companyBilling.schema.js";
 export { deals, type DealRow } from "../schema/deal.schema/deal.schema.js";
 export {
   addDealForm,
   type AddDealFormInsert,
   type AddDealFormRow,
 } from "./deal.schema/add-deal-form.schema.js";
+export {
+  dealAsset,
+  type DealAssetInsert,
+  type DealAssetRow,
+} from "./deal.schema/deal-asset.schema.js";
 export {
   memberAdminAuditLogs,
   type MemberAdminAuditLogRow,

@@ -25,6 +25,7 @@ import {
   computeDealAssetRowsFromClientStorage,
   DEAL_ASSETS_STORAGE_CHANGED_EVENT,
 } from "../../types/deal-asset.types"
+import { syncDealAssetsFromServer } from "../../utils/dealAssetsServerSync"
 import { DEAL_FORM_TYPE_OPTIONS } from "../../types/deals.types"
 import { SEC_TYPE_OPTIONS } from "../../constants/sec-type-options"
 import {
@@ -283,7 +284,18 @@ export function OfferingOverviewSection({
   const [draftStageInfoModalOpen, setDraftStageInfoModalOpen] = useState(false)
   const [pendingOpenInvestmentStatus, setPendingOpenInvestmentStatus] =
     useState<string | null>(null)
+  const [assetsSyncTick, setAssetsSyncTick] = useState(0)
   const overviewRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void syncDealAssetsFromServer(detail.id).then(() => {
+      if (!cancelled) setAssetsSyncTick((t) => t + 1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [detail.id])
 
   const refreshEsignTemplatesConfigured = useCallback(async () => {
     const result = await fetchDealEsignTemplates(detail.id)
@@ -422,7 +434,7 @@ export function OfferingOverviewSection({
       computeDealAssetRowsFromClientStorage(detail).filter(
         (r) => !r.archived,
       ),
-    [detail],
+    [detail, assetsSyncTick],
   )
 
   const assetRowIdsKey = useMemo(

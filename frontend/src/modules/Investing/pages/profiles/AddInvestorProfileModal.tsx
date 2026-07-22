@@ -72,7 +72,8 @@ import {
   getUsPhoneFieldError,
 } from "./profileContactValidation"
 import { BENEFICIARY_LEGAL_DISCLAIMER } from "./beneficiary-legal"
-import { formatSsnItinInput, ssnItinFieldError } from "@/common/tax/usSsnItin"
+import { ssnItinFieldError } from "@/common/tax/usSsnItin"
+import { SsnItinMaskedInput } from "@/common/components/SsnItinMaskedInput"
 import { ssnFromAnyInvestorProfile } from "@/modules/Investing/pages/invest/investNowW9FormUtils"
 import { InvestingFormField } from "./InvestingFormField"
 import { SavedAddressSelect } from "./SavedAddressSelect"
@@ -2825,36 +2826,25 @@ export function AddInvestorProfileModal({
                 Icon={Fingerprint}
                 error={fieldError.ssn}
               >
-                <div className="add_profile_input_wrap">
-                  <input
-                    id="ap-jt-ssn"
-                    className={invClass(
-                      "deals_add_inv_input deals_add_inv_field_control",
-                      Boolean(fieldError.ssn),
-                    )}
-                    type={ssnVisible ? "text" : "password"}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={11}
-                    value={form.ssn}
-                    onChange={(e) =>
-                      patch({ ssn: formatSsnItinInput(e.target.value) }, "ssn")
-                    }
-                    placeholder="___-__-____"
-                    aria-invalid={Boolean(fieldError.ssn)}
-                    aria-describedby={
-                      fieldError.ssn ? "ap-jt-ssn-err" : undefined
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="add_profile_ssn_toggle"
-                    onClick={() => setSsnVisible((v) => !v)}
-                    aria-label={ssnVisible ? "Hide SSN" : "Show SSN"}
-                  >
-                    {ssnVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </button>
-                </div>
+                <SsnItinMaskedInput
+                  id="ap-jt-ssn"
+                  className={invClass(
+                    "deals_add_inv_input deals_add_inv_field_control",
+                    Boolean(fieldError.ssn),
+                  )}
+                  value={form.ssn}
+                  onValueChange={(ssn) => patch({ ssn }, "ssn")}
+                  revealed={ssnVisible}
+                  onRevealedChange={setSsnVisible}
+                  showToggle
+                  revealLabel="Show SSN"
+                  hideLabel="Hide SSN"
+                  placeholder="___-__-____"
+                  aria-invalid={Boolean(fieldError.ssn)}
+                  aria-describedby={
+                    fieldError.ssn ? "ap-jt-ssn-err" : undefined
+                  }
+                />
               </InvestingFormField>
               <InvestingFormField
                 id="ap-jt-spouse-ssn"
@@ -2862,41 +2852,27 @@ export function AddInvestorProfileModal({
                 Icon={Fingerprint}
                 error={fieldError.spouseSsn}
               >
-                <div className="add_profile_input_wrap">
-                  <input
-                    id="ap-jt-spouse-ssn"
-                    className={invClass(
-                      "deals_add_inv_input deals_add_inv_field_control",
-                      Boolean(fieldError.spouseSsn),
-                    )}
-                    type={spouseSsnVisible ? "text" : "password"}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={11}
-                    value={form.spouseSsn}
-                    onChange={(e) =>
-                      patch(
-                        { spouseSsn: formatSsnItinInput(e.target.value) },
-                        "spouseSsn",
-                      )
-                    }
-                    placeholder="___-__-____"
-                    aria-invalid={Boolean(fieldError.spouseSsn)}
-                    aria-describedby={
-                      fieldError.spouseSsn ? "ap-jt-spouse-ssn-err" : undefined
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="add_profile_ssn_toggle"
-                    onClick={() => setSpouseSsnVisible((v) => !v)}
-                    aria-label={
-                      spouseSsnVisible ? "Hide spouse SSN" : "Show spouse SSN"
-                    }
-                  >
-                    {spouseSsnVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </button>
-                </div>
+                <SsnItinMaskedInput
+                  id="ap-jt-spouse-ssn"
+                  className={invClass(
+                    "deals_add_inv_input deals_add_inv_field_control",
+                    Boolean(fieldError.spouseSsn),
+                  )}
+                  value={form.spouseSsn}
+                  onValueChange={(spouseSsn) =>
+                    patch({ spouseSsn }, "spouseSsn")
+                  }
+                  revealed={spouseSsnVisible}
+                  onRevealedChange={setSpouseSsnVisible}
+                  showToggle
+                  revealLabel="Show spouse SSN"
+                  hideLabel="Hide spouse SSN"
+                  placeholder="___-__-____"
+                  aria-invalid={Boolean(fieldError.spouseSsn)}
+                  aria-describedby={
+                    fieldError.spouseSsn ? "ap-jt-spouse-ssn-err" : undefined
+                  }
+                />
               </InvestingFormField>
             </div>
           )}
@@ -3009,36 +2985,25 @@ export function AddInvestorProfileModal({
                 Icon={Fingerprint}
                 error={fieldError.ssn}
               >
-                <div className="add_profile_input_wrap">
-                  <input
-                    id="ap-ssn"
-                    className={invClass(
-                      "deals_add_inv_input deals_add_inv_field_control",
-                      Boolean(fieldError.ssn),
-                    )}
-                    type={ssnVisible ? "text" : "password"}
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={11}
-                    value={form.ssn}
-                    onChange={(e) =>
-                      patch({ ssn: formatSsnItinInput(e.target.value) }, "ssn")
-                    }
-                    placeholder="___-__-____"
-                    aria-invalid={Boolean(fieldError.ssn)}
-                    aria-describedby={
-                      fieldError.ssn ? "ap-ssn-err" : undefined
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="add_profile_ssn_toggle"
-                    onClick={() => setSsnVisible((v) => !v)}
-                    aria-label={ssnVisible ? "Hide SSN or ITIN" : "Show SSN or ITIN"}
-                  >
-                    {ssnVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </button>
-                </div>
+                <SsnItinMaskedInput
+                  id="ap-ssn"
+                  className={invClass(
+                    "deals_add_inv_input deals_add_inv_field_control",
+                    Boolean(fieldError.ssn),
+                  )}
+                  value={form.ssn}
+                  onValueChange={(ssn) => patch({ ssn }, "ssn")}
+                  revealed={ssnVisible}
+                  onRevealedChange={setSsnVisible}
+                  showToggle
+                  revealLabel="Show SSN or ITIN"
+                  hideLabel="Hide SSN or ITIN"
+                  placeholder="___-__-____"
+                  aria-invalid={Boolean(fieldError.ssn)}
+                  aria-describedby={
+                    fieldError.ssn ? "ap-ssn-err" : undefined
+                  }
+                />
               </InvestingFormField>
             </div>
           )}

@@ -294,6 +294,41 @@ function signFlowPercentHeight(pixelHeight: number): number {
   return (pixelHeight / LETTER_HEIGHT) * 100;
 }
 
+/**
+ * SignFlow % sizes for investor data text/date fields — matched to questionnaire
+ * signature text boxes so filled values align with document body type (~10pt).
+ */
+export function esignDocumentAlignedTextFieldSize(
+  kind: "text" | "date" = "text",
+): { width: number; height: number } {
+  return {
+    width: signFlowPercentWidth(
+      kind === "date" ? DATE_FIELD_WIDTH_IN_ROW : SIGNATURE_FIELD_WIDTH,
+    ),
+    height: signFlowPercentHeight(22),
+  };
+}
+
+/**
+ * Shrink legacy SynX investor-data text/date boxes that used height ≈ 5% (too
+ * large vs document body) down to the questionnaire-aligned text height.
+ */
+export function alignSignFlowTextFieldHeightsToDocument(
+  fields: SignFlowField[],
+): SignFlowField[] {
+  const textH = esignDocumentAlignedTextFieldSize("text").height;
+  const dateH = esignDocumentAlignedTextFieldSize("date").height;
+  return fields.map((field) => {
+    const t = String(field.type ?? "").trim().toLowerCase();
+    if (t !== "text" && t !== "date" && t !== "date_signed") return field;
+    const h = Number(field.height) || 0;
+    // Prior default for "Add field to PDF" was height: 5 (% of page).
+    if (h < 4.2 || h > 5.8) return field;
+    const height = t === "date" || t === "date_signed" ? dateH : textH;
+    return { ...field, height };
+  });
+}
+
 /** SignFlow fields on questionnaire page 1 — aligned to printed labels/lines. */
 export function getInvestorQuestionnaireSignatureSignFlowFields(
   recipientId: string,

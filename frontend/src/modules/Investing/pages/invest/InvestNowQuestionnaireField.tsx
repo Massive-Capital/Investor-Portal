@@ -11,7 +11,7 @@ import {
   nationalDigitsFromStoredPhone,
 } from "@/common/phone/usPhoneNumber"
 import { formatEinInput } from "@/common/tax/usEin"
-import { formatSsnItinInput } from "@/common/tax/usSsnItin"
+import { SsnItinMaskedInput } from "@/common/components/SsnItinMaskedInput"
 import {
   pruneHiddenInvestorQuestionnaireAnswers,
   resolveQuestionForDisplay,
@@ -241,6 +241,31 @@ export function InvestNowQuestionnaireField({
     question.id === "ira_entity_partner_ein"
   const isSsnField = question.fieldType === "ssn"
 
+  if (isSsnField) {
+    return (
+      <InvestNowFormField
+        id={fieldId}
+        label={question.label}
+        required={question.required}
+        hint={question.subtext}
+        error={error}
+      >
+        <SsnItinMaskedInput
+          id={fieldId}
+          className="deals_create_input"
+          value={value}
+          disabled={disabled}
+          showToggle
+          allowReveal
+          revealLabel="Show SSN"
+          hideLabel="Hide SSN"
+          aria-invalid={ariaInvalid}
+          onValueChange={(next) => patch(next)}
+        />
+      </InvestNowFormField>
+    )
+  }
+
   return (
     <InvestNowFormField
       id={fieldId}
@@ -257,12 +282,11 @@ export function InvestNowQuestionnaireField({
         disabled={disabled}
         aria-invalid={ariaInvalid}
         autoComplete="off"
-        inputMode={isEinField || isSsnField ? "numeric" : undefined}
+        inputMode={isEinField ? "numeric" : undefined}
         placeholder={isEinField ? "XX-XXXXXXX" : undefined}
         onChange={(e) => {
           let next = e.target.value
-          if (isSsnField) next = formatSsnItinInput(next)
-          else if (isEinField) next = formatEinInput(next)
+          if (isEinField) next = formatEinInput(next)
           patch(next)
         }}
       />

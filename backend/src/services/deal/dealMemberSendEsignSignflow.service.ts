@@ -34,12 +34,17 @@ import type { InvestorEsignRowTarget } from "./dealMemberEsignStatus.service.js"
 
 import type { InvestorQuestionnaireAnswersMap } from "./investorQuestionnaireAnswers.service.js";
 import { getDealInvestorQuestionnaireState } from "./dealInvestorQuestionnaire.service.js";
-import { applyQuestionnairePrefillToSignFlowFields } from "./investorQuestionnaireEsignPrefill.service.js";
+import {
+  applyQuestionnairePrefillToSignFlowFields,
+  maskSsnInQuestionnaireAnswers,
+  maskSsnValuesOnSignFlowFields,
+} from "./investorQuestionnaireEsignPrefill.service.js";
 import { resolveQuestionnaireAnswersForEsign } from "./investorProfileQuestionnairePrefill.service.js";
 import { fetchPrefilledOnboardingFields } from "../onboarding/onboardingFieldsPython.service.js";
 import { isOnboardingFieldsServiceConfigured } from "../../config/onboardingFields.config.js";
 import { applySignflowInvestorDataFieldBindings } from "./dealEsignSignflow.service.js";
 import {
+  alignSignFlowTextFieldHeightsToDocument,
   getInvestorQuestionnaireSignatureSignFlowFields,
   isQuestionnaireSignatureFieldLabel,
 } from "./esignPdfMerge.service.js";
@@ -393,12 +398,18 @@ export async function createInvestorSignatureRequestSignflow(params: {
     answers: questionnaireAnswers ?? {},
     memberDisplayName: params.memberDisplayName,
     prefillContext,
+    // Document values stay masked (last 4 only) so sponsors never see full SSN.
+    // Investors can still reveal full SSN while editing Invest Now / W-9 forms.
+    maskSsn: true,
   });
 
   if (isOnboardingFieldsServiceConfigured()) {
     investorFields = await fetchPrefilledOnboardingFields({
       fields: investorFields,
-      answers: questionnaireAnswers ?? {},
+      answers: maskSsnInQuestionnaireAnswers(
+        questionnaireAnswers ?? {},
+        config,
+      ),
       context: {
         member_display_name: prefillContext.memberDisplayName,
         member_email: prefillContext.memberEmail,
@@ -414,6 +425,9 @@ export async function createInvestorSignatureRequestSignflow(params: {
     });
   }
 
+  // Always remask after any prefill path (Python may overwrite with raw answers).
+  investorFields = maskSsnValuesOnSignFlowFields(investorFields);
+  investorFields = alignSignFlowTextFieldHeightsToDocument(investorFields);
   investorFields = dedupeSignFlowFieldsByPlacement(investorFields);
 
   const includeSponsor = signFlowTemplateHasSponsorFields(templateDoc);
@@ -429,6 +443,8 @@ export async function createInvestorSignatureRequestSignflow(params: {
       templateReferencePdf,
       pdfBuffer,
     );
+    // Sponsors must never see full SSN on their signing fields.
+    sponsorFields = maskSsnValuesOnSignFlowFields(sponsorFields);
   }
 
   const workflowType = resolveEsignSignflowWorkflowType(file);

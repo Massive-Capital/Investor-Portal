@@ -888,6 +888,34 @@ export function DealDetailPage() {
           />
         ) : activeTab === "investor_communication" && dealId?.trim() ? (
           <InvestorCommunicationTab dealId={dealId.trim()} />
+        ) : activeTab === "distributions" && dealId?.trim() ? (
+          <div className="deal_detail_wip_wrap" role="status">
+            <p className="deal_detail_wip_title">Distribution Setup</p>
+            <p className="deal_detail_wip_hint">
+              Configure the payment waterfall for operating distributions and
+              capital events. Split cascade shares come from Class Setup hurdles.
+            </p>
+            <div className="deal_detail_wip_actions">
+              <Link
+                to={`/deals/${encodeURIComponent(dealId.trim())}/distribution-setup`}
+                state={{
+                  returnTab: "distributions",
+                }}
+                className="um_btn_primary deals_list_add_link"
+              >
+                Open Distribution Setup
+              </Link>
+              <Link
+                to={`/deals/${encodeURIComponent(dealId.trim())}/class-setup`}
+                state={{
+                  returnTab: "distributions",
+                }}
+                className="um_toolbar_export_btn"
+              >
+                Class Setup
+              </Link>
+            </div>
+          </div>
         ) : (
           <div className="deal_detail_wip_wrap" role="status">
             <p className="deal_detail_wip_title">Working in progress</p>

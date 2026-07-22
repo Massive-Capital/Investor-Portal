@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Calendar,
   Check,
   CreditCard,
+  ExternalLink,
   Receipt,
   RotateCcw,
   Search,
@@ -12,172 +13,80 @@ import {
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable";
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip";
+import {
+  fetchCompanyBillingInvoices,
+  fetchCompanyBillingPaymentMethods,
+  fetchCompanyBillingStatus,
+  openCompanyBillingPortal,
+  startCompanyBillingCheckout,
+  syncCompanyBillingCheckout,
+  syncCompanyBillingPaymentMethods,
+  type CompanyBillingInvoice,
+  type CompanyBillingPaymentMethod,
+  type CompanyBillingStatus,
+} from "./companyBillingApi";
 
 type BillingSubTab = "pricing" | "payment-history";
+type InvoiceRow = CompanyBillingInvoice;
+type SeatBand = "5" | "10" | "10plus";
 
-type InvoiceRow = {
-  id: string;
-  invoiceNumber: string;
-  invoiceDate: string;
-  dueDate: string;
-  status: string;
-  amount: string;
+type DealTier = {
+  id: "starter" | "running" | "growth";
+  name: string;
+  dealSize: string;
+  featured: boolean;
+  /** Only Starter is purchasable for now. */
+  enabled: boolean;
+  prices: Record<SeatBand, { monthly: number; annual: number }>;
 };
 
-const BILLING_PLANS = [
+const DEAL_TIERS: DealTier[] = [
   {
-    id: "portal",
-    name: "Portal",
-    tagline: "For small teams getting started",
-    monthly: 27,
-    annually: 272,
-    featured: false,
-    cta: "Choose Portal",
-    sections: [
-      {
-        title: "Deals",
-        items: [
-          "5 active deals",
-          "2 assets per deal",
-          "1 lead sponsor per deal",
-          "Deal members and LP investor records",
-        ],
-      },
-      {
-        title: "Contacts & comms",
-        items: [
-          "Contacts with tags and lists",
-          "Bulk send email from contacts and deals",
-          "5 email templates",
-          "255 characters per email template body",
-        ],
-      },
-      {
-        title: "Reporting & exports",
-        items: [
-          "Standard syndication reporting",
-          "CSV export for contacts and deal investors",
-        ],
-      },
-      {
-        title: "Support",
-        items: [
-          "Email support (business hours)",
-          "Help center and product updates",
-        ],
-      },
-    ] as { title: string; items: string[] }[],
-    features: [
-      "Up to 10 investors across deals",
-      "Offering links and document sharing",
-      "Company settings and email defaults",
-      "Single organization workspace",
-    ],
-  },
-  {
-    id: "platform",
-    name: "Platform",
-    tagline: "For growing syndication businesses",
-    monthly: 95,
-    annually: 958,
+    id: "starter",
+    name: "Starter",
+    dealSize: "Up to $5M Deal",
     featured: true,
-    cta: "Choose Platform",
-    sections: [
-      {
-        title: "Deals",
-        items: [
-          "Unlimited active deals",
-          "Unlimited assets per deal",
-          "Multiple sponsors, classes, and roles",
-          "Full deal member and investor lifecycle",
-        ],
-      },
-      {
-        title: "Contacts & comms",
-        items: [
-          "Org-wide contacts and user management",
-          "10 email templates",
-          "1,000 characters per email template body",
-          "Branded outbound email experience",
-        ],
-      },
-      {
-        title: "Reporting & exports",
-        items: [
-          "Advanced deal and investor analytics",
-          "Exports with audit-friendly activity trails",
-          "Reporting workspace across your portfolio",
-        ],
-      },
-      {
-        title: "Support",
-        items: [
-          "Priority in-app and email support",
-          "Faster response targets on critical issues",
-        ],
-      },
-    ] as { title: string; items: string[] }[],
-    features: [
-      "Unlimited investors",
-      "Advanced deal workflows and approvals",
-      "Custom branding on investor-facing pages",
-      "Dashboard KPIs and pipeline visibility",
-      "Multi-user collaboration with roles",
-    ],
+    enabled: true,
+    prices: {
+      "5": { monthly: 49, annual: 490 },
+      "10": { monthly: 69, annual: 690 },
+      "10plus": { monthly: 89, annual: 890 },
+    },
   },
   {
-    id: "custom",
-    name: "Custom",
-    tagline: "Tailored solutions for enterprises",
-    monthly: null as number | null,
-    annually: null as number | null,
+    id: "running",
+    name: "Running",
+    dealSize: "Up to $20M Deal",
     featured: false,
-    cta: "Contact sales",
-    sections: [
-      {
-        title: "Scale & structure",
-        items: [
-          "Multi-entity and complex cap table structures",
-          "Higher limits for templates, attachments, and integrations",
-          "Regional rollout and phased onboarding plans",
-        ],
-      },
-      {
-        title: "Security & compliance",
-        items: [
-          "Security questionnaires and review cycles",
-          "Custom data retention and export policies",
-          "Optional SSO and advanced access controls",
-        ],
-      },
-      {
-        title: "Services & success",
-        items: [
-          "Named customer success and solutions contacts",
-          "Integration support with your CRM, data room, or KYC stack",
-          "Executive business reviews and roadmap input",
-        ],
-      },
-      {
-        title: "Commercials",
-        items: [
-          "Volume- and commitment-based pricing",
-          "Custom MSAs, SLAs, and professional services",
-        ],
-      },
-    ] as { title: string; items: string[] }[],
-    features: [
-      "Everything in Platform, tuned to your policy",
-      "Dedicated account manager",
-      "Custom integrations and private workflows",
-      "White-glove onboarding and training",
-      "Enterprise-grade uptime and escalation paths",
-    ],
+    enabled: false,
+    prices: {
+      "5": { monthly: 99, annual: 990 },
+      "10": { monthly: 129, annual: 1290 },
+      "10plus": { monthly: 149, annual: 1490 },
+    },
   },
-] as const;
+  {
+    id: "growth",
+    name: "Growth",
+    dealSize: "$20M+ Deal",
+    featured: false,
+    enabled: false,
+    prices: {
+      "5": { monthly: 149, annual: 1490 },
+      "10": { monthly: 169, annual: 1690 },
+      "10plus": { monthly: 189, annual: 1890 },
+    },
+  },
+];
 
-const DEFAULT_DATE_FROM = "2025-11-09";
-const DEFAULT_DATE_TO = "2026-05-09";
+const SEAT_OPTIONS: { id: SeatBand; label: string }[] = [
+  { id: "5", label: "5 users" },
+  { id: "10", label: "10 users" },
+  { id: "10plus", label: "10+ users" },
+];
+
+const DEFAULT_DATE_FROM = "";
+const DEFAULT_DATE_TO = "";
 
 function formatPaymentHistoryDate(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -219,145 +128,443 @@ function invoiceMatchesFilters(
   return true;
 }
 
+function formatPaymentMethodLabel(pm: CompanyBillingPaymentMethod): string {
+  const brand = (pm.brand || pm.type || "Card").trim();
+  const titled = brand.charAt(0).toUpperCase() + brand.slice(1);
+  const last4 = pm.last4 ? `···· ${pm.last4}` : pm.stripePaymentMethodId;
+  const exp =
+    pm.expMonth && pm.expYear
+      ? ` · Exp ${String(pm.expMonth).padStart(2, "0")}/${pm.expYear}`
+      : "";
+  return `${titled} ${last4}${exp}`;
+}
+
 function BillingPricingPanel({
   billingCycle,
   onBillingCycleChange,
+  companyId,
+  billingStatus,
+  onStatusRefresh,
+  paymentMethods,
 }: {
   billingCycle: "monthly" | "annually";
   onBillingCycleChange: (cycle: "monthly" | "annually") => void;
+  companyId: string;
+  billingStatus: CompanyBillingStatus | null;
+  onStatusRefresh: () => void;
+  paymentMethods: CompanyBillingPaymentMethod[];
 }) {
+  const [seatBand, setSeatBand] = useState<SeatBand>("5");
+  const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const activePlanId = billingStatus?.planId?.trim().toLowerCase() ?? "";
+  const subStatus =
+    billingStatus?.subscriptionStatus?.trim().toLowerCase() ?? "none";
+  const isPaid =
+    subStatus === "active" ||
+    subStatus === "trialing";
+  const hasPaymentIssue =
+    Boolean(billingStatus?.lastPaymentError) ||
+    subStatus === "past_due" ||
+    subStatus === "unpaid" ||
+    subStatus === "incomplete";
+
+  const planKey = (tierId: string) => tierId;
+
+  const planReady = (tierId: string): boolean => {
+    const row = billingStatus?.plansConfigured.find((p) => p.id === tierId);
+    if (!row) return false;
+    return billingCycle === "monthly" ? row.monthlyReady : row.annualReady;
+  };
+
+  const handleChoosePlan = async (tierId: string) => {
+    setActionError("");
+    if (tierId !== "starter") {
+      setActionError("Only the Starter plan is available for checkout right now.");
+      return;
+    }
+    if (!companyId) {
+      setActionError("No company workspace selected.");
+      return;
+    }
+    if (!billingStatus?.configured) {
+      setActionError(
+        "Stripe is not configured. Set STRIPE_SECRET_KEY in backend/.env.local.",
+      );
+      return;
+    }
+    const id = planKey(tierId);
+    if (!planReady(tierId)) {
+      const envHint =
+        billingCycle === "monthly"
+          ? "STARTER_MONTH_PRICING"
+          : "STARTER_YEARLY_PRICING";
+      setActionError(
+        `Stripe Price for Starter (${billingCycle}) is not set. Check ${envHint} in backend/.env.local.`,
+      );
+      return;
+    }
+    setBusyPlanId(id);
+    const result = await startCompanyBillingCheckout(
+      companyId,
+      id,
+      billingCycle,
+    );
+    setBusyPlanId(null);
+    if (!result.ok) {
+      setActionError(result.message);
+      return;
+    }
+    window.location.assign(result.url);
+  };
+
+  const handleManageBilling = async () => {
+    setActionError("");
+    if (!companyId) {
+      setActionError("No company workspace selected.");
+      return;
+    }
+    setPortalBusy(true);
+    const result = await openCompanyBillingPortal(companyId);
+    setPortalBusy(false);
+    if (!result.ok) {
+      setActionError(result.message);
+      return;
+    }
+    window.location.assign(result.url);
+  };
+
   return (
     <>
       <div className="cp_billing_header">
         <h3 className="cp_settings_billing_tab_title">Billing</h3>
         <p className="cp_billing_subtitle">
-          Choose the plan that best fits your team.
+          Pricing by deal size and company users (not cosponsors). No charge for
+          draft or archived deals — billing starts when you begin raising capital
+          / asset managing. Seat options preview pricing; Starter Checkout uses
+          your configured Stripe Starter monthly/yearly Price.
         </p>
       </div>
 
-      <div
-        className="cp_billing_cycle"
-        role="radiogroup"
-        aria-label="Billing cycle"
-      >
-        <label
-          className={`cp_billing_cycle_option ${
-            billingCycle === "monthly" ? "cp_billing_cycle_option_active" : ""
-          }`}
+      {billingStatus ? (
+        <div
+          className="cp_billing_outstanding_banner"
+          role="status"
+          aria-live="polite"
+          style={{
+            marginBottom: "1rem",
+            display: "flex",
+            gap: "0.75rem",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
         >
-          <input
-            type="radio"
-            name="cp_billing_cycle"
-            value="monthly"
-            checked={billingCycle === "monthly"}
-            onChange={() => onBillingCycleChange("monthly")}
-          />
-          <span>Monthly</span>
-        </label>
-        <label
-          className={`cp_billing_cycle_option ${
-            billingCycle === "annually" ? "cp_billing_cycle_option_active" : ""
-          }`}
+          <span className="cp_billing_outstanding_icon" aria-hidden="true">
+            <Check size={14} strokeWidth={2.5} />
+          </span>
+          <p style={{ margin: 0, flex: 1 }}>
+            {hasPaymentIssue ? (
+              <>
+                Payment issue
+                {billingStatus.subscriptionStatus
+                  ? ` (${billingStatus.subscriptionStatus})`
+                  : ""}
+                {": "}
+                {billingStatus.lastPaymentError ||
+                  "Update your payment method via Manage billing."}
+                {billingStatus.lastPaymentFailedAt
+                  ? ` · Failed ${new Date(billingStatus.lastPaymentFailedAt).toLocaleString()}`
+                  : ""}
+              </>
+            ) : isPaid ? (
+              <>
+                Current plan: <strong>{activePlanId || "Paid"}</strong>
+                {billingStatus.billingCycle
+                  ? ` (${billingStatus.billingCycle})`
+                  : ""}
+                {" · "}
+                Status: {billingStatus.subscriptionStatus}
+                {billingStatus.currentPeriodEnd
+                  ? ` · Renews ${new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}`
+                  : ""}
+              </>
+            ) : (
+              <>
+                No active subscription
+                {billingStatus.configured
+                  ? billingStatus.testMode
+                    ? " (Stripe test mode)."
+                    : "."
+                  : " — Stripe is not configured yet."}
+                {billingStatus.configured && !billingStatus.webhookConfigured
+                  ? " Set STRIPE_WEBHOOK_SECRET (from stripe listen)."
+                  : ""}
+              </>
+            )}
+          </p>
+          {isPaid || billingStatus.hasCustomer || hasPaymentIssue ? (
+            <button
+              type="button"
+              className="um_btn_secondary"
+              style={{ flexShrink: 0 }}
+              disabled={portalBusy}
+              onClick={() => void handleManageBilling()}
+            >
+              <ExternalLink size={14} aria-hidden />
+              {portalBusy ? "Opening…" : "Manage billing"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {paymentMethods.length > 0 ? (
+        <div className="cp_billing_payment_methods" style={{ marginBottom: "1.25rem" }}>
+          <h4 className="cp_billing_filter_heading" style={{ marginBottom: "0.5rem" }}>
+            Payment methods
+          </h4>
+          <ul className="cp_billing_payment_methods_list" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {paymentMethods.map((pm) => (
+              <li
+                key={pm.id}
+                className="cp_billing_payment_method_row"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.5rem 0",
+                }}
+              >
+                <CreditCard size={16} aria-hidden />
+                <span>{formatPaymentMethodLabel(pm)}</span>
+                {pm.isDefault ? (
+                  <span className="cp_billing_invoice_status cp_billing_invoice_status--paid">
+                    Default
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <p
+          className="cp_billing_subtitle"
+          role="alert"
+          style={{ color: "#b91c1c" }}
         >
-          <input
-            type="radio"
-            name="cp_billing_cycle"
-            value="annually"
-            checked={billingCycle === "annually"}
-            onChange={() => onBillingCycleChange("annually")}
-          />
-          <span>Annually</span>
-          <span className="cp_billing_cycle_save">Save 16%</span>
-        </label>
+          {actionError}
+        </p>
+      ) : null}
+
+      <div className="cp_billing_filters">
+        <div className="cp_billing_filter_row">
+          <span className="cp_billing_filter_heading" id="cp-billing-cycle-label">
+            Billing cycle
+          </span>
+          <div
+            className="cp_billing_cycle"
+            role="radiogroup"
+            aria-labelledby="cp-billing-cycle-label"
+          >
+            <label
+              className={`cp_billing_cycle_option ${
+                billingCycle === "monthly" ? "cp_billing_cycle_option_active" : ""
+              }`}
+            >
+              <input
+                type="radio"
+                name="cp_billing_cycle"
+                value="monthly"
+                checked={billingCycle === "monthly"}
+                onChange={() => onBillingCycleChange("monthly")}
+              />
+              <span>Monthly</span>
+            </label>
+            <label
+              className={`cp_billing_cycle_option ${
+                billingCycle === "annually"
+                  ? "cp_billing_cycle_option_active"
+                  : ""
+              }`}
+            >
+              <input
+                type="radio"
+                name="cp_billing_cycle"
+                value="annually"
+                checked={billingCycle === "annually"}
+                onChange={() => onBillingCycleChange("annually")}
+              />
+              <span>Yearly</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="cp_billing_filter_row">
+          <span className="cp_billing_filter_heading" id="cp-billing-seats-label">
+            Company users
+          </span>
+          <div
+            className="cp_billing_cycle"
+            role="radiogroup"
+            aria-labelledby="cp-billing-seats-label"
+          >
+            {SEAT_OPTIONS.map((opt) => (
+              <label
+                key={opt.id}
+                className={`cp_billing_cycle_option ${
+                  seatBand === opt.id ? "cp_billing_cycle_option_active" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="cp_billing_seats"
+                  value={opt.id}
+                  checked={seatBand === opt.id}
+                  onChange={() => setSeatBand(opt.id)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="cp_billing_plans">
-        {BILLING_PLANS.map((plan) => {
+        {DEAL_TIERS.map((tier) => {
+          const priceRow = tier.prices[seatBand];
           const price =
-            billingCycle === "monthly" ? plan.monthly : plan.annually;
+            billingCycle === "monthly" ? priceRow.monthly : priceRow.annual;
           const priceSuffix = billingCycle === "monthly" ? "/mo" : "/yr";
-          const annualMonthlyEquiv =
-            billingCycle === "annually" && plan.annually != null
-              ? Math.round(plan.annually / 12)
-              : null;
+          const id = planKey(tier.id);
+          const isCurrent =
+            isPaid &&
+            (activePlanId === id || activePlanId.startsWith(`${id}_`));
+          const ctaBusy = busyPlanId === id;
+          const disabledCard = !tier.enabled;
           return (
             <div
-              key={plan.id}
+              key={tier.id}
               className={`cp_billing_plan_card ${
-                plan.featured ? "cp_billing_plan_card_featured" : ""
+                tier.featured ? "cp_billing_plan_card_featured" : ""
               }`}
+              style={
+                disabledCard
+                  ? { opacity: 0.55, pointerEvents: "none" }
+                  : undefined
+              }
+              aria-disabled={disabledCard || undefined}
             >
-              {plan.featured ? (
-                <span className="cp_billing_plan_badge">Most popular</span>
-              ) : null}
-              <h4 className="cp_billing_plan_name">{plan.name}</h4>
-              <p className="cp_billing_plan_tagline">{plan.tagline}</p>
+              {tier.featured ? (
+                <span className="cp_billing_plan_badge">Available now</span>
+              ) : (
+                <span className="cp_billing_plan_badge">Coming soon</span>
+              )}
+              <h4 className="cp_billing_plan_name">{tier.name}</h4>
+              <p className="cp_billing_plan_tagline">{tier.dealSize}</p>
               <div className="cp_billing_plan_price">
-                {price === null ? (
-                  <span className="cp_billing_plan_price_custom">
-                    Let&apos;s talk
+                <div className="cp_billing_plan_price_main">
+                  <span className="cp_billing_plan_price_amount">${price}</span>
+                  <span className="cp_billing_plan_price_suffix">
+                    {priceSuffix}
                   </span>
-                ) : (
-                  <div className="cp_billing_plan_price_main">
-                    <span className="cp_billing_plan_price_amount">${price}</span>
-                    <span className="cp_billing_plan_price_suffix">
-                      {priceSuffix}
-                    </span>
-                  </div>
-                )}
-                {annualMonthlyEquiv != null ? (
-                  <p className="cp_billing_plan_price_calc">
-                    ${annualMonthlyEquiv}/mo when billed annually
-                  </p>
-                ) : null}
+                </div>
+                <p className="cp_billing_plan_price_calc">
+                  {SEAT_OPTIONS.find((s) => s.id === seatBand)?.label} · card /
+                  ACH
+                </p>
               </div>
               <div className="cp_billing_plan_body">
-                {plan.sections.map((section) => (
-                  <div
-                    key={section.title}
-                    className="cp_billing_plan_section"
-                  >
-                    <h5 className="cp_billing_plan_section_title">
-                      {section.title}
-                    </h5>
-                    <ul className="cp_billing_plan_features">
-                      {section.items.map((item) => (
-                        <li key={item}>
-                          <Check size={16} aria-hidden="true" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
                 <ul className="cp_billing_plan_features">
-                  {plan.features.map((f) => (
-                    <li key={f}>
-                      <Check size={16} aria-hidden="true" />
-                      <span>{f}</span>
-                    </li>
-                  ))}
+                  <li>
+                    <Check size={16} aria-hidden="true" />
+                    <span>{tier.dealSize}</span>
+                  </li>
+                  <li>
+                    <Check size={16} aria-hidden="true" />
+                    <span>
+                      Company users:{" "}
+                      {SEAT_OPTIONS.find((s) => s.id === seatBand)?.label}
+                    </span>
+                  </li>
+                  <li>
+                    <Check size={16} aria-hidden="true" />
+                    <span>Recurring monthly or annual billing</span>
+                  </li>
                 </ul>
               </div>
               <button
                 type="button"
                 className={`cp_billing_plan_cta ${
-                  plan.featured
+                  tier.enabled
                     ? "cp_billing_plan_cta_primary"
                     : "cp_billing_plan_cta_secondary"
                 }`}
+                disabled={disabledCard || ctaBusy || isCurrent}
+                title={
+                  disabledCard
+                    ? `${tier.name} checkout is not available yet`
+                    : undefined
+                }
+                onClick={() => {
+                  if (disabledCard) return;
+                  if (isCurrent) {
+                    onStatusRefresh();
+                    return;
+                  }
+                  void handleChoosePlan(tier.id);
+                }}
               >
-                {plan.cta}
+                {disabledCard
+                  ? "Coming soon"
+                  : isCurrent
+                    ? "Current plan"
+                    : ctaBusy
+                      ? "Redirecting…"
+                      : `Choose ${tier.name}`}
               </button>
             </div>
           );
         })}
+
+        <div
+          className="cp_billing_plan_card"
+          style={{ opacity: 0.55, pointerEvents: "none" }}
+          aria-disabled="true"
+        >
+          <span className="cp_billing_plan_badge">Coming soon</span>
+          <h4 className="cp_billing_plan_name">Custom</h4>
+          <p className="cp_billing_plan_tagline">
+            $50M+ deals or 25+ company users
+          </p>
+          <div className="cp_billing_plan_price">
+            <span className="cp_billing_plan_price_custom">Let&apos;s talk</span>
+          </div>
+          <div className="cp_billing_plan_body">
+            <ul className="cp_billing_plan_features">
+              <li>
+                <Check size={16} aria-hidden="true" />
+                <span>Contact for pricing</span>
+              </li>
+            </ul>
+          </div>
+          <button
+            type="button"
+            className="cp_billing_plan_cta cp_billing_plan_cta_secondary"
+            disabled
+            title="Custom plans are not available yet"
+          >
+            Coming soon
+          </button>
+        </div>
       </div>
     </>
   );
 }
 
-function BillingPaymentHistoryPanel() {
+function BillingPaymentHistoryPanel({ companyId }: { companyId: string }) {
   const [dateFrom, setDateFrom] = useState(DEFAULT_DATE_FROM);
   const [dateTo, setDateTo] = useState(DEFAULT_DATE_TO);
   const [statusFilter, setStatusFilter] = useState("");
@@ -367,8 +574,32 @@ function BillingPaymentHistoryPanel() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const invoices: InvoiceRow[] = useMemo(() => [], []);
+  useEffect(() => {
+    if (!companyId) {
+      setInvoices([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setLoadError("");
+    void fetchCompanyBillingInvoices(companyId).then((result) => {
+      if (cancelled) return;
+      setLoading(false);
+      if (!result.ok) {
+        setLoadError(result.message);
+        setInvoices([]);
+        return;
+      }
+      setInvoices(result.invoices);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   const filteredInvoices = useMemo(
     () =>
@@ -402,6 +633,19 @@ function BillingPaymentHistoryPanel() {
   const allSelected =
     filteredInvoices.length > 0 &&
     filteredInvoices.every((row) => selectedIds.has(row.id));
+
+  const outstandingCount = useMemo(
+    () =>
+      invoices.filter((row) => {
+        const s = row.status.toLowerCase();
+        return (
+          s === "open" ||
+          s === "uncollectible" ||
+          Boolean(row.paymentFailureMessage)
+        );
+      }).length,
+    [invoices],
+  );
 
   const columns: DataTableColumn<InvoiceRow>[] = useMemo(
     () => [
@@ -469,7 +713,17 @@ function BillingPaymentHistoryPanel() {
         header: "Status",
         sortValue: (row) => row.status.toLowerCase(),
         cell: (row) => (
-          <span className={invoiceStatusClassName(row.status)}>{row.status}</span>
+          <span className={invoiceStatusClassName(row.status)}>
+            {row.status}
+            {row.paymentFailureMessage ? (
+              <span
+                title={row.paymentFailureMessage}
+                style={{ display: "block", fontSize: 12, color: "#b91c1c" }}
+              >
+                Payment failed
+              </span>
+            ) : null}
+          </span>
         ),
       },
       {
@@ -487,17 +741,34 @@ function BillingPaymentHistoryPanel() {
         align: "center",
         thClassName: "deals_th_align_center um_th_actions",
         tdClassName: "um_td_actions cp_billing_receipt_td",
-        cell: () => (
-          <button
-            type="button"
-            className="cp_billing_receipt_btn"
-            disabled
-            aria-label="Download receipt (unavailable)"
-            title="Receipt download coming soon"
-          >
-            <Receipt size={16} strokeWidth={2} aria-hidden="true" />
-          </button>
-        ),
+        cell: (row) => {
+          const href = row.invoicePdf || row.hostedInvoiceUrl;
+          if (!href) {
+            return (
+              <button
+                type="button"
+                className="cp_billing_receipt_btn"
+                disabled
+                aria-label="Download receipt (unavailable)"
+                title="Receipt unavailable"
+              >
+                <Receipt size={16} strokeWidth={2} aria-hidden="true" />
+              </button>
+            );
+          }
+          return (
+            <a
+              className="cp_billing_receipt_btn"
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Open receipt for ${row.invoiceNumber}`}
+              title="Open receipt"
+            >
+              <Receipt size={16} strokeWidth={2} aria-hidden="true" />
+            </a>
+          );
+        },
       },
     ],
     [allSelected, filteredInvoices, selectedIds],
@@ -530,6 +801,12 @@ function BillingPaymentHistoryPanel() {
           Filter invoices by date and status. Download receipts when available.
         </p>
       </header>
+
+      {loadError ? (
+        <p role="alert" style={{ color: "#b91c1c", marginBottom: "0.75rem" }}>
+          {loadError}
+        </p>
+      ) : null}
 
       <section
         className="cp_billing_payment_filters_panel"
@@ -610,7 +887,13 @@ function BillingPaymentHistoryPanel() {
         <span className="cp_billing_outstanding_icon" aria-hidden="true">
           <Check size={14} strokeWidth={2.5} />
         </span>
-        <p>Your account has no outstanding invoices at this time.</p>
+        <p>
+          {loading
+            ? "Loading invoices…"
+            : outstandingCount === 0
+              ? "Your account has no outstanding invoices at this time."
+              : `You have ${outstandingCount} outstanding invoice${outstandingCount === 1 ? "" : "s"}.`}
+        </p>
       </div>
 
       <div className="cp_billing_invoices_table_wrap deal_inv_table_panel">
@@ -630,15 +913,132 @@ function BillingPaymentHistoryPanel() {
   );
 }
 
-export function CompanyBillingTab() {
+export function CompanyBillingTab({
+  workspaceCompanyId,
+}: {
+  workspaceCompanyId?: string;
+} = {}) {
   const [billingSubTab, setBillingSubTab] =
     useState<BillingSubTab>("pricing");
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annually">(
     "monthly",
   );
+  const [billingStatus, setBillingStatus] =
+    useState<CompanyBillingStatus | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<
+    CompanyBillingPaymentMethod[]
+  >([]);
+  const [statusError, setStatusError] = useState("");
+  const companyId = (workspaceCompanyId ?? "").trim();
+
+  const refreshPaymentMethods = useCallback(() => {
+    if (!companyId) {
+      setPaymentMethods([]);
+      return;
+    }
+    void fetchCompanyBillingPaymentMethods(companyId).then((result) => {
+      if (result.ok) setPaymentMethods(result.paymentMethods);
+    });
+  }, [companyId]);
+
+  const refreshStatus = useCallback(() => {
+    if (!companyId) {
+      setBillingStatus(null);
+      setPaymentMethods([]);
+      return;
+    }
+    void fetchCompanyBillingStatus(companyId).then((result) => {
+      if (!result.ok) {
+        setStatusError(result.message);
+        setBillingStatus(null);
+        return;
+      }
+      setStatusError("");
+      setBillingStatus(result.status);
+      if (
+        result.status.billingCycle === "annual" ||
+        result.status.billingCycle === "annually"
+      ) {
+        setBillingCycle("annually");
+      } else if (result.status.billingCycle === "monthly") {
+        setBillingCycle("monthly");
+      }
+    });
+    refreshPaymentMethods();
+  }, [companyId, refreshPaymentMethods]);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billing = params.get("billing");
+    if (billing === "success" || billing === "portal_return") {
+      const sessionId = (params.get("session_id") ?? "").trim();
+      setBillingSubTab(billing === "success" ? "pricing" : "pricing");
+
+      const finish = () => {
+        params.delete("billing");
+        params.delete("session_id");
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", next);
+      };
+
+      if (billing === "success" && companyId && sessionId.startsWith("cs_")) {
+        void syncCompanyBillingCheckout(companyId, sessionId).then((result) => {
+          if (result.ok) {
+            setStatusError("");
+            setBillingStatus(result.status);
+          } else {
+            setStatusError(result.message);
+            refreshStatus();
+          }
+          refreshPaymentMethods();
+          finish();
+        });
+        return;
+      }
+
+      if (billing === "portal_return" && companyId) {
+        void syncCompanyBillingPaymentMethods(companyId).then((result) => {
+          if (result.ok) {
+            setPaymentMethods(result.paymentMethods);
+          } else {
+            refreshPaymentMethods();
+          }
+          refreshStatus();
+          finish();
+        });
+        return;
+      }
+
+      refreshStatus();
+      finish();
+    } else if (billing === "cancel") {
+      params.delete("billing");
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+      window.history.replaceState({}, "", next);
+    }
+  }, [companyId, refreshPaymentMethods, refreshStatus]);
 
   return (
     <div className="cp_settings_billing_tab">
+      {!companyId ? (
+        <p className="cp_billing_subtitle" role="status">
+          Select a company workspace to manage billing.
+        </p>
+      ) : null}
+      {statusError ? (
+        <p
+          className="cp_billing_subtitle"
+          role="alert"
+          style={{ color: "#b91c1c" }}
+        >
+          {statusError}
+        </p>
+      ) : null}
+
       <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer cp_billing_subtabs_outer">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
@@ -705,6 +1105,10 @@ export function CompanyBillingTab() {
           <BillingPricingPanel
             billingCycle={billingCycle}
             onBillingCycleChange={setBillingCycle}
+            companyId={companyId}
+            billingStatus={billingStatus}
+            onStatusRefresh={refreshStatus}
+            paymentMethods={paymentMethods}
           />
         ) : null}
       </div>
@@ -717,7 +1121,7 @@ export function CompanyBillingTab() {
         className="cp_billing_subtab_panel"
       >
         {billingSubTab === "payment-history" ? (
-          <BillingPaymentHistoryPanel />
+          <BillingPaymentHistoryPanel companyId={companyId} />
         ) : null}
       </div>
     </div>

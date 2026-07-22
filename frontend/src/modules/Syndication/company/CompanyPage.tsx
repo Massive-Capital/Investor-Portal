@@ -509,6 +509,15 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   /** Open Members first when visiting Settings or Company (sidebar), not the Settings sub-tab. */
   useEffect(() => {
     if (customersStandalone) return;
+    const billing = new URLSearchParams(location.search).get("billing");
+    if (
+      billing === "success" ||
+      billing === "cancel" ||
+      billing === "portal_return"
+    ) {
+      setCompanyPageTab("billing");
+      return;
+    }
     if (!canAccessMembersPage()) return;
     const p = location.pathname.replace(/\/$/, "") || "/";
     const segs = p.split("/").filter(Boolean);
@@ -516,7 +525,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     if (last === "settings" || last === "company") {
       setCompanyPageTab("members");
     }
-  }, [location.pathname, customersStandalone]);
+  }, [location.pathname, location.search, customersStandalone]);
 
   const customersArchivedCount = useMemo(
     () => companies.filter((c) => companyRowIsArchived(c)).length,
@@ -1202,7 +1211,9 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               aria-labelledby="cp-page-tab-billing"
               hidden={activeCompanyPageTab !== "billing"}
             >
-              <CompanyBillingTab />
+              <CompanyBillingTab
+                workspaceCompanyId={workspaceCompanyId || undefined}
+              />
             </div>
 
             {canAccessMembersPage() ? (

@@ -2465,6 +2465,23 @@ a.deal_offering_add_ic_header.um_btn_primary {
   box-sizing: border-box;
 }
 
+.deal_offering_root .deal_classes_datatable_panel .deal_classes_name_btn {
+  text-align: left;
+}
+
+.deal_offering_root .deal_classes_datatable_panel .deal_classes_terms_cell {
+  display: inline-block;
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.deal_offering_root .deal_classes_datatable_panel .deal_classes_ownership_cell {
+  font-variant-numeric: tabular-nums;
+}
+
 .deal_offering_root
   .deal_assets_datatable_panel
   .um_table
@@ -4764,4 +4781,15 @@ a.deal_docs_name_link:hover {
   background: var(--portal-surface, #1e293b);
   border-color: rgba(255, 255, 255, 0.12);
   color: #60a5fa;
+}
+
+
+.deal_assets_view_tabs_outer {
+  margin: 0 0 1em;
+}
+ 
+.deal_assets_view_empty {
+  margin: 0.75em 0 0;
+  font-size: 0.9375em;
+  color: var(--portal-text-muted);
 }

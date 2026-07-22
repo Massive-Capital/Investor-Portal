@@ -50,7 +50,16 @@ import {
   type InvestorClassAllocationTotals,
 } from "../../utils/investorClassAllocationTotals"
 import { FormHeadingWithInfo } from "../../../../../common/components/form-heading/FormHeadingWithInfo"
+import {
+  DataTable,
+  type DataTableColumn,
+} from "../../../../../common/components/data-table/DataTable"
+import {
+  FormTooltip,
+  type FormTooltipPanelAlign,
+} from "../../../../../common/components/form-tooltip/FormTooltip"
 import { CardCompactAmount } from "../../../../../common/components/card-compact-amount/CardCompactAmount"
+import { ClassRowActions } from "../../components/ClassRowActions"
 import { InfoIconPanel } from "./FieldInfoHeading"
 import {
   createDealInvestorClass,
@@ -79,8 +88,6 @@ import {
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
 import {
   computeInvestorClassPricePerUnitFromForm,
-  hasInvestorClassNumberOfUnits,
-  hasInvestorClassPricePerUnit,
   isLpInvestorClass,
 } from "../../utils/investorClassOverviewFields"
 import {
@@ -89,7 +96,6 @@ import {
   blurFormatPercentTwoDecimalsInput,
   formatCurrencyUsdTypeInput,
   formatMoneyFieldDisplay,
-  formatNumberOfUnitsDisplay,
   formatNumberOfUnitsTypingInput,
   sanitizePercentTypingInput,
 } from "../../utils/offeringMoneyFormat"
@@ -103,6 +109,7 @@ import {
 import "../../../contacts/contacts.css"
 import "../../deal-investor-class.css"
 import "../../deals-create.css"
+import "../../deals-list.css"
 import "../../../usermanagement/user_management.css"
 import "../deal_members/add-investment/add_deal_modal.css"
 
@@ -726,60 +733,6 @@ function InvestorClassFormFinBlock({
           <span className="deal_inv_ic_form_fin_block_label">{pctCaption}</span>
           <span className="deal_inv_ic_form_fin_block_value deal_inv_ic_form_fin_block_value_pct">
             {pctValue}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function InvestorClassCardFinBlock({
-  title,
-  raiseValue,
-  pctCaption,
-  pctValue,
-}: {
-  title: string
-  raiseValue: string
-  pctCaption: string
-  pctValue: string
-}) {
-  return (
-    <div className="deal_inv_class_fin_block">
-      <span className="deal_inv_class_fin_block_title">{title}</span>
-      <div className="deal_inv_class_fin_block_values">
-        <div className="deal_inv_class_fin_block_col">
-          <span className="deal_inv_class_fin_block_label">Raise</span>
-          <span className="deal_inv_class_fin_block_value deal_inv_class_fin_block_value_money">
-            <CardCompactAmount amount={raiseValue} />
-          </span>
-        </div>
-        <div className="deal_inv_class_fin_block_col">
-          <span className="deal_inv_class_fin_block_label">{pctCaption}</span>
-          <span className="deal_inv_class_fin_block_value deal_inv_class_fin_block_value_pct">
-            {pctValue}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function InvestorClassCardRaiseOnlyBlock({
-  title,
-  raiseValue,
-}: {
-  title: string
-  raiseValue: string
-}) {
-  return (
-    <div className="deal_inv_class_fin_block deal_inv_class_fin_block_raise_only">
-      <span className="deal_inv_class_fin_block_title">{title}</span>
-      <div className="deal_inv_class_fin_block_values">
-        <div className="deal_inv_class_fin_block_col">
-          <span className="deal_inv_class_fin_block_label">Raise</span>
-          <span className="deal_inv_class_fin_block_value deal_inv_class_fin_block_value_money">
-            <CardCompactAmount amount={raiseValue} />
           </span>
         </div>
       </div>
@@ -4239,192 +4192,173 @@ function InvestorClassModalFormBody({
   )
 }
 
-function ReadOnlyInvestorClassCard({
-  row,
-  dealStatusLabel,
-  dealVisibilityLabel,
-  onEdit,
-  onDelete,
-  expanded,
-  onToggle,
-  showCollapseControls,
-}: {
-  row: DealInvestorClass
-  dealStatusLabel: string
-  dealVisibilityLabel: string
-  onEdit: () => void
-  onDelete: () => void
-  expanded: boolean
-  onToggle: () => void
-  showCollapseControls: boolean
-}) {
-  const panelId = `deal-inv-class-panel-${row.id}`
-  const showUnits =
-    isLpInvestorClass(row) && hasInvestorClassNumberOfUnits(row.numberOfUnits)
-  const pricePerUnitDisplay = isLpInvestorClass(row)
-    ? computeInvestorClassPricePerUnitFromForm({
-        offeringSize: row.offeringSize,
-        raiseAmountDistributions: row.raiseAmountDistributions,
-        numberOfUnits: row.numberOfUnits,
-      })
-    : row.pricePerUnit
-  const showPrice =
-    isLpInvestorClass(row) &&
-    hasInvestorClassPricePerUnit(pricePerUnitDisplay)
-  const maxInvestmentDisplay = maximumInvestmentFromAdvancedJson(
-    row.advancedOptionsJson,
+function asRecordLoose(v: unknown): Record<string, unknown> {
+  if (v != null && typeof v === "object" && !Array.isArray(v))
+    return v as Record<string, unknown>
+  return {}
+}
+
+function strLoose(v: unknown, fallback = ""): string {
+  if (typeof v === "string") return v.trim() || fallback
+  if (v != null && typeof v !== "object") return String(v).trim() || fallback
+  return fallback
+}
+
+/** Latest Class Setup fields stored on advanced_options_json.classSetup. */
+function readClassSetupSummary(row: DealInvestorClass): {
+  classGroup: string
+  mapsTo: string
+  actuallyFunded: string
+  equityPct: string
+  prefEnabled: boolean
+  prefRate: string
+  prefCompounding: string
+  prefTotalRate: string
+  prefCurrentRate: string
+  prefAccrualRate: string
+  mezzRate: string
+  mezzPay: string
+  promoteHint: string
+} {
+  let raw: Record<string, unknown> = {}
+  try {
+    raw = row.advancedOptionsJson?.trim()
+      ? (JSON.parse(row.advancedOptionsJson) as Record<string, unknown>)
+      : {}
+  } catch {
+    raw = {}
+  }
+  const setup = asRecordLoose(raw.classSetup ?? raw.class_setup)
+  const pref = asRecordLoose(setup.preferredReturn ?? setup.preferred_return)
+  const prefEq = asRecordLoose(setup.prefEquity ?? setup.pref_equity)
+  const mezz = asRecordLoose(setup.mezz)
+  const finalTier = asRecordLoose(setup.finalTier ?? setup.final_tier)
+  const tiers = Array.isArray(setup.waterfallTiers)
+    ? setup.waterfallTiers
+    : Array.isArray(setup.waterfall_tiers)
+      ? setup.waterfall_tiers
+      : []
+
+  const equityFromSetup = strLoose(setup.equityPct ?? setup.equity_pct).replace(
+    /%/g,
+    "",
   )
-  const showMaxInvestment =
-    row.subscriptionType !== "gp" && maxInvestmentDisplay.trim() !== ""
   const advanced = parseAdvancedJson(row.advancedOptionsJson)
-  const entityOwnershipPct = formatPctTwoDecimals(
-    advanced.entityLegalOwnershipPct,
+  const equityFallback = strLoose(advanced.entityLegalOwnershipPct).replace(
+    /%/g,
+    "",
   )
-  const distributionSharePct = formatPctTwoDecimals(
-    advanced.distributionSharePct,
-  )
-  const showDistributionSharePct = row.subscriptionType !== "mezzanine"
+
+  const promoteParts: string[] = []
+  for (const t of tiers) {
+    const rowT = asRecordLoose(t)
+    const lp = strLoose(rowT.lpPct ?? rowT.lp_pct, "0")
+    promoteParts.push(`${lp}%`)
+  }
+  if (strLoose(finalTier.lpPct ?? finalTier.lp_pct))
+    promoteParts.push(`${strLoose(finalTier.lpPct ?? finalTier.lp_pct)}%`)
+
+  return {
+    classGroup: strLoose(setup.classGroup ?? setup.class_group),
+    mapsTo: strLoose(setup.mapsTo ?? setup.maps_to),
+    actuallyFunded:
+      strLoose(setup.actuallyFunded ?? setup.actually_funded) ||
+      strLoose(row.raiseAmountDistributions) ||
+      "0",
+    equityPct: equityFromSetup || equityFallback || "0",
+    prefEnabled: Boolean(pref.enabled),
+    prefRate: strLoose(pref.rate, "0"),
+    prefCompounding: strLoose(pref.compounding, "simple"),
+    prefTotalRate: strLoose(prefEq.totalRate ?? prefEq.total_rate, "0"),
+    prefCurrentRate: strLoose(prefEq.currentRate ?? prefEq.current_rate, "0"),
+    prefAccrualRate: strLoose(prefEq.accrualRate ?? prefEq.accrual_rate, "0"),
+    mezzRate: strLoose(mezz.rate, strLoose(advanced.classPreferredReturnPct).replace(/%/g, "") || "0"),
+    mezzPay: strLoose(mezz.pay, "Current pay"),
+    promoteHint:
+      promoteParts.length > 0 ? promoteParts.join(" → ") : "Set in Class Setup",
+  }
+}
+
+function investorClassListSummary(row: DealInvestorClass): {
+  typeLabel: string
+  funded: string
+  ownershipLabel: string
+  ownershipValue: string
+  terms: string
+  created: string
+  mapsTo: string
+} {
+  const setup = readClassSetupSummary(row)
+  const sub = (row.subscriptionType || "").toLowerCase()
+  const isEquity = sub === "lp" || sub === "gp"
+
+  let terms = "—"
+  if (sub === "lp") {
+    terms = setup.prefEnabled
+      ? `${setup.prefRate}%/yr · ${setup.prefCompounding === "compound" ? "Compound" : "Simple"}`
+      : "Pref off"
+  } else if (sub === "gp") {
+    terms = setup.promoteHint
+  } else if (sub === "preferred_equity") {
+    terms = `${setup.prefTotalRate}%/yr`
+  } else if (sub === "mezzanine") {
+    terms = `${setup.mezzRate}%/yr · ${setup.mezzPay}`
+  }
+
+  return {
+    typeLabel: classTypeOptionLabel(row.subscriptionType),
+    funded: setup.actuallyFunded,
+    ownershipLabel: isEquity ? "Equity" : "Position",
+    ownershipValue: isEquity
+      ? formatPctTwoDecimals(setup.equityPct)
+      : "Fixed return",
+    terms,
+    created: formatDateDdMmmYyyy(row.createdAt),
+    mapsTo: setup.mapsTo,
+  }
+}
+
+function ClassTableColumnHeader({
+  label,
+  hint,
+  headerAlign = "left",
+  tooltipPanelAlign,
+}: {
+  label: string
+  hint: string
+  headerAlign?: "left" | "center" | "right"
+  tooltipPanelAlign?: FormTooltipPanelAlign
+}) {
+  const headerAlignClass =
+    headerAlign === "right"
+      ? " deals_table_col_header_end"
+      : headerAlign === "center"
+        ? " deals_table_col_header_center"
+        : ""
+  const panelAlign: FormTooltipPanelAlign =
+    tooltipPanelAlign ??
+    (headerAlign === "right"
+      ? "end"
+      : headerAlign === "center"
+        ? "center"
+        : "start")
   return (
-    <div
-      className={`deal_inv_class_card deal_offering_section${expanded ? " deal_offering_section_expanded" : ""}`}
-      id={`deal-inv-class-${row.id}`}
-    >
-      <div className="deal_inv_class_card_banner">
-        <button
-          type="button"
-          id={`deal-inv-class-trigger-${row.id}`}
-          className="deal_docs_ui_banner_toggle deal_inv_class_card_title_btn"
-          aria-expanded={expanded}
-          aria-controls={panelId}
-          onClick={onToggle}
-        >
-          {showCollapseControls ? (
-            <span className="deal_docs_ui_banner_chevron_slot" aria-hidden>
-              <ChevronDown
-                size={14}
-                strokeWidth={2.75}
-                className={`deal_docs_ui_banner_chevron${expanded ? " deal_docs_ui_banner_chevron_open" : ""}`}
-              />
-            </span>
-          ) : null}
-          <span className="deal_docs_ui_banner_heading">
-            <span className="deal_docs_ui_banner_title deal_inv_class_card_title">
-              {row.name || "—"}
-            </span>
-          </span>
-        </button>
-        <div
-          className="deal_inv_class_card_head_actions"
-          role="group"
-          aria-label={`Actions for ${row.name || "investor class"}`}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="deal_inv_class_h_icon_btn"
-            onClick={onEdit}
-            aria-label={`Edit ${row.name || "investor class"}`}
-          >
-            <Pencil size={17} strokeWidth={2} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className="deal_inv_class_h_icon_btn deal_inv_class_h_icon_btn_danger"
-            onClick={onDelete}
-            aria-label={`Delete ${row.name || "investor class"}`}
-          >
-            <Trash2 size={17} strokeWidth={2} aria-hidden />
-          </button>
-        </div>
-      </div>
-      <div
-        id={panelId}
-        role="region"
-        aria-labelledby={`deal-inv-class-trigger-${row.id}`}
-        hidden={!expanded}
-        className="deal_offering_panel deal_inv_class_card_panel"
+    <span className={`deals_table_col_header${headerAlignClass}`}>
+      <span>{label}</span>
+      <span
+        className="deals_table_header_tooltip_anchor"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
-        {expanded ? (
-          <>
-      <p className="deal_inv_class_meta_line">
-        <span>{classTypeOptionLabel(row.subscriptionType)}</span>
-        {/* <span className="deal_inv_class_meta_sep">·</span>
-        <span>{row.entityName || "—"}</span>
-        <span className="deal_inv_class_meta_sep">·</span> */}
-        <span>{formatDateDdMmmYyyy(row.createdAt)}</span>
-      </p>
-      <div className="deal_inv_class_card_body">
-        <div className="deal_inv_class_fin_grid">
-          <InvestorClassCardFinBlock
-            title="Ownership"
-            raiseValue={formatMoneyFieldDisplay(row.offeringSize)}
-            pctCaption="Legal ownership"
-            pctValue={entityOwnershipPct}
-          />
-          {showDistributionSharePct ? (
-            <InvestorClassCardFinBlock
-              title="Distribution"
-              raiseValue={formatMoneyFieldDisplay(row.raiseAmountDistributions)}
-              pctCaption="Dist. share"
-              pctValue={distributionSharePct}
-            />
-          ) : (
-            <InvestorClassCardRaiseOnlyBlock
-              title="Distribution"
-              raiseValue={formatMoneyFieldDisplay(row.raiseAmountDistributions)}
-            />
-          )}
-        </div>
-        <dl className="deal_inv_class_detail_grid">
-          <div className="deal_inv_class_detail_item">
-            <dt>Min. investment</dt>
-            <dd>
-              <CardCompactAmount amount={row.minimumInvestment} />
-            </dd>
-          </div>
-          {showMaxInvestment ? (
-            <div className="deal_inv_class_detail_item">
-              <dt>Max. investment</dt>
-              <dd>
-                <CardCompactAmount amount={maxInvestmentDisplay} />
-              </dd>
-            </div>
-          ) : null}
-          {showUnits ? (
-            <div className="deal_inv_class_detail_item">
-              <dt>Units</dt>
-              <dd>{formatNumberOfUnitsDisplay(row.numberOfUnits)}</dd>
-            </div>
-          ) : null}
-          {showPrice ? (
-            <div className="deal_inv_class_detail_item">
-              <dt>Price / unit</dt>
-              <dd>
-                <CardCompactAmount amount={pricePerUnitDisplay} />
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-        <div className="deal_inv_class_status_row">
-          <span className="deal_inv_class_status_chip">
-            <span className="deal_inv_class_status_chip_label">Status:</span>
-            <span className="deal_inv_class_status_chip_value">
-              {dealStatusLabel}
-            </span>
-          </span>
-          <span className="deal_inv_class_status_chip">
-            <span className="deal_inv_class_status_chip_label">Visibility:</span>
-            <span className="deal_inv_class_status_chip_value">
-              {dealVisibilityLabel}
-            </span>
-          </span>
-        </div>
-      </div>
-          </>
-        ) : null}
-      </div>
-    </div>
+        <FormTooltip
+          label={`More information: ${label}`}
+          content={<p className="deals_table_header_tooltip_p">{hint}</p>}
+          placement="bottom"
+          panelAlign={panelAlign}
+          nativeButtonTrigger={false}
+        />
+      </span>
+    </span>
   )
 }
 
@@ -5193,41 +5127,15 @@ export function OfferingInformationSection({
     )
   }, [rows, query, dealStatusLabel, dealVisibilityLabel])
 
-  const [expandedClassIds, setExpandedClassIds] = useState<Record<string, boolean>>(
-    {},
-  )
-
-  const filteredClassIdsKey = useMemo(
-    () => filteredRows.map((r) => r.id).join("|"),
-    [filteredRows],
-  )
-
-  const multipleInvestorClasses = filteredRows.length > 1
-
-  useEffect(() => {
-    setExpandedClassIds({})
-  }, [filteredClassIdsKey])
-
-  const toggleInvestorClassExpanded = useCallback(
-    (classId: string) => {
-      if (!multipleInvestorClasses) return
-      setExpandedClassIds((prev) => ({
-        ...prev,
-        [classId]: !(prev[classId] ?? false),
-      }))
-    },
-    [multipleInvestorClasses],
-  )
-
   const allocationTotals = useMemo(
     () => computeInvestorClassAllocationTotals(rows),
     [rows],
   )
 
-  const addInvestorClassHref = `/deals/${encodeURIComponent(dealId)}/investor-classes/new`
+  const addInvestorClassHref = `/deals/${encodeURIComponent(dealId)}/class-setup?mode=create`
 
   const emptyLabel = loading
-    ? ""
+    ? "Loading investor classes…"
     : rows.length === 0
       ? "No investor classes yet. Add an investor class to see it here."
       : query.trim()
@@ -5285,6 +5193,150 @@ export function OfferingInformationSection({
     [dealId, dealName, rows, dealStatusLabel, dealVisibilityLabel],
   )
 
+  const columns: DataTableColumn<DealInvestorClass>[] = useMemo(
+    () => [
+      {
+        id: "name",
+        header: (
+          <ClassTableColumnHeader
+            label="Name"
+            hint="Investor class name shown in the offering and Class Setup."
+          />
+        ),
+        colWidth: "14rem",
+        thClassName: "deal_classes_col_name",
+        tdClassName: "um_td_user deal_classes_col_name",
+        sortValue: (row) => row.name.toLowerCase(),
+        cell: (row) => (
+          <button
+            type="button"
+            className="deals_table_name_link deal_classes_name_btn"
+            onClick={() =>
+              navigate(
+                `/deals/${encodeURIComponent(dealId)}/class-setup?classId=${encodeURIComponent(row.id)}`,
+                { state: OFFERING_DETAILS_CLASSES_RETURN },
+              )
+            }
+          >
+            {row.name || "—"}
+          </button>
+        ),
+      },
+      {
+        id: "type",
+        header: (
+          <ClassTableColumnHeader
+            label="Type"
+            hint="LP, GP, preferred equity, or mezzanine class type."
+          />
+        ),
+        sortValue: (row) =>
+          classTypeOptionLabel(row.subscriptionType).toLowerCase(),
+        cell: (row) => investorClassListSummary(row).typeLabel,
+      },
+      {
+        id: "funded",
+        header: (
+          <ClassTableColumnHeader
+            label="Funded"
+            hint="Actually funded capital for this class."
+            headerAlign="right"
+            tooltipPanelAlign="end"
+          />
+        ),
+        align: "right",
+        thClassName: "deals_th_align_right",
+        sortValue: (row) => {
+          const n = parseFloat(
+            String(investorClassListSummary(row).funded).replace(/[^0-9.-]/g, ""),
+          )
+          return Number.isFinite(n) ? n : 0
+        },
+        cell: (row) => (
+          <CardCompactAmount
+            amount={investorClassListSummary(row).funded}
+            displayMode="table"
+          />
+        ),
+      },
+      {
+        id: "ownership",
+        header: (
+          <ClassTableColumnHeader
+            label="Ownership"
+            hint="Equity ownership percentage, or fixed return for non-equity classes."
+            headerAlign="right"
+            tooltipPanelAlign="end"
+          />
+        ),
+        align: "right",
+        thClassName: "deals_th_align_right",
+        sortValue: (row) => investorClassListSummary(row).ownershipValue,
+        cell: (row) => {
+          const s = investorClassListSummary(row)
+          return (
+            <span className="deal_classes_ownership_cell" title={s.ownershipLabel}>
+              {s.ownershipValue}
+            </span>
+          )
+        },
+      },
+      {
+        id: "terms",
+        header: (
+          <ClassTableColumnHeader
+            label="Terms"
+            hint="Preferred return, promote stages, or interest terms for this class."
+          />
+        ),
+        sortValue: (row) => investorClassListSummary(row).terms.toLowerCase(),
+        cell: (row) => (
+          <span className="deal_classes_terms_cell">
+            {investorClassListSummary(row).terms}
+          </span>
+        ),
+      },
+      {
+        id: "created",
+        header: (
+          <ClassTableColumnHeader
+            label="Created"
+            hint="Date this investor class was created."
+          />
+        ),
+        sortValue: (row) => row.createdAt || "",
+        cell: (row) => investorClassListSummary(row).created || "—",
+      },
+      {
+        id: "actions",
+        header: (
+          <ClassTableColumnHeader
+            label="Actions"
+            hint="Edit class setup or delete this investor class."
+            headerAlign="right"
+            tooltipPanelAlign="end"
+          />
+        ),
+        align: "right",
+        thClassName: "um_th_actions deals_th_actions_head",
+        tdClassName: "um_td_actions",
+        cell: (row) => (
+          <ClassRowActions
+            rowName={row.name}
+            onEdit={() =>
+              navigate(
+                `/deals/${encodeURIComponent(dealId)}/class-setup?classId=${encodeURIComponent(row.id)}`,
+                { state: OFFERING_DETAILS_CLASSES_RETURN },
+              )
+            }
+            onDelete={() => setDeleteTarget(row)}
+          />
+        ),
+      },
+    ],
+    [dealId, navigate],
+  )
+
   return (
     <div className="deal_offering_info">
       <ExportSelectableRowsModal
@@ -5298,96 +5350,64 @@ export function OfferingInformationSection({
         rows={exportModalRows}
         onExportExcel={handleExportClasses}
       />
-      <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_offering_info_panel">
-        <div className="um_toolbar deal_inv_class_toolbar">
-          <InvestorClassAllocationToolbarNotice totals={allocationTotals} />
-          <div
-            className="um_toolbar um_toolbar_export_then_search deal_offering_section_toolbar deal_inv_class_toolbar_row"
-            role="toolbar"
-            aria-label="Investor classes"
-          >
-            <div className="um_search_wrap deal_inv_class_toolbar_search">
-              <Search className="um_search_icon" size={18} aria-hidden />
-              <input
-                type="search"
-                className="um_search_input"
-                placeholder="Search classes…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                aria-label="Search investor classes"
-                autoComplete="off"
-              />
-            </div>
-            <div className="um_toolbar_actions">
-              <button
-                type="button"
-                className="um_toolbar_export_btn"
-                disabled={!canExportClasses}
-                onClick={() => setExportModalOpen(true)}
-                aria-label="Export all investor classes"
-                title={
-                  canExportClasses ? undefined : "No investor classes to export"
-                }
-              >
-                <Download size={18} strokeWidth={2} aria-hidden />
-                <span>Export All</span>
-              </button>
-              {allocationTotals.addDisabled ? (
-                <span
-                  className="um_btn_primary deals_list_add_link deal_inv_class_add_btn_disabled"
-                  role="link"
-                  aria-disabled="true"
-                  title={allocationTotals.messages.join(" ")}
-                >
-                  <Plus size={18} aria-hidden />
-                  Add Investor Class
-                </span>
-              ) : (
-                <Link
-                  to={addInvestorClassHref}
-                  state={OFFERING_DETAILS_CLASSES_RETURN}
-                  className="um_btn_primary deals_list_add_link"
-                >
-                  <Plus size={18} aria-hidden />
-                  Add Investor Class
-                </Link>
-              )}
-            </div>
+      <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_offering_info_panel deal_classes_datatable_panel">
+        <InvestorClassAllocationToolbarNotice totals={allocationTotals} />
+        <div
+          className="um_toolbar um_toolbar_export_then_search deal_offering_section_toolbar"
+          role="toolbar"
+          aria-label="Investor classes"
+        >
+          <div className="um_search_wrap">
+            <Search className="um_search_icon" size={18} aria-hidden />
+            <input
+              type="search"
+              className="um_search_input"
+              placeholder="Search classes…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search investor classes"
+              autoComplete="off"
+            />
+          </div>
+          <div className="um_toolbar_actions">
+            <button
+              type="button"
+              className="um_toolbar_export_btn"
+              disabled={!canExportClasses}
+              onClick={() => setExportModalOpen(true)}
+              aria-label="Export all investor classes"
+              title={
+                canExportClasses ? undefined : "No investor classes to export"
+              }
+            >
+              <Download size={18} strokeWidth={2} aria-hidden />
+              <span>Export All</span>
+            </button>
+            <Link
+              to={addInvestorClassHref}
+              state={OFFERING_DETAILS_CLASSES_RETURN}
+              className="um_btn_primary deals_list_add_link"
+              title={
+                allocationTotals.addDisabled
+                  ? `${allocationTotals.messages.join(" ")} You can still open the class editor to adjust ownership or add classes.`
+                  : undefined
+              }
+            >
+              <Plus size={18} aria-hidden />
+              Add Investor Class
+            </Link>
           </div>
         </div>
 
-        {loading ? (
-          <p className="deal_offering_muted" role="status">
-            Loading investor classes…
-          </p>
-        ) : filteredRows.length === 0 ? (
-          <p className="deal_offering_muted">{emptyLabel}</p>
-        ) : (
-          <div className="deal_inv_class_cards">
-            {filteredRows.map((r) => (
-              <ReadOnlyInvestorClassCard
-                key={r.id}
-                row={r}
-                dealStatusLabel={dealStatusLabel}
-                dealVisibilityLabel={dealVisibilityLabel}
-                expanded={
-                  multipleInvestorClasses
-                    ? (expandedClassIds[r.id] ?? false)
-                    : true
-                }
-                showCollapseControls={multipleInvestorClasses}
-                onToggle={() => toggleInvestorClassExpanded(r.id)}
-                onEdit={() =>
-                  navigate(
-                    `/deals/${encodeURIComponent(dealId)}/investor-classes/${encodeURIComponent(r.id)}/edit`,
-                    { state: OFFERING_DETAILS_CLASSES_RETURN },
-                  )
-                }
-                onDelete={() => setDeleteTarget(r)}
-              />
-            ))}
-          </div>
-        )}
+        <DataTable
+          visualVariant="members"
+          membersTableClassName="um_table_members deal_inv_table"
+          columns={columns}
+          rows={loading ? [] : filteredRows}
+          getRowKey={(row) => row.id}
+          emptyLabel={emptyLabel}
+          initialSort={{ columnId: "name", direction: "asc" }}
+        />
       </div>
 
       <InvestorClassConfirmDeleteModal

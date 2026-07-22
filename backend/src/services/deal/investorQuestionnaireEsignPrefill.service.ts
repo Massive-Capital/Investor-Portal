@@ -1,5 +1,10 @@
 import type { SignFlowField } from "../esign/signflow.service.js";
 import { formatEinDisplay, nineDigitsFromEinInput } from "../../common/tax/usEin.js";
+import {
+  formatSsnItinDisplay,
+  isSsnItinFieldKey,
+  maskSsnItinLast4,
+} from "../../common/tax/usSsnItin.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import type {
   InvestorQuestionnaireJson,
@@ -142,9 +147,27 @@ export type EsignQuestionnairePrefillContext = {
   cityStateZip?: string;
 };
 
+function isSsnQuestionnaireQuestion(
+  question: Pick<
+    InvestorQuestionnaireQuestion,
+    "id" | "fieldType" | "label" | "investorProfileFieldKey"
+  >,
+): boolean {
+  if (question.fieldType === "ssn") return true;
+  if (isSsnItinFieldKey(question.id)) return true;
+  if (isSsnItinFieldKey(question.label)) return true;
+  if (isSsnItinFieldKey(question.investorProfileFieldKey ?? "")) return true;
+  return false;
+}
+
+function formatSsnForEsign(raw: string, maskSsn: boolean): string {
+  return maskSsn ? maskSsnItinLast4(raw) : formatSsnItinDisplay(raw);
+}
+
 function formatAnswerForEsign(
   question: InvestorQuestionnaireQuestion,
   raw: string | undefined,
+  maskSsn: boolean,
 ): string {
   const value = String(raw ?? "").trim();
   if (!value) return "";
@@ -176,12 +199,8 @@ function formatAnswerForEsign(
     return value;
   }
 
-  if (question.fieldType === "ssn") {
-    const digits = value.replace(/\D/g, "").slice(0, 9);
-    if (digits.length === 9) {
-      return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
-    }
-    return value;
+  if (isSsnQuestionnaireQuestion(question)) {
+    return formatSsnForEsign(value, maskSsn);
   }
 
   if (
@@ -202,9 +221,23 @@ function formatAnswerForEsign(
   return value.replace(/\s+/g, " ").trim();
 }
 
+function formatLooseAnswerForEsign(
+  answerKey: string,
+  raw: string,
+  maskSsn: boolean,
+): string {
+  const value = String(raw ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!value) return "";
+  if (isSsnItinFieldKey(answerKey)) return formatSsnForEsign(value, maskSsn);
+  return value;
+}
+
 function buildFormattedAnswerMap(
   config: InvestorQuestionnaireJson,
   answers: InvestorQuestionnaireAnswersMap,
+  maskSsn: boolean,
 ): Map<string, string> {
   const out = new Map<string, string>();
   const questionById = new Map(
@@ -214,13 +247,20 @@ function buildFormattedAnswerMap(
   for (const question of config.questions) {
     const id = question.id.trim();
     if (!id) continue;
-    const formatted = formatAnswerForEsign(question, answers[id]);
+    const formatted = formatAnswerForEsign(question, answers[id], maskSsn);
     if (!formatted) continue;
     out.set(id, formatted);
     const labelKey = normalizeFieldKey(question.label);
     if (labelKey) out.set(labelKey, formatted);
     const idAsLabelKey = normalizeFieldKey(id);
     if (idAsLabelKey) out.set(idAsLabelKey, formatted);
+    // Also index under profile key (e.g. "ssn") so catalog dataKey lookups work.
+    const profileKey = String(question.investorProfileFieldKey ?? "").trim();
+    if (profileKey) {
+      out.set(profileKey, formatted);
+      const profileAsLabel = normalizeFieldKey(profileKey);
+      if (profileAsLabel) out.set(profileAsLabel, formatted);
+    }
   }
 
   // Include profile/e-sign-only answers (ACH, beneficiary, mailing, etc.) that are
@@ -230,16 +270,57 @@ function buildFormattedAnswerMap(
     if (!id || out.has(id)) continue;
     const question = questionById.get(id);
     const formatted = question
-      ? formatAnswerForEsign(question, rawValue)
-      : String(rawValue ?? "")
-          .replace(/\s+/g, " ")
-          .trim();
+      ? formatAnswerForEsign(question, rawValue, maskSsn)
+      : formatLooseAnswerForEsign(id, String(rawValue ?? ""), maskSsn);
     if (!formatted) continue;
     out.set(id, formatted);
     const idAsLabelKey = normalizeFieldKey(id);
     if (idAsLabelKey) out.set(idAsLabelKey, formatted);
   }
 
+  return out;
+}
+
+/** Mask SSN values on placed SignFlow / e-sign fields (prefill + post-Python). */
+export function maskSsnValuesOnSignFlowFields(
+  fields: SignFlowField[],
+): SignFlowField[] {
+  return fields.map((field) => {
+    const value = String(field.value ?? "").trim();
+    if (!value) return field;
+    const shouldMask =
+      isSsnItinFieldKey(field.dataKey ?? "") ||
+      isSsnItinFieldKey(field.label ?? "");
+    if (!shouldMask) return field;
+    return { ...field, value: maskSsnItinLast4(value) };
+  });
+}
+
+/** Mask SSN entries in a questionnaire answers map before document merge / Python. */
+export function maskSsnInQuestionnaireAnswers(
+  answers: InvestorQuestionnaireAnswersMap,
+  config?: InvestorQuestionnaireJson | null,
+): InvestorQuestionnaireAnswersMap {
+  const questionById = new Map(
+    (config?.questions ?? []).map((q) => [q.id.trim(), q] as const),
+  );
+  const out: InvestorQuestionnaireAnswersMap = {};
+  for (const [key, raw] of Object.entries(answers)) {
+    const value = String(raw ?? "").trim();
+    if (!value) {
+      out[key] = raw;
+      continue;
+    }
+    const question = questionById.get(key.trim());
+    if (
+      (question && isSsnQuestionnaireQuestion(question)) ||
+      isSsnItinFieldKey(key)
+    ) {
+      out[key] = maskSsnItinLast4(value);
+    } else {
+      out[key] = raw;
+    }
+  }
   return out;
 }
 
@@ -394,7 +475,8 @@ export function applyQuestionnairePrefillToEsignFormFields({
     investmentAmount: prefillContext?.investmentAmount?.trim(),
   };
 
-  const formatted = buildFormattedAnswerMap(config, answers);
+  // Dropbox merge fields land on the shared PDF — always mask SSN for sponsors.
+  const formatted = buildFormattedAnswerMap(config, answers, true);
   if (
     !formatted.size &&
     !ctx.memberDisplayName &&
@@ -427,7 +509,11 @@ export function applyQuestionnairePrefillToEsignFormFields({
     const customName = fieldName;
     if (!seenNames.has(customName.toLowerCase())) {
       seenNames.add(customName.toLowerCase());
-      customFields.push({ name: customName, value });
+      const maskedValue =
+        isSsnItinFieldKey(customName) || isSsnItinFieldKey(field.apiId ?? "")
+          ? maskSsnItinLast4(value)
+          : value;
+      customFields.push({ name: customName, value: maskedValue });
     }
 
     return { ...field, type: "text-merge" as const };
@@ -444,6 +530,10 @@ function signFlowFieldPrefillType(type: string): boolean {
 /**
  * Pre-fills SignFlow text/date fields on the questionnaire signature page (and
  * other investor fields whose labels match questionnaire answers).
+ *
+ * SSN values are masked to last-4 by default so sponsors viewing investor eSign
+ * documents never see the full number. Pass `maskSsn: false` only for
+ * non-document surfaces that are investor-private.
  */
 export function applyQuestionnairePrefillToSignFlowFields({
   fields,
@@ -451,12 +541,15 @@ export function applyQuestionnairePrefillToSignFlowFields({
   answers,
   memberDisplayName,
   prefillContext,
+  maskSsn = true,
 }: {
   fields: SignFlowField[];
   config: InvestorQuestionnaireJson;
   answers: InvestorQuestionnaireAnswersMap;
   memberDisplayName?: string;
   prefillContext?: EsignQuestionnairePrefillContext;
+  /** Default true — mask SSN for sponsor-visible fills. Pass false for investor edit. */
+  maskSsn?: boolean;
 }): SignFlowField[] {
   const ctx: EsignQuestionnairePrefillContext = {
     ...prefillContext,
@@ -466,9 +559,9 @@ export function applyQuestionnairePrefillToSignFlowFields({
     investmentAmount: prefillContext?.investmentAmount?.trim(),
   };
 
-  const formatted = buildFormattedAnswerMap(config, answers);
+  const formatted = buildFormattedAnswerMap(config, answers, maskSsn);
 
-  return fields.map((field) => {
+  const nextFields = fields.map((field) => {
     if (!signFlowFieldPrefillType(field.type)) return field;
 
     const catalogKey =
@@ -483,6 +576,7 @@ export function applyQuestionnairePrefillToSignFlowFields({
         const fromAnswerKey =
           formatted.get(answerKey) ||
           formatted.get(normalizeFieldKey(answerKey)) ||
+          formatted.get(catalog.key) ||
           "";
         if (fromAnswerKey.trim()) {
           return { ...field, dataKey: catalog.key, value: fromAnswerKey.trim() };
@@ -504,4 +598,7 @@ export function applyQuestionnairePrefillToSignFlowFields({
 
     return { ...field, value };
   });
+
+  // Only force-mask after fill when sponsor/document mode is requested.
+  return maskSsn ? maskSsnValuesOnSignFlowFields(nextFields) : nextFields;
 }

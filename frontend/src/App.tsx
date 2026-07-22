@@ -24,8 +24,12 @@ import SponsorDashboardPage from "./modules/Syndication/Dashboard/SponsorDashboa
 import DealsLayout from "./modules/Syndication/Deals/DealsLayout";
 import { CreateDealPage } from "./modules/Syndication/Deals/deal_create/CreateDealPage";
 import { AddDealAssetPage } from "./modules/Syndication/Deals/AddDealAssetPage";
-import { AddDealInvestorClassPage } from "./modules/Syndication/Deals/AddDealInvestorClassPage";
-import { EditDealInvestorClassPage } from "./modules/Syndication/Deals/EditDealInvestorClassPage";
+import { ClassSetupPage } from "./modules/Syndication/Deals/class-setup";
+import { DistributionSetupPage } from "./modules/Syndication/Deals/distribution-setup";
+import {
+  RedirectLegacyAddInvestorClass,
+  RedirectLegacyEditInvestorClass,
+} from "./modules/Syndication/Deals/class-setup/RedirectLegacyInvestorClassRoutes";
 import { DealDetailPage } from "./modules/Syndication/Deals/DealDetailPage";
 import { DealOfferingPortfolioPage } from "./modules/Syndication/Deals/DealOfferingPortfolioPage";
 import { DealsListPage } from "./modules/Syndication/Deals/DealsListPage";
@@ -155,12 +159,20 @@ function App() {
                 element={<DealOfferingPortfolioPage />}
               />
               <Route
+                path=":dealId/class-setup"
+                element={<ClassSetupPage />}
+              />
+              <Route
+                path=":dealId/distribution-setup"
+                element={<DistributionSetupPage />}
+              />
+              <Route
                 path=":dealId/investor-classes/new"
-                element={<AddDealInvestorClassPage />}
+                element={<RedirectLegacyAddInvestorClass />}
               />
               <Route
                 path=":dealId/investor-classes/:classId/edit"
-                element={<EditDealInvestorClassPage />}
+                element={<RedirectLegacyEditInvestorClass />}
               />
               <Route
                 path=":dealId/assets/:assetId/edit"

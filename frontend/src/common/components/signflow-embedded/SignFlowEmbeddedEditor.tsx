@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  ChevronDown,
   FileText,
   Link2,
   Loader2,
@@ -12,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -25,6 +27,7 @@ import {
   ESIGN_ENTITY_PROFILE_IDS,
 } from "@/modules/Syndication/Deals/tabs/esign_templates/esignEntityCategories"
 import {
+  ESIGN_INVESTOR_DATA_FIELDS,
   groupEsignInvestorDataFields,
   type EsignInvestorDataField,
 } from "@/modules/Syndication/Deals/tabs/esign_templates/esignInvestorDataFieldCatalog"
@@ -118,13 +121,42 @@ export function SignFlowEmbeddedEditor({
   /** Background embed generation loading behind the visible one. */
   const [preloadNonce, setPreloadNonce] = useState<number | null>(null)
   const [selectedFieldKey, setSelectedFieldKey] = useState("")
+  const [fieldPickerOpen, setFieldPickerOpen] = useState(false)
   const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(() => [
     ...ESIGN_ENTITY_PROFILE_IDS,
   ])
   const [addingField, setAddingField] = useState(false)
   const fieldSelectId = useId()
   const profileGroupId = useId()
+  const fieldPickerRef = useRef<HTMLDivElement | null>(null)
   const fieldGroups = groupEsignInvestorDataFields()
+  const selectedFieldLabel = useMemo(() => {
+    if (!selectedFieldKey) return ""
+    return (
+      ESIGN_INVESTOR_DATA_FIELDS.find((f) => f.key === selectedFieldKey)?.label ??
+      ""
+    )
+  }, [selectedFieldKey])
+
+  useEffect(() => {
+    if (!fieldPickerOpen) return
+    function onDocPointerDown(e: PointerEvent) {
+      const root = fieldPickerRef.current
+      if (!root) return
+      if (e.target instanceof Node && !root.contains(e.target)) {
+        setFieldPickerOpen(false)
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setFieldPickerOpen(false)
+    }
+    document.addEventListener("pointerdown", onDocPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointerDown)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [fieldPickerOpen])
 
   const url = editUrl?.trim()
   const docId = documentId?.trim()
@@ -471,24 +503,71 @@ export function SignFlowEmbeddedEditor({
               >
                 Choose field
               </label>
-              <select
-                id={fieldSelectId}
-                className="signflow_editor_data_panel_select"
-                value={selectedFieldKey}
-                disabled={embedBusy || sessionLoading || !builderReady}
-                onChange={(e) => setSelectedFieldKey(e.target.value)}
+              <div
+                className="signflow_editor_field_picker"
+                ref={fieldPickerRef}
               >
-                <option value="">Select investor data…</option>
-                {fieldGroups.map((group) => (
-                  <optgroup key={group.section} label={group.section}>
-                    {group.fields.map((field: EsignInvestorDataField) => (
-                      <option key={field.key} value={field.key}>
-                        {field.label}
-                      </option>
+                <button
+                  type="button"
+                  id={fieldSelectId}
+                  className="signflow_editor_field_picker_trigger"
+                  aria-haspopup="listbox"
+                  aria-expanded={fieldPickerOpen}
+                  disabled={embedBusy || sessionLoading || !builderReady}
+                  onClick={() => setFieldPickerOpen((open) => !open)}
+                >
+                  <span
+                    className={
+                      selectedFieldLabel
+                        ? undefined
+                        : "signflow_editor_field_picker_placeholder"
+                    }
+                  >
+                    {selectedFieldLabel || "Select investor data…"}
+                  </span>
+                  <ChevronDown size={16} strokeWidth={2} aria-hidden />
+                </button>
+                {fieldPickerOpen ? (
+                  <div
+                    className="signflow_editor_field_picker_menu"
+                    role="listbox"
+                    aria-label="Investor data fields"
+                  >
+                    {fieldGroups.map((group) => (
+                      <div
+                        key={group.section}
+                        className="signflow_editor_field_picker_group"
+                        role="group"
+                        aria-label={group.section}
+                      >
+                        <div className="signflow_editor_field_picker_group_label">
+                          {group.section}
+                        </div>
+                        {group.fields.map((field: EsignInvestorDataField) => {
+                          const selected = field.key === selectedFieldKey
+                          return (
+                            <button
+                              key={field.key}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              className={`signflow_editor_field_picker_option${
+                                selected ? " is-selected" : ""
+                              }`}
+                              onClick={() => {
+                                setSelectedFieldKey(field.key)
+                                setFieldPickerOpen(false)
+                              }}
+                            >
+                              {field.label}
+                            </button>
+                          )
+                        })}
+                      </div>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
+                  </div>
+                ) : null}
+              </div>
               <fieldset
                 className="signflow_editor_data_panel_profiles"
                 disabled={embedBusy || sessionLoading || !builderReady}

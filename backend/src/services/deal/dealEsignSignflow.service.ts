@@ -12,6 +12,7 @@ import {
   type SignFlowField,
 } from "../esign/signflow.service.js";
 import {
+  esignDocumentAlignedTextFieldSize,
   getInvestorQuestionnaireSignatureSignFlowFields,
   isQuestionnaireSignatureFieldLabel,
   loadInvestorQuestionnaireSignaturePagePdf,
@@ -681,13 +682,16 @@ export async function addDealEsignSignflowInvestorDataField(params: {
     maxY = Math.max(maxY, y + h);
   }
 
+  const textSize = esignDocumentAlignedTextFieldSize(
+    catalog.signFlowType === "date" ? "date" : "text",
+  );
   const nextField: SignFlowField = {
     type: catalog.signFlowType,
     label: catalog.esignLabel,
     x: 12,
     y: Math.min(88, maxY + 3),
-    width: catalog.signFlowType === "date" ? 28 : 46,
-    height: 5,
+    width: textSize.width,
+    height: textSize.height,
     page: 1,
     recipientId: investorRecipientId,
     // Required so SignFlow includes the field in the investor's remaining-field count.

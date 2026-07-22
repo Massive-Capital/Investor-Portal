@@ -50,6 +50,8 @@ import { protectedUploadsMiddleware } from "./middleware/protectedUploads.middle
 
 import { signflowWebhookBodyParser } from "./middleware/signflowWebhook.middleware.js";
 
+import { stripeWebhookBodyParser } from "./middleware/stripeWebhook.middleware.js";
+
 // import {
 //
 //   authRateLimiter,
@@ -76,6 +78,9 @@ import companyRoutes from "./routes/companyRoutes.routes.js";
 
 import dealFormRoutes from "./routes/dealForm.routes.js";
 
+import classSetupRoutes from "./routes/classSetup.routes.js";
+import distributionSetupRoutes from "./routes/distributionSetup.routes.js";
+
 import contactRoutes from "./routes/contact.routes.js";
 
 import esignTemplateRoutes from "./routes/esignTemplate.routes.js";
@@ -86,9 +91,13 @@ import platformRoutes from "./routes/platformRoutes.routes.js";
 
 import ghlRoutes from "./routes/ghl.routes.js";
 
+import billingRoutes from "./routes/billing.routes.js";
+
 import { postDropboxSignWebhook } from "./controllers/deal/dealDropboxSignWebhook.controller.js";
 
 import { postSignFlowWebhook } from "./controllers/deal/dealSignflowWebhook.controller.js";
+
+import { postStripeWebhook } from "./controllers/billing/stripeWebhook.controller.js";
 
 import { postDealEsignTemplateUploads } from "./controllers/deal/dealEsignTemplates.controller.js";
 
@@ -100,6 +109,9 @@ import { getSignFlowPublicConfig } from "./config/signflow.config.js";
 
 import { getGhlPublicConfig } from "./config/ghl.config.js";
 
+import { getStripePublicConfig, resolveFrontendOrigin } from "./config/stripe.config.js";
+
+import dealAssetsRoutes from "./routes/dealAssets.routes.js";
 
 
 assertJwtSecretConfigured();
@@ -179,6 +191,30 @@ app.post(
   signflowWebhookBodyParser,
 
   postSignFlowWebhook,
+
+);
+
+app.post(
+
+  "/webhooks/stripe",
+
+  // webhookRateLimiter,
+
+  stripeWebhookBodyParser,
+
+  postStripeWebhook,
+
+);
+
+app.post(
+
+  "/api/webhooks/stripe",
+
+  // webhookRateLimiter,
+
+  stripeWebhookBodyParser,
+
+  postStripeWebhook,
 
 );
 
@@ -290,6 +326,9 @@ app.use("/api/v1", [
 
   dealFormRoutes,
 
+  classSetupRoutes,
+  distributionSetupRoutes,
+
   contactRoutes,
 
   esignTemplateRoutes,
@@ -301,6 +340,8 @@ app.use("/api/v1", [
   platformRoutes,
 
   ghlRoutes,
+
+  billingRoutes,
 
 ]);
 
@@ -340,6 +381,48 @@ if (signFlowCfg.configured) {
 
   );
 
+}
+
+
+
+const stripeCfg = getStripePublicConfig();
+
+if (stripeCfg.configured) {
+  const webhookBase = baseUrl?.trim() || `http://localhost:${PORT}`;
+  const isProd =
+    process.env.NODE_ENV === "production" ||
+    process.env.APP_ENV === "production" ||
+    process.env.DEPLOY_ENV === "production";
+
+  console.log(
+    `Stripe billing configured (${stripeCfg.testMode ? "test" : "live"})`,
+  );
+  console.log(`Stripe webhook URL → ${webhookBase}/api/webhooks/stripe`);
+
+  if (isProd && stripeCfg.testMode) {
+    console.error(
+      "FATAL RISK: production is using a Stripe TEST key (sk_test_). Use sk_live_ for real charges.",
+    );
+  }
+  if (isProd && !stripeCfg.webhookConfigured) {
+    console.error(
+      "FATAL RISK: STRIPE_WEBHOOK_SECRET is unset in production — invoice/subscription sync will fail.",
+    );
+  }
+  if (isProd && !resolveFrontendOrigin()) {
+    console.error(
+      "FATAL RISK: BASE_URL is unset — Stripe Checkout/Portal redirects will fail.",
+    );
+  }
+  if (isProd && !stripeCfg.plans.some((p) => p.id === "starter" && (p.monthlyPriceId || p.annualPriceId))) {
+    console.error(
+      "FATAL RISK: Starter Stripe Price IDs missing (STARTER_MONTH_PRICING / STARTER_YEARLY_PRICING).",
+    );
+  }
+} else {
+  console.log(
+    "Stripe not configured — set STRIPE_SECRET_KEY (and price ids) in backend/.env.",
+  );
 }
 
 

@@ -8,6 +8,7 @@ import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
 } from "@/common/phone/usPhoneNumber"
+import { maskSsnItinLast4 } from "@/common/tax/usSsnItin"
 import { bookProfileTypeDisplayLabel } from "@/modules/Syndication/Deals/utils/resolveInvestNowDealContext"
 
 export type InvestorProfileViewDetailRow = { label: string; value: string }
@@ -339,10 +340,8 @@ function yesNo(v: string): string {
 }
 
 function maskTaxId(raw: string): string {
-  const d = raw.replace(/\D/g, "")
-  if (!d) return "—"
-  if (d.length <= 4) return `••••${d}`
-  return `•••-••-${d.slice(-4)}`
+  const masked = maskSsnItinLast4(raw)
+  return masked || "—"
 }
 
 function maskAccountNumber(raw: string): string {

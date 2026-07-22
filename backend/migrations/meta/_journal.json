@@ -421,6 +421,41 @@
       "when": 1893550000000,
       "tag": "0060_companies_ghl_location",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1893600000000,
+      "tag": "0061_deal_class_setup_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1893650000000,
+      "tag": "0062_deal_distribution_setup_json",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1893700000000,
+      "tag": "0063_companies_stripe_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1893750000000,
+      "tag": "0064_company_billing_invoices_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1893800000000,
+      "tag": "0065_company_billing_payment_methods",
+      "breakpoints": true
     }
   ]
 }
