@@ -4,6 +4,14 @@ import type {
   DistributionSetupPromote,
   DistributionWfKind,
 } from "../types/distribution-setup.types"
+import {
+  calculatePeriodPreferredReturn,
+  computeStageMetFromHurdles,
+  periodsPerYearFromFactor,
+  type HurdleCashFlow,
+  type HurdleEvaluation,
+  type WaterfallInput,
+} from "./hurdleCalculations"
 
 function toNum(v: string | number | undefined): number {
   const n = Number(String(v ?? "").replace(/[$,%\s,]/g, ""))
@@ -56,22 +64,31 @@ export function computeDue(
     .map((id) => classes.find((c) => c.id === id))
     .filter((c): c is DistributionSetupClass => c != null)
 
+  const periodsPerYear = periodsPerYearFromFactor(periodFactor)
+
   if (row.kind === "PREF_CURRENT")
     return list.reduce(
       (s, c) =>
-        s + toNum(c.actuallyFunded) * (toNum(c.prefEquity.currentRate) / 100) * periodFactor,
+        s +
+        calculatePeriodPreferredReturn(
+          toNum(c.actuallyFunded),
+          toNum(c.prefEquity.currentRate) / 100,
+          periodsPerYear,
+        ),
       0,
     )
   if (row.kind === "PREF_ACCRUED")
     return list.reduce(
       (s, c) =>
         s +
-        toNum(c.actuallyFunded) *
-          (Math.max(
+        calculatePeriodPreferredReturn(
+          toNum(c.actuallyFunded),
+          Math.max(
             0,
             toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
-          ) /
-            100),
+          ) / 100,
+          1,
+        ),
       0,
     )
   if (row.kind === "LP_PREF")
@@ -79,9 +96,11 @@ export function computeDue(
       if (!c.preferredReturn.enabled) return s
       return (
         s +
-        toNum(c.actuallyFunded) *
-          (toNum(c.preferredReturn.rate) / 100) *
-          periodFactor
+        calculatePeriodPreferredReturn(
+          toNum(c.actuallyFunded),
+          toNum(c.preferredReturn.rate) / 100,
+          periodsPerYear,
+        )
       )
     }, 0)
   if (row.kind === "ROC")
@@ -123,6 +142,41 @@ export interface SimResult {
   perClass: Record<string, number>
   leftover: number
   totalPaid: number
+  /** Auto-evaluated promote hurdles (IRR / CoC / cumulative). */
+  hurdleEvaluations: HurdleEvaluation[]
+  /** Effective stage-met flags after calc + manual overrides. */
+  stageMet: Record<number, boolean>
+}
+
+export function investedCapitalFromClasses(
+  classes: DistributionSetupClass[],
+): number {
+  return classes
+    .filter((c) => c.classType === "lp" || c.classType === "gp")
+    .reduce((s, c) => s + toNum(c.actuallyFunded), 0)
+}
+
+export function buildWaterfallInput(params: {
+  cash: number
+  periodFactor: number
+  classes: DistributionSetupClass[]
+  cashFlows?: HurdleCashFlow[]
+  cumulativeDistributions?: number
+}): WaterfallInput {
+  const investedCapital = investedCapitalFromClasses(params.classes)
+  const periodsPerYear = periodsPerYearFromFactor(params.periodFactor)
+  const cashFlows =
+    params.cashFlows && params.cashFlows.length > 0
+      ? params.cashFlows
+      : []
+  return {
+    cashFlows,
+    availableCash: params.cash,
+    investedCapital,
+    periodsPerYear,
+    distribution: params.cash,
+    cumulativeDistributions: params.cumulativeDistributions,
+  }
 }
 
 export function runDistributionSim(input: {
@@ -131,8 +185,11 @@ export function runDistributionSim(input: {
   rows: DistributionPaymentRow[]
   classes: DistributionSetupClass[]
   promote: DistributionSetupPromote
-  stageMet: Record<number, boolean>
+  /** Manual overrides when a hurdle cannot be auto-evaluated (e.g. IRR without history). */
+  stageMetOverrides?: Record<number, boolean>
   dueOverrides: Record<string, number>
+  cashFlows?: HurdleCashFlow[]
+  cumulativeDistributions?: number
 }): SimResult {
   const {
     cash,
@@ -140,9 +197,23 @@ export function runDistributionSim(input: {
     rows,
     classes,
     promote,
-    stageMet,
+    stageMetOverrides = {},
     dueOverrides,
+    cashFlows,
+    cumulativeDistributions,
   } = input
+
+  const waterfallInput = buildWaterfallInput({
+    cash,
+    periodFactor,
+    classes,
+    cashFlows,
+    cumulativeDistributions,
+  })
+  const { stageMet, evaluations: hurdleEvaluations } =
+    computeStageMetFromHurdles(promote, waterfallInput, stageMetOverrides)
+
+  const periodsPerYear = periodsPerYearFromFactor(periodFactor)
   let remaining = cash
   const perClass: Record<string, number> = {}
   const profit: Record<string, number> = {}
@@ -193,25 +264,27 @@ export function runDistributionSim(input: {
 
     const dues = list.map((c) => {
       if (t.kind === "PREF_CURRENT")
-        return (
-          toNum(c.actuallyFunded) *
-          (toNum(c.prefEquity.currentRate) / 100) *
-          periodFactor
+        return calculatePeriodPreferredReturn(
+          toNum(c.actuallyFunded),
+          toNum(c.prefEquity.currentRate) / 100,
+          periodsPerYear,
         )
       if (t.kind === "PREF_ACCRUED")
-        return (
-          toNum(c.actuallyFunded) *
-          (Math.max(
+        return calculatePeriodPreferredReturn(
+          toNum(c.actuallyFunded),
+          Math.max(
             0,
             toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
-          ) /
-            100)
+          ) / 100,
+          1,
         )
       if (t.kind === "LP_PREF")
         return c.preferredReturn.enabled
-          ? toNum(c.actuallyFunded) *
-              (toNum(c.preferredReturn.rate) / 100) *
-              periodFactor
+          ? calculatePeriodPreferredReturn(
+              toNum(c.actuallyFunded),
+              toNum(c.preferredReturn.rate) / 100,
+              periodsPerYear,
+            )
           : 0
       if (t.kind === "ROC") return toNum(c.actuallyFunded)
       return 1
@@ -252,6 +325,7 @@ export function runDistributionSim(input: {
           : `Split remaining cash — stage ${s + 1} (after Hurdle ${s})`
 
       if (s < active) {
+        const ev = hurdleEvaluations[s]
         flowRows.push({
           kind: "stage",
           index: idx,
@@ -259,11 +333,14 @@ export function runDistributionSim(input: {
           label: stageLabel,
           due: null,
           paid: null,
-          note: `Hurdle ${s + 1} met — cash passes to the next stage ↓`,
+          note: ev?.detail
+            ? `Hurdle ${s + 1} met (${ev.detail}) — cash passes to the next stage ↓`
+            : `Hurdle ${s + 1} met — cash passes to the next stage ↓`,
         })
         continue
       }
       if (s > active) {
+        const ev = hurdleEvaluations[s - 1]
         flowRows.push({
           kind: "stage",
           index: idx,
@@ -272,7 +349,9 @@ export function runDistributionSim(input: {
           due: null,
           paid: null,
           skipped: true,
-          note: `not reached — Hurdle ${s} not met yet`,
+          note: ev?.detail
+            ? `not reached — Hurdle ${s} not met (${ev.detail})`
+            : `not reached — Hurdle ${s} not met yet`,
         })
         continue
       }
@@ -310,7 +389,14 @@ export function runDistributionSim(input: {
   }
 
   const totalPaid = Object.values(perClass).reduce((a, b) => a + b, 0)
-  return { flowRows, perClass, leftover: remaining, totalPaid }
+  return {
+    flowRows,
+    perClass,
+    leftover: remaining,
+    totalPaid,
+    hurdleEvaluations,
+    stageMet,
+  }
 }
 
 export function defaultPayToForKind(

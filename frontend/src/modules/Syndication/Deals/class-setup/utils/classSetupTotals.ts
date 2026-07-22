@@ -80,9 +80,9 @@ export function createLocalClass(
     status: "draft",
     classGroup: groups[classType],
     mapsTo: `Investor Class`,
-    committedCapital: "0",
-    actuallyFunded: "0",
-    minimumInvestment: classType === "gp" ? "0" : "25000",
+    committedCapital: "$0",
+    actuallyFunded: "$0",
+    minimumInvestment: classType === "gp" ? "$0" : "$25,000",
     equityPct: "0",
     preferredReturn: {
       enabled: classType === "lp",

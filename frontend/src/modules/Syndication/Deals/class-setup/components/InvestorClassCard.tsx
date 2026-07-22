@@ -7,6 +7,10 @@ import type {
 } from "../types/class-setup.types"
 import { CLASS_TYPE_META } from "../types/class-setup.types"
 import { fieldErrorFor } from "../utils/classSetupValidation"
+import {
+  blurFormatMoneyInput,
+  formatCurrencyUsdTypeInput,
+} from "../../utils/offeringMoneyFormat"
 import { formatPct, newTierId } from "../utils/classSetupTotals"
 import { PreferredReturnSection } from "./PreferredReturnSection"
 import { WaterfallTiersSection } from "./WaterfallTiersSection"
@@ -225,31 +229,60 @@ export function InvestorClassCard({
             <div className="cs_fields">
               <Field label="Committed Capital">
                 <input
-                  type="number"
-                  min={0}
-                  step={1000}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="$0"
                   value={classItem.committedCapital}
-                  onChange={(e) => patch({ committedCapital: e.target.value })}
+                  onChange={(e) =>
+                    patch({
+                      committedCapital: formatCurrencyUsdTypeInput(
+                        e.target.value,
+                      ),
+                    })
+                  }
+                  onBlur={(e) =>
+                    patch({
+                      committedCapital: blurFormatMoneyInput(e.target.value),
+                    })
+                  }
                 />
               </Field>
               <Field label="Actually Funded">
                 <input
-                  type="number"
-                  min={0}
-                  step={1000}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="$0"
                   value={classItem.actuallyFunded}
-                  onChange={(e) => patch({ actuallyFunded: e.target.value })}
+                  onChange={(e) =>
+                    patch({
+                      actuallyFunded: formatCurrencyUsdTypeInput(e.target.value),
+                    })
+                  }
+                  onBlur={(e) =>
+                    patch({
+                      actuallyFunded: blurFormatMoneyInput(e.target.value),
+                    })
+                  }
                 />
               </Field>
               {classItem.classType !== "gp" ? (
                 <Field label="Minimum Investment">
                   <input
-                    type="number"
-                    min={0}
-                    step={1000}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="$0"
                     value={classItem.minimumInvestment}
                     onChange={(e) =>
-                      patch({ minimumInvestment: e.target.value })
+                      patch({
+                        minimumInvestment: formatCurrencyUsdTypeInput(
+                          e.target.value,
+                        ),
+                      })
+                    }
+                    onBlur={(e) =>
+                      patch({
+                        minimumInvestment: blurFormatMoneyInput(e.target.value),
+                      })
                     }
                   />
                 </Field>

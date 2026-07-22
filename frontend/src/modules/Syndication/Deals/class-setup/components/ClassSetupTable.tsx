@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, Copy, Trash2 } from "lucide-react"
+import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import type { ClassSetupClass, ClassSetupType } from "../types/class-setup.types"
 import { CLASS_TYPE_META } from "../types/class-setup.types"
-import { formatMoney, formatPct } from "../utils/classSetupTotals"
+import {
+  blurFormatMoneyInput,
+  formatCurrencyUsdTypeInput,
+} from "../../utils/offeringMoneyFormat"
+import { formatPct } from "../utils/classSetupTotals"
 
 const TYPE_ORDER: ClassSetupType[] = [
   "lp",
@@ -221,10 +226,10 @@ export function ClassSetupTable({
                 Equity %
               </th>
               <th scope="col" className="r">
-                Funded ($)
+                Funded
               </th>
               <th scope="col" className="r">
-                Min invest ($)
+                Min invest
               </th>
               <th scope="col">Pref / rate</th>
               <th scope="col">Terms</th>
@@ -428,10 +433,6 @@ function TypeSection({
                     onChange={(e) => onPatch(key, { name: e.target.value })}
                     aria-label={`${c.name} class name`}
                   />
-                  <ClassImportantInfo
-                    classItem={c}
-                    promoteShares={promoteShares[key]}
-                  />
                 </div>
               </td>
               <td className="r">
@@ -456,12 +457,19 @@ function TypeSection({
               <td className="r">
                 <input
                   className="cs_num_in"
-                  type="number"
-                  step={1000}
-                  min={0}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="$0"
                   value={c.actuallyFunded}
                   onChange={(e) =>
-                    onPatch(key, { actuallyFunded: e.target.value })
+                    onPatch(key, {
+                      actuallyFunded: formatCurrencyUsdTypeInput(e.target.value),
+                    })
+                  }
+                  onBlur={(e) =>
+                    onPatch(key, {
+                      actuallyFunded: blurFormatMoneyInput(e.target.value),
+                    })
                   }
                   aria-label={`${c.name} funded`}
                 />
@@ -472,12 +480,21 @@ function TypeSection({
                 ) : (
                   <input
                     className="cs_num_in"
-                    type="number"
-                    step={1000}
-                    min={0}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="$0"
                     value={c.minimumInvestment}
                     onChange={(e) =>
-                      onPatch(key, { minimumInvestment: e.target.value })
+                      onPatch(key, {
+                        minimumInvestment: formatCurrencyUsdTypeInput(
+                          e.target.value,
+                        ),
+                      })
+                    }
+                    onBlur={(e) =>
+                      onPatch(key, {
+                        minimumInvestment: blurFormatMoneyInput(e.target.value),
+                      })
                     }
                     aria-label={`${c.name} minimum investment`}
                   />
@@ -666,6 +683,7 @@ function TermsCell({
           <option value="simple">Simple</option>
           <option value="compound">Compound</option>
         </select>
+        {/* Preferred type
         <select
           value={p.preferredType}
           onChange={(e) =>
@@ -681,6 +699,7 @@ function TermsCell({
           <option value="single">Single</option>
           <option value="split">Split</option>
         </select>
+        */}
       </div>
     )
   }
@@ -737,70 +756,11 @@ function TermsCell({
   return <span className="cs_unit">—</span>
 }
 
-function toMoney(v: string | undefined): number {
-  const n = Number(String(v ?? "").replace(/[$,%\s,]/g, ""))
-  return Number.isFinite(n) ? n : 0
-}
-
-function ClassImportantInfo({
-  classItem: c,
-  promoteShares,
-}: {
-  classItem: ClassSetupClass
-  promoteShares?: string[]
-}) {
-  const chips: string[] = []
-
-  if (c.classType === "lp") {
-    chips.push(`Equity ${formatPct(Number(c.equityPct) || 0)}`)
-    if (c.preferredReturn.enabled)
-      chips.push(`Pref ${c.preferredReturn.rate || 0}%/yr`)
-    else chips.push("No pref")
-    if (toMoney(c.actuallyFunded) > 0)
-      chips.push(`Funded ${formatMoney(toMoney(c.actuallyFunded))}`)
-    if (toMoney(c.minimumInvestment) > 0)
-      chips.push(`Min ${formatMoney(toMoney(c.minimumInvestment))}`)
-  } else if (c.classType === "gp") {
-    chips.push(`Equity ${formatPct(Number(c.equityPct) || 0)}`)
-    if (promoteShares && promoteShares.length > 0) {
-      chips.push(
-        `Promote ${promoteShares.map((s) => `${Number(s || 0)}%`).join(" → ")}`,
-      )
-    } else {
-      chips.push("Promote in schedule")
-    }
-    if (toMoney(c.actuallyFunded) > 0)
-      chips.push(`Funded ${formatMoney(toMoney(c.actuallyFunded))}`)
-  } else if (c.classType === "preferred_equity") {
-    const p = c.prefEquity
-    chips.push(`${p.totalRate || 0}%/yr total`)
-    chips.push(
-      `${p.currentRate || 0}% current · ${p.accrualRate || 0}% accrued`,
-    )
-    if (toMoney(c.actuallyFunded) > 0)
-      chips.push(`Funded ${formatMoney(toMoney(c.actuallyFunded))}`)
-    if (toMoney(c.minimumInvestment) > 0)
-      chips.push(`Min ${formatMoney(toMoney(c.minimumInvestment))}`)
-  } else if (c.classType === "mezzanine") {
-    chips.push(`${c.mezz.rate || 0}%/yr interest`)
-    chips.push(c.mezz.pay || "Current pay")
-    if (toMoney(c.actuallyFunded) > 0)
-      chips.push(`Funded ${formatMoney(toMoney(c.actuallyFunded))}`)
-    if (toMoney(c.minimumInvestment) > 0)
-      chips.push(`Min ${formatMoney(toMoney(c.minimumInvestment))}`)
+function promoteStageTooltip(stageIndex: number, label: string): string {
+  if (stageIndex === 0) {
+    return "Base split — this class’s share of residual cash before Hurdle 1 is met."
   }
-
-  if (chips.length === 0) return null
-
-  return (
-    <div className="cs_class_info" aria-label={`${c.name} key terms`}>
-      {chips.map((chip) => (
-        <span key={chip} className="cs_class_info_chip">
-          {chip}
-        </span>
-      ))}
-    </div>
-  )
+  return `${label} — this class’s share of residual cash after that hurdle is met.`
 }
 
 function PromoteSplitsCell({
@@ -819,25 +779,41 @@ function PromoteSplitsCell({
   const stages = Math.max(shares.length, stageLabels.length, 1)
 
   return (
-    <div className="cs_promote_splits_edit" title="Edit promote share by stage">
+    <div className="cs_promote_splits_edit">
       <div className="cs_promote_splits_inputs">
-        {Array.from({ length: stages }, (_, s) => (
-          <span key={s} className="cs_promote_stage_field">
-            {s > 0 ? <span className="cs_promote_arrow" aria-hidden>→</span> : null}
-            <input
-              className="cs_pct_in"
-              type="number"
-              step={0.1}
-              min={0}
-              max={100}
-              value={shares[s] ?? "0"}
-              onChange={(e) => onChange(s, e.target.value)}
-              aria-label={`${classLabel} ${stageLabels[s] ?? `stage ${s + 1}`} share %`}
-              title={stageLabels[s] ?? `Stage ${s + 1}`}
-            />
-            <span className="cs_unit">%</span>
-          </span>
-        ))}
+        {Array.from({ length: stages }, (_, s) => {
+          const label = stageLabels[s] ?? `Stage ${s + 1}`
+          return (
+            <span key={s} className="cs_promote_stage_field">
+              {s > 0 ? (
+                <span className="cs_promote_arrow" aria-hidden>
+                  →
+                </span>
+              ) : null}
+              <FormTooltip
+                label={`About ${label}`}
+                placement="top"
+                panelAlign="start"
+                content={
+                  <p className="cs_promote_stage_tip">
+                    {promoteStageTooltip(s, label)}
+                  </p>
+                }
+              />
+              <input
+                className="cs_pct_in"
+                type="number"
+                step={0.1}
+                min={0}
+                max={100}
+                value={shares[s] ?? "0"}
+                onChange={(e) => onChange(s, e.target.value)}
+                aria-label={`${classLabel} ${label} share %`}
+              />
+              <span className="cs_unit">%</span>
+            </span>
+          )
+        })}
       </div>
       <button
         type="button"

@@ -24,12 +24,39 @@ import type {
 } from "./types/distribution-setup.types"
 import { KIND_META } from "./types/distribution-setup.types"
 import {
+  blurFormatMoneyInput,
+  parseMoneyDigits,
+} from "../utils/offeringMoneyFormat"
+import {
   defaultPayToForKind,
+  investedCapitalFromClasses,
   runDistributionSim,
 } from "./utils/distributionSim"
+import {
+  buildCashFlows,
+  type HurdleCashFlow,
+} from "./utils/hurdleCalculations"
 import "../../usermanagement/user_management.css"
 import "../deals-list.css"
 import "./distribution-setup.css"
+
+function parsePriorDistributions(text: string): Array<{
+  amount: number
+  date: Date
+}> {
+  const out: Array<{ amount: number; date: Date }> = []
+  for (const line of text.split(/\n|;/)) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const [amtRaw, dateRaw] = trimmed.split(",").map((s) => s.trim())
+    const amount = parseMoneyDigits(amtRaw ?? "")
+    if (!Number.isFinite(amount) || amount === 0) continue
+    const date = dateRaw ? new Date(dateRaw) : new Date()
+    if (Number.isNaN(date.getTime())) continue
+    out.push({ amount, date })
+  }
+  return out
+}
 
 export function DistributionSetupPage() {
   const { dealId } = useParams()
@@ -42,10 +69,16 @@ export function DistributionSetupPage() {
   const [bundle, setBundle] = useState<DistributionSetupBundle | null>(null)
   const [activeWf, setActiveWf] = useState<DistributionWfSource>("operating")
   const [addKind, setAddKind] = useState<DistributionWfKind>("LP_PREF")
-  const [simCash, setSimCash] = useState("25000")
+  const [simCash, setSimCash] = useState(() => blurFormatMoneyInput("25000"))
   const [simPeriod, setSimPeriod] = useState("0.25")
   const [stageMet, setStageMet] = useState<Record<number, boolean>>({})
   const [dueOverrides, setDueOverrides] = useState<Record<string, number>>({})
+  const [investmentDate, setInvestmentDate] = useState(() => {
+    const d = new Date()
+    d.setFullYear(d.getFullYear() - 1)
+    return d.toISOString().slice(0, 10)
+  })
+  const [priorDistributionsText, setPriorDistributionsText] = useState("")
 
   const dealDetailPath =
     dealId != null && dealId !== ""
@@ -121,7 +154,7 @@ export function DistributionSetupPage() {
       name: KIND_META[addKind].defaultName,
       payTo: defaultPayToForKind(addKind, bundle.classes),
       amountMode: "calc",
-      inputAmount: "0",
+      inputAmount: blurFormatMoneyInput("0") || "$0",
       catchupPct: "20",
     }
     patchRows([...rows, row])
@@ -151,18 +184,54 @@ export function DistributionSetupPage() {
         perClass: {},
         leftover: 0,
         totalPaid: 0,
+        hurdleEvaluations: [],
+        stageMet: {},
       }
     }
+    const invested = investedCapitalFromClasses(bundle.classes)
+    const prior = parsePriorDistributions(priorDistributionsText)
+    const cashAmount = (() => {
+      const n = parseMoneyDigits(simCash)
+      return Number.isFinite(n) ? n : 0
+    })()
+    const cashFlows: HurdleCashFlow[] =
+      invested > 0
+        ? buildCashFlows({
+            investmentAmount: invested,
+            investmentDate: new Date(investmentDate),
+            distributions: [
+              ...prior,
+              {
+                amount: cashAmount,
+                date: new Date(),
+              },
+            ],
+          })
+        : []
+    const cumulativeDistributions =
+      prior.reduce((s, d) => s + d.amount, 0) + cashAmount
+
     return runDistributionSim({
-      cash: Number(simCash) || 0,
+      cash: cashAmount,
       periodFactor: Number(simPeriod) || 0.25,
       rows,
       classes: bundle.classes,
       promote: bundle.promote,
-      stageMet,
+      stageMetOverrides: stageMet,
       dueOverrides,
+      cashFlows,
+      cumulativeDistributions,
     })
-  }, [bundle, simCash, simPeriod, rows, stageMet, dueOverrides])
+  }, [
+    bundle,
+    simCash,
+    simPeriod,
+    rows,
+    stageMet,
+    dueOverrides,
+    investmentDate,
+    priorDistributionsText,
+  ])
 
   if (!dealId) {
     return (
@@ -267,17 +336,23 @@ export function DistributionSetupPage() {
               onPeriodChange={setSimPeriod}
               sim={sim}
               classes={bundle.classes}
-              stageMet={stageMet}
+              stageMet={sim.stageMet}
               onToggleStageMet={(stage, met) =>
                 setStageMet((prev) => ({ ...prev, [stage]: met }))
               }
-              onDueOverride={(rowId, value) =>
+              onDueOverride={(rowId, value) => {
+                const n = parseMoneyDigits(value)
                 setDueOverrides((prev) => ({
                   ...prev,
-                  [rowId]: Number(value) || 0,
+                  [rowId]: Number.isFinite(n) ? n : 0,
                 }))
-              }
+              }}
               rowIds={rows.map((r) => r.id)}
+              investmentDate={investmentDate}
+              onInvestmentDateChange={setInvestmentDate}
+              priorDistributionsText={priorDistributionsText}
+              onPriorDistributionsTextChange={setPriorDistributionsText}
+              investedCapital={investedCapitalFromClasses(bundle.classes)}
             />
           </div>
         </div>

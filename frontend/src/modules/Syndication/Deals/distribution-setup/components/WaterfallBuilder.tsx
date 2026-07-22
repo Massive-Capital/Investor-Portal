@@ -1,4 +1,8 @@
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react"
+import {
+  blurFormatMoneyInput,
+  formatCurrencyUsdTypeInput,
+} from "../../utils/offeringMoneyFormat"
 import type {
   DistributionPaymentRow,
   DistributionSetupClass,
@@ -325,16 +329,25 @@ function PaymentRowView({
             <>
               <input
                 className="ds_num_in"
-                type="number"
-                step={500}
-                min={0}
+                type="text"
+                inputMode="decimal"
+                placeholder="$0"
                 value={row.inputAmount}
                 onChange={(e) =>
-                  onChange({ ...row, inputAmount: e.target.value })
+                  onChange({
+                    ...row,
+                    inputAmount: formatCurrencyUsdTypeInput(e.target.value),
+                  })
+                }
+                onBlur={(e) =>
+                  onChange({
+                    ...row,
+                    inputAmount: blurFormatMoneyInput(e.target.value),
+                  })
                 }
                 aria-label="Manual amount"
               />
-              <span className="ds_muted">$ due</span>
+              <span className="ds_muted">due</span>
             </>
           ) : (
             <span className="ds_calc_note">

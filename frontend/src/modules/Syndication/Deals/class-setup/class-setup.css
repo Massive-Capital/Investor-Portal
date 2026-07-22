@@ -439,16 +439,16 @@
   overscroll-behavior-x: contain;
   /* auto keeps trackpad / touch inertia smooth; buttons use scrollBy({ behavior: "smooth" }) */
   scroll-behavior: auto;
-  cursor: grab;
+  cursor: default;
 }
 
 .deals_class_setup_page .cs_table_scroll.is-panning {
-  cursor: grabbing;
+  cursor: default;
   user-select: none;
 }
 
 .deals_class_setup_page .cs_table_scroll.is-panning * {
-  cursor: grabbing;
+  cursor: default;
   user-select: none;
 }
 
@@ -722,8 +722,9 @@
 }
 
 .deals_class_setup_page .cs_num_in {
-  width: 100px;
+  width: 112px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .deals_class_setup_page .cs_pct_in {
@@ -938,6 +939,50 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+
+.deals_class_setup_page .cs_promote_stage_field .form_tooltip_root {
+  flex-shrink: 0;
+}
+
+.deals_class_setup_page .cs_promote_stage_field .form_tooltip_trigger {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.deals_class_setup_page .cs_promote_stage_field .form_tooltip_trigger svg {
+  width: 12px;
+  height: 12px;
+}
+
+.deals_class_setup_page .cs_promote_stage_tip {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.deals_class_setup_page .cs_matrix_th_label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 100%;
+}
+
+.deals_class_setup_page .cs_matrix_th_label .form_tooltip_root {
+  flex-shrink: 0;
+}
+
+.deals_class_setup_page .cs_matrix_th_label .form_tooltip_trigger {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.deals_class_setup_page .cs_matrix_th_label .form_tooltip_trigger svg {
+  width: 12px;
+  height: 12px;
 }
 
 .deals_class_setup_page .cs_promote_arrow {

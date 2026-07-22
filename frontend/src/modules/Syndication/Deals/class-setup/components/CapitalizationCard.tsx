@@ -1,3 +1,7 @@
+import {
+  blurFormatMoneyInput,
+  formatCurrencyUsdTypeInput,
+} from "../../utils/offeringMoneyFormat"
 import type { ClassSetupTotals } from "../utils/classSetupTotals"
 import { formatMoney, formatPct } from "../utils/classSetupTotals"
 
@@ -22,11 +26,16 @@ export function CapitalizationCard({
         <span className="cs_metric_label">Target raise</span>
         <input
           className="cs_metric_input"
-          type="number"
-          min={0}
-          step={50000}
+          type="text"
+          inputMode="decimal"
+          placeholder="$0"
           value={targetRaise}
-          onChange={(e) => onTargetRaiseChange(e.target.value)}
+          onChange={(e) =>
+            onTargetRaiseChange(formatCurrencyUsdTypeInput(e.target.value))
+          }
+          onBlur={(e) =>
+            onTargetRaiseChange(blurFormatMoneyInput(e.target.value))
+          }
           aria-label="Target raise"
         />
       </div>

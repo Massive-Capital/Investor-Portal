@@ -1,8 +1,15 @@
 import { AlertTriangle } from "lucide-react"
+import {
+  blurFormatMoneyInput,
+  formatCurrencyUsdTypeInput,
+} from "../../utils/offeringMoneyFormat"
 import type { DistributionSetupClass } from "../types/distribution-setup.types"
 import { CLASS_TYPE_TONE } from "../types/distribution-setup.types"
 import type { SimResult } from "../utils/distributionSim"
 import { formatMoney } from "../utils/distributionSim"
+import type { HurdleEvaluation } from "../utils/hurdleCalculations"
+
+const CASH_PRESETS = ["15000", "25000", "50000"] as const
 
 interface DistributionSimPanelProps {
   cash: string
@@ -15,6 +22,16 @@ interface DistributionSimPanelProps {
   onToggleStageMet: (stage: number, met: boolean) => void
   onDueOverride: (rowId: string, value: string) => void
   rowIds: string[]
+  investmentDate: string
+  onInvestmentDateChange: (v: string) => void
+  priorDistributionsText: string
+  onPriorDistributionsTextChange: (v: string) => void
+  investedCapital: number
+}
+
+function formatMetricPct(n: number | null): string {
+  if (n == null || !Number.isFinite(n)) return "—"
+  return `${(n * 100).toFixed(1)}%`
 }
 
 export function DistributionSimPanel({
@@ -28,8 +45,14 @@ export function DistributionSimPanel({
   onToggleStageMet,
   onDueOverride,
   rowIds,
+  investmentDate,
+  onInvestmentDateChange,
+  priorDistributionsText,
+  onPriorDistributionsTextChange,
+  investedCapital,
 }: DistributionSimPanelProps) {
   const recipients = classes.filter((c) => (sim.perClass[c.id] || 0) > 0.5)
+  const evaluations = sim.hurdleEvaluations ?? []
 
   return (
     <aside className="ds_sim_panel" aria-label="Test a distribution">
@@ -42,13 +65,18 @@ export function DistributionSimPanel({
 
           <div className="ds_sim_inputs">
             <label className="ds_field">
-              <span>Cash available ($)</span>
+              <span>Cash available</span>
               <input
-                type="number"
-                min={0}
-                step={1000}
+                type="text"
+                inputMode="decimal"
+                placeholder="$0"
                 value={cash}
-                onChange={(e) => onCashChange(e.target.value)}
+                onChange={(e) =>
+                  onCashChange(formatCurrencyUsdTypeInput(e.target.value))
+                }
+                onBlur={(e) =>
+                  onCashChange(blurFormatMoneyInput(e.target.value))
+                }
               />
             </label>
             <label className="ds_field">
@@ -64,17 +92,74 @@ export function DistributionSimPanel({
             </label>
             <div className="ds_presets">
               <span>Try:</span>
-              {["15000", "25000", "50000"].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className="ds_preset_btn"
-                  onClick={() => onCashChange(v)}
-                >
-                  ${Number(v).toLocaleString("en-US")}
-                </button>
-              ))}
+              {CASH_PRESETS.map((v) => {
+                const formatted = blurFormatMoneyInput(v)
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className="ds_preset_btn"
+                    onClick={() => onCashChange(formatted)}
+                  >
+                    {formatted}
+                  </button>
+                )
+              })}
             </div>
+          </div>
+
+          <div className="ds_sim_section">
+            <p className="ds_eyebrow">Hurdle cash flows (IRR)</p>
+            <p className="ds_muted ds_sim_hint">
+              Invested capital {formatMoney(investedCapital)}. Add prior
+              distributions as <code>amount,YYYY-MM-DD</code> (one per line) to
+              evaluate IRR hurdles. Cash-on-cash uses this period&apos;s cash
+              automatically.
+            </p>
+            <div className="ds_sim_inputs">
+              <label className="ds_field">
+                <span>Investment date</span>
+                <input
+                  type="date"
+                  value={investmentDate}
+                  onChange={(e) => onInvestmentDateChange(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className="ds_field">
+              <span>Prior distributions</span>
+              <textarea
+                className="ds_cf_textarea"
+                rows={3}
+                placeholder={"$10,000,2024-03-31\n$400,000,2024-06-30"}
+                value={priorDistributionsText}
+                onChange={(e) =>
+                  onPriorDistributionsTextChange(e.target.value)
+                }
+              />
+            </label>
+            {evaluations.length > 0 ? (
+              <ul className="ds_hurdle_metrics">
+                {evaluations.map((ev: HurdleEvaluation, i) => (
+                  <li key={`hurdle_ev_${i}`}>
+                    <span className="ds_hurdle_metrics_label">
+                      Hurdle {i + 1} · {ev.type}
+                    </span>
+                    <span
+                      className={
+                        ev.hurdleMet
+                          ? "ds_hurdle_metrics_ok"
+                          : "ds_hurdle_metrics_miss"
+                      }
+                    >
+                      {ev.canEvaluate
+                        ? `${formatMetricPct(ev.metric)} ${ev.hurdleMet ? "≥" : "<"} ${formatMetricPct(ev.hurdleRate)}`
+                        : "needs cash flows"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
 
           <div className="ds_sim_section">
@@ -102,6 +187,10 @@ export function DistributionSimPanel({
                       const isStage = r.kind === "stage"
                       const paymentId =
                         !isStage && rowIds[r.index] ? rowIds[r.index]! : null
+                      const ev =
+                        isStage && r.stage != null && r.stage > 0
+                          ? evaluations[r.stage - 1]
+                          : undefined
                       return (
                         <tr key={`${r.kind}_${r.index}`}>
                           <td>
@@ -136,6 +225,12 @@ export function DistributionSimPanel({
                                   }
                                 />
                                 Hurdle {r.stage} met?
+                                {ev?.canEvaluate ? (
+                                  <span className="ds_stage_auto">
+                                    {" "}
+                                    (auto)
+                                  </span>
+                                ) : null}
                               </label>
                             ) : null}
                           </td>
@@ -145,10 +240,23 @@ export function DistributionSimPanel({
                             ) : paymentId ? (
                               <input
                                 className="ds_due_in"
-                                type="number"
-                                value={Math.round(r.due)}
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="$0"
+                                value={blurFormatMoneyInput(
+                                  String(Math.round(r.due)),
+                                )}
                                 onChange={(e) =>
-                                  onDueOverride(paymentId, e.target.value)
+                                  onDueOverride(
+                                    paymentId,
+                                    formatCurrencyUsdTypeInput(e.target.value),
+                                  )
+                                }
+                                onBlur={(e) =>
+                                  onDueOverride(
+                                    paymentId,
+                                    blurFormatMoneyInput(e.target.value),
+                                  )
                                 }
                                 aria-label="Due override"
                               />
@@ -203,8 +311,9 @@ export function DistributionSimPanel({
               </ul>
             )}
             <p className="ds_sim_note">
-              Illustrative for one period using Class Setup funded balances.
-              Hurdle status is a manual toggle here.
+              Preferred return = outstanding capital × (rate ÷ periods/year).
+              CoC = (distribution ÷ capital) × periods/year. IRR uses dated
+              cash flows (XIRR). Toggle overrides when auto-eval cannot run.
             </p>
           </div>
         </div>

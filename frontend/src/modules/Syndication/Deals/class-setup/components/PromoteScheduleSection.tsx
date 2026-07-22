@@ -1,3 +1,4 @@
+import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import type {
   ClassSetupClass,
   ClassSetupPromoteSchedule,
@@ -148,15 +149,41 @@ export function PromoteScheduleSection({
                 <tr>
                   <th scope="col">Class</th>
                   <th scope="col" className="r">
-                    Base
-                    <span className="cs_unit">before Hurdle 1</span>
+                    <span className="cs_matrix_th_label">
+                      Base
+                      <FormTooltip
+                        label="About Base split"
+                        placement="top"
+                        panelAlign="end"
+                        content={
+                          <p className="cs_promote_stage_tip">
+                            Base split — each class’s share of residual cash
+                            before Hurdle 1 is met.
+                          </p>
+                        }
+                      />
+                    </span>
                   </th>
                   {normalized.hurdles.map((h, i) => (
                     <th key={h.id} scope="col" className="r cs_matrix_hurdle_th">
-                      <span className="cs_matrix_hurdle_title">
-                        After H{i + 1}
+                      <span className="cs_matrix_th_label">
+                        <span className="cs_matrix_hurdle_title">
+                          After Hurdle {i + 1}
+                        </span>
+                        <FormTooltip
+                          label={`About After Hurdle ${i + 1}`}
+                          placement="top"
+                          panelAlign="end"
+                          content={
+                            <p className="cs_promote_stage_tip">
+                              After Hurdle {i + 1} ({hurdleLabel(h)}) — each
+                              class’s share of residual cash once this hurdle is
+                              met.
+                            </p>
+                          }
+                        />
                       </span>
-                      <span className="cs_matrix_hurdle_rate" title={hurdleLabel(h)}>
+                      <span className="cs_matrix_hurdle_rate">
                         {`${h.rate || 0}%`}
                       </span>
                       <span className="cs_unit">{h.basis}</span>

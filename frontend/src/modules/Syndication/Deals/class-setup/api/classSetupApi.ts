@@ -7,10 +7,16 @@ import type {
   ClassSetupType,
   ClassSetupValidation,
 } from "../types/class-setup.types"
+import { blurFormatMoneyInput } from "../../utils/offeringMoneyFormat"
 import {
   normalizePromoteShares,
   parsePromoteFromMeta,
 } from "../utils/promoteSchedule"
+
+function moneyField(raw: unknown, fallback = "0"): string {
+  const t = str(raw) || fallback
+  return blurFormatMoneyInput(t) || blurFormatMoneyInput(fallback) || "$0"
+}
 
 function authHeaders(): HeadersInit {
   return portalAuthHeaders()
@@ -50,10 +56,11 @@ function normalizeClass(raw: Record<string, unknown>, index: number): ClassSetup
     status: (str(raw.status) || "draft") as ClassSetupClass["status"],
     classGroup: str(raw.classGroup ?? raw.class_group),
     mapsTo: str(raw.mapsTo ?? raw.maps_to) || `Investor Class ${index + 1}`,
-    committedCapital: str(raw.committedCapital ?? raw.committed_capital) || "0",
-    actuallyFunded: str(raw.actuallyFunded ?? raw.actually_funded) || "0",
-    minimumInvestment:
-      str(raw.minimumInvestment ?? raw.minimum_investment) || "0",
+    committedCapital: moneyField(raw.committedCapital ?? raw.committed_capital),
+    actuallyFunded: moneyField(raw.actuallyFunded ?? raw.actually_funded),
+    minimumInvestment: moneyField(
+      raw.minimumInvestment ?? raw.minimum_investment,
+    ),
     equityPct: str(raw.equityPct ?? raw.equity_pct) || "0",
     preferredReturn: {
       enabled: Boolean(pref.enabled),
@@ -111,7 +118,7 @@ function normalizeBundle(raw: Record<string, unknown>): ClassSetupBundle {
     dealId: str(raw.dealId ?? raw.deal_id),
     dealName: str(raw.dealName ?? raw.deal_name),
     meta: {
-      targetRaise: str(meta.targetRaise ?? meta.target_raise) || "0",
+      targetRaise: moneyField(meta.targetRaise ?? meta.target_raise),
       latestChanges: str(meta.latestChanges ?? meta.latest_changes),
       promote,
     },

@@ -1,5 +1,6 @@
 import { portalAuthHeaders } from "../../../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
+import { blurFormatMoneyInput } from "../../utils/offeringMoneyFormat"
 import type {
   DistributionPaymentRow,
   DistributionSetupBundle,
@@ -21,6 +22,11 @@ function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : v != null ? String(v).trim() : ""
 }
 
+function moneyField(raw: unknown, fallback = "0"): string {
+  const t = str(raw) || fallback
+  return blurFormatMoneyInput(t) || blurFormatMoneyInput(fallback) || "$0"
+}
+
 function parseRow(raw: unknown, i: number): DistributionPaymentRow {
   const o = asRecord(raw)
   const catchup = asRecord(o.catchup)
@@ -35,7 +41,7 @@ function parseRow(raw: unknown, i: number): DistributionPaymentRow {
     name: str(o.name) || "Payment row",
     payTo: payTo.map((id) => str(id)).filter(Boolean),
     amountMode: str(o.amountMode ?? o.amount_mode) === "input" ? "input" : "calc",
-    inputAmount: str(o.inputAmount ?? o.input_amount) || "0",
+    inputAmount: moneyField(o.inputAmount ?? o.input_amount),
     catchupPct: str(catchup.pct ?? o.catchupPct ?? o.catchup_pct) || "20",
   }
 }
@@ -50,7 +56,7 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
   return {
     dealId: str(raw.dealId ?? raw.deal_id),
     dealName: str(raw.dealName ?? raw.deal_name),
-    targetRaise: str(raw.targetRaise ?? raw.target_raise) || "0",
+    targetRaise: moneyField(raw.targetRaise ?? raw.target_raise),
     waterfalls: {
       operating: (Array.isArray(wf.operating) ? wf.operating : []).map(parseRow),
       capital: (Array.isArray(wf.capital) ? wf.capital : []).map(parseRow),
@@ -64,8 +70,9 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
         id: str(row.id) || `cls_${i}`,
         name: str(row.name) || `Class ${i + 1}`,
         classType: str(row.classType ?? row.class_type) || "lp",
-        actuallyFunded:
-          str(row.actuallyFunded ?? row.actually_funded) || "0",
+        actuallyFunded: moneyField(
+          row.actuallyFunded ?? row.actually_funded,
+        ),
         equityPct: str(row.equityPct ?? row.equity_pct) || "0",
         preferredReturn: {
           enabled: Boolean(pref.enabled),

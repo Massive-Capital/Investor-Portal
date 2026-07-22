@@ -74,7 +74,7 @@ export function ClassSetupPage() {
   const [saving, setSaving] = useState(false)
   const [dealName, setDealName] = useState("")
   const [meta, setMeta] = useState<ClassSetupDealMeta>({
-    targetRaise: "0",
+    targetRaise: "$0",
     latestChanges: "",
     promote: emptyPromoteSchedule(),
   })
@@ -341,7 +341,7 @@ export function ClassSetupPage() {
   const promoteStageLabels = useMemo(() => {
     const labels = ["Base"]
     promoteNormalized.hurdles.forEach((h, i) => {
-      labels.push(`After H${i + 1} · ${h.rate || 0}%`)
+      labels.push(`After Hurdle ${i + 1} · ${h.rate || 0}%`)
     })
     return labels
   }, [promoteNormalized.hurdles])
