@@ -2465,8 +2465,66 @@ a.deal_offering_add_ic_header.um_btn_primary {
   box-sizing: border-box;
 }
 
-.deal_offering_root .deal_classes_datatable_panel .deal_classes_name_btn {
+.deal_offering_root
+  .deal_classes_datatable_panel
+  .um_table_members
+  thead
+  th.deal_classes_col_name,
+.deal_offering_root
+  .deal_classes_datatable_panel
+  .um_table_members
+  tbody
+  td.deal_classes_col_name.um_td_user {
+  width: 14rem;
+  min-width: 14rem !important;
+  max-width: 22rem;
+  box-sizing: border-box;
+  overflow: visible;
+  vertical-align: middle;
+}
+
+.deal_offering_root
+  .deal_classes_datatable_panel
+  button.deals_table_name_link.deal_classes_name_btn {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-style: normal;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 600;
+  color: var(--portal-text, #1b1b1d);
+  cursor: pointer;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal_offering_root
+  .deal_classes_datatable_panel
+  button.deals_table_name_link.deal_classes_name_btn:hover {
+  text-decoration: underline;
+}
+
+:root[data-theme="dark"]
+  .deal_offering_root
+  .deal_classes_datatable_panel
+  button.deals_table_name_link.deal_classes_name_btn {
+  color: var(--portal-text, #f1f5f9);
+}
+
+:root[data-theme="dark"]
+  .deal_offering_root
+  .deal_classes_datatable_panel
+  button.deals_table_name_link.deal_classes_name_btn:hover {
+  color: var(--portal-gold-accent, #d4af37);
 }
 
 .deal_offering_root .deal_classes_datatable_panel .deal_classes_terms_cell {

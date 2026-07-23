@@ -41,6 +41,17 @@ import {
   parseUsPhoneToE164,
 } from "../../utils/usPhone.js";
 
+/** Concat first + last for `contact.full_name` (trimmed, single space). */
+export function buildContactFullName(
+  firstName: string,
+  lastName: string,
+): string {
+  return [firstName, lastName]
+    .map((s) => String(s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** Thrown when a non-empty phone is not a valid U.S. NANP number. */
 export class ContactInvalidPhoneError extends Error {
   constructor() {
@@ -370,6 +381,8 @@ export async function ensureSelfRegisteredInvestorContact(params: {
 
   if (existing) {
     const sponsorOwned = existing.createdBy !== userId;
+    const nextFirstName = firstName || existing.firstName;
+    const nextLastName = lastName || existing.lastName;
     const [updated] = await db
       .update(contact)
       .set({
@@ -377,6 +390,9 @@ export async function ensureSelfRegisteredInvestorContact(params: {
         ...(sponsorOwned ? {} : { platformAdminOnly: true }),
         ...(firstName ? { firstName } : {}),
         ...(lastName ? { lastName } : {}),
+        ...(firstName || lastName
+          ? { fullName: buildContactFullName(nextFirstName, nextLastName) }
+          : {}),
         ...(phoneStored ? { phone: phoneStored } : {}),
       })
       .where(eq(contact.id, existing.id))
@@ -385,11 +401,14 @@ export async function ensureSelfRegisteredInvestorContact(params: {
     return sponsorOwned ? null : String(updated?.id ?? existing.id).trim() || null;
   }
 
+  const insertFirstName = firstName || "—";
+  const insertLastName = lastName || "—";
   const [inserted] = await db
     .insert(contact)
     .values({
-      firstName: firstName || "—",
-      lastName: lastName || "—",
+      firstName: insertFirstName,
+      lastName: insertLastName,
+      fullName: buildContactFullName(insertFirstName, insertLastName),
       email: emailNorm,
       phone: phoneStored,
       note: "",
@@ -561,6 +580,10 @@ export async function insertContact(params: {
   const row: ContactInsert = {
     firstName: params.input.firstName,
     lastName: params.input.lastName,
+    fullName: buildContactFullName(
+      params.input.firstName,
+      params.input.lastName,
+    ),
     email: params.input.email,
     phone: phoneStored,
     note: params.input.note,
@@ -902,6 +925,7 @@ export async function updateContactFieldsForViewer(
     .set({
       firstName: fields.firstName,
       lastName: fields.lastName,
+      fullName: buildContactFullName(fields.firstName, fields.lastName),
       email: fields.email,
       phone: phoneStored,
       note: fields.note,

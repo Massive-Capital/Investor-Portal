@@ -23,6 +23,8 @@ export const contact = pgTable("contact", {
   }),
   firstName: varchar("first_name", { length: 200 }).notNull(),
   lastName: varchar("last_name", { length: 200 }).notNull(),
+  /** Concat of first + last name; kept in sync on write for now. */
+  fullName: varchar("full_name", { length: 400 }).notNull().default(""),
   email: varchar("email", { length: 255 }).notNull(),
   /** True when this email is linked to a row in `users` — excluded from All Contacts lists. */
   isPortalUser: boolean("is_portal_user").notNull().default(false),

@@ -241,9 +241,9 @@ function BillingPricingPanel({
       <div className="cp_billing_header">
         <h3 className="cp_settings_billing_tab_title">Billing</h3>
         <p className="cp_billing_subtitle">
-          Pricing by deal size and company users (not cosponsors). No charge for
-          draft or archived deals — billing starts when you begin raising capital
-          / asset managing. Seat options preview pricing; Starter Checkout uses
+          Pricing by deal size and company users. No charge for draft or
+          archived deals — billing starts when you begin raising capital /
+          asset managing. Seat options preview pricing; Starter Checkout uses
           your configured Stripe Starter monthly/yearly Price.
         </p>
       </div>
@@ -397,7 +397,10 @@ function BillingPricingPanel({
                 checked={billingCycle === "annually"}
                 onChange={() => onBillingCycleChange("annually")}
               />
-              <span>Yearly</span>
+              <span>
+                Yearly{" "}
+                <span className="cp_billing_cycle_save">2 months free</span>
+              </span>
             </label>
           </div>
         </div>
@@ -471,9 +474,13 @@ function BillingPricingPanel({
                     {priceSuffix}
                   </span>
                 </div>
+                {billingCycle === "annually" ? (
+                  <p className="cp_billing_plan_price_perk">2 months free</p>
+                ) : null}
                 <p className="cp_billing_plan_price_calc">
                   {SEAT_OPTIONS.find((s) => s.id === seatBand)?.label} · card /
                   ACH
+                  {billingCycle === "annually" ? " · billed yearly" : ""}
                 </p>
               </div>
               <div className="cp_billing_plan_body">
@@ -486,12 +493,17 @@ function BillingPricingPanel({
                     <Check size={16} aria-hidden="true" />
                     <span>
                       Company users:{" "}
-                      {SEAT_OPTIONS.find((s) => s.id === seatBand)?.label}
+                      {SEAT_OPTIONS.find((s) => s.id === seatBand)?.label}{" "}
+                      (doesn’t include co-sponsors)
                     </span>
                   </li>
                   <li>
                     <Check size={16} aria-hidden="true" />
-                    <span>Recurring monthly or annual billing</span>
+                    <span>
+                      {billingCycle === "annually"
+                        ? "Yearly billing — 2 months free"
+                        : "Recurring monthly or annual billing"}
+                    </span>
                   </li>
                 </ul>
               </div>

@@ -143,6 +143,12 @@ function mapContactToJson(row: ContactRow) {
     organization_id: row.organizationId ?? null,
     firstName: row.firstName,
     lastName: row.lastName,
+    fullName:
+      String(row.fullName ?? "").trim() ||
+      [row.firstName, row.lastName]
+        .map((s) => String(s ?? "").trim())
+        .filter(Boolean)
+        .join(" "),
     email: row.email,
     phone: row.phone,
     note: row.note,

@@ -176,6 +176,12 @@ function contactDisplayName(row: ContactRow): string {
   return n || "—"
 }
 
+function contactHasTag(row: ContactRow, tagName: string): boolean {
+  const target = tagName.trim().toLowerCase()
+  if (!target) return false
+  return row.tags.some((t) => t.trim().toLowerCase() === target)
+}
+
 function TagsCell({ items }: { items: string[] }) {
   if (!items.length)
     return <span className="um_status_muted">—</span>
@@ -226,6 +232,8 @@ function ContactsPage() {
   const [contactsListTab, setContactsListTab] =
     useState<ContactsListTab>("active")
   const [mainTab, setMainTab] = useState<ContactsMainTab>("contacts")
+  /** When set, Contact tab shows only contacts that include this tag. */
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [tagCatalog, setTagCatalog] = useState<ContactLabelRow[]>([])
   const [listCatalog, setListCatalog] = useState<ContactLabelRow[]>([])
   const [tagsSearchQuery, setTagsSearchQuery] = useState("")
@@ -350,9 +358,24 @@ function ContactsPage() {
   )
 
   const filteredRows = useMemo(
-    () => tabRows.filter((r) => contactRowMatchesSearch(r, searchQuery)),
-    [tabRows, searchQuery],
+    () =>
+      tabRows
+        .filter((r) => !tagFilter || contactHasTag(r, tagFilter))
+        .filter((r) => contactRowMatchesSearch(r, searchQuery)),
+    [tabRows, searchQuery, tagFilter],
   )
+
+  const openContactsForTag = useCallback((tagName: string) => {
+    const name = tagName.trim()
+    if (!name) return
+    setTagFilter(name)
+    setMainTab("contacts")
+    setContactsListTab("active")
+    setSearchQuery("")
+    setPage(1)
+    setToolbarNotice("")
+    setSelectedContactIds(new Set())
+  }, [])
 
   const allContactsInFilterSelected = useMemo(
     () =>
@@ -804,7 +827,7 @@ function ContactsPage() {
   const tagCountInUse = useMemo(
     () =>
       tagCatalog.filter(
-        (t) => rows.filter((c) => c.tags.includes(t.name)).length > 0,
+        (t) => rows.filter((c) => contactHasTag(c, t.name)).length > 0,
       ).length,
     [tagCatalog, rows],
   )
@@ -822,7 +845,7 @@ function ContactsPage() {
   const tagCatalogUsageFiltered = useMemo(() => {
     if (tagsUsageFilter === "all") return tagCatalog
     return tagCatalog.filter((t) => {
-      const n = rows.filter((c) => c.tags.includes(t.name)).length
+      const n = rows.filter((c) => contactHasTag(c, t.name)).length
       return tagsUsageFilter === "in_use" ? n > 0 : n === 0
     })
   }, [tagCatalog, rows, tagsUsageFilter])
@@ -1067,7 +1090,16 @@ function ContactsPage() {
         id: "name",
         header: "Name",
         sortValue: (r) => r.name.toLowerCase(),
-        cell: (r) => r.name,
+        cell: (r) => (
+          <button
+            type="button"
+            className="deals_table_name_link contacts_catalog_name_btn"
+            onClick={() => openContactsForTag(r.name)}
+            aria-label={`View contacts with tag ${r.name}`}
+          >
+            {r.name}
+          </button>
+        ),
       },
       {
         id: "description",
@@ -1079,8 +1111,20 @@ function ContactsPage() {
         id: "contacts",
         header: "Contacts",
         align: "center",
-        sortValue: (r) => rows.filter((c) => c.tags.includes(r.name)).length,
-        cell: (r) => rows.filter((c) => c.tags.includes(r.name)).length,
+        sortValue: (r) => rows.filter((c) => contactHasTag(c, r.name)).length,
+        cell: (r) => {
+          const count = rows.filter((c) => contactHasTag(c, r.name)).length
+          return (
+            <button
+              type="button"
+              className="deals_table_name_link contacts_catalog_count_btn"
+              onClick={() => openContactsForTag(r.name)}
+              aria-label={`View ${count} contact${count === 1 ? "" : "s"} with tag ${r.name}`}
+            >
+              {count}
+            </button>
+          )
+        },
       },
       {
         id: "actions",
@@ -1098,7 +1142,7 @@ function ContactsPage() {
         ),
       },
     ],
-    [rows],
+    [openContactsForTag, rows],
   )
 
   const listColumns: DataTableColumn<ContactLabelRow>[] = useMemo(
@@ -1350,7 +1394,7 @@ function ContactsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, contactsListTab])
+  }, [searchQuery, contactsListTab, tagFilter])
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
@@ -1614,6 +1658,32 @@ function ContactsPage() {
                   {toolbarNotice}
                 </p>
               ) : null}
+              {tagFilter ? (
+                <div
+                  className="contacts_active_tag_filter"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="contacts_active_tag_filter_label">
+                    Showing contacts with tag{" "}
+                    <strong className="contacts_active_tag_filter_name">
+                      {tagFilter}
+                    </strong>
+                    {` (${filteredRows.length})`}
+                  </span>
+                  <button
+                    type="button"
+                    className="contacts_active_tag_filter_clear"
+                    onClick={() => {
+                      setTagFilter(null)
+                      setPage(1)
+                    }}
+                  >
+                    <X size={14} strokeWidth={2} aria-hidden />
+                    Clear filter
+                  </button>
+                </div>
+              ) : null}
               <DataTable
                 visualVariant="members"
                 stickyFirstColumn
@@ -1631,8 +1701,12 @@ function ContactsPage() {
                     : rows.length === 0
                       ? "No contacts yet. Add a contact to see it here."
                       : tabRows.length === 0
-                        ? "No active contacts."
-                        : "No contacts match your search."
+                        ? contactsListTab === "archived"
+                          ? "No archived contacts."
+                          : "No active contacts."
+                        : tagFilter
+                          ? `No contacts with tag “${tagFilter}”.`
+                          : "No contacts match your search."
                 }
                 emptyStateRole={loading ? "status" : undefined}
                 pagination={
@@ -1694,6 +1768,7 @@ function ContactsPage() {
                 rows={filteredTagCatalogRows}
                 getRowKey={(r) => r.id}
                 emptyLabel={tagsTableEmptyLabel}
+                onBodyRowClick={(r) => openContactsForTag(r.name)}
                 pagination={
                   filteredTagCatalogRows.length > 0
                     ? tagsPagination
