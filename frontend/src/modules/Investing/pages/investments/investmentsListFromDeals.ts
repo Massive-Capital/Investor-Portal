@@ -34,13 +34,21 @@ import {
   fetchDealsList,
 } from "@/modules/Syndication/Deals/api/dealsApi"
 import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
+import {
+  fetchMyDealDistributions,
+  fetchMyDistributions,
+  type MyDistributionPaymentRow,
+} from "@/modules/Syndication/Deals/distribution-setup/api/myDistributionsApi"
 import type {
   DealInvestorRow,
   DealInvestorsPayload,
 } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
 import { investorRowMatchesViewerEmail } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
-import { investorRowCommittedAmountNumeric } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import {
+  investorRowCommittedAmountNumeric,
+  parseMoneyDigits,
+} from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import {
   fetchUserInvestorProfileNameMap,
   formatInvestedAsFromInv,
@@ -190,6 +198,21 @@ function onboardingBucketsForDealPayload(
   return []
 }
 
+/** Sum viewer payment lines keyed by deal id (case-insensitive). */
+function distributedAmountByDealId(
+  rows: MyDistributionPaymentRow[],
+): Map<string, number> {
+  const byDeal = new Map<string, number>()
+  for (const row of rows) {
+    const dealId = String(row.dealId ?? "").trim().toLowerCase()
+    if (!dealId) continue
+    const n = parseMoneyDigits(String(row.payment ?? ""))
+    if (!Number.isFinite(n) || n <= 0) continue
+    byDeal.set(dealId, (byDeal.get(dealId) ?? 0) + n)
+  }
+  return byDeal
+}
+
 function listRowFromDealAndInvestors(
   listRow: DealListRow,
   members: DealInvestorRow[],
@@ -201,6 +224,7 @@ function listRowFromDealAndInvestors(
   investors: DealInvestorRow[],
   viewerEmailNorm: string,
   leadSponsorDisplayName?: string,
+  distributedAmount = 0,
 ): InvestmentListRow {
   const dealId = listRow.id
   const profileId = inv ? String(inv.profileId ?? "").trim() : ""
@@ -226,7 +250,10 @@ function listRowFromDealAndInvestors(
     userInvestorProfileId: userInvProfId || undefined,
     userInvestorProfileName: userInvProfName || undefined,
     investedAmount: committed,
-    distributedAmount: 0,
+    distributedAmount:
+      Number.isFinite(distributedAmount) && distributedAmount > 0
+        ? distributedAmount
+        : 0,
     currentValuation: "—",
     dealCloseDate: (listRow.closeDateDisplay || "—").trim() || "—",
     status: (listRow.dealStage || "—").trim() || "—",
@@ -277,9 +304,16 @@ export async function loadInvestmentListRowsFromDeals(
   const scoped = await mapInvestingInvestmentsPageScope(list)
   if (scoped.length === 0) return []
 
-  const nameMap =
-    nameByUserProfileIdFromBook ??
-    (await fetchUserInvestorProfileNameMap())
+  const [nameMap, myDistributions] = await Promise.all([
+    nameByUserProfileIdFromBook
+      ? Promise.resolve(nameByUserProfileIdFromBook)
+      : fetchUserInvestorProfileNameMap(),
+    fetchMyDistributions().catch(() => ({
+      distributions: [] as MyDistributionPaymentRow[],
+      totalPayment: "0",
+    })),
+  ])
+  const distributedByDeal = distributedAmountByDealId(myDistributions.distributions)
   const out: InvestmentListRow[] = []
   for (const { row, payload, members, leadSponsorDisplayName } of scoped) {
     const committed = committedAmountMatchingInvestorsTable(payload, emn)
@@ -297,6 +331,8 @@ export async function loadInvestmentListRowsFromDeals(
         payload,
       ),
     )
+    const distributedAmount =
+      distributedByDeal.get(String(row.id ?? "").trim().toLowerCase()) ?? 0
     out.push(
       listRowFromDealAndInvestors(
         row,
@@ -309,6 +345,7 @@ export async function loadInvestmentListRowsFromDeals(
         payload.investors,
         emn,
         leadSponsorDisplayName,
+        distributedAmount,
       ),
     )
   }
@@ -459,10 +496,22 @@ export async function loadInvestmentDetailFromDeal(
   const myCommitments = positiveViewerCommitments(payload.investors, emn)
   const profileRows = viewerRowsForProfileBreakdown(payload.investors, emn)
   const inv = myCommitments[0] ?? profileRows[0]
-  const nameMap = await fetchUserInvestorProfileNameMap()
+  const [nameMap, dealDistributions] = await Promise.all([
+    fetchUserInvestorProfileNameMap(),
+    fetchMyDealDistributions(did).catch(() => ({
+      distributions: [] as MyDistributionPaymentRow[],
+      totalPayment: "0",
+    })),
+  ])
   const viewerRolesLabel = formatViewerInvestingDealRolesLabel(
     resolveViewerInvestingDealRoles(members, payload.investors, emn, payload),
   )
+  const distributedFromTotal = parseMoneyDigits(
+    String(dealDistributions.totalPayment ?? ""),
+  )
+  const distributedAmount = Number.isFinite(distributedFromTotal)
+    ? distributedFromTotal
+    : 0
   const list = listRowFromDealAndInvestors(
     deal.listRow,
     members,
@@ -474,6 +523,7 @@ export async function loadInvestmentDetailFromDeal(
     payload.investors,
     emn,
     leadSponsorDisplayName,
+    distributedAmount,
   )
   const investedAsBreakdown = buildProfileBreakdownForDeal(profileRows, nameMap)
   return defaultDetailRecord(list, deal, investedAsBreakdown)

@@ -2,6 +2,7 @@ import { portalAuthHeaders } from "../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl"
 
 export type StripeBillingPlanId = "starter" | "running" | "growth"
+export type StripeBillingSeatBand = "5" | "10" | "10plus"
 
 export type CompanyBillingStatus = {
   configured: boolean
@@ -24,6 +25,13 @@ export type CompanyBillingStatus = {
     annualReady: boolean
     monthlyEnv?: string
     annualEnv?: string
+    seats?: Array<{
+      seatBand: StripeBillingSeatBand | string
+      monthlyReady: boolean
+      annualReady: boolean
+      monthlyEnv?: string
+      annualEnv?: string
+    }>
   }>
 }
 
@@ -118,6 +126,7 @@ export async function startCompanyBillingCheckout(
   companyId: string,
   planId: string,
   billingCycle: "monthly" | "annually",
+  seatBand: StripeBillingSeatBand = "5",
 ): Promise<
   | { ok: true; url: string }
   | { ok: false; message: string; statusCode: number }
@@ -142,6 +151,7 @@ export async function startCompanyBillingCheckout(
         credentials: "include",
         body: JSON.stringify({
           planId,
+          seatBand,
           billingCycle: billingCycle === "annually" ? "yearly" : "monthly",
         }),
       },

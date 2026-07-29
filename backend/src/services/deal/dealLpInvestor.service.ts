@@ -421,20 +421,52 @@ export async function buildLpInvestorsFromMerged(
     .where(eq(dealLpInvestor.dealId, dealId));
 
   const rosterEmailByLpId = new Map<string, string>();
+  const rosterPctByLpId = new Map<
+    string,
+    { percentOfClassOwnership: string; percentOfClassDistributions: string }
+  >();
+  const rosterPctByContact = new Map<
+    string,
+    { percentOfClassOwnership: string; percentOfClassDistributions: string }
+  >();
   for (const m of roster) {
+    const idKey = String(m.id).toLowerCase();
+    const contactKey = String(m.contactMemberId ?? "")
+      .trim()
+      .toLowerCase();
     const em = String(m.email ?? "").trim();
-    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em);
+    if (em) rosterEmailByLpId.set(idKey, em);
+    const pct = {
+      percentOfClassOwnership: String(m.percentOfClassOwnership ?? "").trim(),
+      percentOfClassDistributions: String(
+        m.percentOfClassDistributions ?? "",
+      ).trim(),
+    };
+    rosterPctByLpId.set(idKey, pct);
+    if (contactKey) rosterPctByContact.set(contactKey, pct);
   }
 
   const investorsMerged = base.map((inv) => {
     const id = String(inv.id ?? "").toLowerCase();
+    const contactKey = String(inv.contactId ?? "")
+      .trim()
+      .toLowerCase();
     const storedEmail = lpRosterIds.has(id)
       ? rosterEmailByLpId.get(id)
       : undefined;
     const emailPatch = storedEmail?.trim()
       ? { userEmail: storedEmail.trim() }
       : {};
-    return { ...inv, ...emailPatch };
+    const pct =
+      rosterPctByLpId.get(id) ??
+      (contactKey ? rosterPctByContact.get(contactKey) : undefined);
+    const pctPatch = pct
+      ? {
+          percentOfClassOwnership: pct.percentOfClassOwnership,
+          percentOfClassDistributions: pct.percentOfClassDistributions,
+        }
+      : {};
+    return { ...inv, ...emailPatch, ...pctPatch };
   });
 
   const withAddedBy = await enrichInvestorApiRowsWithAddedBy(
@@ -466,27 +498,62 @@ export async function enrichFullInvestorApiFromLpRoster(
   Array<FullRosterInvestorApiRow & { investorKind?: "investment" | "lp_roster" }>
 > {
   const lpRosterIds = await resolveLpRosterIdSet(dealId, mergedRows);
-  if (lpRosterIds.size === 0) return investors
 
   const roster = await db
     .select()
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId))
 
+  if (roster.length === 0) return investors
+
   const rosterEmailByLpId = new Map<string, string>()
+  const rosterPctByLpId = new Map<
+    string,
+    { percentOfClassOwnership: string; percentOfClassDistributions: string }
+  >()
+  const rosterPctByContact = new Map<
+    string,
+    { percentOfClassOwnership: string; percentOfClassDistributions: string }
+  >()
   for (const m of roster) {
+    const idKey = String(m.id).toLowerCase()
+    const contactKey = String(m.contactMemberId ?? "")
+      .trim()
+      .toLowerCase()
     const em = String(m.email ?? "").trim()
-    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em)
+    if (em) rosterEmailByLpId.set(idKey, em)
+    const pct = {
+      percentOfClassOwnership: String(m.percentOfClassOwnership ?? "").trim(),
+      percentOfClassDistributions: String(
+        m.percentOfClassDistributions ?? "",
+      ).trim(),
+    }
+    rosterPctByLpId.set(idKey, pct)
+    if (contactKey) rosterPctByContact.set(contactKey, pct)
   }
 
   return investors.map((inv) => {
     const id = String(inv.id ?? "").toLowerCase()
-    if (!lpRosterIds.has(id)) return inv
-    const storedEmail = rosterEmailByLpId.get(id)?.trim()
+    const contactKey = String(inv.contactId ?? "")
+      .trim()
+      .toLowerCase()
+    const isLpRoster = lpRosterIds.has(id)
+    const storedEmail = isLpRoster
+      ? rosterEmailByLpId.get(id)?.trim()
+      : undefined
+    const pct =
+      rosterPctByLpId.get(id) ??
+      (contactKey ? rosterPctByContact.get(contactKey) : undefined)
     return {
       ...inv,
       ...(storedEmail ? { userEmail: storedEmail } : {}),
-      investorKind: "lp_roster" as const,
+      ...(pct
+        ? {
+            percentOfClassOwnership: pct.percentOfClassOwnership,
+            percentOfClassDistributions: pct.percentOfClassDistributions,
+          }
+        : {}),
+      ...(isLpRoster ? { investorKind: "lp_roster" as const } : {}),
     }
   })
 }
@@ -532,6 +599,10 @@ export type UpsertDealLpInvestorInput = {
   emailFromClient?: string | null;
   /** From client (e.g. `lp_investors`); else {@link LP_INVESTOR_TABLE_ROLE}. */
   roleFromClient?: string | null;
+  /** Percent of class (ownership). */
+  percentOfClassOwnership?: string | null;
+  /** Percent of class (distributions). */
+  percentOfClassDistributions?: string | null;
 };
 
 export const LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE =
@@ -584,6 +655,10 @@ export async function upsertDealLpInvestor(
   const resolvedEmail =
     fromClientEmail || (await resolveEmailForContactMemberId(cid));
   const roleToStore = fromClientRole || LP_INVESTOR_TABLE_ROLE;
+  const ownershipPct = String(input.percentOfClassOwnership ?? "").trim();
+  const distributionsPct = String(
+    input.percentOfClassDistributions ?? "",
+  ).trim();
 
   const [row] = await db
     .insert(dealLpInvestor)
@@ -596,6 +671,8 @@ export async function upsertDealLpInvestor(
       profileId,
       userInvestorProfileId: uip,
       investorClass: input.investorClass?.trim() ?? "",
+      percentOfClassOwnership: ownershipPct,
+      percentOfClassDistributions: distributionsPct,
       sendInvitationMail: send,
       updatedAt: now,
     })
@@ -608,6 +685,8 @@ export async function upsertDealLpInvestor(
         profileId,
         userInvestorProfileId: uip,
         investorClass: input.investorClass?.trim() ?? "",
+        percentOfClassOwnership: ownershipPct,
+        percentOfClassDistributions: distributionsPct,
         sendInvitationMail: sqlPreserveSendInvitationMailOnUpsert(
           input.sendInvitationMail,
           dealLpInvestor.sendInvitationMail,
@@ -664,6 +743,10 @@ export async function updateDealLpInvestorById(
       : String(existing?.sendInvitationMail ?? "").toLowerCase().trim() === "yes"
         ? "yes"
         : "no";
+  const ownershipPct = String(input.percentOfClassOwnership ?? "").trim();
+  const distributionsPct = String(
+    input.percentOfClassDistributions ?? "",
+  ).trim();
 
   const [row] = await db
     .update(dealLpInvestor)
@@ -673,6 +756,8 @@ export async function updateDealLpInvestorById(
       role: roleToStore,
       profileId,
       investorClass: input.investorClass?.trim() ?? "",
+      percentOfClassOwnership: ownershipPct,
+      percentOfClassDistributions: distributionsPct,
       sendInvitationMail: sendToStore,
       updatedAt: now,
     })

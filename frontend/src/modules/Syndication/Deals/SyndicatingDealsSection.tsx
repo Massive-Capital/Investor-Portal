@@ -32,6 +32,8 @@ import {
   fetchDealReviewSummary,
   fetchDealsList,
 } from "./api/dealsApi";
+import { fetchDistributionSetup } from "./distribution-setup/api/distributionSetupApi";
+import { sumPriorDistributionsAmount } from "./dealsDashboardMoney";
 import { DEALS_LIST_REFETCH_EVENT } from "./createDealFormDraftStorage";
 import { dateSortValue, formatDealListDateDisplay } from "./dealsListDisplay";
 import { filterDealListRowsVisibleToInvestors, filterDealListToViewerInvested } from "@/modules/Investing/utils/investingViewerDealScope";
@@ -338,21 +340,30 @@ export function SyndicatingDealsSection({
       }
       const bundles = await Promise.all(
         list.map(async (row) => {
-          const [payload, classes] = await Promise.all([
+          const [payload, classes, distSetup] = await Promise.all([
             fetchDealInvestors(row.id),
             fetchDealInvestorClasses(row.id),
+            fetchDistributionSetup(row.id).catch(() => null),
           ]);
-          return { row, payload, classes };
+          return {
+            row,
+            payload,
+            classes,
+            totalDistributed: sumPriorDistributionsAmount(
+              distSetup?.priorDistributions,
+            ),
+          };
         }),
       );
       if (cancelled) return;
       setDeals(
-        bundles.map(({ row, payload, classes }) =>
+        bundles.map(({ row, payload, classes, totalDistributed }) =>
           mergeDealRecordWithInvestorsAndClasses(
             row,
             dealListRowToDealRecord(row),
             payload,
             classes,
+            { totalDistributed },
           ),
         ),
       );
@@ -401,20 +412,29 @@ export function SyndicatingDealsSection({
         }
         const bundles = await Promise.all(
           list.map(async (row) => {
-            const [payload, classes] = await Promise.all([
+            const [payload, classes, distSetup] = await Promise.all([
               fetchDealInvestors(row.id),
               fetchDealInvestorClasses(row.id),
+              fetchDistributionSetup(row.id).catch(() => null),
             ]);
-            return { row, payload, classes };
+            return {
+              row,
+              payload,
+              classes,
+              totalDistributed: sumPriorDistributionsAmount(
+                distSetup?.priorDistributions,
+              ),
+            };
           }),
         );
         setDeals(
-          bundles.map(({ row, payload, classes }) =>
+          bundles.map(({ row, payload, classes, totalDistributed }) =>
             mergeDealRecordWithInvestorsAndClasses(
               row,
               dealListRowToDealRecord(row),
               payload,
               classes,
+              { totalDistributed },
             ),
           ),
         );

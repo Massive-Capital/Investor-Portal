@@ -1,6 +1,7 @@
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Building2, CircleDollarSign } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
+import { TabsScrollStrip } from "../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../../common/components/Toast/toastStore"
 import { setAppDocumentTitle } from "../../../../common/utils/appDocumentTitle"
 import {
@@ -10,9 +11,12 @@ import {
 } from "../utils/offeringDetailsSectionNav"
 import {
   fetchDistributionSetup,
+  completeDistributionSetup,
   newPaymentRowId,
   saveDistributionSetup,
 } from "./api/distributionSetupApi"
+import { fetchDealById, fetchDealInvestors } from "../api/dealsApi"
+import { allocateInvestorDistributionLines } from "../tabs/distributions/utils/investorDistributionAllocation"
 import { DistributionSetupSkeleton } from "./components/DistributionSetupSkeleton"
 import { DistributionSimPanel } from "./components/DistributionSimPanel"
 import { WaterfallBuilder } from "./components/WaterfallBuilder"
@@ -21,6 +25,7 @@ import type {
   DistributionSetupBundle,
   DistributionWfKind,
   DistributionWfSource,
+  PriorDistributionRecord,
 } from "./types/distribution-setup.types"
 import { KIND_META } from "./types/distribution-setup.types"
 import {
@@ -30,28 +35,26 @@ import {
 import {
   defaultPayToForKind,
   investedCapitalFromClasses,
+  periodFromFactor,
   runDistributionSim,
 } from "./utils/distributionSim"
 import {
   buildCashFlows,
   type HurdleCashFlow,
 } from "./utils/hurdleCalculations"
+import { resolveDealInvestmentDateIso } from "./utils/resolveDealInvestmentDate"
 import "../../usermanagement/user_management.css"
 import "../deals-list.css"
 import "./distribution-setup.css"
 
-function parsePriorDistributions(text: string): Array<{
-  amount: number
-  date: Date
-}> {
+function priorRecordsToCashFlows(
+  records: PriorDistributionRecord[],
+): Array<{ amount: number; date: Date }> {
   const out: Array<{ amount: number; date: Date }> = []
-  for (const line of text.split(/\n|;/)) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    const [amtRaw, dateRaw] = trimmed.split(",").map((s) => s.trim())
-    const amount = parseMoneyDigits(amtRaw ?? "")
+  for (const row of records) {
+    const amount = parseMoneyDigits(row.amount)
     if (!Number.isFinite(amount) || amount === 0) continue
-    const date = dateRaw ? new Date(dateRaw) : new Date()
+    const date = new Date(row.date)
     if (Number.isNaN(date.getTime())) continue
     out.push({ amount, date })
   }
@@ -66,6 +69,7 @@ export function DistributionSetupPage() {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [completing, setCompleting] = useState(false)
   const [bundle, setBundle] = useState<DistributionSetupBundle | null>(null)
   const [activeWf, setActiveWf] = useState<DistributionWfSource>("operating")
   const [addKind, setAddKind] = useState<DistributionWfKind>("LP_PREF")
@@ -73,12 +77,10 @@ export function DistributionSetupPage() {
   const [simPeriod, setSimPeriod] = useState("0.25")
   const [stageMet, setStageMet] = useState<Record<number, boolean>>({})
   const [dueOverrides, setDueOverrides] = useState<Record<string, number>>({})
-  const [investmentDate, setInvestmentDate] = useState(() => {
-    const d = new Date()
-    d.setFullYear(d.getFullYear() - 1)
-    return d.toISOString().slice(0, 10)
-  })
-  const [priorDistributionsText, setPriorDistributionsText] = useState("")
+  const [investmentDate, setInvestmentDate] = useState("")
+  const [investmentDateSource, setInvestmentDateSource] = useState<
+    "close" | "funded" | "none"
+  >("none")
 
   const dealDetailPath =
     dealId != null && dealId !== ""
@@ -111,10 +113,34 @@ export function DistributionSetupPage() {
     if (!dealId) return
     setLoading(true)
     try {
-      const next = await fetchDistributionSetup(dealId)
+      const [next, deal, invPayload] = await Promise.all([
+        fetchDistributionSetup(dealId),
+        fetchDealById(dealId).catch(() => null),
+        fetchDealInvestors(dealId, { lpInvestorsOnly: false }).catch(
+          () => null,
+        ),
+      ])
       setBundle(next)
       setDueOverrides({})
       setStageMet({})
+
+      const closeDate = deal?.closeDate ?? null
+      const fromClose = resolveDealInvestmentDateIso({ closeDate })
+      if (fromClose) {
+        setInvestmentDate(fromClose)
+        setInvestmentDateSource("close")
+      } else {
+        const fromFunded = resolveDealInvestmentDateIso({
+          investors: invPayload?.investors ?? [],
+        })
+        if (fromFunded) {
+          setInvestmentDate(fromFunded)
+          setInvestmentDateSource("funded")
+        } else {
+          setInvestmentDate("")
+          setInvestmentDateSource("none")
+        }
+      }
     } catch (err) {
       toast.error(
         "Could not load distribution setup",
@@ -186,19 +212,29 @@ export function DistributionSetupPage() {
         totalPaid: 0,
         hurdleEvaluations: [],
         stageMet: {},
+        period: "quarterly" as const,
+        periodWindowLabel: "",
+        priorCashInPeriod: 0,
       }
     }
     const invested = investedCapitalFromClasses(bundle.classes)
-    const prior = parsePriorDistributions(priorDistributionsText)
+    const prior = priorRecordsToCashFlows(bundle.priorDistributions)
     const cashAmount = (() => {
       const n = parseMoneyDigits(simCash)
       return Number.isFinite(n) ? n : 0
+    })()
+    const invDate = (() => {
+      if (!investmentDate || !/^\d{4}-\d{2}-\d{2}$/.test(investmentDate)) {
+        return new Date()
+      }
+      const d = new Date(`${investmentDate}T00:00:00`)
+      return Number.isNaN(d.getTime()) ? new Date() : d
     })()
     const cashFlows: HurdleCashFlow[] =
       invested > 0
         ? buildCashFlows({
             investmentAmount: invested,
-            investmentDate: new Date(investmentDate),
+            investmentDate: invDate,
             distributions: [
               ...prior,
               {
@@ -210,6 +246,7 @@ export function DistributionSetupPage() {
         : []
     const cumulativeDistributions =
       prior.reduce((s, d) => s + d.amount, 0) + cashAmount
+    const asOf = new Date().toISOString().slice(0, 10)
 
     return runDistributionSim({
       cash: cashAmount,
@@ -221,6 +258,8 @@ export function DistributionSetupPage() {
       dueOverrides,
       cashFlows,
       cumulativeDistributions,
+      asOfDate: asOf,
+      priorDistributions: bundle.priorDistributions,
     })
   }, [
     bundle,
@@ -230,8 +269,85 @@ export function DistributionSetupPage() {
     stageMet,
     dueOverrides,
     investmentDate,
-    priorDistributionsText,
   ])
+
+  async function handleComplete() {
+    if (!dealId || !bundle || completing) return
+    const amount = parseMoneyDigits(simCash)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error(
+        "Cannot complete",
+        "Enter cash available greater than $0 first.",
+      )
+      return
+    }
+    setCompleting(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const period = periodFromFactor(Number(simPeriod) || 0.25)
+      let investorPayments:
+        | Array<{
+            investorId: string
+            contactId?: string
+            userEmail?: string
+            investorName: string
+            classId: string
+            className: string
+            capital: number
+            percentOfClass: number
+            payment: number
+          }>
+        | undefined
+      try {
+        const invPayload = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: false,
+        })
+        const lines = allocateInvestorDistributionLines({
+          investors: invPayload.investors ?? [],
+          classes: bundle.classes,
+          perClass: sim.perClass,
+        })
+        if (lines.length > 0) {
+          investorPayments = lines.map((l) => ({
+            investorId: l.investorId,
+            ...(l.contactId ? { contactId: l.contactId } : {}),
+            ...(l.userEmail ? { userEmail: l.userEmail } : {}),
+            investorName: l.investorName,
+            classId: l.classId,
+            className: l.className,
+            capital: l.capital,
+            percentOfClass: l.percentOfClass,
+            payment: l.payment,
+          }))
+        }
+      } catch {
+        // Backend capital-weighted fallback still runs without client lines.
+      }
+      const saved = await completeDistributionSetup(dealId, bundle.waterfalls, {
+        source: activeWf,
+        amount,
+        date: today,
+        period,
+        name:
+          activeWf === "capital"
+            ? `Capital event · ${today}`
+            : `Operating · ${today}`,
+        ...(investorPayments ? { investorPayments } : {}),
+      })
+      setBundle(saved)
+      toast.success(
+        "Distribution completed",
+        "It now appears under Prior distributions and on the Distributions tab.",
+      )
+    } catch (err) {
+      toast.error(
+        "Complete failed",
+        err instanceof Error ? err.message : "Try again.",
+      )
+    } finally {
+      setCompleting(false)
+    }
+  }
 
   if (!dealId) {
     return (
@@ -260,7 +376,7 @@ export function DistributionSetupPage() {
             <h1 className="deals_list_title">Distribution Setup</h1>
             <p className="ds_page_subtitle">
               {bundle?.dealName ? `${bundle.dealName} · ` : ""}
-              Payment order and residual splits
+              Step 2 of 2 — payment order and residual splits (after Class Setup)
             </p>
           </div>
         </div>
@@ -268,10 +384,18 @@ export function DistributionSetupPage() {
           <Link
             to={classSetupHref}
             state={returnState}
-            className="ds_add_btn"
+            className="um_toolbar_export_btn"
           >
             Class Setup
           </Link>
+          <button
+            type="button"
+            className="um_btn_primary"
+            disabled={loading || !bundle || saving}
+            onClick={() => void handleSave()}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       </header>
 
@@ -279,35 +403,74 @@ export function DistributionSetupPage() {
         <DistributionSetupSkeleton />
       ) : (
         <div className="ds_page_body">
-          <div className="ds_wf_switch" role="tablist" aria-label="Waterfall type">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeWf === "operating"}
-              className={activeWf === "operating" ? "is-active" : ""}
-              onClick={() => setActiveWf("operating")}
-            >
-              Operating distributions
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeWf === "capital"}
-              className={activeWf === "capital" ? "is-active" : ""}
-              onClick={() => setActiveWf("capital")}
-            >
-              Capital event (sale / refi)
-            </button>
+          <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer ds_wf_tabs_outer">
+            <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+              <div
+                className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
+                role="tablist"
+                aria-label="Waterfall type"
+              >
+                <button
+                  type="button"
+                  id="ds-wf-tab-operating"
+                  role="tab"
+                  aria-selected={activeWf === "operating"}
+                  aria-controls="ds-wf-panel"
+                  className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                    activeWf === "operating" ? " um_members_tab_active" : ""
+                  }`}
+                  onClick={() => {
+                    setActiveWf("operating")
+                    setDueOverrides({})
+                    setStageMet({})
+                  }}
+                >
+                  <CircleDollarSign
+                    className="deals_tabs_icon um_segmented_tab_icon"
+                    size={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span className="deals_tabs_label um_segmented_tab_label">
+                    Operating
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  id="ds-wf-tab-capital"
+                  role="tab"
+                  aria-selected={activeWf === "capital"}
+                  aria-controls="ds-wf-panel"
+                  className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                    activeWf === "capital" ? " um_members_tab_active" : ""
+                  }`}
+                  onClick={() => {
+                    setActiveWf("capital")
+                    setDueOverrides({})
+                    setStageMet({})
+                  }}
+                >
+                  <Building2
+                    className="deals_tabs_icon um_segmented_tab_icon"
+                    size={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span className="deals_tabs_label um_segmented_tab_label">
+                    Capital event
+                  </span>
+                </button>
+              </div>
+            </TabsScrollStrip>
           </div>
 
-          <div className="ds_layout">
+          <div id="ds-wf-panel" role="tabpanel" className="ds_layout">
             <WaterfallBuilder
               rows={rows}
               classes={bundle.classes}
               promote={bundle.promote}
               addKind={addKind}
-              saving={saving}
-              onSave={() => void handleSave()}
+              activeWf={activeWf}
               onAddKindChange={setAddKind}
               onAddRow={handleAddRow}
               onChangeRow={(id, next) =>
@@ -349,10 +512,15 @@ export function DistributionSetupPage() {
               }}
               rowIds={rows.map((r) => r.id)}
               investmentDate={investmentDate}
-              onInvestmentDateChange={setInvestmentDate}
-              priorDistributionsText={priorDistributionsText}
-              onPriorDistributionsTextChange={setPriorDistributionsText}
+              onInvestmentDateChange={(v) => {
+                setInvestmentDate(v)
+                setInvestmentDateSource("none")
+              }}
+              investmentDateSource={investmentDateSource}
+              priorDistributions={bundle.priorDistributions}
               investedCapital={investedCapitalFromClasses(bundle.classes)}
+              completing={completing}
+              onComplete={() => void handleComplete()}
             />
           </div>
         </div>

@@ -1,9 +1,14 @@
 import { AlertTriangle } from "lucide-react"
 import {
   blurFormatMoneyInput,
+  formatCurrencyTableDisplay,
   formatCurrencyUsdTypeInput,
+  parseMoneyDigits,
 } from "../../utils/offeringMoneyFormat"
-import type { DistributionSetupClass } from "../types/distribution-setup.types"
+import type {
+  DistributionSetupClass,
+  PriorDistributionRecord,
+} from "../types/distribution-setup.types"
 import { CLASS_TYPE_TONE } from "../types/distribution-setup.types"
 import type { SimResult } from "../utils/distributionSim"
 import { formatMoney } from "../utils/distributionSim"
@@ -24,9 +29,12 @@ interface DistributionSimPanelProps {
   rowIds: string[]
   investmentDate: string
   onInvestmentDateChange: (v: string) => void
-  priorDistributionsText: string
-  onPriorDistributionsTextChange: (v: string) => void
+  /** Where the current investment date was loaded from (for UI hint). */
+  investmentDateSource?: "close" | "funded" | "none"
+  priorDistributions: PriorDistributionRecord[]
   investedCapital: number
+  completing?: boolean
+  onComplete?: () => void
 }
 
 function formatMetricPct(n: number | null): string {
@@ -47,12 +55,19 @@ export function DistributionSimPanel({
   rowIds,
   investmentDate,
   onInvestmentDateChange,
-  priorDistributionsText,
-  onPriorDistributionsTextChange,
+  investmentDateSource = "none",
+  priorDistributions,
   investedCapital,
+  completing = false,
+  onComplete,
 }: DistributionSimPanelProps) {
   const recipients = classes.filter((c) => (sim.perClass[c.id] || 0) > 0.5)
   const evaluations = sim.hurdleEvaluations ?? []
+  const cashAmount = (() => {
+    const n = parseMoneyDigits(cash)
+    return Number.isFinite(n) ? n : 0
+  })()
+  const canComplete = Boolean(onComplete) && cashAmount > 0 && !completing
 
   return (
     <aside className="ds_sim_panel" aria-label="Test a distribution">
@@ -90,6 +105,14 @@ export function DistributionSimPanel({
                 <option value="1">Annual</option>
               </select>
             </label>
+            {sim.periodWindowLabel ? (
+              <p className="ds_muted ds_sim_hint ds_period_hint">
+                {sim.periodWindowLabel}
+                {sim.priorCashInPeriod > 0
+                  ? ` · ${formatMoney(sim.priorCashInPeriod)} already distributed in this window (preferred dues reduced)`
+                  : " · preferred dues are for this window only"}
+              </p>
+            ) : null}
             <div className="ds_presets">
               <span>Try:</span>
               {CASH_PRESETS.map((v) => {
@@ -108,13 +131,36 @@ export function DistributionSimPanel({
             </div>
           </div>
 
+          {onComplete ? (
+            <div className="ds_complete_row">
+              <button
+                type="button"
+                className="ds_primary_btn"
+                disabled={!canComplete}
+                onClick={onComplete}
+                title={
+                  cashAmount > 0
+                    ? "Record this cash as a completed distribution"
+                    : "Enter cash available greater than $0 to complete"
+                }
+              >
+                {completing ? "Completing…" : "Complete distribution"}
+              </button>
+            </div>
+          ) : null}
+
           <div className="ds_sim_section">
             <p className="ds_eyebrow">Hurdle cash flows (IRR)</p>
             <p className="ds_muted ds_sim_hint">
-              Invested capital {formatMoney(investedCapital)}. Add prior
-              distributions as <code>amount,YYYY-MM-DD</code> (one per line) to
-              evaluate IRR hurdles. Cash-on-cash uses this period&apos;s cash
-              automatically.
+              Invested capital {formatMoney(investedCapital)}. Cash-on-cash uses
+              this period&apos;s cash automatically.
+              {investmentDateSource === "close"
+                ? " Investment date is the deal close date."
+                : investmentDateSource === "funded"
+                  ? " Investment date is the earliest funded / invested date on this deal."
+                  : investmentDate
+                    ? ""
+                    : " Set a deal close date on Offering Overview to drive this field."}
             </p>
             <div className="ds_sim_inputs">
               <label className="ds_field">
@@ -126,18 +172,23 @@ export function DistributionSimPanel({
                 />
               </label>
             </div>
-            <label className="ds_field">
+            <div className="ds_field">
               <span>Prior distributions</span>
-              <textarea
-                className="ds_cf_textarea"
-                rows={3}
-                placeholder={"$10,000,2024-03-31\n$400,000,2024-06-30"}
-                value={priorDistributionsText}
-                onChange={(e) =>
-                  onPriorDistributionsTextChange(e.target.value)
-                }
-              />
-            </label>
+              {priorDistributions.length === 0 ? (
+                <p className="ds_prior_empty">
+                  No prior distributions recorded yet.
+                </p>
+              ) : (
+                <ul className="ds_prior_list" aria-label="Prior distributions">
+                  {priorDistributions.map((p) => (
+                    <li key={p.id || `${p.date}_${p.amount}`}>
+                      <span>{formatCurrencyTableDisplay(p.amount)}</span>
+                      <span className="ds_muted">{p.date}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             {evaluations.length > 0 ? (
               <ul className="ds_hurdle_metrics">
                 {evaluations.map((ev: HurdleEvaluation, i) => (
@@ -311,9 +362,11 @@ export function DistributionSimPanel({
               </ul>
             )}
             <p className="ds_sim_note">
-              Preferred return = outstanding capital × (rate ÷ periods/year).
-              CoC = (distribution ÷ capital) × periods/year. IRR uses dated
-              cash flows (XIRR). Toggle overrides when auto-eval cannot run.
+              Preferred due = funded × annual rate ÷ periods in year
+              (monthly÷12, quarterly÷4, annual÷1). Prior completes in the same
+              calendar month / quarter / year reduce remaining preferred dues.
+              CoC uses all cash in that window, annualized. IRR uses dated cash
+              flows (XIRR).
             </p>
           </div>
         </div>

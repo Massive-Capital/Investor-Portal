@@ -1,6 +1,7 @@
 /**
  * Maps between Class Setup payloads and deal_investor_class / advanced_options_json.
- * Preserves existing advanced fields so legacy Add/Edit Investor Class pages keep working.
+ * Merges Class Setup fields into advanced_options_json without dropping unrelated keys
+ * (overview, invest-now, and other consumers still read that blob).
  */
 
 import type { DealInvestorClassRow } from "../../schema/deal.schema/deal-investor-class.schema.js";

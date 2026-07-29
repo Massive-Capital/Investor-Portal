@@ -4262,8 +4262,8 @@ function readClassSetupSummary(row: DealInvestorClass): {
     classGroup: strLoose(setup.classGroup ?? setup.class_group),
     mapsTo: strLoose(setup.mapsTo ?? setup.maps_to),
     actuallyFunded:
-      strLoose(setup.actuallyFunded ?? setup.actually_funded) ||
       strLoose(row.raiseAmountDistributions) ||
+      strLoose(setup.actuallyFunded ?? setup.actually_funded) ||
       "0",
     equityPct: equityFromSetup || equityFallback || "0",
     prefEnabled: Boolean(pref.enabled),
@@ -5132,7 +5132,9 @@ export function OfferingInformationSection({
     [rows],
   )
 
-  const addInvestorClassHref = `/deals/${encodeURIComponent(dealId)}/class-setup?mode=create`
+  const classSetupHref = `/deals/${encodeURIComponent(dealId)}/class-setup`
+  const addInvestorClassHref = `${classSetupHref}?mode=create`
+  const distributionSetupHref = `/deals/${encodeURIComponent(dealId)}/distribution-setup`
 
   const emptyLabel = loading
     ? "Loading investor classes…"
@@ -5239,7 +5241,7 @@ export function OfferingInformationSection({
         header: (
           <ClassTableColumnHeader
             label="Funded"
-            hint="Actually funded capital for this class."
+            hint="Sum of fund-approved investment commitments for this class."
             headerAlign="right"
             tooltipPanelAlign="end"
           />
@@ -5383,6 +5385,20 @@ export function OfferingInformationSection({
               <Download size={18} strokeWidth={2} aria-hidden />
               <span>Export All</span>
             </button>
+            <Link
+              to={classSetupHref}
+              state={OFFERING_DETAILS_CLASSES_RETURN}
+              className="um_toolbar_export_btn"
+            >
+              Class Setup
+            </Link>
+            <Link
+              to={distributionSetupHref}
+              state={OFFERING_DETAILS_CLASSES_RETURN}
+              className="um_toolbar_export_btn"
+            >
+              Distribution Setup
+            </Link>
             <Link
               to={addInvestorClassHref}
               state={OFFERING_DETAILS_CLASSES_RETURN}

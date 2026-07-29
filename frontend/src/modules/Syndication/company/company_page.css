@@ -2617,6 +2617,13 @@ select.cp_settings_input_pill.um_field_select {
   color: var(--portal-text-muted, #64748b);
 }
 
+.cp_billing_filter_hint {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--portal-text-muted, #94a3b8);
+}
+
 /* Billing cycle radio toggle */
 .cp_billing_cycle {
   display: inline-flex;
@@ -2836,6 +2843,12 @@ select.cp_settings_input_pill.um_field_select {
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease,
     border-color 0.15s ease;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
 }
 .cp_billing_plan_cta_primary {
   border: 1px solid var(--main-auth-button-color, #155abf);

@@ -3,6 +3,7 @@ import type {
   DistributionSetupClass,
   DistributionSetupPromote,
   DistributionWfKind,
+  PriorDistributionRecord,
 } from "../types/distribution-setup.types"
 import {
   calculatePeriodPreferredReturn,
@@ -12,6 +13,13 @@ import {
   type HurdleEvaluation,
   type WaterfallInput,
 } from "./hurdleCalculations"
+import {
+  periodFromFactor,
+  periodLabel,
+  remainingDueAfterPriorPool,
+  sumPriorCashInPeriod,
+  type DistributionPeriod,
+} from "./distributionPeriod"
 
 function toNum(v: string | number | undefined): number {
   const n = Number(String(v ?? "").replace(/[$,%\s,]/g, ""))
@@ -50,6 +58,11 @@ export function hurdleLabel(
   h: DistributionSetupPromote["hurdles"][number],
 ): string {
   return `${h.rate}% ${h.basis}`
+}
+
+/** Pref-style tiers whose period obligation is reduced by same-period prior cash. */
+function isPeriodPrefKind(kind: DistributionWfKind): boolean {
+  return kind === "LP_PREF" || kind === "PREF_CURRENT" || kind === "PREF_ACCRUED"
 }
 
 export function computeDue(
@@ -108,6 +121,38 @@ export function computeDue(
   return 0
 }
 
+function classDueShare(
+  row: DistributionPaymentRow,
+  c: DistributionSetupClass,
+  periodsPerYear: number,
+): number {
+  if (row.kind === "PREF_CURRENT")
+    return calculatePeriodPreferredReturn(
+      toNum(c.actuallyFunded),
+      toNum(c.prefEquity.currentRate) / 100,
+      periodsPerYear,
+    )
+  if (row.kind === "PREF_ACCRUED")
+    return calculatePeriodPreferredReturn(
+      toNum(c.actuallyFunded),
+      Math.max(
+        0,
+        toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
+      ) / 100,
+      1,
+    )
+  if (row.kind === "LP_PREF")
+    return c.preferredReturn.enabled
+      ? calculatePeriodPreferredReturn(
+          toNum(c.actuallyFunded),
+          toNum(c.preferredReturn.rate) / 100,
+          periodsPerYear,
+        )
+      : 0
+  if (row.kind === "ROC") return toNum(c.actuallyFunded)
+  return 1
+}
+
 export function calcFormulaNote(
   row: DistributionPaymentRow,
   classes: DistributionSetupClass[],
@@ -146,6 +191,11 @@ export interface SimResult {
   hurdleEvaluations: HurdleEvaluation[]
   /** Effective stage-met flags after calc + manual overrides. */
   stageMet: Record<number, boolean>
+  /** Period window used for dues / CoC. */
+  period: DistributionPeriod
+  periodWindowLabel: string
+  /** Prior cash already recorded in this period window. */
+  priorCashInPeriod: number
 }
 
 export function investedCapitalFromClasses(
@@ -162,6 +212,8 @@ export function buildWaterfallInput(params: {
   classes: DistributionSetupClass[]
   cashFlows?: HurdleCashFlow[]
   cumulativeDistributions?: number
+  /** Cash already paid + current run in the selected period (for CoC). */
+  cashInPeriod?: number
 }): WaterfallInput {
   const investedCapital = investedCapitalFromClasses(params.classes)
   const periodsPerYear = periodsPerYearFromFactor(params.periodFactor)
@@ -169,12 +221,16 @@ export function buildWaterfallInput(params: {
     params.cashFlows && params.cashFlows.length > 0
       ? params.cashFlows
       : []
+  const periodCash =
+    params.cashInPeriod != null && Number.isFinite(params.cashInPeriod)
+      ? params.cashInPeriod
+      : params.cash
   return {
     cashFlows,
     availableCash: params.cash,
     investedCapital,
     periodsPerYear,
-    distribution: params.cash,
+    distribution: periodCash,
     cumulativeDistributions: params.cumulativeDistributions,
   }
 }
@@ -190,6 +246,12 @@ export function runDistributionSim(input: {
   dueOverrides: Record<string, number>
   cashFlows?: HurdleCashFlow[]
   cumulativeDistributions?: number
+  /** Distribution as-of date (YYYY-MM-DD). Defaults to today. */
+  asOfDate?: string
+  /** Completed priors — used to reduce same-period preferred dues. */
+  priorDistributions?: PriorDistributionRecord[]
+  /** Exclude this prior id when attributing same-period cash (details re-sim). */
+  excludePriorId?: string
 }): SimResult {
   const {
     cash,
@@ -201,20 +263,47 @@ export function runDistributionSim(input: {
     dueOverrides,
     cashFlows,
     cumulativeDistributions,
+    asOfDate,
+    priorDistributions = [],
+    excludePriorId,
   } = input
 
+  const period = periodFromFactor(periodFactor)
+  const asOf =
+    asOfDate && /^\d{4}-\d{2}-\d{2}/.test(asOfDate)
+      ? asOfDate.slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+
+  const { window, priorCash } = sumPriorCashInPeriod({
+    priors: priorDistributions.map((p) => ({
+      id: p.id,
+      amount: toNum(p.amount),
+      date: p.date,
+    })),
+    asOfIso: asOf,
+    period,
+    excludeId: excludePriorId,
+  })
+
+  const cashInPeriod = priorCash + cash
   const waterfallInput = buildWaterfallInput({
     cash,
     periodFactor,
     classes,
     cashFlows,
     cumulativeDistributions,
+    cashInPeriod,
   })
   const { stageMet, evaluations: hurdleEvaluations } =
     computeStageMetFromHurdles(promote, waterfallInput, stageMetOverrides)
 
-  const periodsPerYear = periodsPerYearFromFactor(periodFactor)
+  // Stage map already includes manual overrides.
+  const stageMetFinal: Record<number, boolean> = { ...stageMet }
+
+  const ppy = periodsPerYearFromFactor(periodFactor)
   let remaining = cash
+  /** Prior cash still available to absorb preferred period dues (waterfall order). */
+  let priorPool = priorCash
   const perClass: Record<string, number> = {}
   const profit: Record<string, number> = {}
   classes.forEach((c) => {
@@ -240,7 +329,7 @@ export function runDistributionSim(input: {
       continue
     }
 
-    let baseDue: number
+    let fullDue: number
     if (t.kind === "CATCHUP" && t.amountMode !== "input") {
       const pct = Math.min(99, toNum(t.catchupPct) || 20)
       const lpProfit = classes
@@ -250,9 +339,22 @@ export function runDistributionSim(input: {
         (s, id) => s + (profit[id] || 0),
         0,
       )
-      baseDue = Math.max(0, (pct / (100 - pct)) * lpProfit - gpProfit)
+      fullDue = Math.max(0, (pct / (100 - pct)) * lpProfit - gpProfit)
     } else {
-      baseDue = computeDue(t, classes, periodFactor)
+      fullDue = computeDue(t, classes, periodFactor)
+    }
+
+    let baseDue = fullDue
+    let appliedFromPrior = 0
+    if (
+      dueOverrides[t.id] == null &&
+      isPeriodPrefKind(t.kind) &&
+      t.amountMode !== "input"
+    ) {
+      const reduced = remainingDueAfterPriorPool(fullDue, priorPool)
+      baseDue = reduced.remainingDue
+      appliedFromPrior = reduced.appliedFromPrior
+      priorPool = reduced.poolLeft
     }
 
     const due =
@@ -262,33 +364,7 @@ export function runDistributionSim(input: {
       .map((id) => classes.find((c) => c.id === id))
       .filter((c): c is DistributionSetupClass => c != null)
 
-    const dues = list.map((c) => {
-      if (t.kind === "PREF_CURRENT")
-        return calculatePeriodPreferredReturn(
-          toNum(c.actuallyFunded),
-          toNum(c.prefEquity.currentRate) / 100,
-          periodsPerYear,
-        )
-      if (t.kind === "PREF_ACCRUED")
-        return calculatePeriodPreferredReturn(
-          toNum(c.actuallyFunded),
-          Math.max(
-            0,
-            toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
-          ) / 100,
-          1,
-        )
-      if (t.kind === "LP_PREF")
-        return c.preferredReturn.enabled
-          ? calculatePeriodPreferredReturn(
-              toNum(c.actuallyFunded),
-              toNum(c.preferredReturn.rate) / 100,
-              periodsPerYear,
-            )
-          : 0
-      if (t.kind === "ROC") return toNum(c.actuallyFunded)
-      return 1
-    })
+    const dues = list.map((c) => classDueShare(t, c, ppy))
     const dueSum = dues.reduce((a, b) => a + b, 0) || 1
     list.forEach((c, ci) => {
       const share = paid * (dues[ci]! / dueSum)
@@ -297,6 +373,19 @@ export function runDistributionSim(input: {
         profit[c.id] = (profit[c.id] || 0) + share
     })
     remaining -= paid
+
+    const notes: string[] = []
+    if (appliedFromPrior > 0.5) {
+      notes.push(
+        `${formatMoney(appliedFromPrior)} already covered by prior ${periodLabel(period).toLowerCase()} distributions`,
+      )
+    }
+    if (fullDue > due + 0.5 && dueOverrides[t.id] == null) {
+      notes.push(
+        `full ${periodLabel(period).toLowerCase()} due ${formatMoney(fullDue)}`,
+      )
+    }
+
     flowRows.push({
       kind: "payment",
       index: i,
@@ -304,6 +393,7 @@ export function runDistributionSim(input: {
       due,
       paid,
       shortfall: due - paid > 0.5 ? due - paid : undefined,
+      note: notes.length ? notes.join(" · ") : undefined,
     })
     if (remaining <= 0.005) {
       remaining = 0
@@ -314,7 +404,7 @@ export function runDistributionSim(input: {
   const S = stageCount(promote)
   const parts = equityParticipants(classes)
   let active = 0
-  while (active < S - 1 && stageMet[active + 1]) active++
+  while (active < S - 1 && stageMetFinal[active + 1]) active++
 
   if (parts.length) {
     for (let s = 0; s < S; s++) {
@@ -395,9 +485,15 @@ export function runDistributionSim(input: {
     leftover: remaining,
     totalPaid,
     hurdleEvaluations,
-    stageMet,
+    stageMet: stageMetFinal,
+    period,
+    periodWindowLabel: window.label,
+    priorCashInPeriod: priorCash,
   }
 }
+
+export { factorFromPeriod, periodFromFactor, periodLabel } from "./distributionPeriod"
+export type { DistributionPeriod } from "./distributionPeriod"
 
 export function defaultPayToForKind(
   kind: DistributionWfKind,

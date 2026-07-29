@@ -24,12 +24,18 @@ interface PromoteScheduleSectionProps {
   promote: ClassSetupPromoteSchedule
   classes: ClassSetupClass[]
   onChange: (next: ClassSetupPromoteSchedule) => void
+  canSave?: boolean
+  saving?: boolean
+  onSave?: () => void
 }
 
 export function PromoteScheduleSection({
   promote,
   classes,
   onChange,
+  canSave = true,
+  saving = false,
+  onSave,
 }: PromoteScheduleSectionProps) {
   const normalized = normalizePromoteShares(promote, classes)
   const participants = classes.filter(isEquityParticipant)
@@ -52,12 +58,31 @@ export function PromoteScheduleSection({
       aria-label="Hurdles and promote schedule"
     >
       <div className="cs_promote_pad">
-        <p className="cs_eyebrow">Hurdles &amp; promote schedule</p>
-        <p className="cs_promote_sub">
-          Define each hurdle once, then set every class&apos;s share per stage
-          in the matrix — <strong>each column must total 100%</strong>. These
-          stages drive the split cascade for distributions later.
-        </p>
+        <div className="cs_promote_head">
+          <div>
+            <p className="cs_eyebrow">Hurdles &amp; promote schedule</p>
+            <p className="cs_promote_sub">
+              Define each hurdle once, then set every class&apos;s share per stage
+              in the matrix — <strong>each column must total 100%</strong>. These
+              stages drive the split cascade for distributions later.
+            </p>
+          </div>
+          {onSave ? (
+            <button
+              type="button"
+              className="cs_section_save_btn"
+              disabled={!canSave || saving}
+              onClick={onSave}
+              title={
+                canSave
+                  ? "Save hurdles and promote shares only"
+                  : "Add an LP class and fill class names before saving"
+              }
+            >
+              {saving ? "Saving…" : "Save promote"}
+            </button>
+          ) : null}
+        </div>
 
         <div className="cs_hurdle_editor">
           {normalized.hurdles.length === 0 ? (

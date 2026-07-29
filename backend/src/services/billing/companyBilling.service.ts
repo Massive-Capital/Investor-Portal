@@ -11,14 +11,17 @@ import {
 import {
   getStripeConfig,
   normalizeBillingPlanId,
+  normalizeBillingSeatBand,
   planAndCycleFromPriceId,
   priceEnvNameFor,
   requireStripeConfig,
   resolveFrontendOrigin,
   resolveStripePriceId,
   STRIPE_BILLING_PLAN_IDS,
+  STRIPE_BILLING_SEAT_BANDS,
   type StripeBillingCycle,
   type StripeBillingPlanId,
+  type StripeBillingSeatBand,
 } from "../../config/stripe.config.js";
 import {
   isCompanyAdminRole,
@@ -85,6 +88,13 @@ export type CompanyBillingStatus = {
     annualReady: boolean;
     monthlyEnv: string;
     annualEnv: string;
+    seats: Array<{
+      seatBand: StripeBillingSeatBand;
+      monthlyReady: boolean;
+      annualReady: boolean;
+      monthlyEnv: string;
+      annualEnv: string;
+    }>;
   }>;
 };
 
@@ -113,13 +123,23 @@ export async function getCompanyBillingStatus(
 
   const cfg = getStripeConfig();
   const publicPlans = cfg
-    ? STRIPE_BILLING_PLAN_IDS.map((id) => ({
-        id,
-        monthlyReady: Boolean(cfg.prices[id].monthly),
-        annualReady: Boolean(cfg.prices[id].annual),
-        monthlyEnv: priceEnvNameFor(id, "monthly"),
-        annualEnv: priceEnvNameFor(id, "annual"),
-      }))
+    ? STRIPE_BILLING_PLAN_IDS.map((id) => {
+        const seats = STRIPE_BILLING_SEAT_BANDS.map((seatBand) => ({
+          seatBand,
+          monthlyReady: Boolean(cfg.prices[id][seatBand].monthly),
+          annualReady: Boolean(cfg.prices[id][seatBand].annual),
+          monthlyEnv: priceEnvNameFor(id, "monthly", seatBand),
+          annualEnv: priceEnvNameFor(id, "annual", seatBand),
+        }));
+        return {
+          id,
+          monthlyReady: seats.some((s) => s.monthlyReady),
+          annualReady: seats.some((s) => s.annualReady),
+          monthlyEnv: priceEnvNameFor(id, "monthly", "5"),
+          annualEnv: priceEnvNameFor(id, "annual", "5"),
+          seats,
+        };
+      })
     : [];
 
   const subscriptionStatus = row.stripeSubscriptionStatus || "none";
@@ -263,23 +283,18 @@ export async function createCompanyCheckoutSession(params: {
     };
   }
 
-  // Only Starter is enabled for self-serve checkout for now.
-  if (resolvedPlan !== "starter") {
-    return {
-      ok: false,
-      status: 403,
-      message:
-        "Only the Starter plan is available for checkout right now. Running and Growth are coming soon.",
-    };
-  }
+  const resolvedSeat =
+    normalizeBillingSeatBand(params.seatBand) ??
+    normalizeBillingSeatBand(rawPlan.includes("_") ? rawPlan.split("_")[1] : "") ??
+    "5";
 
-  const priceId = resolveStripePriceId(resolvedPlan, cycle);
+  const priceId = resolveStripePriceId(resolvedPlan, cycle, resolvedSeat);
   if (!priceId) {
-    const envName = priceEnvNameFor(resolvedPlan, cycle);
+    const envName = priceEnvNameFor(resolvedPlan, cycle, resolvedSeat);
     return {
       ok: false,
       status: 503,
-      message: `Stripe Price is not configured for ${resolvedPlan} (${cycle}). Set ${envName}=price_... in backend/.env.local.`,
+      message: `Stripe Price is not configured for ${resolvedPlan} / ${resolvedSeat} seats (${cycle}). Set ${envName}=price_... in backend/.env.local.`,
     };
   }
 
@@ -347,14 +362,14 @@ export async function createCompanyCheckoutSession(params: {
         companyId: cid,
         planId: resolvedPlan,
         billingCycle: cycle,
-        ...(params.seatBand ? { seatBand: params.seatBand } : {}),
+        seatBand: resolvedSeat,
       },
       subscription_data: {
         metadata: {
           companyId: cid,
           planId: resolvedPlan,
           billingCycle: cycle,
-          ...(params.seatBand ? { seatBand: params.seatBand } : {}),
+          seatBand: resolvedSeat,
         },
       },
       allow_promotion_codes: true,
@@ -370,6 +385,18 @@ export async function createCompanyCheckoutSession(params: {
     return { ok: true, url: session.url };
   } catch (err) {
     console.error("createCompanyCheckoutSession:", err);
+    if (err instanceof Stripe.errors.StripeInvalidRequestError) {
+      const missingPrice =
+        err.code === "resource_missing" &&
+        String(err.param ?? "").includes("price");
+      return {
+        ok: false,
+        status: missingPrice ? 400 : 502,
+        message: missingPrice
+          ? `Stripe does not recognize this Price ID in the account for STRIPE_SECRET_KEY (${err.message}). Create the product/price in that same Stripe account (Dashboard → Products) and update backend/.env.local.`
+          : err.message || "Stripe rejected the checkout request.",
+      };
+    }
     const msg =
       err instanceof Error ? err.message : "Could not create checkout session";
     return { ok: false, status: 502, message: msg };

@@ -6,6 +6,7 @@ import type {
   DistributionSetupBundle,
   DistributionWaterfalls,
   DistributionWfKind,
+  PriorDistributionRecord,
 } from "../types/distribution-setup.types"
 
 function authHeaders(): HeadersInit {
@@ -52,15 +53,98 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
   const promote = asRecord(raw.promote)
   const hurdlesRaw = Array.isArray(promote.hurdles) ? promote.hurdles : []
   const sharesRaw = asRecord(promote.shares)
+  const operatingRaw = Array.isArray(wf.operating) ? wf.operating : []
+  const capitalRaw = Array.isArray(wf.capital)
+    ? wf.capital
+    : Array.isArray(wf.capital_event)
+      ? wf.capital_event
+      : []
+  const priorRaw = Array.isArray(raw.priorDistributions)
+    ? raw.priorDistributions
+    : Array.isArray(raw.prior_distributions)
+      ? raw.prior_distributions
+      : []
+  const priorDistributions: PriorDistributionRecord[] = priorRaw
+    .map((item, i) => {
+      const row = asRecord(item)
+      const amount = moneyField(row.amount, "")
+      const date = str(row.date).slice(0, 10)
+      if (!amount || amount === "$0" || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return null
+      const sourceRaw = str(row.source ?? row.waterfall ?? row.wf).toLowerCase()
+      const source =
+        sourceRaw === "capital" || sourceRaw === "capital_event"
+          ? "capital"
+          : sourceRaw === "operating"
+            ? "operating"
+            : str(row.source) || undefined
+      const periodRaw = str(row.period).toLowerCase()
+      const period =
+        periodRaw === "monthly" ||
+        periodRaw === "quarterly" ||
+        periodRaw === "annual"
+          ? (periodRaw as PriorDistributionRecord["period"])
+          : undefined
+      const paymentsRaw = Array.isArray(row.investorPayments)
+        ? row.investorPayments
+        : Array.isArray(row.investor_payments)
+          ? row.investor_payments
+          : []
+      const investorPayments = paymentsRaw
+        .map((p) => {
+          const pay = asRecord(p)
+          const payment = moneyField(pay.payment, "")
+          const investorId = str(pay.investorId ?? pay.investor_id)
+          if (!investorId || !payment) return null
+          return {
+            investorId,
+            ...(str(pay.contactId ?? pay.contact_id)
+              ? { contactId: str(pay.contactId ?? pay.contact_id) }
+              : {}),
+            ...(str(pay.userEmail ?? pay.user_email)
+              ? {
+                  userEmail: str(pay.userEmail ?? pay.user_email).toLowerCase(),
+                }
+              : {}),
+            investorName:
+              str(pay.investorName ?? pay.investor_name) || "—",
+            classId: str(pay.classId ?? pay.class_id),
+            className: str(pay.className ?? pay.class_name) || "—",
+            capital: moneyField(pay.capital, "0"),
+            percentOfClass: str(
+              pay.percentOfClass ?? pay.percent_of_class,
+            ) || "0",
+            payment,
+          }
+        })
+        .filter(
+          (p): p is NonNullable<typeof p> => p != null,
+        )
+      return {
+        id: str(row.id) || `dist_${date}_${i + 1}`,
+        amount,
+        date,
+        ...(source ? { source } : {}),
+        ...(str(row.name) ? { name: str(row.name) } : {}),
+        ...(str(row.notes ?? row.note)
+          ? { notes: str(row.notes ?? row.note) }
+          : {}),
+        ...(period ? { period } : {}),
+        ...(investorPayments.length ? { investorPayments } : {}),
+      }
+    })
+    .filter((p): p is PriorDistributionRecord => p != null)
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   return {
     dealId: str(raw.dealId ?? raw.deal_id),
     dealName: str(raw.dealName ?? raw.deal_name),
     targetRaise: moneyField(raw.targetRaise ?? raw.target_raise),
     waterfalls: {
-      operating: (Array.isArray(wf.operating) ? wf.operating : []).map(parseRow),
-      capital: (Array.isArray(wf.capital) ? wf.capital : []).map(parseRow),
+      operating: operatingRaw.map(parseRow),
+      capital: capitalRaw.map(parseRow),
     },
+    priorDistributions,
     classes: classesRaw.map((c, i) => {
       const row = asRecord(c)
       const pref = asRecord(row.preferredReturn ?? row.preferred_return)
@@ -151,6 +235,148 @@ export async function saveDistributionSetup(
     throw new Error(
       data.message != null ? String(data.message) : `Error ${res.status}`,
     )
+  return normalizeBundle(
+    asRecord(data.distributionSetup ?? data.distribution_setup),
+  )
+}
+
+export async function completeDistributionSetup(
+  dealId: string,
+  waterfalls: DistributionWaterfalls,
+  input: {
+    source: "operating" | "capital"
+    amount: number
+    date?: string
+    name?: string
+    notes?: string
+    period?: "monthly" | "quarterly" | "annual"
+    investorPayments?: Array<{
+      investorId: string
+      contactId?: string
+      userEmail?: string
+      investorName: string
+      classId: string
+      className: string
+      capital: number
+      percentOfClass: number
+      payment: number
+    }>
+  },
+): Promise<DistributionSetupBundle> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+
+  // Save + complete on PUT (same path that already works for waterfall save).
+  const putRes = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/distribution-setup`,
+    {
+      method: "PUT",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ waterfalls, complete: input }),
+    },
+  )
+  const putData = (await putRes.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >
+  // New API returns `record` when the completed run was persisted on PUT.
+  if (putRes.ok && putData.record != null) {
+    return normalizeBundle(
+      asRecord(putData.distributionSetup ?? putData.distribution_setup),
+    )
+  }
+  // PUT rejected complete validation (after save) — do not mask as success.
+  if (
+    !putRes.ok &&
+    putRes.status >= 400 &&
+    putRes.status < 500 &&
+    putRes.status !== 404 &&
+    putData.message != null
+  ) {
+    throw new Error(String(putData.message))
+  }
+
+  const postRes = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/distribution-setup/complete`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  )
+  const postData = (await postRes.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >
+  if (postRes.ok) {
+    return normalizeBundle(
+      asRecord(postData.distributionSetup ?? postData.distribution_setup),
+    )
+  }
+
+  const msg =
+    postData.message != null
+      ? String(postData.message)
+      : putData.message != null
+        ? String(putData.message)
+        : `Error ${postRes.status}`
+  if (/not found/i.test(msg) || postRes.status === 404) {
+    throw new Error(
+      "Complete API not available. Restart the backend (npm run dev in backend) and try again.",
+    )
+  }
+  throw new Error(msg)
+}
+
+/** PATCH investor % / payment on a completed distribution (co-dependent; syncs add-investor %). */
+export async function patchDistributionInvestorPercent(
+  dealId: string,
+  distributionId: string,
+  input: {
+    investorId: string
+    percentOfClass?: number
+    payment?: number
+  },
+): Promise<DistributionSetupBundle> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+
+  const body: Record<string, unknown> = { investorId: input.investorId }
+  if (input.percentOfClass != null && Number.isFinite(input.percentOfClass)) {
+    body.percentOfClass = input.percentOfClass
+  }
+  if (input.payment != null && Number.isFinite(input.payment)) {
+    body.payment = input.payment
+  }
+
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/distributions/${encodeURIComponent(distributionId)}/investor-percent`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(body),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  if (!res.ok) {
+    throw new Error(
+      data.message != null
+        ? String(data.message)
+        : "Could not update investor payment share",
+    )
+  }
   return normalizeBundle(
     asRecord(data.distributionSetup ?? data.distribution_setup),
   )

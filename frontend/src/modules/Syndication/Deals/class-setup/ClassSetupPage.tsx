@@ -71,7 +71,9 @@ export function ClassSetupPage() {
   const returnState = location.state as DealDetailReturnState | null
 
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [savingSection, setSavingSection] = useState<
+    ClassSetupType | "promote" | null
+  >(null)
   const [dealName, setDealName] = useState("")
   const [meta, setMeta] = useState<ClassSetupDealMeta>({
     targetRaise: "$0",
@@ -84,6 +86,18 @@ export function ClassSetupPage() {
   const [focusClassKey, setFocusClassKey] = useState<string | null>(null)
   const [showCreatePanel, setShowCreatePanel] = useState(false)
   const bootstrappedQueryRef = useRef(false)
+  /** Last persisted snapshot — used so section Save only writes that section. */
+  const savedSnapshotRef = useRef<{
+    meta: ClassSetupDealMeta
+    classes: ClassSetupClass[]
+  }>({
+    meta: {
+      targetRaise: "$0",
+      latestChanges: "",
+      promote: emptyPromoteSchedule(),
+    },
+    classes: [],
+  })
 
   const dealDetailPath =
     dealId != null && dealId !== ""
@@ -130,6 +144,10 @@ export function ClassSetupPage() {
       setDealName(bundle.dealName)
       setMeta(bundle.meta)
       setClasses(bundle.classes)
+      savedSnapshotRef.current = {
+        meta: bundle.meta,
+        classes: bundle.classes,
+      }
       return bundle.classes
     } catch (err) {
       toast.error(
@@ -158,6 +176,13 @@ export function ClassSetupPage() {
         const next = { ...created, expanded: true }
         setClasses((prev) => {
           const list = [...prev, next]
+          savedSnapshotRef.current = {
+            ...savedSnapshotRef.current,
+            classes: [
+              ...savedSnapshotRef.current.classes,
+              { ...next, expanded: false },
+            ],
+          }
           setMeta((m) => ({
             ...m,
             promote: normalizePromoteShares(m.promote, list),
@@ -235,6 +260,13 @@ export function ClassSetupPage() {
         const next = { ...dup, expanded: true }
         setClasses((prev) => {
           const list = [...prev, next]
+          savedSnapshotRef.current = {
+            ...savedSnapshotRef.current,
+            classes: [
+              ...savedSnapshotRef.current.classes,
+              { ...next, expanded: false },
+            ],
+          }
           setMeta((m) => ({
             ...m,
             promote: normalizePromoteShares(m.promote, list),
@@ -282,6 +314,19 @@ export function ClassSetupPage() {
       }
       setClasses((prev) => {
         const list = prev.filter((c) => (c.id || c.clientKey) !== key)
+        savedSnapshotRef.current = {
+          ...savedSnapshotRef.current,
+          classes: savedSnapshotRef.current.classes.filter(
+            (c) => (c.id || c.clientKey) !== key,
+          ),
+          meta: {
+            ...savedSnapshotRef.current.meta,
+            promote: removeClassFromPromote(
+              savedSnapshotRef.current.meta.promote,
+              key,
+            ),
+          },
+        }
         setMeta((m) => ({
           ...m,
           promote: normalizePromoteShares(
@@ -304,26 +349,183 @@ export function ClassSetupPage() {
     }
   }
 
-  async function handleSave() {
-    if (!dealId || !validation.canSave || saving) return
-    setSaving(true)
+  function buildSectionSavePayload(sectionType: ClassSetupType): {
+    meta: ClassSetupDealMeta
+    classes: ClassSetupClass[]
+  } | null {
+    const snapshot = savedSnapshotRef.current
+    const sectionClasses = classes.filter((c) => c.classType === sectionType)
+    const otherClasses = snapshot.classes.filter(
+      (c) => c.classType !== sectionType,
+    )
+    const mergedClasses = [...otherClasses, ...sectionClasses].sort(
+      (a, b) => a.displayOrder - b.displayOrder,
+    )
+
+    const sectionValidation = validateClassSetupLocal({
+      meta: snapshot.meta,
+      classes: mergedClasses,
+    })
+    if (!sectionValidation.canSave) return null
+
+    const isEquitySection = sectionType === "lp" || sectionType === "gp"
+    const currentPromote = normalizePromoteShares(meta.promote, classes)
+    const snapshotPromote = normalizePromoteShares(
+      snapshot.meta.promote,
+      snapshot.classes,
+    )
+
+    let promote = snapshotPromote
+    if (isEquitySection) {
+      const nextShares = { ...snapshotPromote.shares }
+      for (const c of sectionClasses) {
+        const key = c.id || c.clientKey
+        if (currentPromote.shares[key]) {
+          nextShares[key] = currentPromote.shares[key]
+        }
+      }
+      promote = normalizePromoteShares(
+        {
+          hurdles: currentPromote.hurdles,
+          shares: nextShares,
+        },
+        mergedClasses,
+      )
+    }
+
+    return {
+      meta: {
+        ...snapshot.meta,
+        targetRaise: meta.targetRaise,
+        promote,
+      },
+      classes: mergedClasses,
+    }
+  }
+
+  function buildPromoteSavePayload(): {
+    meta: ClassSetupDealMeta
+    classes: ClassSetupClass[]
+  } | null {
+    const snapshot = savedSnapshotRef.current
+    const sectionValidation = validateClassSetupLocal({
+      meta: {
+        ...snapshot.meta,
+        promote: normalizePromoteShares(meta.promote, snapshot.classes),
+      },
+      classes: snapshot.classes,
+    })
+    if (!sectionValidation.canSave) return null
+
+    return {
+      meta: {
+        ...snapshot.meta,
+        targetRaise: meta.targetRaise,
+        promote: normalizePromoteShares(meta.promote, snapshot.classes),
+      },
+      classes: snapshot.classes,
+    }
+  }
+
+  async function handleSaveSection(sectionType: ClassSetupType) {
+    if (!dealId || savingSection) return
+    const payload = buildSectionSavePayload(sectionType)
+    if (!payload) {
+      toast.error(
+        "Cannot save section",
+        "Add an LP class and ensure class names are filled in before saving.",
+      )
+      return
+    }
+    setSavingSection(sectionType)
     try {
-      const promote = normalizePromoteShares(meta.promote, classes)
       const { bundle } = await saveClassSetup(
         dealId,
-        { ...meta, promote },
-        classes,
+        payload.meta,
+        payload.classes,
       )
-      setMeta(bundle.meta)
-      setClasses(bundle.classes)
-      toast.success("Class setup saved")
+      savedSnapshotRef.current = {
+        meta: bundle.meta,
+        classes: bundle.classes,
+      }
+      const nextClasses = [
+        ...classes.filter((c) => c.classType !== sectionType),
+        ...bundle.classes.filter((c) => c.classType === sectionType),
+      ].sort((a, b) => a.displayOrder - b.displayOrder)
+      setClasses(nextClasses)
+      setMeta((m) => {
+        if (sectionType !== "lp" && sectionType !== "gp") {
+          return { ...m, latestChanges: bundle.meta.latestChanges }
+        }
+        const sectionKeys = new Set(
+          bundle.classes
+            .filter((c) => c.classType === sectionType)
+            .map((c) => c.id || c.clientKey),
+        )
+        const nextShares = { ...m.promote.shares }
+        for (const [key, value] of Object.entries(bundle.meta.promote.shares)) {
+          if (sectionKeys.has(key)) nextShares[key] = value
+        }
+        return {
+          ...m,
+          latestChanges: bundle.meta.latestChanges,
+          promote: normalizePromoteShares(
+            {
+              hurdles: bundle.meta.promote.hurdles,
+              shares: nextShares,
+            },
+            nextClasses,
+          ),
+        }
+      })
+      toast.success(`${CLASS_TYPE_META[sectionType].label} saved`)
     } catch (err) {
       toast.error(
         "Save failed",
         err instanceof Error ? err.message : "Check validations and try again.",
       )
     } finally {
-      setSaving(false)
+      setSavingSection(null)
+    }
+  }
+
+  async function handleSavePromote() {
+    if (!dealId || savingSection) return
+    const payload = buildPromoteSavePayload()
+    if (!payload) {
+      toast.error(
+        "Cannot save promote",
+        "Add an LP class and ensure class names are filled in before saving.",
+      )
+      return
+    }
+    setSavingSection("promote")
+    try {
+      const { bundle } = await saveClassSetup(
+        dealId,
+        payload.meta,
+        payload.classes,
+      )
+      savedSnapshotRef.current = {
+        meta: bundle.meta,
+        classes: bundle.classes,
+      }
+      setMeta((m) => ({
+        ...m,
+        latestChanges: bundle.meta.latestChanges,
+        promote: bundle.meta.promote,
+      }))
+      toast.success(
+        "Promote schedule saved",
+        "Hurdles and stage shares were saved. Class rows keep their unsaved edits.",
+      )
+    } catch (err) {
+      toast.error(
+        "Save failed",
+        err instanceof Error ? err.message : "Check validations and try again.",
+      )
+    } finally {
+      setSavingSection(null)
     }
   }
 
@@ -375,7 +577,7 @@ export function ClassSetupPage() {
             <h1 className="deals_list_title">Class Setup</h1>
             <p className="cs_page_subtitle">
               {dealName ? `${dealName} · ` : ""}
-              Add, edit, and manage investor classes
+              Step 1 of 2 — add, edit, and manage investor classes
             </p>
           </div>
         </div>
@@ -383,7 +585,7 @@ export function ClassSetupPage() {
           <Link
             to={distributionSetupHref}
             state={returnState}
-            className="cs_add_btn"
+            className="um_toolbar_export_btn"
           >
             Distribution Setup
           </Link>
@@ -446,9 +648,13 @@ export function ClassSetupPage() {
             focusClassKey={focusClassKey}
             promoteShares={promoteNormalized.shares}
             promoteStageLabels={promoteStageLabels}
-            canSave={validation.canSave}
-            saving={saving}
-            onSave={() => void handleSave()}
+            canSaveSection={(type) => buildSectionSavePayload(type) != null}
+            savingSection={
+              savingSection != null && savingSection !== "promote"
+                ? savingSection
+                : null
+            }
+            onSaveSection={(type) => void handleSaveSection(type)}
             onGotoPromote={scrollToPromote}
             onPromoteShareChange={(classKey, stage, value) => {
               setMeta((m) => ({
@@ -474,6 +680,9 @@ export function ClassSetupPage() {
           <PromoteScheduleSection
             promote={promoteNormalized}
             classes={classes}
+            canSave={buildPromoteSavePayload() != null}
+            saving={savingSection === "promote"}
+            onSave={() => void handleSavePromote()}
             onChange={(promote) =>
               setMeta((m) => ({
                 ...m,
@@ -481,6 +690,23 @@ export function ClassSetupPage() {
               }))
             }
           />
+
+          <div className="cs_workflow_next">
+            <div>
+              <p className="cs_eyebrow">Next</p>
+              <p className="cs_promote_sub">
+                When classes and promote shares look right, configure the
+                payment waterfall in Distribution Setup.
+              </p>
+            </div>
+            <Link
+              to={distributionSetupHref}
+              state={returnState}
+              className="um_btn_primary deals_list_add_link"
+            >
+              Continue to Distribution Setup
+            </Link>
+          </div>
 
           <ConfirmDeleteModal
             open={deleteTarget != null}

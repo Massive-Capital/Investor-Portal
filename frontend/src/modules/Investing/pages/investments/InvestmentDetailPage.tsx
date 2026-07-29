@@ -9,6 +9,7 @@ import {
   Percent,
   Search,
   IdCard,
+  Banknote,
   type LucideIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
@@ -54,6 +55,7 @@ import type {
   InvestmentDetailRecord,
 } from "./investments.types"
 import { InvestmentDetailDocumentsTab } from "./InvestmentDetailDocumentsTab"
+import { InvestmentDetailDistributionsTab } from "./InvestmentDetailDistributionsTab"
 import { InvestmentProfileBreakdownRowActions } from "./InvestmentProfileBreakdownRowActions"
 import { resolveInvestmentDealId } from "./utils/resolveInvestmentDealId"
 import "./investment-detail.css"
@@ -591,13 +593,17 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get("tab")
-  const activeTab: "details" | "profile" | "documents" =
+  const activeTab: "details" | "profile" | "documents" | "distributions" =
     tabParam === "profile"
       ? "profile"
       : tabParam === "documents"
         ? "documents"
-        : "details"
-  const setActiveTab = (tab: "details" | "profile" | "documents") => {
+        : tabParam === "distributions"
+          ? "distributions"
+          : "details"
+  const setActiveTab = (
+    tab: "details" | "profile" | "documents" | "distributions",
+  ) => {
     setSearchParams(
       (prev) => {
         const p = new URLSearchParams(prev)
@@ -768,6 +774,27 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               />
               <span className="deals_tabs_label um_segmented_tab_label">
                 Documents
+              </span>
+            </button>
+            <button
+              type="button"
+              id="inv-detail-tab-distributions"
+              role="tab"
+              aria-selected={activeTab === "distributions"}
+              aria-controls="inv-detail-panel-distributions"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                activeTab === "distributions" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setActiveTab("distributions")}
+            >
+              <Banknote
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Distributions
               </span>
             </button>
           </div>
@@ -1023,6 +1050,26 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
             >
               <p className="investment_detail_lead">
                 Documents are not available for this investment record.
+              </p>
+            </div>
+          )
+        ) : null}
+
+        {activeTab === "distributions" ? (
+          dealId ? (
+            <InvestmentDetailDistributionsTab
+              dealId={dealId}
+              investmentId={d.id}
+            />
+          ) : (
+            <div
+              id="inv-detail-panel-distributions"
+              role="tabpanel"
+              aria-labelledby="inv-detail-tab-distributions"
+              className="investment_detail_tab_panel"
+            >
+              <p className="investment_detail_lead">
+                Distributions are not available for this investment record.
               </p>
             </div>
           )

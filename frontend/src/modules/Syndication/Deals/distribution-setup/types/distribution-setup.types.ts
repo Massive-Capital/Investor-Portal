@@ -25,6 +25,31 @@ export interface DistributionWaterfalls {
   capital: DistributionPaymentRow[]
 }
 
+/** Backend-sourced prior cash distributions (read-only in the simulator). */
+export interface PriorDistributionRecord {
+  id: string
+  amount: string
+  date: string
+  source?: string
+  name?: string
+  notes?: string
+  /** Period used when the run was completed. */
+  period?: "monthly" | "quarterly" | "annual"
+  investorPayments?: InvestorDistributionPayment[]
+}
+
+export interface InvestorDistributionPayment {
+  investorId: string
+  contactId?: string
+  userEmail?: string
+  investorName: string
+  classId: string
+  className: string
+  capital: string
+  percentOfClass: string
+  payment: string
+}
+
 export interface DistributionSetupClass {
   id: string
   name: string
@@ -55,6 +80,7 @@ export interface DistributionSetupBundle {
   dealName: string
   targetRaise: string
   waterfalls: DistributionWaterfalls
+  priorDistributions: PriorDistributionRecord[]
   classes: DistributionSetupClass[]
   promote: DistributionSetupPromote
 }

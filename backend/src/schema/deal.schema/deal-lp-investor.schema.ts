@@ -27,6 +27,14 @@ export const dealLpInvestor = pgTable(
       { onDelete: "set null" },
     ),
     investorClass: text("investor_class").notNull().default(""),
+    /** Share of class ownership (e.g. `25.00%`). */
+    percentOfClassOwnership: text("percent_of_class_ownership")
+      .notNull()
+      .default(""),
+    /** Share of class distributions (e.g. `25.00%`). */
+    percentOfClassDistributions: text("percent_of_class_distributions")
+      .notNull()
+      .default(""),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),
     committed_amount: text("committed_amount").notNull().default(""),
     /** Calendar date when signed, or `pending` after eSign is sent. */

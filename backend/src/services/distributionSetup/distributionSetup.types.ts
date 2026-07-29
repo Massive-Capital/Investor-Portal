@@ -31,11 +31,42 @@ export interface DistributionWaterfalls {
   capital: DistributionPaymentRow[];
 }
 
+/** Per-investor payment line persisted on a completed distribution. */
+export interface InvestorDistributionPayment {
+  investorId: string;
+  contactId?: string;
+  userEmail?: string;
+  investorName: string;
+  classId: string;
+  className: string;
+  capital: string;
+  percentOfClass: string;
+  payment: string;
+}
+
+/** Recorded prior cash distributions (backend-sourced; not user-typed in the simulator). */
+export interface PriorDistributionRecord {
+  id: string;
+  amount: string;
+  date: string;
+  /** operating | capital — waterfall source when known. */
+  source?: string;
+  /** Optional display name / memo for the run. */
+  name?: string;
+  notes?: string;
+  /** Period used when the run was completed. */
+  period?: "monthly" | "quarterly" | "annual";
+  /** Snapshot of investor payments at complete time. */
+  investorPayments?: InvestorDistributionPayment[];
+}
+
 export interface DistributionSetupBundle {
   dealId: string;
   dealName: string;
   targetRaise: string;
   waterfalls: DistributionWaterfalls;
+  /** Past distributions from the backend — used by the simulator / IRR hurdles. */
+  priorDistributions: PriorDistributionRecord[];
   /** Snapshot from Class Setup for builder + simulator. */
   classes: Array<{
     id: string;

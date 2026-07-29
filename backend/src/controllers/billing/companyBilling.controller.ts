@@ -67,6 +67,7 @@ export async function getCompanyBilling(
  * POST /companies/:companyId/billing/checkout
  * Body: {
  *   planId: "starter" | "running" | "growth",
+ *   seatBand?: "5" | "10" | "10plus",
  *   billingCycle: "monthly" | "annual" | "annually" | "yearly"
  * }
  */

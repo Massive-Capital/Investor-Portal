@@ -2526,6 +2526,20 @@ function normalizeInvestorRowApi(
     investedAtIso: str(
       firstDefined(raw, ["investedAtIso", "invested_at_iso", "createdAt", "created_at"]),
     ),
+    percentOfClassOwnership: str(
+      firstDefined(raw, [
+        "percentOfClassOwnership",
+        "percent_of_class_ownership",
+      ]),
+      "",
+    ),
+    percentOfClassDistributions: str(
+      firstDefined(raw, [
+        "percentOfClassDistributions",
+        "percent_of_class_distributions",
+      ]),
+      "",
+    ),
   }
 }
 
@@ -4391,6 +4405,9 @@ export async function postDealLpInvestor(
     investor_class: values.investorClass,
     send_invitation_mail: values.sendInvitationMail ?? "no",
     profile_id: String(values.profileId ?? "").trim(),
+    percent_of_class_ownership: values.percentOfClassOwnership?.trim() ?? "",
+    percent_of_class_distributions:
+      values.percentOfClassDistributions?.trim() ?? "",
   }
   const ce = values.contactEmail?.trim()
   if (ce) body.contact_email = ce
@@ -4447,6 +4464,9 @@ export async function putDealLpInvestor(
     investor_class: values.investorClass,
     send_invitation_mail: values.sendInvitationMail ?? "no",
     profile_id: String(values.profileId ?? "").trim(),
+    percent_of_class_ownership: values.percentOfClassOwnership?.trim() ?? "",
+    percent_of_class_distributions:
+      values.percentOfClassDistributions?.trim() ?? "",
   }
   const ce = values.contactEmail?.trim()
   if (ce) body.contact_email = ce

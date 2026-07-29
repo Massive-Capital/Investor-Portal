@@ -3,17 +3,25 @@ import {
   BarChart3,
   Briefcase,
   Building2,
+  Calendar,
   ChevronDown,
+  Columns3,
   ContactRound,
+  Eye,
   Files,
+  Inbox,
   LayoutDashboard,
-  LayoutGrid,
-  Mails,
+  Layers,
+  List,
+  // LayoutGrid,
+  // Mails,
+  Megaphone,
   Settings,
   Star,
   IdCard,
   TrendingUp,
-  Users,
+  Upload,
+  // Users,
 } from "lucide-react"
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
 import {
@@ -46,13 +54,18 @@ import "./page_layout.css"
 
 type SidebarIcon = ComponentType<{ size?: number; className?: string }>
 
-type NavSubItem = { label: string; to: string; icon?: SidebarIcon }
+type NavSubItem = {
+  label: string
+  to: string
+  icon?: SidebarIcon
+  badge?: string
+}
 
 type NavItemLink = { label: string; to: string; icon: SidebarIcon }
 
 type NavItemGroup = { label: string; icon: SidebarIcon; submenu: NavSubItem[] }
 
-/** Top-level link, or a collapsible group (e.g. Contacts → CRM, All contacts, Email Templates). */
+/** Top-level link, or a collapsible group (e.g. Contacts → Overview, All Contacts, Pipeline…). */
 type NavItem = NavItemLink | NavItemGroup
 
 /** Deals list, create, or deal detail — not investor-emails / reporting (their own nav items). */
@@ -132,7 +145,7 @@ function SidebarNavItem({
 }
 
 /**
- * Collapsible sidebar group (e.g. Contacts: CRM + All contacts + Email Templates).
+ * Collapsible sidebar group (Contacts: Overview, All Contacts, Pipeline, Inbox…).
  */
 function SidebarNavGroup({
   label,
@@ -186,6 +199,7 @@ function SidebarNavGroup({
         >
           {items.map((s) => {
             const SubIcon = s.icon
+            const badge = s.badge?.trim()
             return (
               <NavLink
                 key={s.to}
@@ -193,6 +207,8 @@ function SidebarNavGroup({
                 end
                 className={({ isActive }) =>
                   `app_sidebar_link app_sidebar_sublink${
+                    badge ? " app_sidebar_sublink_with_badge" : ""
+                  }${
                     isActive
                       ? " app_sidebar_link_active app_sidebar_sublink_active"
                       : ""
@@ -207,6 +223,9 @@ function SidebarNavGroup({
                   />
                 ) : null}
                 <span>{s.label}</span>
+                {badge ? (
+                  <span className="app_sidebar_sublink_badge">{badge}</span>
+                ) : null}
               </NavLink>
             )
           })}
@@ -220,17 +239,33 @@ const platformAdminNavItems: NavItemLink[] = [
   { label: "Platform Metrics", to: "/metrics", icon: BarChart3 },
 ]
 
+/** Contacts dropdown — SX-Contacts-UI.html CRM subnav. */
+const contactsNavSubmenu: NavSubItem[] = [
+  // Previous options:
+  // { label: "CRM", to: "/contacts/crm", icon: LayoutGrid },
+  // { label: "All contacts", to: "/contacts", icon: Users },
+  // { label: "Email Templates", to: "/contacts/email-templates", icon: Mails },
+
+  // From SX-Contacts-UI.html:
+  { label: "Overview", to: "/contacts/overview", icon: LayoutDashboard },
+  { label: "All Contacts", to: "/contacts", icon: List },
+  { label: "Pipeline", to: "/contacts/pipeline", icon: Columns3 },
+  { label: "Inbox", to: "/contacts/inbox", icon: Inbox },
+  { label: "Campaigns", to: "/contacts/campaigns", icon: Megaphone },
+  { label: "Meetings", to: "/contacts/meetings", icon: Calendar },
+  { label: "Pages & Branding", to: "/contacts/pages", icon: Layers },
+  { label: "Import", to: "/contacts/import", icon: Upload },
+  { label: "Investor view", to: "/contacts/investor-view", icon: Eye },
+]
+
 const sharedSidebarItems: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   // { label: "Leads", to: "/leads", icon: UserPlus },
+  // Previous parent label: "Contacts"
   {
-    label: "Contacts",
+    label: "CRM",
     icon: ContactRound,
-    submenu: [
-      { label: "CRM", to: "/contacts/crm", icon: LayoutGrid },
-      { label: "All contacts", to: "/contacts", icon: Users },
-      { label: "Email Templates", to: "/contacts/email-templates", icon: Mails },
-    ],
+    submenu: contactsNavSubmenu,
   },
   { label: "Settings", to: "/settings", icon: Settings },
   { label: "Customers", to: "/customers", icon: Building2 },
@@ -310,7 +345,7 @@ function PageLayoutInner() {
   const sidebarItems: NavItem[] = [
     ...platformMetricsNav,
     sharedSidebarItems[0],
-    // [1] is Contacts group (sub: CRM, All contacts, Email Templates)
+    // [1] is CRM group (Overview, All Contacts, Pipeline, Inbox… — SX-Contacts-UI)
     sharedSidebarItems[1],
     ...syndicationPortalNavItems,
     ...sharedSidebarTail,

@@ -87,6 +87,12 @@ export async function postDealLpInvestor(
   const investorRole = bodyString(
     b.investor_role ?? b.investorRole ?? b.role,
   );
+  const percentOfClassOwnership = bodyString(
+    b.percent_of_class_ownership ?? b.percentOfClassOwnership,
+  );
+  const percentOfClassDistributions = bodyString(
+    b.percent_of_class_distributions ?? b.percentOfClassDistributions,
+  );
 
   if (!contactId.trim()) {
     res.status(400).json({ message: "Member (contact) is required" });
@@ -141,6 +147,8 @@ export async function postDealLpInvestor(
       addedByUserId: user.id,
       emailFromClient: contactEmail.trim() || null,
       roleFromClient: investorRole.trim() || null,
+      percentOfClassOwnership,
+      percentOfClassDistributions,
     });
 
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
@@ -219,6 +227,12 @@ export async function putDealLpInvestor(
   const investorRole = bodyString(
     b.investor_role ?? b.investorRole ?? b.role,
   );
+  const percentOfClassOwnership = bodyString(
+    b.percent_of_class_ownership ?? b.percentOfClassOwnership,
+  );
+  const percentOfClassDistributions = bodyString(
+    b.percent_of_class_distributions ?? b.percentOfClassDistributions,
+  );
 
   if (!contactId.trim()) {
     res.status(400).json({ message: "Member (contact) is required" });
@@ -275,6 +289,8 @@ export async function putDealLpInvestor(
       addedByUserId: user.id,
       emailFromClient: contactEmail.trim() || null,
       roleFromClient: investorRole.trim() || null,
+      percentOfClassOwnership,
+      percentOfClassDistributions,
     });
     if (!row) {
       res.status(404).json({ message: "Could not update LP investor" });

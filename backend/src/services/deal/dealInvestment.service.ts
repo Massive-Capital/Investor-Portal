@@ -1540,6 +1540,39 @@ export async function sumCommittedAmountForDeal(dealId: string): Promise<number>
   return s;
 }
 
+/**
+ * Fund-approved dollars per investor class (same basis as Investors “Total Funded” KPI).
+ * Matches `deal_investment.investor_class` to class id or name (case-insensitive).
+ */
+export async function fundedAmountsByInvestorClassId(
+  dealId: string,
+  classes: ReadonlyArray<{ id: string; name: string }>,
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  for (const c of classes) totals.set(c.id, 0);
+  if (classes.length === 0) return totals;
+
+  const norm = (s: string) => s.trim().toLowerCase();
+  const idSet = new Set(classes.map((c) => c.id));
+  const nameToId = new Map<string, string>();
+  for (const c of classes) {
+    const n = norm(c.name);
+    if (n) nameToId.set(n, c.id);
+  }
+
+  const investments = await listDealInvestmentsByDealId(dealId);
+  for (const inv of investments) {
+    const raw = String(inv.investorClass ?? "").trim();
+    if (!raw) continue;
+    const classId = idSet.has(raw) ? raw : nameToId.get(norm(raw));
+    if (!classId) continue;
+    const amt = fundedNumericForInvestorKpiRow(inv);
+    if (!Number.isFinite(amt) || amt === 0) continue;
+    totals.set(classId, Math.round(((totals.get(classId) ?? 0) + amt) * 100) / 100);
+  }
+  return totals;
+}
+
 export interface DealMemoryUploadFile {
   buffer: Buffer;
   originalname: string;

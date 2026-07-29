@@ -25,6 +25,10 @@ export interface DealInvestorRow {
   /** Portal user email */
   userEmail: string
   investorClass: string
+  /** Percent of class (ownership), e.g. `25.00%`. */
+  percentOfClassOwnership?: string
+  /** Percent of class (distributions), e.g. `25.00%`. */
+  percentOfClassDistributions?: string
   /** Investor role label from investment row; empty → show "—" in UI */
   investorRole?: string
   /**

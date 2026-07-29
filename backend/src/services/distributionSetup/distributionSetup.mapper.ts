@@ -3,12 +3,18 @@ import type {
   DistributionPaymentRow,
   DistributionWaterfalls,
   DistributionWfKind,
+  InvestorDistributionPayment,
+  PriorDistributionRecord,
 } from "./distributionSetup.types.js";
 import {
   DISTRIBUTION_AMOUNT_MODES,
   DISTRIBUTION_WF_KINDS,
   emptyWaterfalls,
 } from "./distributionSetup.types.js";
+import {
+  normalizeInvestorPaymentLines,
+  serializeInvestorPaymentLines,
+} from "./investorDistributionAllocation.js";
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : v != null ? String(v).trim() : "";
@@ -73,20 +79,94 @@ function parseRows(raw: unknown): DistributionPaymentRow[] {
     .filter((r): r is DistributionPaymentRow => r != null);
 }
 
-export function parseDistributionSetupJson(raw: string): DistributionWaterfalls {
+function isoDateOnly(raw: string): string {
+  const t = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function parsePeriod(
+  raw: unknown,
+): "monthly" | "quarterly" | "annual" | undefined {
+  const t = str(raw).toLowerCase();
+  if (t === "monthly" || t === "month") return "monthly";
+  if (t === "annual" || t === "yearly" || t === "year") return "annual";
+  if (t === "quarterly" || t === "quarter") return "quarterly";
+  const n = Number(str(raw).replace(/[^0-9.]/g, ""));
+  if (Number.isFinite(n) && n > 0) {
+    const ppy = Math.round(1 / n);
+    if (ppy === 12) return "monthly";
+    if (ppy === 1) return "annual";
+    if (ppy === 4) return "quarterly";
+  }
+  return undefined;
+}
+
+export function parsePriorDistributionsJson(
+  raw: unknown,
+): PriorDistributionRecord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PriorDistributionRecord[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const o = asRecord(raw[i]);
+    const amount = numStr(o.amount, "");
+    const date = isoDateOnly(str(o.date));
+    if (!amount || Number(amount) === 0 || !date) continue;
+    const sourceRaw = str(o.source ?? o.waterfall ?? o.wf).toLowerCase();
+    const source =
+      sourceRaw === "capital" || sourceRaw === "capital_event"
+        ? "capital"
+        : sourceRaw === "operating"
+          ? "operating"
+          : str(o.source);
+    const period = parsePeriod(o.period ?? o.periodFactor ?? o.period_factor);
+    const investorPayments = normalizeInvestorPaymentLines(
+      o.investorPayments ?? o.investor_payments,
+    );
+    out.push({
+      id: str(o.id) || `dist_${date}_${i + 1}`,
+      amount,
+      date,
+      ...(source ? { source } : {}),
+      ...(str(o.name) ? { name: str(o.name) } : {}),
+      ...(str(o.notes ?? o.note) ? { notes: str(o.notes ?? o.note) } : {}),
+      ...(period ? { period } : {}),
+      ...(investorPayments.length ? { investorPayments } : {}),
+    });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function parseDistributionSetupDocument(raw: string): {
+  waterfalls: DistributionWaterfalls;
+  priorDistributions: PriorDistributionRecord[];
+} {
   const o = parseJsonObject(raw);
   const wf = asRecord(o.waterfalls ?? o);
   const defaults = emptyWaterfalls();
   const operating = parseRows(wf.operating);
   const capital = parseRows(wf.capital ?? wf.capital_event);
   return {
-    operating: operating.length > 0 ? operating : defaults.operating,
-    capital: capital.length > 0 ? capital : defaults.capital,
+    waterfalls: {
+      operating: operating.length > 0 ? operating : defaults.operating,
+      capital: capital.length > 0 ? capital : defaults.capital,
+    },
+    priorDistributions: parsePriorDistributionsJson(
+      o.priorDistributions ?? o.prior_distributions,
+    ),
   };
+}
+
+/** @deprecated Prefer parseDistributionSetupDocument — kept for call sites that only need waterfalls. */
+export function parseDistributionSetupJson(raw: string): DistributionWaterfalls {
+  return parseDistributionSetupDocument(raw).waterfalls;
 }
 
 export function serializeDistributionSetupJson(
   waterfalls: DistributionWaterfalls,
+  priorDistributions: PriorDistributionRecord[] = [],
 ): string {
   const mapRow = (r: DistributionPaymentRow) => ({
     id: r.id,
@@ -102,6 +182,26 @@ export function serializeDistributionSetupJson(
       operating: (waterfalls.operating ?? []).map(mapRow),
       capital: (waterfalls.capital ?? []).map(mapRow),
     },
+    priorDistributions: (priorDistributions ?? []).map((p) => ({
+      id: str(p.id) || `dist_${isoDateOnly(p.date)}_${numStr(p.amount, "0")}`,
+      amount: numStr(p.amount, "0"),
+      date: isoDateOnly(p.date),
+      ...(str(p.source) ? { source: str(p.source) } : {}),
+      ...(str(p.name) ? { name: str(p.name) } : {}),
+      ...(str(p.notes) ? { notes: str(p.notes) } : {}),
+      ...(p.period === "monthly" ||
+      p.period === "quarterly" ||
+      p.period === "annual"
+        ? { period: p.period }
+        : {}),
+      ...((p.investorPayments?.length ?? 0) > 0
+        ? {
+            investorPayments: serializeInvestorPaymentLines(
+              p.investorPayments as InvestorDistributionPayment[],
+            ),
+          }
+        : {}),
+    })),
     updatedAt: new Date().toISOString(),
   });
 }
@@ -134,8 +234,13 @@ export function seedDefaultPayTo(
 
   function fill(row: DistributionPaymentRow): DistributionPaymentRow {
     if ((row.payTo ?? []).length > 0) return row;
-    if (row.kind === "LP_PREF" || row.kind === "ROC")
+    if (row.kind === "LP_PREF") return { ...row, payTo: [...lpIds] };
+    if (row.kind === "ROC") {
+      // Capital-event pref redeem rows are ROC kind but target preferred equity.
+      const name = row.name.toLowerCase();
+      if (name.includes("preferred")) return { ...row, payTo: [...prefIds] };
       return { ...row, payTo: [...lpIds] };
+    }
     if (row.kind === "PREF_CURRENT" || row.kind === "PREF_ACCRUED")
       return { ...row, payTo: [...prefIds] };
     if (row.kind === "CATCHUP") return { ...row, payTo: [...gpIds] };

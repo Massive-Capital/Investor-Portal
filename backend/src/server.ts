@@ -80,6 +80,7 @@ import dealFormRoutes from "./routes/dealForm.routes.js";
 
 import classSetupRoutes from "./routes/classSetup.routes.js";
 import distributionSetupRoutes from "./routes/distributionSetup.routes.js";
+import { postDealDistributionComplete } from "./controllers/distributionSetup/distributionSetup.controller.js";
 
 import contactRoutes from "./routes/contact.routes.js";
 
@@ -286,6 +287,13 @@ app.use(express.json({ limit: "10mb" }));
 
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
+/** Direct mount so Complete is reachable even if nested routers miss the path. */
+app.post(
+  "/api/v1/deals/:dealId/distribution-setup/complete",
+  socHttpAuditMiddleware,
+  postDealDistributionComplete,
+);
+
 
 
 // app.use("/api/v1/auth", authRateLimiter);
@@ -324,10 +332,13 @@ app.use("/api/v1", [
 
   companyRoutes,
 
-  dealFormRoutes,
+  distributionSetupRoutes,
 
   classSetupRoutes,
-  distributionSetupRoutes,
+
+  dealAssetsRoutes,
+
+  dealFormRoutes,
 
   contactRoutes,
 
@@ -398,6 +409,15 @@ if (stripeCfg.configured) {
     `Stripe billing configured (${stripeCfg.testMode ? "test" : "live"})`,
   );
   console.log(`Stripe webhook URL → ${webhookBase}/api/webhooks/stripe`);
+  const seatPriceCount = stripeCfg.plans.reduce(
+    (n, p) =>
+      n +
+      p.seats.filter((s) => s.monthlyPriceId || s.annualPriceId).length,
+    0,
+  );
+  console.log(
+    `Stripe seat prices loaded: ${seatPriceCount} plan×seat bands with at least one cycle`,
+  );
 
   if (isProd && stripeCfg.testMode) {
     console.error(
@@ -414,9 +434,14 @@ if (stripeCfg.configured) {
       "FATAL RISK: BASE_URL is unset — Stripe Checkout/Portal redirects will fail.",
     );
   }
-  if (isProd && !stripeCfg.plans.some((p) => p.id === "starter" && (p.monthlyPriceId || p.annualPriceId))) {
+  const missingPlanPrices = stripeCfg.plans.filter(
+    (p) => !p.monthlyPriceId && !p.annualPriceId,
+  );
+  if (isProd && missingPlanPrices.length > 0) {
     console.error(
-      "FATAL RISK: Starter Stripe Price IDs missing (STARTER_MONTH_PRICING / STARTER_YEARLY_PRICING).",
+      `FATAL RISK: Stripe Price IDs missing for: ${missingPlanPrices
+        .map((p) => `${p.id} (${p.monthlyEnv}/${p.annualEnv})`)
+        .join(", ")}.`,
     );
   }
 } else {

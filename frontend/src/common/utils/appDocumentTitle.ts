@@ -37,7 +37,15 @@ const PAGE_TITLES: Record<string, string> = {
   "/members": "Members",
 
   "/contacts": "All contacts",
+  "/contacts/overview": "Overview",
   "/contacts/crm": "CRM",
+  "/contacts/pipeline": "Pipeline",
+  "/contacts/inbox": "Inbox",
+  "/contacts/campaigns": "Campaigns",
+  "/contacts/meetings": "Meetings",
+  "/contacts/pages": "Pages & Branding",
+  "/contacts/import": "Import",
+  "/contacts/investor-view": "Investor view",
   "/contacts/email-templates": "Email Templates",
   "/contacts/email-templates/new": "New email template",
 

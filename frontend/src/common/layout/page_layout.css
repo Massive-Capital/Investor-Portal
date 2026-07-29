@@ -571,6 +571,34 @@
   border-radius: 0 var(--portal-pill-radius, 4px) var(--portal-pill-radius, 4px) 0;
 }
 
+.app_sidebar_sublink_with_badge {
+  grid-template-columns: var(--nav-icon-col) minmax(0, 1fr) auto;
+}
+
+.app_sidebar_sublink_badge {
+  justify-self: end;
+  font-size: 0.625rem;
+  line-height: 1.2;
+  padding: 0.1em 0.45em;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--sidebar-text-color) 14%,
+    var(--sidebar-bg-color)
+  );
+  color: color-mix(in srgb, var(--sidebar-text-color) 72%, transparent);
+  font-weight: 500;
+}
+
+.app_sidebar_sublink_active .app_sidebar_sublink_badge {
+  background: color-mix(
+    in srgb,
+    var(--sidebar-active-text) 18%,
+    var(--sidebar-active)
+  );
+  color: var(--sidebar-active-text);
+}
+
 .app_sidebar_sublink_icon {
   width: var(--nav-icon-size);
   height: var(--nav-icon-size);

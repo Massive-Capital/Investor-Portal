@@ -11,7 +11,7 @@ interface CapitalizationCardProps {
   onTargetRaiseChange: (value: string) => void
 }
 
-/** Compact KPI strip — Target raise is editable; Actually funded is sum of class rows. */
+/** Compact KPI strip — Target raise is editable; Actually funded is from investments. */
 export function CapitalizationCard({
   totals,
   targetRaise,
@@ -41,13 +41,18 @@ export function CapitalizationCard({
       </div>
       <div className="cs_metric">
         <span className="cs_metric_label">Actually funded</span>
-        <span className="cs_metric_value">
+        <span
+          className="cs_metric_value"
+          title="Sum of fund-approved investments across classes"
+        >
           {formatMoney(totals.actuallyFunded)}
         </span>
         <div className="cs_metric_bar" aria-hidden>
           <i style={{ width: `${fundingWidth}%` }} />
         </div>
-        <span className="cs_metric_hint">{formatPct(totals.fundingPct)} funded</span>
+        <span className="cs_metric_hint">
+          {formatPct(totals.fundingPct)} of target · from investments
+        </span>
       </div>
       <div className="cs_metric">
         <span className="cs_metric_label">Equity classes</span>

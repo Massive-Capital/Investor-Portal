@@ -37,6 +37,8 @@ export interface HurdleEvaluation {
   hurdleRate: number
   hurdleMet: boolean
   canEvaluate: boolean
+  /** Excel-style running remaining balance for this hurdle (<= 0 means cleared). */
+  accruedBalance?: number
   detail: string
 }
 
@@ -222,6 +224,112 @@ export function periodsPerYearFromFactor(periodFactor: number): number {
   return 1 / periodFactor
 }
 
+function utcDate(y: number, m: number, d: number): Date {
+  return new Date(Date.UTC(y, m, d))
+}
+
+function startOfMonthUtc(d: Date): Date {
+  return utcDate(d.getUTCFullYear(), d.getUTCMonth(), 1)
+}
+
+function addMonthsUtc(d: Date, n: number): Date {
+  return utcDate(d.getUTCFullYear(), d.getUTCMonth() + n, 1)
+}
+
+function startOfNextMonthUtc(d: Date): Date {
+  return addMonthsUtc(startOfMonthUtc(d), 1)
+}
+
+function startOfNextQuarterUtc(d: Date): Date {
+  const y = d.getUTCFullYear()
+  const m = d.getUTCMonth()
+  const qStart = Math.floor(m / 3) * 3
+  return addMonthsUtc(utcDate(y, qStart, 1), 3)
+}
+
+function startOfNextAnnualAnniversaryUtc(d: Date): Date {
+  // Excel-like annual grid from the investment month/day, next year onward.
+  return utcDate(d.getUTCFullYear() + 1, d.getUTCMonth(), d.getUTCDate())
+}
+
+function periodStartForConvention(d: Date, periodsPerYear: number): Date {
+  if (periodsPerYear >= 11) return startOfNextMonthUtc(d)
+  if (periodsPerYear >= 3 && periodsPerYear <= 5) return startOfNextQuarterUtc(d)
+  return startOfNextAnnualAnniversaryUtc(d)
+}
+
+function nextPeriodStart(d: Date, periodsPerYear: number): Date {
+  if (periodsPerYear >= 11) return addMonthsUtc(d, 1)
+  if (periodsPerYear >= 3 && periodsPerYear <= 5) return addMonthsUtc(d, 3)
+  return utcDate(d.getUTCFullYear() + 1, d.getUTCMonth(), d.getUTCDate())
+}
+
+function runningHurdleBalance(params: {
+  hurdleType: HurdleMetricType
+  hurdleRate: number
+  input: WaterfallInput
+}): number | null {
+  const { hurdleType, hurdleRate, input } = params
+  if (!(input.investedCapital > 0) || !(input.periodsPerYear > 0)) return null
+
+  const flows = (input.cashFlows ?? [])
+    .filter((cf) => cf.date instanceof Date && Number.isFinite(cf.amount))
+    .slice()
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+  if (flows.length === 0) return null
+
+  // Anchor to earliest negative cash flow (investment), fallback earliest flow date.
+  const firstNeg = flows.find((f) => f.amount < 0)
+  const t0 = firstNeg?.date ?? flows[0]!.date
+  const asOf = flows[flows.length - 1]!.date
+  let periodStart = periodStartForConvention(t0, input.periodsPerYear)
+  // If asOf is before the first accrual boundary, nothing accrued yet.
+  if (asOf.getTime() < periodStart.getTime()) return 0
+
+  const periodReq = input.investedCapital * (hurdleRate / input.periodsPerYear)
+  const periodRate = hurdleRate / input.periodsPerYear
+  let bal = 0
+
+  /**
+   * Convention aligned to the sheet:
+   * - Accrual starts at the NEXT period boundary after investment date.
+   * - Monthly/quarterly boundaries are calendar boundaries (next month / next quarter start).
+   * - Annual boundary is next investment anniversary.
+   * - Distributions are netted when their date is in (prevBoundary, currentBoundary].
+   * - Mid-period dates are not pro-rated; they land in the enclosing period bucket.
+   */
+  let prevBoundary = t0
+  while (periodStart.getTime() <= asOf.getTime()) {
+    if (hurdleType === "IRR") {
+      // Excel-like compounding running target.
+      bal = bal * (1 + periodRate) + periodReq
+    } else if (hurdleType === "CashOnCash") {
+      // Simple running required distribution target.
+      bal += periodReq
+    } else {
+      // Cumulative return: equivalent target is capital * hurdle multiple.
+      bal = input.investedCapital * hurdleRate
+    }
+    // Apply positive distributions in this period bucket.
+    let distInBucket = 0
+    for (const cf of flows) {
+      if (cf.amount <= 0) continue
+      const ts = cf.date.getTime()
+      if (ts > prevBoundary.getTime() && ts <= periodStart.getTime()) {
+        distInBucket += cf.amount
+      }
+    }
+    bal -= distInBucket
+
+    // IRR-style running balances in the sheet are treated as "cleared" at 0.
+    if (hurdleType === "IRR" && bal < 0) bal = 0
+
+    prevBoundary = periodStart
+    periodStart = nextPeriodStart(periodStart, input.periodsPerYear)
+  }
+  return bal
+}
+
 export function evaluateHurdle(
   hurdle: Hurdle,
   input: WaterfallInput,
@@ -230,6 +338,11 @@ export function evaluateHurdle(
 
   if (type === "IRR") {
     const irr = calculateXIRR(input.cashFlows)
+    const remaining = runningHurdleBalance({
+      hurdleType: type,
+      hurdleRate,
+      input,
+    })
     if (irr == null) {
       return {
         type,
@@ -240,14 +353,25 @@ export function evaluateHurdle(
         detail: "Need dated cash flows (investment + distributions) for IRR",
       }
     }
-    const hurdleMet = isIrrHurdleMet(irr, hurdleRate)
+    const hurdleMet =
+      remaining != null ? remaining <= 0.005 : isIrrHurdleMet(irr, hurdleRate)
     return {
       type,
       metric: irr,
       hurdleRate,
       hurdleMet,
       canEvaluate: true,
-      detail: `IRR ${(irr * 100).toFixed(1)}% ${hurdleMet ? "≥" : "<"} ${(hurdleRate * 100).toFixed(1)}%`,
+      ...(remaining != null ? { accruedBalance: remaining } : {}),
+      detail:
+        remaining != null
+          ? `IRR ${(irr * 100).toFixed(1)}% · running balance ${
+              remaining <= 0 ? "cleared" : "remaining"
+            } ${Math.abs(remaining).toLocaleString("en-US", {
+              style: "currency",
+              currency: "USD",
+              maximumFractionDigits: 0,
+            })}`
+          : `IRR ${(irr * 100).toFixed(1)}% ${hurdleMet ? "≥" : "<"} ${(hurdleRate * 100).toFixed(1)}%`,
     }
   }
 
@@ -269,14 +393,32 @@ export function evaluateHurdle(
         detail: "Need invested capital and periods/year for Cash-on-Cash",
       }
     }
-    const hurdleMet = isCashOnCashHurdleMet(coc, hurdleRate)
+    const remaining = runningHurdleBalance({
+      hurdleType: type,
+      hurdleRate,
+      input,
+    })
+    const hurdleMet =
+      remaining != null
+        ? remaining <= 0.005
+        : isCashOnCashHurdleMet(coc, hurdleRate)
     return {
       type,
       metric: coc,
       hurdleRate,
       hurdleMet,
       canEvaluate: true,
-      detail: `CoC ${(coc * 100).toFixed(1)}% ${hurdleMet ? "≥" : "<"} ${(hurdleRate * 100).toFixed(1)}%`,
+      ...(remaining != null ? { accruedBalance: remaining } : {}),
+      detail:
+        remaining != null
+          ? `CoC ${(coc * 100).toFixed(1)}% annualized · running balance ${
+              remaining <= 0 ? "cleared" : "remaining"
+            } ${Math.abs(remaining).toLocaleString("en-US", {
+              style: "currency",
+              currency: "USD",
+              maximumFractionDigits: 0,
+            })}`
+          : `CoC ${(coc * 100).toFixed(1)}% ${hurdleMet ? "≥" : "<"} ${(hurdleRate * 100).toFixed(1)}%`,
     }
   }
 

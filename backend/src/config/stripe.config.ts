@@ -1,7 +1,13 @@
 /**
  * Stripe SaaS billing — credentials from environment only.
  *
- * Env price IDs (already used in this project):
+ * Seat-band Price IDs (preferred), e.g.:
+ *   STARTER_5_MONTH_PRICING / STARTER_5_YEARLY_PRICING
+ *   STARTER_10_MONTH_PRICING / STARTER_10_YEARLY_PRICING
+ *   STARTER_10_PLUS_MONTH_PRICING / STARTER_10_PLUS_YEARLY_PRICING
+ *   (same for RUNNING_*, GROWTH_*)
+ *
+ * Legacy flat Price IDs (fallback when a seat-band var is unset):
  *   STARTER_MONTH_PRICING / STARTER_YEARLY_PRICING
  *   RUNNING_MONTH_PRICING / RUNNING_YEARLY_PRICING
  *   GROWTH_MONTH_PRICING / GROWTH_YEARLY_PRICING
@@ -13,6 +19,7 @@
 
 export type StripeBillingPlanId = "starter" | "running" | "growth";
 export type StripeBillingCycle = "monthly" | "annual";
+export type StripeBillingSeatBand = "5" | "10" | "10plus";
 
 export const STRIPE_BILLING_PLAN_IDS: readonly StripeBillingPlanId[] = [
   "starter",
@@ -20,33 +27,27 @@ export const STRIPE_BILLING_PLAN_IDS: readonly StripeBillingPlanId[] = [
   "growth",
 ] as const;
 
-/** Maps plan + cycle → env var name used in backend/.env.local */
-const PRICE_ENV: Record<
-  StripeBillingPlanId,
-  Record<StripeBillingCycle, string>
-> = {
-  starter: {
-    monthly: "STARTER_MONTH_PRICING",
-    annual: "STARTER_YEARLY_PRICING",
-  },
-  running: {
-    monthly: "RUNNING_MONTH_PRICING",
-    annual: "RUNNING_YEARLY_PRICING",
-  },
-  growth: {
-    monthly: "GROWTH_MONTH_PRICING",
-    annual: "GROWTH_YEARLY_PRICING",
-  },
+export const STRIPE_BILLING_SEAT_BANDS: readonly StripeBillingSeatBand[] = [
+  "5",
+  "10",
+  "10plus",
+] as const;
+
+/** Env suffix for each seat band (STARTER_10_PLUS_MONTH_PRICING). */
+const SEAT_ENV_SUFFIX: Record<StripeBillingSeatBand, string> = {
+  "5": "5",
+  "10": "10",
+  "10plus": "10_PLUS",
 };
+
+type CyclePriceMap = Record<StripeBillingCycle, string | null>;
+type SeatPriceMap = Record<StripeBillingSeatBand, CyclePriceMap>;
 
 export type StripeConfig = {
   secretKey: string;
   webhookSecret: string | null;
   testMode: boolean;
-  prices: Record<
-    StripeBillingPlanId,
-    Record<StripeBillingCycle, string | null>
-  >;
+  prices: Record<StripeBillingPlanId, SeatPriceMap>;
 };
 
 function isStripeTestKey(secretKey: string): boolean {
@@ -58,25 +59,64 @@ function envPrice(name: string): string | null {
   return v.startsWith("price_") ? v : null;
 }
 
-function emptyPriceMap(): StripeConfig["prices"] {
+function seatPriceEnvName(
+  planId: StripeBillingPlanId,
+  seatBand: StripeBillingSeatBand,
+  cycle: StripeBillingCycle,
+): string {
+  const plan = planId.toUpperCase();
+  const seat = SEAT_ENV_SUFFIX[seatBand];
+  const cyclePart = cycle === "monthly" ? "MONTH" : "YEARLY";
+  return `${plan}_${seat}_${cyclePart}_PRICING`;
+}
+
+function legacyPriceEnvName(
+  planId: StripeBillingPlanId,
+  cycle: StripeBillingCycle,
+): string {
+  const plan = planId.toUpperCase();
+  const cyclePart = cycle === "monthly" ? "MONTH" : "YEARLY";
+  return `${plan}_${cyclePart}_PRICING`;
+}
+
+function emptySeatPriceMap(): SeatPriceMap {
   return {
-    starter: {
-      monthly: envPrice(PRICE_ENV.starter.monthly),
-      annual: envPrice(PRICE_ENV.starter.annual),
-    },
-    running: {
-      monthly: envPrice(PRICE_ENV.running.monthly),
-      annual: envPrice(PRICE_ENV.running.annual),
-    },
-    growth: {
-      monthly: envPrice(PRICE_ENV.growth.monthly),
-      annual: envPrice(PRICE_ENV.growth.annual),
-    },
+    "5": { monthly: null, annual: null },
+    "10": { monthly: null, annual: null },
+    "10plus": { monthly: null, annual: null },
   };
+}
+
+function buildPriceMap(): StripeConfig["prices"] {
+  const prices = {
+    starter: emptySeatPriceMap(),
+    running: emptySeatPriceMap(),
+    growth: emptySeatPriceMap(),
+  } as StripeConfig["prices"];
+
+  for (const planId of STRIPE_BILLING_PLAN_IDS) {
+    const legacyMonthly = envPrice(legacyPriceEnvName(planId, "monthly"));
+    const legacyAnnual = envPrice(legacyPriceEnvName(planId, "annual"));
+    for (const seatBand of STRIPE_BILLING_SEAT_BANDS) {
+      prices[planId][seatBand] = {
+        monthly:
+          envPrice(seatPriceEnvName(planId, seatBand, "monthly")) ??
+          legacyMonthly,
+        annual:
+          envPrice(seatPriceEnvName(planId, seatBand, "annual")) ??
+          legacyAnnual,
+      };
+    }
+  }
+  return prices;
 }
 
 export function isStripeBillingPlanId(v: string): v is StripeBillingPlanId {
   return (STRIPE_BILLING_PLAN_IDS as readonly string[]).includes(v);
+}
+
+export function isStripeBillingSeatBand(v: string): v is StripeBillingSeatBand {
+  return (STRIPE_BILLING_SEAT_BANDS as readonly string[]).includes(v);
 }
 
 /** Accept starter_5 etc. from older UI and map to tier. */
@@ -93,6 +133,31 @@ export function normalizeBillingPlanId(
   return null;
 }
 
+/** Normalize UI/API seat values: 5 | 10 | 10plus | 10+ | 10_plus. */
+export function normalizeBillingSeatBand(
+  raw: string | null | undefined,
+): StripeBillingSeatBand | null {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  if (!s) return null;
+  if (s === "5" || s === "5users" || s === "users_5") return "5";
+  if (s === "10" || s === "10users" || s === "users_10") return "10";
+  if (
+    s === "10plus" ||
+    s === "10+" ||
+    s === "10_plus" ||
+    s === "10-plus" ||
+    s === "10plususers" ||
+    s === "users_10plus" ||
+    s === "users_10_plus"
+  ) {
+    return "10plus";
+  }
+  return null;
+}
+
 export function getStripeConfig(): StripeConfig | null {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim() ?? "";
   if (!secretKey.startsWith("sk_")) return null;
@@ -101,7 +166,7 @@ export function getStripeConfig(): StripeConfig | null {
     secretKey,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
     testMode: isStripeTestKey(secretKey),
-    prices: emptyPriceMap(),
+    prices: buildPriceMap(),
   };
 }
 
@@ -118,6 +183,7 @@ export function requireStripeConfig(): StripeConfig {
 export function resolveStripePriceId(
   planId: string,
   cycle: string,
+  seatBand?: string | null,
 ): string | null {
   const cfg = getStripeConfig();
   if (!cfg) return null;
@@ -130,31 +196,39 @@ export function resolveStripePriceId(
         ? "annual"
         : null;
   if (!c) return null;
-  return cfg.prices[plan][c];
+  const seat = normalizeBillingSeatBand(seatBand) ?? "5";
+  return cfg.prices[plan][seat][c];
 }
 
 export function priceEnvNameFor(
   planId: StripeBillingPlanId,
   cycle: StripeBillingCycle,
+  seatBand: StripeBillingSeatBand = "5",
 ): string {
-  return PRICE_ENV[planId][cycle];
+  return seatPriceEnvName(planId, seatBand, cycle);
 }
 
 export function planAndCycleFromPriceId(
   priceId: string | null | undefined,
-): { planId: StripeBillingPlanId | null; cycle: StripeBillingCycle | null } {
+): {
+  planId: StripeBillingPlanId | null;
+  cycle: StripeBillingCycle | null;
+  seatBand: StripeBillingSeatBand | null;
+} {
   const id = String(priceId ?? "").trim();
-  if (!id) return { planId: null, cycle: null };
+  if (!id) return { planId: null, cycle: null, seatBand: null };
   const cfg = getStripeConfig();
-  if (!cfg) return { planId: null, cycle: null };
+  if (!cfg) return { planId: null, cycle: null, seatBand: null };
   for (const planId of STRIPE_BILLING_PLAN_IDS) {
-    for (const cycle of ["monthly", "annual"] as const) {
-      if (cfg.prices[planId][cycle] === id) {
-        return { planId, cycle };
+    for (const seatBand of STRIPE_BILLING_SEAT_BANDS) {
+      for (const cycle of ["monthly", "annual"] as const) {
+        if (cfg.prices[planId][seatBand][cycle] === id) {
+          return { planId, cycle, seatBand };
+        }
       }
     }
   }
-  return { planId: null, cycle: null };
+  return { planId: null, cycle: null, seatBand: null };
 }
 
 /** Safe for API responses — never exposes the secret key. */
@@ -168,6 +242,13 @@ export function getStripePublicConfig(): {
     annualPriceId: string | null;
     monthlyEnv: string;
     annualEnv: string;
+    seats: Array<{
+      seatBand: StripeBillingSeatBand;
+      monthlyPriceId: string | null;
+      annualPriceId: string | null;
+      monthlyEnv: string;
+      annualEnv: string;
+    }>;
   }>;
 } {
   const cfg = getStripeConfig();
@@ -183,13 +264,26 @@ export function getStripePublicConfig(): {
     configured: true,
     testMode: cfg.testMode,
     webhookConfigured: Boolean(cfg.webhookSecret),
-    plans: STRIPE_BILLING_PLAN_IDS.map((id) => ({
-      id,
-      monthlyPriceId: cfg.prices[id].monthly,
-      annualPriceId: cfg.prices[id].annual,
-      monthlyEnv: PRICE_ENV[id].monthly,
-      annualEnv: PRICE_ENV[id].annual,
-    })),
+    plans: STRIPE_BILLING_PLAN_IDS.map((id) => {
+      const seats = STRIPE_BILLING_SEAT_BANDS.map((seatBand) => ({
+        seatBand,
+        monthlyPriceId: cfg.prices[id][seatBand].monthly,
+        annualPriceId: cfg.prices[id][seatBand].annual,
+        monthlyEnv: seatPriceEnvName(id, seatBand, "monthly"),
+        annualEnv: seatPriceEnvName(id, seatBand, "annual"),
+      }));
+      // Top-level readiness: any seat configured (used by startup checks).
+      const anyMonthly = seats.find((s) => s.monthlyPriceId) ?? seats[0];
+      const anyAnnual = seats.find((s) => s.annualPriceId) ?? seats[0];
+      return {
+        id,
+        monthlyPriceId: anyMonthly.monthlyPriceId,
+        annualPriceId: anyAnnual.annualPriceId,
+        monthlyEnv: anyMonthly.monthlyEnv,
+        annualEnv: anyAnnual.annualEnv,
+        seats,
+      };
+    }),
   };
 }
 

@@ -26,6 +26,7 @@ import { CreateDealPage } from "./modules/Syndication/Deals/deal_create/CreateDe
 import { AddDealAssetPage } from "./modules/Syndication/Deals/AddDealAssetPage";
 import { ClassSetupPage } from "./modules/Syndication/Deals/class-setup";
 import { DistributionSetupPage } from "./modules/Syndication/Deals/distribution-setup";
+import { DistributionDetailsPage } from "./modules/Syndication/Deals/tabs/distributions/DistributionDetailsPage";
 import {
   RedirectLegacyAddInvestorClass,
   RedirectLegacyEditInvestorClass,
@@ -36,6 +37,8 @@ import { DealsListPage } from "./modules/Syndication/Deals/DealsListPage";
 import Opportunities from "@/modules/Investing/pages/opportunities/Opportunities";
 import InvestmentsPage from "@/modules/Investing/pages/investments/InvestmentsPage";
 import InvestmentDetailPage from "@/modules/Investing/pages/investments/InvestmentDetailPage";
+import InvestorCashflowsPage from "@/modules/Investing/pages/InvestorCashflowsPage";
+import InvestorDistributionDetailsPage from "@/modules/Investing/pages/investments/InvestorDistributionDetailsPage";
 import InvestmentEsignSignGate from "@/modules/Investing/pages/investments/InvestmentEsignSignGate";
 import DealInvestNowPage from "@/modules/Investing/pages/invest/DealInvestNowPage";
 import InvestingProfilesPage from "@/modules/Investing/pages/profiles/InvestingProfilesPage";
@@ -54,6 +57,8 @@ import ContactsPage from "./modules/Syndication/contacts/ContactsPage";
 import EmailTemplatesPage from "./modules/Syndication/contacts/EmailTemplatesPage";
 import EmailTemplateNewPage from "./modules/Syndication/contacts/EmailTemplateNewPage";
 import CrmPage from "./modules/Syndication/contacts/CrmPage";
+import CrmOverviewPage from "./modules/Syndication/contacts/CrmOverviewPage";
+import CrmSectionPlaceholderPage from "./modules/Syndication/contacts/CrmSectionPlaceholderPage";
 import CreateReusableTemplatePage from "./modules/Syndication/Templates/CreateReusableTemplatePage";
 import { usePortalMode } from "./modules/Investing/context/PortalModeContext";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
@@ -167,6 +172,10 @@ function App() {
                 element={<DistributionSetupPage />}
               />
               <Route
+                path=":dealId/distributions/:distributionId"
+                element={<DistributionDetailsPage />}
+              />
+              <Route
                 path=":dealId/investor-classes/new"
                 element={<RedirectLegacyAddInvestorClass />}
               />
@@ -196,6 +205,10 @@ function App() {
               }
             />
             <Route path="investing/opportunities" element={<Opportunities />} />
+            <Route
+              path="investing/investments/:investmentId/distributions/:distributionId"
+              element={<InvestorDistributionDetailsPage />}
+            />
             <Route
               path="investing/investments/:investmentId"
               element={<InvestmentDetailPage />}
@@ -249,13 +262,7 @@ function App() {
             />
             <Route
               path="investing/cashflows"
-              element={
-                <WorkInProgressPage
-                  title="Cashflows"
-                  backTo="/investing/investments"
-                  backLabel="Investments"
-                />
-              }
+              element={<InvestorCashflowsPage />}
             />
             <Route path="account" element={<MyAccountLayout />}>
               <Route index element={<Navigate to="/account/company" replace />} />
@@ -295,7 +302,71 @@ function App() {
               element={<EmailTemplateNewPage />}
             />
             <Route path="contacts/email-templates" element={<EmailTemplatesPage />} />
+            <Route path="contacts/overview" element={<CrmOverviewPage />} />
             <Route path="contacts/crm" element={<CrmPage />} />
+            <Route
+              path="contacts/pipeline"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Pipeline"
+                  description="Track soft commits and move prospects through your capital raise stages."
+                />
+              }
+            />
+            <Route
+              path="contacts/inbox"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Inbox"
+                  description="Emails and texts from campaigns land here — replies stay in one thread."
+                />
+              }
+            />
+            <Route
+              path="contacts/campaigns"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Campaigns"
+                  description="Nurture drips and outbound campaigns for leads, prospects, and investors."
+                />
+              }
+            />
+            <Route
+              path="contacts/meetings"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Meetings"
+                  description="Schedule and track investor calls without leaving the portal."
+                />
+              }
+            />
+            <Route
+              path="contacts/pages"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Pages & Branding"
+                  description="Landing pages and brand settings that feed contacts into your CRM."
+                />
+              }
+            />
+            <Route
+              path="contacts/import"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Import"
+                  description="Bring contacts from spreadsheets, forms, or connected CRMs."
+                />
+              }
+            />
+            <Route
+              path="contacts/investor-view"
+              element={
+                <CrmSectionPlaceholderPage
+                  title="Investor view"
+                  description="Preview how investors experience your outreach and portal messaging."
+                />
+              }
+            />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="templates/new" element={<CreateReusableTemplatePage />} />
             {/* <Route path="templates" element={<ReusableTemplatesPage />} /> */}

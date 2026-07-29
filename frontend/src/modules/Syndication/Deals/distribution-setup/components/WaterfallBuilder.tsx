@@ -8,6 +8,7 @@ import type {
   DistributionSetupClass,
   DistributionSetupPromote,
   DistributionWfKind,
+  DistributionWfSource,
 } from "../types/distribution-setup.types"
 import { CLASS_TYPE_TONE, KIND_META } from "../types/distribution-setup.types"
 import {
@@ -24,8 +25,7 @@ interface WaterfallBuilderProps {
   classes: DistributionSetupClass[]
   promote: DistributionSetupPromote
   addKind: DistributionWfKind
-  saving: boolean
-  onSave: () => void
+  activeWf: DistributionWfSource
   onAddKindChange: (kind: DistributionWfKind) => void
   onAddRow: () => void
   onChangeRow: (id: string, next: DistributionPaymentRow) => void
@@ -38,8 +38,7 @@ export function WaterfallBuilder({
   classes,
   promote,
   addKind,
-  saving,
-  onSave,
+  activeWf,
   onAddKindChange,
   onAddRow,
   onChangeRow,
@@ -49,28 +48,41 @@ export function WaterfallBuilder({
   const stages = stageCount(promote)
   const parts = equityParticipants(classes)
   const hasContent = rows.length > 0 || stages > 0
+  const subtitle =
+    activeWf === "operating"
+      ? "Cash pays each row in order until funded or cash runs out. Unpaid balances accrue. Split stages come from Class Setup hurdles."
+      : "Sale and refinance proceeds follow this order. Residual splits use the same promote schedule from Class Setup."
 
   return (
-    <section className="ds_builder" aria-label="Payment waterfall">
-      <div className="ds_builder_toolbar">
-        <div className="ds_builder_toolbar_text">
-          <h2 className="ds_builder_title">Payment waterfall</h2>
-          <p className="ds_builder_sub">
-            Cash pays each row in order until funded or cash runs out. Unpaid
-            balances accrue. Split stages come from Class Setup hurdles.
-          </p>
+    <section className="ds_table_panel" aria-label="Payment waterfall">
+      <div className="ds_table_toolbar">
+        <div>
+          <h2 className="ds_table_title">Payment waterfall</h2>
+          <p className="ds_table_subtitle">{subtitle}</p>
         </div>
-        <button
-          type="button"
-          className="ds_primary_btn"
-          disabled={saving}
-          onClick={onSave}
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
+        <div className="ds_table_toolbar_actions">
+          <select
+            value={addKind}
+            onChange={(e) =>
+              onAddKindChange(e.target.value as DistributionWfKind)
+            }
+            aria-label="Payment row type to add"
+            className="ds_add_select"
+          >
+            {(Object.keys(KIND_META) as DistributionWfKind[]).map((k) => (
+              <option key={k} value={k}>
+                {KIND_META[k].label}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="ds_add_btn" onClick={onAddRow}>
+            <Plus size={15} strokeWidth={2.25} aria-hidden />
+            Add payment row
+          </button>
+        </div>
       </div>
 
-      <div className="ds_table_wrap">
+      <div className="ds_table_scroll">
         <table className="ds_wf_table">
           <thead>
             <tr>
@@ -89,7 +101,8 @@ export function WaterfallBuilder({
               <tr className="ds_wf_empty_row">
                 <td colSpan={4}>
                   <p className="ds_empty_msg">
-                    No payment rows yet. Add a row below, or define LP/GP classes
+                    No payment rows yet. Use{" "}
+                    <strong>Add payment row</strong>, or define LP/GP classes
                     and hurdles in Class Setup for residual splits.
                   </p>
                 </td>
@@ -112,9 +125,12 @@ export function WaterfallBuilder({
             {stages > 0 ? (
               <tr className="ds_wf_section_row">
                 <td colSpan={4}>
-                  <span className="ds_wf_section_label">
-                    Residual splits · from Class Setup
-                  </span>
+                  <div className="ds_section_inner">
+                    <strong>Residual splits</strong>
+                    <span className="ds_section_desc">
+                      From Class Setup promote schedule
+                    </span>
+                  </div>
                 </td>
               </tr>
             ) : null}
@@ -180,26 +196,6 @@ export function WaterfallBuilder({
             })}
           </tbody>
         </table>
-      </div>
-
-      <div className="ds_add_row_bar">
-        <select
-          value={addKind}
-          onChange={(e) =>
-            onAddKindChange(e.target.value as DistributionWfKind)
-          }
-          aria-label="Payment row type to add"
-        >
-          {(Object.keys(KIND_META) as DistributionWfKind[]).map((k) => (
-            <option key={k} value={k}>
-              {KIND_META[k].label}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="ds_add_btn" onClick={onAddRow}>
-          <Plus size={15} strokeWidth={2.25} aria-hidden />
-          Add payment row
-        </button>
       </div>
     </section>
   )

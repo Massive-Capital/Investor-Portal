@@ -470,6 +470,20 @@
       "when": 1893900000000,
       "tag": "0067_contact_full_name",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1893950000000,
+      "tag": "0068_deal_asset",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1894000000000,
+      "tag": "0069_deal_lp_investor_class_percents",
+      "breakpoints": true
     }
   ]
 }

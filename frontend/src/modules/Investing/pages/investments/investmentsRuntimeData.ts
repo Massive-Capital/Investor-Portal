@@ -219,7 +219,10 @@ export function mergeServerInvestmentDetailWithLocal(
       id: li.id,
       dealId: (li.dealId ?? a.dealId ?? "").trim() || a.dealId,
       investedAmount: li.investedAmount,
-      distributedAmount: li.distributedAmount,
+      distributedAmount: Math.max(
+        Number(a.distributedAmount) || 0,
+        Number(li.distributedAmount) || 0,
+      ),
       investmentName: (li.investmentName ?? "").trim() || a.investmentName,
       offeringName: (li.offeringName ?? "").trim() || a.offeringName,
       investmentProfile: (li.investmentProfile ?? "").trim() || a.investmentProfile,

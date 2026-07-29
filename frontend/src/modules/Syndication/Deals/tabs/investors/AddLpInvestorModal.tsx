@@ -3,6 +3,7 @@ import {
   IdCard,
   Loader2,
   Mail,
+  Percent,
   Plus,
   Save,
   Tag,
@@ -57,6 +58,10 @@ import {
 } from "../../constants/investor-profile"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
+import {
+  formatPercentTypeInput,
+  sanitizePercentTypingInput,
+} from "../../utils/offeringMoneyFormat"
 import { rowDisplayName } from "../../../usermanagement/memberAdminShared"
 import { InfoIconPanel } from "../offering_details/FieldInfoHeading"
 import { YesNoCardRadioGroup } from "../../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
@@ -81,6 +86,8 @@ type LpInvestorFieldErrors = {
   contactId?: string
   profileId?: string
   investorClass?: string
+  percentOfClassOwnership?: string
+  percentOfClassDistributions?: string
 }
 
 function RequiredMark() {
@@ -98,9 +105,34 @@ function firstLpInvestorFieldErrorMessage(
   return (
     errors.contactId ??
     errors.investorClass ??
+    errors.percentOfClassOwnership ??
+    errors.percentOfClassDistributions ??
     errors.profileId ??
     ""
   )
+}
+
+function stripPctDigits(raw: string): string {
+  return sanitizePercentTypingInput(raw)
+}
+
+function blurFormatPercentClamped(raw: string): string {
+  const t = stripPctDigits(raw)
+  if (!t) return ""
+  const n = parseFloat(t)
+  if (!Number.isFinite(n)) return ""
+  return `${Math.max(0, Math.min(100, n)).toFixed(2)}%`
+}
+
+function percentValuesEqual(a: string, b: string): boolean {
+  const ta = stripPctDigits(a)
+  const tb = stripPctDigits(b)
+  if (!ta && !tb) return true
+  if (!ta || !tb) return false
+  const na = parseFloat(ta)
+  const nb = parseFloat(tb)
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb
+  return ta === tb
 }
 
 function validateLpInvestorForm(input: {
@@ -280,6 +312,9 @@ export function AddLpInvestorModal({
   const [addContactModalOpen, setAddContactModalOpen] = useState(false)
   const [dealClasses, setDealClasses] = useState<DealInvestorClass[]>([])
   const [investorClassId, setInvestorClassId] = useState("")
+  const [percentOfClassOwnership, setPercentOfClassOwnership] = useState("")
+  const [percentOfClassDistributions, setPercentOfClassDistributions] =
+    useState("")
   const [backendLpRosterId, setBackendLpRosterId] = useState<string | null>(null)
   const backendLpRosterIdRef = useRef<string | null>(null)
   const lpAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -377,6 +412,8 @@ export function AddLpInvestorModal({
       setContactEmail("")
       setProfileId("")
       setInvestorClassId("")
+      setPercentOfClassOwnership("")
+      setPercentOfClassDistributions("")
       setSendInvitationMail("yes")
       setError(null)
       setFieldErrors({})
@@ -399,6 +436,12 @@ export function AddLpInvestorModal({
       )
       setSendInvitationMail("no")
       setInvestorClassId(resolveLpInvestorClassId(editRow, dealClasses))
+      setPercentOfClassOwnership(
+        editRow.percentOfClassOwnership?.trim() ?? "",
+      )
+      setPercentOfClassDistributions(
+        editRow.percentOfClassDistributions?.trim() ?? "",
+      )
       setError(null)
       setFieldErrors({})
       setBackendLpRosterId(editRow.id)
@@ -434,6 +477,12 @@ export function AddLpInvestorModal({
         }
         setError(null)
         setFieldErrors({})
+        setPercentOfClassOwnership(
+          String(f.percentOfClassOwnership ?? "").trim(),
+        )
+        setPercentOfClassDistributions(
+          String(f.percentOfClassDistributions ?? "").trim(),
+        )
         /** Only `deal_lp_investor` ids — never `backendInvestmentId` (different table / PUT route). */
         const bid = draft?.backendLpInvestorId?.trim()
         if (bid) {
@@ -453,6 +502,8 @@ export function AddLpInvestorModal({
     setContactEmail("")
     setProfileId("")
     setInvestorClassId(dealClasses[0]?.id ?? "")
+    setPercentOfClassOwnership("")
+    setPercentOfClassDistributions("")
     setSendInvitationMail(dealBlocksInvitationEmails ? "no" : "yes")
     setError(null)
     setFieldErrors({})
@@ -726,6 +777,8 @@ export function AddLpInvestorModal({
           status: "",
           fundApproved: false,
           investorClass: classId,
+          percentOfClassOwnership: percentOfClassOwnership.trim(),
+          percentOfClassDistributions: percentOfClassDistributions.trim(),
           docSignedDate: "",
           commitmentAmount: "0",
           extraContributionAmounts: [],
@@ -808,6 +861,8 @@ export function AddLpInvestorModal({
     membersLoading,
     contactRows,
     memberRows,
+    percentOfClassOwnership,
+    percentOfClassDistributions,
   ])
 
   async function handleSubmit(e: FormEvent) {
@@ -854,6 +909,8 @@ export function AddLpInvestorModal({
       status: "",
       fundApproved: false,
       investorClass: classId,
+      percentOfClassOwnership: percentOfClassOwnership.trim(),
+      percentOfClassDistributions: percentOfClassDistributions.trim(),
       docSignedDate: "",
       commitmentAmount: "0",
       extraContributionAmounts: [],
@@ -1100,6 +1157,135 @@ export function AddLpInvestorModal({
                   </p>
                 ) : null}
               </div>
+
+              {!noDealClasses ? (
+                <div className="add_contact_name_grid">
+                  <div className="um_field">
+                    <label
+                      htmlFor="lp-inv-pct-ownership"
+                      className="um_field_label_row"
+                    >
+                      <Percent
+                        className="um_field_label_icon"
+                        size={17}
+                        aria-hidden
+                      />
+                      <span>
+                        Percent of class (ownership)
+                      </span>
+                    </label>
+                    <input
+                      id="lp-inv-pct-ownership"
+                      type="text"
+                      className="deals_add_inv_field_pill"
+                      inputMode="decimal"
+                      placeholder="0.00%"
+                      value={percentOfClassOwnership}
+                      aria-invalid={
+                        Boolean(fieldErrors.percentOfClassOwnership) ||
+                        undefined
+                      }
+                      aria-describedBy={
+                        fieldErrors.percentOfClassOwnership
+                          ? "lp-inv-pct-ownership-err"
+                          : undefined
+                      }
+                      onChange={(e) => {
+                        const next = formatPercentTypeInput(e.target.value, 100)
+                        const prevOwnership = percentOfClassOwnership
+                        setPercentOfClassOwnership(next)
+                        clearFieldError("percentOfClassOwnership")
+                        if (
+                          !stripPctDigits(percentOfClassDistributions) ||
+                          percentValuesEqual(
+                            percentOfClassDistributions,
+                            prevOwnership,
+                          )
+                        ) {
+                          setPercentOfClassDistributions(next)
+                          clearFieldError("percentOfClassDistributions")
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const next = blurFormatPercentClamped(e.target.value)
+                        const prevOwnership = percentOfClassOwnership
+                        setPercentOfClassOwnership(next)
+                        if (
+                          !stripPctDigits(percentOfClassDistributions) ||
+                          percentValuesEqual(
+                            percentOfClassDistributions,
+                            prevOwnership,
+                          )
+                        ) {
+                          setPercentOfClassDistributions(next)
+                        }
+                      }}
+                    />
+                    {fieldErrors.percentOfClassOwnership ? (
+                      <p
+                        id="lp-inv-pct-ownership-err"
+                        className="um_field_hint um_field_hint_error"
+                        role="alert"
+                      >
+                        {fieldErrors.percentOfClassOwnership}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="um_field">
+                    <label
+                      htmlFor="lp-inv-pct-distributions"
+                      className="um_field_label_row"
+                    >
+                      <Percent
+                        className="um_field_label_icon"
+                        size={17}
+                        aria-hidden
+                      />
+                      <span>
+                        Percent of class (distributions)
+                      </span>
+                    </label>
+                    <input
+                      id="lp-inv-pct-distributions"
+                      type="text"
+                      className="deals_add_inv_field_pill"
+                      inputMode="decimal"
+                      placeholder="0.00%"
+                      value={percentOfClassDistributions}
+                      aria-invalid={
+                        Boolean(fieldErrors.percentOfClassDistributions) ||
+                        undefined
+                      }
+                      aria-describedBy={
+                        fieldErrors.percentOfClassDistributions
+                          ? "lp-inv-pct-distributions-err"
+                          : undefined
+                      }
+                      onChange={(e) => {
+                        setPercentOfClassDistributions(
+                          formatPercentTypeInput(e.target.value, 100),
+                        )
+                        clearFieldError("percentOfClassDistributions")
+                      }}
+                      onBlur={(e) =>
+                        setPercentOfClassDistributions(
+                          blurFormatPercentClamped(e.target.value),
+                        )
+                      }
+                    />
+                    {fieldErrors.percentOfClassDistributions ? (
+                      <p
+                        id="lp-inv-pct-distributions-err"
+                        className="um_field_hint um_field_hint_error"
+                        role="alert"
+                      >
+                        {fieldErrors.percentOfClassDistributions}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="um_field">
                 <div

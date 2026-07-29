@@ -21,6 +21,7 @@ import {
   putDeal,
   deleteDeal,
 } from "../controllers/deal/add_deal.controller.js";
+import { postDealDistributionComplete } from "../controllers/distributionSetup/distributionSetup.controller.js";
 import {
   getDealCommitmentAmountByContact,
   getDealInvestors,
@@ -280,6 +281,11 @@ router.post(
 router.get(
   "/deals/:dealId/offering-share-recipients",
   getDealOfferingShareRecipients,
+);
+/** Complete a distribution run (also on distributionSetup.routes — kept here so deals router always exposes it). */
+router.post(
+  "/deals/:dealId/distribution-setup/complete",
+  postDealDistributionComplete,
 );
 router.get("/deals/:dealId", getDealById);
 router.put("/deals/:dealId", putDeal);

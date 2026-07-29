@@ -1,24 +1,37 @@
 import type { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 import { getValidJwtUser } from "../../middleware/jwtUser.js";
+import { db } from "../../database/db.js";
+import { users } from "../../schema/schema.js";
 import {
   assertDealIdInViewerScope,
+  assertDealIdReadableOrAssignedParticipant,
+  listDealsForViewerIncludingAssignedParticipation,
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import {
+  completeDistributionRun,
   getDistributionSetupBundle,
+  getMyDistributionDetailForDeal,
+  getMyDistributionsForDeal,
+  listMyDistributionsForViewer,
   saveDistributionSetupBundle,
+  updatePriorDistributionInvestorPercent,
 } from "../../services/distributionSetup/distributionSetup.service.js";
 import type {
   DistributionPaymentRow,
   DistributionSetupSaveInput,
   DistributionWaterfalls,
   DistributionWfKind,
+  DistributionWfSource,
 } from "../../services/distributionSetup/distributionSetup.types.js";
 import {
   DISTRIBUTION_AMOUNT_MODES,
   DISTRIBUTION_WF_KINDS,
+  DISTRIBUTION_WF_SOURCES,
 } from "../../services/distributionSetup/distributionSetup.types.js";
+import type { InvestorPaymentLineInput } from "../../services/distributionSetup/investorDistributionAllocation.js";
 
 function paramId(v: string | string[] | undefined): string {
   if (typeof v === "string") return v;
@@ -153,9 +166,352 @@ export async function putDealDistributionSetup(req: Request, res: Response) {
       res.status(400).json({ message: error, distributionSetup: bundle });
       return;
     }
+
+    // Optional: record a completed run in the same PUT (avoids a separate POST
+    // that older API processes may not have mounted yet).
+    const completeBody = asRecord(req.body).complete;
+    if (completeBody != null) {
+      const completeInput = parseCompleteInput(completeBody);
+      if (!completeInput) {
+        res.status(400).json({
+          message:
+            "Invalid complete payload. Provide source (operating|capital) and amount.",
+          distributionSetup: bundle,
+        });
+        return;
+      }
+      const completed = await completeDistributionRun({
+        dealId,
+        input: completeInput,
+      });
+      if (completed.error) {
+        res.status(400).json({
+          message: completed.error,
+          distributionSetup: completed.bundle,
+        });
+        return;
+      }
+      res.json({
+        distributionSetup: completed.bundle,
+        record: completed.record,
+      });
+      return;
+    }
+
     res.json({ distributionSetup: bundle });
   } catch (err) {
     console.error("putDealDistributionSetup", err);
     res.status(500).json({ message: "Failed to save distribution setup" });
+  }
+}
+
+function parseInvestorPayments(raw: unknown): InvestorPaymentLineInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: InvestorPaymentLineInput[] = [];
+  for (const item of raw) {
+    if (item == null || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const investorId = str(o.investorId ?? o.investor_id);
+    const paymentRaw = o.payment;
+    const payment =
+      typeof paymentRaw === "number"
+        ? paymentRaw
+        : Number(str(paymentRaw).replace(/[^0-9.-]/g, ""));
+    if (!investorId || !Number.isFinite(payment)) continue;
+    out.push({
+      investorId,
+      contactId: str(o.contactId ?? o.contact_id) || undefined,
+      userEmail: str(o.userEmail ?? o.user_email) || undefined,
+      investorName: str(o.investorName ?? o.investor_name) || "—",
+      classId: str(o.classId ?? o.class_id),
+      className: str(o.className ?? o.class_name) || "—",
+      capital: Number(str(o.capital).replace(/[^0-9.-]/g, "")) || 0,
+      percentOfClass:
+        Number(str(o.percentOfClass ?? o.percent_of_class).replace(/[^0-9.-]/g, "")) ||
+        0,
+      payment,
+    });
+  }
+  return out;
+}
+
+function parseCompleteInput(body: unknown): {
+  source: DistributionWfSource;
+  amount: number;
+  date?: string;
+  name?: string;
+  notes?: string;
+  period?: "monthly" | "quarterly" | "annual";
+  investorPayments?: InvestorPaymentLineInput[];
+} | null {
+  if (body == null || typeof body !== "object" || Array.isArray(body))
+    return null;
+  const b = body as Record<string, unknown>;
+  const sourceRaw = str(b.source).toLowerCase();
+  if (
+    !(DISTRIBUTION_WF_SOURCES as readonly string[]).includes(sourceRaw)
+  ) {
+    return null;
+  }
+  const amountRaw = b.amount;
+  const amount =
+    typeof amountRaw === "number"
+      ? amountRaw
+      : Number(str(amountRaw).replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(amount)) return null;
+  const periodRaw = str(b.period ?? b.periodFactor ?? b.period_factor).toLowerCase();
+  let period: "monthly" | "quarterly" | "annual" | undefined;
+  if (periodRaw === "monthly" || periodRaw === "month") period = "monthly";
+  else if (periodRaw === "annual" || periodRaw === "yearly" || periodRaw === "year")
+    period = "annual";
+  else if (periodRaw === "quarterly" || periodRaw === "quarter")
+    period = "quarterly";
+  else {
+    const factor = Number(periodRaw.replace(/[^0-9.]/g, ""));
+    if (Number.isFinite(factor) && factor > 0) {
+      const ppy = Math.round(1 / factor);
+      if (ppy === 12) period = "monthly";
+      else if (ppy === 1) period = "annual";
+      else if (ppy === 4) period = "quarterly";
+    }
+  }
+  const investorPayments = parseInvestorPayments(
+    b.investorPayments ?? b.investor_payments,
+  );
+  return {
+    source: sourceRaw as DistributionWfSource,
+    amount,
+    date: str(b.date) || undefined,
+    name: str(b.name) || undefined,
+    notes: str(b.notes) || undefined,
+    ...(period ? { period } : {}),
+    ...(investorPayments.length ? { investorPayments } : {}),
+  };
+}
+
+async function viewerEmailNorm(userId: string): Promise<string> {
+  const [row] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return String(row?.email ?? "").trim().toLowerCase();
+}
+
+/** Deal-scoped: investor's distribution payments on one deal. */
+export async function getDealMyDistributions(req: Request, res: Response) {
+  try {
+    const dealId = paramId(req.params.dealId);
+    if (!dealId) {
+      res.status(400).json({ message: "dealId is required" });
+      return;
+    }
+    const user = await getValidJwtUser(req);
+    if (!user?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const emailNorm = await viewerEmailNorm(user.id);
+    const pack = await getMyDistributionsForDeal({
+      dealId,
+      scope,
+      emailNorm,
+    });
+    if (!pack) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    res.json(pack);
+  } catch (err) {
+    console.error("getDealMyDistributions", err);
+    res.status(500).json({ message: "Failed to load your distributions" });
+  }
+}
+
+/** Deal-scoped: one completed distribution, viewer payment lines only. */
+export async function getDealMyDistributionDetail(req: Request, res: Response) {
+  try {
+    const dealId = paramId(req.params.dealId);
+    const distributionId = paramId(req.params.distributionId);
+    if (!dealId || !distributionId) {
+      res.status(400).json({ message: "dealId and distributionId are required" });
+      return;
+    }
+    const user = await getValidJwtUser(req);
+    if (!user?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!(await assertDealIdReadableOrAssignedParticipant(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    const emailNorm = await viewerEmailNorm(user.id);
+    const pack = await getMyDistributionDetailForDeal({
+      dealId,
+      distributionId,
+      scope,
+      emailNorm,
+    });
+    if (!pack) {
+      res.status(404).json({ message: "Distribution not found" });
+      return;
+    }
+    res.json(pack);
+  } catch (err) {
+    console.error("getDealMyDistributionDetail", err);
+    res.status(500).json({ message: "Failed to load distribution details" });
+  }
+}
+
+/** Investor-scoped: payments across deals the viewer can access. */
+export async function getMyDistributions(req: Request, res: Response) {
+  try {
+    const user = await getValidJwtUser(req);
+    if (!user?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    const emailNorm = await viewerEmailNorm(user.id);
+    const deals = await listDealsForViewerIncludingAssignedParticipation(scope);
+    const dealIds = deals.map((d) => d.id).filter(Boolean);
+    const pack = await listMyDistributionsForViewer({
+      scope,
+      emailNorm,
+      dealIds,
+    });
+    res.json(pack);
+  } catch (err) {
+    console.error("getMyDistributions", err);
+    res.status(500).json({ message: "Failed to load your distributions" });
+  }
+}
+
+export async function postDealDistributionComplete(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const dealId = paramId(req.params.dealId);
+    if (!dealId) {
+      res.status(400).json({ message: "dealId is required" });
+      return;
+    }
+    const access = await assertDealAccess(req, dealId);
+    if (!access.ok) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+    const input = parseCompleteInput(req.body);
+    if (!input) {
+      res.status(400).json({
+        message:
+          "Invalid complete payload. Provide source (operating|capital) and amount.",
+      });
+      return;
+    }
+    const { bundle, error, record } = await completeDistributionRun({
+      dealId,
+      input,
+    });
+    if (error) {
+      res.status(400).json({ message: error, distributionSetup: bundle });
+      return;
+    }
+    res.status(201).json({ distributionSetup: bundle, record });
+  } catch (err) {
+    console.error("postDealDistributionComplete", err);
+    res.status(500).json({ message: "Failed to complete distribution" });
+  }
+}
+
+/**
+ * PATCH /deals/:dealId/distributions/:distributionId/investor-percent
+ * Body: { investorId, percentOfClass? } and/or { payment? } — co-dependent.
+ */
+export async function patchDealDistributionInvestorPercent(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const dealId = paramId(req.params.dealId);
+    const distributionId = paramId(req.params.distributionId);
+    if (!dealId || !distributionId) {
+      res.status(400).json({ message: "dealId and distributionId are required" });
+      return;
+    }
+    const access = await assertDealAccess(req, dealId);
+    if (!access.ok) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+    const b = asRecord(req.body);
+    const investorId = str(b.investorId ?? b.investor_id);
+    const pctRaw = b.percentOfClass ?? b.percent_of_class;
+    const payRaw = b.payment;
+    const hasPct =
+      pctRaw !== undefined &&
+      pctRaw !== null &&
+      String(pctRaw).trim() !== "";
+    const hasPay =
+      payRaw !== undefined &&
+      payRaw !== null &&
+      String(payRaw).trim() !== "";
+    const percentOfClass = hasPct
+      ? typeof pctRaw === "number"
+        ? pctRaw
+        : Number(String(pctRaw ?? "").replace(/[^0-9.-]/g, ""))
+      : undefined;
+    const payment = hasPay
+      ? typeof payRaw === "number"
+        ? payRaw
+        : Number(String(payRaw ?? "").replace(/[^0-9.-]/g, ""))
+      : undefined;
+    if (
+      !investorId ||
+      (!Number.isFinite(percentOfClass) && !Number.isFinite(payment))
+    ) {
+      res.status(400).json({
+        message:
+          "Provide investorId and percentOfClass (0–100) and/or payment.",
+      });
+      return;
+    }
+    const { bundle, error } = await updatePriorDistributionInvestorPercent({
+      dealId,
+      distributionId,
+      investorId,
+      ...(Number.isFinite(percentOfClass)
+        ? { percentOfClass: percentOfClass as number }
+        : {}),
+      ...(Number.isFinite(payment) ? { payment: payment as number } : {}),
+    });
+    if (error) {
+      res.status(400).json({ message: error, distributionSetup: bundle });
+      return;
+    }
+    res.json({ distributionSetup: bundle });
+  } catch (err) {
+    console.error("patchDealDistributionInvestorPercent", err);
+    res.status(500).json({ message: "Failed to update investor percent" });
   }
 }

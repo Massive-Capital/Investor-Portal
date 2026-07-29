@@ -263,7 +263,8 @@
 }
 
 /* Same chrome as Deals list “Export all deals” (outline pill, dark border) */
-.um_toolbar_export_btn {
+.um_toolbar_export_btn,
+a.um_toolbar_export_btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -283,6 +284,7 @@
   color: var(--portal-text, #282828);
   cursor: pointer;
   flex-shrink: 0;
+  text-decoration: none;
 }
 
 .um_toolbar_export_btn:hover:not(:disabled) {

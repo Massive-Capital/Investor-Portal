@@ -5,8 +5,8 @@
 $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path "venv")) {
-    Write-Host "Creating virtual environment..."
-    python -m venv venv
+    Write-Host "Creating virtual environment (Python 3.13)..."
+    py -3.13 -m venv venv
 }
 
 Write-Host "Installing dependencies into venv..."

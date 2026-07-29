@@ -35,10 +35,60 @@ type DealTier = {
   name: string;
   dealSize: string;
   featured: boolean;
-  /** Only Starter is purchasable for now. */
   enabled: boolean;
   prices: Record<SeatBand, { monthly: number; annual: number }>;
 };
+
+const PRICE_ENV_HINT: Record<
+  DealTier["id"],
+  Record<SeatBand, { monthly: string; annual: string }>
+> = {
+  starter: {
+    "5": {
+      monthly: "STARTER_5_MONTH_PRICING",
+      annual: "STARTER_5_YEARLY_PRICING",
+    },
+    "10": {
+      monthly: "STARTER_10_MONTH_PRICING",
+      annual: "STARTER_10_YEARLY_PRICING",
+    },
+    "10plus": {
+      monthly: "STARTER_10_PLUS_MONTH_PRICING",
+      annual: "STARTER_10_PLUS_YEARLY_PRICING",
+    },
+  },
+  running: {
+    "5": {
+      monthly: "RUNNING_5_MONTH_PRICING",
+      annual: "RUNNING_5_YEARLY_PRICING",
+    },
+    "10": {
+      monthly: "RUNNING_10_MONTH_PRICING",
+      annual: "RUNNING_10_YEARLY_PRICING",
+    },
+    "10plus": {
+      monthly: "RUNNING_10_PLUS_MONTH_PRICING",
+      annual: "RUNNING_10_PLUS_YEARLY_PRICING",
+    },
+  },
+  growth: {
+    "5": {
+      monthly: "GROWTH_5_MONTH_PRICING",
+      annual: "GROWTH_5_YEARLY_PRICING",
+    },
+    "10": {
+      monthly: "GROWTH_10_MONTH_PRICING",
+      annual: "GROWTH_10_YEARLY_PRICING",
+    },
+    "10plus": {
+      monthly: "GROWTH_10_PLUS_MONTH_PRICING",
+      annual: "GROWTH_10_PLUS_YEARLY_PRICING",
+    },
+  },
+};
+
+const CUSTOM_PLAN_CONTACT_HREF =
+  "mailto:support@syndicationx.com?subject=Custom%20plan%20inquiry%20%E2%80%93%20SyndicationX";
 
 const DEAL_TIERS: DealTier[] = [
   {
@@ -56,9 +106,9 @@ const DEAL_TIERS: DealTier[] = [
   {
     id: "running",
     name: "Running",
-    dealSize: "Up to $20M Deal",
+    dealSize: "Up to $15M Deal",
     featured: false,
-    enabled: false,
+    enabled: true,
     prices: {
       "5": { monthly: 99, annual: 990 },
       "10": { monthly: 129, annual: 1290 },
@@ -68,9 +118,9 @@ const DEAL_TIERS: DealTier[] = [
   {
     id: "growth",
     name: "Growth",
-    dealSize: "$20M+ Deal",
+    dealSize: "$15M+ Deal",
     featured: false,
-    enabled: false,
+    enabled: true,
     prices: {
       "5": { monthly: 149, annual: 1490 },
       "10": { monthly: 169, annual: 1690 },
@@ -173,18 +223,20 @@ function BillingPricingPanel({
 
   const planKey = (tierId: string) => tierId;
 
-  const planReady = (tierId: string): boolean => {
+  const planReady = (tierId: DealTier["id"]): boolean => {
     const row = billingStatus?.plansConfigured.find((p) => p.id === tierId);
     if (!row) return false;
+    const seatRow = row.seats?.find((s) => s.seatBand === seatBand);
+    if (seatRow) {
+      return billingCycle === "monthly"
+        ? seatRow.monthlyReady
+        : seatRow.annualReady;
+    }
     return billingCycle === "monthly" ? row.monthlyReady : row.annualReady;
   };
 
-  const handleChoosePlan = async (tierId: string) => {
+  const handleChoosePlan = async (tierId: DealTier["id"]) => {
     setActionError("");
-    if (tierId !== "starter") {
-      setActionError("Only the Starter plan is available for checkout right now.");
-      return;
-    }
     if (!companyId) {
       setActionError("No company workspace selected.");
       return;
@@ -199,10 +251,12 @@ function BillingPricingPanel({
     if (!planReady(tierId)) {
       const envHint =
         billingCycle === "monthly"
-          ? "STARTER_MONTH_PRICING"
-          : "STARTER_YEARLY_PRICING";
+          ? PRICE_ENV_HINT[tierId][seatBand].monthly
+          : PRICE_ENV_HINT[tierId][seatBand].annual;
+      const tierName =
+        DEAL_TIERS.find((t) => t.id === tierId)?.name ?? tierId;
       setActionError(
-        `Stripe Price for Starter (${billingCycle}) is not set. Check ${envHint} in backend/.env.local.`,
+        `Stripe Price for ${tierName} / ${seatBand} seats (${billingCycle}) is not set. Check ${envHint} in backend/.env.local.`,
       );
       return;
     }
@@ -211,6 +265,7 @@ function BillingPricingPanel({
       companyId,
       id,
       billingCycle,
+      seatBand,
     );
     setBusyPlanId(null);
     if (!result.ok) {
@@ -243,8 +298,7 @@ function BillingPricingPanel({
         <p className="cp_billing_subtitle">
           Pricing by deal size and company users. No charge for draft or
           archived deals — billing starts when you begin raising capital /
-          asset managing. Seat options preview pricing; Starter Checkout uses
-          your configured Stripe Starter monthly/yearly Price.
+          asset managing.
         </p>
       </div>
 
@@ -407,7 +461,10 @@ function BillingPricingPanel({
 
         <div className="cp_billing_filter_row">
           <span className="cp_billing_filter_heading" id="cp-billing-seats-label">
-            Company users
+            Company users{" "}
+            <span className="cp_billing_filter_hint">
+              (doesn&apos;t include co-sponsors)
+            </span>
           </span>
           <div
             className="cp_billing_cycle"
@@ -461,9 +518,9 @@ function BillingPricingPanel({
               aria-disabled={disabledCard || undefined}
             >
               {tier.featured ? (
-                <span className="cp_billing_plan_badge">Available now</span>
+                <span className="cp_billing_plan_badge">Most popular</span>
               ) : (
-                <span className="cp_billing_plan_badge">Coming soon</span>
+                <span className="cp_billing_plan_badge">Available now</span>
               )}
               <h4 className="cp_billing_plan_name">{tier.name}</h4>
               <p className="cp_billing_plan_tagline">{tier.dealSize}</p>
@@ -541,12 +598,8 @@ function BillingPricingPanel({
           );
         })}
 
-        <div
-          className="cp_billing_plan_card"
-          style={{ opacity: 0.55, pointerEvents: "none" }}
-          aria-disabled="true"
-        >
-          <span className="cp_billing_plan_badge">Coming soon</span>
+        <div className="cp_billing_plan_card">
+          <span className="cp_billing_plan_badge">Available now</span>
           <h4 className="cp_billing_plan_name">Custom</h4>
           <p className="cp_billing_plan_tagline">
             $50M+ deals or 25+ company users
@@ -562,14 +615,12 @@ function BillingPricingPanel({
               </li>
             </ul>
           </div>
-          <button
-            type="button"
-            className="cp_billing_plan_cta cp_billing_plan_cta_secondary"
-            disabled
-            title="Custom plans are not available yet"
+          <a
+            className="cp_billing_plan_cta cp_billing_plan_cta_primary"
+            href={CUSTOM_PLAN_CONTACT_HREF}
           >
-            Coming soon
-          </button>
+            Contact sales
+          </a>
         </div>
       </div>
     </>

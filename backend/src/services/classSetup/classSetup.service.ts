@@ -13,6 +13,7 @@ import {
   listInvestorClassesByDealId,
   updateInvestorClass,
 } from "../deal/dealInvestorClass.service.js";
+import { fundedAmountsByInvestorClassId } from "../deal/dealInvestment.service.js";
 import {
   classSetupPayloadToInvestorClassInput,
   defaultClassName,
@@ -28,6 +29,31 @@ import type {
   ClassSetupType,
 } from "./classSetup.types.js";
 import { validateClassSetup } from "./classSetup.validation.js";
+
+function formatFundedUsd(n: number): string {
+  const v = Number.isFinite(n) ? Math.max(0, n) : 0;
+  return String(Math.round(v * 100) / 100);
+}
+
+async function applyFundedFromInvestments(
+  dealId: string,
+  classes: ClassSetupClassPayload[],
+): Promise<ClassSetupClassPayload[]> {
+  const withIds = classes.filter(
+    (c): c is ClassSetupClassPayload & { id: string } => Boolean(c.id),
+  );
+  const fundedById = await fundedAmountsByInvestorClassId(
+    dealId,
+    withIds.map((c) => ({ id: c.id, name: c.name })),
+  );
+  return classes.map((c) => {
+    if (!c.id) return { ...c, actuallyFunded: formatFundedUsd(0) };
+    return {
+      ...c,
+      actuallyFunded: formatFundedUsd(fundedById.get(c.id) ?? 0),
+    };
+  });
+}
 
 export async function getClassSetupBundle(
   dealId: string,
@@ -45,9 +71,12 @@ export async function getClassSetupBundle(
   if (!deal) return null;
 
   const rows = await listInvestorClassesByDealId(dealId);
-  const classes = rows
-    .map((row, i) => rowToClassSetupPayload(row, i))
-    .sort((a, b) => a.displayOrder - b.displayOrder);
+  const classes = await applyFundedFromInvestments(
+    dealId,
+    rows
+      .map((row, i) => rowToClassSetupPayload(row, i))
+      .sort((a, b) => a.displayOrder - b.displayOrder),
+  );
 
   return {
     dealId: deal.id,
@@ -90,9 +119,12 @@ export async function saveClassSetupBundle(params: {
   const existingById = new Map(existing.map((r) => [r.id, r]));
   const keptIds = new Set<string>();
 
-  const ordered = [...params.input.classes]
-    .map((c, i) => ({ ...c, displayOrder: i }))
-    .sort((a, b) => a.displayOrder - b.displayOrder);
+  const ordered = await applyFundedFromInvestments(
+    params.dealId,
+    [...params.input.classes]
+      .map((c, i) => ({ ...c, displayOrder: i }))
+      .sort((a, b) => a.displayOrder - b.displayOrder),
+  );
 
   for (const payload of ordered) {
     const existingRow = payload.id ? existingById.get(payload.id) : undefined;

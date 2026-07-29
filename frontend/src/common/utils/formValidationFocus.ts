@@ -111,6 +111,10 @@ export function addInvestmentValidationPreferSelector(
   if (m.includes("Select an investor") || m.includes("Select a member"))
     return "#add-inv-member"
   if (m.includes("investor class")) return "#add-inv-class"
+  if (m.includes("percent of class (ownership)"))
+    return "#add-inv-pct-ownership"
+  if (m.includes("percent of class (distributions)"))
+    return "#add-inv-pct-distributions"
   if (m.includes("commitment amount")) return "#add-inv-commitment"
   if (m.includes("investor profile")) return "#add-inv-profile"
   if (m.includes("Lead Sponsor") || m.includes("role")) return "#add-inv-role"
@@ -125,6 +129,10 @@ export function lpInvestorValidationPreferSelector(
   if (m.includes("Select an investor") || m.includes("already on this deal"))
     return "#lp-inv-member"
   if (m.includes("investor class")) return "#lp-inv-class"
+  if (m.includes("percent of class (ownership)"))
+    return "#lp-inv-pct-ownership"
+  if (m.includes("percent of class (distributions)"))
+    return "#lp-inv-pct-distributions"
   if (m.includes("investor profile")) return "#lp-inv-profile"
   return null
 }

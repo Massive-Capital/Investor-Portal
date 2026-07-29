@@ -5,6 +5,7 @@ import type { ClassSetupClass, ClassSetupType } from "../types/class-setup.types
 import { CLASS_TYPE_META } from "../types/class-setup.types"
 import {
   blurFormatMoneyInput,
+  formatCurrencyTableDisplay,
   formatCurrencyUsdTypeInput,
 } from "../../utils/offeringMoneyFormat"
 import { formatPct } from "../utils/classSetupTotals"
@@ -30,9 +31,9 @@ interface ClassSetupTableProps {
   focusClassKey?: string | null
   promoteShares: Record<string, string[]>
   promoteStageLabels: string[]
-  canSave: boolean
-  saving: boolean
-  onSave: () => void
+  canSaveSection: (sectionType: ClassSetupType) => boolean
+  savingSection: ClassSetupType | null
+  onSaveSection: (sectionType: ClassSetupType) => void
   onGotoPromote: () => void
   onPromoteShareChange: (
     classKey: string,
@@ -52,9 +53,9 @@ export function ClassSetupTable({
   focusClassKey = null,
   promoteShares,
   promoteStageLabels,
-  canSave,
-  saving,
-  onSave,
+  canSaveSection,
+  savingSection,
+  onSaveSection,
   onGotoPromote,
   onPromoteShareChange,
   onChange,
@@ -220,12 +221,20 @@ export function ClassSetupTable({
         <table className="cs_classes_table">
           <thead>
             <tr>
-              <th scope="col">Group</th>
-              <th scope="col">Class</th>
+              <th scope="col" className="cs_col_sticky cs_col_group">
+                Group
+              </th>
+              <th scope="col" className="cs_col_sticky cs_col_class">
+                Class
+              </th>
               <th scope="col" className="r" title="LP + GP must total 100%">
                 Equity %
               </th>
-              <th scope="col" className="r">
+              <th
+                scope="col"
+                className="r"
+                title="Sum of fund-approved investments for this class"
+              >
                 Funded
               </th>
               <th scope="col" className="r">
@@ -259,10 +268,10 @@ export function ClassSetupTable({
                   promoteStageLabels={promoteStageLabels}
                   canScrollLeft={canScrollLeft}
                   canScrollRight={canScrollRight}
-                  canSave={canSave}
-                  saving={saving}
+                  canSave={canSaveSection(type)}
+                  saving={savingSection === type}
                   onScrollByDir={scrollByDir}
-                  onSave={onSave}
+                  onSave={() => onSaveSection(type)}
                   onGotoPromote={onGotoPromote}
                   onPromoteShareChange={onPromoteShareChange}
                   onAdd={() => onAdd(type)}
@@ -275,7 +284,9 @@ export function ClassSetupTable({
           </tbody>
           <tfoot>
             <tr className="cs_totals">
-              <td colSpan={2}>Totals</td>
+              <td className="cs_col_sticky cs_totals_sticky_label" colSpan={2}>
+                Totals
+              </td>
               <td
                 className={`r num${ownershipOk ? " is-ok" : " is-bad"}`}
               >
@@ -385,8 +396,8 @@ function TypeSection({
                 onClick={onSave}
                 title={
                   canSave
-                    ? "Save class setup (ownership does not need to be 100% yet)"
-                    : "Add an LP class and class names before saving"
+                    ? `Save only the ${meta.label} section`
+                    : "Add an LP class and fill class names in this section before saving"
                 }
               >
                 {saving ? "Saving…" : "Save"}
@@ -417,7 +428,7 @@ function TypeSection({
                 focusClassKey === key ? " is-focused" : ""
               }`}
             >
-              <td>
+              <td className="cs_col_sticky cs_col_group">
                 <input
                   className="cs_text_in"
                   value={c.classGroup}
@@ -425,7 +436,7 @@ function TypeSection({
                   aria-label={`${c.name} group`}
                 />
               </td>
-              <td>
+              <td className="cs_col_sticky cs_col_class">
                 <div className="cs_class_identity">
                   <input
                     className="cs_name_in"
@@ -455,24 +466,12 @@ function TypeSection({
                 )}
               </td>
               <td className="r">
-                <input
-                  className="cs_num_in"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="$0"
-                  value={c.actuallyFunded}
-                  onChange={(e) =>
-                    onPatch(key, {
-                      actuallyFunded: formatCurrencyUsdTypeInput(e.target.value),
-                    })
-                  }
-                  onBlur={(e) =>
-                    onPatch(key, {
-                      actuallyFunded: blurFormatMoneyInput(e.target.value),
-                    })
-                  }
-                  aria-label={`${c.name} funded`}
-                />
+                <span
+                  className="cs_num_ro"
+                  title="From fund-approved investments for this class"
+                >
+                  {formatCurrencyTableDisplay(c.actuallyFunded)}
+                </span>
               </td>
               <td className="r">
                 {c.classType === "gp" ? (

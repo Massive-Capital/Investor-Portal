@@ -7,6 +7,7 @@ import {
   Loader2,
   Mail,
   Pencil,
+  Percent,
   Plus,
   Shield,
   Tag,
@@ -81,8 +82,10 @@ import {
 import type { DealInvestorClass } from "../../../types/deal-investor-class.types"
 import { rowDisplayName } from "../../../../usermanagement/memberAdminShared"
 import {
+  formatPercentTypeInput,
   moneyAmountOnBlur,
   moneyAmountOnChange,
+  sanitizePercentTypingInput,
 } from "../../../utils/offeringMoneyFormat"
 import { InfoIconPanel } from "../../offering_details/FieldInfoHeading"
 import { YesNoCardRadioGroup } from "../../../../../../common/components/YesNoCardRadioGroup/YesNoCardRadioGroup"
@@ -181,6 +184,8 @@ function emptyForm(): AddInvestmentFormValues {
     status: "",
     fundApproved: false,
     investorClass: "",
+    percentOfClassOwnership: "",
+    percentOfClassDistributions: "",
     docSignedDate: "",
     commitmentAmount: "",
     extraContributionAmounts: [],
@@ -1031,6 +1036,27 @@ export function AddInvestmentModal({
   const noDealClasses =
     investorClassesReady && dealClasses.length === 0
 
+  const showClassPercentFields = isInvestorEntry && !noDealClasses
+
+  function blurFormatPercentClamped(raw: string): string {
+    const t = sanitizePercentTypingInput(raw)
+    if (!t) return ""
+    const n = parseFloat(t)
+    if (!Number.isFinite(n)) return ""
+    return `${Math.max(0, Math.min(100, n)).toFixed(2)}%`
+  }
+
+  function percentValuesEqual(a: string, b: string): boolean {
+    const ta = sanitizePercentTypingInput(a)
+    const tb = sanitizePercentTypingInput(b)
+    if (!ta && !tb) return true
+    if (!ta || !tb) return false
+    const na = parseFloat(ta)
+    const nb = parseFloat(tb)
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb
+    return ta === tb
+  }
+
   function validateInvestmentStep1(): string | null {
     if (!form.offeringId.trim()) return "Select an offering."
     if (!form.contactId.trim()) {
@@ -1485,6 +1511,91 @@ export function AddInvestmentModal({
                     </InvFormField>
                   ) : null}
                   {/* Deal Members: investor class is not collected here (assigned via Offering / investor flows). */}
+
+                  {showClassPercentFields ? (
+                    <div className="add_contact_name_grid">
+                      <InvFormField
+                        id="add-inv-pct-ownership"
+                        label="Percent of class (ownership)"
+                        Icon={Percent}
+                        tight
+                      >
+                        <input
+                          id="add-inv-pct-ownership"
+                          type="text"
+                          className="deals_add_inv_field_pill"
+                          inputMode="decimal"
+                          placeholder="0.00%"
+                          value={form.percentOfClassOwnership ?? ""}
+                          onChange={(e) => {
+                            const next = formatPercentTypeInput(
+                              e.target.value,
+                              100,
+                            )
+                            const prevOwnership =
+                              form.percentOfClassOwnership ?? ""
+                            const dist = form.percentOfClassDistributions ?? ""
+                            const mirror =
+                              !sanitizePercentTypingInput(dist) ||
+                              percentValuesEqual(dist, prevOwnership)
+                            patch({
+                              percentOfClassOwnership: next,
+                              ...(mirror
+                                ? { percentOfClassDistributions: next }
+                                : {}),
+                            })
+                          }}
+                          onBlur={(e) => {
+                            const next = blurFormatPercentClamped(
+                              e.target.value,
+                            )
+                            const prevOwnership =
+                              form.percentOfClassOwnership ?? ""
+                            const dist = form.percentOfClassDistributions ?? ""
+                            const mirror =
+                              !sanitizePercentTypingInput(dist) ||
+                              percentValuesEqual(dist, prevOwnership)
+                            patch({
+                              percentOfClassOwnership: next,
+                              ...(mirror
+                                ? { percentOfClassDistributions: next }
+                                : {}),
+                            })
+                          }}
+                          aria-label="Percent of class (ownership)"
+                        />
+                      </InvFormField>
+
+                      <InvFormField
+                        id="add-inv-pct-distributions"
+                        label="Percent of class (distributions)"
+                        Icon={Percent}
+                        tight
+                      >
+                        <input
+                          id="add-inv-pct-distributions"
+                          type="text"
+                          className="deals_add_inv_field_pill"
+                          inputMode="decimal"
+                          placeholder="0.00%"
+                          value={form.percentOfClassDistributions ?? ""}
+                          onChange={(e) =>
+                            patch({
+                              percentOfClassDistributions:
+                                formatPercentTypeInput(e.target.value, 100),
+                            })
+                          }
+                          onBlur={(e) =>
+                            patch({
+                              percentOfClassDistributions:
+                                blurFormatPercentClamped(e.target.value),
+                            })
+                          }
+                          aria-label="Percent of class (distributions)"
+                        />
+                      </InvFormField>
+                    </div>
+                  ) : null}
 
                   {isInvestorEntry ? (
                     <div className="add_contact_name_grid">
