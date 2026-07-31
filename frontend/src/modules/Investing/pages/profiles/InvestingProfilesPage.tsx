@@ -67,6 +67,10 @@ import {
 } from "./profileInvestmentCounts"
 import { InvestingProfilesRowActions } from "./InvestingProfilesRowActions"
 import { InvestingProfilesTableToolbar } from "./InvestingProfilesTableToolbar"
+import {
+  fetchStripeConnectRecipientStatus,
+  startStripeConnectRecipientOnboarding,
+} from "@/modules/Investing/api/stripeInvestorPaymentsApi"
 import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import "@/modules/Syndication/Deals/deal-investors-tab.css"
@@ -214,6 +218,60 @@ export default function InvestingProfilesPage() {
       }
     })()
   }, [])
+
+  const startPayoutOnboarding = useCallback(async (profileId: string) => {
+    try {
+      const link = await startStripeConnectRecipientOnboarding(profileId)
+      window.location.assign(link.url)
+    } catch (err) {
+      toast.error(
+        "Could not start bank setup",
+        err instanceof Error ? err.message : "Please try again.",
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const connectReturn = params.get("stripe_connect")
+    const profileId = params.get("profile_id")?.trim() ?? ""
+    if (!connectReturn || !profileId) return
+    void (async () => {
+      if (connectReturn === "refresh") {
+        try {
+          const link = await startStripeConnectRecipientOnboarding(profileId)
+          window.location.assign(link.url)
+          return
+        } catch (err) {
+          toast.error(
+            "Bank setup needs attention",
+            err instanceof Error ? err.message : "Please restart bank setup.",
+          )
+        }
+      } else {
+        try {
+          const status = await fetchStripeConnectRecipientStatus(profileId)
+          if (status.payoutsEnabled) {
+            toast.success(
+              "ACH distributions ready",
+              "Stripe confirmed this profile can receive bank payouts.",
+            )
+          } else {
+            toast.warning(
+              "Bank setup pending",
+              "Stripe still needs information before this profile can receive payouts.",
+            )
+          }
+        } catch (err) {
+          toast.error(
+            "Could not verify bank setup",
+            err instanceof Error ? err.message : "Please try again.",
+          )
+        }
+      }
+      void navigate("/investing/profiles", { replace: true })
+    })()
+  }, [location.search, navigate])
 
   useEffect(() => {
     let cancelled = false
@@ -794,11 +852,23 @@ export default function InvestingProfilesPage() {
               void navigate(`/investing/profiles/${encodeURIComponent(row.id)}/edit`)
             }}
             onExport={() => exportInvestorProfileRow(row)}
+            onSetupPayouts={
+              isInvestorProfileListRowIncomplete(row) ||
+              row.id === ADD_PROFILE_DRAFT_ROW_ID
+                ? undefined
+                : () => void startPayoutOnboarding(row.id)
+            }
           />
         ),
       },
     ],
-    [setProfileArchived, navigate, openProfileView, profileResumeHref],
+    [
+      setProfileArchived,
+      navigate,
+      openProfileView,
+      profileResumeHref,
+      startPayoutOnboarding,
+    ],
   )
 
   const beneficiaryColumns: DataTableColumn<BeneficiaryListRow>[] = useMemo(

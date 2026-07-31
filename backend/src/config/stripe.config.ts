@@ -45,6 +45,8 @@ type SeatPriceMap = Record<StripeBillingSeatBand, CyclePriceMap>;
 
 export type StripeConfig = {
   secretKey: string;
+  /** pk_test_… / pk_live_… — safe to expose to the SPA for Payment Element */
+  publishableKey: string | null;
   webhookSecret: string | null;
   testMode: boolean;
   prices: Record<StripeBillingPlanId, SeatPriceMap>;
@@ -158,12 +160,18 @@ export function normalizeBillingSeatBand(
   return null;
 }
 
+function envPublishableKey(): string | null {
+  const v = process.env.STRIPE_PUBLISHABLE_KEY?.trim() ?? "";
+  return v.startsWith("pk_") ? v : null;
+}
+
 export function getStripeConfig(): StripeConfig | null {
   const secretKey = process.env.STRIPE_SECRET_KEY?.trim() ?? "";
   if (!secretKey.startsWith("sk_")) return null;
 
   return {
     secretKey,
+    publishableKey: envPublishableKey(),
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || null,
     testMode: isStripeTestKey(secretKey),
     prices: buildPriceMap(),
@@ -236,6 +244,8 @@ export function getStripePublicConfig(): {
   configured: boolean;
   testMode: boolean;
   webhookConfigured: boolean;
+  publishableKey: string | null;
+  paymentElementReady: boolean;
   plans: Array<{
     id: StripeBillingPlanId;
     monthlyPriceId: string | null;
@@ -257,6 +267,8 @@ export function getStripePublicConfig(): {
       configured: false,
       testMode: false,
       webhookConfigured: false,
+      publishableKey: null,
+      paymentElementReady: false,
       plans: [],
     };
   }
@@ -264,6 +276,8 @@ export function getStripePublicConfig(): {
     configured: true,
     testMode: cfg.testMode,
     webhookConfigured: Boolean(cfg.webhookSecret),
+    publishableKey: cfg.publishableKey,
+    paymentElementReady: Boolean(cfg.publishableKey),
     plans: STRIPE_BILLING_PLAN_IDS.map((id) => {
       const seats = STRIPE_BILLING_SEAT_BANDS.map((seatBand) => ({
         seatBand,

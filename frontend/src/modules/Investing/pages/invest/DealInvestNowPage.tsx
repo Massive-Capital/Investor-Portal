@@ -19,6 +19,8 @@ import {
   fetchInvestmentSignStatus,
   type InvestmentSignStatusPayload,
 } from "@/modules/Investing/api/investmentSignatureApi"
+// Investor contributions: workflow — Stripe Checkout disabled for now
+// import { startInvestorInvestmentCheckout } from "@/modules/Investing/api/stripeInvestorPaymentsApi"
 import {
   fetchMyLpDealInvestNowCommitment,
   patchMyLpDealInvestNowCommitment,
@@ -1544,6 +1546,35 @@ export function DealInvestNowPage() {
     setSubmitting(true)
     const n = parseMoneyDigits(String(amount).trim())
 
+    // Investor contributions: workflow — Stripe Checkout disabled for now
+    // if (fundingMethod.trim() === "stripe_checkout") {
+    //   const investmentId = investNowInvestmentIdRef.current?.trim() ?? ""
+    //   if (!investmentId) {
+    //     finishStartedRef.current = false
+    //     setSubmitting(false)
+    //     setError("Could not identify the saved investment for payment.")
+    //     return
+    //   }
+    //   try {
+    //     const checkout = await startInvestorInvestmentCheckout(
+    //       dealId,
+    //       investmentId,
+    //     )
+    //     window.location.assign(checkout.url)
+    //     return
+    //   } catch (err) {
+    //     finishStartedRef.current = false
+    //     setSubmitting(false)
+    //     setError(
+    //       err instanceof Error
+    //         ? err.message
+    //         : "Could not start Stripe Checkout.",
+    //     )
+    //     focusFirstFormErrorAfterUpdate({ container: investNowFormRef.current })
+    //     return
+    //   }
+    // }
+
     const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
     let investedAmount = n
     try {
@@ -1588,6 +1619,7 @@ export function DealInvestNowPage() {
     profileId,
     dealName,
     amount,
+    fundingMethod,
     offeringSize,
     closeDate,
     navigate,

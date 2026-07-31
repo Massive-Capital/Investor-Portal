@@ -3,6 +3,7 @@ import {
   ArchiveRestore,
   Download,
   Eye,
+  Landmark,
   MoreHorizontal,
   Pencil,
   Play,
@@ -38,6 +39,7 @@ export function InvestingProfilesRowActions({
   onView,
   onEdit,
   onExport,
+  onSetupPayouts,
 }: {
   displayName: string
   kind: RowEntityKind
@@ -48,6 +50,8 @@ export function InvestingProfilesRowActions({
   onView?: () => void
   onEdit?: () => void
   onExport?: () => void
+  /** Opens Stripe-hosted bank onboarding for ACH distributions. */
+  onSetupPayouts?: () => void
 }) {
   const { viewTitle, editTitle, archiveTitle, exportTitle } = labels(kind)
   const resumeLabel = incompleteDraft ? "Resume" : editTitle
@@ -179,6 +183,24 @@ export function InvestingProfilesRowActions({
                   View
                 </button>
               </li>
+              {kind === "profile" && onSetupPayouts ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    className="um_kebab_menuitem"
+                    role="menuitem"
+                    onClick={() => run(onSetupPayouts)}
+                  >
+                    <Landmark
+                      className="um_kebab_menuitem_icon"
+                      size={16}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    Set up ACH distributions
+                  </button>
+                </li>
+              ) : null}
               <li role="none">
                 <button
                   type="button"

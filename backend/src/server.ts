@@ -93,6 +93,7 @@ import platformRoutes from "./routes/platformRoutes.routes.js";
 import ghlRoutes from "./routes/ghl.routes.js";
 
 import billingRoutes from "./routes/billing.routes.js";
+import investorPaymentsRoutes from "./routes/investorPayments.routes.js";
 
 import { postDropboxSignWebhook } from "./controllers/deal/dealDropboxSignWebhook.controller.js";
 
@@ -353,6 +354,8 @@ app.use("/api/v1", [
   ghlRoutes,
 
   billingRoutes,
+
+  investorPaymentsRoutes,
 
 ]);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, Copy, Trash2 } from "lucide-react"
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
+import { attachHorizontalScrollBehavior } from "../../../../../common/utils/horizontalScrollRegion"
 import type { ClassSetupClass, ClassSetupType } from "../types/class-setup.types"
 import { CLASS_TYPE_META } from "../types/class-setup.types"
 import {
@@ -106,80 +107,17 @@ export function ClassSetupTable({
     const table = scroller.querySelector("table")
     if (table) ro.observe(table)
 
-    /** Shift + wheel → horizontal columns; leave vertical scroll to the page. */
-    const onWheel = (e: WheelEvent) => {
-      if (!e.shiftKey) return
-      const max = scroller.scrollWidth - scroller.clientWidth
-      if (max <= 2) return
-      scroller.scrollLeft += e.deltaY
-      e.preventDefault()
-      updateScrollState()
-    }
-    scroller.addEventListener("wheel", onWheel, { passive: false })
+    /** Shift / trackpad X / drag → columns. Do not steal vertical page scroll. */
+    const detachScroll = attachHorizontalScrollBehavior(scroller, {
+      hoverVerticalToHorizontal: false,
+      edgeScroll: false,
+    })
 
-    // Click-drag / finger pan for horizontal scroll
-    let isDragging = false
-    let startX = 0
-    let startScrollLeft = 0
-    let pointerId: number | null = null
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button !== 0) return
-      const target = e.target as HTMLElement | null
-      if (!target) return
-      if (
-        target.closest(
-          "input, select, textarea, button, a, label, .cs_toggle",
-        )
-      )
-        return
-      if (scroller.scrollWidth - scroller.clientWidth <= 2) return
-
-      isDragging = true
-      pointerId = e.pointerId
-      startX = e.clientX
-      startScrollLeft = scroller.scrollLeft
-      scroller.classList.add("is-panning")
-      try {
-        scroller.setPointerCapture(e.pointerId)
-      } catch {
-        /* ignore */
-      }
-    }
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!isDragging || pointerId !== e.pointerId) return
-      const dx = e.clientX - startX
-      scroller.scrollLeft = startScrollLeft - dx
-      updateScrollState()
-    }
-
-    const endPan = (e: PointerEvent) => {
-      if (!isDragging || (pointerId != null && e.pointerId !== pointerId))
-        return
-      isDragging = false
-      pointerId = null
-      scroller.classList.remove("is-panning")
-      try {
-        scroller.releasePointerCapture(e.pointerId)
-      } catch {
-        /* ignore */
-      }
-    }
-
-    scroller.addEventListener("pointerdown", onPointerDown)
-    scroller.addEventListener("pointermove", onPointerMove)
-    scroller.addEventListener("pointerup", endPan)
-    scroller.addEventListener("pointercancel", endPan)
     window.addEventListener("resize", updateScrollState)
 
     return () => {
       scroller.removeEventListener("scroll", onScroll)
-      scroller.removeEventListener("wheel", onWheel)
-      scroller.removeEventListener("pointerdown", onPointerDown)
-      scroller.removeEventListener("pointermove", onPointerMove)
-      scroller.removeEventListener("pointerup", endPan)
-      scroller.removeEventListener("pointercancel", endPan)
+      detachScroll()
       window.removeEventListener("resize", updateScrollState)
       ro.disconnect()
     }

@@ -83,6 +83,9 @@ export async function getDistributionSetupBundle(
     dealId: classBundle.dealId,
     dealName: classBundle.dealName,
     targetRaise: classBundle.meta.targetRaise,
+    setupName: parsed.setupName || "",
+    dayCountMode: parsed.dayCountMode,
+    defaultAccrualStartIso: parsed.defaultAccrualStartIso || undefined,
     waterfalls,
     priorDistributions: parsed.priorDistributions,
     classes: classBundle.classes
@@ -123,6 +126,7 @@ export async function saveDistributionSetupBundle(params: {
         dealId: params.dealId,
         dealName: "",
         targetRaise: "0",
+        setupName: "",
         waterfalls: emptyWaterfalls(),
         priorDistributions: [],
         classes: [],
@@ -145,6 +149,23 @@ export async function saveDistributionSetupBundle(params: {
     return { bundle: existing, error: "At least one payment row is required" };
   }
 
+  const setupName =
+    params.input.setupName != null
+      ? String(params.input.setupName).trim()
+      : (existing.setupName ?? "");
+  const dayCountMode =
+    params.input.dayCountMode === "from_accrual_start" ||
+    params.input.dayCountMode === "period_window"
+      ? params.input.dayCountMode
+      : (existing.dayCountMode ?? "period_window");
+  const defaultAccrualStartIso = (() => {
+    if (params.input.defaultAccrualStartIso != null) {
+      const t = String(params.input.defaultAccrualStartIso).trim().slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : "";
+    }
+    return existing.defaultAccrualStartIso ?? "";
+  })();
+
   // Preserve backend prior distributions — waterfall save must not wipe history.
   await db
     .update(addDealForm)
@@ -152,12 +173,22 @@ export async function saveDistributionSetupBundle(params: {
       distributionSetupJson: serializeDistributionSetupJson(
         waterfalls,
         existing.priorDistributions,
+        setupName,
+        { dayCountMode, defaultAccrualStartIso },
       ),
     })
     .where(eq(addDealForm.id, params.dealId));
 
   const bundle = await getDistributionSetupBundle(params.dealId);
-  return { bundle: bundle ?? { ...existing, waterfalls } };
+  return {
+    bundle: bundle ?? {
+      ...existing,
+      waterfalls,
+      setupName,
+      dayCountMode,
+      defaultAccrualStartIso: defaultAccrualStartIso || undefined,
+    },
+  };
 }
 
 export type CompleteDistributionInput = {
@@ -167,12 +198,21 @@ export type CompleteDistributionInput = {
   name?: string;
   notes?: string;
   period?: "monthly" | "quarterly" | "annual";
+  periodStart?: string;
+  periodEnd?: string;
+  paymentDate?: string;
+  distributionType?: string;
+  deductsFrom?: string;
+  visible?: boolean;
+  /** When set, update this prior run in place instead of appending. */
+  replaceDistributionId?: string;
   /** Waterfall-accurate investor lines from the simulator (optional). */
   investorPayments?: InvestorPaymentLineInput[];
 };
 
 /**
- * Record a completed distribution run (appends to priorDistributions).
+ * Record a completed distribution run (appends to priorDistributions,
+ * or replaces an existing run when replaceDistributionId is set).
  * Does not change waterfall configuration.
  */
 export async function completeDistributionRun(params: {
@@ -189,6 +229,7 @@ export async function completeDistributionRun(params: {
           dealId: params.dealId,
           dealName: "",
           targetRaise: "0",
+          setupName: "",
           waterfalls: emptyWaterfalls(),
           priorDistributions: [],
           classes: [],
@@ -212,6 +253,7 @@ export async function completeDistributionRun(params: {
         dealId: params.dealId,
         dealName: "",
         targetRaise: "0",
+        setupName: "",
         waterfalls: emptyWaterfalls(),
         priorDistributions: [],
         classes: [],
@@ -254,20 +296,92 @@ export async function completeDistributionRun(params: {
     );
   }
 
+  const replaceId = String(params.input.replaceDistributionId ?? "").trim();
+  const replaceIndex = replaceId
+    ? parsed.priorDistributions.findIndex(
+        (p) => String(p.id).trim() === replaceId,
+      )
+    : -1;
+  if (replaceId && replaceIndex < 0) {
+    const bundle = await getDistributionSetupBundle(params.dealId);
+    return {
+      bundle:
+        bundle ??
+        ({
+          ...parsed,
+          dealId: params.dealId,
+        } as DistributionSetupBundle),
+      error: "Distribution not found for edit",
+    };
+  }
+
+  const amountKey = formatUsdPlain(amount).replace(/[^0-9.-]/g, "");
+  // Ignore accidental double-complete (same date + amount + source),
+  // unless we are intentionally replacing that same run.
+  if (!replaceId) {
+    const existingDuplicate = parsed.priorDistributions.find((p) => {
+      const priorAmt = String(p.amount ?? "").replace(/[^0-9.-]/g, "");
+      const priorSrc = String(p.source ?? "").toLowerCase();
+      return p.date === date && priorAmt === amountKey && priorSrc === source;
+    });
+    if (existingDuplicate) {
+      const bundle = await getDistributionSetupBundle(params.dealId);
+      return {
+        bundle:
+          bundle ??
+          ({
+            ...parsed,
+            dealId: params.dealId,
+          } as DistributionSetupBundle),
+        record: existingDuplicate,
+      };
+    }
+  }
+
+  const periodStart =
+    params.input.periodStart &&
+    /^\d{4}-\d{2}-\d{2}/.test(params.input.periodStart.trim())
+      ? params.input.periodStart.trim().slice(0, 10)
+      : undefined;
+  const periodEnd =
+    params.input.periodEnd &&
+    /^\d{4}-\d{2}-\d{2}/.test(params.input.periodEnd.trim())
+      ? params.input.periodEnd.trim().slice(0, 10)
+      : undefined;
+  const paymentDate =
+    params.input.paymentDate &&
+    /^\d{4}-\d{2}-\d{2}/.test(params.input.paymentDate.trim())
+      ? params.input.paymentDate.trim().slice(0, 10)
+      : date;
+  const distributionType =
+    params.input.distributionType?.trim() || "preferred_return";
+  const deductsFrom = params.input.deductsFrom?.trim() || "accrued_pref";
+  const visible = params.input.visible !== false;
+
   const record: PriorDistributionRecord = {
-    id: newDistributionId(),
+    id: replaceId || newDistributionId(),
     amount: formatUsdPlain(amount),
     date,
     source,
     name,
     ...(notes ? { notes } : {}),
     ...(period ? { period } : {}),
+    ...(periodStart ? { periodStart } : {}),
+    ...(periodEnd ? { periodEnd } : {}),
+    paymentDate,
+    distributionType,
+    deductsFrom,
+    visible,
     ...(investorPayments.length ? { investorPayments } : {}),
   };
 
-  const nextPriors = [...parsed.priorDistributions, record].sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
+  const nextPriors = (
+    replaceIndex >= 0
+      ? parsed.priorDistributions.map((p, i) =>
+          i === replaceIndex ? record : p,
+        )
+      : [...parsed.priorDistributions, record]
+  ).sort((a, b) => a.date.localeCompare(b.date));
 
   await db
     .update(addDealForm)
@@ -275,6 +389,11 @@ export async function completeDistributionRun(params: {
       distributionSetupJson: serializeDistributionSetupJson(
         parsed.waterfalls,
         nextPriors,
+        parsed.setupName,
+        {
+          dayCountMode: parsed.dayCountMode,
+          defaultAccrualStartIso: parsed.defaultAccrualStartIso,
+        },
       ),
     })
     .where(eq(addDealForm.id, params.dealId));
@@ -286,6 +405,7 @@ export async function completeDistributionRun(params: {
         dealId: params.dealId,
         dealName: "",
         targetRaise: "0",
+        setupName: parsed.setupName || "",
         waterfalls: parsed.waterfalls,
         priorDistributions: nextPriors,
         classes: [],
@@ -295,6 +415,96 @@ export async function completeDistributionRun(params: {
     };
   }
   return { bundle, record };
+}
+
+/**
+ * Replace or clear completed distribution runs for a deal.
+ * Does not change waterfall / class configuration.
+ * Pass an empty array to clear all prior distributions (test data cleanup).
+ */
+export async function replacePriorDistributions(params: {
+  dealId: string;
+  priorDistributions: PriorDistributionRecord[];
+}): Promise<{ bundle: DistributionSetupBundle; error?: string }> {
+  const existing = await getDistributionSetupBundle(params.dealId);
+  if (!existing) {
+    return {
+      bundle: {
+        dealId: params.dealId,
+        dealName: "",
+        targetRaise: "0",
+        setupName: "",
+        waterfalls: emptyWaterfalls(),
+        priorDistributions: [],
+        classes: [],
+        promote: { hurdles: [], shares: {} },
+      },
+      error: "Deal not found",
+    };
+  }
+
+  const nextPriors = [...(params.priorDistributions ?? [])].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+
+  await db
+    .update(addDealForm)
+    .set({
+      distributionSetupJson: serializeDistributionSetupJson(
+        existing.waterfalls,
+        nextPriors,
+        existing.setupName,
+        {
+          dayCountMode: existing.dayCountMode,
+          defaultAccrualStartIso: existing.defaultAccrualStartIso,
+        },
+      ),
+    })
+    .where(eq(addDealForm.id, params.dealId));
+
+  const bundle = await getDistributionSetupBundle(params.dealId);
+  return {
+    bundle: bundle ?? { ...existing, priorDistributions: nextPriors },
+  };
+}
+
+/**
+ * Delete one completed distribution run by id.
+ */
+export async function deletePriorDistribution(params: {
+  dealId: string;
+  distributionId: string;
+}): Promise<{ bundle: DistributionSetupBundle; error?: string }> {
+  const existing = await getDistributionSetupBundle(params.dealId);
+  if (!existing) {
+    return {
+      bundle: {
+        dealId: params.dealId,
+        dealName: "",
+        targetRaise: "0",
+        setupName: "",
+        waterfalls: emptyWaterfalls(),
+        priorDistributions: [],
+        classes: [],
+        promote: { hurdles: [], shares: {} },
+      },
+      error: "Deal not found",
+    };
+  }
+  const distId = String(params.distributionId ?? "").trim();
+  if (!distId) {
+    return { bundle: existing, error: "Missing distribution id" };
+  }
+  const nextPriors = existing.priorDistributions.filter(
+    (p) => String(p.id).trim() !== distId,
+  );
+  if (nextPriors.length === existing.priorDistributions.length) {
+    return { bundle: existing, error: "Distribution not found" };
+  }
+  return replacePriorDistributions({
+    dealId: params.dealId,
+    priorDistributions: nextPriors,
+  });
 }
 
 async function buildFallbackInvestorPayments(
@@ -367,6 +577,7 @@ export async function updatePriorDistributionInvestorPercent(params: {
         dealId: params.dealId,
         dealName: "",
         targetRaise: "0",
+        setupName: "",
         waterfalls: emptyWaterfalls(),
         priorDistributions: [],
         classes: [],
@@ -474,6 +685,11 @@ export async function updatePriorDistributionInvestorPercent(params: {
       distributionSetupJson: serializeDistributionSetupJson(
         existing.waterfalls,
         nextPriors,
+        existing.setupName ?? "",
+        {
+          dayCountMode: existing.dayCountMode,
+          defaultAccrualStartIso: existing.defaultAccrualStartIso,
+        },
       ),
     })
     .where(eq(addDealForm.id, params.dealId));

@@ -5,6 +5,9 @@ import {
   getStripeClient,
   handleStripeWebhookEvent,
 } from "../../services/billing/companyBilling.service.js";
+// Investor contributions: workflow — Stripe Checkout disabled for now
+// import { handleInvestorCheckoutWebhookEvent } from "../../services/payments/investorCheckout.service.js";
+import { handleDistributionConnectWebhookEvent } from "../../services/payments/investorDistributionPayout.service.js";
 
 function isProductionRuntime(): boolean {
   return (
@@ -83,7 +86,16 @@ export async function postStripeWebhook(
   }
 
   try {
-    await handleStripeWebhookEvent(event);
+    const connectHandled =
+      await handleDistributionConnectWebhookEvent(event);
+    // Investor contributions: workflow — Stripe Checkout disabled for now
+    // const investorCheckoutHandled = connectHandled
+    //   ? false
+    //   : await handleInvestorCheckoutWebhookEvent(event);
+    const investorCheckoutHandled = false;
+    if (!connectHandled && !investorCheckoutHandled) {
+      await handleStripeWebhookEvent(event);
+    }
     res.status(200).json({ received: true });
   } catch (err) {
     console.error("[stripe webhook] handler error:", err);

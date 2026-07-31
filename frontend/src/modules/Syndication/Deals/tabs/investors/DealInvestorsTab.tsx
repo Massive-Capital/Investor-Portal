@@ -47,7 +47,7 @@ import { notifyDealInvestorsExportAudit } from "../../api/dealInvestorsExportNot
 import { InviteMailStatusBadge } from "./InviteMailStatusBadge";
 import { DealInvestorIdentityCell } from "./DealInvestorIdentityCell";
 import { DealInvestorCommittedAmountCell } from "./DealInvestorCommittedAmountCell";
-import { DealInvestorRoleCell } from "./DealInvestorRoleBadge";
+// import { DealInvestorRoleCell } from "./DealInvestorRoleBadge"; // Role column commented out
 import { ExportDealInvestorRowsModal } from "./ExportDealInvestorRowsModal";
 import { DealInvestorSignedCell } from "./DealInvestorSignedCell";
 import { logInvestorsDataTableDebug } from "./investorsTabDebug";
@@ -74,6 +74,10 @@ import {
   DataTable,
   type DataTableColumn,
 } from "../../../../../common/components/data-table/DataTable";
+import {
+  DropdownSelect,
+  type DropdownSelectOption,
+} from "../../../../../common/components/dropdown-select";
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip";
 import { toast } from "../../../../../common/components/Toast";
 import { ToolStyleCard } from "../../../../../common/components/tool-style-card/ToolStyleCard";
@@ -471,6 +475,7 @@ function DealInvestorsPopulated({
   dealDetail,
   investorClasses,
   onEditInvestor,
+  onViewInvestor,
   onAddInvestor,
   onContinueDraftEdit,
   onSendInvitationMail,
@@ -490,6 +495,7 @@ function DealInvestorsPopulated({
   dealDetail?: DealDetailApi | null;
   investorClasses: DealInvestorClass[];
   onEditInvestor: (row: DealInvestorRow) => void;
+  onViewInvestor: (row: DealInvestorRow) => void;
   onAddInvestor: () => void;
   onContinueDraftEdit?: () => void;
   onSendInvitationMail?: (row: DealInvestorRow) => void | Promise<void>;
@@ -901,7 +907,7 @@ function DealInvestorsPopulated({
     if (page > totalPages) setPage(totalPages);
   }, [filtered.length, pageSize, page]);
 
-  const classOptions = useMemo(() => {
+  const classFilterOptions = useMemo((): DropdownSelectOption[] => {
     const s = new Set(
       rows.map((r) => r.investorClass).filter(Boolean) as string[],
     );
@@ -916,14 +922,46 @@ function DealInvestorsPopulated({
         if (t) s.add(t);
       }
     }
-    return [...s].sort();
+    return [
+      { value: "", label: "All classes" },
+      ...[...s].sort().map((c) => ({ value: c, label: c })),
+    ];
   }, [rows, investorClasses, dealDetail]);
 
-  const statusOptions = useMemo(() => {
+  const statusFilterOptions = useMemo((): DropdownSelectOption[] => {
     const s = new Set(rows.map((r) => r.status).filter(Boolean));
-    return [...s].sort();
+    return [
+      { value: "", label: "All statuses" },
+      ...[...s].sort().map((c) => ({ value: c, label: c })),
+    ];
   }, [rows]);
 
+  const esignFilterOptions = useMemo(
+    (): DropdownSelectOption[] => [
+      { value: "", label: "All" },
+      { value: "not_started", label: "Not started" },
+      { value: "complete", label: "Complete" },
+    ],
+    [],
+  );
+
+  const fundingFilterOptions = useMemo(
+    (): DropdownSelectOption[] => [
+      { value: "", label: "All" },
+      { value: "funded", label: "Approved" },
+      { value: "pending", label: "Not Approved" },
+    ],
+    [],
+  );
+
+  const accreditationFilterOptions = useMemo(
+    (): DropdownSelectOption[] => [
+      { value: "", label: "All" },
+      { value: "Yes", label: "Yes" },
+      { value: "No", label: "No" },
+    ],
+    [],
+  );
   const pagination = useMemo(
     () => ({
       page,
@@ -980,9 +1018,15 @@ function DealInvestorsPopulated({
           <DealInvestorIdentityCell
             row={row}
             isDraft={investorRowShowsDraftBadge(row)}
+            onNameClick={
+              row.id === ADD_MEMBER_DRAFT_ROW_ID
+                ? undefined
+                : onViewInvestor
+            }
           />
         ),
       },
+      /* Role column — re-enable when needed
       {
         id: "role",
         header: "Role",
@@ -991,6 +1035,7 @@ function DealInvestorsPopulated({
         tdClassName: "deal_inv_td_role deal_inv_td_role_badge_cell",
         cell: (row) => <DealInvestorRoleCell row={row} />,
       },
+      */
       {
         id: "investorClass",
         align: "center",
@@ -1051,7 +1096,7 @@ function DealInvestorsPopulated({
       },
       {
         id: "added_by",
-        header: "Added by",
+        header: "Sponsor name",
         sortValue: (row) => String(row.addedByDisplayName ?? "").toLowerCase(),
         tdClassName: "deal_inv_td_ellipsis",
         cell: (row) => {
@@ -1198,6 +1243,7 @@ function DealInvestorsPopulated({
       toggleSelectInvestor,
       filtered.length,
       onEditInvestor,
+      onViewInvestor,
       onAddInvestor,
       onContinueDraftEdit,
       onSendInvitationMail,
@@ -1599,19 +1645,16 @@ function DealInvestorsPopulated({
                   <Tag size={14} strokeWidth={2} aria-hidden />
                   Investor class
                 </label>
-                <select
+                <DropdownSelect
                   id={`deal-inv-filter-class-${dealId}`}
-                  className="deal_inv_filter_select"
+                  className="deal_inv_filter_dropdown"
+                  triggerClassName="deal_inv_filter_select"
                   value={filterClass}
-                  onChange={(e) => setFilterClass(e.target.value)}
-                >
-                  <option value="">All classes</option>
-                  {classOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  options={classFilterOptions}
+                  onChange={setFilterClass}
+                  ariaLabel="Filter by investor class"
+                  useFixedPanel
+                />
               </div>
               <div className="deal_inv_filter_field">
                 <label
@@ -1621,19 +1664,16 @@ function DealInvestorsPopulated({
                   <Activity size={14} strokeWidth={2} aria-hidden />
                   Investment status
                 </label>
-                <select
+                <DropdownSelect
                   id={`deal-inv-filter-status-${dealId}`}
-                  className="deal_inv_filter_select"
+                  className="deal_inv_filter_dropdown"
+                  triggerClassName="deal_inv_filter_select"
                   value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                >
-                  <option value="">All statuses</option>
-                  {statusOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  options={statusFilterOptions}
+                  onChange={setFilterStatus}
+                  ariaLabel="Filter by investment status"
+                  useFixedPanel
+                />
               </div>
               <div className="deal_inv_filter_field">
                 <label
@@ -1643,16 +1683,16 @@ function DealInvestorsPopulated({
                   <BadgeCheck size={14} strokeWidth={2} aria-hidden />
                   eSign status
                 </label>
-                <select
+                <DropdownSelect
                   id={`deal-inv-filter-esign-${dealId}`}
-                  className="deal_inv_filter_select"
+                  className="deal_inv_filter_dropdown"
+                  triggerClassName="deal_inv_filter_select"
                   value={filterEsign}
-                  onChange={(e) => setFilterEsign(e.target.value)}
-                >
-                  <option value="">All</option>
-                  <option value="not_started">Not started</option>
-                  <option value="complete">Complete</option>
-                </select>
+                  options={esignFilterOptions}
+                  onChange={setFilterEsign}
+                  ariaLabel="Filter by eSign status"
+                  useFixedPanel
+                />
               </div>
               <div className="deal_inv_filter_field">
                 <label
@@ -1662,17 +1702,16 @@ function DealInvestorsPopulated({
                   <Landmark size={14} strokeWidth={2} aria-hidden />
                   Funded
                 </label>
-                <select
+                <DropdownSelect
                   id={`deal-inv-filter-funding-${dealId}`}
-                  className="deal_inv_filter_select"
+                  className="deal_inv_filter_dropdown"
+                  triggerClassName="deal_inv_filter_select"
                   value={filterFunding}
-                  onChange={(e) => setFilterFunding(e.target.value)}
-                  aria-label="Filter by funded status"
-                >
-                  <option value="">All</option>
-                  <option value="funded">Approved</option>
-                  <option value="pending">Not Approved</option>
-                </select>
+                  options={fundingFilterOptions}
+                  onChange={setFilterFunding}
+                  ariaLabel="Filter by funded status"
+                  useFixedPanel
+                />
               </div>
               <div className="deal_inv_filter_field">
                 <label
@@ -1682,16 +1721,16 @@ function DealInvestorsPopulated({
                   <UserRound size={14} strokeWidth={2} aria-hidden />
                   Accreditation
                 </label>
-                <select
+                <DropdownSelect
                   id={`deal-inv-filter-accred-${dealId}`}
-                  className="deal_inv_filter_select"
+                  className="deal_inv_filter_dropdown"
+                  triggerClassName="deal_inv_filter_select"
                   value={filterAccreditation}
-                  onChange={(e) => setFilterAccreditation(e.target.value)}
-                >
-                  <option value="">All</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
+                  options={accreditationFilterOptions}
+                  onChange={setFilterAccreditation}
+                  ariaLabel="Filter by accreditation"
+                  useFixedPanel
+                />
               </div>
             </div>
           </section>
@@ -1708,6 +1747,13 @@ function DealInvestorsPopulated({
           getRowClassName={(row) =>
             investorRowShowsDraftBadge(row) ? "deal_inv_row_draft" : undefined
           }
+          onBodyRowClick={(row) => {
+            if (row.id === ADD_MEMBER_DRAFT_ROW_ID) {
+              onContinueDraftEdit?.()
+              return
+            }
+            onViewInvestor(row)
+          }}
           emptyLabel="No LP investors match your filters."
           pagination={pagination}
         />
@@ -2246,6 +2292,7 @@ export const DealInvestorsTab = forwardRef<
         dealDetail={dealDetail}
         investorClasses={investorClasses}
         onEditInvestor={handleEditInvestor}
+        onViewInvestor={(row) => setViewInvestorRow(row)}
         onAddInvestor={() => {
           setEditLpRow(null);
           setLpResumeAddMemberDraft(false);

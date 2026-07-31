@@ -31,10 +31,23 @@ export interface PriorDistributionRecord {
   amount: string
   date: string
   source?: string
+  /** Distribution name (portal “Distribution name” — not memo). */
   name?: string
   notes?: string
   /** Period used when the run was completed. */
   period?: "monthly" | "quarterly" | "annual"
+  /** Accrual window start YYYY-MM-DD (may differ from payment date). */
+  periodStart?: string
+  /** Accrual window end YYYY-MM-DD. */
+  periodEnd?: string
+  /** When cash was/is paid YYYY-MM-DD (defaults to date). */
+  paymentDate?: string
+  /** e.g. preferred_return */
+  distributionType?: string
+  /** e.g. accrued_pref */
+  deductsFrom?: string
+  /** Investor portal visibility. */
+  visible?: boolean
   investorPayments?: InvestorDistributionPayment[]
 }
 
@@ -79,6 +92,12 @@ export interface DistributionSetupBundle {
   dealId: string
   dealName: string
   targetRaise: string
+  /** Optional display name for this deal’s distribution setup configuration. */
+  setupName: string
+  /** period_window (Woodland) | from_accrual_start (Wildflower). */
+  dayCountMode?: "period_window" | "from_accrual_start"
+  /** Deal-level accrual start YYYY-MM-DD. */
+  defaultAccrualStartIso?: string
   waterfalls: DistributionWaterfalls
   priorDistributions: PriorDistributionRecord[]
   classes: DistributionSetupClass[]

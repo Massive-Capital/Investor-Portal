@@ -8,6 +8,7 @@ import type {
   DistributionWfKind,
   PriorDistributionRecord,
 } from "../types/distribution-setup.types"
+import { sanitizePriorDistributions } from "../../tabs/distributions/utils/investorPreferredAllocation"
 
 function authHeaders(): HeadersInit {
   return portalAuthHeaders()
@@ -130,21 +131,66 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
           ? { notes: str(row.notes ?? row.note) }
           : {}),
         ...(period ? { period } : {}),
+        ...( /^\d{4}-\d{2}-\d{2}$/.test(str(row.periodStart ?? row.period_start).slice(0, 10))
+          ? {
+              periodStart: str(row.periodStart ?? row.period_start).slice(0, 10),
+            }
+          : {}),
+        ...( /^\d{4}-\d{2}-\d{2}$/.test(str(row.periodEnd ?? row.period_end).slice(0, 10))
+          ? { periodEnd: str(row.periodEnd ?? row.period_end).slice(0, 10) }
+          : {}),
+        ...( /^\d{4}-\d{2}-\d{2}$/.test(
+          str(row.paymentDate ?? row.payment_date).slice(0, 10),
+        )
+          ? {
+              paymentDate: str(row.paymentDate ?? row.payment_date).slice(0, 10),
+            }
+          : {}),
+        ...(str(row.distributionType ?? row.distribution_type ?? row.type)
+          ? {
+              distributionType: str(
+                row.distributionType ?? row.distribution_type ?? row.type,
+              ),
+            }
+          : {}),
+        ...(str(row.deductsFrom ?? row.deducts_from)
+          ? { deductsFrom: str(row.deductsFrom ?? row.deducts_from) }
+          : {}),
+        ...(row.visible === false ||
+        row.visible === 0 ||
+        String(row.visible).toLowerCase() === "false"
+          ? { visible: false }
+          : row.visible == null
+            ? {}
+            : { visible: true }),
         ...(investorPayments.length ? { investorPayments } : {}),
       }
     })
     .filter((p): p is PriorDistributionRecord => p != null)
-    .sort((a, b) => a.date.localeCompare(b.date))
 
   return {
     dealId: str(raw.dealId ?? raw.deal_id),
     dealName: str(raw.dealName ?? raw.deal_name),
     targetRaise: moneyField(raw.targetRaise ?? raw.target_raise),
+    setupName: str(raw.setupName ?? raw.setup_name),
+    dayCountMode: (() => {
+      const d = str(raw.dayCountMode ?? raw.day_count_mode).toLowerCase()
+      return d === "from_accrual_start" || d === "period_window"
+        ? (d as "from_accrual_start" | "period_window")
+        : undefined
+    })(),
+    defaultAccrualStartIso: (() => {
+      const t = str(
+        raw.defaultAccrualStartIso ?? raw.default_accrual_start_iso,
+      ).slice(0, 10)
+      return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : undefined
+    })(),
     waterfalls: {
       operating: operatingRaw.map(parseRow),
       capital: capitalRaw.map(parseRow),
     },
-    priorDistributions,
+    // Collapse accidental double-completes and same-day class fragments.
+    priorDistributions: sanitizePriorDistributions(priorDistributions),
     classes: classesRaw.map((c, i) => {
       const row = asRecord(c)
       const pref = asRecord(row.preferredReturn ?? row.preferred_return)
@@ -215,6 +261,11 @@ export async function fetchDistributionSetup(
 export async function saveDistributionSetup(
   dealId: string,
   waterfalls: DistributionWaterfalls,
+  setupName?: string,
+  options?: {
+    dayCountMode?: "period_window" | "from_accrual_start"
+    defaultAccrualStartIso?: string
+  },
 ): Promise<DistributionSetupBundle> {
   const base = getApiV1Base()
   if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
@@ -227,7 +278,14 @@ export async function saveDistributionSetup(
         "Content-Type": "application/json",
       },
       credentials: "include",
-      body: JSON.stringify({ waterfalls }),
+      body: JSON.stringify({
+        waterfalls,
+        ...(setupName != null ? { setupName } : {}),
+        ...(options?.dayCountMode ? { dayCountMode: options.dayCountMode } : {}),
+        ...(options?.defaultAccrualStartIso
+          ? { defaultAccrualStartIso: options.defaultAccrualStartIso }
+          : {}),
+      }),
     },
   )
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
@@ -250,6 +308,15 @@ export async function completeDistributionSetup(
     name?: string
     notes?: string
     period?: "monthly" | "quarterly" | "annual"
+    periodStart?: string
+    periodEnd?: string
+    paymentDate?: string
+    distributionType?: string
+    deductsFrom?: string
+    visible?: boolean
+    setupName?: string
+    /** Update this completed run in place (from Edit Distribution). */
+    replaceDistributionId?: string
     investorPayments?: Array<{
       investorId: string
       contactId?: string
@@ -276,22 +343,25 @@ export async function completeDistributionSetup(
         "Content-Type": "application/json",
       },
       credentials: "include",
-      body: JSON.stringify({ waterfalls, complete: input }),
+      body: JSON.stringify({
+        waterfalls,
+        ...(input.setupName != null ? { setupName: input.setupName } : {}),
+        complete: input,
+      }),
     },
   )
   const putData = (await putRes.json().catch(() => ({}))) as Record<
     string,
     unknown
   >
-  // New API returns `record` when the completed run was persisted on PUT.
-  if (putRes.ok && putData.record != null) {
+  // PUT already persisted the completed run — never POST again (avoids duplicates).
+  if (putRes.ok) {
     return normalizeBundle(
       asRecord(putData.distributionSetup ?? putData.distribution_setup),
     )
   }
   // PUT rejected complete validation (after save) — do not mask as success.
   if (
-    !putRes.ok &&
     putRes.status >= 400 &&
     putRes.status < 500 &&
     putRes.status !== 404 &&
@@ -375,6 +445,68 @@ export async function patchDistributionInvestorPercent(
       data.message != null
         ? String(data.message)
         : "Could not update investor payment share",
+    )
+  }
+  return normalizeBundle(
+    asRecord(data.distributionSetup ?? data.distribution_setup),
+  )
+}
+
+/** Clear all completed distribution runs for a deal (keeps waterfall setup). */
+export async function clearPriorDistributions(
+  dealId: string,
+): Promise<DistributionSetupBundle> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+
+  // Same PUT path as Save — always mounted; body flag clears priors only.
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/distribution-setup`,
+    {
+      method: "PUT",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ clearPriors: true }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  if (!res.ok) {
+    throw new Error(
+      data.message != null
+        ? String(data.message)
+        : "Could not clear distributions",
+    )
+  }
+  return normalizeBundle(
+    asRecord(data.distributionSetup ?? data.distribution_setup),
+  )
+}
+
+/** Delete one completed distribution run. */
+export async function deletePriorDistribution(
+  dealId: string,
+  distributionId: string,
+): Promise<DistributionSetupBundle> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(dealId)}/distributions/${encodeURIComponent(distributionId)}`,
+    {
+      method: "DELETE",
+      headers: authHeaders(),
+      credentials: "include",
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  if (!res.ok) {
+    throw new Error(
+      data.message != null
+        ? String(data.message)
+        : "Could not delete distribution",
     )
   }
   return normalizeBundle(

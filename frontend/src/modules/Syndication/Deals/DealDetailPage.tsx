@@ -890,7 +890,14 @@ export function DealDetailPage() {
         ) : activeTab === "investor_communication" && dealId?.trim() ? (
           <InvestorCommunicationTab dealId={dealId.trim()} />
         ) : activeTab === "distributions" && dealId?.trim() ? (
-          <DistributionsTab dealId={dealId.trim()} />
+          <DistributionsTab
+            dealId={dealId.trim()}
+            dealName={
+              dealDetailApi?.dealName?.trim() ||
+              deal?.title?.trim() ||
+              undefined
+            }
+          />
         ) : (
           <div className="deal_detail_wip_wrap" role="status">
             <p className="deal_detail_wip_title">Working in progress</p>

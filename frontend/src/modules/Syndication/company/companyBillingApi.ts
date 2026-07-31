@@ -421,3 +421,308 @@ export async function syncCompanyBillingPaymentMethods(
     }
   }
 }
+
+export type BillingPaymentElementSession = {
+  clientSecret: string
+  subscriptionId: string
+  customerId: string
+  publishableKey: string | null
+  paymentIntentId: string | null
+  invoiceId: string | null
+  planId: string
+  seatBand: string
+  billingCycle: string
+  priceId: string
+}
+
+export type BillingSetupIntentSession = {
+  clientSecret: string
+  setupIntentId: string
+  customerId: string
+  publishableKey: string | null
+}
+
+export type StripeBillingPublicConfig = {
+  configured: boolean
+  testMode: boolean
+  webhookConfigured: boolean
+  publishableKey: string | null
+  paymentElementReady: boolean
+}
+
+export async function fetchStripeBillingConfig(): Promise<
+  | { ok: true; config: StripeBillingPublicConfig }
+  | { ok: false; message: string; statusCode: number }
+> {
+  const base = getApiV1Base()
+  if (!base) {
+    return {
+      ok: false,
+      message: "API is not configured (VITE_BASE_URL).",
+      statusCode: 0,
+    }
+  }
+  try {
+    const res = await fetch(`${base}/billing/config`, {
+      headers: authHeaders(),
+      credentials: "include",
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: messageFromBody(data, `Could not load Stripe config (${res.status}).`),
+        statusCode: res.status,
+      }
+    }
+    const cfg = data as Partial<StripeBillingPublicConfig>
+    return {
+      ok: true,
+      config: {
+        configured: Boolean(cfg.configured),
+        testMode: Boolean(cfg.testMode),
+        webhookConfigured: Boolean(cfg.webhookConfigured),
+        publishableKey:
+          typeof cfg.publishableKey === "string" ? cfg.publishableKey : null,
+        paymentElementReady: Boolean(cfg.paymentElementReady),
+      },
+    }
+  } catch {
+    return {
+      ok: false,
+      message: "Network error loading Stripe config.",
+      statusCode: 0,
+    }
+  }
+}
+
+/** Resolve publishable key: Vite env first, then backend /billing/config. */
+export async function resolveStripePublishableKey(
+  fromSession?: string | null,
+): Promise<string | null> {
+  const fromEnv = String(
+    import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ?? "",
+  ).trim()
+  if (fromEnv.startsWith("pk_")) return fromEnv
+  const fromApi = String(fromSession ?? "").trim()
+  if (fromApi.startsWith("pk_")) return fromApi
+  const cfg = await fetchStripeBillingConfig()
+  if (cfg.ok && cfg.config.publishableKey?.startsWith("pk_")) {
+    return cfg.config.publishableKey
+  }
+  return null
+}
+
+/**
+ * Option 2 — in-app Payment Element (card + ACH).
+ * POST /companies/:id/billing/payment-element
+ */
+export async function startCompanyBillingPaymentElement(
+  companyId: string,
+  planId: string,
+  billingCycle: "monthly" | "annually",
+  seatBand: StripeBillingSeatBand = "5",
+): Promise<
+  | { ok: true; session: BillingPaymentElementSession }
+  | { ok: false; message: string; statusCode: number }
+> {
+  const base = getApiV1Base()
+  if (!base) {
+    return {
+      ok: false,
+      message: "API is not configured (VITE_BASE_URL).",
+      statusCode: 0,
+    }
+  }
+  try {
+    const res = await fetch(
+      `${base}/companies/${encodeURIComponent(companyId)}/billing/payment-element`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          planId,
+          seatBand,
+          billingCycle: billingCycle === "annually" ? "yearly" : "monthly",
+        }),
+      },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: messageFromBody(
+          data,
+          `Could not start payment (${res.status}).`,
+        ),
+        statusCode: res.status,
+      }
+    }
+    const clientSecret =
+      data && typeof data === "object"
+        ? String((data as { clientSecret?: unknown }).clientSecret ?? "").trim()
+        : ""
+    const subscriptionId =
+      data && typeof data === "object"
+        ? String(
+            (data as { subscriptionId?: unknown }).subscriptionId ?? "",
+          ).trim()
+        : ""
+    if (!clientSecret || !subscriptionId) {
+      return {
+        ok: false,
+        message: "Payment Element session was incomplete.",
+        statusCode: res.status,
+      }
+    }
+    const row = data as Record<string, unknown>
+    return {
+      ok: true,
+      session: {
+        clientSecret,
+        subscriptionId,
+        customerId: String(row.customerId ?? "").trim(),
+        publishableKey:
+          typeof row.publishableKey === "string" ? row.publishableKey : null,
+        paymentIntentId:
+          typeof row.paymentIntentId === "string" ? row.paymentIntentId : null,
+        invoiceId: typeof row.invoiceId === "string" ? row.invoiceId : null,
+        planId: String(row.planId ?? planId),
+        seatBand: String(row.seatBand ?? seatBand),
+        billingCycle: String(row.billingCycle ?? billingCycle),
+        priceId: String(row.priceId ?? ""),
+      },
+    }
+  } catch {
+    return {
+      ok: false,
+      message: "Network error starting Payment Element.",
+      statusCode: 0,
+    }
+  }
+}
+
+export async function startCompanyBillingSetupIntent(
+  companyId: string,
+): Promise<
+  | { ok: true; session: BillingSetupIntentSession }
+  | { ok: false; message: string; statusCode: number }
+> {
+  const base = getApiV1Base()
+  if (!base) {
+    return {
+      ok: false,
+      message: "API is not configured (VITE_BASE_URL).",
+      statusCode: 0,
+    }
+  }
+  try {
+    const res = await fetch(
+      `${base}/companies/${encodeURIComponent(companyId)}/billing/setup-intent`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        credentials: "include",
+      },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: messageFromBody(
+          data,
+          `Could not start SetupIntent (${res.status}).`,
+        ),
+        statusCode: res.status,
+      }
+    }
+    const clientSecret =
+      data && typeof data === "object"
+        ? String((data as { clientSecret?: unknown }).clientSecret ?? "").trim()
+        : ""
+    const setupIntentId =
+      data && typeof data === "object"
+        ? String((data as { setupIntentId?: unknown }).setupIntentId ?? "").trim()
+        : ""
+    if (!clientSecret || !setupIntentId) {
+      return {
+        ok: false,
+        message: "SetupIntent session was incomplete.",
+        statusCode: res.status,
+      }
+    }
+    const row = data as Record<string, unknown>
+    return {
+      ok: true,
+      session: {
+        clientSecret,
+        setupIntentId,
+        customerId: String(row.customerId ?? "").trim(),
+        publishableKey:
+          typeof row.publishableKey === "string" ? row.publishableKey : null,
+      },
+    }
+  } catch {
+    return {
+      ok: false,
+      message: "Network error starting SetupIntent.",
+      statusCode: 0,
+    }
+  }
+}
+
+export async function syncCompanyBillingPayment(
+  companyId: string,
+  opts?: { subscriptionId?: string; paymentIntentId?: string },
+): Promise<
+  | { ok: true; status: CompanyBillingStatus }
+  | { ok: false; message: string; statusCode: number }
+> {
+  const base = getApiV1Base()
+  if (!base) {
+    return {
+      ok: false,
+      message: "API is not configured (VITE_BASE_URL).",
+      statusCode: 0,
+    }
+  }
+  try {
+    const res = await fetch(
+      `${base}/companies/${encodeURIComponent(companyId)}/billing/sync-payment`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          subscriptionId: opts?.subscriptionId,
+          paymentIntentId: opts?.paymentIntentId,
+        }),
+      },
+    )
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: messageFromBody(
+          data,
+          `Could not sync payment (${res.status}).`,
+        ),
+        statusCode: res.status,
+      }
+    }
+    return { ok: true, status: data as CompanyBillingStatus }
+  } catch {
+    return {
+      ok: false,
+      message: "Network error syncing payment.",
+      statusCode: 0,
+    }
+  }
+}

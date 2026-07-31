@@ -173,7 +173,7 @@ export function PromoteScheduleSection({
               <thead>
                 <tr>
                   <th scope="col">Class</th>
-                  <th scope="col" className="r">
+                  <th scope="col" className="r cs_matrix_stage_th">
                     <span className="cs_matrix_th_label">
                       Base
                       <FormTooltip
@@ -190,7 +190,11 @@ export function PromoteScheduleSection({
                     </span>
                   </th>
                   {normalized.hurdles.map((h, i) => (
-                    <th key={h.id} scope="col" className="r cs_matrix_hurdle_th">
+                    <th
+                      key={h.id}
+                      scope="col"
+                      className="r cs_matrix_hurdle_th cs_matrix_stage_th"
+                    >
                       <span className="cs_matrix_th_label">
                         <span className="cs_matrix_hurdle_title">
                           After Hurdle {i + 1}
@@ -230,7 +234,9 @@ export function PromoteScheduleSection({
                       <td>
                         <span className="cs_cellflex">
                           <span className={`cs_swatch ${tone}`} />
-                          {c.name}
+                          <span className="cs_matrix_class_name" title={c.name}>
+                            {c.name}
+                          </span>
                           <span className="cs_unit">
                             {c.classType === "lp" ? "LP" : "GP"}
                           </span>

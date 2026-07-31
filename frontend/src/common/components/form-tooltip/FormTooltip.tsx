@@ -48,8 +48,8 @@ export interface FormTooltipProps {
 const LEAVE_MS = 180
 const VIEWPORT_PAD = 12
 const GAP = 10
-/** Above stacked UI (e.g. deal preview modal uses ~12100) */
-const TOOLTIP_Z = 11500
+/** Above stacked UI (dropdown panels ~13000, deal preview ~12100) */
+const TOOLTIP_Z = 14000
 
 function computeFixedPosition(args: {
   triggerRect: DOMRect

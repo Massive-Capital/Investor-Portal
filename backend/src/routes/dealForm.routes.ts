@@ -21,7 +21,11 @@ import {
   putDeal,
   deleteDeal,
 } from "../controllers/deal/add_deal.controller.js";
-import { postDealDistributionComplete } from "../controllers/distributionSetup/distributionSetup.controller.js";
+import {
+  deleteDealPriorDistribution,
+  postDealDistributionComplete,
+  putDealPriorDistributions,
+} from "../controllers/distributionSetup/distributionSetup.controller.js";
 import {
   getDealCommitmentAmountByContact,
   getDealInvestors,
@@ -286,6 +290,14 @@ router.get(
 router.post(
   "/deals/:dealId/distribution-setup/complete",
   postDealDistributionComplete,
+);
+router.put(
+  "/deals/:dealId/distribution-setup/prior-distributions",
+  putDealPriorDistributions,
+);
+router.delete(
+  "/deals/:dealId/distributions/:distributionId",
+  deleteDealPriorDistribution,
 );
 router.get("/deals/:dealId", getDealById);
 router.put("/deals/:dealId", putDeal);

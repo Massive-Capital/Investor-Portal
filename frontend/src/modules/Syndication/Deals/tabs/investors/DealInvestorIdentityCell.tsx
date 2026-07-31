@@ -15,13 +15,28 @@ function investorInitials(r: DealInvestorRow): string {
 export function DealInvestorIdentityCell({
   row,
   isDraft,
+  onNameClick,
 }: {
   row: DealInvestorRow
   isDraft?: boolean
+  /** When set, the investor name opens details (e.g. view popup). */
+  onNameClick?: (row: DealInvestorRow) => void
 }) {
   const initials = investorInitials(row)
   const displayName = String(row.displayName ?? "").trim() || "—"
-  const entitySubtitle = String(row.entitySubtitle ?? "").trim() || "—"
+  const email = String(row.userEmail ?? "").trim()
+  const line2 = email || String(row.entitySubtitle ?? "").trim() || "—"
+  const line2Title =
+    email && row.entitySubtitle?.trim()
+      ? `${email} · ${row.entitySubtitle.trim()}`
+      : line2 !== "—"
+        ? line2
+        : undefined
+
+  const isClickable = Boolean(onNameClick && displayName !== "—")
+  const nameClass = `deal_inv_identity_line1${
+    displayName === "—" ? " um_status_muted" : ""
+  }${isClickable ? " deal_inv_identity_name_btn" : ""}`
 
   return (
     <div className="deal_inv_identity_cell">
@@ -30,14 +45,27 @@ export function DealInvestorIdentityCell({
       </div>
       <div className="deal_inv_identity_text">
         <div className="deal_inv_identity_line1_row">
-          <span
-            className={`deal_inv_identity_line1 deal_inv_identity_ellipsis${
-              displayName === "—" ? " um_status_muted" : ""
-            }`}
-            title={displayName !== "—" ? displayName : undefined}
-          >
-            {displayName}
-          </span>
+          {isClickable ? (
+            <button
+              type="button"
+              className={nameClass}
+              title={`View details for ${displayName}`}
+              aria-label={`View details for ${displayName}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onNameClick?.(row)
+              }}
+            >
+              {displayName}
+            </button>
+          ) : (
+            <span
+              className={nameClass}
+              title={displayName !== "—" ? displayName : undefined}
+            >
+              {displayName}
+            </span>
+          )}
           {isDraft ? (
             <span
               className="deals_list_draft_icon deals_list_draft_icon--draft"
@@ -50,11 +78,11 @@ export function DealInvestorIdentityCell({
         </div>
         <span
           className={`deal_inv_identity_line2 deal_inv_identity_ellipsis${
-            entitySubtitle === "—" ? " um_status_muted" : ""
+            line2 === "—" ? " um_status_muted" : ""
           }`}
-          title={entitySubtitle !== "—" ? entitySubtitle : undefined}
+          title={line2Title}
         >
-          {entitySubtitle}
+          {line2}
         </span>
       </div>
     </div>

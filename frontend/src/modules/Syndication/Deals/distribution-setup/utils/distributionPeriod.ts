@@ -124,8 +124,20 @@ export function sumPriorCashInPeriod(params: {
   period: DistributionPeriod
   /** Exclude this completed-run id (when re-simulating a specific record). */
   excludeId?: string
+  /** When set, use this window instead of deriving from as-of + period. */
+  windowOverride?: Pick<PeriodWindow, "start" | "end"> & { label?: string }
 }): { window: PeriodWindow; priorCash: number; priorCount: number } {
-  const window = getPeriodWindow(params.asOfIso, params.period)
+  const period = params.period
+  const window: PeriodWindow = params.windowOverride
+    ? {
+        period,
+        start: params.windowOverride.start.slice(0, 10),
+        end: params.windowOverride.end.slice(0, 10),
+        label:
+          params.windowOverride.label?.trim() ||
+          `${periodLabel(period)} · ${params.windowOverride.start.slice(0, 10)} → ${params.windowOverride.end.slice(0, 10)}`,
+      }
+    : getPeriodWindow(params.asOfIso, period)
   let priorCash = 0
   let priorCount = 0
   for (const row of params.priors) {

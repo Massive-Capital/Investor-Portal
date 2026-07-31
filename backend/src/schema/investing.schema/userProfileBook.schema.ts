@@ -51,6 +51,27 @@ export const userInvestorProfiles = pgTable("user_investor_profiles", {
     .default(""),
   /** Free-text distribution instructions when method is `other`. */
   bankAccountQuery: text("bank_account_query").notNull().default(""),
+  /**
+   * Stripe Connect recipient account. Bank details stay with Stripe and are
+   * collected through hosted Connect onboarding; never populate this from the
+   * legacy routing/account-number fields above.
+   */
+  stripeConnectAccountId: varchar("stripe_connect_account_id", { length: 255 }),
+  stripeConnectDetailsSubmitted: boolean("stripe_connect_details_submitted")
+    .notNull()
+    .default(false),
+  stripeConnectChargesEnabled: boolean("stripe_connect_charges_enabled")
+    .notNull()
+    .default(false),
+  stripeConnectPayoutsEnabled: boolean("stripe_connect_payouts_enabled")
+    .notNull()
+    .default(false),
+  stripeConnectStatus: varchar("stripe_connect_status", { length: 32 })
+    .notNull()
+    .default("not_started"),
+  stripeConnectUpdatedAt: timestamp("stripe_connect_updated_at", {
+    withTimezone: true,
+  }),
   checkPayeeName: varchar("check_payee_name", { length: 255 })
     .notNull()
     .default(""),

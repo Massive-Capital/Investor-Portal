@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BadgeDollarSign,
   Calendar,
   Check,
   CreditCard,
   ExternalLink,
+  Plus,
   Receipt,
   RotateCcw,
   Search,
+  ShieldCheck,
+  WalletCards,
 } from "lucide-react";
 import {
   DataTable,
@@ -19,14 +23,18 @@ import {
   fetchCompanyBillingStatus,
   openCompanyBillingPortal,
   startCompanyBillingCheckout,
+  startCompanyBillingSetupIntent,
   syncCompanyBillingCheckout,
+  syncCompanyBillingPayment,
   syncCompanyBillingPaymentMethods,
+  type BillingSetupIntentSession,
   type CompanyBillingInvoice,
   type CompanyBillingPaymentMethod,
   type CompanyBillingStatus,
 } from "./companyBillingApi";
+import { BillingPaymentElementModal } from "./BillingPaymentElementModal";
 
-type BillingSubTab = "pricing" | "payment-history";
+type BillingSubTab = "pricing" | "payment-methods" | "payment-history";
 type InvoiceRow = CompanyBillingInvoice;
 type SeatBand = "5" | "10" | "10plus";
 
@@ -179,11 +187,14 @@ function invoiceMatchesFilters(
 }
 
 function formatPaymentMethodLabel(pm: CompanyBillingPaymentMethod): string {
-  const brand = (pm.brand || pm.type || "Card").trim();
+  const type = (pm.type || "").trim().toLowerCase();
+  const isBank =
+    type === "us_bank_account" || type === "bank_account" || type === "ach";
+  const brand = (pm.brand || (isBank ? "Bank account" : pm.type) || "Card").trim();
   const titled = brand.charAt(0).toUpperCase() + brand.slice(1);
   const last4 = pm.last4 ? `···· ${pm.last4}` : pm.stripePaymentMethodId;
   const exp =
-    pm.expMonth && pm.expYear
+    !isBank && pm.expMonth && pm.expYear
       ? ` · Exp ${String(pm.expMonth).padStart(2, "0")}/${pm.expYear}`
       : "";
   return `${titled} ${last4}${exp}`;
@@ -195,14 +206,12 @@ function BillingPricingPanel({
   companyId,
   billingStatus,
   onStatusRefresh,
-  paymentMethods,
 }: {
   billingCycle: "monthly" | "annually";
   onBillingCycleChange: (cycle: "monthly" | "annually") => void;
   companyId: string;
   billingStatus: CompanyBillingStatus | null;
   onStatusRefresh: () => void;
-  paymentMethods: CompanyBillingPaymentMethod[];
 }) {
   const [seatBand, setSeatBand] = useState<SeatBand>("5");
   const [busyPlanId, setBusyPlanId] = useState<string | null>(null);
@@ -298,7 +307,7 @@ function BillingPricingPanel({
         <p className="cp_billing_subtitle">
           Pricing by deal size and company users. No charge for draft or
           archived deals — billing starts when you begin raising capital /
-          asset managing.
+          asset managing. Pay with card or ACH (US bank account) via Stripe Checkout.
         </p>
       </div>
 
@@ -370,36 +379,6 @@ function BillingPricingPanel({
               {portalBusy ? "Opening…" : "Manage billing"}
             </button>
           ) : null}
-        </div>
-      ) : null}
-
-      {paymentMethods.length > 0 ? (
-        <div className="cp_billing_payment_methods" style={{ marginBottom: "1.25rem" }}>
-          <h4 className="cp_billing_filter_heading" style={{ marginBottom: "0.5rem" }}>
-            Payment methods
-          </h4>
-          <ul className="cp_billing_payment_methods_list" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {paymentMethods.map((pm) => (
-              <li
-                key={pm.id}
-                className="cp_billing_payment_method_row"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  padding: "0.5rem 0",
-                }}
-              >
-                <CreditCard size={16} aria-hidden />
-                <span>{formatPaymentMethodLabel(pm)}</span>
-                {pm.isDefault ? (
-                  <span className="cp_billing_invoice_status cp_billing_invoice_status--paid">
-                    Default
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
         </div>
       ) : null}
 
@@ -623,7 +602,176 @@ function BillingPricingPanel({
           </a>
         </div>
       </div>
+
     </>
+  );
+}
+
+function BillingPaymentMethodsPanel({
+  companyId,
+  billingStatus,
+  paymentMethods,
+  onStatusRefresh,
+}: {
+  companyId: string;
+  billingStatus: CompanyBillingStatus | null;
+  paymentMethods: CompanyBillingPaymentMethod[];
+  onStatusRefresh: () => void;
+}) {
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [setupSession, setSetupSession] =
+    useState<BillingSetupIntentSession | null>(null);
+
+  const handleAddPaymentMethod = async () => {
+    setActionError("");
+    if (!companyId) {
+      setActionError("No company workspace selected.");
+      return;
+    }
+    setSetupBusy(true);
+    const result = await startCompanyBillingSetupIntent(companyId);
+    setSetupBusy(false);
+    if (!result.ok) {
+      setActionError(result.message);
+      return;
+    }
+    setSetupSession(result.session);
+  };
+
+  const handleManageBilling = async () => {
+    setActionError("");
+    if (!companyId) {
+      setActionError("No company workspace selected.");
+      return;
+    }
+    setPortalBusy(true);
+    const result = await openCompanyBillingPortal(companyId);
+    setPortalBusy(false);
+    if (!result.ok) {
+      setActionError(result.message);
+      return;
+    }
+    window.location.assign(result.url);
+  };
+
+  return (
+    <div className="cp_billing_payment_methods">
+      <div className="cp_billing_payment_methods_head">
+        <div>
+          <h3 className="cp_billing_payment_methods_title">Payment methods</h3>
+          <p className="cp_billing_payment_methods_lead">
+            Add and manage the cards or US bank accounts used for your
+            subscription.
+          </p>
+        </div>
+        <div className="cp_billing_payment_methods_actions">
+          {billingStatus?.hasCustomer ? (
+            <button
+              type="button"
+              className="um_btn_secondary"
+              disabled={portalBusy}
+              onClick={() => void handleManageBilling()}
+            >
+              <ExternalLink size={15} aria-hidden />
+              {portalBusy ? "Opening…" : "Manage in Stripe"}
+            </button>
+          ) : null}
+          {billingStatus?.configured &&
+          companyId &&
+          paymentMethods.length > 0 ? (
+            <button
+              type="button"
+              className="um_btn_primary"
+              disabled={setupBusy}
+              onClick={() => void handleAddPaymentMethod()}
+            >
+              <Plus size={16} aria-hidden />
+              {setupBusy ? "Loading…" : "Add payment method"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {actionError ? (
+        <p className="cp_billing_payment_methods_error" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+
+      <div className="cp_billing_payment_methods_panel">
+        {paymentMethods.length > 0 ? (
+          <ul className="cp_billing_payment_methods_list">
+            {paymentMethods.map((pm) => (
+              <li key={pm.id} className="cp_billing_payment_method_row">
+                <span
+                  className="cp_billing_payment_method_icon"
+                  aria-hidden="true"
+                >
+                  <CreditCard size={20} />
+                </span>
+                <span className="cp_billing_payment_method_details">
+                  <strong>{formatPaymentMethodLabel(pm)}</strong>
+                  <small>Stored securely with Stripe</small>
+                </span>
+                {pm.isDefault ? (
+                  <span className="cp_billing_invoice_status cp_billing_invoice_status--paid">
+                    Default
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="cp_billing_payment_methods_empty">
+            <span
+              className="cp_billing_payment_methods_empty_icon"
+              aria-hidden="true"
+            >
+              <WalletCards size={26} />
+            </span>
+            <h4>No payment methods yet</h4>
+            <p>Add a card or US bank account for subscription billing.</p>
+            {billingStatus?.configured && companyId ? (
+              <button
+                type="button"
+                className="um_btn_primary"
+                disabled={setupBusy}
+                onClick={() => void handleAddPaymentMethod()}
+              >
+                <Plus size={16} aria-hidden />
+                {setupBusy ? "Loading…" : "Add payment method"}
+              </button>
+            ) : null}
+          </div>
+        )}
+        <div className="cp_billing_payment_security_note">
+          <ShieldCheck size={17} aria-hidden="true" />
+          <span>
+            Payment details are encrypted and securely processed by Stripe.
+          </span>
+        </div>
+      </div>
+
+      {setupSession ? (
+        <BillingPaymentElementModal
+          open
+          mode="setup"
+          companyId={companyId}
+          clientSecret={setupSession.clientSecret}
+          publishableKeyHint={setupSession.publishableKey}
+          title="Add payment method"
+          subtitle="Save a card or US bank account for future billing."
+          submitLabel="Save payment method"
+          onClose={() => setSetupSession(null)}
+          onSuccess={() => {
+            setSetupSession(null);
+            onStatusRefresh();
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -1037,13 +1185,32 @@ export function CompanyBillingTab({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const billing = params.get("billing");
-    if (billing === "success" || billing === "portal_return") {
+    if (
+      billing === "success" ||
+      billing === "portal_return" ||
+      billing === "payment_return" ||
+      billing === "setup_return"
+    ) {
       const sessionId = (params.get("session_id") ?? "").trim();
-      setBillingSubTab(billing === "success" ? "pricing" : "pricing");
+      const subscriptionId = (params.get("subscription_id") ?? "").trim();
+      const paymentIntentId = (
+        params.get("payment_intent") ??
+        params.get("payment_intent_id") ??
+        ""
+      ).trim();
+      setBillingSubTab(
+        billing === "setup_return" ? "payment-methods" : "pricing",
+      );
 
       const finish = () => {
         params.delete("billing");
         params.delete("session_id");
+        params.delete("subscription_id");
+        params.delete("payment_intent");
+        params.delete("payment_intent_client_secret");
+        params.delete("setup_intent");
+        params.delete("setup_intent_client_secret");
+        params.delete("redirect_status");
         const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
         window.history.replaceState({}, "", next);
       };
@@ -1063,7 +1230,28 @@ export function CompanyBillingTab({
         return;
       }
 
-      if (billing === "portal_return" && companyId) {
+      if (billing === "payment_return" && companyId) {
+        void syncCompanyBillingPayment(companyId, {
+          subscriptionId: subscriptionId || undefined,
+          paymentIntentId: paymentIntentId || undefined,
+        }).then((result) => {
+          if (result.ok) {
+            setStatusError("");
+            setBillingStatus(result.status);
+          } else {
+            setStatusError(result.message);
+            refreshStatus();
+          }
+          refreshPaymentMethods();
+          finish();
+        });
+        return;
+      }
+
+      if (
+        (billing === "portal_return" || billing === "setup_return") &&
+        companyId
+      ) {
         void syncCompanyBillingPaymentMethods(companyId).then((result) => {
           if (result.ok) {
             setPaymentMethods(result.paymentMethods);
@@ -1120,7 +1308,7 @@ export function CompanyBillingTab({
               }`}
               onClick={() => setBillingSubTab("pricing")}
             >
-              <CreditCard
+              <BadgeDollarSign
                 className="deals_tabs_icon um_segmented_tab_icon"
                 size={16}
                 strokeWidth={2}
@@ -1128,6 +1316,29 @@ export function CompanyBillingTab({
               />
               <span className="deals_tabs_label um_segmented_tab_label">
                 Pricing
+              </span>
+            </button>
+            <button
+              type="button"
+              id="cp-billing-subtab-payment-methods"
+              role="tab"
+              aria-selected={billingSubTab === "payment-methods"}
+              aria-controls="cp-billing-panel-payment-methods"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                billingSubTab === "payment-methods"
+                  ? " um_members_tab_active"
+                  : ""
+              }`}
+              onClick={() => setBillingSubTab("payment-methods")}
+            >
+              <WalletCards
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Payment Methods
               </span>
             </button>
             <button
@@ -1171,7 +1382,23 @@ export function CompanyBillingTab({
             companyId={companyId}
             billingStatus={billingStatus}
             onStatusRefresh={refreshStatus}
+          />
+        ) : null}
+      </div>
+
+      <div
+        id="cp-billing-panel-payment-methods"
+        role="tabpanel"
+        aria-labelledby="cp-billing-subtab-payment-methods"
+        hidden={billingSubTab !== "payment-methods"}
+        className="cp_billing_subtab_panel cp_billing_subtab_panel_payment_methods"
+      >
+        {billingSubTab === "payment-methods" ? (
+          <BillingPaymentMethodsPanel
+            companyId={companyId}
+            billingStatus={billingStatus}
             paymentMethods={paymentMethods}
+            onStatusRefresh={refreshStatus}
           />
         ) : null}
       </div>

@@ -12,10 +12,12 @@ import {
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
 import {
   completeDistributionRun,
+  deletePriorDistribution,
   getDistributionSetupBundle,
   getMyDistributionDetailForDeal,
   getMyDistributionsForDeal,
   listMyDistributionsForViewer,
+  replacePriorDistributions,
   saveDistributionSetupBundle,
   updatePriorDistributionInvestorPercent,
 } from "../../services/distributionSetup/distributionSetup.service.js";
@@ -94,7 +96,23 @@ function parseSaveInput(body: unknown): DistributionSetupSaveInput | null {
     .map(parseRow)
     .filter((r): r is DistributionPaymentRow => r != null);
   const waterfalls: DistributionWaterfalls = { operating, capital };
-  return { waterfalls };
+  const setupName = str(b.setupName ?? b.setup_name);
+  const dayRaw = str(b.dayCountMode ?? b.day_count_mode).toLowerCase();
+  const dayCountMode =
+    dayRaw === "from_accrual_start" || dayRaw === "period_window"
+      ? (dayRaw as "from_accrual_start" | "period_window")
+      : undefined;
+  const accrual = str(
+    b.defaultAccrualStartIso ?? b.default_accrual_start_iso,
+  ).slice(0, 10);
+  return {
+    waterfalls,
+    ...(setupName ? { setupName } : {}),
+    ...(dayCountMode ? { dayCountMode } : {}),
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(accrual)
+      ? { defaultAccrualStartIso: accrual }
+      : {}),
+  };
 }
 
 async function assertDealAccess(
@@ -153,6 +171,26 @@ export async function putDealDistributionSetup(req: Request, res: Response) {
       res.status(access.status).json({ message: access.message });
       return;
     }
+
+    // Clear completed runs only (keeps waterfall). Uses this existing PUT so
+    // clients do not depend on a separate route that may not be remounted yet.
+    const bodyRec = asRecord(req.body);
+    if (bodyRec.clearPriors === true || bodyRec.clear_priors === true) {
+      const cleared = await replacePriorDistributions({
+        dealId,
+        priorDistributions: [],
+      });
+      if (cleared.error) {
+        res.status(400).json({
+          message: cleared.error,
+          distributionSetup: cleared.bundle,
+        });
+        return;
+      }
+      res.json({ distributionSetup: cleared.bundle });
+      return;
+    }
+
     const input = parseSaveInput(req.body);
     if (!input) {
       res.status(400).json({ message: "Invalid distribution setup payload" });
@@ -169,7 +207,7 @@ export async function putDealDistributionSetup(req: Request, res: Response) {
 
     // Optional: record a completed run in the same PUT (avoids a separate POST
     // that older API processes may not have mounted yet).
-    const completeBody = asRecord(req.body).complete;
+    const completeBody = bodyRec.complete;
     if (completeBody != null) {
       const completeInput = parseCompleteInput(completeBody);
       if (!completeInput) {
@@ -242,6 +280,13 @@ function parseCompleteInput(body: unknown): {
   name?: string;
   notes?: string;
   period?: "monthly" | "quarterly" | "annual";
+  periodStart?: string;
+  periodEnd?: string;
+  paymentDate?: string;
+  distributionType?: string;
+  deductsFrom?: string;
+  visible?: boolean;
+  replaceDistributionId?: string;
   investorPayments?: InvestorPaymentLineInput[];
 } | null {
   if (body == null || typeof body !== "object" || Array.isArray(body))
@@ -278,6 +323,25 @@ function parseCompleteInput(body: unknown): {
   const investorPayments = parseInvestorPayments(
     b.investorPayments ?? b.investor_payments,
   );
+  const periodStart = str(b.periodStart ?? b.period_start).slice(0, 10);
+  const periodEnd = str(b.periodEnd ?? b.period_end).slice(0, 10);
+  const paymentDate = str(b.paymentDate ?? b.payment_date).slice(0, 10);
+  const distributionType = str(
+    b.distributionType ?? b.distribution_type ?? b.type,
+  );
+  const deductsFrom = str(b.deductsFrom ?? b.deducts_from);
+  const replaceDistributionId = str(
+    b.replaceDistributionId ?? b.replace_distribution_id,
+  );
+  const visibleRaw = b.visible;
+  const visible =
+    visibleRaw === false ||
+    visibleRaw === 0 ||
+    String(visibleRaw).toLowerCase() === "false"
+      ? false
+      : visibleRaw == null
+        ? undefined
+        : true;
   return {
     source: sourceRaw as DistributionWfSource,
     amount,
@@ -285,6 +349,13 @@ function parseCompleteInput(body: unknown): {
     name: str(b.name) || undefined,
     notes: str(b.notes) || undefined,
     ...(period ? { period } : {}),
+    ...( /^\d{4}-\d{2}-\d{2}$/.test(periodStart) ? { periodStart } : {}),
+    ...( /^\d{4}-\d{2}-\d{2}$/.test(periodEnd) ? { periodEnd } : {}),
+    ...( /^\d{4}-\d{2}-\d{2}$/.test(paymentDate) ? { paymentDate } : {}),
+    ...(distributionType ? { distributionType } : {}),
+    ...(deductsFrom ? { deductsFrom } : {}),
+    ...(visible != null ? { visible } : {}),
+    ...(replaceDistributionId ? { replaceDistributionId } : {}),
     ...(investorPayments.length ? { investorPayments } : {}),
   };
 }
@@ -513,5 +584,98 @@ export async function patchDealDistributionInvestorPercent(
   } catch (err) {
     console.error("patchDealDistributionInvestorPercent", err);
     res.status(500).json({ message: "Failed to update investor percent" });
+  }
+}
+
+/** DELETE one completed distribution run (keeps waterfall / class setup). */
+export async function deleteDealPriorDistribution(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const dealId = paramId(req.params.dealId);
+    const distributionId = paramId(req.params.distributionId);
+    if (!dealId || !distributionId) {
+      res.status(400).json({ message: "dealId and distributionId are required" });
+      return;
+    }
+    const access = await assertDealAccess(req, dealId);
+    if (!access.ok) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+    const { bundle, error } = await deletePriorDistribution({
+      dealId,
+      distributionId,
+    });
+    if (error) {
+      res.status(error === "Distribution not found" ? 404 : 400).json({
+        message: error,
+        distributionSetup: bundle,
+      });
+      return;
+    }
+    res.json({ distributionSetup: bundle });
+  } catch (err) {
+    console.error("deleteDealPriorDistribution", err);
+    res.status(500).json({ message: "Failed to delete distribution" });
+  }
+}
+
+/**
+ * PUT replace completed runs for a deal.
+ * Body: { priorDistributions: [] } clears all (test-data cleanup).
+ * Does not change waterfall configuration.
+ */
+export async function putDealPriorDistributions(req: Request, res: Response) {
+  try {
+    const dealId = paramId(req.params.dealId);
+    if (!dealId) {
+      res.status(400).json({ message: "dealId is required" });
+      return;
+    }
+    const access = await assertDealAccess(req, dealId);
+    if (!access.ok) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+    const b = asRecord(req.body);
+    const raw = b.priorDistributions ?? b.prior_distributions;
+    if (!Array.isArray(raw)) {
+      res.status(400).json({
+        message: "priorDistributions must be an array (use [] to clear).",
+      });
+      return;
+    }
+    // Only allow clear or pass-through of already-shaped records from client
+    // that match existing ids when non-empty — for clear, empty array is enough.
+    const existing = await getDistributionSetupBundle(dealId);
+    if (!existing) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+    let next: typeof existing.priorDistributions = [];
+    if (raw.length === 0) {
+      next = [];
+    } else {
+      const byId = new Map(existing.priorDistributions.map((p) => [p.id, p]));
+      for (const item of raw) {
+        const id = str(asRecord(item).id);
+        const found = id ? byId.get(id) : undefined;
+        if (found) next.push(found);
+      }
+    }
+    const { bundle, error } = await replacePriorDistributions({
+      dealId,
+      priorDistributions: next,
+    });
+    if (error) {
+      res.status(400).json({ message: error, distributionSetup: bundle });
+      return;
+    }
+    res.json({ distributionSetup: bundle });
+  } catch (err) {
+    console.error("putDealPriorDistributions", err);
+    res.status(500).json({ message: "Failed to update prior distributions" });
   }
 }

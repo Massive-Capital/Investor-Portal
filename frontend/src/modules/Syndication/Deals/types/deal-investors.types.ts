@@ -18,11 +18,11 @@ export interface DealInvestorRow {
   id: string
   /** Member / contact name — first line in identity cell */
   displayName: string
-  /** Investor profile label (e.g. Individual, LLC) — second line in identity cell */
+  /** Investor profile label (e.g. Individual, LLC) — tooltip fallback when email missing */
   entitySubtitle: string
   /** Portal user login / display name for this member */
   userDisplayName: string
-  /** Portal user email */
+  /** Portal user email — second line in identity cell */
   userEmail: string
   investorClass: string
   /** Percent of class (ownership), e.g. `25.00%`. */

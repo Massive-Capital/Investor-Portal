@@ -5,8 +5,11 @@ import {
   getCompanyBillingInvoices,
   getCompanyBillingPaymentMethods,
   postCompanyBillingCheckout,
+  postCompanyBillingPaymentElement,
   postCompanyBillingPortal,
+  postCompanyBillingSetupIntent,
   postCompanyBillingSyncCheckout,
+  postCompanyBillingSyncPayment,
   postCompanyBillingSyncPaymentMethods,
 } from "../controllers/billing/companyBilling.controller.js";
 
@@ -22,6 +25,18 @@ router.get(
 router.post(
   "/companies/:companyId/billing/checkout",
   postCompanyBillingCheckout,
+);
+router.post(
+  "/companies/:companyId/billing/payment-element",
+  postCompanyBillingPaymentElement,
+);
+router.post(
+  "/companies/:companyId/billing/setup-intent",
+  postCompanyBillingSetupIntent,
+);
+router.post(
+  "/companies/:companyId/billing/sync-payment",
+  postCompanyBillingSyncPayment,
 );
 router.post("/companies/:companyId/billing/portal", postCompanyBillingPortal);
 router.post(

@@ -6,14 +6,22 @@ import type {
   PriorDistributionRecord,
 } from "../types/distribution-setup.types"
 import {
-  calculatePeriodPreferredReturn,
   computeStageMetFromHurdles,
   periodsPerYearFromFactor,
   type HurdleCashFlow,
   type HurdleEvaluation,
   type WaterfallInput,
 } from "./hurdleCalculations"
+import { catchupDue } from "../engine/helpers/formulas"
+import { allocateCentsByWeight, roundMoney } from "../engine/helpers/rounding"
 import {
+  classPreferredDue,
+  type InvestmentAccrualLine,
+  type PrefAccrualContext,
+  type PreferredDayCountMode,
+} from "../engine/preferredDue"
+import {
+  getPeriodWindow,
   periodFromFactor,
   periodLabel,
   remainingDueAfterPriorPool,
@@ -28,6 +36,17 @@ function toNum(v: string | number | undefined): number {
 
 export function formatMoney(n: number): string {
   return `$${Math.round(n).toLocaleString("en-US")}`
+}
+
+/** Money with cents — use for Who receives what / investor payments. */
+export function formatMoneyCents(n: number): string {
+  if (!Number.isFinite(n)) return "$0.00"
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }
 
 export function formatPct(n: number): string {
@@ -65,10 +84,30 @@ function isPeriodPrefKind(kind: DistributionWfKind): boolean {
   return kind === "LP_PREF" || kind === "PREF_CURRENT" || kind === "PREF_ACCRUED"
 }
 
+function rateForClass(
+  row: DistributionPaymentRow,
+  c: DistributionSetupClass,
+): number {
+  if (row.kind === "PREF_CURRENT")
+    return toNum(c.prefEquity.currentRate) / 100
+  if (row.kind === "PREF_ACCRUED")
+    return (
+      Math.max(
+        0,
+        toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
+      ) / 100
+    )
+  if (row.kind === "LP_PREF")
+    return c.preferredReturn.enabled
+      ? toNum(c.preferredReturn.rate) / 100
+      : 0
+  return 0
+}
+
 export function computeDue(
   row: DistributionPaymentRow,
   classes: DistributionSetupClass[],
-  periodFactor: number,
+  ctx: PrefAccrualContext,
   ignoreManual = false,
 ): number {
   if (!ignoreManual && row.amountMode === "input")
@@ -77,45 +116,32 @@ export function computeDue(
     .map((id) => classes.find((c) => c.id === id))
     .filter((c): c is DistributionSetupClass => c != null)
 
-  const periodsPerYear = periodsPerYearFromFactor(periodFactor)
-
-  if (row.kind === "PREF_CURRENT")
-    return list.reduce(
-      (s, c) =>
-        s +
-        calculatePeriodPreferredReturn(
-          toNum(c.actuallyFunded),
-          toNum(c.prefEquity.currentRate) / 100,
-          periodsPerYear,
-        ),
-      0,
+  if (row.kind === "PREF_CURRENT" || row.kind === "LP_PREF")
+    return roundMoney(
+      list.reduce(
+        (s, c) =>
+          s +
+          classPreferredDue({
+            classRow: c,
+            annualRateDecimal: rateForClass(row, c),
+            ctx,
+          }),
+        0,
+      ),
     )
   if (row.kind === "PREF_ACCRUED")
-    return list.reduce(
-      (s, c) =>
-        s +
-        calculatePeriodPreferredReturn(
-          toNum(c.actuallyFunded),
-          Math.max(
-            0,
-            toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
-          ) / 100,
-          1,
-        ),
-      0,
+    return roundMoney(
+      list.reduce(
+        (s, c) =>
+          s +
+          classPreferredDue({
+            classRow: c,
+            annualRateDecimal: rateForClass(row, c),
+            ctx,
+          }),
+        0,
+      ),
     )
-  if (row.kind === "LP_PREF")
-    return list.reduce((s, c) => {
-      if (!c.preferredReturn.enabled) return s
-      return (
-        s +
-        calculatePeriodPreferredReturn(
-          toNum(c.actuallyFunded),
-          toNum(c.preferredReturn.rate) / 100,
-          periodsPerYear,
-        )
-      )
-    }, 0)
   if (row.kind === "ROC")
     return list.reduce((s, c) => s + toNum(c.actuallyFunded), 0)
   return 0
@@ -124,31 +150,18 @@ export function computeDue(
 function classDueShare(
   row: DistributionPaymentRow,
   c: DistributionSetupClass,
-  periodsPerYear: number,
+  ctx: PrefAccrualContext,
 ): number {
-  if (row.kind === "PREF_CURRENT")
-    return calculatePeriodPreferredReturn(
-      toNum(c.actuallyFunded),
-      toNum(c.prefEquity.currentRate) / 100,
-      periodsPerYear,
-    )
-  if (row.kind === "PREF_ACCRUED")
-    return calculatePeriodPreferredReturn(
-      toNum(c.actuallyFunded),
-      Math.max(
-        0,
-        toNum(c.prefEquity.totalRate) - toNum(c.prefEquity.currentRate),
-      ) / 100,
-      1,
-    )
-  if (row.kind === "LP_PREF")
-    return c.preferredReturn.enabled
-      ? calculatePeriodPreferredReturn(
-          toNum(c.actuallyFunded),
-          toNum(c.preferredReturn.rate) / 100,
-          periodsPerYear,
-        )
-      : 0
+  if (
+    row.kind === "PREF_CURRENT" ||
+    row.kind === "PREF_ACCRUED" ||
+    row.kind === "LP_PREF"
+  )
+    return classPreferredDue({
+      classRow: c,
+      annualRateDecimal: rateForClass(row, c),
+      ctx,
+    })
   if (row.kind === "ROC") return toNum(c.actuallyFunded)
   return 1
 }
@@ -156,15 +169,21 @@ function classDueShare(
 export function calcFormulaNote(
   row: DistributionPaymentRow,
   classes: DistributionSetupClass[],
+  ctx?: PrefAccrualContext,
 ): string {
-  const qtr = computeDue(row, classes, 0.25, true)
+  const fallbackCtx: PrefAccrualContext = ctx ?? {
+    periodStartIso: "2026-01-01",
+    periodEndIso: "2026-03-31",
+    dayCountMode: "period_window",
+  }
+  const due = computeDue(row, classes, fallbackCtx, true)
   if (row.kind === "PREF_CURRENT")
-    return `funded × current rate ÷ period — e.g. ${formatMoney(qtr)} / qtr`
+    return `funded × current rate × days/365 — e.g. ${formatMoney(due)}`
   if (row.kind === "PREF_ACCRUED")
-    return `accrued balance to date — est. ${formatMoney(qtr)}`
+    return `accrued (total−current) × days/365 — est. ${formatMoney(due)}`
   if (row.kind === "LP_PREF")
-    return `Σ funded × pref rate ÷ period, + arrears — e.g. ${formatMoney(qtr)} / qtr`
-  if (row.kind === "ROC") return `unreturned capital — ${formatMoney(qtr)}`
+    return `Σ funded × pref rate × days/365 — e.g. ${formatMoney(due)}`
+  if (row.kind === "ROC") return `unreturned capital — ${formatMoney(due)}`
   if (row.kind === "CATCHUP")
     return `amount restoring the class to its target share of profits to date`
   return ""
@@ -187,15 +206,16 @@ export interface SimResult {
   perClass: Record<string, number>
   leftover: number
   totalPaid: number
-  /** Auto-evaluated promote hurdles (IRR / CoC / cumulative). */
   hurdleEvaluations: HurdleEvaluation[]
-  /** Effective stage-met flags after calc + manual overrides. */
   stageMet: Record<number, boolean>
-  /** Period window used for dues / CoC. */
   period: DistributionPeriod
   periodWindowLabel: string
-  /** Prior cash already recorded in this period window. */
   priorCashInPeriod: number
+  /** Days in the accrual window used for preferred dues. */
+  preferredDayCount: number
+  dayCountMode: PreferredDayCountMode
+  /** True when a preferred/CoC tier was not fully paid — promote blocked. */
+  preferredHurdleUnpaid: boolean
 }
 
 export function investedCapitalFromClasses(
@@ -212,7 +232,6 @@ export function buildWaterfallInput(params: {
   classes: DistributionSetupClass[]
   cashFlows?: HurdleCashFlow[]
   cumulativeDistributions?: number
-  /** Cash already paid + current run in the selected period (for CoC). */
   cashInPeriod?: number
 }): WaterfallInput {
   const investedCapital = investedCapitalFromClasses(params.classes)
@@ -235,23 +254,52 @@ export function buildWaterfallInput(params: {
   }
 }
 
+function allocatePaidToClasses(params: {
+  paid: number
+  dues: number[]
+  classIds: string[]
+}): Record<string, number> {
+  const { paid, dues, classIds } = params
+  const out: Record<string, number> = {}
+  for (const id of classIds) out[id] = 0
+  if (!(paid > 0) || classIds.length === 0) return out
+
+  const totalCents = Math.round(paid * 100)
+  const cents = allocateCentsByWeight({
+    totalCents,
+    weights: dues.map((d) => Math.max(0, d)),
+  })
+  classIds.forEach((id, i) => {
+    out[id] = (cents[i] ?? 0) / 100
+  })
+  return out
+}
+
 export function runDistributionSim(input: {
   cash: number
   periodFactor: number
   rows: DistributionPaymentRow[]
   classes: DistributionSetupClass[]
   promote: DistributionSetupPromote
-  /** Manual overrides when a hurdle cannot be auto-evaluated (e.g. IRR without history). */
   stageMetOverrides?: Record<number, boolean>
   dueOverrides: Record<string, number>
   cashFlows?: HurdleCashFlow[]
   cumulativeDistributions?: number
-  /** Distribution as-of date (YYYY-MM-DD). Defaults to today. */
   asOfDate?: string
-  /** Completed priors — used to reduce same-period preferred dues. */
   priorDistributions?: PriorDistributionRecord[]
-  /** Exclude this prior id when attributing same-period cash (details re-sim). */
   excludePriorId?: string
+  /** Deal-level accrual start (close / first funded). */
+  investmentDate?: string
+  /** Per-investment capital + funded dates for class dues. */
+  investments?: InvestmentAccrualLine[]
+  /**
+   * period_window = Woodland (clip to period).
+   * from_accrual_start = Wildflower CoC (accrual start → period end).
+   */
+  dayCountMode?: PreferredDayCountMode
+  /** Optional explicit period window (Test panel start/end dates). */
+  periodStartIso?: string
+  periodEndIso?: string
 }): SimResult {
   const {
     cash,
@@ -266,6 +314,11 @@ export function runDistributionSim(input: {
     asOfDate,
     priorDistributions = [],
     excludePriorId,
+    investmentDate,
+    investments,
+    dayCountMode = "period_window",
+    periodStartIso,
+    periodEndIso,
   } = input
 
   const period = periodFromFactor(periodFactor)
@@ -273,6 +326,19 @@ export function runDistributionSim(input: {
     asOfDate && /^\d{4}-\d{2}-\d{2}/.test(asOfDate)
       ? asOfDate.slice(0, 10)
       : new Date().toISOString().slice(0, 10)
+
+  const customStart =
+    periodStartIso && /^\d{4}-\d{2}-\d{2}/.test(periodStartIso)
+      ? periodStartIso.slice(0, 10)
+      : ""
+  const customEnd =
+    periodEndIso && /^\d{4}-\d{2}-\d{2}/.test(periodEndIso)
+      ? periodEndIso.slice(0, 10)
+      : ""
+  const windowOverride =
+    customStart && customEnd && customEnd >= customStart
+      ? { start: customStart, end: customEnd }
+      : undefined
 
   const { window, priorCash } = sumPriorCashInPeriod({
     priors: priorDistributions.map((p) => ({
@@ -283,7 +349,27 @@ export function runDistributionSim(input: {
     asOfIso: asOf,
     period,
     excludeId: excludePriorId,
+    windowOverride,
   })
+
+  const prefCtx: PrefAccrualContext = {
+    periodStartIso: window.start,
+    periodEndIso: window.end,
+    defaultAccrualStartIso:
+      investmentDate && /^\d{4}-\d{2}-\d{2}/.test(investmentDate)
+        ? investmentDate.slice(0, 10)
+        : window.start,
+    dayCountMode,
+    investments,
+  }
+
+  const preferredDayCount =
+    dayCountMode === "from_accrual_start"
+      ? inclusiveDays(
+          prefCtx.defaultAccrualStartIso || window.start,
+          window.end,
+        )
+      : inclusiveDays(window.start, window.end)
 
   const cashInPeriod = priorCash + cash
   const waterfallInput = buildWaterfallInput({
@@ -297,12 +383,9 @@ export function runDistributionSim(input: {
   const { stageMet, evaluations: hurdleEvaluations } =
     computeStageMetFromHurdles(promote, waterfallInput, stageMetOverrides)
 
-  // Stage map already includes manual overrides.
   const stageMetFinal: Record<number, boolean> = { ...stageMet }
 
-  const ppy = periodsPerYearFromFactor(periodFactor)
   let remaining = cash
-  /** Prior cash still available to absorb preferred period dues (waterfall order). */
   let priorPool = priorCash
   const perClass: Record<string, number> = {}
   const profit: Record<string, number> = {}
@@ -313,6 +396,7 @@ export function runDistributionSim(input: {
 
   const flowRows: SimFlowRow[] = []
   let starved = false
+  let preferredHurdleUnpaid = false
 
   for (let i = 0; i < rows.length; i++) {
     const t = rows[i]!
@@ -324,14 +408,15 @@ export function runDistributionSim(input: {
         due: null,
         paid: null,
         skipped: true,
-        note: "not reached — cash exhausted upstream",
+        note: preferredHurdleUnpaid
+          ? "not reached — preferred / CoC hurdle unpaid upstream"
+          : "not reached — cash exhausted upstream",
       })
       continue
     }
 
     let fullDue: number
     if (t.kind === "CATCHUP" && t.amountMode !== "input") {
-      const pct = Math.min(99, toNum(t.catchupPct) || 20)
       const lpProfit = classes
         .filter((c) => c.classType === "lp")
         .reduce((s, c) => s + (profit[c.id] || 0), 0)
@@ -339,9 +424,13 @@ export function runDistributionSim(input: {
         (s, id) => s + (profit[id] || 0),
         0,
       )
-      fullDue = Math.max(0, (pct / (100 - pct)) * lpProfit - gpProfit)
+      fullDue = catchupDue({
+        catchupPct: toNum(t.catchupPct) || 20,
+        lpProfitToDate: lpProfit,
+        gpProfitToDate: gpProfit,
+      })
     } else {
-      fullDue = computeDue(t, classes, periodFactor)
+      fullDue = computeDue(t, classes, prefCtx)
     }
 
     let baseDue = fullDue
@@ -364,16 +453,22 @@ export function runDistributionSim(input: {
       .map((id) => classes.find((c) => c.id === id))
       .filter((c): c is DistributionSetupClass => c != null)
 
-    const dues = list.map((c) => classDueShare(t, c, ppy))
-    const dueSum = dues.reduce((a, b) => a + b, 0) || 1
-    list.forEach((c, ci) => {
-      const share = paid * (dues[ci]! / dueSum)
+    const dues = list.map((c) => classDueShare(t, c, prefCtx))
+    const classIds = list.map((c) => c.id)
+    const shares = allocatePaidToClasses({
+      paid,
+      dues,
+      classIds,
+    })
+    list.forEach((c) => {
+      const share = shares[c.id] ?? 0
       perClass[c.id] = (perClass[c.id] || 0) + share
       if (t.kind === "LP_PREF" || t.kind === "CATCHUP")
         profit[c.id] = (profit[c.id] || 0) + share
     })
-    remaining -= paid
+    remaining = roundMoney(remaining - paid)
 
+    const shortfall = due - paid > 0.005 ? roundMoney(due - paid) : undefined
     const notes: string[] = []
     if (appliedFromPrior > 0.5) {
       notes.push(
@@ -382,7 +477,14 @@ export function runDistributionSim(input: {
     }
     if (fullDue > due + 0.5 && dueOverrides[t.id] == null) {
       notes.push(
-        `full ${periodLabel(period).toLowerCase()} due ${formatMoney(fullDue)}`,
+        `full due ${formatMoney(fullDue)} · ${preferredDayCount}d actual/365`,
+      )
+    } else if (isPeriodPrefKind(t.kind) && t.amountMode !== "input") {
+      notes.push(`${preferredDayCount}d × rate ÷ 365`)
+    }
+    if (shortfall != null) {
+      notes.push(
+        `shortfall ${formatMoney(shortfall)} — later hurdles blocked`,
       )
     }
 
@@ -392,10 +494,16 @@ export function runDistributionSim(input: {
       label: t.name,
       due,
       paid,
-      shortfall: due - paid > 0.5 ? due - paid : undefined,
+      shortfall,
       note: notes.length ? notes.join(" · ") : undefined,
     })
-    if (remaining <= 0.005) {
+
+    // Portal rule: unpaid preferred / CoC hurdle stops the waterfall.
+    if (isPeriodPrefKind(t.kind) && shortfall != null) {
+      preferredHurdleUnpaid = true
+      remaining = 0
+      starved = true
+    } else if (remaining <= 0.005) {
       remaining = 0
       starved = true
     }
@@ -413,6 +521,22 @@ export function runDistributionSim(input: {
         s === 0
           ? "Split remaining cash — stage 1 (base shares)"
           : `Split remaining cash — stage ${s + 1} (after Hurdle ${s})`
+
+      if (preferredHurdleUnpaid || starved) {
+        flowRows.push({
+          kind: "stage",
+          index: idx,
+          stage: s,
+          label: stageLabel,
+          due: null,
+          paid: null,
+          skipped: true,
+          note: preferredHurdleUnpaid
+            ? "not reached — preferred / CoC hurdle not fully satisfied"
+            : "not reached — cash exhausted upstream",
+        })
+        continue
+      }
 
       if (s < active) {
         const ev = hurdleEvaluations[s]
@@ -459,9 +583,12 @@ export function runDistributionSim(input: {
         continue
       }
       const shares = parts.map((c) => shareAt(promote, c.id, s))
-      const tot = shares.reduce((a, b) => a + b, 0) || 1
+      const residualCents = allocateCentsByWeight({
+        totalCents: Math.round(remaining * 100),
+        weights: shares.map((x) => Math.max(0, x)),
+      })
       parts.forEach((c, ci) => {
-        const share = remaining * (shares[ci]! / tot)
+        const share = (residualCents[ci] ?? 0) / 100
         perClass[c.id] = (perClass[c.id] || 0) + share
         profit[c.id] = (profit[c.id] || 0) + share
       })
@@ -487,13 +614,24 @@ export function runDistributionSim(input: {
     hurdleEvaluations,
     stageMet: stageMetFinal,
     period,
-    periodWindowLabel: window.label,
+    periodWindowLabel: `${window.label} · ${preferredDayCount}d actual/365`,
     priorCashInPeriod: priorCash,
+    preferredDayCount,
+    dayCountMode,
+    preferredHurdleUnpaid,
   }
+}
+
+function inclusiveDays(startIso: string, endIso: string): number {
+  const a = Date.parse(`${startIso.slice(0, 10)}T00:00:00`)
+  const b = Date.parse(`${endIso.slice(0, 10)}T00:00:00`)
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0
+  return Math.round((b - a) / 86_400_000) + 1
 }
 
 export { factorFromPeriod, periodFromFactor, periodLabel } from "./distributionPeriod"
 export type { DistributionPeriod } from "./distributionPeriod"
+export type { PreferredDayCountMode, InvestmentAccrualLine }
 
 export function defaultPayToForKind(
   kind: DistributionWfKind,
@@ -509,3 +647,6 @@ export function defaultPayToForKind(
     return classes.filter((c) => c.classType === "gp").map((c) => c.id)
   return []
 }
+
+/** Re-export period window helper for callers that need start/end. */
+export { getPeriodWindow }

@@ -1,4 +1,10 @@
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react"
+import { useEffect, useMemo, useRef } from "react"
+import {
+  DropdownSelect,
+  type DropdownSelectOption,
+} from "../../../../../common/components/dropdown-select"
+import { useHorizontalScrollRegion } from "../../../../../common/hooks/useHorizontalScrollRegion"
 import {
   blurFormatMoneyInput,
   formatCurrencyUsdTypeInput,
@@ -12,13 +18,25 @@ import type {
 } from "../types/distribution-setup.types"
 import { CLASS_TYPE_TONE, KIND_META } from "../types/distribution-setup.types"
 import {
-  calcFormulaNote,
-  equityParticipants,
-  formatPct,
-  hurdleLabel,
-  shareAt,
+  // calcFormulaNote, // re-enable with formula preview below
+  // equityParticipants, // re-enable with Residual splits section
+  // formatPct,
+  // hurdleLabel,
+  // shareAt,
   stageCount,
 } from "../utils/distributionSim"
+
+const KIND_OPTIONS: DropdownSelectOption[] = (
+  Object.keys(KIND_META) as DistributionWfKind[]
+).map((k) => ({
+  value: k,
+  label: KIND_META[k].label,
+}))
+
+const AMOUNT_MODE_OPTIONS: DropdownSelectOption[] = [
+  { value: "calc", label: "Calculated" },
+  { value: "input", label: "Manual input" },
+]
 
 interface WaterfallBuilderProps {
   rows: DistributionPaymentRow[]
@@ -46,12 +64,41 @@ export function WaterfallBuilder({
   onDeleteRow,
 }: WaterfallBuilderProps) {
   const stages = stageCount(promote)
-  const parts = equityParticipants(classes)
+  // const parts = equityParticipants(classes) // used by Residual splits section
   const hasContent = rows.length > 0 || stages > 0
   const subtitle =
     activeWf === "operating"
-      ? "Cash pays each row in order until funded or cash runs out. Unpaid balances accrue. Split stages come from Class Setup hurdles."
-      : "Sale and refinance proceeds follow this order. Residual splits use the same promote schedule from Class Setup."
+      ? "Cash pays each row in order until funded or cash runs out. Unpaid balances accrue."
+      : "Sale and refinance proceeds follow this order."
+  const prevRowCountRef = useRef(rows.length)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
+
+  useHorizontalScrollRegion(tableScrollRef, [rows.length], {
+    hoverVerticalToHorizontal: false,
+    edgeScroll: false,
+  })
+
+  function scrollFlowRowIntoView(rowId: string) {
+    const el = document.getElementById(`ds-flow-row-${rowId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" })
+  }
+
+  useEffect(() => {
+    if (rows.length <= prevRowCountRef.current) {
+      prevRowCountRef.current = rows.length
+      return
+    }
+    prevRowCountRef.current = rows.length
+    const last = rows[rows.length - 1]
+    if (!last) return
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`ds-wf-row-${last.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      scrollFlowRowIntoView(last.id)
+    })
+  }, [rows])
 
   return (
     <section className="ds_table_panel" aria-label="Payment waterfall">
@@ -61,20 +108,15 @@ export function WaterfallBuilder({
           <p className="ds_table_subtitle">{subtitle}</p>
         </div>
         <div className="ds_table_toolbar_actions">
-          <select
+          <DropdownSelect
+            className="ds_dropdown ds_dropdown_kind"
             value={addKind}
-            onChange={(e) =>
-              onAddKindChange(e.target.value as DistributionWfKind)
-            }
-            aria-label="Payment row type to add"
-            className="ds_add_select"
-          >
-            {(Object.keys(KIND_META) as DistributionWfKind[]).map((k) => (
-              <option key={k} value={k}>
-                {KIND_META[k].label}
-              </option>
-            ))}
-          </select>
+            options={KIND_OPTIONS}
+            onChange={(v) => onAddKindChange(v as DistributionWfKind)}
+            ariaLabel="Payment row type to add"
+            useFixedPanel
+            placeholder="Payment type"
+          />
           <button type="button" className="ds_add_btn" onClick={onAddRow}>
             <Plus size={15} strokeWidth={2.25} aria-hidden />
             Add payment row
@@ -82,7 +124,7 @@ export function WaterfallBuilder({
         </div>
       </div>
 
-      <div className="ds_table_scroll">
+      <div className="ds_table_scroll" ref={tableScrollRef}>
         <table className="ds_wf_table">
           <thead>
             <tr>
@@ -119,9 +161,11 @@ export function WaterfallBuilder({
                 onChange={(next) => onChangeRow(row.id, next)}
                 onMove={(dir) => onMoveRow(row.id, dir)}
                 onDelete={() => onDeleteRow(row.id)}
+                onHover={() => scrollFlowRowIntoView(row.id)}
               />
             ))}
 
+            {/* Residual splits — re-enable when needed
             {stages > 0 ? (
               <tr className="ds_wf_section_row">
                 <td colSpan={4}>
@@ -194,6 +238,7 @@ export function WaterfallBuilder({
                 </tr>
               )
             })}
+            */}
           </tbody>
         </table>
       </div>
@@ -209,6 +254,7 @@ function PaymentRowView({
   onChange,
   onMove,
   onDelete,
+  onHover,
 }: {
   row: DistributionPaymentRow
   index: number
@@ -217,12 +263,23 @@ function PaymentRowView({
   onChange: (next: DistributionPaymentRow) => void
   onMove: (dir: -1 | 1) => void
   onDelete: () => void
+  onHover?: () => void
 }) {
   const selected = new Set(row.payTo)
   const available = classes.filter((c) => !selected.has(c.id))
+  const classOptions = useMemo((): DropdownSelectOption[] => {
+    const selectedIds = new Set(row.payTo)
+    return classes
+      .filter((c) => !selectedIds.has(c.id))
+      .map((c) => ({ value: c.id, label: c.name }))
+  }, [classes, row.payTo])
 
   return (
-    <tr className="ds_wf_row">
+    <tr
+      className="ds_wf_row"
+      id={`ds-wf-row-${row.id}`}
+      onMouseEnter={onHover}
+    >
       <td>
         <span className="ds_then">
           <span className="ds_then_label">{index === 0 ? "First" : "Then"}</span>
@@ -261,23 +318,18 @@ function PaymentRowView({
             })
           )}
           {available.length > 0 ? (
-            <select
-              className="ds_addclass_sel"
+            <DropdownSelect
+              className="ds_dropdown ds_dropdown_add_class"
               value=""
-              aria-label="Add class"
-              onChange={(e) => {
-                const v = e.target.value
+              options={classOptions}
+              onChange={(v) => {
                 if (!v) return
                 onChange({ ...row, payTo: [...row.payTo, v] })
               }}
-            >
-              <option value="">+ class…</option>
-              {available.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              ariaLabel="Add class"
+              placeholder="+ class…"
+              useFixedPanel
+            />
           ) : null}
         </div>
       </td>
@@ -308,19 +360,19 @@ function PaymentRowView({
           </div>
         ) : null}
         <div className="ds_cellflex ds_cellflex_spaced">
-          <select
+          <DropdownSelect
+            className="ds_dropdown ds_dropdown_amount_mode"
             value={row.amountMode}
-            onChange={(e) =>
+            options={AMOUNT_MODE_OPTIONS}
+            onChange={(v) =>
               onChange({
                 ...row,
-                amountMode: e.target.value === "input" ? "input" : "calc",
+                amountMode: v === "input" ? "input" : "calc",
               })
             }
-            aria-label="Amount mode"
-          >
-            <option value="calc">Calculated</option>
-            <option value="input">Manual input</option>
-          </select>
+            ariaLabel="Amount mode"
+            useFixedPanel
+          />
           {row.amountMode === "input" ? (
             <>
               <input
@@ -345,11 +397,14 @@ function PaymentRowView({
               />
               <span className="ds_muted">due</span>
             </>
-          ) : (
+          ) : null}
+          {/* Formula preview — re-enable when needed:
+          {row.amountMode !== "input" ? (
             <span className="ds_calc_note">
               = {calcFormulaNote(row, classes)}
             </span>
-          )}
+          ) : null}
+          */}
         </div>
       </td>
       <td className="r">

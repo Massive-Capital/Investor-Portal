@@ -49,7 +49,7 @@ export function buildDealInvestorsExportCsv(
     "Role",
     "Investor class",
     "Status",
-    "Added by",
+    "Sponsor name",
     "Committed",
     "Signed",
     "Funded",

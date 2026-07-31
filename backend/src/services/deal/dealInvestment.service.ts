@@ -384,7 +384,7 @@ function formatFirstLastFromNames(
 
 /**
  * Resolve portal user ids (e.g. `deal_member.added_by`, `deal_lp_investor.added_by`) to a display
- * string: **first + last name** when present, else company / username for users (`formatMemberDisplayFromUser`).
+ * string: **first + last name** when present, else company / username / email for users.
  * IDs not in `users` are resolved from `contact` (same UUID directory) so sponsor-only contact rows still show.
  */
 export async function resolveUserDisplayNamesByIds(
@@ -400,6 +400,7 @@ export async function resolveUserDisplayNamesByIds(
   const found = await db
     .select({
       id: users.id,
+      email: users.email,
       firstName: users.firstName,
       lastName: users.lastName,
       username: users.username,
@@ -414,9 +415,15 @@ export async function resolveUserDisplayNamesByIds(
     const firstLast = formatFirstLastFromNames(u.firstName, u.lastName);
     if (firstLast !== "—") {
       m.set(key, firstLast);
-    } else {
-      m.set(key, formatMemberDisplayFromUser(u));
+      continue;
     }
+    const fromUser = formatMemberDisplayFromUser(u);
+    if (fromUser && fromUser !== "—") {
+      m.set(key, fromUser);
+      continue;
+    }
+    const email = String(u.email ?? "").trim();
+    if (email) m.set(key, email);
   }
   const missingAfterUsers = idList.filter((id) => !m.has(id));
   if (missingAfterUsers.length === 0) return m;
@@ -424,6 +431,7 @@ export async function resolveUserDisplayNamesByIds(
   const contactRows = await db
     .select({
       id: contact.id,
+      email: contact.email,
       firstName: contact.firstName,
       lastName: contact.lastName,
     })
@@ -431,7 +439,13 @@ export async function resolveUserDisplayNamesByIds(
     .where(inArray(contact.id, missingAfterUsers));
   for (const c of contactRows) {
     const key = String(c.id).toLowerCase();
-    m.set(key, formatFirstLastFromNames(c.firstName, c.lastName));
+    const firstLast = formatFirstLastFromNames(c.firstName, c.lastName);
+    if (firstLast !== "—") {
+      m.set(key, firstLast);
+      continue;
+    }
+    const email = String(c.email ?? "").trim();
+    if (email) m.set(key, email);
   }
   return m;
 }
@@ -1190,9 +1204,10 @@ async function resolvePortalUserIdLowerByContactMemberIds(
 }
 
 /**
- * Sum of commitment a **deal member** brought: roster `added_by` equals that member’s portal
- * `users.id` for other investors, **plus** that member’s own commitment (e.g. a sponsor who
- * also has an investment row).
+ * Sum of commitment other investors this **deal member** brought onto the deal
+ * (`added_by` = that member’s portal `users.id`). Own commitment is excluded.
+ *
+ * Includes Lead Sponsor, Admin sponsor, and Co-sponsor rows (same attribution).
  *
  * For contacts in `deal_lp_investor`, the displayed total uses **`committed_amount` only**
  * (Invest Now / LP path). `deal_investment` rows for the same contact are skipped so we do
@@ -1210,10 +1225,30 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
   const portalUserByMemberKey =
     await resolvePortalUserIdLowerByContactMemberIds(memberKeysArr);
 
-  const interestedSponsorIds = new Set<string>();
-  for (const k of memberKeysArr) {
-    const uid = portalUserByMemberKey.get(k);
-    if (uid) interestedSponsorIds.add(uid);
+  // Same id/email matching as sponsor roster checks — covers Co-sponsors stored as CRM contacts.
+  const did = String(dealId ?? "").trim();
+  if (did && memberKeysArr.length > 0) {
+    const res = await pool.query<{ ck: string; uid: string }>(
+      `SELECT lower(trim(dm.contact_member_id)) AS ck, lower(u.id::text) AS uid
+       FROM deal_member dm
+       INNER JOIN users u ON (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+       WHERE dm.deal_id = $1::uuid
+         AND lower(trim(dm.contact_member_id)) = ANY($2::text[])`,
+      [did, memberKeysArr],
+    );
+    for (const row of res.rows) {
+      const ck = String(row.ck ?? "").trim();
+      const uid = String(row.uid ?? "").trim();
+      if (!ck || !uid) continue;
+      if (!portalUserByMemberKey.has(ck)) portalUserByMemberKey.set(ck, uid);
+    }
   }
 
   const addedByByContact = await loadRosterAddedByUserIdByContactKey(dealId);
@@ -1238,6 +1273,7 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
     ...addedByByContact.keys(),
     ...investments.map((inv) => inv.contactId),
     ...lpRows.map((r) => r.contactMemberId),
+    ...memberKeysArr,
   ];
   const rawToCanonical =
     await mapContactIdsToCanonicalCommitmentKeys(canonicalRawIds);
@@ -1254,27 +1290,47 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
     canonicalUsesLpCommittedAmount.add(rawToCanonical.get(rk) ?? `id:${rk}`);
   }
 
+  /** Canonical person keys owned by each sponsor user — exclude from “investors added”. */
+  const ownCanonicalsBySponsorUid = new Map<string, Set<string>>();
+  for (const mk of memberKeysArr) {
+    const uid = portalUserByMemberKey.get(mk);
+    if (!uid) continue;
+    let set = ownCanonicalsBySponsorUid.get(uid);
+    if (!set) {
+      set = new Set();
+      ownCanonicalsBySponsorUid.set(uid, set);
+    }
+    set.add(rawToCanonical.get(mk) ?? `id:${mk}`);
+    set.add(`id:${uid}`);
+  }
+
   const sumBySponsorUserId = new Map<string, number>();
+
+  function addForSponsor(adderUidRaw: string, amount: number, invCanonical: string) {
+    if (!Number.isFinite(amount) || amount === 0) return;
+    const adderUid = String(adderUidRaw).toLowerCase();
+    if (!adderUid) return;
+    const own = ownCanonicalsBySponsorUid.get(adderUid);
+    if (own?.has(invCanonical)) return;
+    sumBySponsorUserId.set(
+      adderUid,
+      (sumBySponsorUserId.get(adderUid) ?? 0) + amount,
+    );
+  }
 
   for (const inv of investments) {
     const invCk = rosterContactKey(inv.contactId);
     const invCanonical = rawToCanonical.get(invCk) ?? `id:${invCk}`;
     if (
-      contactKeyUsesLpCommittedAmount.has(invCk)
-      || canonicalUsesLpCommittedAmount.has(invCanonical)
+      contactKeyUsesLpCommittedAmount.has(invCk) ||
+      canonicalUsesLpCommittedAmount.has(invCanonical)
     ) {
       continue;
     }
     const adderRaw =
       addedByByContact.get(invCk) ?? addedByByCanonical.get(invCanonical);
     if (!adderRaw) continue;
-    const adderUid = String(adderRaw).toLowerCase();
-    if (!interestedSponsorIds.has(adderUid)) continue;
-    const n = rowCommittedNumeric(inv);
-    sumBySponsorUserId.set(
-      adderUid,
-      (sumBySponsorUserId.get(adderUid) ?? 0) + n,
-    );
+    addForSponsor(String(adderRaw), rowCommittedNumeric(inv), invCanonical);
   }
 
   for (const r of lpRows) {
@@ -1282,16 +1338,10 @@ export async function sumCommittedFromInvestorsAddedByMemberContacts(
     const canonical = rawToCanonical.get(rk) ?? `id:${rk}`;
     const adderRaw = r.addedBy ?? addedByByCanonical.get(canonical);
     if (!adderRaw) continue;
-    const adderUid = String(adderRaw).toLowerCase();
-    if (!interestedSponsorIds.has(adderUid)) continue;
     const n = parseFloat(
       String(r.committed_amount ?? "").replace(/[^0-9.-]/g, ""),
     );
-    if (!Number.isFinite(n)) continue;
-    sumBySponsorUserId.set(
-      adderUid,
-      (sumBySponsorUserId.get(adderUid) ?? 0) + n,
-    );
+    addForSponsor(String(adderRaw), n, canonical);
   }
 
   const out = new Map<string, number>();
@@ -1404,12 +1454,12 @@ export async function filterInvestorRowsVisibleToCoSponsor(
 }
 
 /**
- * Adds `addedByDisplayName` from `deal_member.added_by` (wins over LP roster) and
- * `deal_lp_investor.added_by` so the Investors tab can show who added each investor
- * next to committed amounts.
+ * Adds `addedByDisplayName` from `deal_lp_investor.added_by` (wins) and
+ * `deal_member.added_by` so the Investors tab can show who added each investor.
+ * Uses LP roster row id when contact ids differ so LP-only rows still resolve.
  */
 export async function enrichInvestorApiRowsWithAddedBy<
-  T extends { contactId?: string; addedByDisplayName?: string },
+  T extends { id?: string; contactId?: string; addedByDisplayName?: string },
 >(
   dealId: string,
   rows: T[],
@@ -1430,8 +1480,8 @@ export async function enrichInvestorApiRowsWithAddedBy<
         addedByIsCoSponsorOnDeal?: boolean;
       }
     >;
-  const rosterAddedByByContactKey =
-    await loadRosterAddedByUserIdByContactKey(dealId);
+  const { byContactKey: rosterAddedByByContactKey, byLpRowId } =
+    await loadRosterAddedByMaps(dealId);
   const idSet = new Set<string>();
   for (const rk of rosterAddedByByContactKey.keys()) {
     if (rk) idSet.add(rk);
@@ -1446,9 +1496,10 @@ export async function enrichInvestorApiRowsWithAddedBy<
   const uidsNeeded = new Set<string>();
   const uniqueAdderIds = new Map<string, string>();
   for (const row of rows) {
-    const uid = resolveRosterAddedByUserId(
-      row.contactId,
+    const uid = resolveInvestorRowAddedByUserId(
+      row,
       rosterAddedByByContactKey,
+      byLpRowId,
       rawToCanonical,
     );
     if (uid) {
@@ -1472,13 +1523,18 @@ export async function enrichInvestorApiRowsWithAddedBy<
     }),
   );
   return rows.map((row) => {
-    const uid = resolveRosterAddedByUserId(
-      row.contactId,
+    const uid = resolveInvestorRowAddedByUserId(
+      row,
       rosterAddedByByContactKey,
+      byLpRowId,
       rawToCanonical,
     );
     const nk = uid ? String(uid).toLowerCase() : "";
-    const display = nk && names.has(nk) ? names.get(nk)! : undefined;
+    const rawName = nk && names.has(nk) ? names.get(nk)! : undefined;
+    const display =
+      rawName && String(rawName).trim() && String(rawName).trim() !== "—"
+        ? String(rawName).trim()
+        : undefined;
     const patch: {
       addedByUserId?: string;
       addedByDisplayName?: string;

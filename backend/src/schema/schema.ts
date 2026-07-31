@@ -104,6 +104,12 @@ export {
   type UserSavedAddressRow,
 } from "./investing.schema/userProfileBook.schema.js";
 export {
+  investorCheckoutPayments,
+  investorDistributionPayouts,
+  type InvestorCheckoutPaymentRow,
+  type InvestorDistributionPayoutRow,
+} from "./stripeInvestorPayments.schema.js";
+export {
   socAuthAuditLogs,
   type SocAuthAuditLogInsert,
   type SocAuthAuditLogRow,

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  deleteDealPriorDistribution,
   getDealDistributionSetup,
   getDealMyDistributionDetail,
   getDealMyDistributions,
@@ -7,6 +8,7 @@ import {
   patchDealDistributionInvestorPercent,
   postDealDistributionComplete,
   putDealDistributionSetup,
+  putDealPriorDistributions,
 } from "../controllers/distributionSetup/distributionSetup.controller.js";
 
 const router = Router();
@@ -26,6 +28,14 @@ router.post(
 router.patch(
   "/deals/:dealId/distributions/:distributionId/investor-percent",
   patchDealDistributionInvestorPercent,
+);
+router.delete(
+  "/deals/:dealId/distributions/:distributionId",
+  deleteDealPriorDistribution,
+);
+router.put(
+  "/deals/:dealId/distribution-setup/prior-distributions",
+  putDealPriorDistributions,
 );
 
 export default router;

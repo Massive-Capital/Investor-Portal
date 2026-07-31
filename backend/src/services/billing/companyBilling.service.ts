@@ -332,7 +332,6 @@ export async function createCompanyCheckoutSession(params: {
       "trialing",
       "past_due",
       "unpaid",
-      "incomplete",
     ]);
     if (
       company.stripeSubscriptionId?.trim() &&
@@ -351,9 +350,28 @@ export async function createCompanyCheckoutSession(params: {
       actorUserId: params.actorUserId,
     });
     const stripe = getStripeClient();
+
+    // Clear a prior incomplete Payment Element attempt so Checkout can proceed.
+    if (
+      company.stripeSubscriptionId?.trim() &&
+      existingStatus === "incomplete"
+    ) {
+      try {
+        await stripe.subscriptions.cancel(company.stripeSubscriptionId.trim());
+      } catch (cancelErr) {
+        console.warn(
+          "createCompanyCheckoutSession: cancel incomplete sub:",
+          cancelErr,
+        );
+      }
+      await clearCompanySubscription(cid, { keepCustomer: true });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
+      // Card + ACH (US bank account). Wallet methods follow Dashboard settings.
+      payment_method_types: ["card", "us_bank_account"],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${frontend}/settings?billing=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontend}/settings?billing=cancel`,
@@ -370,6 +388,13 @@ export async function createCompanyCheckoutSession(params: {
           planId: resolvedPlan,
           billingCycle: cycle,
           seatBand: resolvedSeat,
+        },
+      },
+      payment_method_options: {
+        us_bank_account: {
+          financial_connections: {
+            permissions: ["payment_method"],
+          },
         },
       },
       allow_promotion_codes: true,
@@ -399,6 +424,509 @@ export async function createCompanyCheckoutSession(params: {
     }
     const msg =
       err instanceof Error ? err.message : "Could not create checkout session";
+    return { ok: false, status: 502, message: msg };
+  }
+}
+
+/** Shared plan/seat/cycle validation used by Checkout + Payment Element flows. */
+function resolveBillingSelection(params: {
+  planId: string;
+  seatBand?: string;
+  billingCycle: string;
+}):
+  | {
+      ok: true;
+      planId: StripeBillingPlanId;
+      seatBand: StripeBillingSeatBand;
+      cycle: StripeBillingCycle;
+      priceId: string;
+    }
+  | { ok: false; status: number; message: string } {
+  const cycle: StripeBillingCycle =
+    params.billingCycle === "annually" ||
+    params.billingCycle === "annual" ||
+    params.billingCycle === "yearly"
+      ? "annual"
+      : params.billingCycle === "monthly"
+        ? "monthly"
+        : ("" as StripeBillingCycle);
+
+  if (cycle !== "monthly" && cycle !== "annual") {
+    return {
+      ok: false,
+      status: 400,
+      message: "billingCycle must be monthly or annual.",
+    };
+  }
+
+  const rawPlan = String(params.planId ?? "").trim().toLowerCase();
+  if (rawPlan === "custom") {
+    return {
+      ok: false,
+      status: 400,
+      message:
+        "For deals over $50M or 25+ company users, contact sales for pricing.",
+    };
+  }
+
+  const resolvedPlan = normalizeBillingPlanId(rawPlan);
+  if (!resolvedPlan) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'planId must be "starter", "running", or "growth".',
+    };
+  }
+
+  const resolvedSeat =
+    normalizeBillingSeatBand(params.seatBand) ??
+    normalizeBillingSeatBand(rawPlan.includes("_") ? rawPlan.split("_")[1] : "") ??
+    "5";
+
+  const priceId = resolveStripePriceId(resolvedPlan, cycle, resolvedSeat);
+  if (!priceId) {
+    const envName = priceEnvNameFor(resolvedPlan, cycle, resolvedSeat);
+    return {
+      ok: false,
+      status: 503,
+      message: `Stripe Price is not configured for ${resolvedPlan} / ${resolvedSeat} seats (${cycle}). Set ${envName}=price_... in backend/.env.local.`,
+    };
+  }
+
+  return {
+    ok: true,
+    planId: resolvedPlan,
+    seatBand: resolvedSeat,
+    cycle,
+    priceId,
+  };
+}
+
+type InvoiceWithSecrets = Stripe.Invoice & {
+  confirmation_secret?: { client_secret?: string | null } | null;
+  payment_intent?: string | Stripe.PaymentIntent | null;
+};
+
+/**
+ * Resolve Payment Element client_secret from an incomplete subscription invoice.
+ * Supports modern confirmation_secret and legacy payment_intent expansion.
+ */
+async function clientSecretFromSubscriptionInvoice(
+  stripe: Stripe,
+  subscription: Stripe.Subscription,
+): Promise<{
+  clientSecret: string;
+  paymentIntentId: string | null;
+  invoiceId: string | null;
+} | null> {
+  let invoiceRef = subscription.latest_invoice;
+  let invoice: InvoiceWithSecrets | null = null;
+
+  if (typeof invoiceRef === "string" && invoiceRef.trim()) {
+    invoice = (await stripe.invoices.retrieve(invoiceRef.trim(), {
+      expand: ["confirmation_secret", "payment_intent"],
+    })) as InvoiceWithSecrets;
+  } else if (invoiceRef && typeof invoiceRef === "object") {
+    invoice = invoiceRef as InvoiceWithSecrets;
+    // Re-fetch if secrets were not expanded on create.
+    if (
+      !invoice.confirmation_secret?.client_secret &&
+      (typeof invoice.payment_intent === "string" || !invoice.payment_intent)
+    ) {
+      invoice = (await stripe.invoices.retrieve(invoice.id, {
+        expand: ["confirmation_secret", "payment_intent"],
+      })) as InvoiceWithSecrets;
+    }
+  }
+
+  if (!invoice) return null;
+
+  const fromConfirmation = invoice.confirmation_secret?.client_secret?.trim();
+  if (fromConfirmation) {
+    const piRef = invoice.payment_intent;
+    const paymentIntentId =
+      typeof piRef === "string"
+        ? piRef
+        : piRef && typeof piRef === "object"
+          ? piRef.id
+          : null;
+    return {
+      clientSecret: fromConfirmation,
+      paymentIntentId,
+      invoiceId: invoice.id,
+    };
+  }
+
+  const piRef = invoice.payment_intent;
+  if (piRef && typeof piRef === "object" && piRef.client_secret) {
+    return {
+      clientSecret: piRef.client_secret,
+      paymentIntentId: piRef.id,
+      invoiceId: invoice.id,
+    };
+  }
+  if (typeof piRef === "string" && piRef.trim()) {
+    const pi = await stripe.paymentIntents.retrieve(piRef.trim());
+    if (pi.client_secret) {
+      return {
+        clientSecret: pi.client_secret,
+        paymentIntentId: pi.id,
+        invoiceId: invoice.id,
+      };
+    }
+  }
+
+  return null;
+}
+
+export type PaymentElementSubscriptionResult =
+  | {
+      ok: true;
+      clientSecret: string;
+      subscriptionId: string;
+      customerId: string;
+      publishableKey: string | null;
+      paymentIntentId: string | null;
+      invoiceId: string | null;
+      planId: StripeBillingPlanId;
+      seatBand: StripeBillingSeatBand;
+      billingCycle: StripeBillingCycle;
+      priceId: string;
+    }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Option 2 — Custom Payment Element (card + ACH).
+ * Creates an incomplete subscription and returns the invoice PaymentIntent client_secret.
+ */
+export async function createCompanySubscriptionPaymentElement(params: {
+  companyId: string;
+  actorUserId: string;
+  planId: string;
+  seatBand?: string;
+  billingCycle: string;
+}): Promise<PaymentElementSubscriptionResult> {
+  const cfg = getStripeConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      status: 503,
+      message: "Stripe is not configured on the server.",
+    };
+  }
+
+  const selection = resolveBillingSelection(params);
+  if (!selection.ok) return selection;
+
+  const cid = normalizeCompanyId(params.companyId);
+  if (!cid) {
+    return { ok: false, status: 400, message: "Invalid company id" };
+  }
+
+  try {
+    const [company] = await db
+      .select({
+        stripeSubscriptionId: companies.stripeSubscriptionId,
+        stripeSubscriptionStatus: companies.stripeSubscriptionStatus,
+      })
+      .from(companies)
+      .where(eq(companies.id, cid))
+      .limit(1);
+    if (!company) {
+      return { ok: false, status: 404, message: "Company not found" };
+    }
+
+    const existingStatus = String(company.stripeSubscriptionStatus ?? "none");
+    const blockingStatuses = new Set([
+      "active",
+      "trialing",
+      "past_due",
+      "unpaid",
+    ]);
+    if (
+      company.stripeSubscriptionId?.trim() &&
+      blockingStatuses.has(existingStatus)
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "This company already has a subscription. Use Manage billing to update payment method or plan.",
+      };
+    }
+
+    const stripe = getStripeClient();
+
+    // Replace a prior incomplete subscription so the customer can retry cleanly.
+    if (
+      company.stripeSubscriptionId?.trim() &&
+      existingStatus === "incomplete"
+    ) {
+      try {
+        await stripe.subscriptions.cancel(company.stripeSubscriptionId.trim());
+      } catch (cancelErr) {
+        console.warn(
+          "createCompanySubscriptionPaymentElement: cancel incomplete sub:",
+          cancelErr,
+        );
+      }
+      await clearCompanySubscription(cid, { keepCustomer: true });
+    }
+
+    const customerId = await ensureStripeCustomer({
+      companyId: cid,
+      actorUserId: params.actorUserId,
+    });
+
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{ price: selection.priceId, quantity: 1 }],
+      payment_behavior: "default_incomplete",
+      payment_settings: {
+        save_default_payment_method: "on_subscription",
+        payment_method_types: ["card", "us_bank_account"],
+      },
+      expand: [
+        "latest_invoice.confirmation_secret",
+        "latest_invoice.payment_intent",
+      ],
+      metadata: {
+        companyId: cid,
+        planId: selection.planId,
+        billingCycle: selection.cycle,
+        seatBand: selection.seatBand,
+        checkoutMode: "payment_element",
+      },
+    });
+
+    const secrets = await clientSecretFromSubscriptionInvoice(
+      stripe,
+      subscription,
+    );
+    if (!secrets?.clientSecret) {
+      try {
+        await stripe.subscriptions.cancel(subscription.id);
+      } catch {
+        /* ignore */
+      }
+      return {
+        ok: false,
+        status: 502,
+        message:
+          "Stripe did not return a Payment Element client secret for this subscription invoice.",
+      };
+    }
+
+    await applySubscriptionToCompany(cid, subscription);
+
+    return {
+      ok: true,
+      clientSecret: secrets.clientSecret,
+      subscriptionId: subscription.id,
+      customerId,
+      publishableKey: cfg.publishableKey,
+      paymentIntentId: secrets.paymentIntentId,
+      invoiceId: secrets.invoiceId,
+      planId: selection.planId,
+      seatBand: selection.seatBand,
+      billingCycle: selection.cycle,
+      priceId: selection.priceId,
+    };
+  } catch (err) {
+    console.error("createCompanySubscriptionPaymentElement:", err);
+    if (err instanceof Stripe.errors.StripeInvalidRequestError) {
+      return {
+        ok: false,
+        status: 502,
+        message: err.message || "Stripe rejected the subscription request.",
+      };
+    }
+    const msg =
+      err instanceof Error
+        ? err.message
+        : "Could not create Payment Element subscription";
+    return { ok: false, status: 502, message: msg };
+  }
+}
+
+export type SetupIntentResult =
+  | {
+      ok: true;
+      clientSecret: string;
+      setupIntentId: string;
+      customerId: string;
+      publishableKey: string | null;
+    }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Save card / ACH for future off-session charges (Manage billing → Add method).
+ */
+export async function createCompanySetupIntent(params: {
+  companyId: string;
+  actorUserId: string;
+}): Promise<SetupIntentResult> {
+  const cfg = getStripeConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      status: 503,
+      message: "Stripe is not configured on the server.",
+    };
+  }
+
+  const cid = normalizeCompanyId(params.companyId);
+  if (!cid) {
+    return { ok: false, status: 400, message: "Invalid company id" };
+  }
+
+  try {
+    const customerId = await ensureStripeCustomer({
+      companyId: cid,
+      actorUserId: params.actorUserId,
+    });
+    const stripe = getStripeClient();
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ["card", "us_bank_account"],
+      usage: "off_session",
+      payment_method_options: {
+        us_bank_account: {
+          financial_connections: {
+            permissions: ["payment_method"],
+          },
+        },
+      },
+      metadata: {
+        companyId: cid,
+      },
+    });
+
+    if (!setupIntent.client_secret) {
+      return {
+        ok: false,
+        status: 502,
+        message: "Stripe did not return a SetupIntent client secret.",
+      };
+    }
+
+    return {
+      ok: true,
+      clientSecret: setupIntent.client_secret,
+      setupIntentId: setupIntent.id,
+      customerId,
+      publishableKey: cfg.publishableKey,
+    };
+  } catch (err) {
+    console.error("createCompanySetupIntent:", err);
+    const msg =
+      err instanceof Error ? err.message : "Could not create SetupIntent";
+    return { ok: false, status: 502, message: msg };
+  }
+}
+
+export type SyncSubscriptionPaymentResult =
+  | { ok: true; status: CompanyBillingStatus }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Post-confirm sync after Payment Element (return_url or same-page success).
+ * Body may include subscriptionId and/or paymentIntentId.
+ */
+export async function syncCompanySubscriptionPayment(params: {
+  companyId: string;
+  subscriptionId?: string;
+  paymentIntentId?: string;
+}): Promise<SyncSubscriptionPaymentResult> {
+  const cfg = getStripeConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      status: 503,
+      message: "Stripe is not configured on the server.",
+    };
+  }
+
+  const cid = normalizeCompanyId(params.companyId);
+  if (!cid) {
+    return { ok: false, status: 400, message: "Invalid company id" };
+  }
+
+  const stripe = getStripeClient();
+  let subscriptionId = String(params.subscriptionId ?? "").trim();
+  const paymentIntentId = String(params.paymentIntentId ?? "").trim();
+
+  try {
+    if (!subscriptionId && paymentIntentId) {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const invoiceId = stripeIdRef(
+        (pi as Stripe.PaymentIntent & { invoice?: string | { id?: string } | null })
+          .invoice,
+      );
+      if (invoiceId) {
+        const inv = await stripe.invoices.retrieve(invoiceId);
+        subscriptionId = subscriptionIdFromInvoice(inv) ?? "";
+      }
+    }
+
+    if (!subscriptionId) {
+      const [row] = await db
+        .select({ stripeSubscriptionId: companies.stripeSubscriptionId })
+        .from(companies)
+        .where(eq(companies.id, cid))
+        .limit(1);
+      subscriptionId = row?.stripeSubscriptionId?.trim() ?? "";
+    }
+
+    if (!subscriptionId) {
+      return {
+        ok: false,
+        status: 400,
+        message: "subscriptionId or paymentIntentId is required.",
+      };
+    }
+
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const metaCompany = normalizeCompanyId(sub.metadata?.companyId ?? null);
+    if (metaCompany && metaCompany !== cid) {
+      return {
+        ok: false,
+        status: 403,
+        message: "Subscription does not belong to this company.",
+      };
+    }
+
+    await applySubscriptionToCompany(cid, sub);
+    const customerId =
+      typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+    try {
+      await persistInvoicesForSubscription({
+        companyId: cid,
+        subscriptionId: sub.id,
+        customerId,
+      });
+    } catch (invErr) {
+      console.warn("syncCompanySubscriptionPayment invoices:", invErr);
+    }
+    if (customerId) {
+      try {
+        await syncCompanyPaymentMethodsFromStripe(cid);
+      } catch (pmErr) {
+        console.warn("syncCompanySubscriptionPayment payment methods:", pmErr);
+      }
+    }
+
+    const status = await getCompanyBillingStatus(cid);
+    if (!status) {
+      return { ok: false, status: 404, message: "Company not found" };
+    }
+    return { ok: true, status };
+  } catch (err) {
+    console.error("syncCompanySubscriptionPayment:", err);
+    const msg =
+      err instanceof Error
+        ? err.message
+        : "Could not sync subscription payment";
     return { ok: false, status: 502, message: msg };
   }
 }
@@ -1638,6 +2166,134 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         });
       } catch (err) {
         console.warn("[stripe webhook] customer.updated default PM sync:", err);
+      }
+      return;
+    }
+    case "payment_intent.succeeded":
+    case "payment_intent.processing":
+    case "payment_intent.payment_failed": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const customerId = stripeIdRef(pi.customer);
+      let companyId = customerId
+        ? await findCompanyIdForStripeCustomer(customerId)
+        : null;
+      const metaCompany = normalizeCompanyId(
+        String(pi.metadata?.companyId ?? "").trim(),
+      );
+      if (metaCompany) companyId = metaCompany;
+
+      const invoiceId = stripeIdRef(
+        (pi as Stripe.PaymentIntent & { invoice?: string | { id?: string } | null })
+          .invoice,
+      );
+
+      if (invoiceId) {
+        try {
+          const stripe = getStripeClient();
+          const inv = await stripe.invoices.retrieve(invoiceId);
+          const subId = subscriptionIdFromInvoice(inv);
+          if (!companyId && customerId) {
+            companyId = await findCompanyIdForStripeCustomer(customerId);
+          }
+          if (!companyId && subId) {
+            companyId = await findCompanyIdForSubscription(subId);
+          }
+          if (companyId && subId) {
+            const sub = await stripe.subscriptions.retrieve(subId);
+            await applySubscriptionToCompany(companyId, sub);
+          }
+          if (companyId) {
+            if (event.type === "payment_intent.succeeded") {
+              await upsertBillingInvoiceFromStripe({
+                companyId,
+                invoice: inv,
+                markPaid: true,
+              });
+              await db
+                .update(companies)
+                .set({
+                  stripeLastPaymentError: null,
+                  stripeLastPaymentFailedAt: null,
+                  updatedAt: new Date(),
+                })
+                .where(eq(companies.id, companyId));
+            } else if (event.type === "payment_intent.processing") {
+              // ACH / bank transfers settle asynchronously.
+              await db
+                .update(companies)
+                .set({
+                  stripeLastPaymentError: null,
+                  updatedAt: new Date(),
+                })
+                .where(eq(companies.id, companyId));
+            } else {
+              const failMsg =
+                pi.last_payment_error?.message?.trim() ||
+                "Payment failed. Try another card or bank account.";
+              await upsertBillingInvoiceFromStripe({
+                companyId,
+                invoice: inv,
+                markFailed: true,
+                paymentFailureMessage: failMsg,
+              });
+              await db
+                .update(companies)
+                .set({
+                  stripeLastPaymentError: failMsg,
+                  stripeLastPaymentFailedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(companies.id, companyId));
+            }
+          }
+        } catch (err) {
+          console.warn(`[stripe webhook] ${event.type} invoice sync:`, err);
+        }
+      } else if (companyId && event.type === "payment_intent.payment_failed") {
+        const failMsg =
+          pi.last_payment_error?.message?.trim() ||
+          "Payment failed. Try another card or bank account.";
+        await db
+          .update(companies)
+          .set({
+            stripeLastPaymentError: failMsg,
+            stripeLastPaymentFailedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(companies.id, companyId));
+      }
+
+      if (companyId && customerId && event.type === "payment_intent.succeeded") {
+        try {
+          await syncCompanyPaymentMethodsFromStripe(companyId);
+        } catch (pmErr) {
+          console.warn(
+            "[stripe webhook] payment_intent.succeeded PM sync:",
+            pmErr,
+          );
+        }
+      }
+      return;
+    }
+    case "setup_intent.succeeded": {
+      const si = event.data.object as Stripe.SetupIntent;
+      const customerId = stripeIdRef(si.customer);
+      const companyId =
+        normalizeCompanyId(String(si.metadata?.companyId ?? "").trim()) ||
+        (customerId ? await findCompanyIdForStripeCustomer(customerId) : null);
+      if (!companyId || !customerId) return;
+      try {
+        const stripe = getStripeClient();
+        await syncCompanyPaymentMethodsFromStripe(companyId);
+        const pmId = stripeIdRef(si.payment_method);
+        if (pmId) {
+          await stripe.customers.update(customerId, {
+            invoice_settings: { default_payment_method: pmId },
+          });
+          await syncDefaultPaymentMethodFlags({ companyId, customerId });
+        }
+      } catch (err) {
+        console.warn("[stripe webhook] setup_intent.succeeded:", err);
       }
       return;
     }

@@ -113,7 +113,9 @@ function normalizeCommittedAmountStored(
 }
 
 const INVEST_NOW_FUNDING_METHODS = new Set([
+    "stripe_checkout",
     "wire_transfer",
+    // Legacy saved value; new ACH/card contributions use Stripe Checkout.
     "ach",
     "check",
 ]);

@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -8,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { DataTablePagination } from "../DataTablePagination/DataTablePagination";
+import { attachHorizontalScrollBehavior } from "../../utils/horizontalScrollRegion";
 import "./data-table.css";
 
 export type DataTableColumn<T> = {
@@ -180,6 +182,16 @@ function TableScrollRegion({
       window.removeEventListener("resize", measure);
     };
   }, [measureKey]);
+
+  /** Horizontal gestures / Shift+wheel / drag pan — never steals vertical page scroll. */
+  useEffect(() => {
+    const scroller = ref.current;
+    if (!scroller) return;
+    return attachHorizontalScrollBehavior(scroller, {
+      hoverVerticalToHorizontal: false,
+      edgeScroll: false,
+    });
+  }, [measureKey, overflowX, forceHorizontalScroll]);
 
   const regionClass = [
     className,
@@ -465,7 +477,11 @@ export function DataTable<T>({
                   : "data_table_row_even"
                 : "";
               const extraClass = getRowClassName?.(row, i);
-              const rowClass = [stripeClass, extraClass]
+              const rowClass = [
+                stripeClass,
+                extraClass,
+                onBodyRowClick ? "data_table_row_clickable" : "",
+              ]
                 .filter(Boolean)
                 .join(" ") || undefined;
               function handleRowClick(e: MouseEvent<HTMLTableRowElement>) {

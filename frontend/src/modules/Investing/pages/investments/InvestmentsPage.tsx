@@ -6,7 +6,7 @@ import {
   Search,
   TrendingUp,
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
@@ -20,6 +20,8 @@ import {
   type DataTableColumn,
 } from "@/common/components/data-table/DataTable"
 import { TableCompactAmountCell } from "@/common/components/card-compact-amount/CardCompactAmount"
+import { toast } from "@/common/components/Toast"
+import { syncInvestorInvestmentCheckout } from "@/modules/Investing/api/stripeInvestorPaymentsApi"
 // import { DealsListPage } from "@/modules/Syndication/Deals/DealsListPage"
 import { DealRowActions } from "@/modules/Syndication/Deals/components/DealRowActions"
 import {
@@ -301,6 +303,62 @@ export default function InvestmentsPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const checkoutReturnHandledRef = useRef(false)
+
+  useEffect(() => {
+    if (checkoutReturnHandledRef.current) return
+    const result = searchParams.get("investment_payment")
+    if (!result) return
+    checkoutReturnHandledRef.current = true
+    const sessionId = searchParams.get("session_id")?.trim() ?? ""
+    const clearReturnParams = () => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete("investment_payment")
+          next.delete("session_id")
+          return next
+        },
+        { replace: true },
+      )
+    }
+    if (result === "cancel") {
+      toast.warning(
+        "Payment canceled",
+        "Your commitment is saved; no payment was submitted.",
+      )
+      clearReturnParams()
+      return
+    }
+    if (result !== "success" || !sessionId) {
+      clearReturnParams()
+      return
+    }
+    void (async () => {
+      try {
+        const synced = await syncInvestorInvestmentCheckout(sessionId)
+        if (synced.paymentStatus === "succeeded") {
+          toast.success(
+            "Investment funded",
+            "Stripe confirmed your investment payment.",
+          )
+        } else {
+          toast.warning(
+            "Payment processing",
+            "ACH payments can take several business days. We’ll update the investment after Stripe confirms settlement.",
+          )
+        }
+        window.dispatchEvent(new Event(DEALS_LIST_REFETCH_EVENT))
+      } catch (err) {
+        toast.error(
+          "Could not verify payment",
+          err instanceof Error ? err.message : "The webhook will retry shortly.",
+        )
+      } finally {
+        clearReturnParams()
+      }
+    })()
+  }, [searchParams, setSearchParams])
 
   const setActiveTab = useCallback(
     (tab: InvestmentsPageTab) => {

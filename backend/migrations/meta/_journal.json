@@ -484,6 +484,13 @@
       "when": 1894000000000,
       "tag": "0069_deal_lp_investor_class_percents",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1894050000000,
+      "tag": "0070_investor_stripe_payments",
+      "breakpoints": true
     }
   ]
 }

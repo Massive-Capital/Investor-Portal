@@ -51,11 +51,17 @@ export interface PriorDistributionRecord {
   date: string;
   /** operating | capital — waterfall source when known. */
   source?: string;
-  /** Optional display name / memo for the run. */
+  /** Distribution name (portal label — not memo). */
   name?: string;
   notes?: string;
   /** Period used when the run was completed. */
   period?: "monthly" | "quarterly" | "annual";
+  periodStart?: string;
+  periodEnd?: string;
+  paymentDate?: string;
+  distributionType?: string;
+  deductsFrom?: string;
+  visible?: boolean;
   /** Snapshot of investor payments at complete time. */
   investorPayments?: InvestorDistributionPayment[];
 }
@@ -64,6 +70,16 @@ export interface DistributionSetupBundle {
   dealId: string;
   dealName: string;
   targetRaise: string;
+  /** Optional display name for this deal’s distribution setup configuration. */
+  setupName?: string;
+  /**
+   * Preferred day-count mode persisted with the setup.
+   * period_window = clip to period (Woodland).
+   * from_accrual_start = accrual start → period end (Wildflower).
+   */
+  dayCountMode?: "period_window" | "from_accrual_start";
+  /** Deal-level accrual start YYYY-MM-DD (Wildflower A1 = close / first funded). */
+  defaultAccrualStartIso?: string;
   waterfalls: DistributionWaterfalls;
   /** Past distributions from the backend — used by the simulator / IRR hurdles. */
   priorDistributions: PriorDistributionRecord[];
@@ -98,6 +114,9 @@ export interface DistributionSetupBundle {
 
 export interface DistributionSetupSaveInput {
   waterfalls: DistributionWaterfalls;
+  setupName?: string;
+  dayCountMode?: "period_window" | "from_accrual_start";
+  defaultAccrualStartIso?: string;
 }
 
 export const KIND_LABELS: Record<DistributionWfKind, string> = {

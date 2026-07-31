@@ -50,8 +50,14 @@
   background-clip: padding-box;
 }
 
-.data_table_scroll_region.data_table_scroll_region--overflow-x {
-  scrollbar-gutter: stable;
+.data_table_scroll_region.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.data_table_scroll_region.is-panning * {
+  cursor: grabbing;
+  user-select: none;
 }
 
 /* Empty members tables: no horizontal scroll track when there is nothing to scroll. */
@@ -312,6 +318,10 @@
   border-bottom: 1px solid var(--portal-table-border, #e2e8f0);
   vertical-align: top;
   color: var(--portal-table-body-text, var(--portal-text));
+}
+
+.data_table tbody tr.data_table_row_clickable {
+  cursor: pointer;
 }
 
 .data_table th {

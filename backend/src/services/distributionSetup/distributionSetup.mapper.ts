@@ -125,6 +125,26 @@ export function parsePriorDistributionsJson(
     const investorPayments = normalizeInvestorPaymentLines(
       o.investorPayments ?? o.investor_payments,
     );
+    const periodStart = isoDateOnly(
+      str(o.periodStart ?? o.period_start),
+    );
+    const periodEnd = isoDateOnly(str(o.periodEnd ?? o.period_end));
+    const paymentDate = isoDateOnly(
+      str(o.paymentDate ?? o.payment_date),
+    );
+    const distributionType = str(
+      o.distributionType ?? o.distribution_type ?? o.type,
+    );
+    const deductsFrom = str(o.deductsFrom ?? o.deducts_from);
+    const visibleRaw = o.visible ?? o.isVisible ?? o.is_visible;
+    const visible =
+      visibleRaw === false ||
+      visibleRaw === 0 ||
+      String(visibleRaw).toLowerCase() === "false"
+        ? false
+        : visibleRaw == null
+          ? undefined
+          : true;
     out.push({
       id: str(o.id) || `dist_${date}_${i + 1}`,
       amount,
@@ -133,6 +153,12 @@ export function parsePriorDistributionsJson(
       ...(str(o.name) ? { name: str(o.name) } : {}),
       ...(str(o.notes ?? o.note) ? { notes: str(o.notes ?? o.note) } : {}),
       ...(period ? { period } : {}),
+      ...(periodStart ? { periodStart } : {}),
+      ...(periodEnd ? { periodEnd } : {}),
+      ...(paymentDate ? { paymentDate } : {}),
+      ...(distributionType ? { distributionType } : {}),
+      ...(deductsFrom ? { deductsFrom } : {}),
+      ...(visible != null ? { visible } : {}),
       ...(investorPayments.length ? { investorPayments } : {}),
     });
   }
@@ -142,12 +168,21 @@ export function parsePriorDistributionsJson(
 export function parseDistributionSetupDocument(raw: string): {
   waterfalls: DistributionWaterfalls;
   priorDistributions: PriorDistributionRecord[];
+  setupName: string;
+  dayCountMode: "period_window" | "from_accrual_start";
+  defaultAccrualStartIso: string;
 } {
   const o = parseJsonObject(raw);
   const wf = asRecord(o.waterfalls ?? o);
   const defaults = emptyWaterfalls();
   const operating = parseRows(wf.operating);
   const capital = parseRows(wf.capital ?? wf.capital_event);
+  const dayRaw = str(o.dayCountMode ?? o.day_count_mode).toLowerCase();
+  const dayCountMode =
+    dayRaw === "from_accrual_start" ? "from_accrual_start" : "period_window";
+  const accrualRaw = str(
+    o.defaultAccrualStartIso ?? o.default_accrual_start_iso,
+  ).slice(0, 10);
   return {
     waterfalls: {
       operating: operating.length > 0 ? operating : defaults.operating,
@@ -156,6 +191,11 @@ export function parseDistributionSetupDocument(raw: string): {
     priorDistributions: parsePriorDistributionsJson(
       o.priorDistributions ?? o.prior_distributions,
     ),
+    setupName: str(o.setupName ?? o.setup_name),
+    dayCountMode,
+    defaultAccrualStartIso: /^\d{4}-\d{2}-\d{2}$/.test(accrualRaw)
+      ? accrualRaw
+      : "",
   };
 }
 
@@ -167,6 +207,11 @@ export function parseDistributionSetupJson(raw: string): DistributionWaterfalls 
 export function serializeDistributionSetupJson(
   waterfalls: DistributionWaterfalls,
   priorDistributions: PriorDistributionRecord[] = [],
+  setupName = "",
+  options?: {
+    dayCountMode?: "period_window" | "from_accrual_start";
+    defaultAccrualStartIso?: string;
+  },
 ): string {
   const mapRow = (r: DistributionPaymentRow) => ({
     id: r.id,
@@ -177,7 +222,19 @@ export function serializeDistributionSetupJson(
     inputAmount: numStr(r.inputAmount, "0"),
     catchup: { pct: numStr(r.catchupPct, "20") },
   });
+  const dayCountMode =
+    options?.dayCountMode === "from_accrual_start"
+      ? "from_accrual_start"
+      : options?.dayCountMode === "period_window"
+        ? "period_window"
+        : undefined;
+  const accrual = str(options?.defaultAccrualStartIso).slice(0, 10);
   return JSON.stringify({
+    ...(str(setupName) ? { setupName: str(setupName) } : {}),
+    ...(dayCountMode ? { dayCountMode } : {}),
+    ...( /^\d{4}-\d{2}-\d{2}$/.test(accrual)
+      ? { defaultAccrualStartIso: accrual }
+      : {}),
     waterfalls: {
       operating: (waterfalls.operating ?? []).map(mapRow),
       capital: (waterfalls.capital ?? []).map(mapRow),
@@ -194,6 +251,20 @@ export function serializeDistributionSetupJson(
       p.period === "annual"
         ? { period: p.period }
         : {}),
+      ...(isoDateOnly(str(p.periodStart))
+        ? { periodStart: isoDateOnly(str(p.periodStart)) }
+        : {}),
+      ...(isoDateOnly(str(p.periodEnd))
+        ? { periodEnd: isoDateOnly(str(p.periodEnd)) }
+        : {}),
+      ...(isoDateOnly(str(p.paymentDate))
+        ? { paymentDate: isoDateOnly(str(p.paymentDate)) }
+        : {}),
+      ...(str(p.distributionType)
+        ? { distributionType: str(p.distributionType) }
+        : {}),
+      ...(str(p.deductsFrom) ? { deductsFrom: str(p.deductsFrom) } : {}),
+      ...(p.visible === false ? { visible: false } : {}),
       ...((p.investorPayments?.length ?? 0) > 0
         ? {
             investorPayments: serializeInvestorPaymentLines(

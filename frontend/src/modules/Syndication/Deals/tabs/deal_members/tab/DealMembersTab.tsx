@@ -591,8 +591,9 @@ export function DealMembersTab({
               content={
                 <p className="deal_inv_class_tooltip_p">
                   Total subscription commitment (plus additional contribution lines)
-                  recorded on this deal for other roster contacts this member added
-                  to the deal. Your own commitment is not included. Shown in USD.
+                  recorded on this deal for other investors this Lead Sponsor, Admin
+                  sponsor, or Co-sponsor added. Their own commitment is not included.
+                  Shown in USD.
                 </p>
               }
               placement="bottom"
@@ -995,8 +996,11 @@ export function DealMembersTab({
                 investorRowShowsDraftBadge(r) ? "deal_inv_row_draft" : undefined
               }
               onBodyRowClick={(r) => {
-                if (r.id !== ADD_MEMBER_DRAFT_ROW_ID) return
-                onEditMember(r)
+                if (r.id === ADD_MEMBER_DRAFT_ROW_ID) {
+                  onEditMember(r)
+                  return
+                }
+                onViewMember(r)
               }}
               emptyLabel="No deal members yet. Add a member or record an investment on the Investors tab."
               pagination={{
