@@ -33,6 +33,7 @@ interface ClassSetupTableProps {
   promoteShares: Record<string, string[]>
   promoteStageLabels: string[]
   canSaveSection: (sectionType: ClassSetupType) => boolean
+  isSectionDirty: (sectionType: ClassSetupType) => boolean
   savingSection: ClassSetupType | null
   onSaveSection: (sectionType: ClassSetupType) => void
   onGotoPromote: () => void
@@ -55,6 +56,7 @@ export function ClassSetupTable({
   promoteShares,
   promoteStageLabels,
   canSaveSection,
+  isSectionDirty,
   savingSection,
   onSaveSection,
   onGotoPromote,
@@ -207,6 +209,7 @@ export function ClassSetupTable({
                   canScrollLeft={canScrollLeft}
                   canScrollRight={canScrollRight}
                   canSave={canSaveSection(type)}
+                  isDirty={isSectionDirty(type)}
                   saving={savingSection === type}
                   onScrollByDir={scrollByDir}
                   onSave={() => onSaveSection(type)}
@@ -252,6 +255,7 @@ function TypeSection({
   canScrollLeft,
   canScrollRight,
   canSave,
+  isDirty,
   saving,
   onScrollByDir,
   onSave,
@@ -271,6 +275,7 @@ function TypeSection({
   canScrollLeft: boolean
   canScrollRight: boolean
   canSave: boolean
+  isDirty: boolean
   saving: boolean
   onScrollByDir: (dir: -1 | 1) => void
   onSave: () => void
@@ -287,7 +292,7 @@ function TypeSection({
 }) {
   return (
     <>
-      <tr className="cs_section_row">
+      <tr className={`cs_section_row${isDirty ? " is-dirty" : ""}`}>
         <td colSpan={9}>
           <div className="cs_section_inner">
             <span className={`cs_swatch ${meta.tone}`} />
@@ -329,19 +334,29 @@ function TypeSection({
               </button>
               <button
                 type="button"
-                className="cs_primary_btn cs_section_save_btn"
+                className={`cs_primary_btn cs_section_save_btn${
+                  isDirty ? " is-dirty" : ""
+                }`}
                 disabled={!canSave || saving}
                 onClick={onSave}
                 title={
-                  canSave
-                    ? `Save only the ${meta.label} section`
-                    : "Add an LP class and fill class names in this section before saving"
+                  isDirty
+                    ? "Unsaved changes — click Save to keep them"
+                    : canSave
+                      ? `Save only the ${meta.label} section`
+                      : "Add an LP class and fill class names in this section before saving"
                 }
               >
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>
           </div>
+          {isDirty ? (
+            <p className="cs_section_unsaved_msg" role="status">
+              Changes in this section are not saved. Click{" "}
+              <strong>Save</strong> to keep them.
+            </p>
+          ) : null}
         </td>
       </tr>
       {members.length === 0 ? (

@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, CircleDollarSign } from "lucide-react"
+import { ArrowLeft, Building2, CircleDollarSign, Percent } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   useLocation,
@@ -29,10 +29,12 @@ import {
 } from "../tabs/distributions/utils/investorPreferredAllocation"
 import { getPeriodWindow, periodLabel } from "./utils/distributionPeriod"
 import { DistributionSetupSkeleton } from "./components/DistributionSetupSkeleton"
+import { DistributionFeePanel } from "./components/DistributionFeePanel"
 import { DistributionSimPanel } from "./components/DistributionSimPanel"
 import { UnsavedChangesModal } from "./components/UnsavedChangesModal"
 import { WaterfallBuilder } from "./components/WaterfallBuilder"
 import type {
+  DistributionFeeConfig,
   DistributionPaymentRow,
   DistributionSetupBundle,
   DistributionWaterfalls,
@@ -54,6 +56,14 @@ import {
   type InvestmentAccrualLine,
   type PreferredDayCountMode,
 } from "./utils/distributionSim"
+import {
+  allocateFeeCashByClass,
+  emptyDistributionFeeConfig,
+  mergeFeeTypeOptions,
+  syncFeeClassSplits,
+  validateDistributionFee,
+} from "./utils/distributionFee"
+import { findDuplicateDistributionName } from "./utils/distributionNameUniqueness"
 import {
   buildCashFlows,
   type HurdleCashFlow,
@@ -87,6 +97,7 @@ interface SetupPersistSnapshot {
   setupName: string
   dayCountMode: PreferredDayCountMode
   investmentDate: string
+  distributionFeeJson: string
 }
 
 function buildPersistSnapshot(params: {
@@ -94,14 +105,18 @@ function buildPersistSnapshot(params: {
   setupName: string
   dayCountMode: PreferredDayCountMode
   investmentDate: string
+  distributionFee: DistributionFeeConfig
 }): SetupPersistSnapshot {
   return {
     waterfallsJson: JSON.stringify(params.waterfalls),
     setupName: params.setupName.trim(),
     dayCountMode: params.dayCountMode,
     investmentDate: params.investmentDate || "",
+    distributionFeeJson: JSON.stringify(params.distributionFee),
   }
 }
+
+type DsMainTab = DistributionWfSource | "fee"
 
 export function DistributionSetupPage() {
   const { dealId } = useParams()
@@ -119,7 +134,9 @@ export function DistributionSetupPage() {
   const [saving, setSaving] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [bundle, setBundle] = useState<DistributionSetupBundle | null>(null)
-  const [activeWf, setActiveWf] = useState<DistributionWfSource>("operating")
+  const [mainTab, setMainTab] = useState<DsMainTab>("fee")
+  const activeWf: DistributionWfSource =
+    mainTab === "fee" ? "operating" : mainTab
   const [addKind, setAddKind] = useState<DistributionWfKind>("LP_PREF")
   const [simCash, setSimCash] = useState(() => blurFormatMoneyInput("25000"))
   const [simPeriod, setSimPeriod] = useState("0.25")
@@ -148,6 +165,9 @@ export function DistributionSetupPage() {
   )
   const [dayCountMode, setDayCountMode] =
     useState<PreferredDayCountMode>("period_window")
+  const [distributionFee, setDistributionFee] = useState<DistributionFeeConfig>(
+    () => emptyDistributionFeeConfig(),
+  )
   const [investmentLines, setInvestmentLines] = useState<
     InvestmentAccrualLine[]
   >([])
@@ -162,6 +182,7 @@ export function DistributionSetupPage() {
     setupName: string
     dayCountMode: PreferredDayCountMode
     investmentDate: string
+    distributionFee: DistributionFeeConfig
   }) {
     setSavedSnapshot(buildPersistSnapshot(params))
   }
@@ -173,14 +194,23 @@ export function DistributionSetupPage() {
       setupName,
       dayCountMode,
       investmentDate,
+      distributionFee,
     })
     return (
       current.waterfallsJson !== savedSnapshot.waterfallsJson ||
       current.setupName !== savedSnapshot.setupName ||
       current.dayCountMode !== savedSnapshot.dayCountMode ||
-      current.investmentDate !== savedSnapshot.investmentDate
+      current.investmentDate !== savedSnapshot.investmentDate ||
+      current.distributionFeeJson !== savedSnapshot.distributionFeeJson
     )
-  }, [bundle, setupName, dayCountMode, investmentDate, savedSnapshot])
+  }, [
+    bundle,
+    setupName,
+    dayCountMode,
+    investmentDate,
+    distributionFee,
+    savedSnapshot,
+  ])
 
   function buildInvestmentLines(
     investors: DealInvestorRow[],
@@ -208,12 +238,14 @@ export function DistributionSetupPage() {
   }
 
   function applyPriorRunToForm(prior: PriorDistributionRecord) {
-    const source =
-      (prior.source ?? "").trim().toLowerCase() === "capital" ||
-      (prior.source ?? "").trim().toLowerCase() === "capital_event"
-        ? "capital"
-        : "operating"
-    setActiveWf(source)
+    const sourceRaw = (prior.source ?? "").trim().toLowerCase()
+    const sourceTab =
+      sourceRaw === "fee" || sourceRaw === "distribution_fee"
+        ? "fee"
+        : sourceRaw === "capital" || sourceRaw === "capital_event"
+          ? "capital"
+          : "operating"
+    setMainTab(sourceTab)
     setEditingDistributionId(prior.id)
     if (prior.name?.trim()) setDistributionRunName(prior.name.trim())
     else setDistributionRunName("")
@@ -337,6 +369,56 @@ export function DistributionSetupPage() {
       setSimPeriod("0.25")
       setOtherAdjustment(blurFormatMoneyInput("0"))
 
+      const nextFee = syncFeeClassSplits({
+        classes: next.classes,
+        splits:
+          next.distributionFee?.classSplits ??
+          emptyDistributionFeeConfig(next.classes).classSplits,
+      })
+      const defaults = emptyDistributionFeeConfig(next.classes)
+      const priorFeeTypes = (next.priorDistributions ?? [])
+        .filter((p) => {
+          const s = (p.source ?? "").trim().toLowerCase()
+          return s === "fee" || s === "distribution_fee"
+        })
+        .flatMap((p) => [p.distributionType, p.name])
+        .filter((t): t is string => Boolean(t?.trim()))
+      const loadedFee: DistributionFeeConfig = {
+        ...defaults,
+        ...(next.distributionFee ?? {}),
+        classSplits: nextFee,
+        cashAvailable: blurFormatMoneyInput(
+          next.distributionFee?.cashAvailable ?? "0",
+        ),
+        type:
+          next.distributionFee?.type?.trim() ||
+          next.distributionFee?.name?.trim() ||
+          defaults.type,
+        typeOptions: mergeFeeTypeOptions({
+          options: next.distributionFee?.typeOptions,
+          extra: [
+            ...(next.distributionFee?.type
+              ? [next.distributionFee.type]
+              : []),
+            ...(next.distributionFee?.name
+              ? [next.distributionFee.name]
+              : []),
+            ...priorFeeTypes,
+          ],
+        }),
+        periodStart:
+          next.distributionFee?.periodStart &&
+          /^\d{4}-\d{2}-\d{2}$/.test(next.distributionFee.periodStart)
+            ? next.distributionFee.periodStart
+            : defaults.periodStart,
+        periodEnd:
+          next.distributionFee?.periodEnd &&
+          /^\d{4}-\d{2}-\d{2}$/.test(next.distributionFee.periodEnd)
+            ? next.distributionFee.periodEnd
+            : defaults.periodEnd,
+      }
+      setDistributionFee(loadedFee)
+
       const sanitizedPriors = sanitizePriorDistributions(
         next.priorDistributions ?? [],
       )
@@ -410,6 +492,7 @@ export function DistributionSetupPage() {
         setupName: nextSetupName,
         dayCountMode: nextDayCountMode,
         investmentDate: nextInvestmentDate,
+        distributionFee: loadedFee,
       })
     } catch (err) {
       toast.error(
@@ -488,6 +571,33 @@ export function DistributionSetupPage() {
 
   async function handleSave(): Promise<boolean> {
     if (!dealId || !bundle || saving) return false
+    const feeCheck = validateDistributionFee({ fee: distributionFee })
+    if (!feeCheck.ok) {
+      toast.error("Distribution fee", feeCheck.message)
+      setMainTab("fee")
+      return false
+    }
+    if (distributionFee.name.trim()) {
+      const dup = findDuplicateDistributionName({
+        candidate: distributionFee.name,
+        priorDistributions: bundle.priorDistributions,
+        distributionFee,
+        ignoreFeeName: true,
+        extraNames: distributionRunName.trim()
+          ? [
+              {
+                name: distributionRunName,
+                source: activeWf === "capital" ? "capital" : "operating",
+              },
+            ]
+          : undefined,
+      })
+      if (dup) {
+        toast.error("Duplicate name", dup)
+        setMainTab("fee")
+        return false
+      }
+    }
     setSaving(true)
     try {
       const saved = await saveDistributionSetup(
@@ -497,6 +607,7 @@ export function DistributionSetupPage() {
         {
           dayCountMode,
           defaultAccrualStartIso: investmentDate || undefined,
+          distributionFee,
         },
       )
       setBundle(saved)
@@ -511,11 +622,41 @@ export function DistributionSetupPage() {
       if (saved.dayCountMode) setDayCountMode(saved.dayCountMode)
       if (saved.defaultAccrualStartIso)
         setInvestmentDate(saved.defaultAccrualStartIso)
+      const savedFee = syncFeeClassSplits({
+        classes: saved.classes,
+        splits:
+          saved.distributionFee?.classSplits ?? distributionFee.classSplits,
+      })
+      const nextFee: DistributionFeeConfig = {
+        ...emptyDistributionFeeConfig(saved.classes),
+        ...(saved.distributionFee ?? distributionFee),
+        classSplits: savedFee,
+        cashAvailable: blurFormatMoneyInput(
+          saved.distributionFee?.cashAvailable ??
+            distributionFee.cashAvailable,
+        ),
+        type:
+          saved.distributionFee?.type?.trim() ||
+          distributionFee.type.trim() ||
+          saved.distributionFee?.name?.trim() ||
+          "",
+        typeOptions: mergeFeeTypeOptions({
+          options:
+            saved.distributionFee?.typeOptions ?? distributionFee.typeOptions,
+          extra: [
+            saved.distributionFee?.type ?? "",
+            distributionFee.type,
+            saved.distributionFee?.name ?? "",
+          ],
+        }),
+      }
+      setDistributionFee(nextFee)
       captureSavedSnapshot({
         waterfalls: saved.waterfalls,
         setupName: nextSetupName,
         dayCountMode: nextDayCount,
         investmentDate: nextInvestDate,
+        distributionFee: nextFee,
       })
       toast.success("Distribution setup saved")
       return true
@@ -762,6 +903,16 @@ export function DistributionSetupPage() {
         (activeWf === "capital"
           ? `Capital event · ${asOf}`
           : `${windowForRun.label} Distribution`)
+      const dup = findDuplicateDistributionName({
+        candidate: runName,
+        priorDistributions: bundle.priorDistributions,
+        distributionFee,
+        excludePriorId: editingDistributionId || undefined,
+      })
+      if (dup) {
+        toast.error("Duplicate name", dup)
+        return
+      }
       let investorPayments:
         | Array<{
             investorId: string
@@ -857,6 +1008,199 @@ export function DistributionSetupPage() {
     }
   }
 
+  async function handleCompleteFee() {
+    if (!dealId || !bundle || completing) return
+    const feeCheck = validateDistributionFee({
+      fee: distributionFee,
+      requireComplete: true,
+    })
+    if (!feeCheck.ok) {
+      toast.error("Distribution fee", feeCheck.message)
+      return
+    }
+    const amount = parseMoneyDigits(distributionFee.cashAvailable)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error(
+        "Cannot complete",
+        "Enter cash available greater than $0 first.",
+      )
+      return
+    }
+    const feeName = distributionFee.name.trim()
+    const feeType = distributionFee.type.trim()
+    const dup = findDuplicateDistributionName({
+      candidate: feeName,
+      priorDistributions: bundle.priorDistributions,
+      distributionFee,
+      ignoreFeeName: true,
+    })
+    if (dup) {
+      toast.error("Duplicate name", dup)
+      return
+    }
+
+    setCompleting(true)
+    try {
+      const period = periodFromFactor(
+        Number(distributionFee.periodFactor) || 0.25,
+      )
+      const startIso =
+        distributionFee.periodStart &&
+        /^\d{4}-\d{2}-\d{2}$/.test(distributionFee.periodStart)
+          ? distributionFee.periodStart
+          : ""
+      const endIso =
+        distributionFee.periodEnd &&
+        /^\d{4}-\d{2}-\d{2}$/.test(distributionFee.periodEnd)
+          ? distributionFee.periodEnd
+          : ""
+      if (!startIso || !endIso || endIso < startIso) {
+        toast.error(
+          "Cannot complete",
+          "Enter a valid period start date and period end date.",
+        )
+        setCompleting(false)
+        return
+      }
+      const asOf = endIso
+      const nextTypeOptions = mergeFeeTypeOptions({
+        options: distributionFee.typeOptions,
+        extra: [feeType],
+      })
+      const feeToPersist: DistributionFeeConfig = {
+        ...distributionFee,
+        type: feeType,
+        typeOptions: nextTypeOptions,
+      }
+      setDistributionFee(feeToPersist)
+      await saveDistributionSetup(dealId, bundle.waterfalls, setupName.trim(), {
+        dayCountMode,
+        defaultAccrualStartIso: investmentDate || undefined,
+        distributionFee: feeToPersist,
+      })
+      const classPaid = allocateFeeCashByClass({
+        cashAvailable: distributionFee.cashAvailable,
+        splits: distributionFee.classSplits,
+      })
+
+      let investorPayments:
+        | Array<{
+            investorId: string
+            contactId?: string
+            userEmail?: string
+            investorName: string
+            classId: string
+            className: string
+            capital: number
+            percentOfClass: number
+            payment: number
+          }>
+        | undefined
+      try {
+        const invPayload = await fetchDealInvestors(dealId, {
+          lpInvestorsOnly: false,
+        })
+        const investors = invPayload.investors ?? []
+        const lines: NonNullable<typeof investorPayments> = []
+        for (const cls of bundle.classes) {
+          const classCash = classPaid[cls.id] ?? 0
+          if (classCash <= 0.005) continue
+          const inClass = investors.filter((inv) => {
+            const resolved = resolveInvestorClass(
+              inv.investorClass ?? "",
+              bundle.classes,
+            )
+            return resolved?.id === cls.id
+          })
+          if (inClass.length === 0) continue
+          const weights = inClass.map((inv) =>
+            Math.max(0, investorCapitalForDistribution(inv)),
+          )
+          const payCents = allocateCentsByWeight({
+            totalCents: Math.round(classCash * 100),
+            weights: weights.some((w) => w > 0) ? weights : inClass.map(() => 1),
+          })
+          const classCap = weights.reduce((a, b) => a + b, 0)
+          inClass.forEach((inv, i) => {
+            const capital = investorCapitalForDistribution(inv)
+            const payment = (payCents[i] ?? 0) / 100
+            if (payment <= 0) return
+            lines.push({
+              investorId: String(inv.id ?? ""),
+              ...(inv.contactId ? { contactId: String(inv.contactId) } : {}),
+              ...(inv.userEmail
+                ? { userEmail: String(inv.userEmail) }
+                : {}),
+              investorName: String(inv.displayName ?? "").trim() || "—",
+              classId: cls.id,
+              className: cls.name || "—",
+              capital,
+              percentOfClass:
+                classCap > 0 ? roundMoney((capital / classCap) * 100) : 0,
+              payment,
+            })
+          })
+        }
+        if (lines.length > 0) investorPayments = lines
+      } catch {
+        // Backend fallback still runs without client lines.
+      }
+
+      const saved = await completeDistributionSetup(dealId, bundle.waterfalls, {
+        source: "fee",
+        amount: roundMoney(amount),
+        date: asOf,
+        period,
+        name: feeName,
+        setupName: setupName.trim(),
+        periodStart: startIso,
+        periodEnd: endIso,
+        paymentDate: asOf,
+        distributionType: feeType,
+        deductsFrom: "fee",
+        visible: true,
+        ...(investorPayments ? { investorPayments } : {}),
+      })
+      setBundle({
+        ...saved,
+        priorDistributions: sanitizePriorDistributions(
+          saved.priorDistributions ?? [],
+        ),
+      })
+      if (saved.distributionFee) {
+        setDistributionFee({
+          ...emptyDistributionFeeConfig(saved.classes),
+          ...saved.distributionFee,
+          classSplits: syncFeeClassSplits({
+            classes: saved.classes,
+            splits: saved.distributionFee.classSplits ?? [],
+          }),
+          cashAvailable: blurFormatMoneyInput(
+            saved.distributionFee.cashAvailable ?? distributionFee.cashAvailable,
+          ),
+          type: saved.distributionFee.type?.trim() || feeType,
+          typeOptions: mergeFeeTypeOptions({
+            options: saved.distributionFee.typeOptions ?? nextTypeOptions,
+            extra: [feeType],
+          }),
+        })
+      } else {
+        setDistributionFee(feeToPersist)
+      }
+      toast.success(
+        "Distribution fee completed",
+        "It appears on the Distributions tab with Source “GP Payment” and Type set to the selected type.",
+      )
+    } catch (err) {
+      toast.error(
+        "Complete failed",
+        err instanceof Error ? err.message : "Try again.",
+      )
+    } finally {
+      setCompleting(false)
+    }
+  }
+
   if (!dealId) {
     return (
       <div className="deals_list_page deals_detail_page deals_dist_setup_page">
@@ -922,19 +1266,40 @@ export function DistributionSetupPage() {
               <div
                 className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
                 role="tablist"
-                aria-label="Waterfall type"
+                aria-label="Distribution setup sections"
               >
+                <button
+                  type="button"
+                  id="ds-wf-tab-fee"
+                  role="tab"
+                  aria-selected={mainTab === "fee"}
+                  aria-controls="ds-fee-panel"
+                  className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                    mainTab === "fee" ? " um_members_tab_active" : ""
+                  }`}
+                  onClick={() => setMainTab("fee")}
+                >
+                  <Percent
+                    className="deals_tabs_icon um_segmented_tab_icon"
+                    size={16}
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span className="deals_tabs_label um_segmented_tab_label">
+                    Distribution Fee
+                  </span>
+                </button>
                 <button
                   type="button"
                   id="ds-wf-tab-operating"
                   role="tab"
-                  aria-selected={activeWf === "operating"}
+                  aria-selected={mainTab === "operating"}
                   aria-controls="ds-wf-panel"
                   className={`um_members_tab deals_tabs_tab um_segmented_tab${
-                    activeWf === "operating" ? " um_members_tab_active" : ""
+                    mainTab === "operating" ? " um_members_tab_active" : ""
                   }`}
                   onClick={() => {
-                    setActiveWf("operating")
+                    setMainTab("operating")
                     setDueOverrides({})
                     setStageMet({})
                   }}
@@ -953,13 +1318,13 @@ export function DistributionSetupPage() {
                   type="button"
                   id="ds-wf-tab-capital"
                   role="tab"
-                  aria-selected={activeWf === "capital"}
+                  aria-selected={mainTab === "capital"}
                   aria-controls="ds-wf-panel"
                   className={`um_members_tab deals_tabs_tab um_segmented_tab${
-                    activeWf === "capital" ? " um_members_tab_active" : ""
+                    mainTab === "capital" ? " um_members_tab_active" : ""
                   }`}
                   onClick={() => {
-                    setActiveWf("capital")
+                    setMainTab("capital")
                     setDueOverrides({})
                     setStageMet({})
                   }}
@@ -978,6 +1343,30 @@ export function DistributionSetupPage() {
             </TabsScrollStrip>
           </div>
 
+          {mainTab === "fee" ? (
+            <div
+              id="ds-fee-panel"
+              role="tabpanel"
+              aria-labelledby="ds-wf-tab-fee"
+              className="ds_workbench"
+            >
+              <DistributionFeePanel
+                fee={distributionFee}
+                classes={bundle.classes}
+                completing={completing}
+                onComplete={() => void handleCompleteFee()}
+                onChange={(next) =>
+                  setDistributionFee({
+                    ...next,
+                    classSplits: syncFeeClassSplits({
+                      classes: bundle.classes,
+                      splits: next.classSplits,
+                    }),
+                  })
+                }
+              />
+            </div>
+          ) : (
           <div id="ds-wf-panel" role="tabpanel" className="ds_workbench">
             <DistributionSimPanel
               section="test"
@@ -1103,6 +1492,7 @@ export function DistributionSetupPage() {
               />
             </div>
           </div>
+          )}
         </div>
       )}
 

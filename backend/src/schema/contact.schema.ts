@@ -38,6 +38,13 @@ export const contact = pgTable("contact", {
   lists: jsonb("lists").$type<string[]>().notNull(),
   owners: jsonb("owners").$type<string[]>().notNull(),
   status: varchar("status", { length: 32 }).notNull().default("active"),
+  /**
+   * Per-contact offering visibility for the investor portal.
+   * `show` | `506c` | `hide`
+   */
+  showOfferings: varchar("show_offerings", { length: 32 })
+    .notNull()
+    .default("show"),
   lastEditReason: text("last_edit_reason"),
   createdBy: uuid("created_by")
     .notNull()

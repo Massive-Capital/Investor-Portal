@@ -84,8 +84,9 @@ type DataTableProps<T> = {
    */
   stripedRows?: boolean;
   /**
-   * Always enable horizontal scroll (investors / deal members tables with many columns).
-   * Skipped when the table body is empty.
+   * Enable horizontal scroll class / gestures. Defaults to `true` for
+   * `visualVariant="members"` so Investors, Contacts, Distributions, etc. scroll.
+   * Skipped when the table body is empty. Pass `false` to opt out.
    */
   forceHorizontalScroll?: boolean;
 };
@@ -226,8 +227,10 @@ export function DataTable<T>({
   stickyColumnCount: stickyColumnCountProp,
   isLoading = false,
   stripedRows = true,
-  forceHorizontalScroll = false,
+  forceHorizontalScroll: forceHorizontalScrollProp,
 }: DataTableProps<T>) {
+  const forceHorizontalScroll =
+    forceHorizontalScrollProp ?? visualVariant === "members";
   const stickyColumnCount =
     stickyColumnCountProp ??
     (stickyFirstColumnProp === false

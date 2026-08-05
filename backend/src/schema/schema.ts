@@ -62,6 +62,11 @@ export {
   type DealLpInvestorRow,
 } from "./deal.schema/deal-lp-investor.schema.js";
 export {
+  distributionLogs,
+  type DistributionLogInsert,
+  type DistributionLogRow,
+} from "./deal.schema/distribution-logs.schema.js";
+export {
   assigningDealUser,
   type AssigningDealUserInsert,
   type AssigningDealUserRow,

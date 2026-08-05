@@ -4,14 +4,16 @@
  * Classes + promote come from Class Setup; this module stores waterfalls + prior history.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
 import { dealLpInvestor } from "../../schema/deal.schema/deal-lp-investor.schema.js";
+import { distributionLogs } from "../../schema/deal.schema/distribution-logs.schema.js";
 import { getClassSetupBundle } from "../classSetup/classSetup.service.js";
 import {
   fundedNumericForInvestorKpiRow,
   listDealInvestmentsByDealId,
+  mapContactIdsToCanonicalCommitmentKeys,
   mapDealInvestmentsToInvestorApi,
 } from "../deal/dealInvestment.service.js";
 import {
@@ -112,6 +114,9 @@ export async function getDistributionSetupBundle(
       })),
       shares: classBundle.meta.promote.shares,
     },
+    ...(parsed.distributionFee
+      ? { distributionFee: parsed.distributionFee }
+      : {}),
   };
 }
 
@@ -165,6 +170,35 @@ export async function saveDistributionSetupBundle(params: {
     }
     return existing.defaultAccrualStartIso ?? "";
   })();
+  const distributionFee =
+    params.input.distributionFee !== undefined
+      ? params.input.distributionFee
+      : (existing.distributionFee ?? null);
+
+  if (distributionFee?.name?.trim()) {
+    const feeKey = distributionFee.name
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    const clash = existing.priorDistributions.find((p) => {
+      const src = String(p.source ?? "")
+        .trim()
+        .toLowerCase();
+      if (src === "fee" || src === "distribution_fee") return false;
+      const priorKey = String(p.name ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+      return Boolean(priorKey) && priorKey === feeKey;
+    });
+    if (clash) {
+      return {
+        bundle: existing,
+        error:
+          "This fee name is already used by an Operating or Capital event distribution. Choose a unique name.",
+      };
+    }
+  }
 
   // Preserve backend prior distributions — waterfall save must not wipe history.
   await db
@@ -174,7 +208,7 @@ export async function saveDistributionSetupBundle(params: {
         waterfalls,
         existing.priorDistributions,
         setupName,
-        { dayCountMode, defaultAccrualStartIso },
+        { dayCountMode, defaultAccrualStartIso, distributionFee },
       ),
     })
     .where(eq(addDealForm.id, params.dealId));
@@ -187,12 +221,13 @@ export async function saveDistributionSetupBundle(params: {
       setupName,
       dayCountMode,
       defaultAccrualStartIso: defaultAccrualStartIso || undefined,
+      ...(distributionFee ? { distributionFee } : {}),
     },
   };
 }
 
 export type CompleteDistributionInput = {
-  source: DistributionWfSource;
+  source: DistributionWfSource | "fee";
   amount: number;
   date?: string;
   name?: string;
@@ -266,8 +301,15 @@ export async function completeDistributionRun(params: {
   const parsed = parseDistributionSetupDocument(
     deal.distributionSetupJson ?? "{}",
   );
-  const source: DistributionWfSource =
-    params.input.source === "capital" ? "capital" : "operating";
+  const sourceRaw = String(params.input.source ?? "")
+    .trim()
+    .toLowerCase();
+  const source: "operating" | "capital" | "fee" =
+    sourceRaw === "capital" || sourceRaw === "capital_event"
+      ? "capital"
+      : sourceRaw === "fee" || sourceRaw === "distribution_fee"
+        ? "fee"
+        : "operating";
   const date =
     params.input.date && /^\d{4}-\d{2}-\d{2}/.test(params.input.date.trim())
       ? params.input.date.trim().slice(0, 10)
@@ -276,7 +318,9 @@ export async function completeDistributionRun(params: {
     params.input.name?.trim() ||
     (source === "capital"
       ? `Capital event · ${date}`
-      : `Operating · ${date}`);
+      : source === "fee"
+        ? `Distribution fee · ${date}`
+        : `Operating · ${date}`);
   const notes = params.input.notes?.trim() || "";
   const periodRaw = params.input.period;
   const period =
@@ -285,6 +329,62 @@ export async function completeDistributionRun(params: {
     periodRaw === "annual"
       ? periodRaw
       : undefined;
+
+  const replaceId = String(params.input.replaceDistributionId ?? "").trim();
+  const nameKey = name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (nameKey) {
+    const feeKey = String(parsed.distributionFee?.name ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    // Fee completes intentionally use the fee name; Operating/Capital must not.
+    if (source !== "fee" && feeKey && feeKey === nameKey) {
+      return {
+        bundle: (await getDistributionSetupBundle(params.dealId)) ?? {
+          dealId: params.dealId,
+          dealName: "",
+          targetRaise: "0",
+          setupName: parsed.setupName || "",
+          waterfalls: parsed.waterfalls,
+          priorDistributions: parsed.priorDistributions,
+          classes: [],
+          promote: { hurdles: [], shares: {} },
+          ...(parsed.distributionFee
+            ? { distributionFee: parsed.distributionFee }
+            : {}),
+        },
+        error:
+          "This distribution name is already used on the Distribution Fee tab. Choose a unique name.",
+      };
+    }
+    const nameClash = parsed.priorDistributions.find((p) => {
+      if (replaceId && String(p.id).trim() === replaceId) return false;
+      const priorKey = String(p.name ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+      return Boolean(priorKey) && priorKey === nameKey;
+    });
+    if (nameClash) {
+      return {
+        bundle: (await getDistributionSetupBundle(params.dealId)) ?? {
+          dealId: params.dealId,
+          dealName: "",
+          targetRaise: "0",
+          setupName: parsed.setupName || "",
+          waterfalls: parsed.waterfalls,
+          priorDistributions: parsed.priorDistributions,
+          classes: [],
+          promote: { hurdles: [], shares: {} },
+          ...(parsed.distributionFee
+            ? { distributionFee: parsed.distributionFee }
+            : {}),
+        },
+        error:
+          "This distribution name is already used on another tab. Choose a unique name.",
+      };
+    }
+  }
 
   let investorPayments = serializeInvestorPaymentLines(
     params.input.investorPayments,
@@ -296,7 +396,6 @@ export async function completeDistributionRun(params: {
     );
   }
 
-  const replaceId = String(params.input.replaceDistributionId ?? "").trim();
   const replaceIndex = replaceId
     ? parsed.priorDistributions.findIndex(
         (p) => String(p.id).trim() === replaceId,
@@ -354,8 +453,11 @@ export async function completeDistributionRun(params: {
       ? params.input.paymentDate.trim().slice(0, 10)
       : date;
   const distributionType =
-    params.input.distributionType?.trim() || "preferred_return";
-  const deductsFrom = params.input.deductsFrom?.trim() || "accrued_pref";
+    params.input.distributionType?.trim() ||
+    (source === "fee" ? name : "preferred_return");
+  const deductsFrom =
+    params.input.deductsFrom?.trim() ||
+    (source === "fee" ? "fee" : "accrued_pref");
   const visible = params.input.visible !== false;
 
   const record: PriorDistributionRecord = {
@@ -393,6 +495,7 @@ export async function completeDistributionRun(params: {
         {
           dayCountMode: parsed.dayCountMode,
           defaultAccrualStartIso: parsed.defaultAccrualStartIso,
+          distributionFee: parsed.distributionFee ?? null,
         },
       ),
     })
@@ -457,6 +560,7 @@ export async function replacePriorDistributions(params: {
         {
           dayCountMode: existing.dayCountMode,
           defaultAccrualStartIso: existing.defaultAccrualStartIso,
+          distributionFee: existing.distributionFee ?? null,
         },
       ),
     })
@@ -474,6 +578,7 @@ export async function replacePriorDistributions(params: {
 export async function deletePriorDistribution(params: {
   dealId: string;
   distributionId: string;
+  reason?: string;
 }): Promise<{ bundle: DistributionSetupBundle; error?: string }> {
   const existing = await getDistributionSetupBundle(params.dealId);
   if (!existing) {
@@ -495,12 +600,29 @@ export async function deletePriorDistribution(params: {
   if (!distId) {
     return { bundle: existing, error: "Missing distribution id" };
   }
+  const target = existing.priorDistributions.find(
+    (p) => String(p.id).trim() === distId,
+  );
+  if (!target) {
+    return { bundle: existing, error: "Distribution not found" };
+  }
+  const reason = String(params.reason ?? "").trim();
+  if (!reason) {
+    return { bundle: existing, error: "Deletion reason is required" };
+  }
+  console.info(
+    "[distribution] deleted prior run",
+    JSON.stringify({
+      dealId: params.dealId,
+      distributionId: distId,
+      name: target.name ?? "",
+      source: target.source ?? "",
+      reason,
+    }),
+  );
   const nextPriors = existing.priorDistributions.filter(
     (p) => String(p.id).trim() !== distId,
   );
-  if (nextPriors.length === existing.priorDistributions.length) {
-    return { bundle: existing, error: "Distribution not found" };
-  }
   return replacePriorDistributions({
     dealId: params.dealId,
     priorDistributions: nextPriors,
@@ -518,17 +640,36 @@ async function buildFallbackInvestorPayments(
     .select()
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId));
-  const pctByContact = new Map<string, string>();
+
+  const allRawIds: string[] = [];
+  for (const m of roster) {
+    const k = String(m.contactMemberId ?? "")
+      .trim()
+      .toLowerCase();
+    if (k) allRawIds.push(k);
+  }
+  for (const r of apiRows) {
+    const k = String(r.contactId ?? "")
+      .trim()
+      .toLowerCase();
+    if (k) allRawIds.push(k);
+  }
+  const rawToCanonical =
+    await mapContactIdsToCanonicalCommitmentKeys(allRawIds);
+
+  const pctByCanonical = new Map<string, string>();
   for (const m of roster) {
     const contactKey = String(m.contactMemberId ?? "")
       .trim()
       .toLowerCase();
     if (!contactKey) continue;
-    pctByContact.set(
-      contactKey,
+    const canonical = rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
+    pctByCanonical.set(
+      canonical,
       String(m.percentOfClassDistributions ?? "").trim(),
     );
   }
+
   const investors = apiRows.map((r, i) => {
     const dbRow = rows[i];
     const capital = dbRow
@@ -537,6 +678,9 @@ async function buildFallbackInvestorPayments(
     const contactKey = String(r.contactId ?? "")
       .trim()
       .toLowerCase();
+    const canonical = contactKey
+      ? rawToCanonical.get(contactKey) ?? `id:${contactKey}`
+      : "";
     return {
       id: String(r.id ?? ""),
       contactId: String(r.contactId ?? ""),
@@ -544,8 +688,8 @@ async function buildFallbackInvestorPayments(
       displayName: String(r.displayName ?? ""),
       investorClass: String(r.investorClass ?? ""),
       capital: Number.isFinite(capital) ? capital : 0,
-      percentOfClassDistributions: contactKey
-        ? pctByContact.get(contactKey) ?? ""
+      percentOfClassDistributions: canonical
+        ? pctByCanonical.get(canonical) ?? ""
         : "",
     };
   });
@@ -569,6 +713,9 @@ export async function updatePriorDistributionInvestorPercent(params: {
   investorId: string;
   percentOfClass?: number;
   payment?: number;
+  /** Sponsor / admin who made the edit (required for distribution_logs). */
+  actorUserId?: string | null;
+  reason?: string | null;
 }): Promise<{ bundle: DistributionSetupBundle; error?: string }> {
   const existing = await getDistributionSetupBundle(params.dealId);
   if (!existing) {
@@ -689,14 +836,91 @@ export async function updatePriorDistributionInvestorPercent(params: {
         {
           dayCountMode: existing.dayCountMode,
           defaultAccrualStartIso: existing.defaultAccrualStartIso,
+          distributionFee: existing.distributionFee ?? null,
         },
       ),
     })
     .where(eq(addDealForm.id, params.dealId));
 
+  const actorUserId = String(params.actorUserId ?? "").trim();
+  if (actorUserId) {
+    const pctChanged = Math.abs(oldPct - nextPct) > 0.0005;
+    const payChanged = Math.abs(oldPay - nextPayment) > 0.005;
+    if (pctChanged || payChanged) {
+      await db.insert(distributionLogs).values({
+        dealId: params.dealId,
+        distributionId: distId,
+        investorId,
+        contactMemberId: String(target.contactId ?? "").trim(),
+        actorUserId,
+        action: "investor_payment_edit",
+        reason: String(params.reason ?? "").trim(),
+        changesJson: {
+          investorName: target.investorName ?? "",
+          classId: target.classId ?? "",
+          className: target.className ?? "",
+          percentOfClass: {
+            from: Math.round(oldPct * 1000) / 1000,
+            to: Math.round(nextPct * 1000) / 1000,
+          },
+          payment: {
+            from: Math.round(oldPay * 100) / 100,
+            to: Math.round(nextPayment * 100) / 100,
+          },
+          editSource: hasPay && !hasPct ? "payment" : "percent_of_class",
+        },
+      });
+    }
+  }
+
   const contactId = String(target.contactId ?? "").trim();
   const pctLabel = `${(Math.round(nextPct * 100) / 100).toFixed(2)}%`;
-  if (contactId) {
+  const roster = await db
+    .select({
+      id: dealLpInvestor.id,
+      contactMemberId: dealLpInvestor.contactMemberId,
+    })
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, params.dealId));
+
+  let matchedLpIds: string[] = [];
+  if (contactId && roster.length > 0) {
+    const allRaw = [
+      contactId,
+      ...roster.map((m) => String(m.contactMemberId ?? "").trim()),
+    ].filter(Boolean);
+    const rawToCanonical =
+      await mapContactIdsToCanonicalCommitmentKeys(allRaw);
+    const contactKey = contactId.trim().toLowerCase();
+    const targetCanonical =
+      rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
+    matchedLpIds = roster
+      .filter((m) => {
+        const k = String(m.contactMemberId ?? "")
+          .trim()
+          .toLowerCase();
+        if (!k) return false;
+        if (k === contactKey) return true;
+        const canonical = rawToCanonical.get(k) ?? `id:${k}`;
+        return canonical === targetCanonical;
+      })
+      .map((m) => m.id);
+  }
+
+  if (matchedLpIds.length > 0) {
+    await db
+      .update(dealLpInvestor)
+      .set({
+        percentOfClassDistributions: pctLabel,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(dealLpInvestor.dealId, params.dealId),
+          inArray(dealLpInvestor.id, matchedLpIds),
+        ),
+      );
+  } else if (contactId) {
     await db
       .update(dealLpInvestor)
       .set({

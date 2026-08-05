@@ -144,6 +144,12 @@ a.deals_list_add_link.um_btn_primary {
   padding-top: 1rem;
 }
 
+/* Dist / class setup sticky headers already pad themselves — avoid stacked gap above title */
+.deals_detail_page.deals_dist_setup_page > header.deals_list_head.ds_page_header,
+.deals_detail_page.deals_class_setup_page > header.deals_list_head.cs_page_header {
+  padding-top: 0.35rem;
+}
+
 /* Full-page create/edit flows: header back matches Edit deal gold secondary */
 .deals_add_deal_asset_page .deals_list_back_circle {
   background: var(--portal-tab-active-bg);

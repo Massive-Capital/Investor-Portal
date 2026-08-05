@@ -33,6 +33,7 @@ import {
   putDealInvestment,
 } from "../controllers/deal/dealInvestment.controller.js";
 import {
+  getDealLpInvestor,
   patchDealLpInvestorMyCommitment,
   postDealLpInvestor,
   putDealLpInvestor,
@@ -127,6 +128,7 @@ router.post(
   postDealInvestorsExportNotify,
 );
 router.post("/deals/:dealId/lp-investors", postDealLpInvestor);
+router.get("/deals/:dealId/lp-investors/:lpInvestorId", getDealLpInvestor);
 router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
 router.patch(
   "/deals/:dealId/lp-investors/my-commitment",

@@ -20,6 +20,7 @@ function sourceLabel(source: string | undefined): string {
   const s = (source ?? "").trim().toLowerCase()
   if (s === "capital" || s === "capital_event") return "Capital event"
   if (s === "operating") return "Operating"
+  if (s === "fee" || s === "distribution_fee") return "GP Payment"
   return "—"
 }
 

@@ -45,17 +45,19 @@
 }
 
 /* ---------- Sticky page header (back + title + actions) ---------- */
+/* Navbar is outside `.app_main_content` scroll — stick to top of the scroll pane. */
 .deals_class_setup_page > header.cs_page_header {
   position: sticky;
-  top: var(--app-top-navbar-offset, 3.5rem);
+  top: 0;
   z-index: 30;
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
-  margin-bottom: 1rem;
-  padding: 0.75rem 0;
+  margin-bottom: 0.75rem;
+  padding: 0.35rem 0 0.55rem;
   background: var(--cs-page);
   box-shadow: 0 8px 14px -12px rgba(16, 20, 19, 0.35);
 }
@@ -614,6 +616,61 @@
 .deals_class_setup_page .cs_section_actions .cs_section_save_btn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.deals_class_setup_page .cs_section_unsaved_msg {
+  margin: 0.45rem 0 0;
+  padding: 0.45rem 0.65rem;
+  max-width: 36rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #d97706 35%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: #92400e;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 550;
+}
+
+.deals_class_setup_page .cs_section_unsaved_msg strong {
+  font-weight: 700;
+}
+
+.deals_class_setup_page .cs_section_save_btn.is-dirty {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, #f59e0b 55%, transparent),
+    0 0 0 4px color-mix(in srgb, #f59e0b 18%, transparent);
+  animation: cs_save_pulse 1.6s ease-in-out infinite;
+}
+
+.deals_class_setup_page .cs_section_save_btn.is-dirty:disabled {
+  animation: none;
+  box-shadow: none;
+}
+
+@keyframes cs_save_pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, #f59e0b 55%, transparent),
+      0 0 0 4px color-mix(in srgb, #f59e0b 18%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, #f59e0b 75%, transparent),
+      0 0 0 6px color-mix(in srgb, #f59e0b 28%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deals_class_setup_page .cs_section_save_btn.is-dirty {
+    animation: none;
+  }
+}
+
+:root[data-theme="dark"] .deals_class_setup_page .cs_section_unsaved_msg {
+  color: #fcd34d;
+  border-color: color-mix(in srgb, #f59e0b 40%, transparent);
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
 }
 
 .deals_class_setup_page .cs_section_actions .cs_table_scroll_btns {

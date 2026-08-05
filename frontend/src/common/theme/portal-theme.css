@@ -152,6 +152,30 @@ html.light {
     var(--portal-gold-accent, #d4af37) 18%,
     #94a3b8
   );
+  /* App-wide scroll chrome */
+  --portal-scroll-size: 9px;
+  --portal-scroll-size-table: 10px;
+  --portal-scroll-track: transparent;
+  --portal-scroll-track-hover: color-mix(
+    in srgb,
+    var(--portal-border, #c6c6cd) 42%,
+    transparent
+  );
+  --portal-scroll-thumb: color-mix(
+    in srgb,
+    var(--portal-text-muted, #76777d) 48%,
+    transparent
+  );
+  --portal-scroll-thumb-hover: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 22%,
+    var(--portal-text-muted, #76777d)
+  );
+  --portal-scroll-thumb-active: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 38%,
+    var(--portal-text-secondary, #45464d)
+  );
   --portal-table-sticky-edge-line: color-mix(
     in srgb,
     var(--portal-gold-accent, #d4af37) 14%,
@@ -278,6 +302,22 @@ html.dark {
     in srgb,
     var(--portal-gold-accent, #d4af37) 28%,
     rgba(255, 255, 255, 0.22)
+  );
+  /* App-wide scroll chrome */
+  --portal-scroll-size: 9px;
+  --portal-scroll-size-table: 10px;
+  --portal-scroll-track: transparent;
+  --portal-scroll-track-hover: rgba(255, 255, 255, 0.06);
+  --portal-scroll-thumb: rgba(255, 255, 255, 0.16);
+  --portal-scroll-thumb-hover: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 26%,
+    rgba(255, 255, 255, 0.28)
+  );
+  --portal-scroll-thumb-active: color-mix(
+    in srgb,
+    var(--portal-gold-accent, #d4af37) 40%,
+    rgba(255, 255, 255, 0.34)
   );
   --portal-table-sticky-edge-line: color-mix(
     in srgb,

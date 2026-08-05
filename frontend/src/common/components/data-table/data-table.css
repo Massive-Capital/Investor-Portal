@@ -3,52 +3,7 @@
   max-width: 100%;
 }
 
-/* Premium table scrollbars — aligned with portal shell (thin, pill thumb, no track chrome). */
-.data_table_scroll,
-.data_table_scroll_region,
-.um_table_wrap.data_table_shell,
-.deals_list_table_panel .data_table_scroll_region,
-.deal_inv_table_panel .data_table_scroll_region {
-  scrollbar-width: thin;
-  scrollbar-color: var(--portal-table-scroll-thumb, #cbd5e1) transparent;
-}
-
-.data_table_scroll::-webkit-scrollbar,
-.data_table_scroll_region::-webkit-scrollbar,
-.um_table_wrap.data_table_shell::-webkit-scrollbar,
-.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar,
-.deal_inv_table_panel .data_table_scroll_region::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.data_table_scroll::-webkit-scrollbar-track,
-.data_table_scroll_region::-webkit-scrollbar-track,
-.um_table_wrap.data_table_shell::-webkit-scrollbar-track,
-.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar-track,
-.deal_inv_table_panel .data_table_scroll_region::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.data_table_scroll::-webkit-scrollbar-thumb,
-.data_table_scroll_region::-webkit-scrollbar-thumb,
-.um_table_wrap.data_table_shell::-webkit-scrollbar-thumb,
-.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar-thumb,
-.deal_inv_table_panel .data_table_scroll_region::-webkit-scrollbar-thumb {
-  background: var(--portal-table-scroll-thumb, #cbd5e1);
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: padding-box;
-}
-
-.data_table_scroll::-webkit-scrollbar-thumb:hover,
-.data_table_scroll_region::-webkit-scrollbar-thumb:hover,
-.um_table_wrap.data_table_shell::-webkit-scrollbar-thumb:hover,
-.deals_list_table_panel .data_table_scroll_region::-webkit-scrollbar-thumb:hover,
-.deal_inv_table_panel .data_table_scroll_region::-webkit-scrollbar-thumb:hover {
-  background: var(--portal-table-scroll-thumb-hover, #94a3b8);
-  background-clip: padding-box;
-}
+/* Scrollbar chrome is defined globally in portal-scrollbars.css */
 
 .data_table_scroll_region.is-panning {
   cursor: grabbing;
@@ -99,6 +54,15 @@
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  /* Native scrollbar drag stays responsive; wheel pan is handled in JS. */
+  scroll-behavior: auto;
+}
+
+.data_table_scroll_region.data_table_scroll_region--overflow-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
 }
 
 /* Horizontal scroll + sticky first column (members / portal tables). */
@@ -426,18 +390,16 @@
 }
 
 /**
- * Investors tab parity for all members DataTables using `.deal_inv_table`:
- * horizontal scroll when zoomed out / narrow viewports (same as Deal Investors).
+ * Members / Investors tables: always allow natural column width (max-content).
+ * Do NOT collapse to fixed 100% before overflow is measured — that chicken-egg
+ * prevents horizontal scroll from ever appearing.
  */
 .um_table_wrap.data_table_shell
-  .data_table_scroll_region:has(.um_table.deal_inv_table):not(
-    .data_table_scroll_region--overflow-x
-  ) {
-  overflow-x: hidden;
-}
-
+  .data_table_scroll_region:has(.um_table.deal_inv_table).data_table_scroll_region--overflow-x,
 .um_table_wrap.data_table_shell
-  .data_table_scroll_region:has(.um_table.deal_inv_table).data_table_scroll_region--overflow-x {
+  .data_table_scroll_region:has(.um_table.deal_inv_table):not(
+    .data_table_scroll_region--empty
+  ) {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
@@ -449,6 +411,9 @@
   overscroll-behavior-x: contain;
 }
 
+.um_table_wrap.data_table_shell
+  .data_table_scroll_region:not(.data_table_scroll_region--empty)
+  .um_table.deal_inv_table,
 .um_table_wrap.data_table_shell .data_table_scroll_region .um_table.deal_inv_table {
   table-layout: auto;
   width: max-content;
@@ -456,10 +421,9 @@
   max-width: none;
 }
 
-.data_table_scroll_region:not(.data_table_scroll_region--overflow-x)
-  .um_table.deal_inv_table,
+.data_table_scroll_region.data_table_scroll_region--empty .um_table.deal_inv_table,
 .um_table_wrap.data_table_shell
-  .data_table_scroll_region:not(.data_table_scroll_region--overflow-x)
+  .data_table_scroll_region.data_table_scroll_region--empty
   .um_table.deal_inv_table {
   table-layout: fixed;
   width: 100%;
@@ -504,17 +468,17 @@
 
 /* `membersShell="plain"` — table directly under `.um_table_wrap` (no `.data_table_shell`) */
 .um_table_wrap:not(.data_table_shell):has(.um_table.deal_inv_table) {
-  overflow-x: hidden;
+  overflow-x: auto;
   min-width: 0;
   max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .um_table_wrap:not(.data_table_shell):has(
-    .data_table_scroll_region--overflow-x .um_table.deal_inv_table
+    .data_table_scroll_region--empty .um_table.deal_inv_table
   ) {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
+  overflow-x: hidden;
 }
 
 .um_table_wrap:not(.data_table_shell) .um_table.deal_inv_table {
@@ -525,7 +489,7 @@
 }
 
 .um_table_wrap:not(.data_table_shell)
-  .data_table_scroll_region:not(.data_table_scroll_region--overflow-x)
+  .data_table_scroll_region.data_table_scroll_region--empty
   .um_table.deal_inv_table {
   table-layout: fixed;
   width: 100%;

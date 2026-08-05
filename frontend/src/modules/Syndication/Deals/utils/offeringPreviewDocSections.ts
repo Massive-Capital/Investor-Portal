@@ -38,11 +38,13 @@ export type OfferingPreviewDisplayDocument = {
  * Which document scopes appear on a given surface.
  * - Offering link + Preview offering: `offering_page` only.
  * - LP portal (signed-in LP on the deal): `offering_page` and `lp_investor`.
+ * - `not_visible`: never on offering link, preview, or LP portal.
  */
 export function sectionVisibleOnOfferingPreview(
   scope: SectionSharedWithScope,
   ctx: { isPublicAnonymousOffering: boolean; isLpDealWorkspace: boolean },
 ): boolean {
+  if (scope === "not_visible") return false
   if (ctx.isLpDealWorkspace) {
     return scope === "offering_page" || scope === "lp_investor"
   }
@@ -83,8 +85,7 @@ export function listWorkspaceDocumentsForOfferingPreview(
 
   if (out.length === 0) {
     for (const d of readOfferingPreviewDocuments(id)) {
-      const scope: SectionSharedWithScope =
-        d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
+      const scope = resolveFlatDocumentSharedWithScope(d.sharedWithScope)
       if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
       tryAdd(d)
     }
@@ -97,7 +98,18 @@ export function listWorkspaceDocumentsForOfferingPreview(
 export type SectionSharedWithScope = OfferingPreviewDocSharedWithScope
 
 export function sectionSharedWithDisplay(scope: SectionSharedWithScope): string {
-  return scope === "lp_investor" ? "LP portal only" : "Offering link"
+  if (scope === "not_visible") return "Not visible to anyone"
+  if (scope === "lp_investor") return "LP portal only"
+  return "Offering link"
+}
+
+/** Map a flat/legacy document scope string to the three-value Visibility enum. */
+export function resolveFlatDocumentSharedWithScope(
+  raw: OfferingPreviewDocSharedWithScope | string | undefined | null,
+): SectionSharedWithScope {
+  if (raw === "lp_investor") return "lp_investor"
+  if (raw === "not_visible") return "not_visible"
+  return "offering_page"
 }
 
 /** Per-document scope when set; otherwise the section default. */
@@ -114,7 +126,9 @@ function parseSharedWithScope(
 ): SectionSharedWithScope {
   if (rawScope === "lp_investor") return "lp_investor"
   if (rawScope === "offering_page") return "offering_page"
+  if (rawScope === "not_visible") return "not_visible"
   const vis = legacyVisibility.trim().toLowerCase()
+  if (vis.includes("not visible")) return "not_visible"
   if (vis.includes("lp") && vis.includes("investor")) return "lp_investor"
   if (vis.includes("offering") && (vis.includes("link") || vis.includes("page")))
     return "offering_page"
@@ -124,6 +138,7 @@ function parseSharedWithScope(
 function parseDocumentSharedWithScope(raw: unknown): SectionSharedWithScope | undefined {
   if (raw === "lp_investor") return "lp_investor"
   if (raw === "offering_page") return "offering_page"
+  if (raw === "not_visible") return "not_visible"
   return undefined
 }
 
@@ -156,6 +171,7 @@ export type NestedPreviewDocument = {
    * Overrides the section scope for this file when set.
    * `offering_page`: offering link + preview (+ LPs when signed in).
    * `lp_investor`: LP portal only.
+   * `not_visible`: hidden from investors / offering link (sponsor workspace only).
    */
   sharedWithScope?: SectionSharedWithScope
   /**

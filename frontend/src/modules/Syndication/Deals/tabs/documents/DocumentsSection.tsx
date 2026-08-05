@@ -987,6 +987,7 @@ export function DocumentsSection({
                 sharedInvestorIds: [],
                 sharedWithAllInvestors: false,
                 sharedSponsorUserIds: [],
+                sharedWithScope: "not_visible" as const,
               }
             })
           } catch (err) {
@@ -1069,6 +1070,7 @@ export function DocumentsSection({
             sharedInvestorIds: [] as string[],
             sharedWithAllInvestors: false,
             sharedSponsorUserIds: [] as string[],
+            sharedWithScope: "not_visible" as const,
           }
         })
 
@@ -2067,11 +2069,15 @@ export function DocumentsSection({
                                   label="Visibility"
                                   hint={
                                     <p className="deals_table_header_tooltip_p">
-                                      <strong>Offering link</strong>: file appears on
-                                      Preview offering and the no-login shared investor
-                                      link (and for signed-in LPs). <strong>LP portal
-                                      only</strong>: signed-in LPs only — not on the
-                                      public offering link or preview.
+                                      <strong>Not visible to anyone</strong>: sponsor
+                                      workspace only — hidden from the offering link,
+                                      preview, and LP portal. <strong>Offering
+                                      link</strong>: file appears on Preview offering and
+                                      the no-login shared investor link (and for signed-in
+                                      LPs). <strong>LP portal only</strong>: signed-in LPs
+                                      only — not on the public offering link or preview.
+                                      Use Shared With to further limit which investors see
+                                      the file.
                                     </p>
                                   }
                                 />
@@ -2348,6 +2354,9 @@ export function DocumentsSection({
                                             )
                                           }}
                                         >
+                                          <option value="not_visible">
+                                            Not visible to anyone
+                                          </option>
                                           <option value="offering_page">
                                             Offering link
                                           </option>
@@ -2827,7 +2836,9 @@ export function DocumentsSection({
                     {sectionSharedWithDisplay(visibilityChangePending.nextScope)}
                   </p>
                   <p className="deal_offering_muted">
-                    {visibilityChangePending.nextScope === "lp_investor" ?
+                    {visibilityChangePending.nextScope === "not_visible" ?
+                      "This file will be hidden from the public offering link, preview, and LP portal. Only the sponsor workspace will show it."
+                    : visibilityChangePending.nextScope === "lp_investor" ?
                       "Signed-in investors will see this file on the Offering Documents tab in the LP portal. It will not appear on the public offering link."
                     : "This file will appear on the public offering link, preview, and the Offering Documents tab for signed-in investors."}
                   </p>

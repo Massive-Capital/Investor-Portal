@@ -54,6 +54,7 @@ import CustomerCompanyLayout from "./modules/Syndication/company/CustomerCompany
 import MembersLayout from "./modules/Syndication/usermanagement/MembersLayout";
 import { UserManagementPage } from "./modules/Syndication/usermanagement/UserManagementPage";
 import ContactsPage from "./modules/Syndication/contacts/ContactsPage";
+import ContactDetailPage from "./modules/Syndication/contacts/ContactDetailPage";
 import EmailTemplatesPage from "./modules/Syndication/contacts/EmailTemplatesPage";
 import EmailTemplateNewPage from "./modules/Syndication/contacts/EmailTemplateNewPage";
 import CrmPage from "./modules/Syndication/contacts/CrmPage";
@@ -367,6 +368,7 @@ function App() {
                 />
               }
             />
+            <Route path="contacts/:contactId" element={<ContactDetailPage />} />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="templates/new" element={<CreateReusableTemplatePage />} />
             {/* <Route path="templates" element={<ReusableTemplatesPage />} /> */}

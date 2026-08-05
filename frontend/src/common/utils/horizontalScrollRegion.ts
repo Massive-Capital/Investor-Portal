@@ -1,11 +1,12 @@
 /**
  * Shared horizontal scroll behavior for table regions that show a bottom scrollbar:
- * - Shift + vertical wheel → scroll columns
- * - Trackpad / mouse horizontal gestures → scroll columns
+ * - Shift + vertical wheel → scroll columns (smoothed)
+ * - Trackpad / mouse horizontal gestures → scroll columns (smoothed)
  * - Click-drag pan on non-interactive areas (horizontal only)
  * - Optional edge auto-scroll near left/right edges
  *
  * Vertical page scroll is never intercepted for ordinary vertical wheel moves.
+ * Bottom scrollbar drag stays native (no scroll-behavior: smooth on the element).
  */
 
 export interface HorizontalScrollRegionOptions {
@@ -39,14 +40,38 @@ export function attachHorizontalScrollBehavior(
   const maxScrollY = () =>
     Math.max(0, scroller.scrollHeight - scroller.clientHeight)
 
+  /** Soft momentum so wheel / trackpad horizontal pan does not jump. */
+  let wheelTarget = scroller.scrollLeft
+  let wheelRaf: number | null = null
+
+  function stopWheelSmooth() {
+    if (wheelRaf != null) {
+      cancelAnimationFrame(wheelRaf)
+      wheelRaf = null
+    }
+  }
+
+  function tickWheelSmooth() {
+    wheelRaf = null
+    const maxX = maxScrollX()
+    const target = Math.max(0, Math.min(maxX, wheelTarget))
+    const cur = scroller.scrollLeft
+    const delta = target - cur
+    if (Math.abs(delta) < 0.4) {
+      scroller.scrollLeft = target
+      return
+    }
+    scroller.scrollLeft = cur + delta * 0.28
+    wheelRaf = requestAnimationFrame(tickWheelSmooth)
+  }
+
   const applyScrollX = (delta: number, e: WheelEvent) => {
     if (delta === 0) return false
     const maxX = maxScrollX()
     if (maxX <= 2) return false
-    const prev = scroller.scrollLeft
-    const next = Math.max(0, Math.min(maxX, prev + delta))
-    if (next === prev) return false
-    scroller.scrollLeft = next
+    if (wheelRaf == null) wheelTarget = scroller.scrollLeft
+    wheelTarget = Math.max(0, Math.min(maxX, wheelTarget + delta))
+    if (wheelRaf == null) wheelRaf = requestAnimationFrame(tickWheelSmooth)
     e.preventDefault()
     return true
   }
@@ -87,6 +112,7 @@ export function attachHorizontalScrollBehavior(
   let startScrollLeft = 0
   let pointerId: number | null = null
   let panAxis: "x" | "y" | null = null
+  let panThreshold = 6
 
   const interactiveSelector =
     "a[href], button, [role='menuitem'], [role='button'], input, select, textarea, label, .cs_toggle"
@@ -98,18 +124,18 @@ export function attachHorizontalScrollBehavior(
     if (target.closest(interactiveSelector)) return
     if (maxScrollX() <= 2) return
 
+    // Do NOT setPointerCapture here — that swallows row clicks (Investor details).
+    // Capture only after horizontal pan intent is confirmed in pointermove.
+    stopWheelSmooth()
     isDragging = true
     panAxis = null
     pointerId = e.pointerId
     startX = e.clientX
     startY = e.clientY
     startScrollLeft = scroller.scrollLeft
+    // Higher threshold on clickable rows so a normal click opens Investor details.
+    panThreshold = target.closest("tr.data_table_row_clickable") ? 12 : 6
     stopEdgeScroll()
-    try {
-      scroller.setPointerCapture(e.pointerId)
-    } catch {
-      /* ignore */
-    }
   }
 
   const onPointerMove = (e: PointerEvent) => {
@@ -117,25 +143,27 @@ export function attachHorizontalScrollBehavior(
       const dx = e.clientX - startX
       const dy = e.clientY - startY
       if (panAxis == null) {
-        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+        if (Math.abs(dx) < panThreshold && Math.abs(dy) < panThreshold) return
         // Prefer vertical: don't steal page / text selection intent.
         panAxis = Math.abs(dx) > Math.abs(dy) * 1.15 ? "x" : "y"
-        if (panAxis === "x") scroller.classList.add("is-panning")
-        else {
-          // Vertical intent — release capture so the browser can scroll normally.
-          isDragging = false
-          pointerId = null
-          panAxis = null
+        if (panAxis === "x") {
+          scroller.classList.add("is-panning")
           try {
-            scroller.releasePointerCapture(e.pointerId)
+            scroller.setPointerCapture(e.pointerId)
           } catch {
             /* ignore */
           }
+        } else {
+          // Vertical intent or ambiguous — release so row click / page scroll work.
+          isDragging = false
+          pointerId = null
+          panAxis = null
           return
         }
       }
       if (panAxis !== "x") return
       scroller.scrollLeft = startScrollLeft - dx
+      wheelTarget = scroller.scrollLeft
       e.preventDefault()
       return
     }
@@ -145,14 +173,17 @@ export function attachHorizontalScrollBehavior(
 
   const endPan = (e: PointerEvent) => {
     if (!isDragging || (pointerId != null && e.pointerId !== pointerId)) return
+    const wasHorizontalPan = panAxis === "x"
     isDragging = false
     pointerId = null
     panAxis = null
     scroller.classList.remove("is-panning")
-    try {
-      scroller.releasePointerCapture(e.pointerId)
-    } catch {
-      /* ignore */
+    if (wasHorizontalPan) {
+      try {
+        scroller.releasePointerCapture(e.pointerId)
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -181,6 +212,7 @@ export function attachHorizontalScrollBehavior(
     const prev = scroller.scrollLeft
     const next = Math.max(0, Math.min(maxX, prev + step))
     scroller.scrollLeft = next
+    wheelTarget = next
     if (next !== 0 && next !== maxX) edgeRaf = requestAnimationFrame(edgeTick)
     else stopEdgeScroll()
   }
@@ -230,6 +262,7 @@ export function attachHorizontalScrollBehavior(
   scroller.addEventListener("pointerleave", onPointerLeave)
 
   return () => {
+    stopWheelSmooth()
     stopEdgeScroll()
     scroller.removeEventListener("wheel", onWheel)
     scroller.removeEventListener("pointerdown", onPointerDown)

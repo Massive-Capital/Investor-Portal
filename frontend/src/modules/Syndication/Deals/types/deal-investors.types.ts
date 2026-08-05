@@ -25,10 +25,14 @@ export interface DealInvestorRow {
   /** Portal user email — second line in identity cell */
   userEmail: string
   investorClass: string
-  /** Percent of class (ownership), e.g. `25.00%`. */
+  /** Percent of class (ownership), e.g. `25.00%`. Optional. */
   percentOfClassOwnership?: string
-  /** Percent of class (distributions), e.g. `25.00%`. */
+  /** Percent of class (distributions), e.g. `25.00%`. Optional. */
   percentOfClassDistributions?: string
+  /** Entity Ownership % — separate from percent of class. Optional. */
+  entityOwnershipPercent?: string
+  /** Distribution Allocation % — separate from percent of class. Optional. */
+  distributionAllocationPercent?: string
   /** Investor role label from investment row; empty → show "—" in UI */
   investorRole?: string
   /**

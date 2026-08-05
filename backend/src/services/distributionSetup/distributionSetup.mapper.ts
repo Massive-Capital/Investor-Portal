@@ -1,5 +1,6 @@
 import type {
   DistributionAmountMode,
+  DistributionFeeConfig,
   DistributionPaymentRow,
   DistributionWaterfalls,
   DistributionWfKind,
@@ -118,9 +119,11 @@ export function parsePriorDistributionsJson(
     const source =
       sourceRaw === "capital" || sourceRaw === "capital_event"
         ? "capital"
-        : sourceRaw === "operating"
-          ? "operating"
-          : str(o.source);
+        : sourceRaw === "fee" || sourceRaw === "distribution_fee"
+          ? "fee"
+          : sourceRaw === "operating"
+            ? "operating"
+            : str(o.source);
     const period = parsePeriod(o.period ?? o.periodFactor ?? o.period_factor);
     const investorPayments = normalizeInvestorPaymentLines(
       o.investorPayments ?? o.investor_payments,
@@ -165,12 +168,100 @@ export function parsePriorDistributionsJson(
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function parseDistributionFee(raw: unknown): DistributionFeeConfig | undefined {
+  const o = asRecord(raw);
+  if (Object.keys(o).length === 0) return undefined;
+  const splitsRaw = Array.isArray(o.classSplits)
+    ? o.classSplits
+    : Array.isArray(o.class_splits)
+      ? o.class_splits
+      : [];
+  const classSplits = splitsRaw
+    .map((item) => {
+      const row = asRecord(item);
+      const classId = str(row.classId ?? row.class_id);
+      if (!classId) return null;
+      return {
+        classId,
+        percent: numStr(row.percent ?? row.pct ?? row.percentage, "0"),
+      };
+    })
+    .filter((s): s is { classId: string; percent: string } => s != null);
+  const periodFactor = str(o.periodFactor ?? o.period_factor) || "0.25";
+  const periodStart = str(
+    o.periodStart ?? o.period_start ?? o.startDate ?? o.start_date,
+  ).slice(0, 10);
+  const periodEnd = str(o.periodEnd ?? o.period_end).slice(0, 10);
+  const legacyDistDate = str(
+    o.distributionDate ?? o.distribution_date,
+  ).slice(0, 10);
+  const resolvedStart = /^\d{4}-\d{2}-\d{2}$/.test(periodStart)
+    ? periodStart
+    : /^\d{4}-\d{2}-\d{2}$/.test(legacyDistDate)
+      ? legacyDistDate
+      : "";
+  const resolvedEnd = /^\d{4}-\d{2}-\d{2}$/.test(periodEnd) ? periodEnd : "";
+  const name = str(o.name);
+  const type =
+    str(o.type ?? o.feeType ?? o.fee_type) || (name ? name : "");
+  const typeOptionsRaw = Array.isArray(o.typeOptions)
+    ? o.typeOptions
+    : Array.isArray(o.type_options)
+      ? o.type_options
+      : [];
+  const typeOptions = typeOptionsRaw
+    .map((item) => str(item))
+    .filter(Boolean);
+  return {
+    name,
+    type,
+    typeOptions,
+    cashAvailable: numStr(o.cashAvailable ?? o.cash_available, "0"),
+    periodFactor,
+    periodStart: resolvedStart,
+    periodEnd: resolvedEnd,
+    classSplits,
+  };
+}
+
+function serializeDistributionFee(
+  fee: DistributionFeeConfig | null | undefined,
+): DistributionFeeConfig | undefined {
+  if (fee == null) return undefined;
+  const name = str(fee.name);
+  const type = str(fee.type) || name;
+  const classSplits = (fee.classSplits ?? [])
+    .map((s) => ({
+      classId: str(s.classId),
+      percent: numStr(s.percent, "0"),
+    }))
+    .filter((s) => s.classId);
+  if (!name && !type && classSplits.length === 0 && !str(fee.cashAvailable))
+    return undefined;
+  const periodStart = str(fee.periodStart).slice(0, 10);
+  const periodEnd = str(fee.periodEnd).slice(0, 10);
+  const typeOptions = (fee.typeOptions ?? [])
+    .map((t) => str(t))
+    .filter(Boolean);
+  return {
+    name,
+    type,
+    typeOptions,
+    cashAvailable: numStr(fee.cashAvailable, "0"),
+    periodFactor: str(fee.periodFactor) || "0.25",
+    periodStart: /^\d{4}-\d{2}-\d{2}$/.test(periodStart) ? periodStart : "",
+    periodEnd: /^\d{4}-\d{2}-\d{2}$/.test(periodEnd) ? periodEnd : "",
+    classSplits,
+  };
+}
+
 export function parseDistributionSetupDocument(raw: string): {
   waterfalls: DistributionWaterfalls;
   priorDistributions: PriorDistributionRecord[];
   setupName: string;
   dayCountMode: "period_window" | "from_accrual_start";
   defaultAccrualStartIso: string;
+  distributionFee?: DistributionFeeConfig;
 } {
   const o = parseJsonObject(raw);
   const wf = asRecord(o.waterfalls ?? o);
@@ -183,6 +274,9 @@ export function parseDistributionSetupDocument(raw: string): {
   const accrualRaw = str(
     o.defaultAccrualStartIso ?? o.default_accrual_start_iso,
   ).slice(0, 10);
+  const distributionFee = parseDistributionFee(
+    o.distributionFee ?? o.distribution_fee,
+  );
   return {
     waterfalls: {
       operating: operating.length > 0 ? operating : defaults.operating,
@@ -196,6 +290,7 @@ export function parseDistributionSetupDocument(raw: string): {
     defaultAccrualStartIso: /^\d{4}-\d{2}-\d{2}$/.test(accrualRaw)
       ? accrualRaw
       : "",
+    ...(distributionFee ? { distributionFee } : {}),
   };
 }
 
@@ -211,6 +306,7 @@ export function serializeDistributionSetupJson(
   options?: {
     dayCountMode?: "period_window" | "from_accrual_start";
     defaultAccrualStartIso?: string;
+    distributionFee?: DistributionFeeConfig | null;
   },
 ): string {
   const mapRow = (r: DistributionPaymentRow) => ({
@@ -229,12 +325,14 @@ export function serializeDistributionSetupJson(
         ? "period_window"
         : undefined;
   const accrual = str(options?.defaultAccrualStartIso).slice(0, 10);
+  const distributionFee = serializeDistributionFee(options?.distributionFee);
   return JSON.stringify({
     ...(str(setupName) ? { setupName: str(setupName) } : {}),
     ...(dayCountMode ? { dayCountMode } : {}),
     ...( /^\d{4}-\d{2}-\d{2}$/.test(accrual)
       ? { defaultAccrualStartIso: accrual }
       : {}),
+    ...(distributionFee ? { distributionFee } : {}),
     waterfalls: {
       operating: (waterfalls.operating ?? []).map(mapRow),
       capital: (waterfalls.capital ?? []).map(mapRow),

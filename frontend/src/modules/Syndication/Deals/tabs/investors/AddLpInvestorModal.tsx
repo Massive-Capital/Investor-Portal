@@ -10,6 +10,7 @@ import {
   UserRound,
   X,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -25,6 +26,7 @@ import {
   type DropdownSelectSection,
 } from "../../../../../common/components/dropdown-select"
 import { toast } from "../../../../../common/components/Toast"
+import { TabsScrollStrip } from "../../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
   lpInvestorValidationPreferSelector,
   presentFormValidationError,
@@ -34,6 +36,7 @@ import { createContact, fetchContacts } from "../../../contacts/api/contactsApi"
 import type { ContactRow } from "../../../contacts/types/contact.types"
 import {
   fetchDealInvestorClasses,
+  fetchDealLpInvestorForEdit,
   fetchUsersForMemberSelect,
   postDealLpInvestor,
   putDealLpInvestor,
@@ -68,10 +71,23 @@ import { YesNoCardRadioGroup } from "../../../../../common/components/YesNoCardR
 import "../../../contacts/contacts.css"
 import "../../../usermanagement/user_management.css"
 import "../../components/deal-step-form.css"
+import "../../deal-investors-tab.css"
 import "../deal_members/add-investment/add_deal_modal.css"
 
 const INVESTOR_CLASS_UNAVAILABLE_HINT =
   "Please complete the Classes section to assign an investor class."
+
+type InvestorEditSectionTab = "investor" | "profile" | "investment"
+
+const INVESTOR_EDIT_SECTION_TABS: Array<{
+  id: InvestorEditSectionTab
+  label: string
+  Icon: LucideIcon
+}> = [
+  { id: "investor", label: "Investor", Icon: UserRound },
+  { id: "profile", label: "Profile", Icon: IdCard },
+  { id: "investment", label: "Investment", Icon: Briefcase },
+]
 
 const INVITATION_EMAILS_UNAVAILABLE_HINT =
   "Invitation emails are unavailable while required deal details are incomplete. Complete the deal details before sending invitations. You can still choose No below."
@@ -305,6 +321,13 @@ export function AddLpInvestorModal({
   )
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sectionTab, setSectionTab] =
+    useState<InvestorEditSectionTab>("investor")
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const sectionRefs = useRef<
+    Partial<Record<InvestorEditSectionTab, HTMLElement | null>>
+  >({})
+  const ignoreScrollSpyUntilRef = useRef(0)
   const [fieldErrors, setFieldErrors] = useState<LpInvestorFieldErrors>({})
   const [memberRows, setMemberRows] = useState<Record<string, unknown>[]>([])
   const [contactRows, setContactRows] = useState<ContactRow[]>([])
@@ -314,6 +337,9 @@ export function AddLpInvestorModal({
   const [investorClassId, setInvestorClassId] = useState("")
   const [percentOfClassOwnership, setPercentOfClassOwnership] = useState("")
   const [percentOfClassDistributions, setPercentOfClassDistributions] =
+    useState("")
+  const [entityOwnershipPercent, setEntityOwnershipPercent] = useState("")
+  const [distributionAllocationPercent, setDistributionAllocationPercent] =
     useState("")
   const [backendLpRosterId, setBackendLpRosterId] = useState<string | null>(null)
   const backendLpRosterIdRef = useRef<string | null>(null)
@@ -394,6 +420,47 @@ export function AddLpInvestorModal({
     if (!open) setAddContactModalOpen(false)
   }, [open])
 
+  const syncActiveTabFromScroll = useCallback(() => {
+    if (Date.now() < ignoreScrollSpyUntilRef.current) return
+    const root = scrollRef.current
+    if (!root) return
+
+    const rootTop = root.getBoundingClientRect().top
+    const marker = rootTop + Math.min(72, root.clientHeight * 0.25)
+    let active: InvestorEditSectionTab = "investor"
+
+    for (const { id } of INVESTOR_EDIT_SECTION_TABS) {
+      const section = sectionRefs.current[id]
+      if (!section) continue
+      if (section.getBoundingClientRect().top <= marker) active = id
+    }
+
+    setSectionTab((prev) => (prev === active ? prev : active))
+  }, [])
+
+  const scrollToSection = useCallback((id: InvestorEditSectionTab) => {
+    const root = scrollRef.current
+    const section = sectionRefs.current[id]
+    if (!root || !section) return
+    setSectionTab(id)
+    ignoreScrollSpyUntilRef.current = Date.now() + 600
+    const nextTop =
+      root.scrollTop +
+      (section.getBoundingClientRect().top - root.getBoundingClientRect().top)
+    root.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    ignoreScrollSpyUntilRef.current = 0
+    const root = scrollRef.current
+    if (!root) return
+    root.scrollTop = 0
+    syncActiveTabFromScroll()
+    root.addEventListener("scroll", syncActiveTabFromScroll, { passive: true })
+    return () => root.removeEventListener("scroll", syncActiveTabFromScroll)
+  }, [open, syncActiveTabFromScroll])
+
   const investorClassOptions = useMemo(
     () =>
       dealClasses.map((c) => ({
@@ -414,14 +481,22 @@ export function AddLpInvestorModal({
       setInvestorClassId("")
       setPercentOfClassOwnership("")
       setPercentOfClassDistributions("")
+      setEntityOwnershipPercent("")
+      setDistributionAllocationPercent("")
       setSendInvitationMail("yes")
       setError(null)
       setFieldErrors({})
+      setSectionTab("investor")
       setBackendLpRosterId(null)
       backendLpRosterIdRef.current = null
       return
     }
+    setSectionTab("investor")
     if (isEditMode && editRow) {
+      let cancelled = false
+      setError(null)
+      setFieldErrors({})
+      /** Prefill from list row immediately, then overwrite with DB fetch. */
       setContactId(editRow.contactId?.trim() ?? "")
       setContactDisplayName(editRow.displayName?.trim() ?? "")
       setContactEmail(
@@ -442,11 +517,51 @@ export function AddLpInvestorModal({
       setPercentOfClassDistributions(
         editRow.percentOfClassDistributions?.trim() ?? "",
       )
-      setError(null)
-      setFieldErrors({})
+      setEntityOwnershipPercent(editRow.entityOwnershipPercent?.trim() ?? "")
+      setDistributionAllocationPercent(
+        editRow.distributionAllocationPercent?.trim() ?? "",
+      )
       setBackendLpRosterId(editRow.id)
       backendLpRosterIdRef.current = editRow.id
-      return
+
+      void (async () => {
+        const fetched = await fetchDealLpInvestorForEdit(dealId, {
+          id: editRow.id,
+          contactId: editRow.contactId,
+        })
+        if (cancelled || !fetched) return
+        setContactId(fetched.contactId?.trim() ?? "")
+        setContactDisplayName(fetched.displayName?.trim() ?? "")
+        setContactEmail(
+          fetched.userEmail && fetched.userEmail !== "—"
+            ? fetched.userEmail.trim()
+            : "",
+        )
+        setProfileId(
+          fetched.profileId?.trim() ||
+            investorProfileIdFromLabel(fetched.entitySubtitle ?? "") ||
+            "",
+        )
+        setInvestorClassId(resolveLpInvestorClassId(fetched, dealClasses))
+        setPercentOfClassOwnership(
+          fetched.percentOfClassOwnership?.trim() ?? "",
+        )
+        setPercentOfClassDistributions(
+          fetched.percentOfClassDistributions?.trim() ?? "",
+        )
+        setEntityOwnershipPercent(
+          fetched.entityOwnershipPercent?.trim() ?? "",
+        )
+        setDistributionAllocationPercent(
+          fetched.distributionAllocationPercent?.trim() ?? "",
+        )
+        setBackendLpRosterId(fetched.id)
+        backendLpRosterIdRef.current = fetched.id
+      })()
+
+      return () => {
+        cancelled = true
+      }
     }
     if (resumeAddMemberDraft) {
       const draft = loadAddMemberDraft(dealId)
@@ -483,6 +598,10 @@ export function AddLpInvestorModal({
         setPercentOfClassDistributions(
           String(f.percentOfClassDistributions ?? "").trim(),
         )
+        setEntityOwnershipPercent(String(f.entityOwnershipPercent ?? "").trim())
+        setDistributionAllocationPercent(
+          String(f.distributionAllocationPercent ?? "").trim(),
+        )
         /** Only `deal_lp_investor` ids — never `backendInvestmentId` (different table / PUT route). */
         const bid = draft?.backendLpInvestorId?.trim()
         if (bid) {
@@ -504,6 +623,8 @@ export function AddLpInvestorModal({
     setInvestorClassId(dealClasses[0]?.id ?? "")
     setPercentOfClassOwnership("")
     setPercentOfClassDistributions("")
+    setEntityOwnershipPercent("")
+    setDistributionAllocationPercent("")
     setSendInvitationMail(dealBlocksInvitationEmails ? "no" : "yes")
     setError(null)
     setFieldErrors({})
@@ -779,6 +900,8 @@ export function AddLpInvestorModal({
           investorClass: classId,
           percentOfClassOwnership: percentOfClassOwnership.trim(),
           percentOfClassDistributions: percentOfClassDistributions.trim(),
+          entityOwnershipPercent: entityOwnershipPercent.trim(),
+          distributionAllocationPercent: distributionAllocationPercent.trim(),
           docSignedDate: "",
           commitmentAmount: "0",
           extraContributionAmounts: [],
@@ -863,6 +986,8 @@ export function AddLpInvestorModal({
     memberRows,
     percentOfClassOwnership,
     percentOfClassDistributions,
+    entityOwnershipPercent,
+    distributionAllocationPercent,
   ])
 
   async function handleSubmit(e: FormEvent) {
@@ -879,6 +1004,9 @@ export function AddLpInvestorModal({
     })
     if (Object.keys(validationErrors).length > 0) {
       setFieldErrors(validationErrors)
+      if (validationErrors.contactId) scrollToSection("investor")
+      else if (validationErrors.profileId) scrollToSection("profile")
+      else scrollToSection("investment")
       const message = firstLpInvestorFieldErrorMessage(validationErrors)
       if (validationErrors.contactId && selectedContactAlreadyOnDeal) {
         toast.error("Investor already on this deal", INVESTOR_ALREADY_ON_DEAL_MESSAGE)
@@ -888,10 +1016,12 @@ export function AddLpInvestorModal({
       ) {
         toast.error("Cannot add investor", validationErrors.contactId)
       }
-      presentFormValidationError({
-        container: formRef.current,
-        message,
-        preferSelector: lpInvestorValidationPreferSelector(message),
+      requestAnimationFrame(() => {
+        presentFormValidationError({
+          container: formRef.current,
+          message,
+          preferSelector: lpInvestorValidationPreferSelector(message),
+        })
       })
       return
     }
@@ -911,6 +1041,8 @@ export function AddLpInvestorModal({
       investorClass: classId,
       percentOfClassOwnership: percentOfClassOwnership.trim(),
       percentOfClassDistributions: percentOfClassDistributions.trim(),
+      entityOwnershipPercent: entityOwnershipPercent.trim(),
+      distributionAllocationPercent: distributionAllocationPercent.trim(),
       docSignedDate: "",
       commitmentAmount: "0",
       extraContributionAmounts: [],
@@ -964,7 +1096,7 @@ export function AddLpInvestorModal({
       role="presentation"
     >
       <div
-        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel"
+        className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel deal_inv_investor_view_modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -986,18 +1118,68 @@ export function AddLpInvestorModal({
 
         <form
           ref={formRef}
-          className="deals_add_inv_modal_form"
+          className="deals_add_inv_modal_form deal_inv_view_form"
           onSubmit={handleSubmit}
           noValidate
         >
-          <div className="deals_add_inv_modal_scroll">
+          <div className="deals_add_inv_section_tabs_outer um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer deal_inv_view_section_tabs">
+            <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+              <div
+                className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row deals_add_inv_section_tabs_row"
+                role="tablist"
+                aria-label="Investor form sections"
+              >
+                {INVESTOR_EDIT_SECTION_TABS.map(({ id, label, Icon }) => {
+                  const selected = sectionTab === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      id={`lp-inv-tab-${id}`}
+                      role="tab"
+                      aria-selected={selected}
+                      aria-controls={`lp-inv-panel-${id}`}
+                      className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                        selected ? " um_members_tab_active" : ""
+                      }`}
+                      onClick={() => scrollToSection(id)}
+                    >
+                      <Icon
+                        className="deals_tabs_icon um_segmented_tab_icon"
+                        size={16}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span className="deals_tabs_label um_segmented_tab_label">
+                        {label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </TabsScrollStrip>
+          </div>
+
+          <div
+            ref={scrollRef}
+            className="deals_add_inv_modal_scroll deal_inv_view_body"
+          >
             {error ? (
               <p className="um_msg_error um_modal_form_error" role="alert">
                 {error}
               </p>
             ) : null}
 
-            <div className="add_contact_section">
+            <section
+              ref={(el) => {
+                sectionRefs.current.investor = el
+              }}
+              className="add_contact_section deal_inv_view_section"
+              role="tabpanel"
+              id="lp-inv-panel-investor"
+              aria-labelledby="lp-inv-tab-investor"
+            >
+              <h3 className="deal_inv_view_section_label">Investor</h3>
               <div className="um_field">
                 <label htmlFor="lp-inv-member" className="um_field_label_row">
                   <UserRound className="um_field_label_icon" size={17} aria-hidden />
@@ -1039,22 +1221,18 @@ export function AddLpInvestorModal({
                   </p>
                 ) : null}
               </div>
+            </section>
 
-              <div className="um_field">
-                <label htmlFor="lp-inv-role" className="um_field_label_row">
-                  <Briefcase className="um_field_label_icon" size={17} aria-hidden />
-                  <span>Role</span>
-                </label>
-                <input
-                  id="lp-inv-role"
-                  type="text"
-                  readOnly
-                  className="deals_add_inv_field_pill deals_lp_inv_role_readonly"
-                  value={LP_INVESTORS_ROLE_LABEL}
-                  aria-readonly="true"
-                />
-              </div>
-
+            <section
+              ref={(el) => {
+                sectionRefs.current.profile = el
+              }}
+              className="add_contact_section deal_inv_view_section"
+              role="tabpanel"
+              id="lp-inv-panel-profile"
+              aria-labelledby="lp-inv-tab-profile"
+            >
+              <h3 className="deal_inv_view_section_label">Profile</h3>
               <div className="um_field">
                 <label htmlFor="lp-inv-profile" className="um_field_label_row">
                   <IdCard className="um_field_label_icon" size={17} aria-hidden />
@@ -1102,6 +1280,32 @@ export function AddLpInvestorModal({
                     {fieldErrors.profileId}
                   </p>
                 ) : null}
+              </div>
+            </section>
+
+            <section
+              ref={(el) => {
+                sectionRefs.current.investment = el
+              }}
+              className="add_contact_section deal_inv_view_section"
+              role="tabpanel"
+              id="lp-inv-panel-investment"
+              aria-labelledby="lp-inv-tab-investment"
+            >
+              <h3 className="deal_inv_view_section_label">Investment</h3>
+              <div className="um_field">
+                <label htmlFor="lp-inv-role" className="um_field_label_row">
+                  <Briefcase className="um_field_label_icon" size={17} aria-hidden />
+                  <span>Role</span>
+                </label>
+                <input
+                  id="lp-inv-role"
+                  type="text"
+                  readOnly
+                  className="deals_add_inv_field_pill deals_lp_inv_role_readonly"
+                  value={LP_INVESTORS_ROLE_LABEL}
+                  aria-readonly="true"
+                />
               </div>
 
               <div className="um_field">
@@ -1287,6 +1491,72 @@ export function AddLpInvestorModal({
                 </div>
               ) : null}
 
+              <div className="add_contact_name_grid">
+                <div className="um_field">
+                  <label
+                    htmlFor="lp-inv-entity-ownership"
+                    className="um_field_label_row"
+                  >
+                    <Percent
+                      className="um_field_label_icon"
+                      size={17}
+                      aria-hidden
+                    />
+                    <span>Entity Ownership %</span>
+                  </label>
+                  <input
+                    id="lp-inv-entity-ownership"
+                    type="text"
+                    className="deals_add_inv_field_pill"
+                    inputMode="decimal"
+                    placeholder="0.00%"
+                    value={entityOwnershipPercent}
+                    onChange={(e) =>
+                      setEntityOwnershipPercent(
+                        formatPercentTypeInput(e.target.value, 100),
+                      )
+                    }
+                    onBlur={(e) =>
+                      setEntityOwnershipPercent(
+                        blurFormatPercentClamped(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="um_field">
+                  <label
+                    htmlFor="lp-inv-distribution-allocation"
+                    className="um_field_label_row"
+                  >
+                    <Percent
+                      className="um_field_label_icon"
+                      size={17}
+                      aria-hidden
+                    />
+                    <span>Distribution Allocation %</span>
+                  </label>
+                  <input
+                    id="lp-inv-distribution-allocation"
+                    type="text"
+                    className="deals_add_inv_field_pill"
+                    inputMode="decimal"
+                    placeholder="0.00%"
+                    value={distributionAllocationPercent}
+                    onChange={(e) =>
+                      setDistributionAllocationPercent(
+                        formatPercentTypeInput(e.target.value, 100),
+                      )
+                    }
+                    onBlur={(e) =>
+                      setDistributionAllocationPercent(
+                        blurFormatPercentClamped(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
               <div className="um_field">
                 <div
                   className="um_field_label_row"
@@ -1342,7 +1612,7 @@ export function AddLpInvestorModal({
                   />
                 </div>
               </div>
-            </div>
+            </section>
           </div>
 
           <div className="um_modal_actions add_contact_modal_actions">

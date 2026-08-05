@@ -88,6 +88,33 @@ export interface DistributionSetupPromote {
   shares: Record<string, string[]>
 }
 
+/** Class percentage row for a Distribution Fee allocation. */
+export interface DistributionFeeClassSplit {
+  classId: string
+  /** Percent of fee cash (0–100). */
+  percent: string
+}
+
+/**
+ * Distribution Fee tab config — fee name + cash window + class split.
+ * Class split is user-defined (not assumed GP-only).
+ */
+export interface DistributionFeeConfig {
+  name: string
+  /** Fee type label (shown as Type on Distributions). */
+  type: string
+  /** Saved type choices for the creatable Type dropdown. */
+  typeOptions: string[]
+  cashAvailable: string
+  /** Period factor string: monthly 0.083333 | quarterly 0.25 | annual 1 */
+  periodFactor: string
+  /** Inclusive period start YYYY-MM-DD */
+  periodStart: string
+  /** Inclusive period end YYYY-MM-DD */
+  periodEnd: string
+  classSplits: DistributionFeeClassSplit[]
+}
+
 export interface DistributionSetupBundle {
   dealId: string
   dealName: string
@@ -102,6 +129,8 @@ export interface DistributionSetupBundle {
   priorDistributions: PriorDistributionRecord[]
   classes: DistributionSetupClass[]
   promote: DistributionSetupPromote
+  /** Optional fee allocation configured on the Distribution Fee tab. */
+  distributionFee?: DistributionFeeConfig
 }
 
 export const KIND_META: Record<

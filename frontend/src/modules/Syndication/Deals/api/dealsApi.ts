@@ -2540,6 +2540,20 @@ function normalizeInvestorRowApi(
       ]),
       "",
     ),
+    entityOwnershipPercent: str(
+      firstDefined(raw, [
+        "entityOwnershipPercent",
+        "entity_ownership_percent",
+      ]),
+      "",
+    ),
+    distributionAllocationPercent: str(
+      firstDefined(raw, [
+        "distributionAllocationPercent",
+        "distribution_allocation_percent",
+      ]),
+      "",
+    ),
   }
 }
 
@@ -4408,6 +4422,9 @@ export async function postDealLpInvestor(
     percent_of_class_ownership: values.percentOfClassOwnership?.trim() ?? "",
     percent_of_class_distributions:
       values.percentOfClassDistributions?.trim() ?? "",
+    entity_ownership_percent: values.entityOwnershipPercent?.trim() ?? "",
+    distribution_allocation_percent:
+      values.distributionAllocationPercent?.trim() ?? "",
   }
   const ce = values.contactEmail?.trim()
   if (ce) body.contact_email = ce
@@ -4448,6 +4465,41 @@ export async function postDealLpInvestor(
   }
 }
 
+/**
+ * GET `/deals/:dealId/lp-investors/:id` — fetch that LP roster row for Edit.
+ * Pass `contactId` when the list row id may be a `deal_investment` id.
+ */
+export async function fetchDealLpInvestorForEdit(
+  dealId: string,
+  params: { id: string; contactId?: string | null },
+): Promise<DealInvestorRow | null> {
+  const base = getApiV1Base()
+  if (!base) return null
+  const id = String(params.id ?? "").trim()
+  if (!dealId.trim() || !id) return null
+  const qs = new URLSearchParams()
+  const contactId = String(params.contactId ?? "").trim()
+  if (contactId) qs.set("contactId", contactId)
+  const q = qs.toString()
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/lp-investors/${encodeURIComponent(id)}${q ? `?${q}` : ""}`,
+      {
+        headers: authHeaders(),
+        credentials: "include",
+      },
+    )
+    if (!res.ok) return null
+    const data = (await res.json().catch(() => ({}))) as {
+      investor?: Record<string, unknown>
+    }
+    if (!data.investor || typeof data.investor !== "object") return null
+    return normalizeInvestorRowApi(data.investor, 0)
+  } catch {
+    return null
+  }
+}
+
 /** JSON PUT `/deals/:dealId/lp-investors/:lpInvestorId`. */
 export async function putDealLpInvestor(
   dealId: string,
@@ -4467,6 +4519,9 @@ export async function putDealLpInvestor(
     percent_of_class_ownership: values.percentOfClassOwnership?.trim() ?? "",
     percent_of_class_distributions:
       values.percentOfClassDistributions?.trim() ?? "",
+    entity_ownership_percent: values.entityOwnershipPercent?.trim() ?? "",
+    distribution_allocation_percent:
+      values.distributionAllocationPercent?.trim() ?? "",
   }
   const ce = values.contactEmail?.trim()
   if (ce) body.contact_email = ce

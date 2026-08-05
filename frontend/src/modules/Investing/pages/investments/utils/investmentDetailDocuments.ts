@@ -5,6 +5,7 @@ import {
   isInvestorOfferingDocumentSectionExcluded,
   offeringPreviewDocumentExcludedFromInvestorOffering,
   readDealDocumentSectionsForWorkspace,
+  resolveFlatDocumentSharedWithScope,
   sectionDisplayLabel,
   sectionSharedWithDisplay,
   sectionVisibleOnOfferingPreview,
@@ -190,8 +191,7 @@ export function listInvestmentDetailDocumentSectionGroups(
     for (const d of readOfferingPreviewDocuments(id)) {
       if (seenLegacyIds.has(d.id)) continue
       if (offeringPreviewDocumentExcludedFromInvestorOffering(d, sections)) continue
-      const scope: SectionSharedWithScope =
-        d.sharedWithScope === "lp_investor" ? "lp_investor" : "offering_page"
+      const scope = resolveFlatDocumentSharedWithScope(d.sharedWithScope)
       if (!sectionVisibleOnOfferingPreview(scope, LP_PORTAL_DOCUMENT_CTX)) continue
       const legacyDoc: NestedPreviewDocument = {
         id: d.id,

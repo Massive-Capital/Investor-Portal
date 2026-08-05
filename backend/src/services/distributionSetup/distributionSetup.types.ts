@@ -110,6 +110,8 @@ export interface DistributionSetupBundle {
     }>;
     shares: Record<string, string[]>;
   };
+  /** Optional fee allocation from the Distribution Fee tab. */
+  distributionFee?: DistributionFeeConfig;
 }
 
 export interface DistributionSetupSaveInput {
@@ -117,6 +119,29 @@ export interface DistributionSetupSaveInput {
   setupName?: string;
   dayCountMode?: "period_window" | "from_accrual_start";
   defaultAccrualStartIso?: string;
+  distributionFee?: DistributionFeeConfig | null;
+}
+
+/** Class percentage for Distribution Fee allocation. */
+export interface DistributionFeeClassSplit {
+  classId: string;
+  percent: string;
+}
+
+/** Distribution Fee tab — fee name, cash window, class split. */
+export interface DistributionFeeConfig {
+  name: string;
+  /** Fee type label (shown as Type on Distributions). */
+  type: string;
+  /** Saved type choices for the creatable Type dropdown. */
+  typeOptions: string[];
+  cashAvailable: string;
+  periodFactor: string;
+  /** Inclusive period start YYYY-MM-DD */
+  periodStart: string;
+  /** Inclusive period end YYYY-MM-DD */
+  periodEnd: string;
+  classSplits: DistributionFeeClassSplit[];
 }
 
 export const KIND_LABELS: Record<DistributionWfKind, string> = {

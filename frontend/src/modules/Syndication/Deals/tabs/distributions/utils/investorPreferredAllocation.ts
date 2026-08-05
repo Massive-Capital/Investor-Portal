@@ -16,6 +16,7 @@ import type { PreferredDayCountMode } from "../../../distribution-setup/engine/p
 import { allocateCentsByWeight, roundMoney, roundPct } from "../../../distribution-setup/engine/helpers/rounding"
 import {
   investorCapitalForDistribution,
+  parseStoredClassPercent,
   resolveInvestorClass,
   type InvestorDistributionLine,
 } from "./investorDistributionAllocation"
@@ -211,8 +212,15 @@ export function allocateInvestorsByPreferredDue(params: {
   const lines: InvestorPreferredLine[] = matched.map((m, i) => {
     const payment = paymentByIndex[i] ?? 0
     const classCap = capitalByClass.get(m.classId) ?? 0
+    const storedPct = parseStoredClassPercent(
+      m.investor.percentOfClassDistributions,
+    )
     const percentOfClass =
-      classCap > 0 ? roundPct((m.capital / classCap) * 100) : 0
+      storedPct != null
+        ? storedPct
+        : classCap > 0
+          ? roundPct((m.capital / classCap) * 100)
+          : 0
     const contactId = m.investor.contactId?.trim() || undefined
     const userEmail =
       m.investor.userEmail?.trim().toLowerCase() || undefined

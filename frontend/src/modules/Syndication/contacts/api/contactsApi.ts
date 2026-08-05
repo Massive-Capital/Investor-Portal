@@ -1,6 +1,10 @@
 import { portalAuthHeaders, organizationIdQueryParam } from "@/common/auth/portalAuthHeaders"
 import { getApiV1Base } from "@/common/utils/apiBaseUrl"
-import type { ContactRow, ContactStatus } from "../types/contact.types"
+import type {
+  ContactRow,
+  ContactShowOfferings,
+  ContactStatus,
+} from "../types/contact.types"
 
 function authHeaders(): HeadersInit {
   return portalAuthHeaders()
@@ -9,6 +13,12 @@ function authHeaders(): HeadersInit {
 function normalizeStatus(raw: unknown): ContactRow["status"] {
   const s = String(raw ?? "active").trim().toLowerCase()
   return s === "suspended" ? "suspended" : "active"
+}
+
+function normalizeShowOfferings(raw: unknown): ContactShowOfferings {
+  const s = String(raw ?? "show").trim().toLowerCase()
+  if (s === "506c" || s === "hide") return s
+  return "show"
 }
 
 function normalizeContact(raw: Record<string, unknown>): ContactRow {
@@ -26,6 +36,9 @@ function normalizeContact(raw: Record<string, unknown>): ContactRow {
     lists: Array.isArray(lists) ? lists.map((x) => String(x)) : [],
     owners: Array.isArray(owners) ? owners.map((x) => String(x)) : [],
     status: normalizeStatus(raw.status),
+    showOfferings: normalizeShowOfferings(
+      raw.showOfferings ?? raw.show_offerings,
+    ),
     lastEditReason:
       raw.lastEditReason != null || raw.last_edit_reason != null
         ? String(raw.lastEditReason ?? raw.last_edit_reason).trim() ||
@@ -74,6 +87,33 @@ export async function fetchContacts(): Promise<ContactRow[]> {
       .map(normalizeContact)
   } catch {
     return []
+  }
+}
+
+export async function fetchContact(id: string): Promise<ContactRow | null> {
+  const base = getApiV1Base()
+  if (!base || !id.trim()) return null
+  try {
+    const params = new URLSearchParams()
+    const oid = organizationIdQueryParam()
+    if (oid) params.set("organizationId", oid)
+    const q = params.toString()
+    const res = await fetch(
+      `${base}/contacts/${encodeURIComponent(id)}${q ? `?${q}` : ""}`,
+      {
+        headers: { ...authHeaders() },
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      contact?: Record<string, unknown>
+    }
+    if (!res.ok) return null
+    const c = data.contact
+    if (!c || typeof c !== "object") return null
+    return normalizeContact(c)
+  } catch {
+    return null
   }
 }
 
@@ -176,6 +216,40 @@ export async function patchContactStatus(
       },
       credentials: "include",
       body: JSON.stringify({ status }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    message?: unknown
+    contact?: Record<string, unknown>
+  }
+  if (!res.ok) {
+    const msg =
+      data?.message != null ? String(data.message) : `Error ${res.status}`
+    throw new Error(msg)
+  }
+  const c = data.contact
+  if (!c || typeof c !== "object") throw new Error("Invalid response")
+  return normalizeContact(c as Record<string, unknown>)
+}
+
+export async function patchContactShowOfferings(
+  id: string,
+  showOfferings: ContactShowOfferings,
+): Promise<ContactRow> {
+  const base = getApiV1Base()
+  if (!base) {
+    throw new Error("API is not configured (VITE_BASE_URL).")
+  }
+  const res = await fetch(
+    `${base}/contacts/${encodeURIComponent(id)}/show-offerings`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ showOfferings }),
     },
   )
   const data = (await res.json().catch(() => ({}))) as {

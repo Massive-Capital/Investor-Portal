@@ -39,6 +39,10 @@ import {
 } from "./utils/classSetupTotals"
 import { validateClassSetupLocal } from "./utils/classSetupValidation"
 import {
+  isClassSectionDirty,
+  isPromoteSectionDirty,
+} from "./utils/classSetupDirty"
+import {
   normalizePromoteShares,
   removeClassFromPromote,
   updatePromoteShare,
@@ -548,6 +552,29 @@ export function ClassSetupPage() {
     return labels
   }, [promoteNormalized.hurdles])
 
+  const dirtySections = useMemo(() => {
+    const snapshot = savedSnapshotRef.current
+    const types: ClassSetupType[] = [
+      "lp",
+      "gp",
+      "preferred_equity",
+      "mezzanine",
+    ]
+    const byType = {} as Record<ClassSetupType, boolean>
+    for (const type of types) {
+      byType[type] = isClassSectionDirty({
+        sectionType: type,
+        classes,
+        meta,
+        snapshot,
+      })
+    }
+    return {
+      byType,
+      promote: isPromoteSectionDirty({ classes, meta, snapshot }),
+    }
+  }, [classes, meta])
+
   if (!dealId) {
     return (
       <div className="deals_list_page deals_detail_page deals_class_setup_page">
@@ -649,6 +676,7 @@ export function ClassSetupPage() {
             promoteShares={promoteNormalized.shares}
             promoteStageLabels={promoteStageLabels}
             canSaveSection={(type) => buildSectionSavePayload(type) != null}
+            isSectionDirty={(type) => dirtySections.byType[type]}
             savingSection={
               savingSection != null && savingSection !== "promote"
                 ? savingSection
@@ -681,6 +709,7 @@ export function ClassSetupPage() {
             promote={promoteNormalized}
             classes={classes}
             canSave={buildPromoteSavePayload() != null}
+            isDirty={dirtySections.promote}
             saving={savingSection === "promote"}
             onSave={() => void handleSavePromote()}
             onChange={(promote) =>

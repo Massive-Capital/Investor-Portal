@@ -56,6 +56,7 @@ import {
   fetchOrganizationContactLists,
   fetchOrganizationContactTags,
   notifyContactsExportAudit,
+  patchContactShowOfferings,
   patchContactStatus,
   updateContact,
 } from "./api/contactsApi"
@@ -82,8 +83,10 @@ import {
 import "../Deals/deals-list.css"
 import "./contacts.css"
 import "../Deals/deal-investors-tab.css"
-import "../Deals/deals-list.css"
-import type { ContactRow } from "./types/contact.types"
+import type { ContactRow, ContactShowOfferings } from "./types/contact.types"
+import {
+  CONTACT_SHOW_OFFERINGS_OPTIONS,
+} from "./types/contact.types"
 import {
   buildContactsCsv,
   downloadContactsCsv,
@@ -133,6 +136,7 @@ function toContactUpdatePayload(
     lists: r.lists,
     owners: r.owners,
     status: r.status,
+    showOfferings: r.showOfferings ?? "show",
     lastEditReason: r.lastEditReason,
   }
 }
@@ -733,8 +737,37 @@ function ContactsPage() {
   }, [rows, viewContactId])
 
   const openViewPanel = useCallback((row: ContactRow) => {
-    setViewContactId(row.id)
-  }, [])
+    navigate(`/contacts/${encodeURIComponent(row.id)}`)
+  }, [navigate])
+
+  const onShowOfferingsChange = useCallback(
+    async (row: ContactRow, value: ContactShowOfferings) => {
+      const prev = row.showOfferings ?? "show"
+      if (prev === value) return
+      setRows((list) =>
+        list.map((r) =>
+          r.id === row.id ? { ...r, showOfferings: value } : r,
+        ),
+      )
+      try {
+        const updated = await patchContactShowOfferings(row.id, value)
+        setRows((list) =>
+          list.map((r) => (r.id === updated.id ? updated : r)),
+        )
+      } catch (err) {
+        setRows((list) =>
+          list.map((r) =>
+            r.id === row.id ? { ...r, showOfferings: prev } : r,
+          ),
+        )
+        toast.error(
+          "Could not update",
+          err instanceof Error ? err.message : "Try again.",
+        )
+      }
+    },
+    [],
+  )
 
   const openSuspendContact = useCallback((row: ContactRow) => {
     setSuspendRow(row)
@@ -1237,17 +1270,27 @@ function ContactsPage() {
                 </span>
               </div>
               <div className="um_user_meta">
-                <span
-                  className={`um_user_meta_username${
-                    primary === "—" ? " um_user_meta_username--placeholder" : ""
-                  }`}
-                >
-                  {primary}
-                </span>
+                {primary === "—" ? (
+                  <span className="um_user_meta_username um_user_meta_username--placeholder">
+                    {primary}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="um_user_meta_username contacts_user_name_link"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigate(`/contacts/${encodeURIComponent(row.id)}`)
+                    }}
+                  >
+                    {primary}
+                  </button>
+                )}
                 {rawEmail.includes("@") ? (
                   <a
                     href={`mailto:${encodeURIComponent(rawEmail)}`}
                     className="um_user_meta_email um_user_meta_email_link"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     {rawEmail}
                   </a>
@@ -1286,7 +1329,7 @@ function ContactsPage() {
           return (
             <span
               className="contacts_deals_count_num contacts_deals_count_num--value"
-              // title="Count of deal_investment rows with contact_id = this contact (your visible deals only)."
+              title="Distinct deals where this contact id or a portal user with the same email has an investment (your visible deals only)."
             >
               {n}
             </span>
@@ -1298,6 +1341,32 @@ function ContactsPage() {
         header: "Phone",
         sortValue: (row) => nationalDigitsFromStoredPhone(String(row.phone ?? "")),
         cell: (row) => formatUsPhoneStoredForUi(row.phone),
+      },
+      {
+        id: "showOfferings",
+        header: "Show Offerings",
+        sortValue: (row) => row.showOfferings ?? "show",
+        thClassName: "contacts_th_show_offerings",
+        tdClassName: "contacts_td_show_offerings",
+        cell: (row) => (
+          <select
+            className="um_field_select contacts_show_offerings_select"
+            value={row.showOfferings ?? "show"}
+            disabled={loading || contactsListTab === "archived"}
+            aria-label={`Show offerings for ${contactDisplayName(row)}`}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              const v = e.target.value as ContactShowOfferings
+              void onShowOfferingsChange(row, v)
+            }}
+          >
+            {CONTACT_SHOW_OFFERINGS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ),
       },
       // {
       //   id: "note",
@@ -1383,6 +1452,8 @@ function ContactsPage() {
       exportContactRow,
       filteredRows.length,
       loading,
+      navigate,
+      onShowOfferingsChange,
       openEditPanel,
       openSuspendContact,
       openViewPanel,
@@ -1455,6 +1526,34 @@ function ContactsPage() {
             />
             Contacts
           </h2>
+          {mainTab === "contacts" ? (
+            <button
+              type="button"
+              className="um_btn_primary contacts_toolbar_add_btn"
+              onClick={openAddPanel}
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden />
+              Add Contact
+            </button>
+          ) : mainTab === "tags" ? (
+            <button
+              type="button"
+              className="um_btn_primary contacts_toolbar_add_btn"
+              onClick={() => openLabelAdd("tag")}
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden />
+              Add Tags
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="um_btn_primary contacts_toolbar_add_btn"
+              onClick={() => openLabelAdd("list")}
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden />
+              Add Lists
+            </button>
+          )}
         </div>
       </div>
 
@@ -1543,31 +1642,20 @@ function ContactsPage() {
 
       {mainTab === "contacts" ? (
         <>
-          <div className="um_members_header_block contacts_inner_header">
-            <div className="contacts_toolbar_filters_row">
-              <ActiveArchivedTabs
-                value={contactsListTab}
-                onChange={(tab) => {
-                  setContactsListTab(tab)
-                  setToolbarNotice("")
-                }}
-                activeCount={activeCount}
-                archivedCount={archivedCount}
-                idPrefix="contacts-filter"
-                ariaLabel="Filter contacts by status"
-                activeIcon={ContactRound}
-                activePanelId="contacts-main-panel-contacts"
-              />
-              <button
-                type="button"
-                className="um_btn_primary contacts_toolbar_add_btn"
-                onClick={openAddPanel}
-              >
-                <Plus size={18} strokeWidth={2} aria-hidden />
-                Add Contact
-              </button>
-            </div>
-          </div>
+          <ActiveArchivedTabs
+            value={contactsListTab}
+            onChange={(tab) => {
+              setContactsListTab(tab)
+              setToolbarNotice("")
+            }}
+            activeCount={activeCount}
+            archivedCount={archivedCount}
+            idPrefix="contacts-filter"
+            ariaLabel="Filter contacts by status"
+            activeIcon={ContactRound}
+            activePanelId="contacts-main-panel-contacts"
+            className="contacts_status_tabs_outer"
+          />
 
       <div
         id="contacts-main-panel-contacts"
@@ -1721,27 +1809,16 @@ function ContactsPage() {
         </>
       ) : mainTab === "tags" ? (
         <>
-          <div className="um_members_header_block contacts_inner_header">
-            <div className="contacts_toolbar_filters_row">
-              <UsageFilterTabs
-                value={tagsUsageFilter}
-                onChange={setTagsUsageFilter}
-                allCount={tagCatalog.length}
-                inUseCount={tagCountInUse}
-                unusedCount={tagCountUnused}
-                idPrefix="contacts-tags-filter"
-                ariaLabel="Filter tags by usage"
-              />
-              <button
-                type="button"
-                className="um_btn_primary contacts_toolbar_add_btn"
-                onClick={() => openLabelAdd("tag")}
-              >
-                <Plus size={18} strokeWidth={2} aria-hidden />
-                Add Tags
-              </button>
-            </div>
-          </div>
+          <UsageFilterTabs
+            value={tagsUsageFilter}
+            onChange={setTagsUsageFilter}
+            allCount={tagCatalog.length}
+            inUseCount={tagCountInUse}
+            unusedCount={tagCountUnused}
+            idPrefix="contacts-tags-filter"
+            ariaLabel="Filter tags by usage"
+            className="contacts_status_tabs_outer"
+          />
           <div
             className="um_members_tab_content contacts_main_tab_content_flush"
             id="contacts-main-panel-tags"
@@ -1780,27 +1857,16 @@ function ContactsPage() {
         </>
       ) : (
         <>
-          <div className="um_members_header_block contacts_inner_header">
-            <div className="contacts_toolbar_filters_row">
-              <UsageFilterTabs
-                value={listsUsageFilter}
-                onChange={setListsUsageFilter}
-                allCount={listCatalog.length}
-                inUseCount={listCountInUse}
-                unusedCount={listCountUnused}
-                idPrefix="contacts-lists-filter"
-                ariaLabel="Filter lists by usage"
-              />
-              <button
-                type="button"
-                className="um_btn_primary contacts_toolbar_add_btn"
-                onClick={() => openLabelAdd("list")}
-              >
-                <Plus size={18} strokeWidth={2} aria-hidden />
-                Add Lists
-              </button>
-            </div>
-          </div>
+          <UsageFilterTabs
+            value={listsUsageFilter}
+            onChange={setListsUsageFilter}
+            allCount={listCatalog.length}
+            inUseCount={listCountInUse}
+            unusedCount={listCountUnused}
+            idPrefix="contacts-lists-filter"
+            ariaLabel="Filter lists by usage"
+            className="contacts_status_tabs_outer"
+          />
           <div
             className="um_members_tab_content contacts_main_tab_content_flush"
             id="contacts-main-panel-lists"

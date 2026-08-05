@@ -459,6 +459,29 @@
   gap: 0.5em;
 }
 
+/* Investor add/edit — section tabs under the title (same as View) */
+.deals_add_inv_section_tabs_outer {
+  margin: 0 0 0.35em;
+  padding: 0 0 0.55em;
+  border-top: 0;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+  flex-shrink: 0;
+}
+
+.deals_add_inv_section_tabs_outer .deals_add_inv_section_tabs_row {
+  flex-wrap: nowrap;
+  justify-content: stretch;
+  width: 100%;
+}
+
+.deals_add_inv_section_tabs_outer
+  .deals_add_inv_section_tabs_row
+  .um_members_tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+}
+
 .deals_add_inv_modal_body .um_msg_error {
   margin-bottom: 0.45em;
   font-size: 0.8125em;

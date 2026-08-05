@@ -143,15 +143,18 @@ export function DealOfferingPreviewInner({
     setGalleryOpen(false)
   }, [detail.id])
 
-  /* `overflow-x: hidden` on html/body and `.app_main_section` breaks sidebar `position: sticky` */
+  /* `overflow-x: hidden` on html/body and scroll parents breaks sidebar `position: sticky` */
   useEffect(() => {
     const html = document.documentElement
     const appMain = document.querySelector(".app_main_section")
+    const appContent = document.querySelector(".app_main_content")
     html.classList.add("deal_offer_pf_sticky_scroll")
     appMain?.classList.add("deal_offer_pf_sticky_scroll")
+    appContent?.classList.add("deal_offer_pf_sticky_scroll")
     return () => {
       html.classList.remove("deal_offer_pf_sticky_scroll")
       appMain?.classList.remove("deal_offer_pf_sticky_scroll")
+      appContent?.classList.remove("deal_offer_pf_sticky_scroll")
     }
   }, [])
 

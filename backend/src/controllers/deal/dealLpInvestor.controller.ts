@@ -17,9 +17,11 @@ import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assignin
 import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import {
   findDealLpInvestorByDealAndContact,
-  getDealLpInvestorById,
+  findMergedInvestorForLpRosterRow,
   getLpInvestorsTabPayload,
   LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE,
+  mapDealLpInvestorRowToEditApi,
+  resolveDealLpInvestorForEdit,
   updateDealLpInvestorById,
   updateMyCommittedAmountForLpDeal,
   upsertDealLpInvestor,
@@ -45,6 +47,68 @@ function isAutosaveJson(b: Record<string, unknown>): boolean {
   if (raw === true) return true;
   const v = bodyString(raw);
   return v === "true" || v === "1" || v.toLowerCase() === "yes";
+}
+
+/**
+ * GET /deals/:dealId/lp-investors/:lpInvestorId
+ * Optional `?contactId=` — when the list row is a `deal_investment` id, resolve via contact.
+ */
+export async function getDealLpInvestor(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const dealId =
+    typeof req.params.dealId === "string"
+      ? req.params.dealId
+      : req.params.dealId?.[0];
+  const lpInvestorId =
+    typeof req.params.lpInvestorId === "string"
+      ? req.params.lpInvestorId
+      : req.params.lpInvestorId?.[0];
+  if (!dealId?.trim() || !lpInvestorId?.trim()) {
+    res.status(400).json({ message: "Missing deal id or LP investor id" });
+    return;
+  }
+
+  const contactIdRaw = req.query.contactId ?? req.query.contact_id;
+  const contactId =
+    typeof contactIdRaw === "string"
+      ? contactIdRaw.trim()
+      : Array.isArray(contactIdRaw)
+        ? String(contactIdRaw[0] ?? "").trim()
+        : "";
+
+  try {
+    const scope = await resolveDealViewerScope(
+      user.id,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!(await assertDealIdInViewerScope(dealId, scope))) {
+      res.status(404).json({ message: "Deal not found" });
+      return;
+    }
+
+    const row = await resolveDealLpInvestorForEdit(dealId.trim(), {
+      lpInvestorId: lpInvestorId.trim(),
+      contactId: contactId || undefined,
+    });
+    if (!row) {
+      res.status(404).json({ message: "LP investor row not found" });
+      return;
+    }
+
+    const investor = await mapDealLpInvestorRowToEditApi(row);
+    res.status(200).json({ investor });
+  } catch (err) {
+    console.error("getDealLpInvestor:", err);
+    res.status(500).json({ message: "Could not load LP investor" });
+  }
 }
 
 /**
@@ -92,6 +156,12 @@ export async function postDealLpInvestor(
   );
   const percentOfClassDistributions = bodyString(
     b.percent_of_class_distributions ?? b.percentOfClassDistributions,
+  );
+  const entityOwnershipPercent = bodyString(
+    b.entity_ownership_percent ?? b.entityOwnershipPercent,
+  );
+  const distributionAllocationPercent = bodyString(
+    b.distribution_allocation_percent ?? b.distributionAllocationPercent,
   );
 
   if (!contactId.trim()) {
@@ -149,6 +219,8 @@ export async function postDealLpInvestor(
       roleFromClient: investorRole.trim() || null,
       percentOfClassOwnership,
       percentOfClassDistributions,
+      entityOwnershipPercent,
+      distributionAllocationPercent,
     });
 
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
@@ -164,11 +236,8 @@ export async function postDealLpInvestor(
     }
 
     const { investors } = await getLpInvestorsTabPayload(dealId, user.id);
-    const inv = investors.find(
-      (x) => String(x.id).toLowerCase() === String(row.id).toLowerCase(),
-    );
+    const inv = await findMergedInvestorForLpRosterRow(investors, row);
 
-    console.log("INV", inv);
     res.status(201).json({
       message: "LP investor saved",
       investor: inv ?? null,
@@ -233,6 +302,12 @@ export async function putDealLpInvestor(
   const percentOfClassDistributions = bodyString(
     b.percent_of_class_distributions ?? b.percentOfClassDistributions,
   );
+  const entityOwnershipPercent = bodyString(
+    b.entity_ownership_percent ?? b.entityOwnershipPercent,
+  );
+  const distributionAllocationPercent = bodyString(
+    b.distribution_allocation_percent ?? b.distributionAllocationPercent,
+  );
 
   if (!contactId.trim()) {
     res.status(400).json({ message: "Member (contact) is required" });
@@ -250,7 +325,10 @@ export async function putDealLpInvestor(
       return;
     }
 
-    const existing = await getDealLpInvestorById(dealId, lpInvestorId);
+    const existing = await resolveDealLpInvestorForEdit(dealId, {
+      lpInvestorId,
+      contactId: contactId.trim() || undefined,
+    });
     if (!existing) {
       res.status(404).json({ message: "LP investor row not found" });
       return;
@@ -273,14 +351,14 @@ export async function putDealLpInvestor(
       if (
         duplicate &&
         String(duplicate.id).toLowerCase() !==
-          String(lpInvestorId).trim().toLowerCase()
+          String(existing.id).trim().toLowerCase()
       ) {
         res.status(409).json({ message: LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE });
         return;
       }
     }
 
-    const row = await updateDealLpInvestorById(dealId, lpInvestorId, {
+    const row = await updateDealLpInvestorById(dealId, existing.id, {
       contactMemberId: contactId.trim(),
       contactDisplayName: contactDisplayName.trim(),
       profileId,
@@ -291,6 +369,8 @@ export async function putDealLpInvestor(
       roleFromClient: investorRole.trim() || null,
       percentOfClassOwnership,
       percentOfClassDistributions,
+      entityOwnershipPercent,
+      distributionAllocationPercent,
     });
     if (!row) {
       res.status(404).json({ message: "Could not update LP investor" });
@@ -310,9 +390,7 @@ export async function putDealLpInvestor(
     }
 
     const { investors } = await getLpInvestorsTabPayload(dealId, user.id);
-    const inv = investors.find(
-      (x) => String(x.id).toLowerCase() === String(row.id).toLowerCase(),
-    );
+    const inv = await findMergedInvestorForLpRosterRow(investors, row);
 
     res.status(200).json({
       message: "LP investor updated",

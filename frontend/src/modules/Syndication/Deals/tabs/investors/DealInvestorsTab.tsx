@@ -161,7 +161,7 @@ export interface DealInvestorsTabHandle {
 function shouldUseLpInvestorsModalForEdit(row: DealInvestorRow): boolean {
   if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false;
   if (row.investorKind === "lp_roster") return true;
-  if (row.investorKind === "investment") return false;
+  /** Investment list rows that are LP role still edit via LP modal (percents live on roster). */
   return isLpInvestorRole(row.investorRole ?? "");
 }
 

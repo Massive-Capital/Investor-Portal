@@ -6,9 +6,14 @@ html.deal_offer_pf_sticky_scroll body {
   overflow-x: clip;
 }
 
-/* In-app preview scrolls `.app_main_section` — same clip fix for sticky sidebar card */
+/* In-app preview scrolls `.app_main_content` — clip fix for sticky sidebar card */
 .app_main_section.deal_offer_pf_sticky_scroll {
+  overflow: hidden;
+}
+
+.app_main_section.deal_offer_pf_sticky_scroll .app_main_content.deal_offer_pf_sticky_scroll {
   overflow-x: clip;
+  overflow-y: auto;
 }
 
 /* .deal_offer_pf_page {

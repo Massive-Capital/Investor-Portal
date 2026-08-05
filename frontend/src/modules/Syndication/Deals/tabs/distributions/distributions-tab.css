@@ -1,11 +1,37 @@
 /* Deal Detail → Distributions tab */
 
+.deal_dist_tab_shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.deal_dist_subtabs_outer {
+  margin: 0 0 1rem;
+}
+
+.deal_dist_subtabs_row {
+  flex-wrap: wrap;
+}
+
+.deal_dist_subtab_panel[hidden] {
+  display: none;
+}
+
 .deal_dist_tab {
+  display: flex;
+  flex-direction: column;
   padding: 0 0 1.25rem;
   min-width: 0;
+  width: 100%;
 }
 
 .deal_dist_panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   background: var(--portal-panel-bg, #f6f6f6);
   padding: 1rem 1.1rem 1.1rem;
 }
@@ -242,8 +268,121 @@
   color: var(--portal-text, #1b1b1d);
 }
 
-.deal_dist_portal_table {
-  min-width: 64rem !important;
+/*
+ * Distributions list: horizontal scroll like Investors / details.
+ * Column min-widths must be real floors — `min-width: 0` + ellipsis lets the
+ * table shrink to the panel, so scrollWidth never exceeds clientWidth.
+ */
+.deal_dist_panel.deal_inv_table_panel .um_table_wrap.data_table_shell,
+.deal_dist_panel .um_table_wrap.data_table_shell {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.deal_dist_panel.deal_inv_table_panel .data_table_scroll_region,
+.deal_dist_panel .data_table_scroll_region,
+.deal_dist_panel
+  .um_table_wrap.data_table_shell
+  .data_table_scroll_region {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  scroll-behavior: auto;
+}
+
+.deal_dist_panel .data_table_scroll_region::-webkit-scrollbar {
+  height: 8px;
+}
+
+.deal_dist_panel
+  .um_table_wrap.data_table_shell
+  .data_table_scroll_region
+  .um_table.deal_dist_portal_table,
+.deal_dist_panel .um_table.deal_dist_table.deal_dist_portal_table {
+  table-layout: auto !important;
+  width: max-content !important;
+  /* Sum of column floors below — forces overflow on typical deal panels */
+  min-width: 78rem !important;
+  max-width: none !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_name,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_source,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_type,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_deducts,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_period {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_name_link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_name,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_name {
+  width: 12rem;
+  min-width: 12rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_source,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_source {
+  width: 9.5rem;
+  min-width: 9.5rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_type,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_type {
+  width: 9.5rem;
+  min-width: 9.5rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_deducts,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_deducts {
+  width: 11rem;
+  min-width: 11rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_payments,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_payments {
+  width: 11rem;
+  min-width: 11rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_period,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_period {
+  width: 12rem;
+  min-width: 12rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_paydate,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_paydate {
+  width: 8.5rem;
+  min-width: 8.5rem !important;
+}
+
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_actions,
+.deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_actions,
+.deal_dist_panel .um_table.deal_dist_portal_table thead th.um_th_actions.deal_dist_th_actions,
+.deal_dist_panel .um_table.deal_dist_portal_table td.um_td_actions.deal_dist_td_actions {
+  width: 5.5rem;
+  min-width: 5.5rem !important;
+  max-width: 5.5rem;
+  text-align: center;
+  vertical-align: middle;
+  overflow: visible;
 }
 
 /* Status + waterfall chips */
@@ -281,11 +420,11 @@
   white-space: nowrap;
 }
 
-/* Table layout + alignment */
-.deal_dist_panel .um_table.deal_dist_table {
+/* Alignment (portal list uses max-content + column floors above — do not force 100% fixed) */
+.deal_dist_panel .um_table.deal_dist_table:not(.deal_dist_portal_table) {
   table-layout: fixed;
   width: 100%;
-  min-width: 36rem;
+  min-width: 100%;
 }
 
 .deal_dist_panel .um_table.deal_dist_table th,
@@ -440,3 +579,34 @@
   transform: translateX(0.95rem);
 }
 */
+
+.deal_dist_fee_tab {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 1.25rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.deal_dist_fee_empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 1.5rem 0.25rem 0.75rem;
+  min-height: 8rem;
+}
+
+.deal_dist_fee_empty_title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--portal-text, #1b1b1d);
+}
+
+.deal_dist_fee_empty_copy {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+}

@@ -1608,6 +1608,7 @@ export default function UserManagementPage({
       </div>
 
       <div className="um_members_tab_content">
+      {membersTab === "users" ? (
       <div
         className={`um_panel um_members_tab_panel deal_inv_table_panel deals_list_table_panel${
           membersLoading ? " deals_list_table_panel_loading" : ""
@@ -1616,7 +1617,6 @@ export default function UserManagementPage({
         role="tabpanel"
         aria-labelledby="um-members-tab-users"
         aria-busy={membersLoading}
-        hidden={membersTab !== "users"}
       >
         <div className="um_toolbar um_toolbar_export_then_search">
           <div className="um_toolbar_actions">
@@ -1907,16 +1907,16 @@ export default function UserManagementPage({
           </div>
         ) : null}
       </div>
-
+      ) : (
       <div
         className="um_panel um_members_tab_panel deals_list_card_surface um_members_general_panel"
         id="um-members-panel-general"
         role="tabpanel"
         aria-labelledby="um-members-tab-general"
-        hidden={membersTab !== "general"}
       >
         <MembersRoleInfoPanel />
       </div>
+      )}
       </div>
 
       {actionMenuRowId &&

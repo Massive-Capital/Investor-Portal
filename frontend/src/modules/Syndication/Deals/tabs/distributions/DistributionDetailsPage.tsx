@@ -8,7 +8,7 @@ import {
 import { TableCompactAmountCell } from "../../../../../common/components/card-compact-amount/CardCompactAmount"
 import { toast } from "../../../../../common/components/Toast"
 import { setAppDocumentTitle } from "../../../../../common/utils/appDocumentTitle"
-import { fetchDealInvestors } from "../../api/dealsApi"
+import { fetchDealInvestorClasses, fetchDealInvestors } from "../../api/dealsApi"
 import {
   executeDistributionAchPayouts,
   fetchDistributionPayouts,
@@ -31,6 +31,7 @@ import {
   buildCashFlows,
   type HurdleCashFlow,
 } from "../../distribution-setup/utils/hurdleCalculations"
+import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
 import {
   formatCurrencyUsdTypeInput,
@@ -44,6 +45,7 @@ import {
   allocateInvestorDistributionLines,
   applyPaymentEdit,
   applyPercentOfClassEdit,
+  parseStoredClassPercent,
   type InvestorDistributionLine,
 } from "./utils/investorDistributionAllocation"
 import {
@@ -54,10 +56,16 @@ import {
   resolvePeriodWindow,
 } from "./utils/distributionListDisplay"
 import { InvestorClassPillsDisplay } from "../investors/InvestorClassPillsDisplay"
+import { DealInvestorIdentityCell } from "../investors/DealInvestorIdentityCell"
+import {
+  DealInvestorViewModal,
+  type DealInvestorViewDistributionContext,
+} from "../investors/DealInvestorViewModal"
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import { isPlatformAdmin } from "../../../../../common/auth/roleUtils"
 import "../../../usermanagement/user_management.css"
 import "../../deals-list.css"
+import "../../deal-investors-tab.css"
 import "../../distribution-setup/distribution-setup.css"
 import "../investors/investor-class-pills.css"
 import "./distributions-tab.css"
@@ -77,7 +85,42 @@ function sourceLabel(source: string | undefined): string {
   const s = (source ?? "").trim().toLowerCase()
   if (s === "capital" || s === "capital_event") return "Capital event"
   if (s === "operating") return "Operating"
+  if (s === "fee" || s === "distribution_fee") return "GP Payment"
   return "—"
+}
+
+function achStatusSlug(status: string): string {
+  const raw = status.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+  return raw || "not-sent"
+}
+
+function achStatusLabel(status: string): string {
+  const slug = achStatusSlug(status)
+  const labels: Record<string, string> = {
+    "not-sent": "Not sent",
+    pending: "Pending",
+    processing: "Processing",
+    paid: "Paid",
+    transferred: "Transferred",
+    failed: "Failed",
+    canceled: "Canceled",
+    cancelled: "Canceled",
+    reversed: "Reversed",
+  }
+  if (labels[slug]) return labels[slug]
+  return status
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function achStatusTone(status: string): string {
+  const slug = achStatusSlug(status)
+  if (slug === "paid" || slug === "transferred") return "success"
+  if (slug === "processing" || slug === "pending") return "info"
+  if (slug === "failed" || slug === "canceled" || slug === "cancelled" || slug === "reversed")
+    return "danger"
+  return "neutral"
 }
 
 function priorRecordsToCashFlows(
@@ -104,22 +147,52 @@ function blurFormatPercentClamped(raw: string): string {
 
 function linesFromStoredPayments(
   distribution: PriorDistributionRecord,
+  investors: DealInvestorRow[] = [],
 ): InvestorDistributionLine[] | null {
   const stored = distribution.investorPayments
   if (!stored?.length) return null
-  return stored.map((p) => ({
-    investorId: p.investorId,
-    ...(p.contactId?.trim() ? { contactId: p.contactId.trim() } : {}),
-    ...(p.userEmail?.trim()
-      ? { userEmail: p.userEmail.trim().toLowerCase() }
-      : {}),
-    investorName: p.investorName || "—",
-    classId: p.classId,
-    className: p.className || "—",
-    capital: parseMoneyDigits(p.capital) || 0,
-    percentOfClass: Number(String(p.percentOfClass).replace(/[^0-9.-]/g, "")) || 0,
-    payment: parseMoneyDigits(p.payment) || 0,
-  }))
+
+  const pctByInvestorId = new Map<string, number>()
+  const pctByContact = new Map<string, number>()
+  for (const inv of investors) {
+    const storedPct = parseStoredClassPercent(inv.percentOfClassDistributions)
+    if (storedPct == null) continue
+    const id = String(inv.id ?? "")
+      .trim()
+      .toLowerCase()
+    if (id) pctByInvestorId.set(id, storedPct)
+    const contact = String(inv.contactId ?? "")
+      .trim()
+      .toLowerCase()
+    if (contact) pctByContact.set(contact, storedPct)
+  }
+
+  return stored.map((p) => {
+    const investorId = String(p.investorId ?? "")
+      .trim()
+      .toLowerCase()
+    const contactId = String(p.contactId ?? "")
+      .trim()
+      .toLowerCase()
+    const fromDb =
+      (investorId ? pctByInvestorId.get(investorId) : undefined) ??
+      (contactId ? pctByContact.get(contactId) : undefined)
+    const fromStored =
+      Number(String(p.percentOfClass).replace(/[^0-9.-]/g, "")) || 0
+    return {
+      investorId: p.investorId,
+      ...(p.contactId?.trim() ? { contactId: p.contactId.trim() } : {}),
+      ...(p.userEmail?.trim()
+        ? { userEmail: p.userEmail.trim().toLowerCase() }
+        : {}),
+      investorName: p.investorName || "—",
+      classId: p.classId,
+      className: p.className || "—",
+      capital: parseMoneyDigits(p.capital) || 0,
+      percentOfClass: fromDb ?? fromStored,
+      payment: parseMoneyDigits(p.payment) || 0,
+    }
+  })
 }
 
 export function DistributionDetailsPage() {
@@ -132,6 +205,14 @@ export function DistributionDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [bundle, setBundle] = useState<DistributionSetupBundle | null>(null)
   const [investors, setInvestors] = useState<DealInvestorRow[]>([])
+  const [investorClasses, setInvestorClasses] = useState<DealInvestorClass[]>(
+    [],
+  )
+  const [viewInvestorRow, setViewInvestorRow] = useState<DealInvestorRow | null>(
+    null,
+  )
+  const [viewDistributionLine, setViewDistributionLine] =
+    useState<InvestorPreferredLine | null>(null)
   const [distribution, setDistribution] =
     useState<PriorDistributionRecord | null>(null)
   const [lines, setLines] = useState<InvestorPreferredLine[]>([])
@@ -160,16 +241,18 @@ export function DistributionDetailsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [setup, invPack, payoutRows] = await Promise.all([
+      const [setup, invPack, payoutRows, classes] = await Promise.all([
         fetchDistributionSetup(dealId),
         fetchDealInvestors(dealId),
         fetchDistributionPayouts(dealId, distributionId).catch(() => []),
+        fetchDealInvestorClasses(dealId).catch(() => []),
       ])
       const found =
         (setup.priorDistributions ?? []).find((p) => p.id === distributionId) ??
         null
       setBundle(setup)
       setInvestors(invPack.investors ?? [])
+      setInvestorClasses(classes)
       setDistribution(found)
       setPayouts(payoutRows)
       if (!found) {
@@ -178,6 +261,7 @@ export function DistributionDetailsPage() {
     } catch (err) {
       setBundle(null)
       setInvestors([])
+      setInvestorClasses([])
       setDistribution(null)
       setPayouts([])
       setError(
@@ -187,6 +271,67 @@ export function DistributionDetailsPage() {
       setLoading(false)
     }
   }, [dealId, distributionId])
+
+  const dealAllClassNamesLine = useMemo(
+    () =>
+      investorClasses
+        .map((c) => String(c.name ?? "").trim())
+        .filter(Boolean)
+        .join(", "),
+    [investorClasses],
+  )
+
+  const openInvestorView = useCallback(
+    (line: InvestorPreferredLine) => {
+      const dealRow =
+        investors.find((inv) => inv.id === line.investorId) ??
+        investors.find(
+          (inv) =>
+            line.contactId &&
+            String(inv.contactId ?? "").trim().toLowerCase() ===
+              String(line.contactId).trim().toLowerCase(),
+        ) ??
+        null
+      if (!dealRow) {
+        toast.error(
+          "Investor details unavailable",
+          "Could not match this payment line to an investor on the deal.",
+        )
+        return
+      }
+      setViewDistributionLine(line)
+      setViewInvestorRow(dealRow)
+    },
+    [investors],
+  )
+
+  const viewDistributionContext =
+    useMemo((): DealInvestorViewDistributionContext | null => {
+      if (!distribution || !viewDistributionLine) return null
+      const payout = payouts.find(
+        (p) => p.investmentId === viewDistributionLine.investorId,
+      )
+      return {
+        distributionName:
+          String(distribution.name ?? "").trim() ||
+          formatDistributionDate(distribution.date),
+        distributionDate: distribution.date,
+        distributionAmount: distribution.amount,
+        waterfallSource: sourceLabel(distribution.source),
+        className: viewDistributionLine.className,
+        capital: viewDistributionLine.capital,
+        percentOfClass: viewDistributionLine.percentOfClass,
+        payment: viewDistributionLine.payment,
+        required: viewDistributionLine.required,
+        unpaid: viewDistributionLine.unpaid,
+        annualRatePct: viewDistributionLine.annualRatePct,
+        days: viewDistributionLine.days,
+        achStatus: payout?.status ?? "not sent",
+        achInitiatedAt: payout?.initiatedAt ?? null,
+        achPaidAt: payout?.paidAt ?? null,
+        achFailureMessage: payout?.failureMessage ?? null,
+      }
+    }, [distribution, viewDistributionLine, payouts])
 
   useEffect(() => {
     void load()
@@ -266,7 +411,20 @@ export function DistributionDetailsPage() {
     const cash = parseMoneyDigits(distribution.amount)
     const window = resolvePeriodWindow(distribution)
 
-    // Always compute investor payments from preferred due (capital × rate × days/365).
+    // Prefer saved investor payments (including manual edits) so Payment stays editable/persistent.
+    // Overlay DB percentOfClassDistributions when present so % matches the LP roster.
+    const fromStored = linesFromStoredPayments(distribution, investors)
+    if (fromStored?.length) {
+      return fromStored.map((line) => ({
+        ...line,
+        required: line.payment,
+        unpaid: 0,
+        annualRatePct: 0,
+        days: 0,
+      }))
+    }
+
+    // Initial view when no payments have been stored yet: preferred due (capital × rate × days).
     const prefLines = allocateInvestorsByPreferredDue({
       distributionAmount: Number.isFinite(cash) ? cash : 0,
       periodStartIso: window.start,
@@ -278,16 +436,11 @@ export function DistributionDetailsPage() {
     })
     if (prefLines.length > 0) return prefLines
 
-    // Fallback when classes have no preferred rates configured.
-    const fromStored = linesFromStoredPayments(distribution)
-    const base =
-      fromStored?.length
-        ? fromStored
-        : allocateInvestorDistributionLines({
-            investors,
-            classes: bundle.classes,
-            perClass: classPaymentByClassId,
-          })
+    const base = allocateInvestorDistributionLines({
+      investors,
+      classes: bundle.classes,
+      perClass: classPaymentByClassId,
+    })
     return base.map((line) => ({
       ...line,
       required: line.payment,
@@ -548,8 +701,8 @@ export function DistributionDetailsPage() {
         const updated = localLines.find((l) => l.investorId === investorId)
         if (updated) syncInvestorPct(investorId, updated.percentOfClass)
         toast.success(
-          "Share updated",
-          "% of class and payment stay in sync.",
+          "Payment updated",
+          "Saved payment and % of class. Change is logged.",
         )
       } catch (err) {
         toast.error(
@@ -661,13 +814,32 @@ export function DistributionDetailsPage() {
         sortValue: (row) =>
           `${row.investorName} ${row.userEmail ?? ""}`.toLowerCase(),
         cell: (row) => {
+          const dealRow =
+            investors.find((inv) => inv.id === row.investorId) ?? null
+          if (dealRow) {
+            return (
+              <DealInvestorIdentityCell
+                row={dealRow}
+                onNameClick={() => openInvestorView(row)}
+              />
+            )
+          }
           const name = (row.investorName ?? "").trim() || "—"
           const email = (row.userEmail ?? "").trim()
           return (
             <div className="deal_dist_details_investor_cell">
-              <span className="deal_dist_details_investor_name" title={name}>
+              <button
+                type="button"
+                className="deal_dist_details_investor_name deal_inv_identity_name_btn"
+                title={name !== "—" ? `View details for ${name}` : undefined}
+                aria-label={
+                  name !== "—" ? `View details for ${name}` : undefined
+                }
+                disabled={name === "—"}
+                onClick={() => openInvestorView(row)}
+              >
                 {name}
-              </span>
+              </button>
               {email ? (
                 <span className="deal_dist_details_investor_email" title={email}>
                   {email}
@@ -860,12 +1032,14 @@ export function DistributionDetailsPage() {
         cell: (row) => {
           const payout = payoutByInvestmentId.get(row.investorId)
           const status = payout?.status ?? "not sent"
+          const slug = achStatusSlug(status)
+          const tone = achStatusTone(status)
           return (
             <span
-              className={`deal_dist_status is-${status.replace(/[^a-z]+/g, "-")}`}
+              className={`deal_dist_ach_badge deal_dist_ach_badge--${tone} is-${slug}`}
               title={payout?.failureMessage ?? undefined}
             >
-              {status}
+              {achStatusLabel(status)}
             </span>
           )
         },
@@ -936,6 +1110,8 @@ export function DistributionDetailsPage() {
       sendInvestorAchPayout,
       savePercent,
       savePayment,
+      investors,
+      openInvestorView,
     ],
   )
 
@@ -1101,6 +1277,18 @@ export function DistributionDetailsPage() {
           </div>
         </div>
       ) : null}
+
+      <DealInvestorViewModal
+        row={viewInvestorRow}
+        onClose={() => {
+          setViewInvestorRow(null)
+          setViewDistributionLine(null)
+        }}
+        investorClasses={investorClasses}
+        dealAllClassNamesLine={dealAllClassNamesLine}
+        distributionContext={viewDistributionContext}
+        initialSectionTab="distribution"
+      />
     </div>
   )
 }

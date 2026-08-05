@@ -170,6 +170,62 @@
   text-align: right;
 }
 
+/* ACH status badges */
+.deal_dist_ach_badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.2em 0.55em;
+  border-radius: var(--ui-button-border-radius, 4px);
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+
+.deal_dist_ach_badge--neutral {
+  color: #6b7280;
+  background: color-mix(in srgb, #9ca3af 12%, transparent);
+  border-color: color-mix(in srgb, #9ca3af 30%, transparent);
+}
+
+.deal_dist_ach_badge--info {
+  color: #1d4ed8;
+  background: color-mix(in srgb, #3b82f6 14%, transparent);
+  border-color: color-mix(in srgb, #3b82f6 32%, transparent);
+}
+
+.deal_dist_ach_badge--success {
+  color: #047857;
+  background: color-mix(in srgb, #10b981 14%, transparent);
+  border-color: color-mix(in srgb, #10b981 35%, transparent);
+}
+
+.deal_dist_ach_badge--danger {
+  color: #b91c1c;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  border-color: color-mix(in srgb, #ef4444 32%, transparent);
+}
+
+:root[data-theme="dark"] .deal_dist_ach_badge--neutral {
+  color: #d1d5db;
+}
+
+:root[data-theme="dark"] .deal_dist_ach_badge--info {
+  color: #93c5fd;
+}
+
+:root[data-theme="dark"] .deal_dist_ach_badge--success {
+  color: #6ee7b7;
+}
+
+:root[data-theme="dark"] .deal_dist_ach_badge--danger {
+  color: #fca5a5;
+}
+
 .deal_dist_details_page .deal_dist_heading {
   margin-bottom: 0;
 }

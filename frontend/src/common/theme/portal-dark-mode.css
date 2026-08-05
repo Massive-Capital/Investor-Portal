@@ -18,19 +18,7 @@
 }
 
 /* —— Scrollbars —— */
-:root[data-theme="dark"] .app_shell,
-:root[data-theme="dark"] .app_shell * {
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-}
-
-:root[data-theme="dark"] .app_shell ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-}
-
-:root[data-theme="dark"] .app_shell ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.24);
-}
+/* Tokens + chrome live in portal-scrollbars.css / portal-theme.css */
 
 /* —— Modals —— */
 :root[data-theme="dark"] .um_modal_overlay {
@@ -278,49 +266,7 @@
   border-color: var(--portal-table-border);
 }
 
-/* Table horizontal scroll — match app shell scroll chrome (gold-tinted thumb on hover). */
-:root[data-theme="dark"] .app_shell .data_table_scroll,
-:root[data-theme="dark"] .app_shell .data_table_scroll_region,
-:root[data-theme="dark"] .app_shell .um_table_wrap.data_table_shell,
-:root[data-theme="dark"] .app_shell .deals_list_table_panel .data_table_scroll_region,
-:root[data-theme="dark"] .app_shell .deal_inv_table_panel .data_table_scroll_region {
-  scrollbar-color: var(--portal-table-scroll-thumb, rgba(255, 255, 255, 0.14)) transparent;
-}
-
-:root[data-theme="dark"] .app_shell .data_table_scroll::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .app_shell .data_table_scroll_region::-webkit-scrollbar-thumb,
-:root[data-theme="dark"] .app_shell .um_table_wrap.data_table_shell::-webkit-scrollbar-thumb,
-:root[data-theme="dark"]
-  .app_shell
-  .deals_list_table_panel
-  .data_table_scroll_region::-webkit-scrollbar-thumb,
-:root[data-theme="dark"]
-  .app_shell
-  .deal_inv_table_panel
-  .data_table_scroll_region::-webkit-scrollbar-thumb {
-  background: var(--portal-table-scroll-thumb, rgba(255, 255, 255, 0.14));
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: padding-box;
-}
-
-:root[data-theme="dark"] .app_shell .data_table_scroll::-webkit-scrollbar-thumb:hover,
-:root[data-theme="dark"] .app_shell .data_table_scroll_region::-webkit-scrollbar-thumb:hover,
-:root[data-theme="dark"] .app_shell .um_table_wrap.data_table_shell::-webkit-scrollbar-thumb:hover,
-:root[data-theme="dark"]
-  .app_shell
-  .deals_list_table_panel
-  .data_table_scroll_region::-webkit-scrollbar-thumb:hover,
-:root[data-theme="dark"]
-  .app_shell
-  .deal_inv_table_panel
-  .data_table_scroll_region::-webkit-scrollbar-thumb:hover {
-  background: var(
-    --portal-table-scroll-thumb-hover,
-    color-mix(in srgb, var(--portal-gold-accent, #d4af37) 28%, rgba(255, 255, 255, 0.22))
-  );
-  background-clip: padding-box;
-}
+/* Table scroll thumbs inherit portal-scrollbars.css + theme tokens. */
 
 :root[data-theme="dark"] .app_shell .um_table_pagination {
   background: var(--portal-surface, rgba(255, 255, 255, 0.04));

@@ -2,6 +2,7 @@ import { portalAuthHeaders } from "../../../../../common/auth/portalAuthHeaders"
 import { getApiV1Base } from "../../../../../common/utils/apiBaseUrl"
 import { blurFormatMoneyInput } from "../../utils/offeringMoneyFormat"
 import type {
+  DistributionFeeConfig,
   DistributionPaymentRow,
   DistributionSetupBundle,
   DistributionWaterfalls,
@@ -9,6 +10,10 @@ import type {
   PriorDistributionRecord,
 } from "../types/distribution-setup.types"
 import { sanitizePriorDistributions } from "../../tabs/distributions/utils/investorPreferredAllocation"
+import {
+  getPeriodWindow,
+  periodFromFactor,
+} from "../utils/distributionPeriod"
 
 function authHeaders(): HeadersInit {
   return portalAuthHeaders()
@@ -48,6 +53,71 @@ function parseRow(raw: unknown, i: number): DistributionPaymentRow {
   }
 }
 
+function parseDistributionFee(raw: unknown): DistributionFeeConfig | undefined {
+  const o = asRecord(raw)
+  if (Object.keys(o).length === 0) return undefined
+  const splitsRaw = Array.isArray(o.classSplits)
+    ? o.classSplits
+    : Array.isArray(o.class_splits)
+      ? o.class_splits
+      : []
+  const classSplits = splitsRaw
+    .map((item) => {
+      const row = asRecord(item)
+      const classId = str(row.classId ?? row.class_id)
+      if (!classId) return null
+      return {
+        classId,
+        percent: str(row.percent ?? row.pct ?? row.percentage) || "0",
+      }
+    })
+    .filter((s): s is { classId: string; percent: string } => s != null)
+  const periodFactor = str(o.periodFactor ?? o.period_factor) || "0.25"
+  const periodStart = str(
+    o.periodStart ?? o.period_start ?? o.startDate ?? o.start_date,
+  ).slice(0, 10)
+  const periodEnd = str(o.periodEnd ?? o.period_end).slice(0, 10)
+  const legacyDistDate = str(
+    o.distributionDate ?? o.distribution_date,
+  ).slice(0, 10)
+  const cashRaw = str(o.cashAvailable ?? o.cash_available) || "0"
+  const resolvedStart = /^\d{4}-\d{2}-\d{2}$/.test(periodStart)
+    ? periodStart
+    : /^\d{4}-\d{2}-\d{2}$/.test(legacyDistDate)
+      ? legacyDistDate
+      : ""
+  let resolvedEnd = /^\d{4}-\d{2}-\d{2}$/.test(periodEnd) ? periodEnd : ""
+  if (!resolvedEnd && resolvedStart) {
+    const window = getPeriodWindow(
+      resolvedStart,
+      periodFromFactor(Number(periodFactor) || 0.25),
+    )
+    resolvedEnd = window.end
+  }
+  const name = str(o.name)
+  const type =
+    str(o.type ?? o.feeType ?? o.fee_type) ||
+    (name ? name : "")
+  const typeOptionsRaw = Array.isArray(o.typeOptions)
+    ? o.typeOptions
+    : Array.isArray(o.type_options)
+      ? o.type_options
+      : []
+  const typeOptions = typeOptionsRaw
+    .map((item) => str(item))
+    .filter(Boolean)
+  return {
+    name,
+    type,
+    typeOptions,
+    cashAvailable: moneyField(cashRaw, "0"),
+    periodFactor,
+    periodStart: resolvedStart,
+    periodEnd: resolvedEnd,
+    classSplits,
+  }
+}
+
 function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle {
   const wf = asRecord(raw.waterfalls)
   const classesRaw = Array.isArray(raw.classes) ? raw.classes : []
@@ -76,9 +146,11 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
       const source =
         sourceRaw === "capital" || sourceRaw === "capital_event"
           ? "capital"
-          : sourceRaw === "operating"
-            ? "operating"
-            : str(row.source) || undefined
+          : sourceRaw === "fee" || sourceRaw === "distribution_fee"
+            ? "fee"
+            : sourceRaw === "operating"
+              ? "operating"
+              : str(row.source) || undefined
       const periodRaw = str(row.period).toLowerCase()
       const period =
         periodRaw === "monthly" ||
@@ -168,7 +240,11 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
     })
     .filter((p): p is PriorDistributionRecord => p != null)
 
-  return {
+    const distributionFee = parseDistributionFee(
+      raw.distributionFee ?? raw.distribution_fee,
+    )
+
+    return {
     dealId: str(raw.dealId ?? raw.deal_id),
     dealName: str(raw.dealName ?? raw.deal_name),
     targetRaise: moneyField(raw.targetRaise ?? raw.target_raise),
@@ -236,6 +312,7 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
         ]),
       ),
     },
+    ...(distributionFee ? { distributionFee } : {}),
   }
 }
 
@@ -265,6 +342,7 @@ export async function saveDistributionSetup(
   options?: {
     dayCountMode?: "period_window" | "from_accrual_start"
     defaultAccrualStartIso?: string
+    distributionFee?: DistributionFeeConfig | null
   },
 ): Promise<DistributionSetupBundle> {
   const base = getApiV1Base()
@@ -285,6 +363,9 @@ export async function saveDistributionSetup(
         ...(options?.defaultAccrualStartIso
           ? { defaultAccrualStartIso: options.defaultAccrualStartIso }
           : {}),
+        ...(options?.distributionFee !== undefined
+          ? { distributionFee: options.distributionFee }
+          : {}),
       }),
     },
   )
@@ -302,7 +383,7 @@ export async function completeDistributionSetup(
   dealId: string,
   waterfalls: DistributionWaterfalls,
   input: {
-    source: "operating" | "capital"
+    source: "operating" | "capital" | "fee"
     amount: number
     date?: string
     name?: string
@@ -489,16 +570,22 @@ export async function clearPriorDistributions(
 export async function deletePriorDistribution(
   dealId: string,
   distributionId: string,
+  options?: { reason?: string },
 ): Promise<DistributionSetupBundle> {
   const base = getApiV1Base()
   if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
 
+  const reason = String(options?.reason ?? "").trim()
   const res = await fetch(
     `${base}/deals/${encodeURIComponent(dealId)}/distributions/${encodeURIComponent(distributionId)}`,
     {
       method: "DELETE",
-      headers: authHeaders(),
+      headers: {
+        ...authHeaders(),
+        ...(reason ? { "Content-Type": "application/json" } : {}),
+      },
       credentials: "include",
+      ...(reason ? { body: JSON.stringify({ reason }) } : {}),
     },
   )
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>

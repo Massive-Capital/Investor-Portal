@@ -4,7 +4,9 @@
   grid-template-columns: 16rem minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
+  height: 100dvh;
   max-height: 100%;
+  max-height: 100dvh;
   min-height: 0;
   overflow: hidden;
   background-color: var(--portal-page-bg);
@@ -639,23 +641,26 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* light.html: main scrolls; sticky header blurs content underneath */
-  overflow-x: hidden;
-  overflow-y: auto;
+  /* Clip here; `.app_main_content` is the vertical scroll layer (avoids flex empty-tail scroll). */
+  overflow: hidden;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
 }
 
 .app_main_section > .top_navbar {
   flex-shrink: 0;
+  /* Navbar sits outside the scroll layer — sticky no longer needed for pin. */
+  position: relative;
 }
 
 .app_main_content {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  overflow: visible;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
   margin-top: 0;
   margin-left: clamp(1.5rem, 4vw, 3rem);
   margin-right: clamp(1rem, 2vw, 1.5rem);
@@ -713,7 +718,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .app_sidebar_nav_region,
-  .app_main_section {
+  .app_main_content {
     scroll-behavior: auto;
   }
 }

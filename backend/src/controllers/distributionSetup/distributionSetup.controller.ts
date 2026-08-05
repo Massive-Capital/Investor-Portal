@@ -22,6 +22,7 @@ import {
   updatePriorDistributionInvestorPercent,
 } from "../../services/distributionSetup/distributionSetup.service.js";
 import type {
+  DistributionFeeConfig,
   DistributionPaymentRow,
   DistributionSetupSaveInput,
   DistributionWaterfalls,
@@ -105,6 +106,68 @@ function parseSaveInput(body: unknown): DistributionSetupSaveInput | null {
   const accrual = str(
     b.defaultAccrualStartIso ?? b.default_accrual_start_iso,
   ).slice(0, 10);
+  let distributionFee: DistributionFeeConfig | null | undefined;
+  if ("distributionFee" in b || "distribution_fee" in b) {
+    const feeRaw = b.distributionFee ?? b.distribution_fee;
+    if (feeRaw == null) {
+      distributionFee = null;
+    } else {
+      const fee = asRecord(feeRaw);
+      const splitsRaw = Array.isArray(fee.classSplits)
+        ? fee.classSplits
+        : Array.isArray(fee.class_splits)
+          ? fee.class_splits
+          : [];
+      const classSplits = splitsRaw
+        .map((item) => {
+          const row = asRecord(item);
+          const classId = str(row.classId ?? row.class_id);
+          if (!classId) return null;
+          const pct = str(row.percent ?? row.pct ?? row.percentage) || "0";
+          return { classId, percent: pct };
+        })
+        .filter((s): s is { classId: string; percent: string } => s != null);
+      const periodStart = str(
+        fee.periodStart ??
+          fee.period_start ??
+          fee.startDate ??
+          fee.start_date,
+      ).slice(0, 10);
+      const periodEnd = str(fee.periodEnd ?? fee.period_end).slice(0, 10);
+      const legacyDistDate = str(
+        fee.distributionDate ?? fee.distribution_date,
+      ).slice(0, 10);
+      const resolvedStart = /^\d{4}-\d{2}-\d{2}$/.test(periodStart)
+        ? periodStart
+        : /^\d{4}-\d{2}-\d{2}$/.test(legacyDistDate)
+          ? legacyDistDate
+          : "";
+      const resolvedEnd = /^\d{4}-\d{2}-\d{2}$/.test(periodEnd)
+        ? periodEnd
+        : "";
+      const name = str(fee.name);
+      const type =
+        str(fee.type ?? fee.feeType ?? fee.fee_type) || (name ? name : "");
+      const typeOptionsRaw = Array.isArray(fee.typeOptions)
+        ? fee.typeOptions
+        : Array.isArray(fee.type_options)
+          ? fee.type_options
+          : [];
+      const typeOptions = typeOptionsRaw
+        .map((item) => str(item))
+        .filter(Boolean);
+      distributionFee = {
+        name,
+        type,
+        typeOptions,
+        cashAvailable: str(fee.cashAvailable ?? fee.cash_available) || "0",
+        periodFactor: str(fee.periodFactor ?? fee.period_factor) || "0.25",
+        periodStart: resolvedStart,
+        periodEnd: resolvedEnd,
+        classSplits,
+      };
+    }
+  }
   return {
     waterfalls,
     ...(setupName ? { setupName } : {}),
@@ -112,6 +175,7 @@ function parseSaveInput(body: unknown): DistributionSetupSaveInput | null {
     ...(/^\d{4}-\d{2}-\d{2}$/.test(accrual)
       ? { defaultAccrualStartIso: accrual }
       : {}),
+    ...(distributionFee !== undefined ? { distributionFee } : {}),
   };
 }
 
@@ -213,7 +277,7 @@ export async function putDealDistributionSetup(req: Request, res: Response) {
       if (!completeInput) {
         res.status(400).json({
           message:
-            "Invalid complete payload. Provide source (operating|capital) and amount.",
+            "Invalid complete payload. Provide source (operating|capital|fee) and amount.",
           distributionSetup: bundle,
         });
         return;
@@ -274,7 +338,7 @@ function parseInvestorPayments(raw: unknown): InvestorPaymentLineInput[] {
 }
 
 function parseCompleteInput(body: unknown): {
-  source: DistributionWfSource;
+  source: DistributionWfSource | "fee";
   amount: number;
   date?: string;
   name?: string;
@@ -293,11 +357,20 @@ function parseCompleteInput(body: unknown): {
     return null;
   const b = body as Record<string, unknown>;
   const sourceRaw = str(b.source).toLowerCase();
-  if (
-    !(DISTRIBUTION_WF_SOURCES as readonly string[]).includes(sourceRaw)
-  ) {
+  const allowedSources = [
+    ...(DISTRIBUTION_WF_SOURCES as readonly string[]),
+    "fee",
+    "distribution_fee",
+  ];
+  if (!allowedSources.includes(sourceRaw)) {
     return null;
   }
+  const source: DistributionWfSource | "fee" =
+    sourceRaw === "capital" || sourceRaw === "capital_event"
+      ? "capital"
+      : sourceRaw === "fee" || sourceRaw === "distribution_fee"
+        ? "fee"
+        : "operating";
   const amountRaw = b.amount;
   const amount =
     typeof amountRaw === "number"
@@ -343,7 +416,7 @@ function parseCompleteInput(body: unknown): {
         ? undefined
         : true;
   return {
-    source: sourceRaw as DistributionWfSource,
+    source,
     amount,
     date: str(b.date) || undefined,
     name: str(b.name) || undefined,
@@ -496,7 +569,7 @@ export async function postDealDistributionComplete(
     if (!input) {
       res.status(400).json({
         message:
-          "Invalid complete payload. Provide source (operating|capital) and amount.",
+          "Invalid complete payload. Provide source (operating|capital|fee) and amount.",
       });
       return;
     }
@@ -535,10 +608,16 @@ export async function patchDealDistributionInvestorPercent(
       res.status(access.status).json({ message: access.message });
       return;
     }
+    const user = await getValidJwtUser(req);
+    if (!user?.id) {
+      res.status(401).json({ message: "Authorization required" });
+      return;
+    }
     const b = asRecord(req.body);
     const investorId = str(b.investorId ?? b.investor_id);
     const pctRaw = b.percentOfClass ?? b.percent_of_class;
     const payRaw = b.payment;
+    const reason = str(b.reason);
     const hasPct =
       pctRaw !== undefined &&
       pctRaw !== null &&
@@ -571,6 +650,8 @@ export async function patchDealDistributionInvestorPercent(
       dealId,
       distributionId,
       investorId,
+      actorUserId: user.id,
+      ...(reason ? { reason } : {}),
       ...(Number.isFinite(percentOfClass)
         ? { percentOfClass: percentOfClass as number }
         : {}),
@@ -604,9 +685,24 @@ export async function deleteDealPriorDistribution(
       res.status(access.status).json({ message: access.message });
       return;
     }
+    const reason = (() => {
+      const b =
+        req.body != null && typeof req.body === "object" && !Array.isArray(req.body)
+          ? (req.body as Record<string, unknown>)
+          : {};
+      const fromBody = str(b.reason ?? b.deleteReason ?? b.delete_reason);
+      if (fromBody) return fromBody;
+      const fromQuery = str(req.query.reason);
+      return fromQuery;
+    })();
+    if (!reason) {
+      res.status(400).json({ message: "Deletion reason is required" });
+      return;
+    }
     const { bundle, error } = await deletePriorDistribution({
       dealId,
       distributionId,
+      reason,
     });
     if (error) {
       res.status(error === "Distribution not found" ? 404 : 400).json({

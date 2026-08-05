@@ -1,4 +1,11 @@
-import { ArrowRight, CircleHelp, Download, Search } from "lucide-react"
+import {
+  ArrowRight,
+  BarChart3,
+  CircleHelp,
+  Download,
+  // Percent,
+  Search,
+} from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import {
@@ -6,9 +13,10 @@ import {
   type DataTableColumn,
 } from "../../../../../common/components/data-table/DataTable"
 import { TableCompactAmountCell } from "../../../../../common/components/card-compact-amount/CardCompactAmount"
+import { TabsScrollStrip } from "../../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { fetchDealInvestors } from "../../api/dealsApi"
 import {
-  clearPriorDistributions,
+  // clearPriorDistributions,
   deletePriorDistribution,
   fetchDistributionSetup,
 } from "../../distribution-setup/api/distributionSetupApi"
@@ -17,8 +25,12 @@ import type {
   PriorDistributionRecord,
 } from "../../distribution-setup/types/distribution-setup.types"
 import { ExportSelectableRowsModal } from "../../components/ExportSelectableRowsModal"
+import { BulkDeleteReasonModal } from "../../../../../common/components/bulk-delete-reason-modal/BulkDeleteReasonModal"
+import "../../../../../common/components/bulk-delete-reason-modal/bulk-delete-reason-modal.css"
 import { toast } from "../../../../../common/components/Toast"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
+// import { DistributionFeeTab } from "./DistributionFeeTab"
+import { DistributionRowActions } from "./DistributionRowActions"
 import { downloadDistributionsExportCsv } from "./utils/distributionsExportCsv"
 import { sanitizePriorDistributions } from "./utils/investorPreferredAllocation"
 import {
@@ -34,6 +46,8 @@ import {
 import "../../../usermanagement/user_management.css"
 import "../../deals-list.css"
 import "./distributions-tab.css"
+
+type DistributionsSubTab = "distributions" | "distribution_fee"
 
 type DistributionsTabProps = {
   dealId: string
@@ -63,6 +77,8 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
   const distributionSetupHref = `/deals/${encodeURIComponent(id)}/distribution-setup`
   const returnState = { returnTab: "distributions" as const }
 
+  const [activeSubTab, setActiveSubTab] =
+    useState<DistributionsSubTab>("distributions")
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [priorDistributions, setPriorDistributions] = useState<
@@ -75,7 +91,10 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
   const [pageSize, setPageSize] = useState(10)
   const [exportOpen, setExportOpen] = useState(false)
   const [resolvedDealName, setResolvedDealName] = useState(dealName ?? "")
-  const [clearing, setClearing] = useState(false)
+  // const [clearing, setClearing] = useState(false)
+  const [deleteTarget, setDeleteTarget] =
+    useState<PriorDistributionRecord | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const openDetails = useCallback(
     (row: PriorDistributionRecord) => {
@@ -220,52 +239,81 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
     [filtered, resolvedDealName, dealName],
   )
 
-  const handleClearAll = useCallback(async () => {
-    if (!id || clearing) return
-    const ok = window.confirm(
-      "Clear all completed distributions for this deal?\n\nThis removes the test/history rows only. Class Setup and Distribution Setup (waterfall) are kept.",
-    )
-    if (!ok) return
-    setClearing(true)
-    try {
-      const saved = await clearPriorDistributions(id)
-      setPriorDistributions(
-        sanitizePriorDistributions(saved.priorDistributions ?? []),
-      )
-      toast.success(
-        "Distributions cleared",
-        "Complete Q1 / Q2 again from Distribution Setup with the correct dates.",
-      )
-    } catch (err) {
-      toast.error(
-        "Could not clear",
-        err instanceof Error ? err.message : "Try again.",
-      )
-    } finally {
-      setClearing(false)
-    }
-  }, [id, clearing])
+  // const handleClearAll = useCallback(async () => {
+  //   if (!id || clearing) return
+  //   const ok = window.confirm(
+  //     "Clear all completed distributions for this deal?\n\nThis removes the test/history rows only. Class Setup and Distribution Setup (waterfall) are kept.",
+  //   )
+  //   if (!ok) return
+  //   setClearing(true)
+  //   try {
+  //     const saved = await clearPriorDistributions(id)
+  //     setPriorDistributions(
+  //       sanitizePriorDistributions(saved.priorDistributions ?? []),
+  //     )
+  //     toast.success(
+  //       "Distributions cleared",
+  //       "Complete Q1 / Q2 again from Distribution Setup with the correct dates.",
+  //     )
+  //   } catch (err) {
+  //     toast.error(
+  //       "Could not clear",
+  //       err instanceof Error ? err.message : "Try again.",
+  //     )
+  //   } finally {
+  //     setClearing(false)
+  //   }
+  // }, [id, clearing])
 
-  const handleDeleteOne = useCallback(
-    async (row: PriorDistributionRecord) => {
+  const openEditSetup = useCallback(
+    (row: PriorDistributionRecord) => {
       if (!id) return
-      const label = distributionDisplayName(row)
-      const ok = window.confirm(`Delete “${label}”?`)
-      if (!ok) return
+      navigate(
+        `/deals/${encodeURIComponent(id)}/distribution-setup?editDistributionId=${encodeURIComponent(row.id)}`,
+        { state: { returnTab: "distributions" as const } },
+      )
+    },
+    [id, navigate],
+  )
+
+  const handleExportOne = useCallback(
+    (row: PriorDistributionRecord) => {
+      downloadDistributionsExportCsv({
+        rows: [row],
+        dealName: resolvedDealName || dealName,
+      })
+      toast.success("Exported", `“${distributionDisplayName(row)}” downloaded.`)
+    },
+    [resolvedDealName, dealName],
+  )
+
+  const handleDeleteOne = useCallback((row: PriorDistributionRecord) => {
+    setDeleteTarget(row)
+  }, [])
+
+  const confirmDeleteOne = useCallback(
+    async (reason: string) => {
+      if (!id || !deleteTarget) return
+      setDeleteBusy(true)
       try {
-        const saved = await deletePriorDistribution(id, row.id)
+        const saved = await deletePriorDistribution(id, deleteTarget.id, {
+          reason,
+        })
         setPriorDistributions(
           sanitizePriorDistributions(saved.priorDistributions ?? []),
         )
+        setDeleteTarget(null)
         toast.success("Distribution deleted")
       } catch (err) {
         toast.error(
           "Could not delete",
           err instanceof Error ? err.message : "Try again.",
         )
+      } finally {
+        setDeleteBusy(false)
       }
     },
-    [id],
+    [id, deleteTarget],
   )
 
   // Visibility toggle — commented out for now
@@ -415,22 +463,18 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
       },
       {
         id: "actions",
-        header: "",
+        header: "Actions",
+        align: "center",
         colWidth: "5.5rem",
-        thClassName: "deal_dist_th_actions",
-        tdClassName: "deal_dist_td_actions",
+        thClassName: "um_th_actions deal_dist_th_actions",
+        tdClassName: "um_td_actions deal_inv_td_actions deal_dist_td_actions",
         cell: (row) => (
-          <button
-            type="button"
-            className="deal_dist_delete_btn"
-            aria-label={`Delete ${distributionDisplayName(row)}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              void handleDeleteOne(row)
-            }}
-          >
-            Delete
-          </button>
+          <DistributionRowActions
+            rowLabel={distributionDisplayName(row)}
+            onEdit={() => openEditSetup(row)}
+            onExport={() => handleExportOne(row)}
+            onDelete={() => handleDeleteOne(row)}
+          />
         ),
       },
       // {
@@ -438,7 +482,14 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
       //   ...
       // },
     ],
-    [openDetails, totals.paid, totals.unpaid, handleDeleteOne],
+    [
+      openDetails,
+      totals.paid,
+      totals.unpaid,
+      openEditSetup,
+      handleExportOne,
+      handleDeleteOne,
+    ],
   )
 
   const emptyLabel = loading
@@ -450,99 +501,193 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
         : "No completed distributions yet. Complete a run in Distribution Setup to see it here."
 
   return (
-    <div
-      className="deal_dist_tab"
-      role="region"
-      aria-label="Classes and distributions"
-    >
-      <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_dist_panel">
-        <div
-          className="um_toolbar um_toolbar_export_then_search deal_dist_toolbar"
-          role="toolbar"
-          aria-label="Distribution setup"
-        >
-          <div className="deal_dist_toolbar_copy">
-            <h2 className="deal_dist_heading">Distributions</h2>
-            <p className="deal_dist_lead">
-              Preferred return runs for this deal (capital × rate × days ÷ 365).
-              Open a row for investor Required / Paid / Unpaid.
-            </p>
-          </div>
-          <div className="um_toolbar_actions deal_dist_toolbar_actions">
+    <div className="deal_dist_tab_shell">
+      <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer deal_dist_subtabs_outer">
+        <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
+          <div
+            className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row deal_dist_subtabs_row"
+            role="tablist"
+            aria-label="Distribution sections"
+          >
             <button
               type="button"
-              className="um_toolbar_export_btn"
-              disabled={loading || filtered.length === 0 || clearing}
-              onClick={() => void handleClearAll()}
-              aria-label="Clear all distributions"
-              title="Remove all completed distribution rows for this deal (keeps waterfall setup)"
+              id="deal-dist-subtab-distributions"
+              role="tab"
+              aria-selected={activeSubTab === "distributions"}
+              aria-controls="deal-dist-panel-distributions"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                activeSubTab === "distributions" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => setActiveSubTab("distributions")}
             >
-              <span>{clearing ? "Clearing…" : "Clear all"}</span>
+              <BarChart3
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Distributions
+              </span>
             </button>
-            <button
+            {/* <button
               type="button"
-              className="um_toolbar_export_btn"
-              disabled={loading || filtered.length === 0}
-              onClick={() => setExportOpen(true)}
-              aria-label="Export distributions"
+              id="deal-dist-subtab-fee"
+              role="tab"
+              aria-selected={activeSubTab === "distribution_fee"}
+              aria-controls="deal-dist-panel-fee"
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                activeSubTab === "distribution_fee"
+                  ? " um_members_tab_active"
+                  : ""
+              }`}
+              onClick={() => setActiveSubTab("distribution_fee")}
             >
-              <Download size={18} strokeWidth={2} aria-hidden />
-              <span>Export</span>
-            </button>
-            <Link
-              to={classSetupHref}
-              state={returnState}
-              className="um_toolbar_export_btn"
-            >
-              Class Setup
-            </Link>
-            <Link
-              to={distributionSetupHref}
-              state={returnState}
-              className="um_btn_primary deals_list_add_link"
-            >
-              Distribution Setup
-              <ArrowRight size={16} strokeWidth={2} aria-hidden />
-            </Link>
+              <Percent
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Distribution Fee
+              </span>
+            </button> */}
           </div>
-          <div className="um_search_wrap deal_dist_search">
-            <Search className="um_search_icon" size={18} aria-hidden />
-            <input
-              type="search"
-              className="um_search_input"
-              placeholder="Search by name, source, period…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search distributions"
-            />
-          </div>
-        </div>
-
-        <DataTable
-          visualVariant="members"
-          membersTableClassName="um_table_members deal_inv_table deal_dist_table deal_dist_portal_table"
-          columns={columns}
-          rows={loading ? [] : filtered}
-          getRowKey={(row) => row.id}
-          emptyLabel={emptyLabel}
-          initialSort={{ columnId: "paymentDate", direction: "desc" }}
-          onBodyRowClick={(row) => openDetails(row)}
-          getRowClassName={() => "deal_dist_table_row"}
-          pagination={pagination}
-        />
+        </TabsScrollStrip>
       </div>
 
-      <ExportSelectableRowsModal
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
-        title="Export distributions"
-        hint="Choose which completed distribution runs to include in the Excel/CSV file."
-        searchPlaceholder="Search runs…"
-        searchAriaLabel="Search export rows"
-        listAriaLabel="Distributions to export"
-        rows={exportRows}
-        onExportExcel={handleExport}
-      />
+      <div
+        id="deal-dist-panel-distributions"
+        role="tabpanel"
+        aria-labelledby="deal-dist-subtab-distributions"
+        hidden={activeSubTab !== "distributions"}
+        className="deal_dist_subtab_panel"
+      >
+        {activeSubTab === "distributions" ? (
+          <div
+            className="deal_dist_tab"
+            role="region"
+            aria-label="Classes and distributions"
+          >
+            <div className="um_panel um_members_tab_panel deals_list_table_panel deals_list_card_surface deal_inv_table_panel deal_dist_panel">
+              <div
+                className="um_toolbar um_toolbar_export_then_search deal_dist_toolbar"
+                role="toolbar"
+                aria-label="Distribution setup"
+              >
+                <div className="deal_dist_toolbar_copy">
+                  <h2 className="deal_dist_heading">Distributions</h2>
+                </div>
+                <div className="um_toolbar_actions deal_dist_toolbar_actions">
+                  {/* <button
+                    type="button"
+                    className="um_toolbar_export_btn"
+                    disabled={loading || filtered.length === 0 || clearing}
+                    onClick={() => void handleClearAll()}
+                    aria-label="Clear all distributions"
+                    title="Remove all completed distribution rows for this deal (keeps waterfall setup)"
+                  >
+                    <span>{clearing ? "Clearing…" : "Clear all"}</span>
+                  </button> */}
+                  <button
+                    type="button"
+                    className="um_toolbar_export_btn"
+                    disabled={loading || filtered.length === 0}
+                    onClick={() => setExportOpen(true)}
+                    aria-label="Export distributions"
+                  >
+                    <Download size={18} strokeWidth={2} aria-hidden />
+                    <span>Export</span>
+                  </button>
+                  <Link
+                    to={classSetupHref}
+                    state={returnState}
+                    className="um_toolbar_export_btn"
+                  >
+                    Class Setup
+                  </Link>
+                  <Link
+                    to={distributionSetupHref}
+                    state={returnState}
+                    className="um_btn_primary deals_list_add_link"
+                  >
+                    Distribution Setup
+                    <ArrowRight size={16} strokeWidth={2} aria-hidden />
+                  </Link>
+                </div>
+                <div className="um_search_wrap deal_dist_search">
+                  <Search className="um_search_icon" size={18} aria-hidden />
+                  <input
+                    type="search"
+                    className="um_search_input"
+                    placeholder="Search by name, source, period…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Search distributions"
+                  />
+                </div>
+              </div>
+
+              <DataTable
+                visualVariant="members"
+                membersTableClassName="um_table_members deal_inv_table deal_dist_table deal_dist_portal_table"
+                columns={columns}
+                rows={loading ? [] : filtered}
+                getRowKey={(row) => row.id}
+                emptyLabel={emptyLabel}
+                initialSort={{ columnId: "paymentDate", direction: "desc" }}
+                onBodyRowClick={(row) => openDetails(row)}
+                getRowClassName={() => "deal_dist_table_row"}
+                stickyFirstColumn
+                forceHorizontalScroll
+                pagination={pagination}
+              />
+            </div>
+
+            <ExportSelectableRowsModal
+              open={exportOpen}
+              onClose={() => setExportOpen(false)}
+              title="Export distributions"
+              hint="Choose which completed distribution runs to include in the Excel/CSV file."
+              searchPlaceholder="Search runs…"
+              searchAriaLabel="Search export rows"
+              listAriaLabel="Distributions to export"
+              rows={exportRows}
+              onExportExcel={handleExport}
+            />
+
+            <BulkDeleteReasonModal
+              open={deleteTarget != null}
+              title="Delete distribution?"
+              description={
+                deleteTarget
+                  ? `Remove “${distributionDisplayName(deleteTarget)}” from this deal? This cannot be undone.`
+                  : "Remove this distribution? This cannot be undone."
+              }
+              reasonLabel="Reason for deletion"
+              reasonPlaceholder="e.g. Created in error, duplicate run, wrong period…"
+              busy={deleteBusy}
+              onClose={() => {
+                if (!deleteBusy) setDeleteTarget(null)
+              }}
+              onConfirm={confirmDeleteOne}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {/* <div
+        id="deal-dist-panel-fee"
+        role="tabpanel"
+        aria-labelledby="deal-dist-subtab-fee"
+        hidden={activeSubTab !== "distribution_fee"}
+        className="deal_dist_subtab_panel"
+      >
+        {activeSubTab === "distribution_fee" ? (
+          <DistributionFeeTab dealId={id} dealName={resolvedDealName} />
+        ) : null}
+      </div> */}
     </div>
   )
 }

@@ -47,7 +47,9 @@ button.um_members_tab {
 
 /* —— Tab control (inactive + active) —— */
 .um_members_tab,
-.um_segmented_tabs_row .um_segmented_tab.um_members_tab {
+.um_segmented_tabs_row .um_segmented_tab.um_members_tab,
+button.um_members_tab,
+button.um_segmented_tab.um_members_tab {
   display: inline-flex;
   align-items: center;
   gap: 0.5em;
@@ -55,7 +57,8 @@ button.um_members_tab {
   padding: 0.7em 1.1em 0.65em;
   min-height: 0;
   border: none;
-  border-radius: 0;
+  /* Beat global App.css `button { border-radius: … !important }` */
+  border-radius: 0 !important;
   border-bottom: 3px solid transparent;
   margin-bottom: -1px;
   background: transparent;
@@ -159,7 +162,7 @@ button.um_members_tab {
   font-weight: 500;
   color: var(--portal-text-muted);
   cursor: pointer;
-  border-radius: 0;
+  border-radius: 0 !important;
   border-bottom: 3px solid transparent;
   transition:
     color 0.25s ease,

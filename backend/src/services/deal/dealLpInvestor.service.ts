@@ -48,6 +48,77 @@ function normalizeContactKey(raw: string): string {
     .toLowerCase();
 }
 
+type LpRosterPercentFields = {
+  percentOfClassOwnership: string;
+  percentOfClassDistributions: string;
+  entityOwnershipPercent: string;
+  distributionAllocationPercent: string;
+};
+
+function percentFieldsFromLpRosterRow(
+  m: DealLpInvestorRow,
+): LpRosterPercentFields {
+  return {
+    percentOfClassOwnership: String(m.percentOfClassOwnership ?? "").trim(),
+    percentOfClassDistributions: String(
+      m.percentOfClassDistributions ?? "",
+    ).trim(),
+    entityOwnershipPercent: String(m.entityOwnershipPercent ?? "").trim(),
+    distributionAllocationPercent: String(
+      m.distributionAllocationPercent ?? "",
+    ).trim(),
+  };
+}
+
+/**
+ * Index LP roster percents by LP row id and by canonical contact key
+ * (email-linked user UUID ↔ contact UUID), so investment rows still get DB %.
+ */
+async function indexLpRosterPercents(params: {
+  roster: DealLpInvestorRow[];
+  investorContactIds: string[];
+}): Promise<{
+  byLpId: Map<string, LpRosterPercentFields>;
+  lookupByContactId: (
+    contactId: string | null | undefined,
+  ) => LpRosterPercentFields | undefined;
+}> {
+  const byLpId = new Map<string, LpRosterPercentFields>();
+  const byCanonical = new Map<string, LpRosterPercentFields>();
+
+  const allRawIds: string[] = [];
+  for (const m of params.roster) {
+    const k = normalizeContactKey(m.contactMemberId);
+    if (k) allRawIds.push(k);
+  }
+  for (const raw of params.investorContactIds) {
+    const k = normalizeContactKey(raw);
+    if (k) allRawIds.push(k);
+  }
+
+  const rawToCanonical =
+    await mapContactIdsToCanonicalCommitmentKeys(allRawIds);
+
+  for (const m of params.roster) {
+    const pct = percentFieldsFromLpRosterRow(m);
+    byLpId.set(String(m.id).toLowerCase(), pct);
+    const contactKey = normalizeContactKey(m.contactMemberId);
+    if (!contactKey) continue;
+    const canonical = rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
+    byCanonical.set(canonical, pct);
+  }
+
+  return {
+    byLpId,
+    lookupByContactId(contactId) {
+      const contactKey = normalizeContactKey(String(contactId ?? ""));
+      if (!contactKey) return undefined;
+      const canonical = rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
+      return byCanonical.get(canonical);
+    },
+  };
+}
+
 /** True when the viewer’s roster row on this deal is Co-sponsor (contact or user id match). */
 export async function isViewerCoSponsorOnDeal(
   dealId: string,
@@ -316,6 +387,36 @@ export async function listMergedLpInvestorsForDeal(
     .where(eq(dealLpInvestor.dealId, dealId))
     .orderBy(desc(dealLpInvestor.updatedAt));
 
+  const allRawContactIds: string[] = [];
+  for (const k of latestInv.keys()) allRawContactIds.push(k);
+  for (const k of latestInvAnyRole.keys()) allRawContactIds.push(k);
+  for (const m of roster) {
+    const k = normalizeContactKey(m.contactMemberId);
+    if (k) allRawContactIds.push(k);
+  }
+  const rawToCanonical =
+    await mapContactIdsToCanonicalCommitmentKeys(allRawContactIds);
+
+  function canonicalOf(raw: string): string {
+    const k = normalizeContactKey(raw);
+    if (!k) return "";
+    return rawToCanonical.get(k) ?? `id:${k}`;
+  }
+
+  const invCanonicalKeys = new Set<string>();
+  for (const k of latestInv.keys()) {
+    const c = canonicalOf(k);
+    if (c) invCanonicalKeys.add(c);
+  }
+  const anyRoleByCanonical = new Map<string, DealInvestmentRow>();
+  for (const [k, inv] of latestInvAnyRole) {
+    const c = canonicalOf(k);
+    if (!c) continue;
+    const prev = anyRoleByCanonical.get(c);
+    if (!prev || new Date(inv.createdAt) > new Date(prev.createdAt))
+      anyRoleByCanonical.set(c, inv);
+  }
+
   const invKeys = new Set(latestInv.keys());
   const rows: DealInvestmentRow[] = [];
 
@@ -323,8 +424,13 @@ export async function listMergedLpInvestorsForDeal(
 
   for (const m of roster) {
     const k = normalizeContactKey(m.contactMemberId);
-    if (!k || invKeys.has(k)) continue;
-    const fin = latestInvAnyRole.get(k);
+    if (!k) continue;
+    const canonical = canonicalOf(k);
+    if (invKeys.has(k) || (canonical && invCanonicalKeys.has(canonical)))
+      continue;
+    const fin =
+      latestInvAnyRole.get(k) ??
+      (canonical ? anyRoleByCanonical.get(canonical) : undefined);
     rows.push(
       fin
         ? syntheticLpRosterWithInvestmentFinancials(m, fin)
@@ -421,36 +527,18 @@ export async function buildLpInvestorsFromMerged(
     .where(eq(dealLpInvestor.dealId, dealId));
 
   const rosterEmailByLpId = new Map<string, string>();
-  const rosterPctByLpId = new Map<
-    string,
-    { percentOfClassOwnership: string; percentOfClassDistributions: string }
-  >();
-  const rosterPctByContact = new Map<
-    string,
-    { percentOfClassOwnership: string; percentOfClassDistributions: string }
-  >();
   for (const m of roster) {
-    const idKey = String(m.id).toLowerCase();
-    const contactKey = String(m.contactMemberId ?? "")
-      .trim()
-      .toLowerCase();
     const em = String(m.email ?? "").trim();
-    if (em) rosterEmailByLpId.set(idKey, em);
-    const pct = {
-      percentOfClassOwnership: String(m.percentOfClassOwnership ?? "").trim(),
-      percentOfClassDistributions: String(
-        m.percentOfClassDistributions ?? "",
-      ).trim(),
-    };
-    rosterPctByLpId.set(idKey, pct);
-    if (contactKey) rosterPctByContact.set(contactKey, pct);
+    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em);
   }
+
+  const { byLpId, lookupByContactId } = await indexLpRosterPercents({
+    roster,
+    investorContactIds: base.map((inv) => String(inv.contactId ?? "")),
+  });
 
   const investorsMerged = base.map((inv) => {
     const id = String(inv.id ?? "").toLowerCase();
-    const contactKey = String(inv.contactId ?? "")
-      .trim()
-      .toLowerCase();
     const storedEmail = lpRosterIds.has(id)
       ? rosterEmailByLpId.get(id)
       : undefined;
@@ -458,12 +546,13 @@ export async function buildLpInvestorsFromMerged(
       ? { userEmail: storedEmail.trim() }
       : {};
     const pct =
-      rosterPctByLpId.get(id) ??
-      (contactKey ? rosterPctByContact.get(contactKey) : undefined);
+      byLpId.get(id) ?? lookupByContactId(inv.contactId);
     const pctPatch = pct
       ? {
           percentOfClassOwnership: pct.percentOfClassOwnership,
           percentOfClassDistributions: pct.percentOfClassDistributions,
+          entityOwnershipPercent: pct.entityOwnershipPercent,
+          distributionAllocationPercent: pct.distributionAllocationPercent,
         }
       : {};
     return { ...inv, ...emailPatch, ...pctPatch };
@@ -484,6 +573,39 @@ export async function buildLpInvestorsFromMerged(
   return { investors, kpis };
 }
 
+/**
+ * After create/update, the tab list may return the shadowed `deal_investment` row
+ * (different id / contact UUID). Resolve by LP id, then exact contact, then canonical.
+ */
+export async function findMergedInvestorForLpRosterRow(
+  investors: LpInvestorApiRow[],
+  lpRow: Pick<DealLpInvestorRow, "id" | "contactMemberId">,
+): Promise<LpInvestorApiRow | undefined> {
+  const rowId = String(lpRow.id ?? "").toLowerCase();
+  const byId = investors.find((x) => String(x.id ?? "").toLowerCase() === rowId);
+  if (byId) return byId;
+
+  const rowContact = normalizeContactKey(lpRow.contactMemberId);
+  if (!rowContact) return undefined;
+
+  const byExact = investors.find(
+    (x) => normalizeContactKey(String(x.contactId ?? "")) === rowContact,
+  );
+  if (byExact) return byExact;
+
+  const allRaw = [
+    rowContact,
+    ...investors.map((x) => normalizeContactKey(String(x.contactId ?? ""))),
+  ].filter(Boolean);
+  const rawToCanonical = await mapContactIdsToCanonicalCommitmentKeys(allRaw);
+  const targetCanonical = rawToCanonical.get(rowContact) ?? `id:${rowContact}`;
+  return investors.find((x) => {
+    const k = normalizeContactKey(String(x.contactId ?? ""));
+    if (!k) return false;
+    return (rawToCanonical.get(k) ?? `id:${k}`) === targetCanonical;
+  });
+}
+
 type FullRosterInvestorApiRow = ReturnType<typeof mapRowToInvestorApi>;
 
 /**
@@ -502,48 +624,28 @@ export async function enrichFullInvestorApiFromLpRoster(
   const roster = await db
     .select()
     .from(dealLpInvestor)
-    .where(eq(dealLpInvestor.dealId, dealId))
+    .where(eq(dealLpInvestor.dealId, dealId));
 
-  if (roster.length === 0) return investors
+  if (roster.length === 0) return investors;
 
-  const rosterEmailByLpId = new Map<string, string>()
-  const rosterPctByLpId = new Map<
-    string,
-    { percentOfClassOwnership: string; percentOfClassDistributions: string }
-  >()
-  const rosterPctByContact = new Map<
-    string,
-    { percentOfClassOwnership: string; percentOfClassDistributions: string }
-  >()
+  const rosterEmailByLpId = new Map<string, string>();
   for (const m of roster) {
-    const idKey = String(m.id).toLowerCase()
-    const contactKey = String(m.contactMemberId ?? "")
-      .trim()
-      .toLowerCase()
-    const em = String(m.email ?? "").trim()
-    if (em) rosterEmailByLpId.set(idKey, em)
-    const pct = {
-      percentOfClassOwnership: String(m.percentOfClassOwnership ?? "").trim(),
-      percentOfClassDistributions: String(
-        m.percentOfClassDistributions ?? "",
-      ).trim(),
-    }
-    rosterPctByLpId.set(idKey, pct)
-    if (contactKey) rosterPctByContact.set(contactKey, pct)
+    const em = String(m.email ?? "").trim();
+    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em);
   }
 
+  const { byLpId, lookupByContactId } = await indexLpRosterPercents({
+    roster,
+    investorContactIds: investors.map((inv) => String(inv.contactId ?? "")),
+  });
+
   return investors.map((inv) => {
-    const id = String(inv.id ?? "").toLowerCase()
-    const contactKey = String(inv.contactId ?? "")
-      .trim()
-      .toLowerCase()
-    const isLpRoster = lpRosterIds.has(id)
+    const id = String(inv.id ?? "").toLowerCase();
+    const isLpRoster = lpRosterIds.has(id);
     const storedEmail = isLpRoster
       ? rosterEmailByLpId.get(id)?.trim()
-      : undefined
-    const pct =
-      rosterPctByLpId.get(id) ??
-      (contactKey ? rosterPctByContact.get(contactKey) : undefined)
+      : undefined;
+    const pct = byLpId.get(id) ?? lookupByContactId(inv.contactId);
     return {
       ...inv,
       ...(storedEmail ? { userEmail: storedEmail } : {}),
@@ -551,11 +653,13 @@ export async function enrichFullInvestorApiFromLpRoster(
         ? {
             percentOfClassOwnership: pct.percentOfClassOwnership,
             percentOfClassDistributions: pct.percentOfClassDistributions,
+            entityOwnershipPercent: pct.entityOwnershipPercent,
+            distributionAllocationPercent: pct.distributionAllocationPercent,
           }
         : {}),
       ...(isLpRoster ? { investorKind: "lp_roster" as const } : {}),
-    }
-  })
+    };
+  });
 }
 
 /**
@@ -603,6 +707,10 @@ export type UpsertDealLpInvestorInput = {
   percentOfClassOwnership?: string | null;
   /** Percent of class (distributions). */
   percentOfClassDistributions?: string | null;
+  /** Entity Ownership % (optional). */
+  entityOwnershipPercent?: string | null;
+  /** Distribution Allocation % (optional). */
+  distributionAllocationPercent?: string | null;
 };
 
 export const LP_INVESTOR_ALREADY_ON_DEAL_MESSAGE =
@@ -659,6 +767,10 @@ export async function upsertDealLpInvestor(
   const distributionsPct = String(
     input.percentOfClassDistributions ?? "",
   ).trim();
+  const entityOwnershipPct = String(input.entityOwnershipPercent ?? "").trim();
+  const distributionAllocationPct = String(
+    input.distributionAllocationPercent ?? "",
+  ).trim();
 
   const [row] = await db
     .insert(dealLpInvestor)
@@ -673,6 +785,8 @@ export async function upsertDealLpInvestor(
       investorClass: input.investorClass?.trim() ?? "",
       percentOfClassOwnership: ownershipPct,
       percentOfClassDistributions: distributionsPct,
+      entityOwnershipPercent: entityOwnershipPct,
+      distributionAllocationPercent: distributionAllocationPct,
       sendInvitationMail: send,
       updatedAt: now,
     })
@@ -687,6 +801,8 @@ export async function upsertDealLpInvestor(
         investorClass: input.investorClass?.trim() ?? "",
         percentOfClassOwnership: ownershipPct,
         percentOfClassDistributions: distributionsPct,
+        entityOwnershipPercent: entityOwnershipPct,
+        distributionAllocationPercent: distributionAllocationPct,
         sendInvitationMail: sqlPreserveSendInvitationMailOnUpsert(
           input.sendInvitationMail,
           dealLpInvestor.sendInvitationMail,
@@ -747,6 +863,10 @@ export async function updateDealLpInvestorById(
   const distributionsPct = String(
     input.percentOfClassDistributions ?? "",
   ).trim();
+  const entityOwnershipPct = String(input.entityOwnershipPercent ?? "").trim();
+  const distributionAllocationPct = String(
+    input.distributionAllocationPercent ?? "",
+  ).trim();
 
   const [row] = await db
     .update(dealLpInvestor)
@@ -758,6 +878,8 @@ export async function updateDealLpInvestorById(
       investorClass: input.investorClass?.trim() ?? "",
       percentOfClassOwnership: ownershipPct,
       percentOfClassDistributions: distributionsPct,
+      entityOwnershipPercent: entityOwnershipPct,
+      distributionAllocationPercent: distributionAllocationPct,
       sendInvitationMail: sendToStore,
       updatedAt: now,
     })
@@ -781,6 +903,130 @@ export async function getDealLpInvestorById(
     .where(and(eq(dealLpInvestor.dealId, dealId), eq(dealLpInvestor.id, id)))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * Resolve the `deal_lp_investor` row for Edit: by LP id first, then exact /
+ * canonical contact match (investment rows often use a different contact UUID).
+ */
+export async function resolveDealLpInvestorForEdit(
+  dealId: string,
+  params: { lpInvestorId?: string | null; contactId?: string | null },
+): Promise<DealLpInvestorRow | undefined> {
+  const did = String(dealId ?? "").trim();
+  if (!did) return undefined;
+
+  const lpId = String(params.lpInvestorId ?? "").trim();
+  if (lpId) {
+    const byId = await getDealLpInvestorById(did, lpId);
+    if (byId) return byId;
+  }
+
+  const contactId = String(params.contactId ?? "").trim();
+  if (!contactId) return undefined;
+
+  const exact = await findDealLpInvestorByDealAndContact(did, contactId);
+  if (exact) return exact;
+
+  const roster = await db
+    .select()
+    .from(dealLpInvestor)
+    .where(eq(dealLpInvestor.dealId, did));
+  if (roster.length === 0) return undefined;
+
+  const allRaw = [
+    contactId,
+    ...roster.map((m) => String(m.contactMemberId ?? "").trim()),
+  ].filter(Boolean);
+  const rawToCanonical =
+    await mapContactIdsToCanonicalCommitmentKeys(allRaw);
+  const targetKey = normalizeContactKey(contactId);
+  const targetCanonical =
+    rawToCanonical.get(targetKey) ?? `id:${targetKey}`;
+
+  return roster.find((m) => {
+    const k = normalizeContactKey(m.contactMemberId);
+    if (!k) return false;
+    if (k === targetKey) return true;
+    return (rawToCanonical.get(k) ?? `id:${k}`) === targetCanonical;
+  });
+}
+
+async function resolveDisplayNameForContactMemberId(
+  rawCid: string,
+): Promise<string> {
+  const cid = String(rawCid ?? "").trim();
+  if (!cid) return "";
+  const [uRow] = await db
+    .select({
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+    })
+    .from(users)
+    .where(eq(users.id, cid))
+    .limit(1);
+  if (uRow) {
+    const name = `${String(uRow.firstName ?? "").trim()} ${String(uRow.lastName ?? "").trim()}`.trim();
+    if (name) return name;
+    const em = String(uRow.email ?? "").trim();
+    if (em) return em;
+  }
+  const [cRow] = await db
+    .select({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+    })
+    .from(contact)
+    .where(sql`${contact.id}::text = ${cid}`)
+    .limit(1);
+  if (!cRow) return "";
+  const name = `${String(cRow.firstName ?? "").trim()} ${String(cRow.lastName ?? "").trim()}`.trim();
+  if (name) return name;
+  return String(cRow.email ?? "").trim();
+}
+
+/** API shape for Edit LP investor — always sourced from `deal_lp_investor`. */
+export async function mapDealLpInvestorRowToEditApi(
+  row: DealLpInvestorRow,
+): Promise<{
+  id: string
+  contactId: string
+  displayName: string
+  userEmail: string
+  profileId: string
+  investorClass: string
+  investorRole: string
+  percentOfClassOwnership: string
+  percentOfClassDistributions: string
+  entityOwnershipPercent: string
+  distributionAllocationPercent: string
+  investorKind: "lp_roster"
+}> {
+  const contactId = String(row.contactMemberId ?? "").trim();
+  const displayName = await resolveDisplayNameForContactMemberId(contactId);
+  const email =
+    String(row.email ?? "").trim() ||
+    (await resolveEmailForContactMemberId(contactId));
+  return {
+    id: row.id,
+    contactId,
+    displayName: displayName || email || "—",
+    userEmail: email || "—",
+    profileId: String(row.profileId ?? "").trim(),
+    investorClass: String(row.investorClass ?? "").trim(),
+    investorRole: investorRoleFromDealLpInvestorRow(row),
+    percentOfClassOwnership: String(row.percentOfClassOwnership ?? "").trim(),
+    percentOfClassDistributions: String(
+      row.percentOfClassDistributions ?? "",
+    ).trim(),
+    entityOwnershipPercent: String(row.entityOwnershipPercent ?? "").trim(),
+    distributionAllocationPercent: String(
+      row.distributionAllocationPercent ?? "",
+    ).trim(),
+    investorKind: "lp_roster",
+  };
 }
 
 export async function deleteDealLpInvestorById(

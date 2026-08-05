@@ -27,12 +27,20 @@ export const dealLpInvestor = pgTable(
       { onDelete: "set null" },
     ),
     investorClass: text("investor_class").notNull().default(""),
-    /** Share of class ownership (e.g. `25.00%`). */
+    /** Percent of class (ownership), e.g. `25.00%`. */
     percentOfClassOwnership: text("percent_of_class_ownership")
       .notNull()
       .default(""),
-    /** Share of class distributions (e.g. `25.00%`). */
+    /** Percent of class (distributions), e.g. `25.00%`. */
     percentOfClassDistributions: text("percent_of_class_distributions")
+      .notNull()
+      .default(""),
+    /** Entity Ownership % — optional; separate from percent_of_class_ownership. */
+    entityOwnershipPercent: text("entity_ownership_percent")
+      .notNull()
+      .default(""),
+    /** Distribution Allocation % — optional; separate from percent_of_class_distributions. */
+    distributionAllocationPercent: text("distribution_allocation_percent")
       .notNull()
       .default(""),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),

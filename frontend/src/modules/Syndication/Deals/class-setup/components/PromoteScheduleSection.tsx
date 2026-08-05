@@ -25,6 +25,7 @@ interface PromoteScheduleSectionProps {
   classes: ClassSetupClass[]
   onChange: (next: ClassSetupPromoteSchedule) => void
   canSave?: boolean
+  isDirty?: boolean
   saving?: boolean
   onSave?: () => void
 }
@@ -34,6 +35,7 @@ export function PromoteScheduleSection({
   classes,
   onChange,
   canSave = true,
+  isDirty = false,
   saving = false,
   onSave,
 }: PromoteScheduleSectionProps) {
@@ -54,7 +56,7 @@ export function PromoteScheduleSection({
   return (
     <section
       id="promote-section"
-      className="cs_promote_card"
+      className={`cs_promote_card${isDirty ? " is-dirty" : ""}`}
       aria-label="Hurdles and promote schedule"
     >
       <div className="cs_promote_pad">
@@ -66,17 +68,25 @@ export function PromoteScheduleSection({
               in the matrix — <strong>each column must total 100%</strong>. These
               stages drive the split cascade for distributions later.
             </p>
+            {isDirty ? (
+              <p className="cs_section_unsaved_msg" role="status">
+                Changes in this section are not saved. Click{" "}
+                <strong>Save promote</strong> to keep them.
+              </p>
+            ) : null}
           </div>
           {onSave ? (
             <button
               type="button"
-              className="cs_section_save_btn"
+              className={`cs_section_save_btn${isDirty ? " is-dirty" : ""}`}
               disabled={!canSave || saving}
               onClick={onSave}
               title={
-                canSave
-                  ? "Save hurdles and promote shares only"
-                  : "Add an LP class and fill class names before saving"
+                isDirty
+                  ? "Unsaved changes — click Save promote to keep them"
+                  : canSave
+                    ? "Save hurdles and promote shares only"
+                    : "Add an LP class and fill class names before saving"
               }
             >
               {saving ? "Saving…" : "Save promote"}

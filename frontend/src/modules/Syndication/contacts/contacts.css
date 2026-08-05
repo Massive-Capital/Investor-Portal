@@ -4,6 +4,10 @@
   min-width: 0;
 }
 
+.contacts_page.um_page .um_members_header_block .um_header_row {
+  margin-bottom: 0.65em;
+}
+
 .email_templates_page .email_templates_tab_panel {
   margin-top: 0.35rem;
   max-width: 40em;
@@ -832,6 +836,12 @@
   margin-bottom: 0.35em;
 }
 
+/* Secondary filter strip (Active/Archived, usage) — full width like Deals tabs */
+.contacts_status_tabs_outer.um_members_tabs_outer {
+  margin-top: 0.15rem;
+  margin-bottom: 0.75em;
+}
+
 .contacts_inner_header.um_members_header_block {
   margin-top: 0;
   margin-bottom: 0.65em;
@@ -842,7 +852,6 @@
   width: 100%;
 }
 
-/* Contact / Tags / Lists: filter pills + Add CTA on one row */
 .contacts_toolbar_filters_row {
   display: flex;
   flex-wrap: wrap;
@@ -1133,14 +1142,21 @@
   text-align: center;
 }
 
-/* Main contacts: Deals column — match centered numeric header/cell on `.deal_inv_table` */
+/* Main contacts: Deals column — keep count visible under fixed/sticky layout */
 .deal_inv_table_panel.contacts_table_panel
   .um_table.deal_inv_table
   th.contacts_th_deals_count,
 .deal_inv_table_panel.contacts_table_panel
   .um_table.deal_inv_table
   td.contacts_td_deals_count {
+  min-width: 5em;
+  width: 6.5em;
+  max-width: 7.5em;
   text-align: center;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+  white-space: nowrap;
 }
 
 .deal_inv_table_panel.contacts_table_panel
@@ -1163,15 +1179,16 @@
   min-width: 1.25em;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 
 .contacts_deals_count_num--empty {
-  color: var(--portal-text-muted, #94a3b8);
+  color: var(--portal-text-muted, #64748b);
   font-weight: 500;
 }
 
 .contacts_deals_count_num--value {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--portal-text, #0f172a);
 }
 
@@ -2177,4 +2194,36 @@
 .contacts_active_tag_filter_clear:hover {
   border-color: var(--portal-primary, #2563eb);
   color: var(--portal-primary, #2563eb);
+}
+
+.contacts_user_name_link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contacts_user_name_link:hover {
+  color: var(--portal-primary, #2563eb);
+  text-decoration: underline;
+}
+
+.contacts_th_show_offerings,
+.contacts_td_show_offerings {
+  min-width: 12.5rem;
+  white-space: nowrap;
+}
+
+.contacts_show_offerings_select {
+  width: 100%;
+  max-width: 14rem;
+  min-width: 11rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8125rem;
 }

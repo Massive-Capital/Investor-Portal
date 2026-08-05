@@ -698,13 +698,12 @@ export async function listContactsForViewerScoped(
 }
 
 /**
- * Contacts visible to this viewer: platform admin → all contacts; otherwise same
- * as CRM list — rows created by any user in the viewer's organization. If the
- * viewer has no `organization_id`, only rows they created themselves.
+ * Distinct deals per CRM contact for the Contacts "Deals" column.
  *
- * `COUNT(*)` from `deal_investment` where `trim(contact_id)` matches each CRM
- * contact id, scoped to deals visible to this viewer (same rules as
- * {@link listAddDealFormsForViewer} — org + legacy name, LP email scope, assigned deals, etc.).
+ * `deal_investment.contact_id` may be either the CRM `contact.id` or a portal
+ * `users.id`. Count a deal when the investment key matches the contact id, or
+ * matches a portal user with the same email (same bridge as Members deal counts).
+ * Scoped to deals visible to this viewer ({@link listAddDealFormsForViewer}).
  */
 export async function countDealInvestmentsByContactIdForViewer(params: {
   viewerUserId: string;
@@ -731,10 +730,37 @@ export async function countDealInvestmentsByContactIdForViewer(params: {
   const unrestricted = scope.isPlatformAdmin || scope.seesAllDeals;
   if (unrestricted) {
     const executed = await db.execute(sql`
-      SELECT lower(trim(di.contact_id)) AS cid, COUNT(*)::int AS cnt
-      FROM deal_investment di
-      WHERE lower(trim(di.contact_id)) IN (${idParams})
-      GROUP BY lower(trim(di.contact_id))
+      WITH contact_keys AS (
+        SELECT
+          lower(trim(c.id::text)) AS contact_key,
+          lower(trim(c.email)) AS email_norm
+        FROM contact c
+        WHERE lower(trim(c.id::text)) IN (${idParams})
+      ),
+      id_matches AS (
+        SELECT ck.contact_key, di.deal_id
+        FROM deal_investment di
+        INNER JOIN contact_keys ck
+          ON lower(trim(di.contact_id)) = ck.contact_key
+      ),
+      user_matches AS (
+        SELECT ck.contact_key, di.deal_id
+        FROM deal_investment di
+        INNER JOIN users u
+          ON u.id::text = trim(both from di.contact_id)
+        INNER JOIN contact_keys ck
+          ON lower(trim(u.email)) = ck.email_norm
+        WHERE ck.email_norm <> ''
+          AND position('@' in ck.email_norm) > 1
+      ),
+      all_links AS (
+        SELECT contact_key, deal_id FROM id_matches
+        UNION
+        SELECT contact_key, deal_id FROM user_matches
+      )
+      SELECT contact_key AS cid, COUNT(DISTINCT deal_id)::int AS cnt
+      FROM all_links
+      GROUP BY contact_key
     `);
     fillDealCountMapFromExecute(result, executed);
     return result;
@@ -754,11 +780,39 @@ export async function countDealInvestmentsByContactIdForViewer(params: {
   );
 
   const executed = await db.execute(sql`
-    SELECT lower(trim(di.contact_id)) AS cid, COUNT(*)::int AS cnt
-    FROM deal_investment di
-    WHERE lower(trim(di.contact_id)) IN (${idParams})
-      AND di.deal_id IN (${dealIdParams})
-    GROUP BY lower(trim(di.contact_id))
+    WITH contact_keys AS (
+      SELECT
+        lower(trim(c.id::text)) AS contact_key,
+        lower(trim(c.email)) AS email_norm
+      FROM contact c
+      WHERE lower(trim(c.id::text)) IN (${idParams})
+    ),
+    id_matches AS (
+      SELECT ck.contact_key, di.deal_id
+      FROM deal_investment di
+      INNER JOIN contact_keys ck
+        ON lower(trim(di.contact_id)) = ck.contact_key
+      WHERE di.deal_id IN (${dealIdParams})
+    ),
+    user_matches AS (
+      SELECT ck.contact_key, di.deal_id
+      FROM deal_investment di
+      INNER JOIN users u
+        ON u.id::text = trim(both from di.contact_id)
+      INNER JOIN contact_keys ck
+        ON lower(trim(u.email)) = ck.email_norm
+      WHERE di.deal_id IN (${dealIdParams})
+        AND ck.email_norm <> ''
+        AND position('@' in ck.email_norm) > 1
+    ),
+    all_links AS (
+      SELECT contact_key, deal_id FROM id_matches
+      UNION
+      SELECT contact_key, deal_id FROM user_matches
+    )
+    SELECT contact_key AS cid, COUNT(DISTINCT deal_id)::int AS cnt
+    FROM all_links
+    GROUP BY contact_key
   `);
   fillDealCountMapFromExecute(result, executed);
   return result;
@@ -971,6 +1025,54 @@ export async function patchContactStatusForViewer(
   const [updated] = await db
     .update(contact)
     .set({ status })
+    .where(eq(contact.id, contactId))
+    .returning();
+  return updated ?? null;
+}
+
+export type ContactShowOfferings = "show" | "506c" | "hide";
+
+export async function getContactForViewer(
+  viewerUserId: string,
+  contactId: string,
+  viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
+): Promise<ContactRow | null> {
+  const row = await getContactById(contactId);
+  if (!row) return null;
+  if (
+    !(await viewerCanAccessContactRow(
+      viewerUserId,
+      row,
+      viewerRole,
+      requestedOrganizationId,
+    ))
+  )
+    return null;
+  return row;
+}
+
+export async function patchContactShowOfferingsForViewer(
+  viewerUserId: string,
+  contactId: string,
+  showOfferings: ContactShowOfferings,
+  viewerRole?: string | null,
+  requestedOrganizationId?: string | null,
+): Promise<ContactRow | null> {
+  const row = await getContactById(contactId);
+  if (!row) return null;
+  if (
+    !(await viewerCanAccessContactRow(
+      viewerUserId,
+      row,
+      viewerRole,
+      requestedOrganizationId,
+    ))
+  )
+    return null;
+  const [updated] = await db
+    .update(contact)
+    .set({ showOfferings })
     .where(eq(contact.id, contactId))
     .returning();
   return updated ?? null;
