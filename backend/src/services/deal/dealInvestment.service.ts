@@ -561,13 +561,29 @@ function formatUsdKpiFundedTile(n: number): string {
 }
 
 /**
- * Dollars counted toward total funded: full commitment when `fund_approved`;
- * when LP added after approval (pending re-approval), only `fund_approved_commitment_snapshot`.
+ * Statuses that count toward Total Funded even when `fund_approved` is false
+ * (imported / legacy rows, e.g. Wildflower “Funds partially received”).
+ */
+function investmentStatusCountsTowardFunded(
+  status: string | null | undefined,
+): boolean {
+  const raw = String(status ?? "").trim();
+  if (!raw) return false;
+  if (/funds?\s+fully\s+received/i.test(raw)) return true;
+  if (/funds?\s+partially\s+received/i.test(raw)) return true;
+  return false;
+}
+
+/**
+ * Dollars counted toward total funded / class actually-funded.
+ * Full commitment when `fund_approved`, or when status shows funds received
+ * (fully / partially). Pending re-approval after an LP increase uses the snapshot only.
  */
 export function fundedNumericForInvestorKpiRow(r: DealInvestmentRow): number {
   const total = rowCommittedNumeric(r);
   if (!Number.isFinite(total) || total < 0) return 0;
-  if (Boolean(r.fundApproved)) return total;
+  if (Boolean(r.fundApproved) || investmentStatusCountsTowardFunded(r.status))
+    return Math.round(total * 100) / 100;
   const snapRaw = String(r.fundApprovedCommitmentSnapshot ?? "").trim();
   if (!snapRaw) return 0;
   const snap = parseFloat(snapRaw.replace(/[^0-9.-]/g, ""));
@@ -1405,7 +1421,64 @@ export function resolveInvestorRowAddedByUserId(
   return rosterAddedByLpRowId.get(rowId);
 }
 
-const INVESTOR_EMAIL_REDACTED = "—";
+function isLeadSponsorRoleLabel(role: string | null | undefined): boolean {
+  const t = String(role ?? "").trim().toLowerCase();
+  return t === "lead sponsor" || t === "lead_sponsor";
+}
+
+/**
+ * When an investor has no `deal_lp_investor` / `deal_member.added_by` (legacy
+ * investment-only rows), fall back to the deal’s Lead Sponsor for the
+ * Investors tab “Sponsor name” column.
+ */
+async function resolveDealLeadSponsorFallback(dealId: string): Promise<{
+  userId?: string;
+  displayName?: string;
+}> {
+  const d = String(dealId ?? "").trim();
+  if (!d) return {};
+
+  const memberRows = await db
+    .select({
+      contactMemberId: dealMember.contactMemberId,
+      dealMemberRole: dealMember.dealMemberRole,
+    })
+    .from(dealMember)
+    .where(eq(dealMember.dealId, d));
+
+  const lead = memberRows.find((m) =>
+    isLeadSponsorRoleLabel(m.dealMemberRole),
+  );
+  if (lead) {
+    const cid = String(lead.contactMemberId ?? "").trim();
+    if (cid && looksLikeUuid(cid)) {
+      const names = await resolveUserDisplayNamesByIds([cid]);
+      const display = names.get(cid.toLowerCase());
+      if (display) return { userId: cid, displayName: display };
+    }
+  }
+
+  const investments = await db
+    .select({
+      contactId: dealInvestment.contactId,
+      investor_role: dealInvestment.investor_role,
+    })
+    .from(dealInvestment)
+    .where(eq(dealInvestment.dealId, d));
+
+  const leadInv = investments.find((inv) =>
+    isLeadSponsorRoleLabel(inv.investor_role),
+  );
+  if (!leadInv) return {};
+  const cid = String(leadInv.contactId ?? "").trim();
+  if (!cid || !looksLikeUuid(cid)) return {};
+  const names = await resolveUserDisplayNamesByIds([cid]);
+  const display = names.get(cid.toLowerCase());
+  if (!display) return {};
+  return { userId: cid, displayName: display };
+}
+
+const INVESTOR_EMAIL_REDACTED = "Email unavailable";
 
 /**
  * Lead / admin sponsors see the full investor roster but must not see email for rows
@@ -1522,6 +1595,20 @@ export async function enrichInvestorApiRowsWithAddedBy<
       coSponsorByAdderLower.set(low, isCo);
     }),
   );
+
+  const needsLeadFallback = rows.some((row) => {
+    const uid = resolveInvestorRowAddedByUserId(
+      row,
+      rosterAddedByByContactKey,
+      byLpRowId,
+      rawToCanonical,
+    );
+    return !uid;
+  });
+  const leadFallback = needsLeadFallback
+    ? await resolveDealLeadSponsorFallback(dealId)
+    : {};
+
   return rows.map((row) => {
     const uid = resolveInvestorRowAddedByUserId(
       row,
@@ -1531,20 +1618,33 @@ export async function enrichInvestorApiRowsWithAddedBy<
     );
     const nk = uid ? String(uid).toLowerCase() : "";
     const rawName = nk && names.has(nk) ? names.get(nk)! : undefined;
-    const display =
+    let display =
       rawName && String(rawName).trim() && String(rawName).trim() !== "—"
         ? String(rawName).trim()
         : undefined;
+    let resolvedUid = uid;
+    if (!display && leadFallback.displayName) {
+      display = leadFallback.displayName;
+      if (!resolvedUid && leadFallback.userId)
+        resolvedUid = leadFallback.userId;
+    }
     const patch: {
       addedByUserId?: string;
       addedByDisplayName?: string;
       addedByIsSponsorOnDeal?: boolean;
       addedByIsCoSponsorOnDeal?: boolean;
     } = {};
-    if (uid) {
-      patch.addedByUserId = uid;
-      patch.addedByIsSponsorOnDeal = sponsorByAdderLower.get(nk) ?? false;
-      patch.addedByIsCoSponsorOnDeal = coSponsorByAdderLower.get(nk) ?? false;
+    if (resolvedUid) {
+      const rnk = String(resolvedUid).toLowerCase();
+      patch.addedByUserId = resolvedUid;
+      patch.addedByIsSponsorOnDeal =
+        sponsorByAdderLower.get(rnk) ??
+        (leadFallback.userId &&
+        rnk === String(leadFallback.userId).toLowerCase()
+          ? true
+          : false);
+      patch.addedByIsCoSponsorOnDeal =
+        coSponsorByAdderLower.get(rnk) ?? false;
     }
     if (display) patch.addedByDisplayName = display;
     if (Object.keys(patch).length === 0)
@@ -1597,7 +1697,7 @@ export async function sumCommittedAmountForDeal(dealId: string): Promise<number>
 }
 
 /**
- * Fund-approved dollars per investor class (same basis as Investors “Total Funded” KPI).
+ * Funded dollars per investor class (same basis as Investors “Total Funded” KPI).
  * Matches `deal_investment.investor_class` to class id or name (case-insensitive).
  */
 export async function fundedAmountsByInvestorClassId(

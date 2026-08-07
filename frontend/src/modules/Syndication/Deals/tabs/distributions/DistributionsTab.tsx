@@ -550,7 +550,7 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
                 aria-hidden
               />
               <span className="deals_tabs_label um_segmented_tab_label">
-                Distribution Fee
+                Acquisition Fee
               </span>
             </button> */}
           </div>

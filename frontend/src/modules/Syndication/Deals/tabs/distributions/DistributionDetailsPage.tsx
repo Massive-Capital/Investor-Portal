@@ -8,6 +8,10 @@ import {
 import { TableCompactAmountCell } from "../../../../../common/components/card-compact-amount/CardCompactAmount"
 import { toast } from "../../../../../common/components/Toast"
 import { setAppDocumentTitle } from "../../../../../common/utils/appDocumentTitle"
+import {
+  displayEmail,
+  isDisplayableEmail,
+} from "../../../../../common/utils/displayEmail"
 import { fetchDealInvestorClasses, fetchDealInvestors } from "../../api/dealsApi"
 import {
   executeDistributionAchPayouts,
@@ -61,6 +65,9 @@ import {
   DealInvestorViewModal,
   type DealInvestorViewDistributionContext,
 } from "../investors/DealInvestorViewModal"
+import {
+  investorProfileLabel,
+} from "../../constants/investor-profile"
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import { isPlatformAdmin } from "../../../../../common/auth/roleUtils"
 import "../../../usermanagement/user_management.css"
@@ -143,6 +150,19 @@ function blurFormatPercentClamped(raw: string): string {
   const n = parseFloat(t)
   if (!Number.isFinite(n)) return ""
   return `${Math.max(0, Math.min(100, n)).toFixed(2)}%`
+}
+
+/** My Profiles display name, then entity subtitle, then profile type label. */
+function distributionInvestorProfileLabel(
+  row: DealInvestorRow | null | undefined,
+): string {
+  if (!row) return "—"
+  const named = String(row.userInvestorProfileName ?? "").trim()
+  if (named) return named
+  const subtitle = String(row.entitySubtitle ?? "").trim()
+  if (subtitle && subtitle !== "—") return subtitle
+  const fromId = investorProfileLabel(String(row.profileId ?? "").trim())
+  return fromId !== "—" ? fromId : "—"
 }
 
 function linesFromStoredPayments(
@@ -825,7 +845,7 @@ export function DistributionDetailsPage() {
             )
           }
           const name = (row.investorName ?? "").trim() || "—"
-          const email = (row.userEmail ?? "").trim()
+          const emailShown = displayEmail(row.userEmail)
           return (
             <div className="deal_dist_details_investor_cell">
               <button
@@ -840,12 +860,44 @@ export function DistributionDetailsPage() {
               >
                 {name}
               </button>
-              {email ? (
-                <span className="deal_dist_details_investor_email" title={email}>
-                  {email}
-                </span>
-              ) : null}
+              <span
+                className={`deal_dist_details_investor_email${
+                  isDisplayableEmail(row.userEmail) ? "" : " um_status_muted"
+                }`}
+                title={emailShown}
+              >
+                {emailShown}
+              </span>
             </div>
+          )
+        },
+      },
+      {
+        id: "profile",
+        header: "Profile name",
+        colWidth: "12rem",
+        thClassName: "deal_dist_th_profile",
+        tdClassName: "deal_dist_td_profile",
+        sortValue: (row) => {
+          const dealRow =
+            investors.find((inv) => inv.id === row.investorId) ?? null
+          return distributionInvestorProfileLabel(dealRow).toLowerCase()
+        },
+        cell: (row) => {
+          const dealRow =
+            investors.find((inv) => inv.id === row.investorId) ?? null
+          const label = distributionInvestorProfileLabel(dealRow)
+          return (
+            <span
+              className={
+                label === "—"
+                  ? "um_status_muted deal_dist_profile_name"
+                  : "deal_dist_profile_name"
+              }
+              title={label !== "—" ? label : undefined}
+            >
+              {label}
+            </span>
           )
         },
       },

@@ -18,7 +18,7 @@ export type DistributionNameSource =
   | "prior"
 
 /**
- * Names already used across Distribution Fee, Operating, and Capital event
+ * Names already used across Acquisition Fee, Operating, and Capital event
  * (completed priors + saved fee). `excludePriorId` skips the run being edited.
  */
 export function collectTakenDistributionNames(params: {

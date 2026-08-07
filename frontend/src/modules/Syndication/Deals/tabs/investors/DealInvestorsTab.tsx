@@ -138,6 +138,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { getSessionUserId } from "@/common/auth/sessionUserId";
 import {
+  isUsableInvestorEmail,
   resolveViewerDealMemberRole,
   scopeDealInvestorRowsForViewer,
   type ViewerDealMemberRole,
@@ -294,7 +295,9 @@ function dealInvestorRowToFormValues(
     contactId: row.contactId ?? "",
     contactDisplayName: row.displayName,
     contactEmail:
-      row.userEmail && row.userEmail !== "—" ? row.userEmail : undefined,
+      row.userEmail && isUsableInvestorEmail(row.userEmail)
+        ? row.userEmail
+        : undefined,
     contactUsername:
       row.userDisplayName && row.userDisplayName !== "—"
         ? row.userDisplayName
@@ -618,7 +621,7 @@ function DealInvestorsPopulated({
       /** Headcount of fund-approved investors (matches Funded column / investorRowIsFundApproved). */
       approvedCount: String(approvedInvestorCount),
       averageApproved: count > 0 && sum > 0 ? formatUsdKpiDisplay(avg) : "—",
-      /** Sum of funded $: full commitment when Funded is Approved; if pending re-approval after LP increase, only the approved snapshot counts until sponsor approves again. */
+      /** Sum of funded $: fund-approved or funds received (fully/partially); pending re-approval uses snapshot. */
       totalFunded: formatUsdKpiTotalFunded(fundedSum),
       /** Offering size (same basis as tile) minus total funded; unknown offering → "—". */
       remaining:
@@ -708,6 +711,59 @@ function DealInvestorsPopulated({
     filterAccreditation,
     dealAllClassNamesLine,
   ]);
+
+  // Commented for now — Approved / Not approved $ summary at end of filters.
+  // const fundingAmountSummary = useMemo(() => {
+  //   const q = query.trim().toLowerCase();
+  //   let approved = 0;
+  //   let notApproved = 0;
+  //   for (const r of rows) {
+  //     if (r.id === ADD_MEMBER_DRAFT_ROW_ID) continue;
+  //     if (q) {
+  //       const mailLabel =
+  //         r.invitationMailSent === true ? "email sent" : "not sent";
+  //       const haystack =
+  //         `${r.displayName} ${r.entitySubtitle} ${r.userDisplayName} ${r.userEmail} ${r.addedByDisplayName ?? ""} ${mailLabel} ${investorFundedColumnLabel(r)}`.toLowerCase();
+  //       if (!haystack.includes(q)) continue;
+  //     }
+  //     if (filterClass) {
+  //       const rowClass = (r.investorClass ?? "").trim();
+  //       if (rowClass) {
+  //         if (rowClass !== filterClass) continue;
+  //       } else {
+  //         const dealLine = dealAllClassNamesLine.trim();
+  //         const tokens = dealLine
+  //           .split(",")
+  //           .map((s) => s.trim())
+  //           .filter(Boolean);
+  //         if (!tokens.includes(filterClass)) continue;
+  //       }
+  //     }
+  //     if (filterStatus && r.status !== filterStatus) continue;
+  //     if (filterAccreditation && r.selfAccredited !== filterAccreditation)
+  //       continue;
+  //     if (filterEsign === "not_started") {
+  //       if (!String(r.verifiedAccLabel).toLowerCase().includes("not started"))
+  //         continue;
+  //     }
+  //     if (filterEsign === "complete") {
+  //       if (String(r.verifiedAccLabel).toLowerCase().includes("not started"))
+  //         continue;
+  //     }
+  //     const amt = investorRowCommittedAmountNumeric(r);
+  //     if (investorRowIsFundApproved(r)) approved += amt;
+  //     else notApproved += amt;
+  //   }
+  //   return { approved, notApproved };
+  // }, [
+  //   rows,
+  //   query,
+  //   filterClass,
+  //   filterStatus,
+  //   filterEsign,
+  //   filterAccreditation,
+  //   dealAllClassNamesLine,
+  // ]);
 
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -852,7 +908,7 @@ function DealInvestorsPopulated({
         ...new Set(
           selectedInvestorRows
             .map((r) => String(r.userEmail ?? "").trim())
-            .filter((e) => e.includes("@")),
+            .filter((e) => isUsableInvestorEmail(e)),
         ),
       ];
       if (emails.length === 0) {
@@ -1279,7 +1335,7 @@ function DealInvestorsPopulated({
       ...new Set(
         selectedInvestorRows
           .map((r) => String(r.userEmail ?? "").trim())
-          .filter((e) => e.includes("@")),
+          .filter((e) => isUsableInvestorEmail(e)),
       ),
     ];
     if (emails.length === 0) {
@@ -1732,6 +1788,30 @@ function DealInvestorsPopulated({
                   useFixedPanel
                 />
               </div>
+              {/* Commented for now — Approved / Not approved amounts at end of filters.
+              <div
+                className="deal_inv_funding_summary"
+                aria-label="Committed amounts by funded status"
+              >
+                <div className="deal_inv_funding_stat is-approved">
+                  <span className="deal_inv_funding_stat_label">Approved</span>
+                  <span className="deal_inv_funding_stat_value">
+                    {formatUsdKpiTotalFunded(fundingAmountSummary.approved)}
+                  </span>
+                </div>
+                <span className="deal_inv_funding_summary_sep" aria-hidden>
+                  ·
+                </span>
+                <div className="deal_inv_funding_stat is-pending">
+                  <span className="deal_inv_funding_stat_label">
+                    Not approved
+                  </span>
+                  <span className="deal_inv_funding_stat_value">
+                    {formatUsdKpiTotalFunded(fundingAmountSummary.notApproved)}
+                  </span>
+                </div>
+              </div>
+              */}
             </div>
           </section>
         </div>

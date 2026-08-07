@@ -3,6 +3,13 @@ import {
   LP_INVESTOR_ROLE_VALUE,
 } from "../constants/investor-profile"
 import type { DealInvestorRow } from "../types/deal-investors.types"
+import { EMAIL_UNAVAILABLE_LABEL } from "../../../../common/utils/displayEmail"
+
+export {
+  EMAIL_UNAVAILABLE_LABEL as INVESTOR_EMAIL_REDACTED_LABEL,
+  displayEmail,
+  isDisplayableEmail as isUsableInvestorEmail,
+} from "../../../../common/utils/displayEmail"
 
 export type ViewerDealMemberRole =
   | "lead_sponsor"
@@ -273,9 +280,7 @@ export function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
   }
   return rows.map((row) => {
     if (row.addedByIsCoSponsorOnDeal !== true) return row
-    const em = String(row.userEmail ?? "").trim()
-    if (!em || em === "—" || !em.includes("@")) return row
-    return { ...row, userEmail: "—" }
+    return { ...row, userEmail: EMAIL_UNAVAILABLE_LABEL }
   })
 }
 

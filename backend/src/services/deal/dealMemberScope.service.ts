@@ -199,8 +199,9 @@ export async function listDealIdsWhereViewerIsCoSponsor(
 }
 
 /**
- * Co-sponsors (not company admin, not Lead/Admin sponsor on any deal) see only CRM
- * contacts they created (`contact.created_by`).
+ * Co-sponsors (not company admin, not Lead/Admin sponsor on any deal) get a
+ * narrowed Contacts list: contacts on their co-sponsor deals, plus contacts
+ * they created (`contact.created_by`). See `listContactsForViewerScoped`.
  */
 export async function viewerShouldSeeOnlySelfCreatedContacts(
   userId: string,

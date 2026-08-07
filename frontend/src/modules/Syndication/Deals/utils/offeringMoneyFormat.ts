@@ -89,14 +89,29 @@ export function displayInvestorCommittedAmountExport(row: DealInvestorRow): stri
 }
 
 /**
- * Dollars for the “Total Funded” KPI: fully funded rows use full commitment;
- * rows pending re-approval after an LP increase count only the last approved snapshot
- * (the incremental portion is excluded until the sponsor approves again).
+ * Statuses that count toward Total Funded even when Funded column is Not Approved
+ * (legacy / imported rows, e.g. “Funds partially received”).
+ */
+function investmentStatusCountsTowardFunded(
+  status: string | undefined | null,
+): boolean {
+  const raw = String(status ?? "").trim()
+  if (!raw || raw === "—") return false
+  if (/funds?\s+fully\s+received/i.test(raw)) return true
+  if (/funds?\s+partially\s+received/i.test(raw)) return true
+  return false
+}
+
+/**
+ * Dollars for the “Total Funded” KPI / class actually-funded.
+ * Full commitment when fund-approved or funds received (fully / partially);
+ * pending re-approval after an LP increase counts only the last approved snapshot.
  */
 export function fundedAmountForTotalFundedKpi(row: DealInvestorRow): number {
   const total = parseMoneyDigits(displayInvestorCommittedAmount(row))
-  if (!Number.isFinite(total)) return 0
-  if (investorRowIsFundApproved(row)) return total
+  if (!Number.isFinite(total) || total < 0) return 0
+  if (investorRowIsFundApproved(row) || investmentStatusCountsTowardFunded(row.status))
+    return total
   const split = investorCommittedPendingSplit(row)
   if (split) return split.snapshot
   return 0

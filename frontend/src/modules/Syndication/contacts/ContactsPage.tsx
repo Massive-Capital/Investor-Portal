@@ -13,6 +13,7 @@ import {
   Pencil,
   Loader2,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Send,
@@ -35,6 +36,14 @@ import {
   DataTable,
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
+import {
+  DropdownSelect,
+  type DropdownSelectOption,
+} from "../../../common/components/dropdown-select"
+import {
+  displayEmail,
+  isDisplayableEmail,
+} from "../../../common/utils/displayEmail"
 import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
@@ -83,19 +92,43 @@ import {
 import "../Deals/deals-list.css"
 import "./contacts.css"
 import "../Deals/deal-investors-tab.css"
-import type { ContactRow, ContactShowOfferings } from "./types/contact.types"
+import type {
+  ContactOfferingVisibility,
+  ContactRow,
+} from "./types/contact.types"
 import {
-  CONTACT_SHOW_OFFERINGS_OPTIONS,
+  CONTACT_OFFERING_VISIBILITY_OPTIONS,
 } from "./types/contact.types"
 import {
   buildContactsCsv,
   downloadContactsCsv,
   exportAuditLinesForContacts,
-  formatContactSinceLabel,
 } from "./utils/contactCsv"
 import {
   buildTableExportFilename,
 } from "../../../common/utils/tableExportFilename"
+
+/** Compact labels for the table cell (keeps column narrow). */
+const OFFERING_VISIBILITY_CELL_OPTIONS: DropdownSelectOption[] = [
+  { value: "", label: "—" },
+  { value: "ALL_OFFERINGS", label: "All" },
+  { value: "HIDE_OFFERINGS", label: "Hide" },
+  { value: "506C_ONLY", label: "506(c)" },
+]
+
+const OFFERING_VISIBILITY_FILTER_OPTIONS: DropdownSelectOption[] = [
+  { value: "all", label: "All" },
+  ...CONTACT_OFFERING_VISIBILITY_OPTIONS.map((o) => ({
+    value: o.value,
+    label: o.label,
+  })),
+  { value: "unset", label: "Unset" },
+]
+
+type OfferingVisibilityFilter =
+  | "all"
+  | ContactOfferingVisibility
+  | "unset"
 
 function contactRowIsSuspended(row: ContactRow): boolean {
   return row.status === "suspended"
@@ -107,6 +140,8 @@ type ContactsMainTab = "contacts" | "tags" | "lists"
 
 /** Wide enough for the “Actions” header on one line (see contacts.css). */
 const CONTACTS_ACTIONS_COL_WIDTH = "7rem" as const
+/** Name + email identity — keep compact so other columns get room. */
+const CONTACTS_USER_COL_WIDTH = "16rem" as const
 
 type CatalogUsageFilter = UsageFilterTab
 
@@ -136,7 +171,9 @@ function toContactUpdatePayload(
     lists: r.lists,
     owners: r.owners,
     status: r.status,
-    showOfferings: r.showOfferings ?? "show",
+    showOfferingsVisibility: r.showOfferingsVisibility ?? null,
+    accreditationStatus: r.accreditationStatus ?? null,
+    knownSince: r.knownSince ?? null,
     lastEditReason: r.lastEditReason,
   }
 }
@@ -221,6 +258,8 @@ function ContactsPage() {
     useState<SendMailEmailPreviewPayload | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  /** Bumps DataTable remount so sort state resets on Refresh. */
+  const [tableResetKey, setTableResetKey] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
   const [toolbarNotice, setToolbarNotice] = useState("")
   const [suspendRow, setSuspendRow] = useState<ContactRow | null>(null)
@@ -238,6 +277,12 @@ function ContactsPage() {
   const [mainTab, setMainTab] = useState<ContactsMainTab>("contacts")
   /** When set, Contact tab shows only contacts that include this tag. */
   const [tagFilter, setTagFilter] = useState<string | null>(null)
+  /** `all` | `Accredited` | `Not Accredited` | `na` (no status) */
+  const [accreditationFilter, setAccreditationFilter] = useState<
+    "all" | "Accredited" | "Not Accredited" | "na"
+  >("all")
+  const [offeringVisibilityFilter, setOfferingVisibilityFilter] =
+    useState<OfferingVisibilityFilter>("all")
   const [tagCatalog, setTagCatalog] = useState<ContactLabelRow[]>([])
   const [listCatalog, setListCatalog] = useState<ContactLabelRow[]>([])
   const [tagsSearchQuery, setTagsSearchQuery] = useState("")
@@ -365,8 +410,26 @@ function ContactsPage() {
     () =>
       tabRows
         .filter((r) => !tagFilter || contactHasTag(r, tagFilter))
-        .filter((r) => contactRowMatchesSearch(r, searchQuery)),
-    [tabRows, searchQuery, tagFilter],
+        .filter((r) => contactRowMatchesSearch(r, searchQuery))
+        .filter((r) => {
+          if (accreditationFilter === "all") return true
+          const status = (r.accreditationStatus ?? "").trim()
+          if (accreditationFilter === "na") return status === ""
+          return status.toLowerCase() === accreditationFilter.toLowerCase()
+        })
+        .filter((r) => {
+          if (offeringVisibilityFilter === "all") return true
+          const vis = r.showOfferingsVisibility ?? null
+          if (offeringVisibilityFilter === "unset") return vis == null
+          return vis === offeringVisibilityFilter
+        }),
+    [
+      tabRows,
+      searchQuery,
+      tagFilter,
+      accreditationFilter,
+      offeringVisibilityFilter,
+    ],
   )
 
   const openContactsForTag = useCallback((tagName: string) => {
@@ -479,6 +542,14 @@ function ContactsPage() {
       setLoading(false)
     }
   }, [orgScopeKey])
+
+  const handleRefreshContacts = useCallback(async () => {
+    setTableResetKey((k) => k + 1)
+    setPage(1)
+    setToolbarNotice("")
+    setSelectedContactIds(new Set())
+    await loadContacts()
+  }, [loadContacts])
 
   useEffect(() => {
     const syncOrgScope = () => {
@@ -741,23 +812,24 @@ function ContactsPage() {
   }, [navigate])
 
   const onShowOfferingsChange = useCallback(
-    async (row: ContactRow, value: ContactShowOfferings) => {
-      const prev = row.showOfferings ?? "show"
-      if (prev === value) return
+    async (row: ContactRow, value: ContactOfferingVisibility | "") => {
+      const next = value === "" ? null : value
+      const prev = row.showOfferingsVisibility ?? null
+      if (prev === next) return
       setRows((list) =>
         list.map((r) =>
-          r.id === row.id ? { ...r, showOfferings: value } : r,
+          r.id === row.id ? { ...r, showOfferingsVisibility: next } : r,
         ),
       )
       try {
-        const updated = await patchContactShowOfferings(row.id, value)
+        const updated = await patchContactShowOfferings(row.id, next)
         setRows((list) =>
           list.map((r) => (r.id === updated.id ? updated : r)),
         )
       } catch (err) {
         setRows((list) =>
           list.map((r) =>
-            r.id === row.id ? { ...r, showOfferings: prev } : r,
+            r.id === row.id ? { ...r, showOfferingsVisibility: prev } : r,
           ),
         )
         toast.error(
@@ -1255,13 +1327,15 @@ function ContactsPage() {
       {
         id: "user",
         header: "User",
+        colWidth: CONTACTS_USER_COL_WIDTH,
         sortValue: (row) =>
           `${row.firstName} ${row.lastName} ${row.email}`.toLowerCase(),
-        tdClassName: "um_td_user",
+        thClassName: "contacts_th_user",
+        tdClassName: "um_td_user contacts_td_user",
         cell: (row) => {
           const primary = contactDisplayName(row)
           const rawEmail = row.email.trim()
-          const emailShown = rawEmail || "—"
+          const emailShown = displayEmail(rawEmail)
           return (
             <div className="um_user_cell">
               <div className="um_user_avatar_ring" aria-hidden>
@@ -1286,7 +1360,7 @@ function ContactsPage() {
                     {primary}
                   </button>
                 )}
-                {rawEmail.includes("@") ? (
+                {isDisplayableEmail(rawEmail) ? (
                   <a
                     href={`mailto:${encodeURIComponent(rawEmail)}`}
                     className="um_user_meta_email um_user_meta_email_link"
@@ -1295,7 +1369,9 @@ function ContactsPage() {
                     {rawEmail}
                   </a>
                 ) : (
-                  <span className="um_user_meta_email">{emailShown}</span>
+                  <span className="um_user_meta_email um_status_muted">
+                    {emailShown}
+                  </span>
                 )}
                 {/* {dealN > 0 ? (
                   <span
@@ -1343,30 +1419,77 @@ function ContactsPage() {
         cell: (row) => formatUsPhoneStoredForUi(row.phone),
       },
       {
-        id: "showOfferings",
-        header: "Show Offerings",
-        sortValue: (row) => row.showOfferings ?? "show",
+        id: "showOfferingsVisibility",
+        header: "Offering Visibility",
+        sortValue: (row) => row.showOfferingsVisibility ?? "",
         thClassName: "contacts_th_show_offerings",
         tdClassName: "contacts_td_show_offerings",
         cell: (row) => (
-          <select
-            className="um_field_select contacts_show_offerings_select"
-            value={row.showOfferings ?? "show"}
-            disabled={loading || contactsListTab === "archived"}
-            aria-label={`Show offerings for ${contactDisplayName(row)}`}
+          <div
+            className="contacts_show_offerings_dd"
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              const v = e.target.value as ContactShowOfferings
-              void onShowOfferingsChange(row, v)
-            }}
+            onKeyDown={(e) => e.stopPropagation()}
           >
-            {CONTACT_SHOW_OFFERINGS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            <DropdownSelect
+              className="contacts_show_offerings_dropdown"
+              triggerClassName="contacts_show_offerings_dropdown_trigger"
+              panelClassName="contacts_show_offerings_dropdown_panel"
+              value={row.showOfferingsVisibility ?? ""}
+              options={OFFERING_VISIBILITY_CELL_OPTIONS}
+              disabled={loading || contactsListTab === "archived"}
+              ariaLabel={`Offering visibility for ${contactDisplayName(row)}`}
+              useFixedPanel
+              onChange={(v) => {
+                void onShowOfferingsChange(
+                  row,
+                  v as ContactOfferingVisibility | "",
+                )
+              }}
+            />
+          </div>
         ),
+      },
+      {
+        id: "accreditationStatus",
+        header: "Accreditation Status",
+        align: "center",
+        sortValue: (row) => row.accreditationStatus ?? "",
+        thClassName: "contacts_th_accreditation",
+        tdClassName: "contacts_td_accreditation",
+        cell: (row) => {
+          const status = (row.accreditationStatus ?? "").trim()
+          const tone =
+            status.toLowerCase() === "accredited"
+              ? "accredited"
+              : status.toLowerCase() === "not accredited"
+                ? "not-accredited"
+                : "na"
+          const label =
+            tone === "accredited"
+              ? "Accredited"
+              : tone === "not-accredited"
+                ? "Not Accredited"
+                : "N/A"
+          return (
+            <span
+              className={`contacts_accreditation_badge contacts_accreditation_badge--${tone}`}
+            >
+              {label}
+            </span>
+          )
+        },
+      },
+      {
+        id: "knownSince",
+        header: "Known Since",
+        align: "center",
+        sortValue: (row) => row.knownSince ?? "",
+        thClassName: "contacts_th_known_since",
+        tdClassName: "contacts_td_known_since",
+        cell: (row) => {
+          const date = (row.knownSince ?? "").trim()
+          return <span>{date || "-"}</span>
+        },
       },
       // {
       //   id: "note",
@@ -1406,19 +1529,19 @@ function ContactsPage() {
         sortValue: (row) => row.createdByDisplayName ?? "",
         cell: (row) => row.createdByDisplayName?.trim() || "—",
       },
-      {
-        id: "since",
-        header: "Since",
-        sortValue: (row) => {
-          const t = row.createdAt
-            ? new Date(row.createdAt).getTime()
-            : NaN
-          return Number.isFinite(t) ? t : 0
-        },
-        cell: (row) => (
-          <span title={row.createdAt}>{formatContactSinceLabel(row.createdAt)}</span>
-        ),
-      },
+      // {
+      //   id: "since",
+      //   header: "Since",
+      //   sortValue: (row) => {
+      //     const t = row.createdAt
+      //       ? new Date(row.createdAt).getTime()
+      //       : NaN
+      //     return Number.isFinite(t) ? t : 0
+      //   },
+      //   cell: (row) => (
+      //     <span title={row.createdAt}>{formatContactSinceLabel(row.createdAt)}</span>
+      //   ),
+      // },
       {
         id: "actions",
         header: "Actions",
@@ -1465,7 +1588,13 @@ function ContactsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, contactsListTab, tagFilter])
+  }, [
+    searchQuery,
+    contactsListTab,
+    tagFilter,
+    accreditationFilter,
+    offeringVisibilityFilter,
+  ])
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
@@ -1594,6 +1723,7 @@ function ContactsPage() {
               role="tab"
               aria-selected={mainTab === "tags"}
               aria-controls="contacts-main-panel-tags"
+              aria-label={`Tags, ${tagCatalog.length}`}
               className={`um_members_tab deals_tabs_tab um_segmented_tab${
                 mainTab === "tags" ? " um_members_tab_active" : ""
               }`}
@@ -1610,6 +1740,9 @@ function ContactsPage() {
               />
               <span className="deals_tabs_label um_segmented_tab_label">
                 Tags
+              </span>
+              <span className="deals_tabs_count contacts_tab_count" aria-hidden>
+                ({tagCatalog.length})
               </span>
             </button>
             <button
@@ -1676,11 +1809,16 @@ function ContactsPage() {
         >
           {archivedTabEmptyNoTable ? (
             loading ? (
-              <p className="um_hint" role="status">
-                Loading contacts…
-              </p>
+              <div
+                className="contacts_table_loading_state"
+                role="status"
+                aria-label="Loading contacts"
+              >
+                <div className="data_table_loader_spinner" aria-hidden />
+                <p className="contacts_table_loading_label">Loading contacts…</p>
+              </div>
             ) : (
-              <p className="um_hint" role="status">
+              <p className="um_hint contacts_table_empty_hint" role="status">
                 No archived contacts. Suspend a contact from Active to move it
                 here.
               </p>
@@ -1720,25 +1858,107 @@ function ContactsPage() {
                     <Download size={18} strokeWidth={2} aria-hidden />
                     <span>Export All</span>
                   </button>
-                </div>
-                <div className="um_search_wrap">
-                  <Search className="um_search_icon" size={18} aria-hidden />
-                  <input
-                    type="search"
-                    className="um_search_input"
-                    placeholder="Search…"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value)
-                      setToolbarNotice("")
-                    }}
-                    aria-label={
-                      contactsListTab === "archived"
-                        ? "Search archived contacts"
-                        : "Search active contacts"
-                    }
+                  <button
+                    type="button"
+                    className="um_btn_toolbar"
+                    onClick={() => void handleRefreshContacts()}
                     disabled={loading}
-                  />
+                    aria-label="Refresh contacts and reset sorting"
+                  >
+                    {loading ? (
+                      <Loader2
+                        size={18}
+                        strokeWidth={2}
+                        className="um_spin"
+                        aria-hidden
+                      />
+                    ) : (
+                      <RefreshCw size={18} strokeWidth={2} aria-hidden />
+                    )}
+                    Refresh
+                  </button>
+                </div>
+                <div className="contacts_toolbar_trailing">
+                  <div className="contacts_toolbar_filter">
+                    <span
+                      className="contacts_toolbar_filter_label"
+                      id="contacts-filter-offering-visibility-label"
+                    >
+                      Offering visibility
+                    </span>
+                    <DropdownSelect
+                      id="contacts-filter-offering-visibility"
+                      className="contacts_toolbar_filter_dropdown"
+                      triggerClassName="contacts_toolbar_filter_dropdown_trigger"
+                      panelClassName="contacts_toolbar_filter_dropdown_panel"
+                      value={offeringVisibilityFilter}
+                      options={OFFERING_VISIBILITY_FILTER_OPTIONS}
+                      disabled={loading}
+                      ariaLabel="Filter by offering visibility"
+                      ariaDescribedBy="contacts-filter-offering-visibility-label"
+                      useFixedPanel
+                      onChange={(v) => {
+                        setOfferingVisibilityFilter(
+                          v as OfferingVisibilityFilter,
+                        )
+                        setToolbarNotice("")
+                      }}
+                    />
+                  </div>
+                  <div className="contacts_toolbar_filter contacts_accreditation_filter">
+                    <span
+                      className="contacts_toolbar_filter_label contacts_accreditation_filter_label"
+                      id="contacts-filter-accreditation-label"
+                    >
+                      Accreditation
+                    </span>
+                    <DropdownSelect
+                      id="contacts-filter-accreditation"
+                      className="contacts_toolbar_filter_dropdown contacts_accreditation_filter_select"
+                      triggerClassName="contacts_toolbar_filter_dropdown_trigger"
+                      panelClassName="contacts_toolbar_filter_dropdown_panel"
+                      value={accreditationFilter}
+                      options={[
+                        { value: "all", label: "All" },
+                        { value: "Accredited", label: "Accredited" },
+                        { value: "Not Accredited", label: "Not Accredited" },
+                        { value: "na", label: "N/A" },
+                      ]}
+                      disabled={loading}
+                      ariaLabel="Filter by accreditation status"
+                      ariaDescribedBy="contacts-filter-accreditation-label"
+                      useFixedPanel
+                      onChange={(v) => {
+                        setAccreditationFilter(
+                          v as
+                            | "all"
+                            | "Accredited"
+                            | "Not Accredited"
+                            | "na",
+                        )
+                        setToolbarNotice("")
+                      }}
+                    />
+                  </div>
+                  <div className="um_search_wrap">
+                    <Search className="um_search_icon" size={18} aria-hidden />
+                    <input
+                      type="search"
+                      className="um_search_input"
+                      placeholder="Search…"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value)
+                        setToolbarNotice("")
+                      }}
+                      aria-label={
+                        contactsListTab === "archived"
+                          ? "Search archived contacts"
+                          : "Search active contacts"
+                      }
+                      disabled={loading}
+                    />
+                  </div>
                 </div>
               </div>
               {toolbarNotice ? (
@@ -1773,10 +1993,12 @@ function ContactsPage() {
                 </div>
               ) : null}
               <DataTable
+                key={tableResetKey}
                 visualVariant="members"
                 stickyFirstColumn
                 columns={columns}
                 rows={loading ? [] : filteredRows}
+                isLoading={loading}
                 getRowKey={(row) => row.id}
                 getRowClassName={(row) =>
                   contactsListTab === "active" && contactRowIsSuspended(row)
@@ -1794,7 +2016,11 @@ function ContactsPage() {
                           : "No active contacts."
                         : tagFilter
                           ? `No contacts with tag “${tagFilter}”.`
-                          : "No contacts match your search."
+                          : offeringVisibilityFilter !== "all"
+                            ? "No contacts match this offering visibility filter."
+                            : accreditationFilter !== "all"
+                              ? "No contacts match this accreditation filter."
+                              : "No contacts match your search."
                 }
                 emptyStateRole={loading ? "status" : undefined}
                 pagination={
@@ -2412,7 +2638,7 @@ function ContactsPage() {
               <ViewReadonlyField
                 Icon={Mail}
                 label="Email"
-                value={suspendRow.email?.trim() || "—"}
+                value={displayEmail(suspendRow.email)}
               />
             </div>
 

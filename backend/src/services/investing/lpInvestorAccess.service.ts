@@ -8,7 +8,6 @@ import {
 } from "../../constants/deal-lifecycle/deal-status-rules.js";
 import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
-  DEAL_PARTICIPANT,
   isCompanyAdminRole,
   isInvestorPortalRole,
   isPlatformAdminRole,
@@ -21,6 +20,7 @@ import {
   filterDealIdsVisibleToInvestors,
   isAddDealFormIncomplete,
 } from "../deal/dealFormCompleteness.service.js";
+import { filterDealIdsByContactOfferingVisibility } from "../contact/contactOfferingVisibility.service.js";
 
 /** Stored `deal_lp_investor.role` values treated as LP Investor for nav + deal scope. */
 export function isLpInvestorRoleInLpTable(role: string | null | undefined): boolean {
@@ -44,30 +44,38 @@ async function listDealIdsFromLpInvestorTableForEmail(
   const e = String(emailNorm ?? "").trim().toLowerCase();
   if (!e || !e.includes("@")) return [];
 
-  const [fromContact, fromLpRowEmail] = await Promise.all([
-    db
-      .selectDistinct({ dealId: dealLpInvestor.dealId })
-      .from(dealLpInvestor)
-      .innerJoin(
-        contact,
-        sql`${contact.id}::text = trim(both from ${dealLpInvestor.contactMemberId})`,
-      )
-      .where(
-        sql`(nullif(trim(${contact.email}), '') IS NOT NULL AND lower(trim(${contact.email})) = ${e})`,
-      ),
-    db
-      .selectDistinct({ dealId: dealLpInvestor.dealId })
-      .from(dealLpInvestor)
-      .where(
-        sql`nullif(trim(${dealLpInvestor.email}), '') IS NOT NULL AND lower(trim(${dealLpInvestor.email})) = ${e}`,
-      ),
-  ]);
+  /**
+   * Match LP rows by:
+   * - CRM `contact.id` on `contact_member_id` + contact email
+   * - portal `users.id` on `contact_member_id` + users email (ETL / invite)
+   * - denormalized `deal_lp_investor.email`
+   */
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT dli.deal_id::text AS deal_id
+     FROM deal_lp_investor dli
+     WHERE
+       (
+         nullif(trim(dli.email), '') IS NOT NULL
+         AND lower(trim(dli.email)) = $1
+       )
+       OR EXISTS (
+         SELECT 1 FROM contact c
+         WHERE c.id::text = trim(both from dli.contact_member_id)
+           AND nullif(trim(c.email), '') IS NOT NULL
+           AND lower(trim(c.email)) = $1
+       )
+       OR EXISTS (
+         SELECT 1 FROM users u
+         WHERE u.id::text = trim(both from dli.contact_member_id)
+           AND nullif(trim(u.email), '') IS NOT NULL
+           AND lower(trim(u.email)) = $1
+       )`,
+    [e],
+  );
 
   return [
     ...new Set(
-      [...fromContact, ...fromLpRowEmail]
-        .map((r) => String(r.dealId ?? "").trim())
-        .filter(Boolean),
+      res.rows.map((r) => String(r.deal_id ?? "").trim()).filter(Boolean),
     ),
   ];
 }
@@ -373,7 +381,8 @@ export async function listInvestorSponsorScopedDealIdsForUser(
     sponsorUserIds.length === 0
       ? await listDealIdsFromLpInvestorTableForEmail(e)
       : await listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
-  return filterDealIdsVisibleToInvestors(raw);
+  const visible = await filterDealIdsVisibleToInvestors(raw);
+  return filterDealIdsByContactOfferingVisibility(e, visible);
 }
 
 /** Opportunity deal ids where at least one linked sponsor is on the deal roster. */
@@ -402,10 +411,11 @@ export async function listInvestorVisibleComingSoonDealIdsForUser(
     listSponsorUserIdsForInvestorEmail(e),
   ]);
   if (sponsorUserIds.length === 0) return [];
-  return filterDealIdsToThoseWithSponsorUsersOnRoster(
+  const scoped = await filterDealIdsToThoseWithSponsorUsersOnRoster(
     allOpportunityIds,
     sponsorUserIds,
   );
+  return filterDealIdsByContactOfferingVisibility(e, scoped);
 }
 
 /**
@@ -473,7 +483,8 @@ export async function listDirectInvestingParticipantDealIdsForUser(params: {
       ...investment,
     ]),
   ];
-  return filterDealIdsVisibleToInvestors(merged);
+  const visible = await filterDealIdsVisibleToInvestors(merged);
+  return filterDealIdsByContactOfferingVisibility(emailNorm, visible);
 }
 
 export async function isDealInDirectInvestingParticipationForUser(
@@ -513,6 +524,7 @@ export async function listInvestingParticipantDealIdsForUser(params: {
     listInvestorSponsorScopedDealIdsForUser(emailNorm),
   ]);
 
+  // Both helpers already apply contact offering visibility.
   return [...new Set([...direct, ...sponsorScoped])];
 }
 
@@ -588,7 +600,9 @@ export async function resolveLpInvestorSessionFlags(emailNorm: string): Promise<
 
 /**
  * Single writer for `is_lp_investor`, `lp_investor_nav`, and `lp_investor_deal_ids` on sign-in / account.
- * Platform/company admins keep syndication shell (`lp_investor_nav` false) even if listed as LP.
+ * Platform/company admins and anyone on a deal as Lead / Admin / Co-sponsor keep the
+ * syndication shell (`lp_investor_nav` false) even when also listed as an LP investor —
+ * so dual investor + co-sponsor users can switch modes.
  */
 export async function mergeLpInvestorFlagsIntoUserPayload(
   base: Record<string, unknown>,
@@ -596,13 +610,6 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
 ): Promise<Record<string, unknown>> {
   const emailNorm = String(opts.email ?? "").trim().toLowerCase();
   const portalRole = String(opts.portalRole ?? "").trim();
-  const participantSponsorShell =
-    portalRole === DEAL_PARTICIPANT &&
-    (await hasSponsorDealMemberRoleForEmail(emailNorm));
-  const adminShell =
-    isPlatformAdminRole(portalRole) ||
-    isCompanyAdminRole(portalRole) ||
-    participantSponsorShell;
 
   if (!emailNorm || !emailNorm.includes("@")) {
     return {
@@ -614,7 +621,14 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
     };
   }
 
-  if (isInvestorPortalRole(portalRole)) {
+  const sponsorOnRoster = await hasSponsorDealMemberRoleForEmail(emailNorm);
+  const syndicationShell =
+    isPlatformAdminRole(portalRole) ||
+    isCompanyAdminRole(portalRole) ||
+    sponsorOnRoster;
+
+  /** Pure investor portal role with no sponsor roster seat — investing-only. */
+  if (isInvestorPortalRole(portalRole) && !sponsorOnRoster) {
     const lp = await resolveLpInvestorSessionFlags(emailNorm);
     return {
       ...base,
@@ -626,7 +640,7 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
   }
 
   const lp = await resolveLpInvestorSessionFlags(emailNorm);
-  const lpNav = lp.lp_investor_nav && !adminShell;
+  const lpNav = lp.lp_investor_nav && !syndicationShell;
   return {
     ...base,
     lp_investor_nav: lpNav,

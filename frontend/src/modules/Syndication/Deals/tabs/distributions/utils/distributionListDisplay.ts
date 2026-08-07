@@ -52,7 +52,7 @@ export function typeDisplayLabel(row: PriorDistributionRecord): string {
   const src = (row.source ?? "").trim().toLowerCase()
   if (src === "fee" || src === "distribution_fee") {
     const feeType =
-      row.distributionType?.trim() || row.name?.trim() || "Distribution fee"
+      row.distributionType?.trim() || row.name?.trim() || "Acquisition fee"
     return feeType
   }
   const t = (row.distributionType ?? "").trim().toLowerCase()
@@ -66,13 +66,13 @@ export function typeDisplayLabel(row: PriorDistributionRecord): string {
 
 export function deductsFromDisplayLabel(row: PriorDistributionRecord): string {
   const src = (row.source ?? "").trim().toLowerCase()
-  if (src === "fee" || src === "distribution_fee") return "Distribution fee"
+  if (src === "fee" || src === "distribution_fee") return "Acquisition fee"
   const d = (row.deductsFrom ?? "").trim().toLowerCase()
   if (d === "accrued_pref" || d === "accrued" || !d)
     return "Deducts from accrued pref"
   if (d === "current_pref" || d === "current") return "Deducts from current pref"
   if (d === "capital") return "Deducts from capital"
-  if (d === "fee") return "Distribution fee"
+  if (d === "fee") return "Acquisition fee"
   return "Deducts from accrued pref"
 }
 

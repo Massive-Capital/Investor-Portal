@@ -124,7 +124,7 @@
 
 /* Fixed columns so headers + cells share the same right edge */
 .deal_dist_panel .um_table.deal_dist_details_table {
-  min-width: 48rem;
+  min-width: 58rem;
 }
 
 .deal_dist_panel .um_table.deal_dist_details_table thead th.deal_dist_th_investor,
@@ -132,6 +132,22 @@
   width: 16rem;
   min-width: 14rem;
   vertical-align: middle;
+}
+
+.deal_dist_panel .um_table.deal_dist_details_table thead th.deal_dist_th_profile,
+.deal_dist_panel .um_table.deal_dist_details_table tbody td.deal_dist_td_profile {
+  width: 12rem;
+  min-width: 10rem;
+  vertical-align: middle;
+}
+
+.deal_dist_panel .um_table.deal_dist_details_table .deal_dist_profile_name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .deal_dist_panel .um_table.deal_dist_details_table thead th.deal_dist_th_class,

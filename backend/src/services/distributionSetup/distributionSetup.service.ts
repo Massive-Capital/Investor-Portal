@@ -319,7 +319,7 @@ export async function completeDistributionRun(params: {
     (source === "capital"
       ? `Capital event · ${date}`
       : source === "fee"
-        ? `Distribution fee · ${date}`
+        ? `Acquisition fee · ${date}`
         : `Operating · ${date}`);
   const notes = params.input.notes?.trim() || "";
   const periodRaw = params.input.period;

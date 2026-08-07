@@ -10,6 +10,10 @@ import {
   type DataTableColumn,
 } from "../../../common/components/data-table/DataTable"
 import {
+  displayEmail,
+  isDisplayableEmail,
+} from "../../../common/utils/displayEmail"
+import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
 } from "../../../common/phone/usPhoneNumber"
@@ -30,6 +34,7 @@ import type { ContactRow } from "./types/contact.types"
 import { formatContactSinceLabel } from "./utils/contactCsv"
 
 const CONTACTS_ACTIONS_COL_WIDTH = "7rem" as const
+const CONTACTS_USER_COL_WIDTH = "16rem" as const
 
 function contactDisplayName(row: ContactRow): string {
   const n = [row.firstName, row.lastName].filter(Boolean).join(" ").trim()
@@ -180,13 +185,15 @@ export default function CrmPage() {
       {
         id: "user",
         header: "User",
+        colWidth: CONTACTS_USER_COL_WIDTH,
         sortValue: (row) =>
           `${row.firstName} ${row.lastName} ${row.email}`.toLowerCase(),
-        tdClassName: "um_td_user",
+        thClassName: "contacts_th_user",
+        tdClassName: "um_td_user contacts_td_user",
         cell: (row) => {
           const primary = contactDisplayName(row)
           const rawEmail = row.email.trim()
-          const emailShown = rawEmail || "—"
+          const emailShown = displayEmail(rawEmail)
           return (
             <div className="um_user_cell">
               <div className="um_user_avatar_ring" aria-hidden>
@@ -202,7 +209,7 @@ export default function CrmPage() {
                 >
                   {primary}
                 </span>
-                {rawEmail.includes("@") ? (
+                {isDisplayableEmail(rawEmail) ? (
                   <a
                     href={`mailto:${encodeURIComponent(rawEmail)}`}
                     className="um_user_meta_email um_user_meta_email_link"
@@ -210,7 +217,9 @@ export default function CrmPage() {
                     {rawEmail}
                   </a>
                 ) : (
-                  <span className="um_user_meta_email">{emailShown}</span>
+                  <span className="um_user_meta_email um_status_muted">
+                    {emailShown}
+                  </span>
                 )}
               </div>
             </div>

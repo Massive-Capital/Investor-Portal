@@ -28,6 +28,10 @@ import {
 import { toast } from "../../../../../common/components/Toast"
 import { TabsScrollStrip } from "../../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import {
+  displayEmail,
+  isDisplayableEmail,
+} from "../../../../../common/utils/displayEmail"
+import {
   lpInvestorValidationPreferSelector,
   presentFormValidationError,
 } from "../../../../../common/utils/formValidationFocus"
@@ -231,16 +235,17 @@ function lpInvestorRowMissingMessage(message: string | undefined): boolean {
 
 function contactOptionLabel(c: ContactRow): string {
   const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim()
-  if (name && c.email.trim()) return `${name} — ${c.email.trim()}`
-  if (c.email.trim()) return c.email.trim()
+  if (name && isDisplayableEmail(c.email)) return `${name} — ${displayEmail(c.email)}`
+  if (isDisplayableEmail(c.email)) return displayEmail(c.email)
   return name || "Contact"
 }
 
 function buildMemberLabel(u: Record<string, unknown>): string {
   const name = rowDisplayName(u)
   const email = String(u.email ?? "").trim()
-  if (name && name !== "—" && email) return `${name} — ${email}`
-  if (email) return email
+  if (name && name !== "—" && isDisplayableEmail(email))
+    return `${name} — ${displayEmail(email)}`
+  if (isDisplayableEmail(email)) return displayEmail(email)
   return name !== "—" ? name : "—"
 }
 
@@ -500,8 +505,8 @@ export function AddLpInvestorModal({
       setContactId(editRow.contactId?.trim() ?? "")
       setContactDisplayName(editRow.displayName?.trim() ?? "")
       setContactEmail(
-        editRow.userEmail && editRow.userEmail !== "—"
-          ? editRow.userEmail.trim()
+        isDisplayableEmail(editRow.userEmail)
+          ? String(editRow.userEmail).trim()
           : "",
       )
       setProfileId(
@@ -533,8 +538,8 @@ export function AddLpInvestorModal({
         setContactId(fetched.contactId?.trim() ?? "")
         setContactDisplayName(fetched.displayName?.trim() ?? "")
         setContactEmail(
-          fetched.userEmail && fetched.userEmail !== "—"
-            ? fetched.userEmail.trim()
+          isDisplayableEmail(fetched.userEmail)
+            ? String(fetched.userEmail).trim()
             : "",
         )
         setProfileId(

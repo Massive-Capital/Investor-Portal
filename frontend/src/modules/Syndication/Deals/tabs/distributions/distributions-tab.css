@@ -269,9 +269,8 @@
 }
 
 /*
- * Distributions list: horizontal scroll like Investors / details.
- * Column min-widths must be real floors — `min-width: 0` + ellipsis lets the
- * table shrink to the panel, so scrollWidth never exceeds clientWidth.
+ * Distributions list: fill the panel width. Column min-widths stay as floors so
+ * narrow viewports still scroll horizontally when needed.
  */
 .deal_dist_panel.deal_inv_table_panel .um_table_wrap.data_table_shell,
 .deal_dist_panel .um_table_wrap.data_table_shell {
@@ -307,9 +306,8 @@
   .um_table.deal_dist_portal_table,
 .deal_dist_panel .um_table.deal_dist_table.deal_dist_portal_table {
   table-layout: auto !important;
-  width: max-content !important;
-  /* Sum of column floors below — forces overflow on typical deal panels */
-  min-width: 78rem !important;
+  width: 100% !important;
+  min-width: 100% !important;
   max-width: none !important;
 }
 
@@ -333,7 +331,7 @@
 
 .deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_name,
 .deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_name {
-  width: 12rem;
+  width: auto;
   min-width: 12rem !important;
 }
 
@@ -363,7 +361,7 @@
 
 .deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_th_period,
 .deal_dist_panel .um_table.deal_dist_portal_table .deal_dist_td_period {
-  width: 12rem;
+  width: auto;
   min-width: 12rem !important;
 }
 
@@ -420,7 +418,7 @@
   white-space: nowrap;
 }
 
-/* Alignment (portal list uses max-content + column floors above — do not force 100% fixed) */
+/* Alignment (non-portal list keeps fixed layout) */
 .deal_dist_panel .um_table.deal_dist_table:not(.deal_dist_portal_table) {
   table-layout: fixed;
   width: 100%;

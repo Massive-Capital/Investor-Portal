@@ -24,6 +24,7 @@ import { CardCompactAmount } from "../../../../../common/components/card-compact
 import { TabsScrollStrip } from "../../../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { ViewReadonlyField } from "../../../../../common/components/ViewReadonlyField"
 import { formatDateDdMmmYyyy } from "../../../../../common/utils/formatDateDisplay"
+import { displayEmail } from "../../../../../common/utils/displayEmail"
 import { investorRoleLabel } from "../../constants/investor-profile"
 import {
   dealInvestorStatusDisplayLabel,
@@ -359,7 +360,7 @@ export function DealInvestorViewModal({
                 <ViewReadonlyField
                   Icon={Mail}
                   label="Email address"
-                  value={displayOrDash(investorRow.userEmail)}
+                  value={displayEmail(investorRow.userEmail)}
                 />
                 <ViewReadonlyField
                   Icon={User}

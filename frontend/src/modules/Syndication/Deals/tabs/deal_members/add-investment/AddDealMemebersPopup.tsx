@@ -26,6 +26,10 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import { toast } from "../../../../../../common/components/Toast"
+import {
+  displayEmail,
+  isDisplayableEmail,
+} from "../../../../../../common/utils/displayEmail"
 import { presentFormValidationError } from "../../../../../../common/utils/formValidationFocus"
 import { formatUsPhoneStoredForUi } from "../../../../../../common/phone/usPhoneNumber"
 import {
@@ -125,16 +129,18 @@ const DROPDOWN_TRIGGER_PILL =
 
 function contactOptionLabel(c: ContactRow): string {
   const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim()
-  if (name && c.email.trim()) return `${name} — ${c.email.trim()}`
-  if (c.email.trim()) return c.email.trim()
+  if (name && isDisplayableEmail(c.email))
+    return `${name} — ${displayEmail(c.email)}`
+  if (isDisplayableEmail(c.email)) return displayEmail(c.email)
   return name || "Contact"
 }
 
 function buildMemberLabel(u: Record<string, unknown>): string {
   const name = rowDisplayName(u)
   const email = String(u.email ?? "").trim()
-  if (name && name !== "—" && email) return `${name} — ${email}`
-  if (email) return email
+  if (name && name !== "—" && isDisplayableEmail(email))
+    return `${name} — ${displayEmail(email)}`
+  if (isDisplayableEmail(email)) return displayEmail(email)
   return name !== "—" ? name : "—"
 }
 
