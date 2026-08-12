@@ -1076,7 +1076,9 @@ function DealInvestorsPopulated({
             isDraft={investorRowShowsDraftBadge(row)}
             onNameClick={
               row.id === ADD_MEMBER_DRAFT_ROW_ID
-                ? undefined
+                ? onContinueDraftEdit
+                  ? () => onContinueDraftEdit()
+                  : undefined
                 : onViewInvestor
             }
           />
@@ -1158,12 +1160,25 @@ function DealInvestorsPopulated({
         cell: (row) => {
           const s = String(row.addedByDisplayName ?? "").trim();
           const display = s && s !== "—" ? s : "—";
-          const adderId = String(row.addedByUserId ?? "").trim();
-          const title =
-            adderId && display !== "—"
-              ? `${display} (${adderId})`
-              : adderId || undefined;
-          return <DealInvEllipsisText text={display} title={title} />;
+          const email = String(row.addedByEmail ?? "").trim();
+          if (display === "—" || !email)
+            return <DealInvEllipsisText text={display} />;
+          return (
+            <FormTooltip
+              triggerMode="inline"
+              placement="top"
+              panelAlign="start"
+              openOnHover
+              label={`Sponsor email for ${display}`}
+              content={
+                <p className="deal_inv_sponsor_email_tooltip">{email}</p>
+              }
+            >
+              <span className="deal_inv_ellipsis_text deal_inv_sponsor_name_hover">
+                {display}
+              </span>
+            </FormTooltip>
+          );
         },
       },
       {
@@ -1827,13 +1842,6 @@ function DealInvestorsPopulated({
           getRowClassName={(row) =>
             investorRowShowsDraftBadge(row) ? "deal_inv_row_draft" : undefined
           }
-          onBodyRowClick={(row) => {
-            if (row.id === ADD_MEMBER_DRAFT_ROW_ID) {
-              onContinueDraftEdit?.()
-              return
-            }
-            onViewInvestor(row)
-          }}
           emptyLabel="No LP investors match your filters."
           pagination={pagination}
         />
@@ -1916,6 +1924,18 @@ export const DealInvestorsTab = forwardRef<
     () => buildDealClassNamesLine(investorClasses, dealDetail),
     [investorClasses, dealDetail],
   );
+
+  // Separate investor distributions page (kept for later; use popup for now).
+  // const openInvestorDistributionsPage = useCallback(
+  //   (row: DealInvestorRow) => {
+  //     const id = String(row.id ?? "").trim()
+  //     if (!dealId || !id) return
+  //     navigate(
+  //       `/deals/${encodeURIComponent(dealId)}/investors/${encodeURIComponent(id)}/distributions`,
+  //     )
+  //   },
+  //   [dealId, navigate],
+  // )
 
   const handleEditInvestor = useCallback(
     (row: DealInvestorRow) => {
@@ -2325,9 +2345,11 @@ export const DealInvestorsTab = forwardRef<
         <DealInvestorViewModal
           row={viewInvestorRow}
           onClose={() => setViewInvestorRow(null)}
+          dealId={dealId}
           investorClasses={investorClasses}
           dealAllClassNamesLine={dealClassNamesLineForView}
           onEdit={handleEditInvestor}
+          initialSectionTab="distribution"
         />
       </>
     );
@@ -2406,9 +2428,11 @@ export const DealInvestorsTab = forwardRef<
       <DealInvestorViewModal
         row={viewInvestorRow}
         onClose={() => setViewInvestorRow(null)}
+        dealId={dealId}
         investorClasses={investorClasses}
         dealAllClassNamesLine={dealClassNamesLineForView}
         onEdit={handleEditInvestor}
+        initialSectionTab="distribution"
       />
       {onSendEsignConfirm ? (
         <SendEsignDocumentsModal

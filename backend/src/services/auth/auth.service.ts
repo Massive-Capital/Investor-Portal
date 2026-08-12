@@ -104,7 +104,11 @@ export async function signInWithPassword(
     );
     if (!passwordMatch) {
       if (isUserSignupCompleted(usertable.userSignupCompleted)) {
-        return { ok: false, message: ACCOUNT_EXISTS_RESET_PASSWORD_MESSAGE };
+        return {
+          ok: false,
+          message:
+            "Your account setup is not complete. Finish registration before signing in.",
+        };
       }
       return { ok: false, message: INVALID_SIGNIN_CREDENTIALS_MESSAGE };
     }
@@ -191,6 +195,7 @@ export async function signInWithPassword(
       await mergeLpInvestorFlagsIntoUserPayload(enrichedDetail, {
         email: user_table.email,
         portalRole: user_table.role,
+        userId: String(user_table.id),
       }),
     ];
 

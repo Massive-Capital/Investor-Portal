@@ -51,18 +51,24 @@ export function normalizeContactOfferingVisibility(
 
 /** Deal `sec_type` values that count as 506(c) offerings. */
 export function isDealSecType506c(secType: string | null | undefined): boolean {
-  const s = String(secType ?? "")
-    .trim()
+  const raw = String(secType ?? "").trim();
+  if (!raw) return false;
+  const s = raw
     .toLowerCase()
     .replace(/[()]/g, "")
     .replace(/[\s-]+/g, "_");
-  if (!s) return false;
-  return (
+  if (
     s === "506_c" ||
     s === "506c" ||
     s === "regulation_506_c" ||
-    s === "reg_506_c"
-  );
+    s === "reg_506_c" ||
+    s === "reg_d_506_c" ||
+    s === "regulation_d_506_c"
+  ) {
+    return true;
+  }
+  // Label-like values e.g. "506(c)" / "Reg D 506(c)" after stripping punctuation.
+  return /(?:^|_)506_?c(?:_|$)/.test(s) || /506\s*\(?\s*c\s*\)?/i.test(raw);
 }
 
 /**

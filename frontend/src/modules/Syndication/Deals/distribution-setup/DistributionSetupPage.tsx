@@ -908,6 +908,8 @@ export function DistributionSetupPage() {
         priorDistributions: bundle.priorDistributions,
         distributionFee,
         excludePriorId: editingDistributionId || undefined,
+        // Same name may be reused across Distributions runs.
+        ignorePriorNames: true,
       })
       if (dup) {
         toast.error("Duplicate name", dup)

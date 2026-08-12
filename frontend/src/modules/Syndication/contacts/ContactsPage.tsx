@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   AlignLeft,
+  Archive,
   Ban,
   CheckCircle2,
   ClipboardList,
@@ -48,7 +49,7 @@ import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
 } from "../../../common/phone/usPhoneNumber"
-import { ActiveArchivedTabs } from "../../../common/components/active-archived-tabs/ActiveArchivedTabs"
+import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
 import {
   UsageFilterTabs,
   type UsageFilterTab,
@@ -57,7 +58,6 @@ import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/Ta
 import { toast } from "../../../common/components/Toast"
 import { PORTAL_ACTIVE_COMPANY_CHANGED_EVENT } from "../../../common/auth/setActiveCompany"
 import { getSessionOrganizationCompanyId } from "../../../common/auth/sessionOrganization"
-import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
 import "../usermanagement/user_management.css"
 import {
   createContact,
@@ -108,16 +108,17 @@ import {
   buildTableExportFilename,
 } from "../../../common/utils/tableExportFilename"
 
-/** Compact labels for the table cell (keeps column narrow). */
+/** Full labels for the Offering Visibility cell dropdown. */
 const OFFERING_VISIBILITY_CELL_OPTIONS: DropdownSelectOption[] = [
   { value: "", label: "—" },
-  { value: "ALL_OFFERINGS", label: "All" },
-  { value: "HIDE_OFFERINGS", label: "Hide" },
-  { value: "506C_ONLY", label: "506(c)" },
+  ...CONTACT_OFFERING_VISIBILITY_OPTIONS.map((o) => ({
+    value: o.value,
+    label: o.label,
+  })),
 ]
 
 const OFFERING_VISIBILITY_FILTER_OPTIONS: DropdownSelectOption[] = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All visibility" },
   ...CONTACT_OFFERING_VISIBILITY_OPTIONS.map((o) => ({
     value: o.value,
     label: o.label,
@@ -1416,6 +1417,8 @@ function ContactsPage() {
         id: "phone",
         header: "Phone",
         sortValue: (row) => nationalDigitsFromStoredPhone(String(row.phone ?? "")),
+        thClassName: "contacts_th_phone",
+        tdClassName: "contacts_td_phone",
         cell: (row) => formatUsPhoneStoredForUi(row.phone),
       },
       {
@@ -1523,12 +1526,12 @@ function ContactsPage() {
         sortValue: (row) => row.owners.join(" "),
         cell: (row) => <TagsCell items={row.owners} />,
       },
-      {
-        id: "createdBy",
-        header: "Added by",
-        sortValue: (row) => row.createdByDisplayName ?? "",
-        cell: (row) => row.createdByDisplayName?.trim() || "—",
-      },
+      // {
+      //   id: "createdBy",
+      //   header: "Added by",
+      //   sortValue: (row) => row.createdByDisplayName ?? "",
+      //   cell: (row) => row.createdByDisplayName?.trim() || "—",
+      // },
       // {
       //   id: "since",
       //   header: "Since",
@@ -1600,9 +1603,6 @@ function ContactsPage() {
     const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
     if (page > totalPages) setPage(totalPages)
   }, [filteredRows.length, page, pageSize])
-
-  const archivedTabEmptyNoTable =
-    contactsListTab === "archived" && tabRows.length === 0
 
   const tagsTableEmptyLabel = useMemo(() => {
     if (tagCatalog.length === 0) {
@@ -1774,193 +1774,214 @@ function ContactsPage() {
       </div>
 
       {mainTab === "contacts" ? (
-        <>
-          <ActiveArchivedTabs
-            value={contactsListTab}
-            onChange={(tab) => {
-              setContactsListTab(tab)
-              setToolbarNotice("")
-            }}
-            activeCount={activeCount}
-            archivedCount={archivedCount}
-            idPrefix="contacts-filter"
-            ariaLabel="Filter contacts by status"
-            activeIcon={ContactRound}
-            activePanelId="contacts-main-panel-contacts"
-            className="contacts_status_tabs_outer"
-          />
-
-      <div
-        id="contacts-main-panel-contacts"
-        role="tabpanel"
-        aria-labelledby="contacts-main-tab-contacts"
-        className="contacts_main_tab_panel_wrap"
-      >
-      <div className="um_members_tab_content contacts_main_tab_content_flush">
         <div
-          className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel"
-          id="contacts-directory-panel"
-          role="region"
-          aria-label={
-            contactsListTab === "archived"
-              ? "Archived contacts"
-              : "Active contacts"
-          }
+          id="contacts-main-panel-contacts"
+          role="tabpanel"
+          aria-labelledby="contacts-main-tab-contacts"
+          className="contacts_main_tab_panel_wrap"
         >
-          {archivedTabEmptyNoTable ? (
-            loading ? (
-              <div
-                className="contacts_table_loading_state"
-                role="status"
-                aria-label="Loading contacts"
-              >
-                <div className="data_table_loader_spinner" aria-hidden />
-                <p className="contacts_table_loading_label">Loading contacts…</p>
-              </div>
-            ) : (
-              <p className="um_hint contacts_table_empty_hint" role="status">
-                No archived contacts. Suspend a contact from Active to move it
-                here.
-              </p>
-            )
-          ) : (
-            <>
-              <div className="um_toolbar deal_inv_table_um_toolbar um_toolbar_export_then_search">
-                <div className="um_toolbar_actions deal_inv_table_toolbar_actions">
-                  <button
-                    type="button"
-                    className="um_btn_toolbar"
-                    onClick={openSendMailModal}
-                    disabled={loading || selectedContacts.length === 0}
-                  >
-                    <Send size={18} strokeWidth={2} aria-hidden />
-                    Send email
-                  </button>
-                  <button
-                    type="button"
-                    className="um_btn_toolbar"
-                    onClick={handleSuspendAll}
-                    disabled={
-                      loading ||
-                      contactsListTab === "archived" ||
-                      tabRows.length === 0
-                    }
-                  >
-                    <Ban size={18} strokeWidth={2} aria-hidden />
-                    Suspend All
-                  </button>
-                  <button
-                    type="button"
-                    className="um_toolbar_export_btn"
-                    onClick={() => setExportModalOpen(true)}
-                    disabled={loading || tabRows.length === 0}
-                  >
-                    <Download size={18} strokeWidth={2} aria-hidden />
-                    <span>Export All</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="um_btn_toolbar"
-                    onClick={() => void handleRefreshContacts()}
-                    disabled={loading}
-                    aria-label="Refresh contacts and reset sorting"
-                  >
-                    {loading ? (
-                      <Loader2
-                        size={18}
-                        strokeWidth={2}
-                        className="um_spin"
-                        aria-hidden
-                      />
-                    ) : (
-                      <RefreshCw size={18} strokeWidth={2} aria-hidden />
-                    )}
-                    Refresh
-                  </button>
-                </div>
-                <div className="contacts_toolbar_trailing">
-                  <div className="contacts_toolbar_filter">
-                    <span
-                      className="contacts_toolbar_filter_label"
-                      id="contacts-filter-offering-visibility-label"
-                    >
-                      Offering visibility
-                    </span>
-                    <DropdownSelect
-                      id="contacts-filter-offering-visibility"
-                      className="contacts_toolbar_filter_dropdown"
-                      triggerClassName="contacts_toolbar_filter_dropdown_trigger"
-                      panelClassName="contacts_toolbar_filter_dropdown_panel"
-                      value={offeringVisibilityFilter}
-                      options={OFFERING_VISIBILITY_FILTER_OPTIONS}
-                      disabled={loading}
-                      ariaLabel="Filter by offering visibility"
-                      ariaDescribedBy="contacts-filter-offering-visibility-label"
-                      useFixedPanel
-                      onChange={(v) => {
-                        setOfferingVisibilityFilter(
-                          v as OfferingVisibilityFilter,
-                        )
-                        setToolbarNotice("")
-                      }}
-                    />
+          <div className="um_members_tab_content contacts_main_tab_content_flush">
+            <div
+              className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel"
+              id="contacts-directory-panel"
+              role="region"
+              aria-label={
+                contactsListTab === "archived"
+                  ? "Archived contacts"
+                  : "Active contacts"
+              }
+            >
+              <div className="contacts_directory_toolbar">
+                    <div className="contacts_directory_toolbar_start">
+                      <div
+                        className="contacts_status_pills"
+                        role="tablist"
+                        aria-label="Filter contacts by status"
+                      >
+                        <button
+                          type="button"
+                          id="contacts-filter-active"
+                          role="tab"
+                          aria-selected={contactsListTab === "active"}
+                          aria-controls="contacts-main-panel-contacts"
+                          aria-label={`Active, ${activeCount}`}
+                          className={`contacts_status_pill${
+                            contactsListTab === "active"
+                              ? " contacts_status_pill_active"
+                              : ""
+                          }`}
+                          onClick={() => {
+                            setContactsListTab("active")
+                            setToolbarNotice("")
+                          }}
+                        >
+                          <ContactRound size={14} strokeWidth={2} aria-hidden />
+                          <span>Active</span>
+                          <span className="contacts_status_pill_count" aria-hidden>
+                            {activeCount}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          id="contacts-filter-archived"
+                          role="tab"
+                          aria-selected={contactsListTab === "archived"}
+                          aria-controls="contacts-main-panel-contacts"
+                          aria-label={`Archived, ${archivedCount}`}
+                          className={`contacts_status_pill${
+                            contactsListTab === "archived"
+                              ? " contacts_status_pill_active"
+                              : ""
+                          }`}
+                          onClick={() => {
+                            setContactsListTab("archived")
+                            setToolbarNotice("")
+                          }}
+                        >
+                          <Archive size={14} strokeWidth={2} aria-hidden />
+                          <span>Archived</span>
+                          <span className="contacts_status_pill_count" aria-hidden>
+                            {archivedCount}
+                          </span>
+                        </button>
+                      </div>
+
+                      <div
+                        className="contacts_directory_actions"
+                        role="toolbar"
+                        aria-label="Contact actions"
+                      >
+                        <button
+                          type="button"
+                          className="um_btn_toolbar"
+                          onClick={openSendMailModal}
+                          disabled={loading || selectedContacts.length === 0}
+                        >
+                          <Send size={16} strokeWidth={2} aria-hidden />
+                          Send email
+                        </button>
+                        <button
+                          type="button"
+                          className="um_btn_toolbar"
+                          onClick={handleSuspendAll}
+                          disabled={
+                            loading ||
+                            contactsListTab === "archived" ||
+                            tabRows.length === 0
+                          }
+                        >
+                          <Ban size={16} strokeWidth={2} aria-hidden />
+                          Suspend all
+                        </button>
+                        <button
+                          type="button"
+                          className="um_toolbar_export_btn"
+                          onClick={() => setExportModalOpen(true)}
+                          disabled={loading || tabRows.length === 0}
+                        >
+                          <Download size={16} strokeWidth={2} aria-hidden />
+                          <span>Export</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="um_btn_toolbar"
+                          onClick={() => void handleRefreshContacts()}
+                          disabled={loading}
+                          aria-label="Refresh contacts and reset sorting"
+                        >
+                          {loading ? (
+                            <Loader2
+                              size={16}
+                              strokeWidth={2}
+                              className="um_spin"
+                              aria-hidden
+                            />
+                          ) : (
+                            <RefreshCw size={16} strokeWidth={2} aria-hidden />
+                          )}
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="contacts_directory_toolbar_end">
+                      <div className="contacts_toolbar_filter">
+                        <DropdownSelect
+                          id="contacts-filter-offering-visibility"
+                          className="contacts_toolbar_filter_dropdown"
+                          triggerClassName="contacts_toolbar_filter_dropdown_trigger"
+                          panelClassName="contacts_toolbar_filter_dropdown_panel"
+                          value={offeringVisibilityFilter}
+                          options={OFFERING_VISIBILITY_FILTER_OPTIONS}
+                          disabled={loading}
+                          ariaLabel="Filter by offering visibility"
+                          placeholder="Visibility"
+                          useFixedPanel
+                          onChange={(v) => {
+                            setOfferingVisibilityFilter(
+                              v as OfferingVisibilityFilter,
+                            )
+                            setToolbarNotice("")
+                          }}
+                        />
+                      </div>
+                      <div className="contacts_toolbar_filter">
+                        <DropdownSelect
+                          id="contacts-filter-accreditation"
+                          className="contacts_toolbar_filter_dropdown contacts_accreditation_filter_select"
+                          triggerClassName="contacts_toolbar_filter_dropdown_trigger"
+                          panelClassName="contacts_toolbar_filter_dropdown_panel"
+                          value={accreditationFilter}
+                          options={[
+                            { value: "all", label: "All accreditation" },
+                            { value: "Accredited", label: "Accredited" },
+                            {
+                              value: "Not Accredited",
+                              label: "Not Accredited",
+                            },
+                            { value: "na", label: "N/A" },
+                          ]}
+                          disabled={loading}
+                          ariaLabel="Filter by accreditation status"
+                          placeholder="Accreditation"
+                          useFixedPanel
+                          onChange={(v) => {
+                            setAccreditationFilter(
+                              v as
+                                | "all"
+                                | "Accredited"
+                                | "Not Accredited"
+                                | "na",
+                            )
+                            setToolbarNotice("")
+                          }}
+                        />
+                      </div>
+                      <div className="um_search_wrap contacts_directory_search">
+                        <Search
+                          className="um_search_icon"
+                          size={16}
+                          aria-hidden
+                        />
+                        <input
+                          type="search"
+                          className="um_search_input"
+                          placeholder="Search contacts…"
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value)
+                            setToolbarNotice("")
+                          }}
+                          aria-label={
+                            contactsListTab === "archived"
+                              ? "Search archived contacts"
+                              : "Search active contacts"
+                          }
+                          disabled={loading}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="contacts_toolbar_filter contacts_accreditation_filter">
-                    <span
-                      className="contacts_toolbar_filter_label contacts_accreditation_filter_label"
-                      id="contacts-filter-accreditation-label"
-                    >
-                      Accreditation
-                    </span>
-                    <DropdownSelect
-                      id="contacts-filter-accreditation"
-                      className="contacts_toolbar_filter_dropdown contacts_accreditation_filter_select"
-                      triggerClassName="contacts_toolbar_filter_dropdown_trigger"
-                      panelClassName="contacts_toolbar_filter_dropdown_panel"
-                      value={accreditationFilter}
-                      options={[
-                        { value: "all", label: "All" },
-                        { value: "Accredited", label: "Accredited" },
-                        { value: "Not Accredited", label: "Not Accredited" },
-                        { value: "na", label: "N/A" },
-                      ]}
-                      disabled={loading}
-                      ariaLabel="Filter by accreditation status"
-                      ariaDescribedBy="contacts-filter-accreditation-label"
-                      useFixedPanel
-                      onChange={(v) => {
-                        setAccreditationFilter(
-                          v as
-                            | "all"
-                            | "Accredited"
-                            | "Not Accredited"
-                            | "na",
-                        )
-                        setToolbarNotice("")
-                      }}
-                    />
-                  </div>
-                  <div className="um_search_wrap">
-                    <Search className="um_search_icon" size={18} aria-hidden />
-                    <input
-                      type="search"
-                      className="um_search_input"
-                      placeholder="Search…"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value)
-                        setToolbarNotice("")
-                      }}
-                      aria-label={
-                        contactsListTab === "archived"
-                          ? "Search archived contacts"
-                          : "Search active contacts"
-                      }
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-              </div>
               {toolbarNotice ? (
                 <p className="um_toolbar_notice" role="status">
                   {toolbarNotice}
@@ -2012,7 +2033,7 @@ function ContactsPage() {
                       ? "No contacts yet. Add a contact to see it here."
                       : tabRows.length === 0
                         ? contactsListTab === "archived"
-                          ? "No archived contacts."
+                          ? "No archived contacts. Suspend a contact from Active to move it here."
                           : "No active contacts."
                         : tagFilter
                           ? `No contacts with tag “${tagFilter}”.`
@@ -2027,12 +2048,9 @@ function ContactsPage() {
                   !loading && filteredRows.length > 0 ? pagination : undefined
                 }
               />
-            </>
-          )}
-        </div>
+            </div>
       </div>
       </div>
-        </>
       ) : mainTab === "tags" ? (
         <>
           <UsageFilterTabs

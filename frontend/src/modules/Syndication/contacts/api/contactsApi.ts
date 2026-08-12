@@ -36,7 +36,8 @@ function normalizeOfferingVisibility(
     s === "506C_ONLY" ||
     s === "506C" ||
     s === "506_C" ||
-    s === "506_C_ONLY"
+    s === "506_C_ONLY" ||
+    s === "506C_OFFERINGS_ONLY"
   )
     return "506C_ONLY"
   return null

@@ -3,6 +3,7 @@
  * Period / preferred totals follow Woodland Ridge export math (actual/365).
  */
 
+import { formatDateDdMmmYyyy } from "../../../../../../common/utils/formatDateDisplay"
 import type {
   DistributionSetupClass,
   PriorDistributionRecord,
@@ -26,18 +27,13 @@ export type DistributionListMetrics = {
   paymentDate: string
 }
 
-function formatSlashDate(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim())
-  if (!m) return iso || "—"
-  return `${m[2]}/${m[3]}/${m[1]}`
-}
-
 export function formatPeriodDatesLabel(startIso: string, endIso: string): string {
-  return `${formatSlashDate(startIso)} - ${formatSlashDate(endIso)}`
+  return `${formatDateDdMmmYyyy(startIso)} - ${formatDateDdMmmYyyy(endIso)}`
 }
 
+/** Payment / calendar dates: DD-MMM-YYYY (e.g. 12-Jan-2026). */
 export function formatPaymentDateLabel(iso: string): string {
-  return formatSlashDate(iso)
+  return formatDateDdMmmYyyy(iso)
 }
 
 export function sourceDisplayLabel(source: string | undefined): string {

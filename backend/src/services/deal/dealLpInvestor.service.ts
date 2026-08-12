@@ -129,8 +129,8 @@ export async function isViewerCoSponsorOnDeal(
 }
 
 /**
- * Co-sponsors (and only co-sponsors on this deal) see investors they added.
- * Lead / admin sponsors see the full roster (emails redacted for co-sponsor-added rows).
+ * Co-sponsors see investors associated with them via Sponsor name on the deal
+ * (Investor → Sponsor/Co-sponsor). Lead / admin sponsors see the full roster.
  */
 export async function shouldScopeInvestorsToCoSponsorAddedOnly(
   dealId: string,
@@ -140,9 +140,8 @@ export async function shouldScopeInvestorsToCoSponsorAddedOnly(
 }
 
 /**
- * Co-sponsors only see investors they added (`deal_lp_investor.added_by` and/or
- * `deal_member.added_by` for that contact). Applies to merged LP rows and raw
- * `deal_investment` rows (same contact + id rules).
+ * Co-sponsors see investors whose Sponsor name relationship resolves to them
+ * (including equivalent portal accounts).
  */
 export async function filterMergedLpInvestorsForCoSponsorViewer(
   dealId: string,
@@ -574,6 +573,7 @@ export async function buildLpInvestorsFromMerged(
   const withAddedBy = await enrichInvestorApiRowsWithAddedBy(
     dealId,
     investorsMerged,
+    viewerUserId,
   );
   const investors = viewerUserId?.trim()
     ? await redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(

@@ -232,38 +232,31 @@ export function viewerCanSendDealEsignTemplates(
   )
 }
 
-/** True when the Investors tab must list only investors this viewer added. */
+/** Investors tab: API scopes co-sponsors to their Sponsor-name investors. */
 export function viewerShouldSeeOnlyOwnAddedInvestors(
-  role: ViewerDealMemberRole,
+  _role: ViewerDealMemberRole,
 ): boolean {
-  return role === "co_sponsor"
+  // Backend filters by Investor → Sponsor/Co-sponsor (Sponsor name); do not re-filter here.
+  return false
 }
 
-/** Investors tab: co-sponsors only see rows they added (`addedByUserId`). */
+/** @deprecated Sponsor relationship scope is enforced by the API. */
 export function filterDealInvestorRowsForCoSponsorViewer(
   rows: DealInvestorRow[],
-  sessionUserId: string,
+  _sessionUserId: string,
 ): DealInvestorRow[] {
-  const uid = sessionUserId.trim().toLowerCase()
-  if (!uid) return []
-  return rows.filter((row) => {
-    const adderId = String(row.addedByUserId ?? "").trim().toLowerCase()
-    return adderId === uid
-  })
+  return rows
 }
 
 /**
- * Investors tab row scope: co-sponsor → own adds only; lead/admin → full roster with
- * co-sponsor-added emails hidden; everyone else → unchanged.
+ * Investors tab: co-sponsor rows are already limited to that viewer’s Sponsor-name
+ * investors by the API; lead/admin get full roster with co-sponsor emails redacted.
  */
 export function scopeDealInvestorRowsForViewer(
   rows: DealInvestorRow[],
   viewerRole: ViewerDealMemberRole,
-  sessionUserId: string,
+  _sessionUserId: string,
 ): DealInvestorRow[] {
-  if (viewerShouldSeeOnlyOwnAddedInvestors(viewerRole)) {
-    return filterDealInvestorRowsForCoSponsorViewer(rows, sessionUserId)
-  }
   return redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(rows, viewerRole)
 }
 

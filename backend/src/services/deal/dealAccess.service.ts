@@ -85,9 +85,18 @@ export async function resolveDealViewerScope(
     (isPlatformAdmin || (role === PLATFORM_USER && organizationId == null));
 
   const emailNorm = String(row?.email ?? "").trim().toLowerCase();
-  const lpDealIds = await listLpInvestorDealIdsForUserEmail(emailNorm);
+  const [lpDealIds, coSponsorDealIdsEarly] = await Promise.all([
+    listLpInvestorDealIdsForUserEmail(emailNorm),
+    listDealIdsWhereViewerIsCoSponsor(userId),
+  ]);
+  /**
+   * Co-sponsors keep syndication deal scope (co-sponsor / org roster). LP email
+   * scope must not replace that list — Investing uses `includeParticipantDeals`
+   * separately when they have an investor profile / LP rows.
+   */
   const applyLpEmailScope =
     lpDealIds.length > 0 &&
+    coSponsorDealIdsEarly.length === 0 &&
     !isPlatformAdminRole(role) &&
     !isCompanyAdminRole(role);
 
@@ -109,12 +118,11 @@ export async function resolveDealViewerScope(
     !isPlatformAdmin &&
     !isCompanyAdminRole(role)
   ) {
-    const [coOnlyDealIds, hasOtherRosterRole] = await Promise.all([
-      listDealIdsWhereViewerIsCoSponsor(userId),
-      viewerHasNonCoSponsorDealMemberRole(userId),
-    ]);
-    if (coOnlyDealIds.length > 0 && !hasOtherRosterRole) {
-      coSponsorDashboardDealIds = coOnlyDealIds;
+    const hasOtherRosterRole = await viewerHasNonCoSponsorDealMemberRole(
+      userId,
+    );
+    if (coSponsorDealIdsEarly.length > 0 && !hasOtherRosterRole) {
+      coSponsorDashboardDealIds = coSponsorDealIdsEarly;
     }
   }
 
