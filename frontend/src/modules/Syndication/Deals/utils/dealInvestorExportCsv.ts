@@ -1,8 +1,11 @@
 import { formatMemberUsername } from "../../usermanagement/memberAdminShared"
-import { investorRoleLabel } from "../constants/investor-profile"
+import {
+  dealInvestorProfileDisplayName,
+  investorRoleLabel,
+} from "../constants/investor-profile"
 import type { DealInvestorRow } from "../types/deal-investors.types"
 import {
-  displayAddedInvestorsCommittedAmount,
+  displayAddedInvestorsCommittedAmountExport,
   displayInvestorCommittedAmountExport,
 } from "../utils/offeringMoneyFormat"
 import {
@@ -67,7 +70,7 @@ export function buildDealInvestorsExportCsv(
     const roleForCsv = investorRoleLabel(row.investorRole ?? "")
     const line = [
       row.displayName,
-      row.entitySubtitle,
+      dealInvestorProfileDisplayName(row),
       roleForCsv,
       invClass,
       dealInvestorStatusForTable(row),
@@ -90,8 +93,8 @@ export function buildDealMembersTableExportCsv(rows: DealInvestorRow[]): string 
     "User",
     "Role",
     "Class",
-    "Commitment (USD)",
-    "Investors added (USD)",
+    "Commitment",
+    "Investors added",
     "Status",
     "Added by",
     "Username",
@@ -104,7 +107,7 @@ export function buildDealMembersTableExportCsv(rows: DealInvestorRow[]): string 
       investorRoleLabel(row.investorRole ?? ""),
       row.investorClass,
       displayInvestorCommittedAmountExport(row),
-      displayAddedInvestorsCommittedAmount(row),
+      displayAddedInvestorsCommittedAmountExport(row),
       dealInvestorStatusForTable(row),
       row.addedByDisplayName,
       formatMemberUsername(row.userDisplayName),

@@ -2410,6 +2410,14 @@ function normalizeInvestorRowApi(
       firstDefined(raw, ["userEmail", "user_email", "email"]),
       "—",
     ),
+    firstName: str(
+      firstDefined(raw, ["firstName", "first_name"]),
+      "",
+    ),
+    lastName: str(
+      firstDefined(raw, ["lastName", "last_name"]),
+      "",
+    ),
     contactId: str(firstDefined(raw, ["contactId", "contact_id"])),
     profileId: str(firstDefined(raw, ["profileId", "profile_id"])),
     userInvestorProfileId: str(

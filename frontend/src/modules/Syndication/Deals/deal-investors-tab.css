@@ -1133,6 +1133,32 @@
   min-width: 0;
 }
 
+.deal_inv_table_panel .um_table.deal_inv_table thead th.deal_inv_th_profile,
+.deal_inv_table_panel .um_table.deal_inv_table tbody td.deal_inv_td_profile,
+.deal_inv_table_panel .deal_inv_table.um_table_members tbody td.deal_inv_td_profile {
+  min-width: 11rem;
+  max-width: 16rem;
+  width: 14rem;
+  vertical-align: middle;
+  white-space: normal !important;
+  overflow: visible;
+  text-overflow: clip;
+  height: auto;
+  min-height: 2.75rem;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+.deal_inv_profile_full_text {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
+  font-size: 0.8125rem;
+  color: var(--um-text, #1f2937);
+}
+
 .deal_inv_table_panel .deal_inv_td_committed {
   max-width: 9em;
   font-variant-numeric: tabular-nums;
@@ -1241,6 +1267,35 @@
 }
 
 /* Invitation email column (Investors / Deal Members tables) */
+.deal_inv_td_funded {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.deal_inv_funded_badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.25em 0.55em;
+  border-radius: 0.375rem;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.deal_inv_funded_badge--approved {
+  color: #22c55e;
+  background: color-mix(in srgb, #22c55e 16%, transparent);
+  border: 1px solid color-mix(in srgb, #22c55e 32%, transparent);
+}
+
+.deal_inv_funded_badge--not_approved {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 16%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 32%, transparent);
+}
+
 .deal_inv_td_mail_status {
   white-space: nowrap;
   vertical-align: middle;

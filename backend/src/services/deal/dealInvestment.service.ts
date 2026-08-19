@@ -39,6 +39,7 @@ import {
 } from "../../constants/deal-investor-esign-status.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import { formatPortalUserDisplayLabel } from "../../utils/portalUsernameDisplay.js";
+import { userInvestorProfiles } from "../../schema/investing.schema/userProfileBook.schema.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
@@ -287,6 +288,8 @@ type ResolvedPortalUser = {
   displayName: string;
   userDisplayName: string;
   userEmail: string;
+  firstName: string;
+  lastName: string;
 };
 
 /**
@@ -312,6 +315,8 @@ export async function resolveUsersByContactIds(
         displayName: memberName(id),
         userDisplayName: "—",
         userEmail: asEmail,
+        firstName: "",
+        lastName: "",
       });
       continue;
     }
@@ -339,6 +344,8 @@ export async function resolveUsersByContactIds(
       displayName: label,
       userDisplayName: label,
       userEmail: email,
+      firstName: String(u.firstName ?? "").trim(),
+      lastName: String(u.lastName ?? "").trim(),
     });
   }
   const notInUsers = ids.filter((id) => !m.has(id.toLowerCase()));
@@ -354,16 +361,17 @@ export async function resolveUsersByContactIds(
       .where(inArray(contact.id, notInUsers));
     for (const c of contactRows) {
       const key = String(c.id).toLowerCase();
-      const displayName = [c.firstName, c.lastName]
-        .filter(Boolean)
-        .join(" ")
-        .trim()
-        || "—";
+      const firstName = String(c.firstName ?? "").trim();
+      const lastName = String(c.lastName ?? "").trim();
+      const displayName =
+        [firstName, lastName].filter(Boolean).join(" ").trim() || "—";
       const email = c.email?.trim() || "—";
       m.set(key, {
         displayName,
         userDisplayName: "—",
         userEmail: email,
+        firstName,
+        lastName,
       });
     }
   }
@@ -496,6 +504,46 @@ export async function resolveUserEmailsByIds(
 function profileLabel(profileId: string): string {
   if (!profileId?.trim()) return "—";
   return PROFILE_LABEL[profileId] ?? profileId;
+}
+
+/** Batch-resolve Investing → Profiles display names for deal investment rows. */
+export async function resolveUserInvestorProfileNamesByIds(
+  profileIds: readonly string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const uuids = [
+    ...new Set(
+      profileIds
+        .map((id) => String(id ?? "").trim())
+        .filter((id) => looksLikeUuid(id)),
+    ),
+  ];
+  if (uuids.length === 0) return out;
+  const rows = await db
+    .select({
+      id: userInvestorProfiles.id,
+      profileName: userInvestorProfiles.profileName,
+    })
+    .from(userInvestorProfiles)
+    .where(inArray(userInvestorProfiles.id, uuids));
+  for (const r of rows) {
+    const name = String(r.profileName ?? "").trim();
+    if (!name) continue;
+    out.set(String(r.id).toLowerCase(), name);
+  }
+  return out;
+}
+
+function withUserInvestorProfileName<T extends { userInvestorProfileId?: string }>(
+  row: T,
+  namesById: Map<string, string>,
+): T & { userInvestorProfileName?: string } {
+  const id = String(row.userInvestorProfileId ?? "")
+    .trim()
+    .toLowerCase();
+  const name = id ? namesById.get(id) : undefined;
+  if (!name) return row;
+  return { ...row, userInvestorProfileName: name };
 }
 
 function userForContact(contactId: string): {
@@ -746,6 +794,8 @@ export function mapRowToInvestorApi(
       entitySubtitle: profileLabel(row.profileId),
       userDisplayName: "—",
       userEmail: "—",
+      firstName: "",
+      lastName: "",
       investorClass: row.investorClass?.trim() || "—",
       investorRole: row.investor_role?.trim() || "",
       status: row.status?.trim() || "—",
@@ -808,6 +858,8 @@ export function mapRowToInvestorApi(
     entitySubtitle: profileLabel(row.profileId),
     userDisplayName,
     userEmail,
+    firstName: String(res?.firstName ?? "").trim(),
+    lastName: String(res?.lastName ?? "").trim(),
     investorClass: row.investorClass?.trim() || "—",
     investorRole: row.investor_role?.trim() || "",
     status: row.status?.trim() || "—",
@@ -1084,8 +1136,13 @@ export async function mapDealInvestmentsToInvestorApi(
       ? await enrichInvestorRolesForDealRows(dealId, rows)
       : rows;
   const resolved = await resolveUsersByContactIds(enriched);
+  const profileNames = await resolveUserInvestorProfileNamesByIds(
+    enriched.map((r) => String(r.userInvestorProfileId ?? "")),
+  );
   if (!dealId || enriched.length === 0) {
-    return enriched.map((r) => mapRowToInvestorApi(r, resolved, {}));
+    return enriched.map((r) =>
+      withUserInvestorProfileName(mapRowToInvestorApi(r, resolved, {}), profileNames),
+    );
   }
   const emptyLpSet = new Set<string>();
   const flags = await loadInvitationMailSentFlags(dealId, enriched, emptyLpSet);
@@ -1098,9 +1155,12 @@ export async function mapDealInvestmentsToInvestorApi(
   ];
   const approverNames = await resolveUserDisplayNamesByIds(approverIds);
   return enriched.map((r, i) => {
-    const base = mapRowToInvestorApi(r, resolved, {
-      invitationMailSent: flags[i] === true,
-    });
+    const base = withUserInvestorProfileName(
+      mapRowToInvestorApi(r, resolved, {
+        invitationMailSent: flags[i] === true,
+      }),
+      profileNames,
+    );
     const approverId = String(r.fundApprovedBy ?? "").trim().toLowerCase();
     const approverDisplay =
       approverId && approverNames.has(approverId)

@@ -69,7 +69,7 @@ import {
   type DealInvestorViewDistributionContext,
 } from "../investors/DealInvestorViewModal"
 import {
-  investorProfileLabel,
+  dealInvestorProfileDisplayName,
 } from "../../constants/investor-profile"
 import { FormTooltip } from "../../../../../common/components/form-tooltip/FormTooltip"
 import { isPlatformAdmin } from "../../../../../common/auth/roleUtils"
@@ -150,17 +150,12 @@ function blurFormatPercentClamped(raw: string): string {
   return Math.max(0, Math.min(100, n)).toFixed(2)
 }
 
-/** My Profiles display name, then entity subtitle, then profile type label. */
+/** Profile column: `profile_name` only (not profile type). */
 function distributionInvestorProfileLabel(
   row: DealInvestorRow | null | undefined,
 ): string {
   if (!row) return "—"
-  const named = String(row.userInvestorProfileName ?? "").trim()
-  if (named) return named
-  const subtitle = String(row.entitySubtitle ?? "").trim()
-  if (subtitle && subtitle !== "—") return subtitle
-  const fromId = investorProfileLabel(String(row.profileId ?? "").trim())
-  return fromId !== "—" ? fromId : "—"
+  return dealInvestorProfileDisplayName(row)
 }
 
 function linesFromStoredPayments(
