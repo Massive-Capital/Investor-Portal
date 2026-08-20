@@ -1332,3 +1332,19 @@
   background: color-mix(in srgb, var(--portal-border, #e2e8f0) 80%, transparent);
   border: 1px solid var(--portal-border, #e2e8f0);
 }
+
+.deal_inv_mail_status_badge--sending {
+  color: var(--portal-text, #0f172a);
+  background: color-mix(in srgb, var(--portal-primary, #2563eb) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--portal-primary, #2563eb) 28%, transparent);
+}
+
+.deal_inv_mail_status_spin {
+  animation: deal_inv_mail_status_spin 0.8s linear infinite;
+}
+
+@keyframes deal_inv_mail_status_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
