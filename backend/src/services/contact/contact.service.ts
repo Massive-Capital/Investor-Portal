@@ -776,7 +776,7 @@ async function viewerIncludesSameOrganizationAssociatedInvestors(
 ): Promise<boolean> {
   if (isCompanyAdminRole(roleForScope)) return true;
   if (await viewerIsLeadOrAdminSponsorOnAnyDeal(viewerUserId)) return true;
-  return viewerShouldSeeOnlySelfCreatedContacts(viewerUserId, roleForScope);
+  return false;
 }
 
 /**
@@ -786,11 +786,10 @@ async function viewerIncludesSameOrganizationAssociatedInvestors(
  *   rows (`organization_id` null) whose `created_by` is anyone in that org.
  * - No company / org: only contacts they created themselves.
  *
- * **Lead / Admin / Co-sponsor** (and company admin): CRM rows for investors whose
+ * **Lead / Admin** (and company admin): CRM rows for investors whose
  * Investors-tab **Sponsor name** (`added_by`) is this viewer, or (same company)
- * belongs to their organization — even if that Lead/Admin/Co-sponsor is not yet
- * on the deal roster. Portal / self-registered investor rows are included for
- * those associated ids. Co-sponsors still do not see the rest of the org CRM.
+ * belongs to their organization. Co-sponsors see only investors whose Sponsor
+ * name is them, plus contacts they created — not the rest of the org CRM.
  *
  * Other roles see external CRM rows only, plus investors they personally added.
  */
@@ -813,9 +812,7 @@ export async function listContactsForViewerScoped(
       ctx.roleForScope,
     );
   const includeSameOrganization =
-    isCompanyAdminRole(ctx.roleForScope) ||
-    sponsorTeamSeesFullCrm ||
-    coSponsorNarrow;
+    isCompanyAdminRole(ctx.roleForScope) || sponsorTeamSeesFullCrm;
 
   const vis =
     isCompanyAdminRole(ctx.roleForScope) ||

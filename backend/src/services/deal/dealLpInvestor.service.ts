@@ -31,9 +31,16 @@ import {
   resolveInvestorClassForDealInvestment,
   resolveUserInvestorProfileNamesByIds,
   resolveUsersByContactIds,
+  rowIsGeneralPartnerForRoster,
 } from "./dealInvestment.service.js";
+import { listInvestorClassesByDealId } from "./dealInvestorClass.service.js";
 import type { DealViewerScope } from "./dealForm.service.js";
-import { resolveViewerDealMemberRoleOnDeal } from "./dealMemberScope.service.js";
+import {
+  listDealIdsWhereViewerIsCoSponsor,
+  listDealIdsWhereViewerIsLeadOrAdminSponsor,
+  listEquivalentPortalUserIdsForUser,
+  resolveViewerDealMemberRoleOnDeal,
+} from "./dealMemberScope.service.js";
 import { resolveInvestNowViewerContactOnDeal } from "./dealInvestNowViewerContact.service.js";
 
 function normalizeContactKey(raw: string): string {
@@ -143,6 +150,45 @@ export async function filterMergedLpInvestorsForCoSponsorViewer(
   merged: DealInvestmentRow[],
 ): Promise<DealInvestmentRow[]> {
   return filterInvestorRowsVisibleToCoSponsor(dealId, viewerUserId, merged);
+}
+
+export type CoSponsorVisibleInvestorMatchKeys = {
+  investmentIds: Set<string>;
+  contactIds: Set<string>;
+  emails: Set<string>;
+};
+
+/**
+ * Keys of investors a co-sponsor may pay out. Returns null when the viewer
+ * should see the full roster (lead / admin / not co-sponsor-scoped).
+ */
+export async function listCoSponsorVisibleInvestorMatchKeys(
+  dealId: string,
+  viewerUserId: string | null | undefined,
+): Promise<CoSponsorVisibleInvestorMatchKeys | null> {
+  const uid = String(viewerUserId ?? "").trim();
+  if (!uid) return null;
+  if (!(await shouldScopeInvestorsToCoSponsorAddedOnly(dealId, uid))) {
+    return null;
+  }
+  const rows = await listDealInvestmentsByDealId(dealId);
+  const visible = await filterInvestorRowsVisibleToCoSponsor(dealId, uid, rows);
+  const resolved = await resolveUsersByContactIds(visible);
+  const investmentIds = new Set<string>();
+  const contactIds = new Set<string>();
+  const emails = new Set<string>();
+  for (const row of visible) {
+    const mapped = mapRowToInvestorApi(row, resolved);
+    const invId = String(mapped.id ?? row.id ?? "").trim().toLowerCase();
+    const contactId = String(mapped.contactId ?? row.contactId ?? "")
+      .trim()
+      .toLowerCase();
+    const email = String(mapped.userEmail ?? "").trim().toLowerCase();
+    if (invId) investmentIds.add(invId);
+    if (contactId) contactIds.add(contactId);
+    if (email.includes("@")) emails.add(email);
+  }
+  return { investmentIds, contactIds, emails };
 }
 
 const LP_INVESTOR_TABLE_ROLE = "LP Investor";
@@ -277,6 +323,7 @@ function isDealMembersSponsorRole(raw: string | null | undefined): boolean {
 /**
  * Investors tab: each LP commitment, plus Lead/Admin/Co only when they are also
  * investors (on the LP roster or have a positive commitment).
+ * General partners (GP role or GP class) are listed on Deal Members → General Partners.
  */
 export async function listMergedLpInvestorsForDeal(
   dealId: string,
@@ -328,6 +375,8 @@ export async function listMergedLpInvestorsForDeal(
       rosterByCanonical.set(c, m);
   }
 
+  const classes = await listInvestorClassesByDealId(dealId);
+
   const rows: DealInvestmentRow[] = [];
   const coveredCanonical = new Set<string>();
 
@@ -335,6 +384,9 @@ export async function listMergedLpInvestorsForDeal(
     const k = normalizeContactKey(inv.contactId ?? "");
     const canonical = k ? canonicalOf(k) : "";
     const role = inv.investor_role ?? "";
+    if (rowIsGeneralPartnerForRoster(role, inv.investorClass, classes)) {
+      continue;
+    }
     const onLpRoster = Boolean(canonical && rosterByCanonical.has(canonical));
     const lpRole = isLpInvestorRole(role);
     const sponsorRole = isDealMembersSponsorRole(role);
@@ -352,6 +404,9 @@ export async function listMergedLpInvestorsForDeal(
 
   for (const [canonical, m] of rosterByCanonical) {
     if (coveredCanonical.has(canonical)) continue;
+    if (rowIsGeneralPartnerForRoster(m.role, m.investorClass, classes)) {
+      continue;
+    }
     rows.push(syntheticInvestmentFromDealLpInvestor(m));
     coveredCanonical.add(canonical);
   }
@@ -1025,6 +1080,8 @@ const DEAL_ID_UUID_RE =
 
 /**
  * Distinct LP roster rows in `deal_lp_investor` per deal (one row per contact), scoped by viewer:
+ * - Co-sponsor on a deal (and not Lead/Admin on that deal): rows whose Sponsor name
+ *   (`added_by`) is this viewer or an equivalent portal account — not the full roster.
  * - Platform admin, unauthenticated-style callers (`scope` null), and LP-email–scoped investors:
  *   total rows per deal.
  * - Company users (sponsors, company admin, etc.): rows where `added_by` references a user whose
@@ -1046,6 +1103,39 @@ export async function countDealLpInvestorsByDealIdsForViewer(
   ];
   if (uuidIds.length === 0) return map;
 
+  const viewerUserId = String(scope?.userId ?? "").trim();
+  let coSponsorOnlyDealIds: string[] = [];
+  if (viewerUserId && scope && !scope.isPlatformAdmin) {
+    const [coIds, leadIds] = await Promise.all([
+      listDealIdsWhereViewerIsCoSponsor(viewerUserId),
+      listDealIdsWhereViewerIsLeadOrAdminSponsor(viewerUserId),
+    ]);
+    const leadSet = new Set(leadIds);
+    const coOnly = new Set(coIds.filter((id) => !leadSet.has(id)));
+    coSponsorOnlyDealIds = uuidIds.filter((id) => coOnly.has(id));
+  }
+
+  if (coSponsorOnlyDealIds.length > 0) {
+    const equiv = await listEquivalentPortalUserIdsForUser(viewerUserId);
+    const sponsorIds = equiv.length > 0 ? equiv : [viewerUserId];
+    const res = await pool.query<{ deal_id: string; cnt: string }>(
+      `SELECT lp.deal_id::text, COUNT(*)::int AS cnt
+       FROM deal_lp_investor lp
+       WHERE lp.deal_id = ANY($1::uuid[])
+         AND lp.added_by = ANY($2::uuid[])
+       GROUP BY lp.deal_id`,
+      [coSponsorOnlyDealIds, sponsorIds],
+    );
+    for (const row of res.rows) {
+      map.set(row.deal_id, Number(row.cnt));
+    }
+  }
+
+  const remainingIds = uuidIds.filter(
+    (id) => !coSponsorOnlyDealIds.includes(id),
+  );
+  if (remainingIds.length === 0) return map;
+
   const useTotalRosterCount =
     scope == null ||
     scope.isPlatformAdmin === true ||
@@ -1058,7 +1148,7 @@ export async function countDealLpInvestorsByDealIdsForViewer(
        FROM deal_lp_investor
        WHERE deal_id = ANY($1::uuid[])
        GROUP BY deal_id`,
-      [uuidIds],
+      [remainingIds],
     );
     for (const row of res.rows) {
       map.set(row.deal_id, Number(row.cnt));
@@ -1078,7 +1168,7 @@ export async function countDealLpInvestorsByDealIdsForViewer(
      WHERE lp.deal_id = ANY($1::uuid[])
        AND adder.organization_id = $2::uuid
      GROUP BY lp.deal_id`,
-    [uuidIds, orgId],
+    [remainingIds, orgId],
   );
   for (const row of res.rows) {
     map.set(row.deal_id, Number(row.cnt));

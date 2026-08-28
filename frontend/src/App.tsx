@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
 import "./common/theme/portal-tabs.css";
 import { ThemeProvider } from "./common/theme/ThemeProvider";
@@ -7,6 +7,7 @@ import { LpInvestorShellGuard } from "@/modules/Investing";
 import { RequireAuth } from "./common/auth/RequireAuth";
 import {
   canAccessCompanyPage,
+  isDealSponsorSessionUser,
   isLpInvestorSessionUser,
   isPlatformAdmin,
 } from "./common/auth/roleUtils";
@@ -94,12 +95,18 @@ function CompanyRoute() {
 /** Syndication workspace settings; investing portal opens My account instead. */
 function SettingsRoute() {
   const { mode } = usePortalMode();
+  const location = useLocation();
   const token = sessionStorage.getItem(SESSION_BEARER_KEY);
   if (!token) return <Navigate to="/signin" replace />;
   if (mode === "investing" || isLpInvestorSessionUser()) {
     return <Navigate to="/account" replace />;
   }
-  if (!canAccessCompanyPage()) return <Navigate to="/account" replace />;
+  const billing = new URLSearchParams(location.search).get("billing");
+  const leadSponsorPaying =
+    billing === "pay" && isDealSponsorSessionUser();
+  if (!canAccessCompanyPage() && !leadSponsorPaying) {
+    return <Navigate to="/account" replace />;
+  }
   return <CompanyPage />;
 }
 

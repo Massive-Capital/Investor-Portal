@@ -214,10 +214,12 @@ export function viewerCanUploadDealEsignTemplates(
   return role === "lead_sponsor" || role === "admin_sponsor"
 }
 
-/** Investors tab: approve fund — lead or admin sponsor only. */
+/** Investors tab: approve fund — lead, admin sponsor, or company / platform admin. */
 export function viewerCanApproveDealFund(
   role: ViewerDealMemberRole,
+  opts?: { isWorkspaceAdmin?: boolean },
 ): boolean {
+  if (opts?.isWorkspaceAdmin) return true
   return role === "lead_sponsor" || role === "admin_sponsor"
 }
 
@@ -280,6 +282,7 @@ export function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
 /** Which deal detail tab ids the viewer may open, based on roster role. */
 export function visibleDealDetailTabIds(
   role: ViewerDealMemberRole,
+  opts?: { isWorkspaceAdmin?: boolean },
 ): Set<string> {
   const all = new Set([
     "offering_details",
@@ -290,13 +293,16 @@ export function visibleDealDetailTabIds(
     "distributions",
     "deal_members",
   ])
+  // Company / platform admin keep Deal Members even if they are also an LP on the deal.
+  if (opts?.isWorkspaceAdmin) return all
   if (role === null) return all
-  if (
-    role === "lead_sponsor" ||
-    role === "admin_sponsor" ||
-    role === "co_sponsor"
-  ) {
+  if (role === "lead_sponsor" || role === "admin_sponsor") {
     return all
+  }
+  if (role === "co_sponsor") {
+    const s = new Set(all)
+    s.delete("deal_members")
+    return s
   }
   if (role === "lp_investor") {
     const s = new Set(all)

@@ -60,6 +60,7 @@ export interface InvestorDistributionPayment {
   className: string
   capital: string
   percentOfClass: string
+  percentOfDeal?: string
   payment: string
 }
 

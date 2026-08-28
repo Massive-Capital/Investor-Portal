@@ -24,9 +24,9 @@ import {
 import {
   dealHasInvestNowDraftForViewer,
   firstInvestNowDraftRowForViewer,
+  investNowProgressForViewer,
   isInvestNowDraftInvestorRow,
 } from "@/modules/Investing/pages/invest/investNowDraftUtils"
-import { investNowDraftProgressFromInvestorRow } from "@/modules/Investing/pages/invest/investNowDraftProgress"
 import {
   fetchDealById,
   fetchDealInvestors,
@@ -270,9 +270,10 @@ function listRowFromDealAndInvestors(
           profileId: String(draftRow.profileId ?? "").trim() || undefined,
         }
       : undefined,
-    investNowDraftProgress: draftRow
-      ? investNowDraftProgressFromInvestorRow(draftRow)
-      : undefined,
+    investNowDraftProgress: investNowProgressForViewer(
+      investors,
+      viewerEmailNorm,
+    ),
     archived: Boolean(listRow.archived),
     dealType: listRow.dealType,
     secType: listRow.secType,

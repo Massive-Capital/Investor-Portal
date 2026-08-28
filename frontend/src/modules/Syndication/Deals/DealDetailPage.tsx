@@ -24,6 +24,7 @@ import {
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { getSessionUserEmail } from "../../../common/auth/sessionUserEmail"
 import { getSessionUserId } from "../../../common/auth/sessionUserId"
+import { isCompanyAdmin, isPlatformAdmin } from "../../../common/auth/roleUtils"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
 import {
   buildDealOfferingPreviewShareUrl,
@@ -41,6 +42,7 @@ import {
 } from "./api/dealsApi"
 import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
 import { DealsPageCenteredLoader } from "./components/DealsPageCenteredLoader"
+import { DealSaasPaywallModal } from "./components/DealSaasPaywallModal"
 import {
   dealInvestNowPath,
   EMPTY_INVESTORS_PAYLOAD,
@@ -61,6 +63,11 @@ import {
   type DealInvestorsTabHandle,
 } from "./tabs/investors/DealInvestorsTab"
 import { DealMembersTab } from "./tabs/deal_members"
+import {
+  dealInvestmentModalEntryFromRosterKind,
+  dealRosterKindFromRole,
+  type DealInvestmentModalEntry,
+} from "./constants/investor-profile"
 import { DealEsignTemplatesTab } from "./components/DealEsignTemplatesTab"
 import { DealDocumentsTab } from "./tabs/documents/DealDocumentsTab"
 import { DealOfferingDetailsTab } from "./tabs/offering_details/DealOfferingDetailsTab"
@@ -83,6 +90,8 @@ import {
   type ViewerDealMemberRole,
 } from "./utils/dealDetailTabVisibility"
 import { toast } from "../../../common/components/Toast"
+import { getSessionOrganizationCompanyId } from "../../../common/auth/sessionOrganization"
+import { syncExtraCompanyUserCheckout } from "../company/companyBillingApi"
 import {
   isDealStageDraft,
   isDealStageOfferingShareBlocked,
@@ -90,6 +99,10 @@ import {
 import { dealHasOfferingShareLink } from "./utils/offeringOverviewForm"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { notifyDealsListRefetch } from "./createDealFormDraftStorage"
+import {
+  isDealSaasPaymentRequiredError,
+  type DealSaasPaywallDeal,
+} from "./utils/dealSaasAccess"
 import {
   DEAL_DETAIL_TAB_QUERY_PARAM,
   isOfferingDetailsSectionId,
@@ -127,7 +140,7 @@ const DEAL_DETAIL_TABS: DealDetailTabDef[] = [
   { id: "investors", label: "Investors", icon: Users },
   { id: "investor_communication", label: "Investor Communication ", icon: BarChart3 },
   { id: "distributions", label: "Distributions", icon: BarChart3 },
-  { id: "deal_members", label: "Deal Members", icon: Users },
+  { id: "deal_members", label: "General Partners", icon: Users },
 ]
 
 export function DealDetailPage() {
@@ -145,9 +158,8 @@ export function DealDetailPage() {
   const [sharedInvestmentModalOpen, setSharedInvestmentModalOpen] =
     useState(false)
   /** Which flow opened the shared modal — drives “Add Member” vs “Add Investor” title. */
-  const [investmentModalEntry, setInvestmentModalEntry] = useState<
-    "member" | "investor"
-  >("member")
+  const [investmentModalEntry, setInvestmentModalEntry] =
+    useState<DealInvestmentModalEntry>("member")
   /** Add-member modal: restore session draft (draft row) vs empty form (“Add Member” button). */
   const [restoreAddMemberSessionDraft, setRestoreAddMemberSessionDraft] =
     useState(true)
@@ -161,6 +173,8 @@ export function DealDetailPage() {
   const dealInvestorsTabRef = useRef<DealInvestorsTabHandle>(null)
   const [deal, setDeal] = useState<DealRecord | null | undefined>(undefined)
   const [dealDetailApi, setDealDetailApi] = useState<DealDetailApi | null>(null)
+  const [saasPaywallDeal, setSaasPaywallDeal] =
+    useState<DealSaasPaywallDeal | null>(null)
 
   const handleDealPersisted = useCallback((d: DealDetailApi) => {
     setDealDetailApi(d)
@@ -224,9 +238,14 @@ export function DealDetailPage() {
     sessionUserId,
   ])
 
+  const isWorkspaceAdmin = isCompanyAdmin() || isPlatformAdmin()
+
   const viewerDealTabIds = useMemo(
-    () => visibleDealDetailTabIds(viewerDealMemberRole),
-    [viewerDealMemberRole],
+    () =>
+      visibleDealDetailTabIds(viewerDealMemberRole, {
+        isWorkspaceAdmin,
+      }),
+    [viewerDealMemberRole, isWorkspaceAdmin],
   )
 
   const canUploadEsignTemplates = useMemo(
@@ -240,8 +259,9 @@ export function DealDetailPage() {
   )
 
   const canApproveFund = useMemo(
-    () => viewerCanApproveDealFund(viewerDealMemberRole),
-    [viewerDealMemberRole],
+    () =>
+      viewerCanApproveDealFund(viewerDealMemberRole, { isWorkspaceAdmin }),
+    [viewerDealMemberRole, isWorkspaceAdmin],
   )
 
   const [dealHasEsignDocuments, setDealHasEsignDocuments] = useState(false)
@@ -314,6 +334,36 @@ export function DealDetailPage() {
     setActiveTab((prev) => (prev === tabFromUrl ? prev : tabFromUrl))
   }, [searchParams, dealDetailTabsVisible])
 
+  useEffect(() => {
+    const extraUser = searchParams.get("extraCompanyUser")?.trim()
+    const sessionId = searchParams.get("session_id")?.trim() ?? ""
+    if (extraUser !== "success" || !sessionId) return
+    const companyId = getSessionOrganizationCompanyId()?.trim() ?? ""
+    if (!companyId) return
+    let cancelled = false
+    void syncExtraCompanyUserCheckout(companyId, sessionId).then((result) => {
+      if (cancelled) return
+      if (result.ok) {
+        toast.success(
+          "Extra company user paid",
+          "You can save the additional team member now.",
+        )
+      }
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete("extraCompanyUser")
+          next.delete("session_id")
+          return next
+        },
+        { replace: true },
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [searchParams, setSearchParams])
+
   const selectDealTab = useCallback(
     (tabId: string) => {
       setActiveTab(tabId)
@@ -346,6 +396,7 @@ export function DealDetailPage() {
     let cancelled = false
     setDeal(undefined)
     setDealDetailApi(null)
+    setSaasPaywallDeal(null)
     void (async () => {
       try {
         const d = await fetchDealById(id)
@@ -361,8 +412,14 @@ export function DealDetailPage() {
           setDealDetailApi(d)
           setDeal(dealDetailApiToRecord(d))
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          if (mode !== "investing" && isDealSaasPaymentRequiredError(err)) {
+            setSaasPaywallDeal({
+              ...err.payload,
+              id: err.payload.id || id,
+            })
+          }
           setDeal(null)
           setDealDetailApi(null)
         }
@@ -665,13 +722,31 @@ export function DealDetailPage() {
   if (!deal)
     return (
       <div className="deals_list_page deals_detail_page">
-        <p className="deals_list_not_found">
-          Deal not found.{" "}
-          <Link to={dealsListBackPath} className="deals_list_inline_back">
-            <ArrowLeft size={18} strokeWidth={2} aria-hidden />
-            Back to deals
-          </Link>
-        </p>
+        {saasPaywallDeal ? (
+          <>
+            <p className="deals_list_not_found">
+              {saasPaywallDeal.dealName.trim()
+                ? `Pay monthly SaaS (MRR) for “${saasPaywallDeal.dealName.trim()}” to continue.`
+                : "Pay monthly SaaS (MRR) for this deal to continue."}{" "}
+              <Link to={dealsListBackPath} className="deals_list_inline_back">
+                <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+                Back to deals
+              </Link>
+            </p>
+            <DealSaasPaywallModal
+              deal={saasPaywallDeal}
+              onClose={() => navigate(dealsListBackPath)}
+            />
+          </>
+        ) : (
+          <p className="deals_list_not_found">
+            Deal not found.{" "}
+            <Link to={dealsListBackPath} className="deals_list_inline_back">
+              <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+              Back to deals
+            </Link>
+          </p>
+        )}
       </div>
     )
 
@@ -683,6 +758,7 @@ export function DealDetailPage() {
   return (
     <div className="deals_list_page deals_detail_page">
       {showSyndicatingDealChrome ? (
+      <div className="deals_detail_sticky_chrome">
       <header className="deals_list_head">
         <DealAnnouncementBanner
           title={announcementTitle}
@@ -727,23 +803,7 @@ export function DealDetailPage() {
           </button>
         </div>
       </header>
-      ) : null}
 
-      {mode === "investing" && dealDetailApi ? (
-        <>
-          <LpDealDetailsPage
-            deal={dealDetailApi}
-            classes={investingOfferingClasses}
-            investorsPayload={investingOfferingInvestors}
-            onInvestNow={openInvestNow}
-            backTo={dealsListBackPath}
-            viewerRoleLabel={viewerDealInvestorRoleRaw}
-          />
-        </>
-      ) : null}
-
-      {showSyndicatingDealChrome ? (
-        <>
       <div className="um_members_tabs_outer deals_tabs_outer um_segmented_tabs_outer">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
@@ -787,7 +847,24 @@ export function DealDetailPage() {
           </div>
         </TabsScrollStrip>
       </div>
+      </div>
+      ) : null}
 
+      {mode === "investing" && dealDetailApi ? (
+        <>
+          <LpDealDetailsPage
+            deal={dealDetailApi}
+            classes={investingOfferingClasses}
+            investorsPayload={investingOfferingInvestors}
+            onInvestNow={openInvestNow}
+            backTo={dealsListBackPath}
+            viewerRoleLabel={viewerDealInvestorRoleRaw}
+          />
+        </>
+      ) : null}
+
+      {showSyndicatingDealChrome ? (
+        <>
       <div
         className={
           activeTab === "deal_members"
@@ -814,14 +891,20 @@ export function DealDetailPage() {
                 investorsRefreshKey={dealMembersRefreshKey}
                 invitationMailStatusByRowId={invitationMailSentByRowId}
                 invitationMailSendingByRowId={invitationMailSendingByRowId}
-                onAddMember={() => {
-                  setInvestmentModalEntry("member")
+                onAddMember={(kind) => {
+                  setInvestmentModalEntry(
+                    dealInvestmentModalEntryFromRosterKind(kind),
+                  )
                   setRestoreAddMemberSessionDraft(false)
                   setAddInvestmentOpen(true)
                 }}
                 onEditMember={(row: DealInvestorRow) => {
+                  setInvestmentModalEntry(
+                    dealInvestmentModalEntryFromRosterKind(
+                      dealRosterKindFromRole(row.investorRole),
+                    ),
+                  )
                   if (row.id === ADD_MEMBER_DRAFT_ROW_ID) {
-                    setInvestmentModalEntry("member")
                     setRestoreAddMemberSessionDraft(true)
                     setAddInvestmentOpen(true)
                     return

@@ -187,6 +187,8 @@ export type NestedPreviewDocument = {
    * on at least one commitment for this deal (Funding Information PDFs).
    */
   requiresProfileInvestment?: boolean
+  /** When Shared With recipients were last set (ISO). Used for investor inbox timestamps. */
+  sharedAt?: string
   /** Present on auto-synced investor eSign PDFs in Investor e signatures section. */
   esignSignatureRequestId?: string
   esignInvestorRowId?: string
@@ -767,6 +769,11 @@ function normalizeNested(
       : undefined
   const esignAwaitingSponsorSignature = Boolean(raw.esignAwaitingSponsorSignature)
   const esignSponsorSigned = Boolean(raw.esignSponsorSigned)
+  const sharedAtRaw =
+    typeof raw.sharedAt === "string" && raw.sharedAt.trim()
+      ? raw.sharedAt.trim()
+      : ""
+  const sharedAtMs = sharedAtRaw ? Date.parse(sharedAtRaw) : Number.NaN
   return applyHiddenByDefaultWhenNoAudience({
     id,
     name,
@@ -777,6 +784,7 @@ function normalizeNested(
     sharedInvestorIds,
     sharedWithAllInvestors,
     sharedSponsorUserIds,
+    ...(Number.isFinite(sharedAtMs) ? { sharedAt: new Date(sharedAtMs).toISOString() } : {}),
     ...(sharedWithScope ? { sharedWithScope } : {}),
     ...(requiresProfileInvestment ? { requiresProfileInvestment: true } : {}),
     ...(esignSignatureRequestId ? { esignSignatureRequestId } : {}),

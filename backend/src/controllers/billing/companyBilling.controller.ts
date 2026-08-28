@@ -5,14 +5,23 @@ import {
   createCompanyCheckoutSession,
   createCompanySetupIntent,
   createCompanySubscriptionPaymentElement,
+  createExtraCompanyUserCheckoutSession,
   getCompanyBillingStatus,
   listCompanyPaymentMethods,
   listCompanyStripeInvoices,
+  payCompanyDealWithSavedMethod,
+  payExtraCompanyUserWithSavedMethod,
+  resolveCompanyBillingAccess,
   syncCompanyBillingFromCheckoutSession,
   syncCompanyPaymentMethodsFromStripe,
   syncCompanySubscriptionPayment,
+  syncExtraCompanyUserFromCheckoutSession,
   userCanManageCompanyBilling,
 } from "../../services/billing/companyBilling.service.js";
+import {
+  listDealBillingForCompany,
+  updateDealBillingCycle,
+} from "../../services/billing/dealBilling.service.js";
 import { getStripePublicConfig } from "../../config/stripe.config.js";
 
 function paramStr(v: string | string[] | undefined): string {
@@ -23,6 +32,16 @@ function paramStr(v: string | string[] | undefined): string {
 
 function bodyString(v: unknown): string {
   return typeof v === "string" ? v.trim() : v != null ? String(v).trim() : "";
+}
+
+function extraCompanyUsersFromBody(body: Record<string, unknown>): number | undefined {
+  const raw = body.extraCompanyUsers ?? body.extra_company_users ?? body.quantity;
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(0, Math.floor(raw));
+  if (typeof raw === "string" && raw.trim()) {
+    const n = Number.parseInt(raw.trim(), 10);
+    return Number.isFinite(n) ? Math.max(0, n) : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -49,16 +68,21 @@ export async function getCompanyBilling(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canView) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
-  const status = await getCompanyBillingStatus(companyId);
+  const status = await getCompanyBillingStatus(companyId, {
+    dealIds: access.dealIds,
+    canManage: access.canManage,
+    canPay: access.canPay,
+    viewerScope: access.viewerScope,
+  });
   if (!status) {
     res.status(404).json({ message: "Company not found" });
     return;
@@ -71,7 +95,8 @@ export async function getCompanyBilling(
  * Body: {
  *   planId: "starter" | "running" | "growth",
  *   seatBand?: "5" | "10" | "10plus",
- *   billingCycle: "monthly" | "annual" | "annually" | "yearly"
+ *   billingCycle: "monthly" | "annual" | "annually" | "yearly",
+ *   dealId: uuid
  * }
  */
 export async function postCompanyBillingCheckout(
@@ -84,12 +109,12 @@ export async function postCompanyBillingCheckout(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canPay) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
@@ -100,6 +125,8 @@ export async function postCompanyBillingCheckout(
   const billingCycle = bodyString(
     body.billingCycle ?? body.billing_cycle ?? body.cycle,
   );
+  const dealId = bodyString(body.dealId ?? body.deal_id);
+  const extraCompanyUsers = extraCompanyUsersFromBody(body);
 
   const result = await createCompanyCheckoutSession({
     companyId,
@@ -107,12 +134,74 @@ export async function postCompanyBillingCheckout(
     planId,
     seatBand: seatBand || undefined,
     billingCycle,
+    dealId,
+    extraCompanyUsers,
+    allowedDealIds: access.dealIds,
   });
   if (!result.ok) {
     res.status(result.status).json({ message: result.message });
     return;
   }
   res.status(200).json({ url: result.url });
+}
+
+/**
+ * POST /companies/:companyId/billing/pay-saved
+ * Start deal SaaS using a saved card / bank account (or the caller can use Checkout).
+ */
+export async function postCompanyBillingPaySaved(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canPay) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const planId = bodyString(body.planId ?? body.plan_id);
+  const seatBand = bodyString(body.seatBand ?? body.seat_band ?? body.seats);
+  const billingCycle = bodyString(
+    body.billingCycle ?? body.billing_cycle ?? body.cycle,
+  );
+  const dealId = bodyString(body.dealId ?? body.deal_id);
+  const paymentMethodId = bodyString(
+    body.paymentMethodId ??
+      body.payment_method_id ??
+      body.stripePaymentMethodId,
+  );
+  const extraCompanyUsers = extraCompanyUsersFromBody(body);
+
+  const result = await payCompanyDealWithSavedMethod({
+    companyId,
+    actorUserId: user.id,
+    planId,
+    seatBand: seatBand || undefined,
+    billingCycle,
+    dealId,
+    extraCompanyUsers,
+    paymentMethodId,
+    allowedDealIds: access.dealIds,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(200).json({
+    ...(result.status ?? {}),
+    paidDealId: result.paidDealId,
+  });
 }
 
 /**
@@ -129,12 +218,12 @@ export async function postCompanyBillingPaymentElement(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canPay) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
@@ -145,6 +234,8 @@ export async function postCompanyBillingPaymentElement(
   const billingCycle = bodyString(
     body.billingCycle ?? body.billing_cycle ?? body.cycle,
   );
+  const dealId = bodyString(body.dealId ?? body.deal_id);
+  const extraCompanyUsers = extraCompanyUsersFromBody(body);
 
   const result = await createCompanySubscriptionPaymentElement({
     companyId,
@@ -152,6 +243,9 @@ export async function postCompanyBillingPaymentElement(
     planId,
     seatBand: seatBand || undefined,
     billingCycle,
+    dealId,
+    extraCompanyUsers,
+    allowedDealIds: access.dealIds,
   });
   if (!result.ok) {
     res.status(result.status).json({ message: result.message });
@@ -225,12 +319,12 @@ export async function postCompanyBillingSyncPayment(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canPay) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
@@ -252,7 +346,12 @@ export async function postCompanyBillingSyncPayment(
     res.status(result.status).json({ message: result.message });
     return;
   }
-  res.status(200).json(result.status);
+  res.status(200).json({
+    ...result.status,
+    canManage: access.canManage,
+    canPay: access.canPay,
+    viewerScope: access.viewerScope,
+  });
 }
 
 /**
@@ -304,12 +403,12 @@ export async function postCompanyBillingSyncCheckout(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canPay) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
@@ -326,7 +425,13 @@ export async function postCompanyBillingSyncCheckout(
     res.status(result.status).json({ message: result.message });
     return;
   }
-  res.status(200).json(result.status);
+  res.status(200).json({
+    ...result.status,
+    paidDealId: result.paidDealId,
+    canManage: access.canManage,
+    canPay: access.canPay,
+    viewerScope: access.viewerScope,
+  });
 }
 
 /**
@@ -342,22 +447,108 @@ export async function getCompanyBillingInvoices(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canView) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
 
-  const result = await listCompanyStripeInvoices(companyId);
+  const result = await listCompanyStripeInvoices(companyId, {
+    dealIds: access.dealIds,
+  });
   if (!result.ok) {
     res.status(result.status).json({ message: result.message });
     return;
   }
   res.status(200).json({ invoices: result.invoices });
+}
+
+/**
+ * GET /companies/:companyId/billing/deals
+ * Org admin / platform admin: every deal. Lead sponsors: deals they lead.
+ */
+export async function getCompanyBillingDeals(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canView) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  try {
+    const deals = await listDealBillingForCompany(companyId, access.dealIds);
+    res.status(200).json({
+      deals,
+      canManage: access.canManage,
+      canPay: access.canPay,
+      viewerScope: access.viewerScope,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[billing] list deal billing failed:", message);
+    res.status(500).json({
+      message:
+        "Could not load deal billing. Confirm the database has deal SaaS billing columns, then retry.",
+    });
+  }
+}
+
+/**
+ * POST /companies/:companyId/billing/deals/:dealId/cycle
+ * Body: { billingCycle: "monthly" | "annual" | "annually" | "yearly" }
+ */
+export async function postCompanyBillingDealCycle(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const dealId = paramStr(req.params.dealId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canPay) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const billingCycle = bodyString(
+    body.billingCycle ?? body.billing_cycle ?? body.cycle,
+  );
+  const result = await updateDealBillingCycle({
+    companyId,
+    dealId,
+    billingCycle,
+    allowedDealIds: access.dealIds,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(200).json({ deal: result.deal });
 }
 
 /**
@@ -373,12 +564,12 @@ export async function getCompanyBillingPaymentMethods(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canPay && !access.canManage) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }
@@ -423,4 +614,129 @@ export async function postCompanyBillingSyncPaymentMethods(
     return;
   }
   res.status(200).json({ paymentMethods: result.paymentMethods });
+}
+
+/**
+ * POST /companies/:companyId/billing/extra-company-user
+ * One-time $10-per-extra-company-user Checkout for a deal that is already billed.
+ */
+export async function postExtraCompanyUserCheckout(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canPay) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const result = await createExtraCompanyUserCheckoutSession({
+    companyId,
+    actorUserId: user.id,
+    dealId: bodyString(body.dealId ?? body.deal_id),
+    quantity: extraCompanyUsersFromBody(body),
+    allowedDealIds: access.dealIds,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(200).json({
+    url: result.url,
+    extraUsersToPay: result.extraUsersToPay,
+    amountDueCents: result.amountDueCents,
+  });
+}
+
+/**
+ * POST /companies/:companyId/billing/extra-company-user/pay-saved
+ */
+export async function postExtraCompanyUserPaySaved(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canPay) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const result = await payExtraCompanyUserWithSavedMethod({
+    companyId,
+    actorUserId: user.id,
+    dealId: bodyString(body.dealId ?? body.deal_id),
+    paymentMethodId: bodyString(
+      body.paymentMethodId ??
+        body.payment_method_id ??
+        body.stripePaymentMethodId,
+    ),
+    quantity: extraCompanyUsersFromBody(body),
+    allowedDealIds: access.dealIds,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(200).json({
+    extraUsersPaid: result.extraUsersPaid,
+    amountDueCents: result.amountDueCents,
+  });
+}
+
+/**
+ * POST /companies/:companyId/billing/extra-company-user/sync-checkout
+ */
+export async function postExtraCompanyUserSyncCheckout(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canPay) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const result = await syncExtraCompanyUserFromCheckoutSession({
+    companyId,
+    sessionId: bodyString(body.sessionId ?? body.session_id),
+    allowedDealIds: access.dealIds,
+  });
+  if (!result.ok) {
+    res.status(result.status).json({ message: result.message });
+    return;
+  }
+  res.status(200).json({
+    extraUsersPaid: result.extraUsersPaid,
+    amountDueCents: result.amountDueCents,
+  });
 }

@@ -270,7 +270,6 @@ router.post(
 );
 router.post(
   "/deals/:dealId/offering-document-uploads",
-  upload.array("documentFiles", 20),
   postDealOfferingDocumentUploads,
 );
 router.patch("/deals/:dealId/offering-gallery", patchDealOfferingGallery);

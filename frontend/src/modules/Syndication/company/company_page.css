@@ -2212,14 +2212,21 @@ select.cp_settings_input_pill.um_field_select {
 .cp_billing_subtabs_outer {
   margin-bottom: 1.25em;
 }
+.cp_billing_subtabs_outer .cp_billing_subtab_disabled,
+.cp_billing_subtabs_outer .um_members_tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .cp_billing_subtab_panel[hidden] {
   display: none;
 }
-.cp_billing_subtab_panel_pricing {
-  max-width: 72rem;
-}
+.cp_billing_subtab_panel,
+.cp_billing_subtab_panel_pricing,
 .cp_billing_subtab_panel_payment_methods {
-  max-width: 72rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 
 /* Billing — payment methods */
@@ -2472,6 +2479,11 @@ select.cp_settings_input_pill.um_field_select {
   color: var(--portal-text-muted, #64748b);
 }
 
+.cp_billing_deal_lead {
+  max-width: none;
+  white-space: nowrap;
+}
+
 .cp_billing_payment_filters_panel {
   display: flex;
   flex-wrap: wrap;
@@ -2579,13 +2591,17 @@ select.cp_settings_input_pill.um_field_select {
   background-size: 0.85em;
 }
 
-.cp_billing_payment_filters_actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+.cp_billing_cycle_select {
+  min-width: 7.5rem;
+  width: auto;
+  max-width: 9.5rem;
+  padding: 0.35rem 2em 0.35rem 0.65rem;
+  font-size: 0.8125rem;
+}
+
+.cp_billing_deal_search_toolbar {
   justify-content: flex-end;
-  gap: 0.65rem;
-  flex-shrink: 0;
+  margin-bottom: 1rem;
 }
 
 .cp_billing_reset_btn,
@@ -2598,8 +2614,11 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_billing_outstanding_banner {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.75rem;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.75rem 1rem;
   border: 1px solid
     color-mix(in srgb, var(--portal-gold-accent, #d4af37) 28%, var(--portal-border, #e2e8f0));
@@ -2612,9 +2631,21 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_billing_outstanding_banner p {
   margin: 0;
+  flex: 1 1 12rem;
+  min-width: 0;
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--portal-text, #0f172a);
+}
+
+.cp_billing_outstanding_banner--center {
+  align-items: center;
+  flex-wrap: nowrap;
+  text-align: center;
+}
+
+.cp_billing_outstanding_banner--center p {
+  flex: 0 1 auto;
 }
 
 .cp_billing_outstanding_icon {
@@ -2624,7 +2655,6 @@ select.cp_settings_input_pill.um_field_select {
   flex-shrink: 0;
   width: 1.75rem;
   height: 1.75rem;
-  margin-top: 0.05rem;
   border-radius: var(--portal-icon-box-radius, 4px);
   border: 1px solid
     color-mix(in srgb, var(--portal-gold-accent, #d4af37) 24%, var(--portal-border, #e2e8f0));
@@ -2646,6 +2676,94 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_billing_invoice_number {
   font-weight: 600;
+  color: var(--portal-text, #0f172a);
+}
+
+.cp_billing_deal_name_cell {
+  min-width: 0;
+}
+
+.cp_billing_deal_name_cell .deals_list_name_text {
+  flex: 0 1 auto;
+}
+
+.cp_billing_deal_name_toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.cp_billing_deal_name_toggle svg {
+  flex-shrink: 0;
+  color: var(--portal-text-muted, #64748b);
+  transition: transform 0.15s ease;
+}
+
+.cp_billing_deal_name_toggle .cp_billing_invoice_number {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp_billing_deal_name_toggle--open svg {
+  transform: rotate(180deg);
+}
+
+.cp_billing_deal_name_toggle:hover .cp_billing_invoice_number {
+  text-decoration: underline;
+}
+
+.cp_billing_deal_mrr_history {
+  padding: 0.35rem 0.15rem 0.15rem;
+}
+
+.cp_billing_deal_mrr_history_title {
+  margin: 0 0 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.cp_billing_deal_mrr_history_empty {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.cp_billing_deal_mrr_table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.cp_billing_deal_mrr_table th,
+.cp_billing_deal_mrr_table td {
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--portal-border, #e2e8f0);
+}
+
+.cp_billing_deal_mrr_table th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.cp_billing_deal_mrr_table td {
   color: var(--portal-text, #0f172a);
 }
 
@@ -2820,6 +2938,8 @@ select.cp_settings_input_pill.um_field_select {
   align-items: flex-start;
   gap: 0.85em;
   margin-bottom: 1.5em;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .cp_billing_filter_row {
@@ -2845,11 +2965,89 @@ select.cp_settings_input_pill.um_field_select {
   color: var(--portal-text-muted, #94a3b8);
 }
 
+.cp_billing_extra_users {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55em;
+}
+
+.cp_billing_extra_users_btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  background: var(--portal-surface, #fff);
+  color: var(--portal-text, #0f172a);
+  cursor: pointer;
+}
+
+.cp_billing_extra_users_btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cp_billing_extra_users_count {
+  min-width: 1.5rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.cp_billing_extra_users_fee {
+  font-size: 0.875em;
+  font-weight: 600;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.cp_billing_deal_name {
+  margin: 0;
+  font-size: 1.125em;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--font-color-title, #0f172a);
+}
+
+.cp_billing_filter_row_disabled {
+  opacity: 0.5;
+}
+
+.cp_billing_filter_row_disabled .cp_billing_cycle_option {
+  cursor: not-allowed;
+}
+
+.cp_billing_plan_deal_ref {
+  margin: 0.15em 0 0.65em;
+  font-size: 0.8125em;
+  font-weight: 600;
+  color: var(--main-auth-button-color, #155abf);
+}
+
+.cp_billing_plan_card_locked {
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: no-drop;
+}
+
+.cp_billing_plan_card_locked .cp_billing_plan_cta_disabled_wrap {
+  pointer-events: auto;
+  cursor: no-drop;
+}
+
+.cp_billing_plan_card_locked:hover {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transform: none;
+}
+
 /* Billing cycle radio toggle */
 .cp_billing_cycle {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.25em;
+  max-width: 100%;
   padding: 0.25em;
   margin: 0;
   background: #f1f5f9;
@@ -2905,17 +3103,21 @@ select.cp_settings_input_pill.um_field_select {
   letter-spacing: 0.02em;
 }
 
-/* Plan cards grid */
+/* Plan cards grid — 3 per row, stretch to fill the tab */
 .cp_billing_plans {
   display: grid;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.25em;
 }
 
 .cp_billing_plan_card {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   padding: 1.5em;
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -2958,6 +3160,7 @@ select.cp_settings_input_pill.um_field_select {
   font-size: 0.85em;
   color: #64748b;
   min-height: 2.4em;
+  overflow-wrap: anywhere;
 }
 
 .cp_billing_plan_price {
@@ -3040,12 +3243,14 @@ select.cp_settings_input_pill.um_field_select {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.55em;
+  gap: 0;
 }
 .cp_billing_plan_features li {
   display: flex;
   align-items: flex-start;
   gap: 0.5em;
+  padding-top: 0.55em;
+  padding-bottom: 0.55em;
   font-size: 0.875em;
   color: #334155;
 }
@@ -3058,7 +3263,7 @@ select.cp_settings_input_pill.um_field_select {
 .cp_billing_plan_cta {
   width: 100%;
   padding: 0.65em 1em;
-  border-radius: 0.5em;
+  border-radius: var(--ui-button-border-radius, 4px);
   font-size: 0.875em;
   font-weight: 600;
   cursor: pointer;
@@ -3071,14 +3276,48 @@ select.cp_settings_input_pill.um_field_select {
   text-align: center;
   text-decoration: none;
 }
+.cp_billing_plan_cta:disabled {
+  cursor: no-drop;
+}
+.cp_billing_plan_cta_disabled_wrap {
+  display: block;
+  width: 100%;
+  cursor: no-drop;
+}
+.cp_billing_plan_cta_disabled_wrap .cp_billing_plan_cta {
+  pointer-events: none;
+}
+.cp_billing_plan_cta.um_btn_primary,
 .cp_billing_plan_cta_primary {
-  border: 1px solid var(--main-auth-button-color, #155abf);
-  background: var(--main-auth-button-color, #155abf);
+  height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
+  min-height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
+  padding: 0 1.15em;
+  border: 1px solid var(--ui-button-border, var(--sidebar-active-text));
+  background: var(--ui-button-background-add, var(--sidebar-bg-color));
+  color: var(--ui-button-text, var(--sidebar-active-text));
+}
+.cp_billing_plan_cta.um_btn_primary:hover:not(:disabled),
+.cp_billing_plan_cta_primary:hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-button-text, var(--sidebar-active-text));
+  border-color: var(--ui-button-border, var(--sidebar-active-text));
+}
+.cp_billing_plan_cta_pay {
+  height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
+  min-height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
+  padding: 0 1.15em;
+  border: 1px solid #16a34a;
+  background: #16a34a;
   color: #ffffff;
 }
-.cp_billing_plan_cta_primary:hover {
-  background: #114a9f;
-  border-color: #114a9f;
+.cp_billing_plan_cta_pay:hover:not(:disabled) {
+  background: #15803d;
+  border-color: #15803d;
+  color: #ffffff;
+}
+.cp_billing_plan_cta_pay:disabled {
+  opacity: 0.6;
+  cursor: no-drop;
 }
 .cp_billing_plan_cta_secondary {
   border: 1px solid #cbd5e1;
@@ -3089,12 +3328,10 @@ select.cp_settings_input_pill.um_field_select {
   background: #f8fafc;
   border-color: #94a3b8;
 }
-
-@media (max-width: 1024px) {
-  .cp_billing_plans {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.cp_billing_plan_cta_secondary:disabled {
+  cursor: no-drop;
 }
+
 @media (max-width: 640px) {
   .cp_billing_plans {
     grid-template-columns: 1fr;
@@ -3340,15 +3577,6 @@ select.cp_settings_input_pill.um_field_select {
 .company_page .cp_settings_members_embed .um_page {
   margin-top: 0;
   max-width: none;
-}
-
-/* Org Members — Users & Roles / General Info: no underline strip below sub-tabs */
-.company_page .cp_settings_members_embed .um_members_tabs_row {
-  border-bottom: none;
-}
-
-.company_page .cp_settings_members_embed .um_members_tab {
-  margin-bottom: 0;
 }
 
 .company_page .cp_settings_members_embed .um_members_general_panel.um_panel {

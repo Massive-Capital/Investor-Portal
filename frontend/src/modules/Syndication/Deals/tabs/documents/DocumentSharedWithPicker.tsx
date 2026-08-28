@@ -697,7 +697,10 @@ export function DocumentSharedWithPicker(args: {
                       openNotifyConfirm()
                     }}
                   >
-                    <Mail size={16} strokeWidth={2} aria-hidden />
+                    <Mail size={15} strokeWidth={2} aria-hidden />
+                    <span className="deal_docs_shared_with_mail_btn_label">
+                      Send
+                    </span>
                   </button>
                 ) : null}
               </div>

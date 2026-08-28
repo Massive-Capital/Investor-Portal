@@ -97,12 +97,14 @@ export async function getDealMembers(
           : "",
     );
 
-    const [members, viewerDealMemberRole, leadSponsorDisplayName] =
+    const [membersRaw, viewerDealMemberRole, leadSponsorDisplayName] =
       await Promise.all([
         listDealMembersMappedToInvestorApi(dealId, user.id),
         resolveViewerDealMemberRoleOnDeal(dealId, user.id),
         resolveDealLeadSponsorDisplayName(dealId),
       ]);
+    const members =
+      viewerDealMemberRole === "co_sponsor" ? [] : membersRaw;
 
     const referringSponsor = sponsorRef
       ? await resolveOfferingPreviewSponsorAttribution(dealId, sponsorRef)

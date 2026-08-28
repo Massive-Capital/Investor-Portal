@@ -15,6 +15,11 @@ import {
 import { esignCategoryLabel } from "@/modules/Syndication/Deals/utils/esignTemplateCategories"
 import { investorRowIsFundApproved } from "@/modules/Syndication/Deals/utils/dealInvestorTableDisplay"
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
+import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
+import {
+  dealSaasBillingSettingsPath,
+  isDealListRowSaasLocked,
+} from "@/modules/Syndication/Deals/utils/dealSaasAccess"
 import {
   dealRowSupportsRosterApiPrefetch,
   filterDealListRowsVisibleToInvestors,
@@ -31,8 +36,20 @@ import {
   investorEsignWasSent,
 } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
+import { refreshInvestmentDealDocumentsPreview } from "@/modules/Investing/pages/investments/utils/refreshInvestmentDealDocumentsPreview"
+import { buildInvestmentDocumentAudience } from "@/modules/Investing/pages/investments/utils/buildInvestmentDocumentAudience"
+import {
+  filterInvestorOfferingDocumentSectionGroups,
+  listInvestmentDetailDocumentSectionGroups,
+} from "@/modules/Investing/pages/investments/utils/investmentDetailDocuments"
 import type { PortalNotification } from "../types/notification.types"
 import { mapWithConcurrency } from "../utils/mapWithConcurrency"
+import {
+  dealHasOfferingDocsBaseline,
+  getOfferingDocsBaselineIds,
+  rememberOfferingDocsBaseline,
+  sharedOfferingDocumentNotificationId,
+} from "../utils/sharedOfferingDocumentNotification"
 
 function capitalizeFirst(value: string): string {
   const trimmed = value.trim()
@@ -244,6 +261,67 @@ async function collectLpInvestorNotifications(
   })
 }
 
+/**
+ * Investor inbox: sponsor-shared offering documents that appeared after this
+ * login first saw the deal (same visibility rules as Offering Documents).
+ */
+async function collectLpDocumentSharedNotifications(
+  out: NotificationDraft[],
+): Promise<void> {
+  const viewerEmail = getSessionUserEmail().trim().toLowerCase()
+  if (!viewerEmail) return
+
+  const investments = await getMergedInvestmentListRows()
+  const dealMeta = new Map<string, { name: string }>()
+  for (const row of investments.filter((r) => !r.archived)) {
+    const dealId = (row.dealId ?? row.id ?? "").trim()
+    if (!dealId) continue
+    dealMeta.set(dealId, {
+      name: row.investmentName?.trim() || row.offeringName?.trim() || "Investment",
+    })
+  }
+
+  const dealIds = [...dealMeta.keys()].slice(0, 24)
+  if (dealIds.length === 0) return
+
+  await mapWithConcurrency(dealIds, 4, async (dealId) => {
+    const dealName = dealMeta.get(dealId)?.name ?? "Investment"
+    try {
+      await refreshInvestmentDealDocumentsPreview(dealId)
+      const audience = await buildInvestmentDocumentAudience(dealId)
+      const visible = filterInvestorOfferingDocumentSectionGroups(
+        listInvestmentDetailDocumentSectionGroups(dealId, audience),
+        "",
+      ).flatMap((section) => section.documents)
+
+      const visibleIds = visible.map((doc) => doc.id)
+      if (!dealHasOfferingDocsBaseline(dealId)) {
+        rememberOfferingDocsBaseline(dealId, visibleIds)
+        return
+      }
+
+      const baseline = getOfferingDocsBaselineIds(dealId)
+      for (const doc of visible) {
+        if (baseline.has(doc.id)) continue
+        const docLabel = capitalizeFirst(doc.name.trim() || "Document")
+        const sectionLabel = doc.sectionLabel.trim()
+        out.push({
+          id: sharedOfferingDocumentNotificationId(dealId, doc.id),
+          title: "New document shared with you",
+          message: sectionLabel
+            ? `${docLabel} was shared on ${dealName} (${sectionLabel}). Open Offering Documents to view it.`
+            : `${docLabel} was shared on ${dealName}. Open Offering Documents to view it.`,
+          category: "document",
+          createdAt: isoOrNow(doc.dateAdded),
+          href: `/investing/investments/${encodeURIComponent(dealId)}?tab=documents`,
+        })
+      }
+    } catch {
+      /* skip this deal if preview or audience fails */
+    }
+  })
+}
+
 function formatInvestorWhoPhrase(investors: { displayName?: string | null }[]): string {
   const names = investors
     .map((inv) => inv.displayName?.trim())
@@ -257,12 +335,41 @@ function formatInvestorWhoPhrase(investors: { displayName?: string | null }[]): 
   return names.join(" and ")
 }
 
+/**
+ * From the 1st of the billing month (Sep 1 this cycle), lead sponsors see an
+ * in-app notice for each unpaid Capital Raising / Asset Managing deal.
+ */
+function collectLeadSponsorBillingNotifications(
+  deals: DealListRow[],
+  out: NotificationDraft[],
+): void {
+  for (const deal of deals) {
+    if (deal.archived) continue
+    if (deal.viewerIsLeadSponsor !== true) continue
+    if (!isDealListRowSaasLocked(deal)) continue
+    const dealId = deal.id.trim()
+    if (!dealId) continue
+    const dealName = deal.dealName?.trim() || "this deal"
+    out.push({
+      id: `deal-billing-started:${dealId}`,
+      title: "Deal billing has started",
+      message: `Monthly SaaS for ${dealName} is due. Pay now so this deal stays open to view and edit.`,
+      category: "deal",
+      createdAt: isoOrNow(deal.nextBillingDate),
+      href: dealSaasBillingSettingsPath(dealId, deal.dealName),
+    })
+  }
+}
+
 async function collectSponsorNotifications(
   out: NotificationDraft[],
 ): Promise<void> {
-  const deals = (await fetchDealsList({ includeParticipantDeals: true }))
-    .filter((d) => !d.archived)
-    .slice(0, 20)
+  const listed = (await fetchDealsList({ includeParticipantDeals: true })).filter(
+    (d) => !d.archived,
+  )
+  collectLeadSponsorBillingNotifications(listed, out)
+
+  const deals = listed.slice(0, 20)
 
   if (deals.length === 0) return
 
@@ -364,6 +471,7 @@ export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
   if (isLpOnly) {
     await Promise.all([
       collectLpInvestorNotifications(out),
+      collectLpDocumentSharedNotifications(out),
       collectPlatformAdminSignupNotifications(out),
     ])
   } else {
@@ -373,6 +481,7 @@ export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
     ]
     if (viewerHasLpNotificationScope()) {
       tasks.push(collectLpInvestorNotifications(out))
+      tasks.push(collectLpDocumentSharedNotifications(out))
     }
     await Promise.all(tasks)
   }

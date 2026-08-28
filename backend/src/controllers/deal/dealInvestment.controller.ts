@@ -36,12 +36,14 @@ import {
   isDealRosterEligibilityError,
 } from "../../services/user/portalUserRosterGuard.service.js";
 import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
-import { isPortalUserLeadOrAdminSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
+import { viewerCanApproveDealFundOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { dealInvestmentEsignIsFullyCompleted } from "../../constants/deal-investor-esign-status.js";
 import { logSocDealInvestmentWrite } from "../../audit/index.js";
+import { assertExtraCompanyUserAllowedForAdd } from "../../services/billing/dealExtraCompanyUser.service.js";
+import { EXTRA_COMPANY_USER_PAYMENT_REQUIRED } from "../../config/stripe.config.js";
 
 const FUND_APPROVAL_FORBIDDEN_MESSAGE =
-  "Only the lead sponsor or admin sponsor can approve the fund.";
+  "Only the lead sponsor, admin sponsor, or company admin can approve the fund.";
 const FUND_APPROVAL_REQUIRES_ESIGN_MESSAGE =
   "Complete e-sign before approving the fund.";
 
@@ -104,6 +106,20 @@ function fundApprovedFromRequestBody(
   if (s === "true" || s === "1" || s === "yes") return true;
   if (s === "false" || s === "0" || s === "no") return false;
   return fallback;
+}
+
+async function rejectIfExtraCompanyUserUnpaid(
+  res: Response,
+  params: { dealId: string; contactId: string; investorRole: string },
+): Promise<boolean> {
+  const check = await assertExtraCompanyUserAllowedForAdd(params);
+  if (check.ok) return false;
+  if (check.payload.code === EXTRA_COMPANY_USER_PAYMENT_REQUIRED) {
+    res.status(check.status).json(check.payload);
+    return true;
+  }
+  res.status(check.status).json({ message: check.payload.message });
+  return true;
 }
 
 export async function getDealInvestors(
@@ -350,11 +366,26 @@ export async function putDealInvestment(
         await assertEligibleForNewDealRosterAdd(contactId.trim());
       }
     }
+    if (
+      await rejectIfExtraCompanyUserUnpaid(res, {
+        dealId,
+        contactId,
+        investorRole: investor_role,
+      })
+    ) {
+      return;
+    }
 
     const fundApproved = fundApprovedFromRequestBody(b, existing.fundApproved);
     const fundApprovedBecameTrue = fundApproved && !existing.fundApproved;
     if (fundApprovedBecameTrue) {
-      if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
+      if (
+        !(await viewerCanApproveDealFundOnDeal({
+          dealId,
+          userId: user.id,
+          userRole: user.userRole,
+        }))
+      ) {
         res.status(403).json({ message: FUND_APPROVAL_FORBIDDEN_MESSAGE });
         return;
       }
@@ -635,10 +666,25 @@ export async function postDealInvestment(
     if (!contactIsPlaceholder) {
       await assertEligibleForNewDealRosterAdd(contactId.trim());
     }
+    if (
+      await rejectIfExtraCompanyUserUnpaid(res, {
+        dealId,
+        contactId,
+        investorRole: investor_role,
+      })
+    ) {
+      return;
+    }
 
     const fundApproved = fundApprovedFromRequestBody(b, false);
     if (fundApproved && !autosave) {
-      if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, user.id))) {
+      if (
+        !(await viewerCanApproveDealFundOnDeal({
+          dealId,
+          userId: user.id,
+          userRole: user.userRole,
+        }))
+      ) {
         res.status(403).json({ message: FUND_APPROVAL_FORBIDDEN_MESSAGE });
         return;
       }

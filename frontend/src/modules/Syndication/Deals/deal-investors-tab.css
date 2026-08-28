@@ -58,6 +58,43 @@
   margin-bottom: 0;
 }
 
+/* Compact summary strip — dashboard cards stay tall; this tab sits above a table. */
+.deal_inv_kpi_metrics.sponsor_dash_metrics {
+  gap: 0.65rem;
+}
+
+.deal_inv_kpi_metrics.sponsor_dash_metrics > .tool_style_card--metric {
+  min-height: 0;
+  padding: 0.65rem 0.85rem 0.7rem;
+  justify-content: flex-start;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+.deal_inv_kpi_metrics .tool_style_card--metric .tool_style_card_icon_box {
+  width: 1.7em;
+  height: 1.7em;
+}
+
+.deal_inv_kpi_metrics .tool_style_card--metric .tool_style_card_icon {
+  width: 1.05em;
+  height: 1.05em;
+}
+
+.deal_inv_kpi_metrics .tool_style_card--metric .tool_style_card_value_lead,
+.deal_inv_kpi_metrics .tool_style_card--metric .tool_style_card_value_loading--metric {
+  margin-top: 0.3rem;
+}
+
+.deal_inv_kpi_metrics .tool_style_card--metric .tool_style_card_value_lead {
+  font-size: 1.15rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.deal_inv_kpi_metrics .tool_style_card--metric .tool_style_card_value_loading--metric .tool_style_card_value_skeleton {
+  height: 0.85rem;
+}
+
 /* Investors tab: 3 KPI cards per row (6 metrics → 2 rows). */
 @media (min-width: 768px) {
   .deal_inv_kpi_metrics.sponsor_dash_metrics {
@@ -173,6 +210,8 @@
 
 .deal_inv_table_panel .data_table_scroll_region {
   min-width: 0;
+  overflow-y: hidden;
+  scrollbar-gutter: auto;
 }
 
 .deal_inv_table_panel
@@ -181,8 +220,8 @@
   .um_table.deal_inv_table,
 .deal_inv_table_panel .um_table.deal_inv_table {
   table-layout: auto;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: max-content;
   max-width: none;
 }
 
@@ -983,6 +1022,7 @@
 
 /* Section tabs sit under the title, above the detail body */
 .deal_inv_investor_view_modal .deal_inv_view_section_tabs {
+  flex-shrink: 0;
   margin: 0 0 0.35em;
   padding: 0 0 0.55em;
   border-top: 0;

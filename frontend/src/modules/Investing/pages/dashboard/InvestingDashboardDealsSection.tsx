@@ -25,10 +25,6 @@ import {
 } from "@/modules/Syndication/Deals/api/dealsApi";
 import { ExportDealsModal } from "@/modules/Syndication/Deals/components/ExportDealsModal";
 import { DEALS_LIST_REFETCH_EVENT } from "@/modules/Syndication/Deals/createDealFormDraftStorage";
-import {
-  effectiveOfferingStatusForAccess,
-  getDealStatusRules,
-} from "@/modules/Syndication/Deals/constants/deal-lifecycle";
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types";
 import {
   SyndicatingDealsSection,
@@ -129,21 +125,12 @@ async function loadDealsByBucket(
   if (!platformAdminViewer && !sponsorWorkspaceViewer) {
     list = filterDealListRowsVisibleToInvestors(list);
   }
-  if (!platformAdminViewer && !sponsorWorkspaceViewer) {
-    list = list.filter((row) => {
-      const effective = effectiveOfferingStatusForAccess(
-        row.dealStage,
-        row.offeringStatus,
-      );
-      if (!effective) return false;
-      const rules = getDealStatusRules(effective);
-      return (
-        rules.status !== "closed" &&
-        rules.status !== "past" &&
-        rules.allowDashboardVisibility
-      );
-    });
-  }
+  /**
+   * Do not drop closed / managing-asset / past rows here. Those offerings are
+   * hidden as marketplace opportunities, but an LP who already invested must
+   * still reach {@link classifyInvestingDashboardDealBucket} (Active / In progress).
+   * Uninvested closed deals return null from classify and stay off the dashboard.
+   */
   if (list.length === 0) return { ...EMPTY_BY_BUCKET };
 
   const bundles = await Promise.all(

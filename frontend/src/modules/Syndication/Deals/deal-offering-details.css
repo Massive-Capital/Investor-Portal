@@ -4449,13 +4449,16 @@ a.deal_docs_name_link:hover {
 
 .deal_docs_ui_td_doc {
   max-width: 22rem;
-  overflow: hidden;
+  height: auto;
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+  vertical-align: top;
 }
 
 .deal_docs_ui_doc_cell {
   display: flex;
   flex-wrap: nowrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.35rem 0.65rem;
   min-width: 0;
 }
@@ -4502,9 +4505,12 @@ a.deal_docs_name_link:hover {
   min-width: 0;
   font-size: 0.8125rem;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.45;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   color: var(--portal-text, #0f172a);
   letter-spacing: -0.01em;
 }
@@ -4715,24 +4721,30 @@ a.deal_docs_name_link:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  gap: 0.3rem;
+  width: auto;
+  min-height: 1.85rem;
   margin: 0;
-  padding: 0;
-  border: 1px solid var(--portal-border, #e2e8f0);
+  padding: 0.2rem 0.55rem;
+  border: 1px solid #16a34a;
   border-radius: var(--portal-card-radius, 4px);
-  background: var(--portal-surface, #fff);
-  color: var(--portal-primary, #2563eb);
+  background: #16a34a;
+  color: #fff;
   cursor: pointer;
   flex-shrink: 0;
 }
 
+.deal_docs_shared_with_mail_btn_label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
 .deal_docs_shared_with_mail_btn:hover:not(:disabled) {
-  background: color-mix(
-    in srgb,
-    var(--portal-primary, #2563eb) 8%,
-    transparent
-  );
+  background: #15803d;
+  border-color: #15803d;
+  color: #fff;
 }
 
 .deal_docs_shared_with_mail_btn:disabled {
@@ -5081,9 +5093,9 @@ a.deal_docs_name_link:hover {
 }
 
 :root[data-theme="dark"] .deal_docs_shared_with_mail_btn {
-  background: var(--portal-surface, #1e293b);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: #60a5fa;
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
 }
 
 

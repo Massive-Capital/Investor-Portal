@@ -2,6 +2,7 @@ import { EMAIL_UNAVAILABLE_LABEL } from "../../../../../common/utils/displayEmai
 import { ADD_MEMBER_DRAFT_ROW_ID } from "../deal_members/add-investment/addMemberDraftInvestorRow"
 import {
   isDealMembersTabRole,
+  isGeneralPartnerRole,
   isLpInvestorRole,
   investorRoleLabel,
 } from "../../constants/investor-profile"
@@ -79,9 +80,9 @@ function roleLabelForRow(row: DealInvestorRow): string {
 function groupLabel(groups: DealMailRecipientGroup[]): string {
   const hasInv = groups.includes("investor")
   const hasMem = groups.includes("deal_member")
-  if (hasInv && hasMem) return "Investor & member"
+  if (hasInv && hasMem) return "Investor & general partner"
   if (hasInv) return "Investor"
-  if (hasMem) return "Deal member"
+  if (hasMem) return "General Partner"
   return "—"
 }
 
@@ -119,6 +120,7 @@ export function classKindForInvestorRow(
   const className = String(row.investorClass ?? "").trim().toLowerCase()
   if (/\bgp\b|general partner/.test(className)) return "gp"
   if (/\blp\b|limited partner/.test(className)) return "lp"
+  if (isGeneralPartnerRole(row.investorRole)) return "gp"
   if (
     isDealMembersTabRole(row.investorRole) &&
     !isLpInvestorRole(row.investorRole)

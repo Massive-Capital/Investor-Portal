@@ -184,6 +184,13 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
             percentOfClass: str(
               pay.percentOfClass ?? pay.percent_of_class,
             ) || "0",
+            ...(str(pay.percentOfDeal ?? pay.percent_of_deal)
+              ? {
+                  percentOfDeal: str(
+                    pay.percentOfDeal ?? pay.percent_of_deal,
+                  ),
+                }
+              : {}),
             payment,
           }
         })
@@ -404,6 +411,7 @@ export async function completeDistributionSetup(
       className: string
       capital: number
       percentOfClass: number
+      percentOfDeal?: number
       payment: number
     }>
   },
@@ -491,6 +499,7 @@ export async function patchDistributionInvestorPercent(
   input: {
     investorId: string
     percentOfClass?: number
+    percentOfDeal?: number
     payment?: number
   },
 ): Promise<DistributionSetupBundle> {
@@ -500,6 +509,9 @@ export async function patchDistributionInvestorPercent(
   const body: Record<string, unknown> = { investorId: input.investorId }
   if (input.percentOfClass != null && Number.isFinite(input.percentOfClass)) {
     body.percentOfClass = input.percentOfClass
+  }
+  if (input.percentOfDeal != null && Number.isFinite(input.percentOfDeal)) {
+    body.percentOfDeal = input.percentOfDeal
   }
   if (input.payment != null && Number.isFinite(input.payment)) {
     body.payment = input.payment

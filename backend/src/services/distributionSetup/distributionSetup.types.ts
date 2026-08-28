@@ -41,6 +41,8 @@ export interface InvestorDistributionPayment {
   className: string;
   capital: string;
   percentOfClass: string;
+  /** Investor share of the whole deal (0–100). Optional on older runs. */
+  percentOfDeal?: string;
   payment: string;
 }
 

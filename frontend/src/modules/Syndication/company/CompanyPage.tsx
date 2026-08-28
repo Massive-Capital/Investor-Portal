@@ -46,6 +46,7 @@ import {
 } from "../../../common/auth/sessionKeys";
 import { getSessionOrganizationCompanyId, getActiveWorkspaceCompanyName } from "../../../common/auth/sessionOrganization";
 import {
+  canAccessCompanyPage,
   canAccessMembersPage,
   canEditCompanyWorkspace,
   isPlatformAdmin,
@@ -475,6 +476,9 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
   }, [workspaceCompanyId, companies, sessionCompanyName]);
 
   const companyPageTabDefs = useMemo(() => {
+    if (!canAccessCompanyPage()) {
+      return [{ id: "billing" as const, label: "Billing", icon: CreditCard }];
+    }
     const mainTabs: { id: CompanyPageTab; label: string; icon: LucideIcon }[] = [
       { id: "settings", label: "Settings", icon: Settings },
       { id: "email", label: "Email settings", icon: Mail },
@@ -513,7 +517,8 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
     if (
       billing === "success" ||
       billing === "cancel" ||
-      billing === "portal_return"
+      billing === "portal_return" ||
+      billing === "pay"
     ) {
       setCompanyPageTab("billing");
       return;
@@ -1213,6 +1218,14 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
             >
               <CompanyBillingTab
                 workspaceCompanyId={workspaceCompanyId || undefined}
+                focusDealId={
+                  new URLSearchParams(location.search).get("dealId")?.trim() ||
+                  undefined
+                }
+                focusDealName={
+                  new URLSearchParams(location.search).get("dealName")?.trim() ||
+                  undefined
+                }
               />
             </div>
 

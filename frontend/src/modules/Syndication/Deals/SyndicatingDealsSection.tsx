@@ -341,7 +341,7 @@ export function SyndicatingDealsSection({
       const bundles = await Promise.all(
         list.map(async (row) => {
           const [payload, classes, distSetup] = await Promise.all([
-            fetchDealInvestors(row.id),
+            fetchDealInvestors(row.id, { lpInvestorsOnly: true }),
             fetchDealInvestorClasses(row.id),
             fetchDistributionSetup(row.id).catch(() => null),
           ]);
@@ -413,7 +413,7 @@ export function SyndicatingDealsSection({
         const bundles = await Promise.all(
           list.map(async (row) => {
             const [payload, classes, distSetup] = await Promise.all([
-              fetchDealInvestors(row.id),
+              fetchDealInvestors(row.id, { lpInvestorsOnly: true }),
               fetchDealInvestorClasses(row.id),
               fetchDistributionSetup(row.id).catch(() => null),
             ]);

@@ -19,12 +19,18 @@ import {
 } from "../../../../common/utils/apiBaseUrl"
 import { AssetStepForm } from "../components/AssetStepForm"
 import { ASSET_MAX_IMAGE_COUNT } from "../types/deal-asset.types"
+import {
+  DealBillableStageNoticeModal,
+  type DealBillableStageNoticeMode,
+} from "../components/DealBillableStageNoticeModal"
 import { DealStageChangeConfirmModal } from "../components/DealStageChangeConfirmModal"
+import { DealSaasPaywallModal } from "../components/DealSaasPaywallModal"
 import { DealStepForm } from "../components/DealStepForm"
 import "../../contacts/contacts.css"
 import "../../usermanagement/user_management.css"
 import "../deal-investor-class.css"
 import {
+  AUTOSAVE_DEFAULT_DEAL_NAME,
   buildCreateDealFormData,
   buildCreateDealFormDataForAutosave,
   createDealMultipart,
@@ -51,7 +57,15 @@ import {
 } from "../constants/deal-stage-modal-config"
 import { dedupeStoredImagePathSegments } from "../utils/offeringGalleryUrls"
 import { dealImageFileKey } from "../../../../common/utils/materializeImageFileForUpload"
-import type { DealStage } from "../constants/deal-lifecycle/deal-stage"
+import {
+  isDealStageSaasBillable,
+  type DealStage,
+} from "../constants/deal-lifecycle/deal-stage"
+import {
+  dealSaasBillingSettingsPath,
+  isDealSaasPaymentRequiredError,
+  type DealSaasPaywallDeal,
+} from "../utils/dealSaasAccess"
 import {
   emptyAssetStepDraft,
   emptyDealStepDraft,
@@ -62,13 +76,26 @@ import {
 import "../deals-create.css"
 import "../deals-list.css"
 
+function isDealStepRequiredDataFilled(deal: DealStepDraft): boolean {
+  const name = deal.dealName.trim()
+  if (!name || name.toLowerCase() === AUTOSAVE_DEFAULT_DEAL_NAME.toLowerCase()) {
+    return false
+  }
+  return Boolean(
+    deal.secType.trim() &&
+      deal.owningEntityName.trim() &&
+      deal.fundsBeforeGpCountersigns &&
+      deal.autoFundingAfterGpCountersigns,
+  )
+}
+
 function DealStepBillingNote() {
   return (
     <div className="deals_create_billing_wrap">
       <p className="deals_create_billing_info" role="note">
-        Your default billing method will be charged automatically. To assign a
-        different billing method, go to{" "}
-        <Link className="deals_create_billing_info_link" to="/settings">
+        When this deal is raising capital or asset managing, the lead sponsor
+        pays monthly SaaS (MRR). Choose a plan or pay from{" "}
+        <Link className="deals_create_billing_info_link" to="/settings?billing=pay">
           Billing
         </Link>
         .
@@ -112,6 +139,13 @@ export function CreateDealPage() {
   const [saving, setSaving] = useState(false)
   const [stageChangeModalOpen, setStageChangeModalOpen] = useState(false)
   const [stageModalMode, setStageModalMode] = useState<"radio" | "save">("radio")
+  const [billableStageNoticeOpen, setBillableStageNoticeOpen] = useState(false)
+  const [billableStageNoticeBusy, setBillableStageNoticeBusy] = useState(false)
+  const [billableStageNoticeMode, setBillableStageNoticeMode] =
+    useState<DealBillableStageNoticeMode>("billing")
+  const [billableStageNoticeStage, setBillableStageNoticeStage] = useState<
+    DealStageOption | ""
+  >("")
   const [pendingStageFormValue, setPendingStageFormValue] = useState<
     DealStageOption | ""
   >("")
@@ -122,6 +156,8 @@ export function CreateDealPage() {
   const [initialDealStageCanonical, setInitialDealStageCanonical] =
     useState<DealStage | null>(null)
   const [loadingDeal, setLoadingDeal] = useState(Boolean(editDealId))
+  const [saasPaywallDeal, setSaasPaywallDeal] =
+    useState<DealSaasPaywallDeal | null>(null)
   const [backendDealId, setBackendDealId] = useState<string | null>(null)
   const createDealDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -228,8 +264,16 @@ export function CreateDealPage() {
         setInitialDealStageCanonical(formDealStageToCanonical(detail.dealStage))
         setStageConfirmedInSession(null)
         setPendingStageFormValue("")
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          if (isDealSaasPaymentRequiredError(err)) {
+            setSaasPaywallDeal({
+              ...err.payload,
+              id: err.payload.id || editDealId || "",
+            })
+            setLoadingDeal(false)
+            return
+          }
           toast.error("Could not load deal to edit.")
           navigate(postSavePath, { replace: true })
         }
@@ -591,9 +635,23 @@ export function CreateDealPage() {
     })
   }
 
+  function openBillableStageNotice(next: DealStageOption | "") {
+    persistableDealStageRef.current = next
+    setBillableStageNoticeStage(next)
+    const complete = isDealStepRequiredDataFilled({
+      ...dealDraft,
+      dealStage: next,
+    })
+    setBillableStageNoticeMode(complete ? "billing" : "complete_deal")
+    setBillableStageNoticeOpen(true)
+  }
+
   function handleDealStageSelect(next: DealStageOption | "") {
     if (!editDealId || !initialDealStageCanonical) {
       patchDeal({ dealStage: next })
+      if (isDealStageSaasBillable(next)) {
+        openBillableStageNotice(next)
+      }
       return
     }
     const nextCanon = formDealStageToCanonical(next)
@@ -604,10 +662,16 @@ export function CreateDealPage() {
     if (nextCanon === initialDealStageCanonical) {
       patchDeal({ dealStage: next })
       setStageConfirmedInSession(null)
+      if (isDealStageSaasBillable(next)) {
+        openBillableStageNotice(next)
+      }
       return
     }
     if (stageConfirmedInSession === nextCanon) {
       patchDeal({ dealStage: next })
+      if (isDealStageSaasBillable(next)) {
+        openBillableStageNotice(next)
+      }
       return
     }
     setPendingStageFormValue(next)
@@ -634,9 +698,127 @@ export function CreateDealPage() {
       patchDeal({ dealStage: pendingStageFormValue })
       const canon = formDealStageToCanonical(pendingStageFormValue)
       if (canon) setStageConfirmedInSession(canon)
+      if (isDealStageSaasBillable(pendingStageFormValue)) {
+        openBillableStageNotice(pendingStageFormValue)
+      }
     }
     setStageChangeModalOpen(false)
     setPendingStageFormValue("")
+  }
+
+  const closeBillableStageNotice = useCallback(() => {
+    if (billableStageNoticeBusy) return
+    if (billableStageNoticeMode === "complete_deal") {
+      patchDeal({ dealStage: "Draft" })
+      persistableDealStageRef.current = "Draft"
+    }
+    setBillableStageNoticeOpen(false)
+  }, [billableStageNoticeBusy, billableStageNoticeMode])
+
+  async function ensureDealPersistedForBillableStage(
+    stage: DealStageOption | "",
+  ): Promise<string | null> {
+    if (backendAutosaveTimerRef.current) {
+      clearTimeout(backendAutosaveTimerRef.current)
+      backendAutosaveTimerRef.current = null
+    }
+
+    const nextStage = stage || latestCreateDealDraftRef.current.deal.dealStage
+    persistableDealStageRef.current = nextStage
+    if (!String(nextStage ?? "").trim() || !isDealStageSaasBillable(nextStage)) {
+      toast.error(
+        "Choose Capital Raising or Asset Managing before opening billing.",
+      )
+      return null
+    }
+
+    for (
+      let i = 0;
+      i < 80 &&
+      (createPostInFlightRef.current || backendAutosaveInFlightRef.current);
+      i++
+    ) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
+
+    const { deal, asset, step: st } = latestCreateDealDraftRef.current
+    // Persist CR/AM immediately. Edit autosave otherwise keeps the previous stage until Save.
+    const dealForPersist: DealStepDraft = { ...deal, dealStage: nextStage }
+    const persistedId = (editDealId ?? backendDealIdRef.current ?? "").trim()
+    const imageOpts = editDealId
+      ? { retainedAssetImagePath: retainedPropertyImagePaths }
+      : undefined
+    const formData = buildCreateDealFormDataForAutosave(
+      dealForPersist,
+      asset,
+      [],
+      imageOpts,
+    )
+
+    const canon = formDealStageToCanonical(nextStage)
+    const rememberPersistedStage = (dealId: string) => {
+      if (canon) {
+        setInitialDealStageCanonical(canon)
+        setStageConfirmedInSession(canon)
+      }
+      saveCreateDealDraft({
+        deal: { ...deal, dealStage: nextStage },
+        asset,
+        step: st,
+        backendDealId: dealId,
+      })
+      notifyDealsListRefetch()
+    }
+
+    backendAutosaveInFlightRef.current = true
+    try {
+      if (persistedId) {
+        const result = await updateDealMultipart(persistedId, formData)
+        if (!result.ok) {
+          toast.error(result.message || "Could not save deal stage.")
+          return null
+        }
+        rememberPersistedStage(persistedId)
+        return persistedId
+      }
+
+      createPostInFlightRef.current = true
+      const result = await createDealMultipart(formData)
+      if (!result.ok || !result.dealId) {
+        toast.error(result.ok ? "Could not save deal." : result.message)
+        return null
+      }
+      backendDealIdRef.current = result.dealId
+      setBackendDealId(result.dealId)
+      rememberPersistedStage(result.dealId)
+      return result.dealId
+    } finally {
+      createPostInFlightRef.current = false
+      backendAutosaveInFlightRef.current = false
+    }
+  }
+
+  async function confirmBillableStageNotice() {
+    if (billableStageNoticeBusy) return
+    if (billableStageNoticeMode === "complete_deal") {
+      patchDeal({ dealStage: "Draft" })
+      persistableDealStageRef.current = "Draft"
+      setBillableStageNoticeOpen(false)
+      validateDeal()
+      return
+    }
+    setBillableStageNoticeBusy(true)
+    try {
+      const stage = billableStageNoticeStage || dealDraft.dealStage
+      const dealId = await ensureDealPersistedForBillableStage(stage)
+      if (!dealId) return
+      setBillableStageNoticeOpen(false)
+      navigate(
+        dealSaasBillingSettingsPath(dealId, dealDraft.dealName),
+      )
+    } finally {
+      setBillableStageNoticeBusy(false)
+    }
   }
 
   function patchAsset(patch: Partial<AssetStepDraft>) {
@@ -814,6 +996,29 @@ export function CreateDealPage() {
     step === 0
       ? "Deal details, stage, and subscription settings."
       : "Primary asset location and images."
+
+  if (saasPaywallDeal) {
+    return (
+      <div className="deals_list_page deals_detail_page deals_create_flow">
+        <p className="deals_list_not_found">
+          {saasPaywallDeal.dealName.trim()
+            ? `Pay monthly SaaS (MRR) for “${saasPaywallDeal.dealName.trim()}” to continue.`
+            : "Pay monthly SaaS (MRR) for this deal to continue."}{" "}
+          <Link to="/deals" className="deals_list_inline_back">
+            <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+            Back to deals
+          </Link>
+        </p>
+        <DealSaasPaywallModal
+          deal={saasPaywallDeal}
+          onClose={() => {
+            setSaasPaywallDeal(null)
+            navigate("/deals", { replace: true })
+          }}
+        />
+      </div>
+    )
+  }
 
   if (loadingDeal) {
     return (
@@ -1001,6 +1206,15 @@ export function CreateDealPage() {
           onCancel={closeStageChangeModal}
         />
       ) : null}
+
+      <DealBillableStageNoticeModal
+        open={billableStageNoticeOpen}
+        dealStage={billableStageNoticeStage || dealDraft.dealStage}
+        mode={billableStageNoticeMode}
+        confirming={billableStageNoticeBusy}
+        onOk={() => void confirmBillableStageNotice()}
+        onClose={closeBillableStageNotice}
+      />
     </div>
   )
 }

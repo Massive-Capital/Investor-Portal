@@ -52,6 +52,14 @@ import {
   mapLegacyOfferingVisibility,
   OFFERING_VISIBILITY_OPTIONS,
 } from "../utils/offeringOverviewForm"
+import {
+  DealSaasPaymentRequiredError,
+  parseDealSaasPaymentRequiredBody,
+} from "../utils/dealSaasAccess"
+import {
+  parseExtraCompanyUserPaymentBody,
+  type ExtraCompanyUserPaymentRequired,
+} from "../utils/extraCompanyUserBilling"
 
 export { DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER } from "../constants/investor-profile"
 
@@ -357,6 +365,65 @@ function normalizeDealListRow(
           ),
         }
       : {}),
+    ...(() => {
+      const lead = firstDefined(r, [
+        "viewerIsLeadSponsor",
+        "viewer_is_lead_sponsor",
+      ])
+      const isLead =
+        lead === true || lead === "true" || lead === 1 || lead === "1"
+      const nextRaw = firstDefined(r, [
+        "nextBillingDate",
+        "next_billing_date",
+      ])
+      const nextBillingDate =
+        nextRaw != null && String(nextRaw).trim() !== ""
+          ? str(nextRaw)
+          : null
+      const statusRaw = firstDefined(r, [
+        "billingSubscriptionStatus",
+        "billing_subscription_status",
+      ])
+      const planRaw = firstDefined(r, ["billingPlanId", "billing_plan_id"])
+      const lockedRaw = firstDefined(r, [
+        "billingAccessLocked",
+        "billing_access_locked",
+      ])
+      const lockReasonRaw = firstDefined(r, [
+        "billingLockReason",
+        "billing_lock_reason",
+      ])
+      const hasBilling =
+        nextBillingDate != null ||
+        statusRaw != null ||
+        planRaw != null ||
+        lockedRaw != null
+      if (!isLead && !hasBilling) return {}
+      const lockReason = String(lockReasonRaw ?? "").trim().toLowerCase()
+      return {
+        ...(isLead ? { viewerIsLeadSponsor: true as const } : {}),
+        nextBillingDate,
+        billingSubscriptionStatus:
+          statusRaw != null ? str(statusRaw) : undefined,
+        billingPlanId: planRaw != null ? str(planRaw) : null,
+        ...(lockedRaw === true ||
+        lockedRaw === "true" ||
+        lockedRaw === 1 ||
+        lockedRaw === "1"
+          ? { billingAccessLocked: true as const }
+          : lockedRaw === false ||
+              lockedRaw === "false" ||
+              lockedRaw === 0 ||
+              lockedRaw === "0"
+            ? { billingAccessLocked: false as const }
+            : {}),
+        ...(lockReason === "unpaid" ||
+        lockReason === "expired" ||
+        lockReason === "past_due"
+          ? { billingLockReason: lockReason }
+          : {}),
+      }
+    })(),
   }
 }
 
@@ -684,9 +751,20 @@ export async function fetchDealById(dealId: string): Promise<DealDetailApi> {
   const data = (await res.json().catch(() => ({}))) as {
     deal?: DealDetailApi
     message?: string
+    code?: string
   }
-  if (!res.ok)
+  if (!res.ok) {
+    if (res.status === 402) {
+      throw new DealSaasPaymentRequiredError(
+        parseDealSaasPaymentRequiredBody(data, dealId) ?? {
+          id: dealId,
+          dealName: "",
+        },
+        data.message,
+      )
+    }
     throw new Error(data.message || `Could not load deal (${res.status})`)
+  }
   if (!data.deal) throw new Error("Invalid response")
   const d = data.deal as DealDetailApi & Record<string, unknown>
   return normalizeDealDetailApi(d)
@@ -4475,7 +4553,11 @@ export async function patchMyLpDealCommitment(
 export type PostDealLpInvestorResult =
   | { ok: true; mode: "api"; lpInvestorId?: string }
   | { ok: true; mode: "client" }
-  | { ok: false; message: string }
+  | {
+      ok: false
+      message: string
+      extraCompanyUserPayment?: ExtraCompanyUserPaymentRequired
+    }
 
 /** JSON POST `/deals/:dealId/lp-investors` — roster row in `deal_lp_investor` (no `deal_investment`). */
 export async function postDealLpInvestor(
@@ -4523,9 +4605,17 @@ export async function postDealLpInvestor(
       investor?: { id?: string }
     }
     if (!res.ok) {
+      const extraCompanyUserPayment = parseExtraCompanyUserPaymentBody(
+        data,
+        dealId,
+      )
       const msg =
         data?.message != null ? String(data.message) : res.statusText
-      return { ok: false, message: msg || "Could not save LP investor" }
+      return {
+        ok: false,
+        message: msg || "Could not save LP investor",
+        ...(extraCompanyUserPayment ? { extraCompanyUserPayment } : {}),
+      }
     }
     const rawId = data.investor?.id
     const lpInvestorId =
@@ -4619,9 +4709,17 @@ export async function putDealLpInvestor(
       message?: unknown
     }
     if (!res.ok) {
+      const extraCompanyUserPayment = parseExtraCompanyUserPaymentBody(
+        data,
+        dealId,
+      )
       const msg =
         data?.message != null ? String(data.message) : res.statusText
-      return { ok: false, message: msg || "Could not update LP investor" }
+      return {
+        ok: false,
+        message: msg || "Could not update LP investor",
+        ...(extraCompanyUserPayment ? { extraCompanyUserPayment } : {}),
+      }
     }
     return { ok: true, mode: "api" }
   } catch {
@@ -4632,7 +4730,11 @@ export async function putDealLpInvestor(
 export type PostDealInvestmentResult =
   | { ok: true; mode: "api"; investmentId?: string }
   | { ok: true; mode: "client" }
-  | { ok: false; message: string }
+  | {
+      ok: false
+      message: string
+      extraCompanyUserPayment?: ExtraCompanyUserPaymentRequired
+    }
 
 function appendDealInvestmentMultipartFields(
   fd: FormData,
@@ -4699,9 +4801,17 @@ export async function postDealInvestment(
       investor?: { id?: string }
     }
     if (!res.ok) {
+      const extraCompanyUserPayment = parseExtraCompanyUserPaymentBody(
+        data,
+        dealId,
+      )
       const msg =
         data?.message != null ? String(data.message) : res.statusText
-      return { ok: false, message: msg || "Could not save investment" }
+      return {
+        ok: false,
+        message: msg || "Could not save investment",
+        ...(extraCompanyUserPayment ? { extraCompanyUserPayment } : {}),
+      }
     }
     const rawId = data.investor?.id
     const investmentId =
@@ -4774,9 +4884,17 @@ export async function putDealInvestment(
       message?: unknown
     }
     if (!res.ok) {
+      const extraCompanyUserPayment = parseExtraCompanyUserPaymentBody(
+        data,
+        dealId,
+      )
       const msg =
         data?.message != null ? String(data.message) : res.statusText
-      return { ok: false, message: msg || "Could not update investment" }
+      return {
+        ok: false,
+        message: msg || "Could not update investment",
+        ...(extraCompanyUserPayment ? { extraCompanyUserPayment } : {}),
+      }
     }
     if (import.meta.env.DEV) {
       console.info("[Edit investment] Stored in DB (PUT)", {

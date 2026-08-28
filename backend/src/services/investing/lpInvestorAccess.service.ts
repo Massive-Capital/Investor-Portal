@@ -674,6 +674,7 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
       lp_investor_deal_ids: [],
       lp_investor_role_display: null,
       is_lp_investor: false,
+      is_deal_sponsor: false,
     };
   }
 
@@ -696,6 +697,7 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
       lp_investor_deal_ids: dealIds,
       lp_investor_role_display: "Investor",
       is_lp_investor: true,
+      is_deal_sponsor: false,
     };
   }
 
@@ -722,5 +724,6 @@ export async function mergeLpInvestorFlagsIntoUserPayload(
         ? "LP Investor"
         : null,
     is_lp_investor: lpNav || hasInvestingDeals,
+    is_deal_sponsor: sponsorOnRoster,
   };
 }

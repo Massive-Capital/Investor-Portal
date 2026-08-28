@@ -1,4 +1,5 @@
 import { Users } from "lucide-react"
+import { TableHScrollShell } from "../../../../common/components/data-table/TableHScrollShell"
 import {
   formatActivityDateTime,
   type UserActivityRow,
@@ -32,6 +33,10 @@ export function UserActivityTable({ rows, loading, error }: Props) {
       ) : null}
 
       <div className="um_table_wrap pm_user_activity_table_wrap">
+        <TableHScrollShell
+          active={!loading && rows.length > 0}
+          ariaLabel="User activity columns"
+        >
         <table className="um_table pm_user_activity_table">
           <thead>
             <tr>
@@ -87,6 +92,7 @@ export function UserActivityTable({ rows, loading, error }: Props) {
             )}
           </tbody>
         </table>
+        </TableHScrollShell>
       </div>
       {/* <p className="pm_panel_note">
         Only users with an active session are listed. Page counts reflect navigations

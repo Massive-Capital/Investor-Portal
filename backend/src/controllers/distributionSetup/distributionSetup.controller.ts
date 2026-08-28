@@ -331,6 +331,17 @@ function parseInvestorPayments(raw: unknown): InvestorPaymentLineInput[] {
       percentOfClass:
         Number(str(o.percentOfClass ?? o.percent_of_class).replace(/[^0-9.-]/g, "")) ||
         0,
+      ...(str(o.percentOfDeal ?? o.percent_of_deal) !== ""
+        ? {
+            percentOfDeal:
+              Number(
+                str(o.percentOfDeal ?? o.percent_of_deal).replace(
+                  /[^0-9.-]/g,
+                  "",
+                ),
+              ) || 0,
+          }
+        : {}),
       payment,
     });
   }
@@ -590,7 +601,7 @@ export async function postDealDistributionComplete(
 
 /**
  * PATCH /deals/:dealId/distributions/:distributionId/investor-percent
- * Body: { investorId, percentOfClass? } and/or { payment? } — co-dependent.
+ * Body: { investorId, percentOfClass? } and/or { percentOfDeal? } and/or { payment? }.
  */
 export async function patchDealDistributionInvestorPercent(
   req: Request,
@@ -616,12 +627,17 @@ export async function patchDealDistributionInvestorPercent(
     const b = asRecord(req.body);
     const investorId = str(b.investorId ?? b.investor_id);
     const pctRaw = b.percentOfClass ?? b.percent_of_class;
+    const dealPctRaw = b.percentOfDeal ?? b.percent_of_deal;
     const payRaw = b.payment;
     const reason = str(b.reason);
     const hasPct =
       pctRaw !== undefined &&
       pctRaw !== null &&
       String(pctRaw).trim() !== "";
+    const hasDealPct =
+      dealPctRaw !== undefined &&
+      dealPctRaw !== null &&
+      String(dealPctRaw).trim() !== "";
     const hasPay =
       payRaw !== undefined &&
       payRaw !== null &&
@@ -631,6 +647,11 @@ export async function patchDealDistributionInvestorPercent(
         ? pctRaw
         : Number(String(pctRaw ?? "").replace(/[^0-9.-]/g, ""))
       : undefined;
+    const percentOfDeal = hasDealPct
+      ? typeof dealPctRaw === "number"
+        ? dealPctRaw
+        : Number(String(dealPctRaw ?? "").replace(/[^0-9.-]/g, ""))
+      : undefined;
     const payment = hasPay
       ? typeof payRaw === "number"
         ? payRaw
@@ -638,11 +659,13 @@ export async function patchDealDistributionInvestorPercent(
       : undefined;
     if (
       !investorId ||
-      (!Number.isFinite(percentOfClass) && !Number.isFinite(payment))
+      (!Number.isFinite(percentOfClass) &&
+        !Number.isFinite(percentOfDeal) &&
+        !Number.isFinite(payment))
     ) {
       res.status(400).json({
         message:
-          "Provide investorId and percentOfClass (0–100) and/or payment.",
+          "Provide investorId and percentOfClass (0–100), percentOfDeal (0–100), and/or payment.",
       });
       return;
     }
@@ -654,6 +677,9 @@ export async function patchDealDistributionInvestorPercent(
       ...(reason ? { reason } : {}),
       ...(Number.isFinite(percentOfClass)
         ? { percentOfClass: percentOfClass as number }
+        : {}),
+      ...(Number.isFinite(percentOfDeal)
+        ? { percentOfDeal: percentOfDeal as number }
         : {}),
       ...(Number.isFinite(payment) ? { payment: payment as number } : {}),
     });

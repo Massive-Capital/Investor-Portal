@@ -1321,7 +1321,7 @@
   color: inherit;
 }
 
-/* View contact: no inner vertical scroll — body grows with content; overlay scrolls if needed; dialog centered. */
+/* View contact: stay inside the viewport; body scrolls, header/footer stay put. */
 .contacts_view_modal_overlay.um_modal_overlay {
   align-items: center;
   justify-content: center;
@@ -1331,8 +1331,10 @@
 
 .contacts_view_modal.um_modal.um_modal_view {
   max-width: min(36em, 100%);
-  max-height: none;
-  overflow-x: hidden;
+  max-height: min(90dvh, calc(100dvh - 2rem));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -1353,10 +1355,10 @@
 }
 
 .contacts_view_modal .deals_add_inv_modal_scroll {
-  flex: none;
-  min-height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-x: hidden;
-  overflow-y: visible;
+  overflow-y: auto;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
@@ -1964,6 +1966,28 @@
   display: grid;
   gap: 0 1em;
   grid-template-columns: 1fr;
+  align-items: start;
+}
+
+.add_contact_name_grid .um_field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.add_contact_name_grid .um_field_label_row {
+  min-height: 1.375em;
+  flex-shrink: 0;
+}
+
+.add_contact_name_grid .um_field_label_with_suffix {
+  flex-wrap: nowrap;
+}
+
+.add_contact_name_grid .um_field_label_text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (min-width: 480px) {

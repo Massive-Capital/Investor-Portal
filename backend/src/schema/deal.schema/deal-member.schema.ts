@@ -18,6 +18,12 @@ export const dealMember = pgTable(
     /** Contact / portal user id for this member (matches `deal_investment.contact_id`). */
     contactMemberId: text("contact_member_id").notNull().default(""),
     dealMemberRole: text("deal_member_role").notNull().default(""),
+    /** Optional denormalized member display name. Not required on add. */
+    dealMemberName: text("deal_member_name"),
+    /** Optional sponsor display name for this member. Not required on add. */
+    dealMemberSponsorName: text("deal_member_sponsor_name"),
+    /** Optional sponsor type. Left null unless set later. */
+    dealMemberSponsorType: text("deal_member_sponsor_type"),
     sendInvitationMail: text("send_invitation_mail").notNull().default("no"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

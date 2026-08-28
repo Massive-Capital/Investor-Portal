@@ -1,5 +1,11 @@
-import { pool } from "../../database/db.js";
-import { isCompanyAdminRole } from "../../constants/roles.js";
+import { eq } from "drizzle-orm";
+import { db, pool } from "../../database/db.js";
+import {
+  isCompanyAdminRole,
+  isPlatformAdminRole,
+} from "../../constants/roles.js";
+import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
+import { userHasAccessToOrganization } from "../org/orgResolution.service.js";
 
 const DEAL_INVESTMENT_AUTOSAVE_CONTACT =
   "__portal_investment_autosave__";
@@ -386,6 +392,19 @@ function sqlRoleIsLeadOrAdmin(columnSql: string): string {
   return SQL_ROLE_IS_LEAD_OR_ADMIN.replaceAll("%COL%", columnSql);
 }
 
+const SQL_ROLE_IS_LEAD = `(
+  lower(trim(%COL%)) IN ('lead sponsor', 'lead_sponsor')
+  OR (
+    position('lead' in lower(trim(%COL%))) > 0
+    AND position('sponsor' in lower(trim(%COL%))) > 0
+    AND position('admin' in lower(trim(%COL%))) = 0
+  )
+)`;
+
+function sqlRoleIsLead(columnSql: string): string {
+  return SQL_ROLE_IS_LEAD.replaceAll("%COL%", columnSql);
+}
+
 /**
  * Distinct deal ids where this user is Lead Sponsor or Admin sponsor
  * (`deal_member` or `deal_investment`, portal user id or contact email match).
@@ -434,6 +453,53 @@ export async function listDealIdsWhereViewerIsLeadOrAdminSponsor(
 }
 
 /**
+ * Distinct deal ids where this user is Lead Sponsor
+ * (`deal_member` or `deal_investment`, portal user id or contact email match).
+ */
+export async function listDealIdsWhereViewerIsLeadSponsor(
+  userId: string,
+): Promise<string[]> {
+  const uid = String(userId ?? "").trim();
+  if (!uid) return [];
+  const res = await pool.query<{ deal_id: string }>(
+    `SELECT DISTINCT dm.deal_id::text AS deal_id
+     FROM deal_member dm
+     INNER JOIN users u ON u.id = $1::uuid
+     WHERE ${sqlRoleIsLead("dm.deal_member_role")}
+       AND (
+         trim(dm.contact_member_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(both from dm.contact_member_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )
+     UNION
+     SELECT DISTINCT di.deal_id::text AS deal_id
+     FROM deal_investment di
+     INNER JOIN users u ON u.id = $1::uuid
+     WHERE ${sqlRoleIsLead("di.investor_role")}
+       AND trim(di.contact_id) <> $2
+       AND (
+         trim(di.contact_id) = u.id::text
+         OR EXISTS (
+           SELECT 1 FROM contact c
+           WHERE c.id::text = trim(di.contact_id)
+             AND lower(trim(c.email)) = lower(trim(u.email))
+         )
+       )`,
+    [uid, DEAL_INVESTMENT_AUTOSAVE_CONTACT],
+  );
+  return [
+    ...new Set(
+      res.rows
+        .map((r) => String(r.deal_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/**
  * True when the viewer appears on any deal as Lead Sponsor or Admin sponsor
  * (portal user id or contact email match). Used so sponsor team sees full-company
  * CRM contacts (including portal/member rows), same as company admin, plus
@@ -444,6 +510,17 @@ export async function viewerIsLeadOrAdminSponsorOnAnyDeal(
 ): Promise<boolean> {
   const ids = await listDealIdsWhereViewerIsLeadOrAdminSponsor(userId);
   return ids.length > 0;
+}
+
+/** Lead Sponsor, Admin sponsor, or Co-sponsor on any deal roster. */
+export async function viewerIsDealSponsorOnAnyDeal(
+  userId: string,
+): Promise<boolean> {
+  const uid = String(userId ?? "").trim();
+  if (!uid) return false;
+  if (await viewerIsLeadOrAdminSponsorOnAnyDeal(uid)) return true;
+  const coIds = await listDealIdsWhereViewerIsCoSponsor(uid);
+  return coIds.length > 0;
 }
 
 const SPONSOR_ROLES_IN =
@@ -469,6 +546,32 @@ export async function isPortalUserLeadOrAdminSponsorOnDeal(
 ): Promise<boolean> {
   const role = await resolveViewerDealMemberRoleOnDeal(dealId, userId);
   return role === "lead_sponsor" || role === "admin_sponsor";
+}
+
+/**
+ * Approve fund: Lead / Admin sponsor, platform admin, or company admin of the
+ * deal’s organization.
+ */
+export async function viewerCanApproveDealFundOnDeal(params: {
+  dealId: string;
+  userId: string;
+  userRole?: string | null;
+}): Promise<boolean> {
+  const dealId = String(params.dealId ?? "").trim();
+  const userId = String(params.userId ?? "").trim();
+  if (!dealId || !userId) return false;
+  if (await isPortalUserLeadOrAdminSponsorOnDeal(dealId, userId)) return true;
+  const role = String(params.userRole ?? "").trim();
+  if (isPlatformAdminRole(role)) return true;
+  if (!isCompanyAdminRole(role)) return false;
+  const [deal] = await db
+    .select({ organizationId: addDealForm.organizationId })
+    .from(addDealForm)
+    .where(eq(addDealForm.id, dealId))
+    .limit(1);
+  const orgId = String(deal?.organizationId ?? "").trim();
+  if (!orgId) return false;
+  return userHasAccessToOrganization(userId, orgId);
 }
 
 /** True when the portal user is Lead Sponsor on this deal (id or contact email match). */

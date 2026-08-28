@@ -58,6 +58,8 @@ import { InvestmentDetailDocumentsTab } from "./InvestmentDetailDocumentsTab"
 import { InvestmentDetailDistributionsTab } from "./InvestmentDetailDistributionsTab"
 import { InvestmentProfileBreakdownRowActions } from "./InvestmentProfileBreakdownRowActions"
 import { resolveInvestmentDealId } from "./utils/resolveInvestmentDealId"
+import { countVisibleDocumentsForInvestmentDetail } from "./utils/countInvestmentDetailDocuments"
+import { bindInvestmentOfferingDocumentsAutoRefresh } from "./utils/bindInvestmentOfferingDocumentsAutoRefresh"
 import "./investment-detail.css"
 
 function formatInvDetailUsd(n: number): string {
@@ -616,6 +618,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
   }
   const profileLineCount = d.investedAsBreakdown?.length ?? 0
   const dealId = resolveInvestmentDealId(d)
+  const [documentsCount, setDocumentsCount] = useState(0)
   const [dealInvestorRows, setDealInvestorRows] = useState<
     import("@/modules/Syndication/Deals/types/deal-investors.types").DealInvestorRow[]
   >([])
@@ -632,6 +635,26 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
       })
     return () => {
       cancelled = true
+    }
+  }, [dealId])
+
+  useEffect(() => {
+    const id = dealId?.trim() ?? ""
+    if (!id) {
+      setDocumentsCount(0)
+      return
+    }
+    let cancelled = false
+    const loadCount = () => {
+      void countVisibleDocumentsForInvestmentDetail(id).then((n) => {
+        if (!cancelled) setDocumentsCount(n)
+      })
+    }
+    loadCount()
+    const unbind = bindInvestmentOfferingDocumentsAutoRefresh(id, loadCount)
+    return () => {
+      cancelled = true
+      unbind()
     }
   }, [dealId])
 
@@ -775,6 +798,9 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
               <span className="deals_tabs_label um_segmented_tab_label">
                 Documents
               </span>
+              {documentsCount > 0 ? (
+                <span className="deals_tabs_count">({documentsCount})</span>
+              ) : null}
             </button>
             <button
               type="button"
