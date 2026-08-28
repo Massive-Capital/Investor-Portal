@@ -70,7 +70,6 @@ import {
   type OfferingOverviewPatchInput,
   type CreateDealFormInput,
   type DealFormFieldErrors,
-  type DealMemoryUploadFile,
 } from "../../services/deal/dealForm.service.js";
 import { sanitizeDealAnnouncement } from "../../utils/sanitizeDealAnnouncement.js";
 import {
@@ -91,8 +90,11 @@ import {
   GalleryCoverUrlTooLargeError,
   sanitizeGalleryCoverImageUrl,
 } from "../../utils/sanitizeGalleryCoverImageUrl.js";
-import { requireDealMultipartFiles, optionalDealMultipartFiles } from "../../utils/dealMultipartUpload.util.js";
-import { validateOfferingDocumentUploadFiles } from "../../utils/uploadFileValidation.js";
+import {
+  requireDealDocumentMultipartFiles,
+  requireDealMultipartFiles,
+  optionalDealMultipartFiles,
+} from "../../utils/dealMultipartUpload.util.js";
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import {
   encryptOfferingPreviewDealId,
@@ -1095,17 +1097,8 @@ export async function postDealOfferingDocumentUploads(
     res.status(400).json({ message: "Missing deal id" });
     return;
   }
-  const files = (req as Request & { files?: DealMemoryUploadFile[] }).files;
-  const fileList = Array.isArray(files) ? files : [];
-  if (!fileList.length) {
-    res.status(400).json({ message: "No files uploaded." });
-    return;
-  }
-  const typeCheck = validateOfferingDocumentUploadFiles(fileList);
-  if (!typeCheck.ok) {
-    res.status(400).json({ message: typeCheck.message });
-    return;
-  }
+  const fileList = requireDealDocumentMultipartFiles(req, res);
+  if (!fileList) return;
   try {
     const scope = await resolveDealViewerScope(
       user.id,

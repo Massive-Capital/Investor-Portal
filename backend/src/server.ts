@@ -26,6 +26,8 @@ import {
 
   postDeal,
 
+  postDealOfferingDocumentUploads,
+
   postDealOfferingGalleryUploads,
 
   putDeal,
@@ -39,6 +41,8 @@ import {
   uploadDealOfferingGalleryFile,
 
 } from "./middleware/dealAssetImageUpload.middleware.js";
+
+import { uploadDealOfferingDocumentFiles } from "./middleware/dealOfferingDocumentUpload.middleware.js";
 
 import { uploadDealEsignTemplateFiles } from "./middleware/dealEsignTemplateUpload.middleware.js";
 
@@ -271,6 +275,18 @@ app.post(
   uploadDealOfferingGalleryFile,
 
   postDealOfferingGalleryUploads,
+
+);
+
+app.post(
+
+  "/api/v1/deals/:dealId/offering-document-uploads",
+
+  socHttpAuditMiddleware,
+
+  uploadDealOfferingDocumentFiles,
+
+  postDealOfferingDocumentUploads,
 
 );
 
