@@ -78,15 +78,15 @@ export function CoSponsorEmailInterceptCard({
               : " deal_offering_cosponsor_intercept_badge_no"
           }`}
         >
-          {value === "yes" ? "Yes intercept" : "No intercept"}
+          {value === "yes" ? "No intercept" : "Yes intercept"}
         </span>
       </div>
       <p className="deal_offering_cosponsor_intercept_question" id={questionId}>
         Do you want to intercept emails the lead sponsor sends for this deal?
       </p>
       <p className="deal_offering_cosponsor_intercept_help">
-        This setting applies only to you on this deal. Yes intercept sends
-        lead-sponsor emails to you and your investors. No intercept sends those
+        This setting applies only to you on this deal. No intercept sends
+        lead-sponsor emails to you and your investors. Yes intercept sends those
         emails to you only; you can later send the same template to your
         investors.
       </p>
@@ -104,7 +104,7 @@ export function CoSponsorEmailInterceptCard({
             disabled={saving}
             onChange={() => void onChange("yes")}
           />
-          <span>Yes intercept</span>
+          <span>No intercept</span>
         </label>
         <label className="deal_offering_cosponsor_intercept_choice" htmlFor={noId}>
           <input
@@ -115,7 +115,7 @@ export function CoSponsorEmailInterceptCard({
             disabled={saving}
             onChange={() => void onChange("no")}
           />
-          <span>No intercept</span>
+          <span>Yes intercept</span>
         </label>
       </div>
     </section>
