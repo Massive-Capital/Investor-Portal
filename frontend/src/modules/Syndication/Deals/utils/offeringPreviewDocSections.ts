@@ -77,15 +77,9 @@ export function listWorkspaceDocumentsForOfferingPreview(
     if (isEsignTemplateDocumentsSection(sec)) continue
     for (const d of sec.nestedDocuments) {
       if (isInvestorEsignWorkspaceDocument(d)) continue
-      const scoped = applyHiddenByDefaultWhenNoAudience(d)
-      const scope = effectiveDocumentSharedWithScope(scoped, sec)
+      const scope = effectiveDocumentSharedWithScope(d, sec)
       if (!sectionVisibleOnOfferingPreview(scope, ctx)) continue
-      if (
-        ctx.isLpDealWorkspace &&
-        !nestedDocumentHasSharedAudience(scoped)
-      )
-        continue
-      tryAdd(scoped)
+      tryAdd(d)
     }
   }
 
@@ -178,8 +172,7 @@ export type NestedPreviewDocument = {
    * Overrides the section scope for this file when set.
    * `offering_page`: offering link + preview (+ LPs when signed in).
    * `lp_investor`: LP portal only.
-   * `not_visible` / Hidden by default: hidden from investors / offering link until
-   * Shared With recipients are chosen (sponsor workspace only).
+   * `not_visible` / Hidden by default: sponsor workspace only.
    */
   sharedWithScope?: SectionSharedWithScope
   /**
@@ -213,17 +206,6 @@ export function nestedDocumentHasSharedAudience(
   if (doc.sharedInvestorIds.length > 0) return true
   if ((doc.sharedSponsorUserIds?.length ?? 0) > 0) return true
   return false
-}
-
-/**
- * Docs with no Shared With audience stay Hidden by default until recipients are chosen.
- */
-export function applyHiddenByDefaultWhenNoAudience(
-  doc: NestedPreviewDocument,
-): NestedPreviewDocument {
-  if (nestedDocumentHasSharedAudience(doc)) return doc
-  if (doc.sharedWithScope === "not_visible") return doc
-  return { ...doc, sharedWithScope: "not_visible" }
 }
 
 export type OfferingPreviewSection = {
@@ -774,7 +756,7 @@ function normalizeNested(
       ? raw.sharedAt.trim()
       : ""
   const sharedAtMs = sharedAtRaw ? Date.parse(sharedAtRaw) : Number.NaN
-  return applyHiddenByDefaultWhenNoAudience({
+  return {
     id,
     name,
     url,
@@ -793,7 +775,7 @@ function normalizeNested(
     ...(esignTemplateFileId ? { esignTemplateFileId } : {}),
     ...(esignAwaitingSponsorSignature ? { esignAwaitingSponsorSignature: true } : {}),
     ...(esignSponsorSigned ? { esignSponsorSigned: true } : {}),
-  })
+  }
 }
 
 function normalizeSection(raw: unknown): OfferingPreviewSection | null {

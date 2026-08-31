@@ -2,6 +2,7 @@ import { Users } from "lucide-react"
 import { TableHScrollShell } from "../../../../common/components/data-table/TableHScrollShell"
 import {
   formatActivityDateTime,
+  // formatRoleLabel,
   type UserActivityRow,
 } from "../platformMetricsApi"
 
@@ -12,6 +13,8 @@ type Props = {
 }
 
 export function UserActivityTable({ rows, loading, error }: Props) {
+  const activeCount = rows.filter((row) => row.isActive).length
+
   return (
     <article className="pm_panel pm_user_activity_panel">
       <div className="pm_panel_head">
@@ -22,7 +25,9 @@ export function UserActivityTable({ rows, loading, error }: Props) {
           <h3 className="pm_panel_title">User activity</h3>
         </div>
         <span className="pm_panel_badge">
-          Logged in: <strong>{loading ? "…" : rows.length}</strong>
+          Users: <strong>{loading ? "…" : rows.length}</strong>
+          {" · "}
+          Active: <strong>{loading ? "…" : activeCount}</strong>
         </span>
       </div>
 
@@ -42,6 +47,8 @@ export function UserActivityTable({ rows, loading, error }: Props) {
             <tr>
               <th scope="col">User</th>
               <th scope="col">Email</th>
+              {/* <th scope="col">Role</th>
+              <th scope="col">Company</th> */}
               <th scope="col">Login</th>
               <th scope="col">Logout</th>
               <th scope="col">Page navigations</th>
@@ -57,7 +64,7 @@ export function UserActivityTable({ rows, loading, error }: Props) {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="pm_user_activity_empty">
-                  No users are currently logged in.
+                  No users on the platform yet.
                 </td>
               </tr>
             ) : (
@@ -65,12 +72,22 @@ export function UserActivityTable({ rows, loading, error }: Props) {
                 <tr key={row.userId}>
                   <td className="pm_ua_name">{row.userName}</td>
                   <td className="pm_ua_email">{row.email}</td>
-                  <td>{formatActivityDateTime(row.loginAt)}</td>
+                  {/*
+                  <td>Role</td>
+                  <td>Company</td>
+                  */}
+                  <td>
+                    {row.loginAt
+                      ? formatActivityDateTime(row.loginAt)
+                      : <span className="pm_ua_muted">Never signed in</span>}
+                  </td>
                   <td>
                     {row.isActive ? (
                       <span className="pm_ua_active">Active session</span>
-                    ) : (
+                    ) : row.loginAt ? (
                       formatActivityDateTime(row.logoutAt)
+                    ) : (
+                      <span className="pm_ua_muted">—</span>
                     )}
                   </td>
                   <td>

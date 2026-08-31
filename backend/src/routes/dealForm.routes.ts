@@ -65,9 +65,11 @@ import {
 } from "../controllers/deal/dealInvestorQuestionnaire.controller.js";
 import {
   deleteDealMember,
+  getDealCoSponsorEmailIntercept,
   getDealMemberEsignStatus,
   getDealMembers,
   getDealReferringSponsor,
+  patchDealCoSponsorEmailIntercept,
   postDealMemberInvitationEmail,
   postDealMemberSendEsign,
 } from "../controllers/deal/dealMember.controller.js";
@@ -160,6 +162,14 @@ router.delete(
 );
 router.get("/deals/:dealId/referring-sponsor", getDealReferringSponsor);
 router.get("/deals/:dealId/members", getDealMembers);
+router.get(
+  "/deals/:dealId/co-sponsor-email-intercept",
+  getDealCoSponsorEmailIntercept,
+);
+router.patch(
+  "/deals/:dealId/co-sponsor-email-intercept",
+  patchDealCoSponsorEmailIntercept,
+);
 router.post(
   "/deals/:dealId/members/export-notify",
   postDealMembersExportNotify,

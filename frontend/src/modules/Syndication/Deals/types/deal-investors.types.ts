@@ -101,6 +101,12 @@ export interface DealInvestorRow {
   /** True when that sponsor user is a Co-sponsor on this deal (lead/admin email redaction). */
   addedByIsCoSponsorOnDeal?: boolean
   /**
+   * Co-sponsor’s deal-scoped intercept preference (`yes` / `no`).
+   * `yes` (default): lead-sponsor mail goes to this co-sponsor and their LPs.
+   * `no`: those emails go to the co-sponsor only; they can later send the same template.
+   */
+  addedByCoSponsorEmailIntercept?: "yes" | "no"
+  /**
    * Deal Members “Investors added”: sum of Investors-tab Committed amounts for
    * investors whose Sponsor name is this member on this deal (excludes own).
    * From API `addedInvestorsCommitted`.

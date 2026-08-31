@@ -108,34 +108,18 @@ import {
   type SectionSharedWithScope,
 } from "../../utils/offeringPreviewDocSections"
 
-/** After Shared With changes: no audience → Hidden; first audience → LP portal. */
+/** After Shared With changes: first audience on a Hidden file → LP portal. */
 function patchDocAfterAudienceChange(
   doc: NestedPreviewDocument,
 ): NestedPreviewDocument {
   const hasAudience = nestedDocumentHasSharedAudience(doc)
-  if (!hasAudience) {
-    return doc.sharedWithScope === "not_visible"
-      ? doc
-      : { ...doc, sharedWithScope: "not_visible" }
-  }
+  if (!hasAudience) return doc
   if (doc.sharedWithScope === "not_visible" || doc.sharedWithScope == null) {
     return { ...doc, sharedWithScope: "lp_investor" }
   }
   return doc
 }
 
-/** Visibility change: cannot leave Hidden without Shared With recipients. */
-function patchDocAfterVisibilityChange(
-  doc: NestedPreviewDocument,
-): NestedPreviewDocument {
-  if (
-    !nestedDocumentHasSharedAudience(doc) &&
-    doc.sharedWithScope !== "not_visible"
-  ) {
-    return { ...doc, sharedWithScope: "not_visible" }
-  }
-  return doc
-}
 import {
   applyOfferingInvestorPreviewJsonFromServer,
   persistOfferingInvestorPreviewToServer,
@@ -1505,25 +1489,34 @@ export function DocumentsSection({
             nestedDocuments: s.nestedDocuments.map((n) =>
               n.id !== pending.docId
                 ? n
-                : patchDocAfterVisibilityChange({
-                    ...n,
-                    sharedWithScope: pending.nextScope,
-                  }),
+                : { ...n, sharedWithScope: pending.nextScope },
             ),
           },
     )
-
+    const nextForPersist = mergeAutoManagedDocumentSections(
+      nextSections,
+      idTrim,
+      offeringInvestorPreviewJson,
+    )
+    lastPersistedSectionsSnapshotRef.current =
+      documentSectionsSnapshot(nextForPersist)
     setSections(nextSections)
-    writeOfferingPreviewSections(idTrim, nextSections, { notify: false })
+    writeOfferingPreviewSections(idTrim, nextForPersist, { notify: false })
     void persistOfferingInvestorPreviewToServer(idTrim, {
-      sections: nextSections,
+      sections: nextForPersist,
       onSuccess: (d) => onSyncedRef.current?.(d),
     })
       .finally(() => {
         setVisibilitySaveBusy(false)
         setVisibilityChangePending(null)
       })
-  }, [dealIdTrim, sections, visibilityChangePending, visibilitySaveBusy])
+  }, [
+    dealIdTrim,
+    offeringInvestorPreviewJson,
+    sections,
+    visibilityChangePending,
+    visibilitySaveBusy,
+  ])
 
   useEffect(() => {
     if (!editingSectionId || sectionRenameBusy) return
@@ -2220,12 +2213,12 @@ export function DocumentsSection({
                                   label="Shared With"
                                   hint={
                                     <p className="deals_table_header_tooltip_p">
-                                      Documents stay <strong>Hidden by default</strong> until
-                                      you pick deal classes, <strong>Sponsor user investors</strong>,
-                                      individual investors, or <strong>All Investors</strong>.
-                                      Selected audiences then see the file in the LP portal
-                                      (and offering link when Visibility is set to Offering link).
-                                      Use the email icon to notify those investors.
+                                      Optional. Leave empty so every signed-in investor on
+                                      the deal can see the file when Visibility allows it.
+                                      Or pick deal classes, <strong>Sponsor user investors</strong>,
+                                      individual investors, or <strong>All Investors</strong> to
+                                      limit the LP portal. Use the email icon to notify those
+                                      investors.
                                     </p>
                                   }
                                 />
@@ -2237,13 +2230,13 @@ export function DocumentsSection({
                                   hint={
                                     <p className="deals_table_header_tooltip_p">
                                       <strong>Hidden by default</strong>: sponsor
-                                      workspace only — hidden from the offering link,
-                                      preview, and LP portal until Shared With recipients
-                                      are chosen. <strong>Offering
-                                      link</strong>: file appears on Preview offering and
-                                      the no-login shared investor link (and for signed-in
-                                      LPs who are Shared With). <strong>LP portal only</strong>: signed-in LPs
-                                      in Shared With only — not on the public offering link or preview.
+                                      workspace only — not on the offering link, preview,
+                                      or LP portal. <strong>Offering
+                                      link</strong>: file appears on Preview offering, the
+                                      no-login shared investor link, and the LP portal for
+                                      signed-in investors. <strong>LP portal only</strong>:
+                                      signed-in investors in the LP portal — not on the
+                                      public offering link or preview.
                                     </p>
                                   }
                                 />
@@ -3010,10 +3003,10 @@ export function DocumentsSection({
                   </p>
                   <p className="deal_offering_muted">
                     {visibilityChangePending.nextScope === "not_visible" ?
-                      "This file will be Hidden by default — hidden from the public offering link, preview, and LP portal until you choose Shared With recipients. Only the sponsor workspace will show it."
+                      "This file will be Hidden by default — hidden from the public offering link, preview, and LP portal. Only the sponsor workspace will show it."
                     : visibilityChangePending.nextScope === "lp_investor" ?
-                      "Signed-in investors in Shared With will see this file on the Offering Documents tab in the LP portal. It will not appear on the public offering link."
-                    : "This file will appear on the public offering link, preview, and the Offering Documents tab for signed-in investors in Shared With."}
+                      "Signed-in investors will see this file on the Offering Documents tab in the LP portal. It will not appear on the public offering link."
+                    : "This file will appear on the public offering link, preview, and the Offering Documents tab for signed-in investors."}
                   </p>
                 </div>
                 <div className="um_modal_actions add_contact_modal_actions">

@@ -575,6 +575,13 @@
       "when": 1894650000000,
       "tag": "0082_deal_extra_company_users",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1894700000000,
+      "tag": "0083_deal_member_lead_sponsor_email_intercept",
+      "breakpoints": true
     }
   ]
 }

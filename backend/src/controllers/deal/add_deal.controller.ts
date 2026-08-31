@@ -679,13 +679,13 @@ export async function patchDealOfferingOverview(
     "offeringOverviewClassId" in b
   ) {
     const raw = b.offering_overview_class_id ?? b.offeringOverviewClassId;
-    if (raw === null || raw === "") {
+    if (raw === null || raw === "" || raw === undefined) {
       patchIn.offeringOverviewClassId = null;
     } else if (typeof raw === "string") {
-      patchIn.offeringOverviewClassId = raw.trim();
+      const trimmed = raw.trim();
+      patchIn.offeringOverviewClassId = trimmed || null;
     } else {
-      res.status(400).json({ message: "offering_overview_class_id must be a UUID string or null." });
-      return;
+      patchIn.offeringOverviewClassId = null;
     }
   }
 

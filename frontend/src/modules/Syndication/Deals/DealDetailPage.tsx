@@ -965,6 +965,7 @@ export function DealDetailPage() {
           <DealOfferingDetailsTab
             detail={dealDetailApi}
             onDealUpdated={handleDealPersisted}
+            viewerDealMemberRole={viewerDealMemberRole}
           />
         ) : activeTab === "documents" && dealDetailApi ? (
           <DealDocumentsTab

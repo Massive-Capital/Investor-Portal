@@ -28,6 +28,7 @@ import {
   isPortalUserSponsorOnDeal,
   listEquivalentPortalUserIdsForUser,
 } from "./dealMemberScope.service.js";
+import { loadCoSponsorEmailInterceptByUserLower } from "./dealCoSponsorEmailIntercept.service.js";
 import {
   isDocSignedEsignCompleted,
   isDocSignedEsignPending,
@@ -1868,20 +1869,23 @@ async function resolveDealLeadSponsorFallback(dealId: string): Promise<{
 const INVESTOR_EMAIL_REDACTED = "Email unavailable";
 
 /**
- * Lead / admin sponsors see the full investor roster but must not see email for rows
- * added by a co-sponsor on this deal.
+ * Lead / admin sponsors see the full investor roster but must not see email for
+ * any row added by a co-sponsor on this deal (regardless of intercept).
  */
 export async function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer<
-  T extends { userEmail?: string; addedByIsCoSponsorOnDeal?: boolean },
+  T extends {
+    userEmail?: string;
+    addedByIsCoSponsorOnDeal?: boolean;
+    addedByCoSponsorEmailIntercept?: string;
+  },
 >(dealId: string, viewerUserId: string, rows: T[]): Promise<T[]> {
   const viewer = String(viewerUserId ?? "").trim();
   if (!viewer || rows.length === 0) return rows;
   if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, viewer))) return rows;
-  return rows.map((row) =>
-    row.addedByIsCoSponsorOnDeal === true
-      ? { ...row, userEmail: INVESTOR_EMAIL_REDACTED }
-      : row,
-  );
+  return rows.map((row) => {
+    if (row.addedByIsCoSponsorOnDeal !== true) return row;
+    return { ...row, userEmail: INVESTOR_EMAIL_REDACTED };
+  });
 }
 
 /**
@@ -1948,6 +1952,7 @@ export async function enrichInvestorApiRowsWithAddedBy<
       addedByEmail?: string;
       addedByIsSponsorOnDeal?: boolean;
       addedByIsCoSponsorOnDeal?: boolean;
+      addedByCoSponsorEmailIntercept?: string;
     }
   >
 > {
@@ -1958,6 +1963,7 @@ export async function enrichInvestorApiRowsWithAddedBy<
         addedByEmail?: string;
         addedByIsSponsorOnDeal?: boolean;
         addedByIsCoSponsorOnDeal?: boolean;
+        addedByCoSponsorEmailIntercept?: string;
       }
     >;
   const { byContactKey: rosterAddedByByContactKey, byLpRowId } =
@@ -1995,6 +2001,8 @@ export async function enrichInvestorApiRowsWithAddedBy<
   ]);
   const sponsorByAdderLower = new Map<string, boolean>();
   const coSponsorByAdderLower = new Map<string, boolean>();
+  const interceptByAdderLower =
+    await loadCoSponsorEmailInterceptByUserLower(dealId);
   await Promise.all(
     [...uniqueAdderIds.values()].map(async (id) => {
       const low = String(id).toLowerCase();
@@ -2066,6 +2074,7 @@ export async function enrichInvestorApiRowsWithAddedBy<
       addedByEmail?: string;
       addedByIsSponsorOnDeal?: boolean;
       addedByIsCoSponsorOnDeal?: boolean;
+      addedByCoSponsorEmailIntercept?: string;
     } = {};
     if (resolvedUid) {
       const rnk = String(resolvedUid).toLowerCase();
@@ -2078,6 +2087,10 @@ export async function enrichInvestorApiRowsWithAddedBy<
           : false);
       patch.addedByIsCoSponsorOnDeal =
         coSponsorByAdderLower.get(rnk) ?? false;
+      if (patch.addedByIsCoSponsorOnDeal) {
+        patch.addedByCoSponsorEmailIntercept =
+          interceptByAdderLower.get(rnk) ?? "yes";
+      }
     }
     if (display) patch.addedByDisplayName = display;
     if (email) patch.addedByEmail = email;
@@ -2087,12 +2100,14 @@ export async function enrichInvestorApiRowsWithAddedBy<
         addedByEmail?: string;
         addedByIsSponsorOnDeal?: boolean;
         addedByIsCoSponsorOnDeal?: boolean;
+        addedByCoSponsorEmailIntercept?: string;
       };
     return { ...row, ...patch } as T & {
       addedByUserId?: string;
       addedByEmail?: string;
       addedByIsSponsorOnDeal?: boolean;
       addedByIsCoSponsorOnDeal?: boolean;
+      addedByCoSponsorEmailIntercept?: string;
     };
   });
 }

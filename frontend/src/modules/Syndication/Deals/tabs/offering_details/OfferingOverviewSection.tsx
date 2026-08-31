@@ -44,6 +44,7 @@ import {
   isInvestmentFlowOpeningTransition,
   normalizeDealStageCanonical,
   normalizeDealStatus,
+  offeringStatusRequiresInvestorClass,
   validateOfferingStatusChange,
 } from "../../constants/deal-lifecycle"
 import {
@@ -354,6 +355,14 @@ export function OfferingOverviewSection({
 
   const tryApplyOfferingStatus = useCallback(
     async (next: string): Promise<boolean> => {
+      if (
+        classes.length === 0 &&
+        next !== draft.offeringStatus &&
+        offeringStatusRequiresInvestorClass(next)
+      ) {
+        toast.error("Create a class to change the deal status")
+        return false
+      }
       let configured = esignTemplatesConfigured
       if (configured === null) {
         configured = await refreshEsignTemplatesConfigured()
@@ -384,6 +393,7 @@ export function OfferingOverviewSection({
       return true
     },
     [
+      classes.length,
       detail.dealStage,
       draft.offeringStatus,
       esignTemplatesConfigured,
@@ -602,6 +612,13 @@ export function OfferingOverviewSection({
 
       if (!overviewBitsEqual) {
         if (draft.offeringStatus !== savedSnapshot.offeringStatus) {
+          if (
+            classes.length === 0 &&
+            offeringStatusRequiresInvestorClass(draft.offeringStatus)
+          ) {
+            toast.error("Create a class to change the deal status")
+            return
+          }
           const statusCheck = validateOfferingStatusChange({
             dealStage: detail.dealStage,
             previousOfferingStatus: detail.offeringStatus,

@@ -2615,6 +2615,33 @@ function normalizeInvestorRowApi(
       }
       return {}
     })(),
+    ...(() => {
+      const v = firstDefined(raw, [
+        "addedByCoSponsorEmailIntercept",
+        "added_by_co_sponsor_email_intercept",
+      ])
+      const t = String(v ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, " ")
+      if (
+        t === "no" ||
+        t === "no intercept" ||
+        t === "false" ||
+        t === "0"
+      ) {
+        return { addedByCoSponsorEmailIntercept: "no" as const }
+      }
+      if (
+        t === "yes" ||
+        t === "yes intercept" ||
+        t === "true" ||
+        t === "1"
+      ) {
+        return { addedByCoSponsorEmailIntercept: "yes" as const }
+      }
+      return {}
+    })(),
     addedInvestorsCommitted: str(
       firstDefined(raw, [
         "addedInvestorsCommitted",
@@ -2948,6 +2975,75 @@ export async function fetchDealMembers(
     return normalizeDealMembersResponse(data)
   } catch {
     return emptyDealMembersPayload()
+  }
+}
+
+export type CoSponsorEmailIntercept = "yes" | "no"
+
+export async function fetchCoSponsorEmailIntercept(
+  dealId: string,
+): Promise<{ applicable: boolean; intercept: CoSponsorEmailIntercept | null }> {
+  const base = getApiV1Base()
+  const did = dealId.trim()
+  if (!base || !did) return { applicable: false, intercept: null }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(did)}/co-sponsor-email-intercept`,
+      {
+        headers: { ...authHeaders({ omitActiveOrganization: true }) },
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok) return { applicable: false, intercept: null }
+    const applicable = data.applicable === true
+    const raw = String(data.intercept ?? "").trim().toLowerCase()
+    const intercept: CoSponsorEmailIntercept | null =
+      raw === "no" ? "no" : raw === "yes" ? "yes" : null
+    return { applicable, intercept: applicable ? intercept ?? "yes" : null }
+  } catch {
+    return { applicable: false, intercept: null }
+  }
+}
+
+export async function patchCoSponsorEmailIntercept(
+  dealId: string,
+  intercept: CoSponsorEmailIntercept,
+): Promise<
+  | { ok: true; intercept: CoSponsorEmailIntercept }
+  | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  const did = dealId.trim()
+  if (!base || !did)
+    return { ok: false, message: "VITE_BASE_URL is not configured." }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(did)}/co-sponsor-email-intercept`,
+      {
+        method: "PATCH",
+        headers: {
+          ...authHeaders({ omitActiveOrganization: true }),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ intercept }),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      intercept?: unknown
+      message?: string
+    }
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: data.message?.trim() || "Could not save intercept setting.",
+      }
+    }
+    const raw = String(data.intercept ?? intercept).trim().toLowerCase()
+    return { ok: true, intercept: raw === "no" ? "no" : "yes" }
+  } catch {
+    return { ok: false, message: "Could not save intercept setting." }
   }
 }
 

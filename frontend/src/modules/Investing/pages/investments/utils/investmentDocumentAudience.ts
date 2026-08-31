@@ -85,8 +85,9 @@ function fundingDocumentRequiresEsignCompletion(
 }
 
 /**
- * Workspace document is visible only when Shared With targets this investor
- * (or All Investors / class / sponsor audience). Empty Shared With = hidden.
+ * LP portal access after Visibility already allows the surface.
+ * Empty Shared With → every signed-in investor on the deal.
+ * When Shared With is set, only those recipients (or All Investors / class / sponsor).
  */
 export function nestedDocumentVisibleToInvestor(
   doc: NestedPreviewDocument,
@@ -100,7 +101,7 @@ export function nestedDocumentVisibleToInvestor(
   ) {
     return false
   }
-  if (!hasExplicitDocumentAudience(doc)) return false
+  if (!hasExplicitDocumentAudience(doc)) return true
   if (doc.sharedWithAllInvestors) return true
 
   const { viewerRows, dealClasses } = ctx

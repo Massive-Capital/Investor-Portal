@@ -167,7 +167,7 @@ export default function PlatformMetricsPage() {
             loading={loading}
             footer={
               metrics
-                ? `${metrics.usersByRole.length} roles`
+                ? `${formatCount(metrics.userCount)} registered · ${metrics.usersByRole.length} roles`
                 : "All organizations"
             }
           />

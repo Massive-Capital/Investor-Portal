@@ -25,6 +25,7 @@ import {
   isDealStageDraft,
   normalizeDealStageCanonical,
   normalizeDealStatus,
+  offeringStatusRequiresInvestorClass,
   resolveOfferingStatusForStageChange,
   validateDealStageAndStatus,
   validateOfferingStatusChange,
@@ -948,6 +949,12 @@ export function sanitizeOfferingOverviewPatch(
       if (!v) {
         out.offeringOverviewClassId = null;
       } else if (!OFFERING_OVERVIEW_CLASS_ID_UUID_RE.test(v)) {
+        if (offeringStatusRequiresInvestorClass(out.offeringStatus)) {
+          return {
+            ok: false,
+            message: "Create a class to change the deal status",
+          };
+        }
         return { ok: false, message: "Invalid offering overview class id." };
       } else {
         out.offeringOverviewClassId = v;
@@ -967,6 +974,20 @@ export async function updateDealOfferingOverviewById(
   const existing = await getAddDealFormById(id);
   if (!existing) return undefined;
   if (patch.offeringStatus !== undefined) {
+    const nextStatus = normalizeDealStatus(patch.offeringStatus);
+    const prevStatus = normalizeDealStatus(existing.offeringStatus);
+    if (
+      nextStatus &&
+      nextStatus !== prevStatus &&
+      offeringStatusRequiresInvestorClass(nextStatus)
+    ) {
+      const classes = await listInvestorClassesByDealId(id);
+      if (classes.length === 0) {
+        throwOfferingOverviewValidation({
+          offering_status: "Create a class to change the deal status",
+        });
+      }
+    }
     await assertOfferingStatusChangeAllowed({
       dealId: id,
       dealStage: existing.dealStage,

@@ -176,6 +176,7 @@ export async function persistOfferingInvestorPreviewToServer(
 ): Promise<DealDetailApi | null> {
   const id = dealId?.trim() ?? ""
   if (!id || typeof window === "undefined") return null
+  cancelOfferingInvestorPreviewServerSync(id)
   markOfferingPreviewHydrated(id)
   const sections = opts?.sections ?? readOfferingPreviewSections(id)
   const visibility = readOfferingPreviewInvestorVisibility(id)

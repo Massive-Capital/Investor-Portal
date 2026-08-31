@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -16,6 +17,7 @@ import {
   type ReactNode,
 } from "react"
 import { EMAIL_UNAVAILABLE_LABEL } from "../../../../../common/utils/displayEmail"
+import { investorRoleLabel } from "../../constants/investor-profile"
 import {
   groupDealMailRecipients,
   type DealMailRecipient,
@@ -91,21 +93,42 @@ function toggleIds(
   return next
 }
 
-function emailLine(recipient: DealMailRecipient): string {
+function emailLine(
+  recipient: DealMailRecipient,
+  hideCoSponsorLpEmail: boolean,
+): string {
+  if (hideCoSponsorLpEmail && recipient.addedByIsCoSponsor && recipient.classKind !== "gp") {
+    return EMAIL_UNAVAILABLE_LABEL
+  }
   if (recipient.email.includes("@")) return recipient.email
   return EMAIL_UNAVAILABLE_LABEL
+}
+
+function lpGroupTitle(group: {
+  sponsorName: string
+  intercept: "yes" | "no" | null
+  isCosponsor: boolean
+}): string {
+  if (group.intercept === "yes") return `${group.sponsorName} · Yes intercept`
+  if (group.intercept === "no") return `${group.sponsorName} · No intercept`
+  return group.sponsorName
 }
 
 function filterRecipientsByQuery(
   rows: DealMailRecipient[],
   query: string,
+  hideCoSponsorLpEmail: boolean,
 ): DealMailRecipient[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
   return rows.filter((recipient) => {
+    const hideEmail =
+      hideCoSponsorLpEmail &&
+      recipient.addedByIsCoSponsor &&
+      recipient.classKind !== "gp"
     const haystack = [
       recipient.displayName,
-      recipient.email,
+      hideEmail ? "" : recipient.email,
       recipient.className,
       recipient.roleLabel,
       recipient.sponsorName,
@@ -121,13 +144,21 @@ function InvestorRow({
   recipient,
   checked,
   onToggle,
+  hideCoSponsorLpEmail,
 }: {
   recipient: DealMailRecipient
   checked: boolean
   onToggle: () => void
+  hideCoSponsorLpEmail: boolean
 }) {
-  const email = emailLine(recipient)
-  const hasEmail = recipient.email.includes("@")
+  const email = emailLine(recipient, hideCoSponsorLpEmail)
+  const hasEmail =
+    recipient.email.includes("@") &&
+    !(
+      hideCoSponsorLpEmail &&
+      recipient.addedByIsCoSponsor &&
+      recipient.classKind !== "gp"
+    )
   return (
     <li className="deal_inv_comm_recipient_item">
       <label className="deal_inv_comm_recipient_row">
@@ -146,11 +177,6 @@ function InvestorRow({
             >
               {recipient.displayName}
             </span>
-            {recipient.requiresCosponsorRelease ? (
-              <span className="deal_inv_comm_recipient_badge deal_inv_comm_recipient_badge_release">
-                Release
-              </span>
-            ) : null}
           </span>
           <span className="deal_inv_comm_recipient_subline">
             <span
@@ -167,7 +193,7 @@ function InvestorRow({
               </span>
             ) : recipient.roleLabel !== "—" ? (
               <span className="deal_inv_comm_recipient_role">
-                {recipient.roleLabel}
+                {investorRoleLabel(recipient.roleLabel)}
               </span>
             ) : null}
           </span>
@@ -239,33 +265,6 @@ function GroupBlock({
   )
 }
 
-function FlatRecipientList({
-  rows,
-  selectedIds,
-  onChangeSelectedIds,
-}: {
-  rows: DealMailRecipient[]
-  selectedIds: Set<string>
-  onChangeSelectedIds: (next: Set<string>) => void
-}) {
-  return (
-    <ul className="deal_inv_comm_recipient_list deal_inv_comm_recip_flat_list">
-      {rows.map((r) => (
-        <InvestorRow
-          key={r.id}
-          recipient={r}
-          checked={selectedIds.has(r.id)}
-          onToggle={() =>
-            onChangeSelectedIds(
-              toggleIds(selectedIds, [r.id], !selectedIds.has(r.id)),
-            )
-          }
-        />
-      ))}
-    </ul>
-  )
-}
-
 function TabButton({
   id,
   label,
@@ -305,28 +304,47 @@ export function DealMailRecipientPicker({
   const [query, setQuery] = useState("")
   const listScrollRef = useRef<HTMLDivElement>(null)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+
+  useEffect(() => {
+    if (viewerIsCosponsor) setTab("lp")
+  }, [viewerIsCosponsor])
+  const hideCoSponsorLpEmail = !viewerIsCosponsor
   const tree = useMemo(() => groupDealMailRecipients(recipients), [recipients])
   const filteredLps = useMemo(
-    () => filterRecipientsByQuery(tree.lps, query),
-    [tree.lps, query],
+    () => filterRecipientsByQuery(tree.lps, query, hideCoSponsorLpEmail),
+    [tree.lps, query, hideCoSponsorLpEmail],
+  )
+  const filteredLpGroups = useMemo(
+    () =>
+      tree.lpGroups
+        .map((group) => ({
+          ...group,
+          recipients: filterRecipientsByQuery(
+            group.recipients,
+            query,
+            hideCoSponsorLpEmail,
+          ),
+        }))
+        .filter((group) => group.recipients.length > 0),
+    [tree.lpGroups, query, hideCoSponsorLpEmail],
   )
   const filteredGps = useMemo(
-    () => filterRecipientsByQuery(tree.gps, query),
-    [tree.gps, query],
+    () => filterRecipientsByQuery(tree.gps, query, hideCoSponsorLpEmail),
+    [tree.gps, query, hideCoSponsorLpEmail],
   )
   const visibleIds = useMemo(() => {
+    if (viewerIsCosponsor) return filteredLps.map((r) => r.id)
     if (tab === "lp") return filteredLps.map((r) => r.id)
     if (tab === "gp") return filteredGps.map((r) => r.id)
     return [...filteredLps, ...filteredGps].map((r) => r.id)
-  }, [tab, filteredLps, filteredGps])
+  }, [tab, filteredLps, filteredGps, viewerIsCosponsor])
   const visibleState = selectionState(visibleIds, selectedIds)
   const selectedCount = recipients.filter((r) => selectedIds.has(r.id)).length
   const releaseCount = recipients.filter(
     (r) => selectedIds.has(r.id) && r.requiresCosponsorRelease,
   ).length
-  const otherCosponsorLpCount = tree.lpGroups
-    .filter((g) => g.requiresRelease)
-    .reduce((n, g) => n + g.recipients.length, 0)
+  const holdLpCount = tree.lps.filter((r) => r.requiresCosponsorRelease).length
+  const directLpCount = tree.lps.filter((r) => r.includeCoSponsorOnSend).length
   const ownLpCount = tree.lps.filter((r) => !r.requiresCosponsorRelease).length
 
   const syncScrollToBottomButton = useCallback(() => {
@@ -372,6 +390,16 @@ export function DealMailRecipientPicker({
   return (
     <div className="deal_inv_comm_recipient_panel">
       <div className="deal_inv_comm_recip_tabs" role="tablist" aria-label="Investor type">
+        {viewerIsCosponsor ? (
+          <TabButton
+            id="lp"
+            label="Your investors"
+            count={filteredLps.length}
+            active
+            onSelect={() => setTab("lp")}
+          />
+        ) : (
+          <>
         <TabButton
           id="all"
           label="All"
@@ -393,6 +421,8 @@ export function DealMailRecipientPicker({
           active={tab === "gp"}
           onSelect={setTab}
         />
+          </>
+        )}
       </div>
 
       <div className="deal_inv_comm_recip_toolbar">
@@ -401,10 +431,16 @@ export function DealMailRecipientPicker({
           <input
             type="search"
             className="um_search_input deal_inv_comm_recip_search_input"
-            placeholder="Search LP or GP…"
+            placeholder={
+              viewerIsCosponsor ? "Search your investors…" : "Search LP or GP…"
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search limited partners or general partners"
+            aria-label={
+              viewerIsCosponsor
+                ? "Search your investors"
+                : "Search limited partners or general partners"
+            }
           />
         </div>
         <div className="deal_inv_comm_recip_bulk">
@@ -433,22 +469,27 @@ export function DealMailRecipientPicker({
         </div>
       </div>
 
-      {viewerIsCosponsor && ownLpCount > 0 && (tab === "all" || tab === "lp") ? (
+        {viewerIsCosponsor && ownLpCount > 0 ? (
         <p className="deal_inv_comm_recip_release_banner" role="note">
           <Info size={16} strokeWidth={2} aria-hidden />
           <span>
-            Sending as a cosponsor releases this email to your selected
-            investors.
+            Only your investors are listed. Lead, admin, and their investors
+            are not included.
           </span>
         </p>
       ) : null}
 
-      {!viewerIsCosponsor && otherCosponsorLpCount > 0 && (tab === "all" || tab === "lp") ? (
+      {!viewerIsCosponsor &&
+      (holdLpCount > 0 || directLpCount > 0) &&
+      (tab === "all" || tab === "lp") ? (
         <p className="deal_inv_comm_recip_release_banner" role="note">
           <Info size={16} strokeWidth={2} aria-hidden />
           <span>
-            Other cosponsor LPs will not receive this email directly. Their
-            cosponsor should add or release their emails.
+            {holdLpCount > 0 && directLpCount > 0
+              ? "Yes intercept: co-sponsor and their LPs. No intercept: co-sponsor only."
+              : holdLpCount > 0
+                ? "No intercept: co-sponsor only."
+                : "Yes intercept: co-sponsor and their LPs."}
           </span>
         </p>
       ) : null}
@@ -465,15 +506,36 @@ export function DealMailRecipientPicker({
               {tab === "all" ? (
                 <p className="deal_inv_comm_recip_section_label">Limited Partners</p>
               ) : null}
-              <FlatRecipientList
-                rows={filteredLps}
-                selectedIds={selectedIds}
-                onChangeSelectedIds={onChangeSelectedIds}
-              />
+              {filteredLpGroups.map((group) => (
+                <GroupBlock
+                  key={group.key}
+                  title={
+                    viewerIsCosponsor ? "Your investors" : lpGroupTitle(group)
+                  }
+                  countLabel={`${group.recipients.length}`}
+                  ids={group.recipients.map((r) => r.id)}
+                  selectedIds={selectedIds}
+                  onChangeSelectedIds={onChangeSelectedIds}
+                >
+                  {group.recipients.map((r) => (
+                    <InvestorRow
+                      key={r.id}
+                      recipient={r}
+                      hideCoSponsorLpEmail={hideCoSponsorLpEmail}
+                      checked={selectedIds.has(r.id)}
+                      onToggle={() =>
+                        onChangeSelectedIds(
+                          toggleIds(selectedIds, [r.id], !selectedIds.has(r.id)),
+                        )
+                      }
+                    />
+                  ))}
+                </GroupBlock>
+              ))}
             </div>
           ) : null}
 
-          {tab !== "lp" && filteredGps.length > 0 ? (
+          {!viewerIsCosponsor && tab !== "lp" && filteredGps.length > 0 ? (
             <div className={tab === "all" ? "deal_inv_comm_recip_section" : undefined}>
               {tab === "all" ? (
                 <p className="deal_inv_comm_recip_section_label">General Partners</p>
@@ -489,6 +551,7 @@ export function DealMailRecipientPicker({
                   <InvestorRow
                     key={r.id}
                     recipient={r}
+                    hideCoSponsorLpEmail={hideCoSponsorLpEmail}
                     checked={selectedIds.has(r.id)}
                     onToggle={() =>
                       onChangeSelectedIds(
@@ -511,11 +574,15 @@ export function DealMailRecipientPicker({
           {tab === "lp" && filteredLps.length === 0 ? (
             <p className="deal_inv_comm_recipient_empty deal_inv_comm_recipient_empty_inset">
               {query.trim()
-                ? "No limited partners match your search."
-                : "No limited partners on this deal."}
+                ? viewerIsCosponsor
+                  ? "No investors match your search."
+                  : "No limited partners match your search."
+                : viewerIsCosponsor
+                  ? "You have no investors on this deal."
+                  : "No limited partners on this deal."}
             </p>
           ) : null}
-          {tab === "gp" && filteredGps.length === 0 ? (
+          {!viewerIsCosponsor && tab === "gp" && filteredGps.length === 0 ? (
             <p className="deal_inv_comm_recipient_empty deal_inv_comm_recipient_empty_inset">
               {query.trim()
                 ? "No general partners match your search."
@@ -539,7 +606,7 @@ export function DealMailRecipientPicker({
       <p className="deal_inv_comm_recip_summary" role="status">
         <strong>{selectedCount} selected</strong>
         {releaseCount > 0
-          ? ` · ${releaseCount} require cosponsor release.`
+          ? ` · ${releaseCount} held for co-sponsor (No intercept).`
           : "."}
       </p>
     </div>

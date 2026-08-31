@@ -39,6 +39,8 @@ export type SendMailEmailPreviewPayload = {
   bodyHtml: string
   toEmails: string[]
   ccEmails: string[]
+  /** When set, investors are shown as BCC (addresses hidden from other recipients). */
+  bccEmails?: string[]
   attachment: EmailTemplateAttachmentStored | null
   /** When true, opens with the inline template editor (pencil on send mail). */
   startInEditMode?: boolean
@@ -230,6 +232,8 @@ export function SendMailEmailPreviewModal({
 
   const toLine = joinRecipients(preview.toEmails)
   const ccLine = joinRecipients(preview.ccEmails)
+  const bccLine =
+    preview.bccEmails != null ? joinRecipients(preview.bccEmails) : null
 
   return (
     <div
@@ -317,6 +321,12 @@ export function SendMailEmailPreviewModal({
                     <dt>CC</dt>
                     <dd>{ccLine}</dd>
                   </div>
+                  {bccLine != null ? (
+                    <div className="email_preview_dl_row">
+                      <dt>BCC</dt>
+                      <dd>{bccLine}</dd>
+                    </div>
+                  ) : null}
                 </dl>
                 <div className="email_preview_message_card">
                   {preview.bodyHtml?.trim() ? (

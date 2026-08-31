@@ -124,8 +124,14 @@ export function investorRoleLabel(value: string): string {
   const lower = t.toLowerCase()
   /** Portal role stored on legacy rows — never show as a deal role label. */
   if (lower === "deal_participant" || lower === "deal participant") return "—"
-  if (lower === LP_INVESTOR_ROLE_VALUE || lower === "lp investors")
+  if (
+    lower === LP_INVESTOR_ROLE_VALUE ||
+    lower === "lp_investor" ||
+    lower === "lp investors" ||
+    lower === "lp investor"
+  ) {
     return LP_INVESTORS_ROLE_LABEL
+  }
   const row = INVESTOR_ROLE_SELECT_OPTIONS.find((o) => o.value === t)
   if (row) return row.label
   return t
@@ -234,7 +240,12 @@ export function isLpInvestorRole(stored: string | undefined): boolean {
   if (!t) return false
   if (t === LP_INVESTOR_ROLE_VALUE) return true
   const lower = t.toLowerCase()
-  return lower === "lp investors" || lower === LP_INVESTOR_ROLE_VALUE
+  return (
+    lower === "lp investors" ||
+    lower === "lp investor" ||
+    lower === LP_INVESTOR_ROLE_VALUE ||
+    lower === "lp_investor"
+  )
 }
 
 /** Lead / admin / co-sponsor / deal member — matches select option value or label. */
