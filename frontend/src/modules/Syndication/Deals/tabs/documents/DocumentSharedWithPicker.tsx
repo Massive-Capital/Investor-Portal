@@ -24,11 +24,6 @@ import {
 } from "../../utils/offeringPreviewDocumentAudience"
 import { isUsableInvestorEmail } from "../../utils/dealDetailTabVisibility"
 
-type SharedNotificationRecipient = {
-  to_email: string
-  member_display_name?: string
-}
-
 export function toggleIdInList(list: string[], id: string, on: boolean): string[] {
   if (on) return list.includes(id) ? list : [...list, id]
   return list.filter((x) => x !== id)
@@ -70,7 +65,9 @@ function formatDocumentSharedWithSummary(args: {
     for (const id of investorIds) {
       const r = investors.find((x) => x.id === id)
       const email =
-        r?.userEmail && r.userEmail !== "—" ? r.userEmail.trim() : ""
+        r?.userEmail && isUsableInvestorEmail(r.userEmail)
+          ? r.userEmail.trim()
+          : ""
       const name = r?.displayName?.trim() || id
       bits.push(email ? `${name} (${email})` : name)
     }
@@ -94,14 +91,21 @@ function investorRowMatchesDealClass(
   return Boolean(className && rowClass === className)
 }
 
-function resolveSharedWithRecipients(args: {
+type SharedNotifyPerson = {
+  key: string
+  name: string
+  email?: string
+}
+
+function resolveSharedWithPeople(args: {
   allInvestors: boolean
   investorIds: string[]
   sponsorUserIds: string[]
   classIds: string[]
   investors: DealInvestorRow[]
   dealClasses: DealInvestorClass[]
-}): SharedNotificationRecipient[] {
+  sponsorUserOptions: SponsorPickerOption[]
+}): SharedNotifyPerson[] {
   const {
     allInvestors,
     investorIds,
@@ -109,19 +113,24 @@ function resolveSharedWithRecipients(args: {
     classIds,
     investors,
     dealClasses,
+    sponsorUserOptions,
   } = args
-  const byEmail = new Map<string, SharedNotificationRecipient>()
+  const byKey = new Map<string, SharedNotifyPerson>()
+
+  function addPerson(key: string, name: string, emailRaw?: string) {
+    const k = key.trim().toLowerCase()
+    if (!k || byKey.has(k)) return
+    const email = emailRaw?.trim()
+    byKey.set(k, {
+      key: k,
+      name: name.trim() || k,
+      email: email && isUsableInvestorEmail(email) ? email : undefined,
+    })
+  }
 
   function addRow(row: DealInvestorRow) {
-    const email = row.userEmail?.trim()
-    if (!isUsableInvestorEmail(email)) return
-    const key = email!.toLowerCase()
-    if (byEmail.has(key)) return
-    const name = row.displayName?.trim()
-    byEmail.set(key, {
-      to_email: email!,
-      member_display_name: name && name !== "—" ? name : undefined,
-    })
+    const name = row.displayName?.trim() || row.id
+    addPerson(row.id || name, name, row.userEmail)
   }
 
   if (allInvestors) {
@@ -137,13 +146,16 @@ function resolveSharedWithRecipients(args: {
       }
     }
     for (const sponsorUid of sponsorUserIds) {
+      const opt = sponsorUserOptions.find((x) => x.id === sponsorUid)
+      const sponsorLabel = opt?.label?.trim() || sponsorUid
+      addPerson(`sponsor:${sponsorUid}`, sponsorLabel)
       for (const row of lpInvestorsAddedBySponsorUserId(sponsorUid, investors)) {
         addRow(row)
       }
     }
   }
 
-  return [...byEmail.values()]
+  return [...byKey.values()]
 }
 
 export function sharedAudienceSearchBlob(
@@ -280,17 +292,26 @@ export function DocumentSharedWithPicker(args: {
     classIds.length > 0 ||
     sponsorUserIds.length > 0
 
-  const notifyRecipients = useMemo(
+  const notifyPeople = useMemo(
     () =>
-      resolveSharedWithRecipients({
+      resolveSharedWithPeople({
         allInvestors,
         investorIds,
         sponsorUserIds,
         classIds,
         investors,
         dealClasses,
+        sponsorUserOptions,
       }),
-    [allInvestors, investorIds, sponsorUserIds, classIds, investors, dealClasses],
+    [
+      allInvestors,
+      investorIds,
+      sponsorUserIds,
+      classIds,
+      investors,
+      dealClasses,
+      sponsorUserOptions,
+    ],
   )
 
   const openNotifyConfirm = useCallback(() => {
@@ -301,16 +322,16 @@ export function DocumentSharedWithPicker(args: {
       )
       return
     }
-    if (notifyRecipients.length === 0) {
+    if (notifyPeople.length === 0) {
       toast.error(
-        "No email addresses",
-        "Selected investors do not have a valid email on file.",
+        "No recipients",
+        "Selected investors could not be resolved for this document share.",
       )
       return
     }
     setIsOpen(false)
     setConfirmOpen(true)
-  }, [hasAudienceSelection, notifyRecipients.length])
+  }, [hasAudienceSelection, notifyPeople.length])
 
   const handleConfirmSendNotification = useCallback(() => {
     const idTrim = dealId?.trim() ?? ""
@@ -322,7 +343,12 @@ export function DocumentSharedWithPicker(args: {
       setSendBusy(true)
       try {
         const result = await postDealDocumentSharedNotification(idTrim, {
-          recipients: notifyRecipients,
+          audience: {
+            all_investors: allInvestors,
+            investor_ids: investorIds,
+            sponsor_user_ids: sponsorUserIds,
+            class_ids: classIds,
+          },
           document_names: [docName.trim() || "Document"],
         })
         if (!result.ok) {
@@ -332,7 +358,7 @@ export function DocumentSharedWithPicker(args: {
         if (result.failures.length > 0) {
           toast.success(
             "Email partially sent",
-            `Sent ${result.sent} of ${notifyRecipients.length}. Some addresses failed.`,
+            `Sent ${result.sent} of ${notifyPeople.length}. Some addresses failed.`,
           )
         } else {
           toast.success(
@@ -345,7 +371,15 @@ export function DocumentSharedWithPicker(args: {
         setSendBusy(false)
       }
     })()
-  }, [dealId, docName, notifyRecipients])
+  }, [
+    dealId,
+    docName,
+    allInvestors,
+    investorIds,
+    sponsorUserIds,
+    classIds,
+    notifyPeople.length,
+  ])
 
   const updateMenuBox = useCallback(() => {
     const el = triggerRef.current
@@ -743,24 +777,20 @@ export function DocumentSharedWithPicker(args: {
                 </div>
                 <div className="deals_add_inv_modal_scroll">
                   <p className="deal_offering_muted">
-                    The following {notifyRecipients.length === 1 ? "person" : "people"}{" "}
+                    The following {notifyPeople.length === 1 ? "person" : "people"}{" "}
                     will receive an email that{" "}
                     <strong>{docName}</strong> was shared with them on this deal:
                   </p>
                   <ul className="deal_docs_shared_notify_recipient_list">
-                    {notifyRecipients.map((r) => (
-                      <li key={r.to_email}>
-                        {r.member_display_name ? (
-                          <>
-                            <strong>{r.member_display_name}</strong>
-                            <span className="deal_docs_shared_notify_recipient_email">
-                              {" "}
-                              ({r.to_email})
-                            </span>
-                          </>
-                        ) : (
-                          r.to_email
-                        )}
+                    {notifyPeople.map((r) => (
+                      <li key={r.key}>
+                        <strong>{r.name}</strong>
+                        {r.email ? (
+                          <span className="deal_docs_shared_notify_recipient_email">
+                            {" "}
+                            ({r.email})
+                          </span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

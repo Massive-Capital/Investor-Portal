@@ -325,11 +325,11 @@
 }
 
 .deal_stage_modal--saas_paywall .deal_stage_modal_btn--confirm {
-  background: #d97706;
+  background: #16a34a;
 }
 
 .deal_stage_modal--saas_paywall .deal_stage_modal_btn--confirm:hover:not(:disabled) {
-  background: #b45309;
+  background: #15803d;
 }
 
 .deal_saas_paywall_error {

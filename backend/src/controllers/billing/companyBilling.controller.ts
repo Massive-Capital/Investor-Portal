@@ -23,6 +23,7 @@ import {
   updateDealBillingCycle,
 } from "../../services/billing/dealBilling.service.js";
 import { getStripePublicConfig } from "../../config/stripe.config.js";
+import { releaseBillingPaymentHold } from "../../middleware/billingPaymentLock.js";
 
 function paramStr(v: string | string[] | undefined): string {
   if (v == null) return "";
@@ -143,6 +144,37 @@ export async function postCompanyBillingCheckout(
     return;
   }
   res.status(200).json({ url: result.url });
+}
+
+/**
+ * POST /companies/:companyId/billing/release-payment
+ * Drop an abandoned Checkout hold so Upgrade plan can start payment.
+ */
+export async function postCompanyBillingReleasePayment(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const companyId = paramStr(req.params.companyId);
+  const access = await resolveCompanyBillingAccess(
+    user.id,
+    user.userRole,
+    companyId,
+  );
+  if (!access.canPay) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const dealId = bodyString(body.dealId ?? body.deal_id);
+  if (dealId) {
+    releaseBillingPaymentHold(companyId, dealId);
+  }
+  res.status(204).end();
 }
 
 /**
@@ -367,12 +399,12 @@ export async function postCompanyBillingPortal(
     return;
   }
   const companyId = paramStr(req.params.companyId);
-  const can = await userCanManageCompanyBilling(
+  const access = await resolveCompanyBillingAccess(
     user.id,
     user.userRole,
     companyId,
   );
-  if (!can) {
+  if (!access.canPay) {
     res.status(403).json({ message: "Forbidden" });
     return;
   }

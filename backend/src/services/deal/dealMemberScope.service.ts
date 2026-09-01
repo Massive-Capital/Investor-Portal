@@ -549,6 +549,24 @@ export async function isPortalUserLeadOrAdminSponsorOnDeal(
 }
 
 /**
+ * Deal profile PUT (name, stage, property, etc.): co-sponsors and LP roster
+ * members cannot edit. Lead / admin sponsor and other workspace viewers can.
+ */
+export function viewerDealMemberRoleMayEditDealProfile(
+  role: ViewerDealMemberRoleKind,
+): boolean {
+  return role !== "co_sponsor" && role !== "lp_investor";
+}
+
+export async function viewerMayEditDealProfile(
+  dealId: string,
+  userId: string,
+): Promise<boolean> {
+  const role = await resolveViewerDealMemberRoleOnDeal(dealId, userId);
+  return viewerDealMemberRoleMayEditDealProfile(role);
+}
+
+/**
  * Approve fund: Lead / Admin sponsor, platform admin, or company admin of the
  * deal’s organization.
  */

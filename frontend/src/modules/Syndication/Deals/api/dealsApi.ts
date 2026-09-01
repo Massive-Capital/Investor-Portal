@@ -109,6 +109,8 @@ export interface DealDetailApi {
   offeringGalleryPaths?: string[]
   /** Encrypted `preview` query value; persisted on `add_deal_form` for share links. */
   offeringPreviewToken?: string | null
+  /** False when the signed-in viewer is a co-sponsor (or LP) on this deal. */
+  viewerCanEditDeal?: boolean
   /**
    * JSON string `{ v, visibility, sections }` for offering preview (documents + investor toggles).
    * Synced to the server for the shared preview link.
@@ -424,6 +426,19 @@ function normalizeDealListRow(
           : {}),
       }
     })(),
+    ...(() => {
+      const raw = firstDefined(r, [
+        "viewerCanEditDeal",
+        "viewer_can_edit_deal",
+      ])
+      if (raw === true || raw === "true" || raw === 1 || raw === "1") {
+        return { viewerCanEditDeal: true as const }
+      }
+      if (raw === false || raw === "false" || raw === 0 || raw === "0") {
+        return { viewerCanEditDeal: false as const }
+      }
+      return {}
+    })(),
   }
 }
 
@@ -738,6 +753,19 @@ export function normalizeDealDetailApi(
     offeringPreviewToken,
     offeringInvestorPreviewJson,
     archived,
+    ...(() => {
+      const raw = firstDefined(d, [
+        "viewerCanEditDeal",
+        "viewer_can_edit_deal",
+      ])
+      if (raw === true || raw === "true" || raw === 1 || raw === "1") {
+        return { viewerCanEditDeal: true as const }
+      }
+      if (raw === false || raw === "false" || raw === 0 || raw === "0") {
+        return { viewerCanEditDeal: false as const }
+      }
+      return {}
+    })(),
   }
 }
 
@@ -4510,7 +4538,13 @@ export type PostDealDocumentSharedNotificationResult =
 export async function postDealDocumentSharedNotification(
   dealId: string,
   input: {
-    recipients: { to_email: string; member_display_name?: string }[]
+    recipients?: { to_email: string; member_display_name?: string }[]
+    audience?: {
+      all_investors?: boolean
+      investor_ids?: string[]
+      sponsor_user_ids?: string[]
+      class_ids?: string[]
+    }
     document_names: string[]
   },
 ): Promise<PostDealDocumentSharedNotificationResult> {
@@ -4529,10 +4563,13 @@ export async function postDealDocumentSharedNotification(
         },
         credentials: "include",
         body: JSON.stringify({
-          recipients: input.recipients.map((r) => ({
-            to_email: r.to_email.trim(),
-            member_display_name: r.member_display_name?.trim() ?? "",
-          })),
+          recipients: (input.recipients ?? [])
+            .map((r) => ({
+              to_email: r.to_email.trim(),
+              member_display_name: r.member_display_name?.trim() ?? "",
+            }))
+            .filter((r) => r.to_email.includes("@")),
+          audience: input.audience ?? {},
           document_names: input.document_names,
         }),
       },

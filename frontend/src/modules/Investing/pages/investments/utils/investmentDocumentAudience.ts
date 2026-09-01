@@ -13,6 +13,8 @@ export type InvestmentDocumentAudienceContext = {
   dealClasses: DealInvestorClass[]
   /** All investor row ids for this viewer (email match), for Shared With id resolution. */
   viewerInvestorIds: ReadonlySet<string>
+  /** Portal `users.id` for the signed-in viewer (co-sponsor Shared With). */
+  viewerUserId?: string
 }
 
 export const EMPTY_INVESTMENT_DOCUMENT_AUDIENCE: InvestmentDocumentAudienceContext =
@@ -119,8 +121,11 @@ export function nestedDocumentVisibleToInvestor(
   for (const sponsorUid of doc.sharedSponsorUserIds ?? []) {
     const key = sponsorUid.trim().toLowerCase()
     if (!key) continue
+    const viewerUid = ctx.viewerUserId?.trim().toLowerCase()
+    if (viewerUid && viewerUid === key) return true
     for (const row of viewerRows) {
       if (row.addedByUserId?.trim().toLowerCase() === key) return true
+      if (row.contactId?.trim().toLowerCase() === key) return true
     }
   }
 

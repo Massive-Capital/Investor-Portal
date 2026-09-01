@@ -8,7 +8,8 @@ import { useEffect, useId, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { getSessionOrganizationCompanyId } from "../../../../common/auth/sessionOrganization"
-import { startCompanyBillingCheckout } from "../../company/companyBillingApi"
+import { isPlatformAdmin } from "../../../../common/auth/roleUtils"
+import { openCompanyBillingPortal } from "../../company/companyBillingApi"
 import { formatDealListDateDisplay } from "../dealsListDisplay"
 import {
   dealSaasBillingSettingsPath,
@@ -25,7 +26,7 @@ export function DealSaasPaywallModal({
 }) {
   const titleId = useId()
   const navigate = useNavigate()
-  const [paying, setPaying] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -33,17 +34,17 @@ export function DealSaasPaywallModal({
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !paying) onClose()
+      if (e.key === "Escape" && !busy) onClose()
     }
     document.addEventListener("keydown", onKey)
     return () => {
       document.body.style.overflow = prevOverflow
       document.removeEventListener("keydown", onKey)
     }
-  }, [deal, paying, onClose])
+  }, [deal, busy, onClose])
 
   useEffect(() => {
-    setPaying(false)
+    setBusy(false)
     setError("")
   }, [deal?.id])
 
@@ -51,6 +52,18 @@ export function DealSaasPaywallModal({
 
   const lockedDeal = deal
   const reason = lockedDeal.reason ?? "unpaid"
+  const subStatus = String(
+    lockedDeal.billingSubscriptionStatus ?? "",
+  )
+    .trim()
+    .toLowerCase()
+  const needsExistingInvoicePay =
+    reason === "past_due" ||
+    (reason === "expired" &&
+      (subStatus === "active" ||
+        subStatus === "trialing" ||
+        subStatus === "past_due" ||
+        subStatus === "unpaid"))
   const title =
     reason === "expired"
       ? "Billing period ended"
@@ -60,38 +73,39 @@ export function DealSaasPaywallModal({
   const dealLabel = lockedDeal.dealName.trim()
     ? `“${lockedDeal.dealName.trim()}”`
     : "this deal"
-  const description =
-    lockedDeal.message?.trim() ||
-    (reason === "expired"
-      ? `The billing period for ${dealLabel} has ended. Pay monthly SaaS (MRR) to continue.`
-      : reason === "past_due"
-        ? `Monthly SaaS (MRR) for ${dealLabel} is past due. Pay now to continue.`
-        : `Pay monthly SaaS (MRR) for ${dealLabel} to continue.`)
+  const canPayForDeal =
+    isPlatformAdmin() || lockedDeal.viewerIsLeadSponsor === true
+  const description = !canPayForDeal
+    ? `The lead sponsor must pay monthly SaaS for ${dealLabel} before this deal can be opened.`
+    : lockedDeal.message?.trim() ||
+      (reason === "expired"
+        ? `The billing period for ${dealLabel} has ended. Pay monthly SaaS (MRR) to continue.`
+        : reason === "past_due"
+          ? `Monthly SaaS (MRR) for ${dealLabel} is past due. Pay now to continue.`
+          : `Pay monthly SaaS (MRR) for ${dealLabel} to continue.`)
   const nextBillingLabel = lockedDeal.nextBillingDate
     ? formatDealListDateDisplay(lockedDeal.nextBillingDate)
     : null
-  const payLabel =
-    reason === "past_due" || reason === "expired" ? "Pay now" : "Pay MRR"
+  const payLabel = "Pay"
+
+  function goToFirstPayment() {
+    navigate(dealSaasBillingSettingsPath(lockedDeal.id, lockedDeal.dealName))
+  }
 
   async function handlePay() {
     setError("")
-    const companyId = getSessionOrganizationCompanyId()?.trim() ?? ""
-    if (!companyId) {
-      navigate(dealSaasBillingSettingsPath(lockedDeal.id, lockedDeal.dealName))
+    if (!needsExistingInvoicePay) {
+      goToFirstPayment()
       return
     }
-    const planId = (lockedDeal.billingPlanId || "starter").trim().toLowerCase()
-    const allowed = new Set(["starter", "running", "growth"])
-    const plan = allowed.has(planId) ? planId : "starter"
-    setPaying(true)
-    const result = await startCompanyBillingCheckout(
-      companyId,
-      plan,
-      "monthly",
-      "5",
-      lockedDeal.id,
-    )
-    setPaying(false)
+    const companyId = getSessionOrganizationCompanyId()?.trim() ?? ""
+    if (!companyId) {
+      goToFirstPayment()
+      return
+    }
+    setBusy(true)
+    const result = await openCompanyBillingPortal(companyId)
+    setBusy(false)
     if (!result.ok) {
       setError(result.message)
       return
@@ -99,16 +113,12 @@ export function DealSaasPaywallModal({
     window.location.assign(result.url)
   }
 
-  function handleChoosePlan() {
-    navigate(dealSaasBillingSettingsPath(lockedDeal.id, lockedDeal.dealName))
-  }
-
   return createPortal(
     <div
       className="deal_stage_modal_overlay portal_modal_z_boost"
       role="presentation"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !paying) onClose()
+        if (e.target === e.currentTarget && !busy) onClose()
       }}
     >
       <div
@@ -132,7 +142,7 @@ export function DealSaasPaywallModal({
             type="button"
             className="deal_stage_modal_close"
             aria-label="Close"
-            disabled={paying}
+            disabled={busy}
             onClick={onClose}
           >
             <X size={20} strokeWidth={2} aria-hidden />
@@ -164,17 +174,19 @@ export function DealSaasPaywallModal({
           <button
             type="button"
             className="deal_stage_modal_btn deal_stage_modal_btn--cancel"
-            disabled={paying}
+            disabled={busy}
             onClick={onClose}
           >
             <X size={16} strokeWidth={2} aria-hidden />
             Close
           </button>
+          {canPayForDeal ? (
+          <>
           <button
             type="button"
             className="deal_stage_modal_btn deal_stage_modal_btn--cancel"
-            disabled={paying}
-            onClick={handleChoosePlan}
+            disabled={busy}
+            onClick={goToFirstPayment}
           >
             <BadgeDollarSign size={16} strokeWidth={2} aria-hidden />
             Upgrade plan
@@ -182,10 +194,10 @@ export function DealSaasPaywallModal({
           <button
             type="button"
             className="deal_stage_modal_btn deal_stage_modal_btn--confirm"
-            disabled={paying}
+            disabled={busy}
             onClick={() => void handlePay()}
           >
-            {paying ? (
+            {busy ? (
               <>
                 <Loader2
                   size={16}
@@ -202,6 +214,8 @@ export function DealSaasPaywallModal({
               </>
             )}
           </button>
+          </>
+          ) : null}
         </footer>
       </div>
     </div>,

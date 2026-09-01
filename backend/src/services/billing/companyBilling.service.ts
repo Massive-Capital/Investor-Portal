@@ -2373,6 +2373,18 @@ export async function syncCompanyPaymentMethodsFromStripe(
       },
     });
 
+    try {
+      const { refreshDealSaasSubscriptionsFromStripe } = await import(
+        "./dealBilling.service.js"
+      );
+      await refreshDealSaasSubscriptionsFromStripe(cid);
+    } catch (subErr) {
+      console.warn(
+        "syncCompanyPaymentMethodsFromStripe deal subscriptions:",
+        subErr,
+      );
+    }
+
     const paymentMethods = await listCompanyPaymentMethods(cid, {
       includeDetached: false,
     });
@@ -2982,6 +2994,16 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         "incomplete",
         "none",
       ]).has(current);
+
+      if (subId) {
+        try {
+          const stripe = getStripeClient();
+          const sub = await stripe.subscriptions.retrieve(subId);
+          await applySubscriptionToCompany(companyId, sub);
+        } catch (err) {
+          console.warn("[stripe webhook] invoice.payment_failed sub refresh:", err);
+        }
+      }
 
       await db
         .update(companies)

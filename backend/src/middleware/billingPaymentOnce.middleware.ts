@@ -85,7 +85,8 @@ export async function billingAlreadyPaidMiddleware(
 
 /**
  * Allow only one in-flight payment start per deal (double-click / parallel tabs).
- * Checkout keeps a short pending hold so two Stripe sessions are not opened.
+ * The hold is released when the request finishes so an unpaid deal can still
+ * complete Checkout via Upgrade plan or a retry.
  */
 export function billingPaymentOnceMiddleware(
   keepPendingAfterSuccess = false,

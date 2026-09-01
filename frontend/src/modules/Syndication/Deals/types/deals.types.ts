@@ -51,6 +51,8 @@ export interface DealListRow {
   reviewCount?: number
   /** True when the signed-in viewer is Lead Sponsor on this deal. */
   viewerIsLeadSponsor?: boolean
+  /** False when this viewer is a co-sponsor (or LP) and must not edit the deal. */
+  viewerCanEditDeal?: boolean
   /** ISO timestamp of this deal’s next SaaS billing date (lead sponsors only). */
   nextBillingDate?: string | null
   billingSubscriptionStatus?: string

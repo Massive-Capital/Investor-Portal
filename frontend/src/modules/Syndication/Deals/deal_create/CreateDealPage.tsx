@@ -242,10 +242,20 @@ export function CreateDealPage() {
     let cancelled = false
     setLoadingDeal(true)
     setRetainedPropertyImagePaths([])
+    let blockedFromEdit = false
     void (async () => {
       try {
         const detail = await fetchDealById(editDealId)
         if (cancelled) return
+        if (detail.viewerCanEditDeal === false) {
+          blockedFromEdit = true
+          toast.error(
+            "You cannot edit this deal",
+            "Only the lead or admin sponsor can edit the deal.",
+          )
+          navigate(postSavePath, { replace: true })
+          return
+        }
         const mapped = mapDealDetailApiToCreateDrafts(detail)
         const { deal, asset, step: mergedStep } =
           mergeStoredCreateDealDraftForEdit(editDealId, mapped.deal, mapped.asset)
@@ -278,7 +288,7 @@ export function CreateDealPage() {
           navigate(postSavePath, { replace: true })
         }
       } finally {
-        if (!cancelled) setLoadingDeal(false)
+        if (!cancelled && !blockedFromEdit) setLoadingDeal(false)
       }
     })()
     return () => {

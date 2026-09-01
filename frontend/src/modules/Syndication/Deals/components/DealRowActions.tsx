@@ -51,6 +51,8 @@ interface DealRowActionsProps {
   /** Unpaid / expired SaaS — view, preview, and edit open the paywall instead. */
   saasAccessLocked?: boolean
   onSaasLocked?: () => void
+  /** When false, hide Edit Deal (co-sponsor / LP on this deal). Default true. */
+  canEditDeal?: boolean
 }
 
 export function DealRowActions({
@@ -69,6 +71,7 @@ export function DealRowActions({
   actionsDisabled = false,
   saasAccessLocked = false,
   onSaasLocked,
+  canEditDeal = true,
 }: DealRowActionsProps) {
   const navigate = useNavigate()
   const confirmTitleId = useId()
@@ -345,6 +348,7 @@ export function DealRowActions({
               ) : null}
               {!readOnlyActions ? (
                 <>
+                  {canEditDeal || draftRow ? (
                   <li role="none">
                     <button
                       type="button"
@@ -356,6 +360,7 @@ export function DealRowActions({
                       {draftRow ? "Continue editing" : "Edit Deal"}
                     </button>
                   </li>
+                  ) : null}
                   <li role="none">
                     {archived ? (
                       <button

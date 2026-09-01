@@ -4,8 +4,6 @@
  */
 
 const IN_FLIGHT_MS = 60_000;
-/** After Checkout opens, block a second start briefly so two Stripe tabs are not created. */
-const PENDING_CHECKOUT_MS = 90_000;
 
 type HoldKind = "inflight" | "pending";
 
@@ -40,27 +38,30 @@ export function hasBillingPaymentHold(key: string): boolean {
   return Boolean(hold && hold.until > now());
 }
 
-/** Take the in-flight lock. Returns false if another payment is already running. */
+/**
+ * Take the in-flight lock. Returns false only when another start is still running.
+ * An abandoned Checkout tab (pending) is replaced so Upgrade plan / retry can pay.
+ */
 export function acquireBillingPaymentHold(key: string): boolean {
-  if (hasBillingPaymentHold(key)) return false;
+  sweep();
+  const hold = holds.get(key);
+  if (hold && hold.until > now() && hold.kind === "inflight") return false;
   holds.set(key, { kind: "inflight", until: now() + IN_FLIGHT_MS });
   return true;
 }
 
 /**
- * After the request ends:
- * - success on Checkout / Payment Element → keep a short pending hold
- * - anything else → release so they can retry
+ * After the request ends, drop the hold so an unpaid deal can still complete
+ * Checkout (Upgrade plan, cancel-and-retry). Concurrent starts stay blocked
+ * by the in-flight hold until this request finishes.
  */
 export function finishBillingPaymentHold(
   key: string,
   statusCode: number,
-  keepPending: boolean,
+  _keepPending: boolean,
 ): void {
-  if (statusCode >= 200 && statusCode < 300 && keepPending) {
-    holds.set(key, { kind: "pending", until: now() + PENDING_CHECKOUT_MS });
-    return;
-  }
+  void statusCode;
+  void _keepPending;
   holds.delete(key);
 }
 

@@ -68,6 +68,7 @@ export type DealSaasPaymentRequiredPayload = {
   nextBillingDate: string | null;
   billingSubscriptionStatus: string;
   billingPlanId: string | null;
+  viewerIsLeadSponsor?: boolean;
 };
 
 export type DealSaasBillingListFields = {
@@ -277,6 +278,7 @@ export function dealSaasPaymentRequiredMessage(
 export function dealSaasPaymentRequiredPayload(
   row: AddDealFormRow,
   access?: DealSaasAccessEvaluation,
+  extras?: { viewerIsLeadSponsor?: boolean },
 ): DealSaasPaymentRequiredPayload {
   const evaluated = access ?? evaluateDealSaasWorkspaceAccess(row);
   const reason: DealSaasLockReason = evaluated.reason ?? "unpaid";
@@ -290,6 +292,7 @@ export function dealSaasPaymentRequiredPayload(
     nextBillingDate: nextBillingDateForList(row),
     billingSubscriptionStatus: row.stripeSubscriptionStatus || "none",
     billingPlanId: row.stripePlanId ?? null,
+    viewerIsLeadSponsor: extras?.viewerIsLeadSponsor === true,
   };
 }
 
@@ -389,6 +392,46 @@ export async function clearDealSaasSubscription(dealId: string): Promise<void> {
         : null,
     })
     .where(eq(addDealForm.id, id));
+}
+
+/**
+ * Re-read each deal's Stripe subscription so access matches Stripe
+ * (portal return, delayed webhooks, failed renewals).
+ */
+export async function refreshDealSaasSubscriptionsFromStripe(
+  companyId: string,
+): Promise<void> {
+  const cid = normalizeDealId(companyId);
+  if (!cid || !getStripeConfig()) return;
+  const stripe = getStripeClient();
+  const deals = await db
+    .select({
+      id: addDealForm.id,
+      stripeSubscriptionId: addDealForm.stripeSubscriptionId,
+    })
+    .from(addDealForm)
+    .where(eq(addDealForm.organizationId, cid));
+  for (const deal of deals) {
+    const subId = deal.stripeSubscriptionId?.trim() ?? "";
+    if (!subId) continue;
+    try {
+      const sub = await stripe.subscriptions.retrieve(subId);
+      const status = String(sub.status ?? "").toLowerCase();
+      if (status === "canceled" || status === "incomplete_expired") {
+        await clearDealSaasSubscription(String(deal.id));
+      } else {
+        await applyStripeSubscriptionToDeal(String(deal.id), sub);
+      }
+    } catch (err) {
+      console.warn(
+        "refreshDealSaasSubscriptionsFromStripe:",
+        deal.id,
+        subId,
+        err,
+      );
+    }
+  }
+  await refreshCompanyBillingFromDeals(cid);
 }
 
 export async function findDealIdForStripeSubscription(

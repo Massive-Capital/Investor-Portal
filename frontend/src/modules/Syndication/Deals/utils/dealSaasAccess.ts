@@ -84,12 +84,13 @@ function periodEndHasPassed(iso: string | null | undefined): boolean {
 export function isDealListRowSaasLocked(row: DealListRow): boolean {
   if (!row?.id || row.id === CREATE_DEAL_DRAFT_ROW_ID) return false
   if (isPlatformAdmin()) return false
-  // This month is fully open. Billing / paywall start on nextBillingDate
-  // (1st of next month). A missing date is treated as “not started yet”.
-  if (!periodEndHasPassed(row.nextBillingDate)) return false
+  // Server evaluation is the source of truth (past due can still have a
+  // future period end; complimentary month is unlocked there too).
   if (row.billingAccessLocked === true) return true
   if (row.billingAccessLocked === false) return false
   if (!stageIsBillable(row)) return false
+  // Fallback when list payload has no lock flags: complimentary until nextBillingDate.
+  if (!periodEndHasPassed(row.nextBillingDate)) return false
   const status = String(row.billingSubscriptionStatus ?? "").trim().toLowerCase()
   if (status === "active" || status === "trialing") return false
   if (status === "past_due" || status === "unpaid") return true
@@ -170,6 +171,11 @@ export function parseDealSaasPaymentRequiredBody(
       rec.billing_subscription_status != null
         ? String(rec.billingSubscriptionStatus ?? rec.billing_subscription_status)
         : undefined,
+    viewerIsLeadSponsor:
+      rec.viewerIsLeadSponsor === true ||
+      rec.viewer_is_lead_sponsor === true ||
+      rec.viewerIsLeadSponsor === "true" ||
+      rec.viewer_is_lead_sponsor === "true",
     message,
   }
 }

@@ -37,7 +37,10 @@ import {
 import {
   isPortalUserSponsorOnDeal,
   listDealIdsWhereViewerIsLeadSponsor,
+  listDealIdsWhereViewerIsLeadOrAdminSponsor,
+  listDealIdsWhereViewerIsCoSponsor,
   viewerIsDealSponsorOnAnyDeal,
+  viewerMayEditDealProfile,
 } from "../../services/deal/dealMemberScope.service.js";
 import { canInvestorAccessPublicOffering } from "../../constants/deal-lifecycle/index.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
@@ -149,12 +152,12 @@ function organizationIdFromBody(b: Record<string, unknown>): string | null {
  * month unpaid MRR locks view/edit (Deal billing / Upgrade the plan to continue).
  * Returns true when the response has already been sent.
  */
-function sendDealSaasLockIfNeeded(
+async function sendDealSaasLockIfNeeded(
   res: Response,
   row: AddDealFormRow,
   scope: DealViewerScope,
   opts?: { allowInvestingRead?: boolean },
-): boolean {
+): Promise<boolean> {
   if (scope.isPlatformAdmin) return false;
   if (opts?.allowInvestingRead && isInvestingPortalRequest()) return false;
   if (!row.saasBillingStartsAt) {
@@ -164,7 +167,19 @@ function sendDealSaasLockIfNeeded(
   }
   const access = evaluateDealSaasWorkspaceAccess(row);
   if (!access.locked) return false;
-  res.status(402).json(dealSaasPaymentRequiredPayload(row, access));
+  const dealKey = String(row.id ?? "").trim().toLowerCase();
+  let viewerIsLeadSponsor = false;
+  try {
+    const leadIds = await listDealIdsWhereViewerIsLeadSponsor(scope.userId);
+    viewerIsLeadSponsor = leadIds.some(
+      (id) => String(id).trim().toLowerCase() === dealKey,
+    );
+  } catch (err) {
+    console.warn("sendDealSaasLockIfNeeded lead sponsor:", err);
+  }
+  res
+    .status(402)
+    .json(dealSaasPaymentRequiredPayload(row, access, { viewerIsLeadSponsor }));
   return true;
 }
 
@@ -412,14 +427,27 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
         ? await countDealLpInvestorsByDealIdsForViewer(dealIds, scope)
         : new Map<string, number>();
 
-    const leadSponsorDealIds =
+    const [leadSponsorDealIds, leadOrAdminSponsorDealIds, coSponsorDealIds] =
       !includeParticipantDeals && dealIds.length > 0
-        ? new Set(
-            (await listDealIdsWhereViewerIsLeadSponsor(user.id)).map((id) =>
-              String(id).trim().toLowerCase(),
-            ),
+        ? await Promise.all([
+            listDealIdsWhereViewerIsLeadSponsor(user.id),
+            listDealIdsWhereViewerIsLeadOrAdminSponsor(user.id),
+            listDealIdsWhereViewerIsCoSponsor(user.id),
+          ]).then(
+            ([lead, leadOrAdmin, co]) =>
+              [
+                new Set(lead.map((id) => String(id).trim().toLowerCase())),
+                new Set(
+                  leadOrAdmin.map((id) => String(id).trim().toLowerCase()),
+                ),
+                new Set(co.map((id) => String(id).trim().toLowerCase())),
+              ] as const,
           )
-        : new Set<string>();
+        : [
+            new Set<string>(),
+            new Set<string>(),
+            new Set<string>(),
+          ];
 
     let lpRoleByDealId = new Map<string, string>();
     const shouldAttachLpRole =
@@ -473,6 +501,12 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
                 viewerIsLeadSponsor: leadSponsorDealIds.has(
                   id.trim().toLowerCase(),
                 ),
+                viewerCanEditDeal: (() => {
+                  const k = id.trim().toLowerCase();
+                  if (leadOrAdminSponsorDealIds.has(k)) return true;
+                  if (coSponsorDealIds.has(k)) return false;
+                  return true;
+                })(),
               }
             : withRole;
           if (!includeParticipantDeals) return withBilling;
@@ -531,7 +565,7 @@ export async function patchDealInvestorSummary(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const updated = await updateDealInvestorSummaryById(dealId, htmlRaw);
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
@@ -599,7 +633,7 @@ export async function patchDealAnnouncement(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const { title, message } = sanitizeDealAnnouncement({
       title: titleRaw,
       message: messageRaw,
@@ -706,7 +740,7 @@ export async function patchDealOfferingOverview(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const updated = await updateDealOfferingOverviewById(
       dealId,
       sanitized.set,
@@ -760,7 +794,7 @@ export async function getDealOfferingInvestorPreview(
       return;
     }
     if (
-      sendDealSaasLockIfNeeded(res, row, scope, { allowInvestingRead: true })
+      await sendDealSaasLockIfNeeded(res, row, scope, { allowInvestingRead: true })
     ) {
       return;
     }
@@ -802,7 +836,7 @@ export async function patchDealOfferingInvestorPreview(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const canonical = sanitizeOfferingInvestorPreviewBody(body);
     const updated = await updateDealOfferingInvestorPreviewById(
       dealId,
@@ -868,7 +902,7 @@ export async function patchDealKeyHighlights(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const updated = await updateDealKeyHighlightsById(dealId, jsonRaw);
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
@@ -930,7 +964,7 @@ export async function patchDealFundingInstructions(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const updated = await updateDealFundingInstructionsById(dealId, jsonRaw);
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
@@ -1009,7 +1043,7 @@ export async function patchDealGalleryCover(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const updated = await updateDealGalleryCoverById(dealId, toStore);
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
@@ -1062,7 +1096,7 @@ export async function patchDealOfferingGallery(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const updated = await updateDealOfferingGalleryPathsById(
       dealId,
       norm.paths,
@@ -1113,7 +1147,7 @@ export async function postDealOfferingDocumentUploads(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const newPaths = await saveDealAssetFiles({ files: fileList, dealId });
     logSocDealOfferingAssetUpload({
       actorUserId: user.id,
@@ -1160,7 +1194,7 @@ export async function postDealOfferingGalleryUploads(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const newPaths = await saveDealAssetFiles({
       files: fileList,
       dealId,
@@ -1222,7 +1256,7 @@ export async function getOfferingPreviewToken(
       return;
     }
     if (
-      sendDealSaasLockIfNeeded(res, visible, scope, { allowInvestingRead: true })
+      await sendDealSaasLockIfNeeded(res, visible, scope, { allowInvestingRead: true })
     ) {
       return;
     }
@@ -1321,7 +1355,7 @@ export async function postOfferingPreviewShareEmail(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     if (isDealStageDraft(visible.dealStage)) {
       res.status(403).json({
         message:
@@ -1496,14 +1530,18 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
       return;
     }
     if (
-      sendDealSaasLockIfNeeded(res, row, scope, { allowInvestingRead: true })
+      await sendDealSaasLockIfNeeded(res, row, scope, { allowInvestingRead: true })
     ) {
       return;
     }
     const withPreview = await ensureDealOfferingPreviewTokenStored(dealId);
     const rowForJson = withPreview ?? row;
+    const deal = await mapRowToJsonWithInvestmentCount(rowForJson, scope);
     res.status(200).json({
-      deal: await mapRowToJsonWithInvestmentCount(rowForJson, scope),
+      deal: {
+        ...deal,
+        viewerCanEditDeal: await viewerMayEditDealProfile(dealId, user.id),
+      },
     });
   } catch (err) {
     console.error("getDealById:", err);
@@ -1638,7 +1676,14 @@ export async function putDeal(req: Request, res: Response): Promise<void> {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    if (!(await viewerMayEditDealProfile(dealId, user.id))) {
+      res.status(403).json({
+        message:
+          "Only the lead or admin sponsor on this deal can edit it",
+      });
+      return;
+    }
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
 
     const [actor] = await db
       .select({ organizationId: users.organizationId, role: users.role })

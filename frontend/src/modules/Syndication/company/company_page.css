@@ -3302,7 +3302,10 @@ select.cp_settings_input_pill.um_field_select {
   color: var(--ui-button-text, var(--sidebar-active-text));
   border-color: var(--ui-button-border, var(--sidebar-active-text));
 }
-.cp_billing_plan_cta_pay {
+.cp_billing_plan_cta_pay,
+.cp_billing_pay_btn,
+.app_shell button.um_btn_primary.cp_billing_pay_btn,
+.app_shell .um_btn_primary.cp_billing_pay_btn {
   height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
   min-height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
   padding: 0 1.15em;
@@ -3310,7 +3313,10 @@ select.cp_settings_input_pill.um_field_select {
   background: #16a34a;
   color: #ffffff;
 }
-.cp_billing_plan_cta_pay:hover:not(:disabled) {
+.cp_billing_plan_cta_pay:hover:not(:disabled),
+.cp_billing_pay_btn:hover:not(:disabled),
+.app_shell button.um_btn_primary.cp_billing_pay_btn:hover:not(:disabled),
+.app_shell .um_btn_primary.cp_billing_pay_btn:hover:not(:disabled) {
   background: #15803d;
   border-color: #15803d;
   color: #ffffff;
@@ -3485,6 +3491,9 @@ select.cp_settings_input_pill.um_field_select {
 }
 .cp_billing_pe_actions .um_btn_primary {
   box-shadow: 0 6px 14px rgb(21 90 191 / 18%);
+}
+.cp_billing_pe_actions .cp_billing_pay_btn {
+  box-shadow: 0 6px 14px rgb(22 163 74 / 22%);
 }
 .cp_billing_pe_loading {
   display: flex;

@@ -1071,6 +1071,7 @@ export function DealsListPage({
             <DealRowActions
               draftRow={row.id === CREATE_DEAL_DRAFT_ROW_ID}
               readOnlyActions={dealsListContext === "investing"}
+              canEditDeal={row.viewerCanEditDeal !== false}
               dealId={row.id}
               dealName={row.dealName}
               dealStage={row.dealStage}

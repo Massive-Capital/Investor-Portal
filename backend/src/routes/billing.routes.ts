@@ -7,6 +7,7 @@ import {
   getCompanyBillingPaymentMethods,
   postCompanyBillingCheckout,
   postCompanyBillingDealCycle,
+  postCompanyBillingReleasePayment,
   postCompanyBillingPaySaved,
   postCompanyBillingPaymentElement,
   postCompanyBillingPortal,
@@ -21,13 +22,14 @@ import {
 import {
   billingAlreadyPaidMiddleware,
   billingPaymentOnceMiddleware,
+  billingPaymentReleaseMiddleware,
 } from "../middleware/billingPaymentOnce.middleware.js";
 
 const router = Router();
 
 const startDealPayment = [
   billingAlreadyPaidMiddleware,
-  billingPaymentOnceMiddleware(true),
+  billingPaymentOnceMiddleware(false),
 ] as const;
 
 const startSavedPayment = [
@@ -53,6 +55,10 @@ router.post(
   postCompanyBillingCheckout,
 );
 router.post(
+  "/companies/:companyId/billing/release-payment",
+  postCompanyBillingReleasePayment,
+);
+router.post(
   "/companies/:companyId/billing/pay-saved",
   ...startSavedPayment,
   postCompanyBillingPaySaved,
@@ -68,11 +74,13 @@ router.post(
 );
 router.post(
   "/companies/:companyId/billing/sync-payment",
+  billingPaymentReleaseMiddleware,
   postCompanyBillingSyncPayment,
 );
 router.post("/companies/:companyId/billing/portal", postCompanyBillingPortal);
 router.post(
   "/companies/:companyId/billing/sync-checkout",
+  billingPaymentReleaseMiddleware,
   postCompanyBillingSyncCheckout,
 );
 router.post(

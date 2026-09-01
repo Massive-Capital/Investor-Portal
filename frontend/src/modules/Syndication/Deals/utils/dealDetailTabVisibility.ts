@@ -214,6 +214,15 @@ export function viewerCanUploadDealEsignTemplates(
   return role === "lead_sponsor" || role === "admin_sponsor"
 }
 
+/**
+ * Deal profile (create/edit wizard, list “Edit Deal”): lead or admin sponsor,
+ * or a workspace viewer who is not a co-sponsor / LP on this deal.
+ * Co-sponsors cannot edit the deal.
+ */
+export function viewerCanEditDeal(role: ViewerDealMemberRole): boolean {
+  return role !== "co_sponsor" && role !== "lp_investor"
+}
+
 /** Investors tab: approve fund — lead, admin sponsor, or company / platform admin. */
 export function viewerCanApproveDealFund(
   role: ViewerDealMemberRole,

@@ -193,7 +193,11 @@ function PaymentForm({
         </button>
         <button
           type="submit"
-          className="um_btn_primary"
+          className={
+            mode === "subscription"
+              ? "um_btn_primary cp_billing_pay_btn"
+              : "um_btn_primary"
+          }
           disabled={!stripe || !elements || submitting}
         >
           <LockKeyhole size={15} aria-hidden="true" />

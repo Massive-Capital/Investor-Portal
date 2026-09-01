@@ -85,6 +85,7 @@ import {
   viewerCanSendDealEsignTemplates,
   viewerCanUploadDealEsignTemplates,
   viewerCanApproveDealFund,
+  viewerCanEditDeal,
   visibleDealDetailTabIds,
   isUsableInvestorEmail,
   type ViewerDealMemberRole,
@@ -263,6 +264,11 @@ export function DealDetailPage() {
       viewerCanApproveDealFund(viewerDealMemberRole, { isWorkspaceAdmin }),
     [viewerDealMemberRole, isWorkspaceAdmin],
   )
+
+  const canEditDeal = useMemo(() => {
+    if (dealDetailApi?.viewerCanEditDeal === false) return false
+    return viewerCanEditDeal(viewerDealMemberRole)
+  }, [dealDetailApi?.viewerCanEditDeal, viewerDealMemberRole])
 
   const [dealHasEsignDocuments, setDealHasEsignDocuments] = useState(false)
 
@@ -793,6 +799,7 @@ export function DealDetailPage() {
               </span>
             ) : null}
           </div>
+          {canEditDeal ? (
           <button
             type="button"
             className="um_btn_secondary deals_detail_edit_deal_btn"
@@ -801,6 +808,7 @@ export function DealDetailPage() {
             <Pencil size={16} strokeWidth={2} aria-hidden />
             {dealFormIncomplete ? "Continue editing" : "Edit deal"}
           </button>
+          ) : null}
         </div>
       </header>
 

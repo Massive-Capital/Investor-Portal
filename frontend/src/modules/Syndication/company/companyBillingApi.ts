@@ -213,6 +213,31 @@ export async function startCompanyBillingCheckout(
   }
 }
 
+export async function releaseCompanyBillingPayment(
+  companyId: string,
+  dealId: string,
+): Promise<void> {
+  const base = getApiV1Base()
+  const id = dealId.trim()
+  if (!base || !companyId.trim() || !id) return
+  try {
+    await fetch(
+      `${base}/companies/${encodeURIComponent(companyId)}/billing/release-payment`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ dealId: id }),
+      },
+    )
+  } catch {
+    /* Best-effort: Checkout can still start if the hold already expired. */
+  }
+}
+
 export async function payCompanyBillingWithSavedMethod(
   companyId: string,
   planId: string,
@@ -332,6 +357,7 @@ export async function openCompanyBillingPortal(
 export async function syncCompanyBillingCheckout(
   companyId: string,
   sessionId: string,
+  dealId?: string | null,
 ): Promise<
   | { ok: true; status: CompanyBillingStatus; paidDealId: string | null }
   | { ok: false; message: string; statusCode: number }
@@ -354,7 +380,10 @@ export async function syncCompanyBillingCheckout(
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          sessionId,
+          ...(dealId ? { dealId } : {}),
+        }),
       },
     )
     const data = await res.json().catch(() => ({}))

@@ -31,6 +31,7 @@ import {
   payCompanyBillingWithSavedMethod,
   startCompanyBillingCheckout,
   startCompanyBillingSetupIntent,
+  releaseCompanyBillingPayment,
   syncCompanyBillingCheckout,
   syncCompanyBillingPayment,
   syncCompanyBillingPaymentMethods,
@@ -49,6 +50,7 @@ import { dealStageLabel } from "../dealsDashboardUtils";
 import { formatDealListDateDisplay } from "../Deals/dealsListDisplay";
 import { dealStageChipCompactClassName } from "../Deals/utils/dealStageChip";
 import { DealAvatarIconRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell";
+import { toast } from "../../../common/components/Toast";
 
 type BillingSubTab = "pricing" | "deals" | "payment-methods" | "payment-history";
 type InvoiceRow = CompanyBillingInvoice;
@@ -382,14 +384,30 @@ function BillingPricingPanel({
     let cancelled = false;
     void fetchCompanyBillingDeals(companyId).then((result) => {
       if (cancelled || !result.ok) return;
-      const payable = result.deals.filter(
+      const preferred = (initialDealId ?? "").trim();
+      const preferredLc = preferred.toLowerCase();
+      let payable = result.deals.filter(
         (row) => row.billable === true && !row.billed,
       );
+      if (preferredLc) {
+        const focused = result.deals.find(
+          (row) => row.id.trim().toLowerCase() === preferredLc,
+        );
+        if (
+          focused?.billable &&
+          !payable.some((row) => row.id === focused.id)
+        ) {
+          payable = [focused, ...payable];
+        }
+      }
       setPayableDeals(payable);
-      const preferred = (initialDealId ?? "").trim();
       setSelectedDealId((current) => {
-        if (preferred) return preferred;
-        if (!(initialDealId ?? "").trim()) return "";
+        if (preferred) {
+          const focused = payable.find(
+            (row) => row.id.trim().toLowerCase() === preferredLc,
+          );
+          return focused?.id ?? preferred;
+        }
         if (current && payable.some((row) => row.id === current)) return current;
         return payable[0]?.id ?? "";
       });
@@ -1387,6 +1405,10 @@ function BillingDealDetailsPanel({
       setPayError("");
       if (!companyId) {
         setPayError("No company workspace selected.");
+        toast.error(
+          "Could not update payment cycle",
+          "No company workspace selected.",
+        );
         return;
       }
       if (billingCycleSelectValue(row.billingCycle) === next) return;
@@ -1399,12 +1421,19 @@ function BillingDealDetailsPanel({
       setCycleBusyId(null);
       if (!result.ok) {
         setPayError(result.message);
+        toast.error("Could not update payment cycle", result.message);
         return;
       }
       setDeals((current) =>
         current.map((deal) =>
           deal.id === row.id ? { ...deal, ...result.deal } : deal,
         ),
+      );
+      const cycleLabel = next === "annually" ? "yearly" : "monthly";
+      const dealName = row.dealName.trim() || "this deal";
+      toast.success(
+        "Payment cycle updated",
+        `${dealName} is now billed ${cycleLabel}.`,
       );
     },
     [companyId],
@@ -1555,7 +1584,7 @@ function BillingDealDetailsPanel({
                 return (
                   <button
                     type="button"
-                    className="um_btn_primary"
+                    className="um_btn_primary cp_billing_pay_btn"
                     disabled={busy}
                     onClick={() => void handlePayDeal(row)}
                   >
@@ -2112,6 +2141,11 @@ export function CompanyBillingTab({
   }, [refreshStatus]);
 
   useEffect(() => {
+    if (!fromDealPayFlow || !companyId || !focusDealId?.trim()) return;
+    void releaseCompanyBillingPayment(companyId, focusDealId.trim());
+  }, [fromDealPayFlow, companyId, focusDealId]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("billing") !== "pay") return;
     if (canPayBilling) {
@@ -2166,7 +2200,10 @@ export function CompanyBillingTab({
 
       if (billing === "success" && companyId && sessionId.startsWith("cs_")) {
         const dealIdFromUrl = normalizeBillingDealId(params.get("dealId"));
-        void syncCompanyBillingCheckout(companyId, sessionId).then((result) => {
+        if (dealIdFromUrl) {
+          void releaseCompanyBillingPayment(companyId, dealIdFromUrl);
+        }
+        void syncCompanyBillingCheckout(companyId, sessionId, dealIdFromUrl).then((result) => {
           if (result.ok) {
             setStatusError("");
             setBillingStatus(result.status);
@@ -2236,9 +2273,13 @@ export function CompanyBillingTab({
       refreshStatus();
       finish();
     } else if (billing === "cancel") {
-      params.delete("billing");
+      const dealIdFromUrl = normalizeBillingDealId(params.get("dealId"));
+      if (companyId && dealIdFromUrl) {
+        void releaseCompanyBillingPayment(companyId, dealIdFromUrl);
+      }
+      params.set("billing", "pay");
       const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
-      window.history.replaceState({}, "", next);
+      navigate(next, { replace: true });
     }
   }, [companyId, likelyManager, navigate, refreshPaymentMethods, refreshStatus]);
 
