@@ -1,6 +1,9 @@
 import { Router } from "express";
 import {
   getBillingConfig,
+  getBillingStartDate,
+  getPlatformBillingDeals,
+  getPlatformBillingOrganizations,
   getCompanyBilling,
   getCompanyBillingDeals,
   getCompanyBillingInvoices,
@@ -38,6 +41,9 @@ const startSavedPayment = [
 ] as const;
 
 router.get("/billing/config", getBillingConfig);
+router.get("/billing/start-date", getBillingStartDate);
+router.get("/billing/deals", getPlatformBillingDeals);
+router.get("/billing/organizations", getPlatformBillingOrganizations);
 router.get("/companies/:companyId/billing/deals", getCompanyBillingDeals);
 router.post(
   "/companies/:companyId/billing/deals/:dealId/cycle",

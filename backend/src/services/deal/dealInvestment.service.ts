@@ -87,6 +87,17 @@ export function isDealTeamRosterRole(raw: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Company users billed on the deal plan (Starter 1 / Running 2 / Growth 3).
+ * Includes Deal Members team roles and Team Member (stored as General Partner).
+ * LP investors are not company users.
+ */
+export function isDealCompanyUserStoredRole(
+  raw: string | null | undefined,
+): boolean {
+  return isDealTeamRosterRole(raw) || isGeneralPartnerStoredRole(raw);
+}
+
 export function isGpSubscriptionType(subscriptionType: string): boolean {
   return String(subscriptionType ?? "").trim().toLowerCase() === "gp";
 }

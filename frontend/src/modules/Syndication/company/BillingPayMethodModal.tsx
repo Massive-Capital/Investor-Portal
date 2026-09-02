@@ -121,7 +121,7 @@ export function BillingPayMethodModal({
               <>
                 Pay for{" "}
                 <strong>{dealName.trim() || "this deal"}</strong> with a saved
-                method, or continue to Stripe to enter a new card or bank account.
+                method, or enter a new card or bank account.
               </>
             )}
           </p>
@@ -168,8 +168,8 @@ export function BillingPayMethodModal({
             </fieldset>
           ) : (
             <p className="deal_stage_modal_desc" style={{ marginTop: "0.85rem" }}>
-              No saved payment methods yet. Pay in Stripe to add a card or US
-              bank account.
+              No saved payment methods yet. Pay with a new card or US bank
+              account to save it for next time.
             </p>
           )}
 
@@ -209,7 +209,7 @@ export function BillingPayMethodModal({
             ) : (
               <>
                 <ExternalLink size={16} strokeWidth={2} aria-hidden />
-                {stripeButtonLabel || "Pay in Stripe"}
+                {stripeButtonLabel || "Pay with new method"}
               </>
             )}
           </button>

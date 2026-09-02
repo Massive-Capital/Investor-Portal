@@ -111,6 +111,10 @@ export interface DealDetailApi {
   offeringPreviewToken?: string | null
   /** False when the signed-in viewer is a co-sponsor (or LP) on this deal. */
   viewerCanEditDeal?: boolean
+  viewerIsLeadSponsor?: boolean
+  suggestedPlanId?: string | null
+  needsPlanUpgrade?: boolean
+  billingPlanId?: string | null
   /**
    * JSON string `{ v, visibility, sections }` for offering preview (documents + investor toggles).
    * Synced to the server for the shared preview link.
@@ -382,11 +386,27 @@ function normalizeDealListRow(
         nextRaw != null && String(nextRaw).trim() !== ""
           ? str(nextRaw)
           : null
+      const startRaw = firstDefined(r, [
+        "saasBillingStartsAt",
+        "saas_billing_starts_at",
+      ])
+      const saasBillingStartsAt =
+        startRaw != null && String(startRaw).trim() !== ""
+          ? str(startRaw)
+          : null
       const statusRaw = firstDefined(r, [
         "billingSubscriptionStatus",
         "billing_subscription_status",
       ])
       const planRaw = firstDefined(r, ["billingPlanId", "billing_plan_id"])
+      const suggestedRaw = firstDefined(r, [
+        "suggestedPlanId",
+        "suggested_plan_id",
+      ])
+      const upgradeRaw = firstDefined(r, [
+        "needsPlanUpgrade",
+        "needs_plan_upgrade",
+      ])
       const lockedRaw = firstDefined(r, [
         "billingAccessLocked",
         "billing_access_locked",
@@ -397,17 +417,31 @@ function normalizeDealListRow(
       ])
       const hasBilling =
         nextBillingDate != null ||
+        saasBillingStartsAt != null ||
         statusRaw != null ||
         planRaw != null ||
+        suggestedRaw != null ||
+        upgradeRaw != null ||
         lockedRaw != null
       if (!isLead && !hasBilling) return {}
       const lockReason = String(lockReasonRaw ?? "").trim().toLowerCase()
       return {
         ...(isLead ? { viewerIsLeadSponsor: true as const } : {}),
         nextBillingDate,
+        saasBillingStartsAt,
         billingSubscriptionStatus:
           statusRaw != null ? str(statusRaw) : undefined,
         billingPlanId: planRaw != null ? str(planRaw) : null,
+        suggestedPlanId:
+          suggestedRaw != null && String(suggestedRaw).trim() !== ""
+            ? str(suggestedRaw)
+            : null,
+        ...(upgradeRaw === true ||
+        upgradeRaw === "true" ||
+        upgradeRaw === 1 ||
+        upgradeRaw === "1"
+          ? { needsPlanUpgrade: true as const }
+          : {}),
         ...(lockedRaw === true ||
         lockedRaw === "true" ||
         lockedRaw === 1 ||
@@ -1719,6 +1753,11 @@ export const DEAL_OFFERING_DOCUMENT_ACCEPT = [
 export const DEAL_OFFERING_DOCUMENT_TYPES_LABEL =
   "PDF, Word, PowerPoint, or Excel"
 
+/** Documents tab: max files and size per upload request. */
+export const MAX_DEAL_OFFERING_DOCUMENT_FILES = 50
+export const MAX_DEAL_OFFERING_DOCUMENT_FILE_BYTES = 100 * 1024 * 1024
+export const DEAL_OFFERING_DOCUMENT_LIMITS_HINT = "Up to 50 files, 100 MB each"
+
 function offeringDocumentExt(fileName: string): string {
   const name = fileName.trim().toLowerCase()
   const dot = name.lastIndexOf(".")
@@ -1756,6 +1795,10 @@ export function dealOfferingDocumentRejectMessage(
   return `Only ${DEAL_OFFERING_DOCUMENT_TYPES_LABEL} files can be uploaded. Skipped: ${rejectedNames.join(", ")}.`
 }
 
+export function dealOfferingDocumentTooLargeMessage(fileName: string): string {
+  return `"${fileName}" is too large (max 100 MB each).`
+}
+
 /** Upload offering documents (Documents tab) so preview / investors get stable `/uploads/...` links. */
 export async function postDealOfferingDocumentUploads(
   dealId: string,
@@ -1769,6 +1812,12 @@ export async function postDealOfferingDocumentUploads(
     return { ok: false, message: "VITE_BASE_URL is not configured." }
   if (files.length === 0)
     return { ok: false, message: "No documents to upload." }
+  if (files.length > MAX_DEAL_OFFERING_DOCUMENT_FILES) {
+    return {
+      ok: false,
+      message: "Too many documents (max 50 per upload).",
+    }
+  }
   const nonAllowed = files.filter((f) => !isDealOfferingDocumentFile(f))
   if (nonAllowed.length > 0) {
     return {
@@ -1776,6 +1825,17 @@ export async function postDealOfferingDocumentUploads(
       message: dealOfferingDocumentRejectMessage(
         nonAllowed.map((f) => f.name),
       ),
+    }
+  }
+  const tooLarge = files.find(
+    (f) =>
+      typeof f.size === "number" &&
+      f.size > MAX_DEAL_OFFERING_DOCUMENT_FILE_BYTES,
+  )
+  if (tooLarge) {
+    return {
+      ok: false,
+      message: dealOfferingDocumentTooLargeMessage(tooLarge.name),
     }
   }
   const fd = new FormData()

@@ -6,6 +6,7 @@ import {
 import { loadUnredactedDealInvestors } from "./dealInvestorCommunicationRouting.service.js";
 import { listDealMembersMappedToInvestorApi } from "./dealMember.service.js";
 import { listEquivalentPortalUserIdsForUsers } from "./dealMemberScope.service.js";
+import { loadCoSponsorEmailInterceptByUserLower } from "./dealCoSponsorEmailIntercept.service.js";
 
 export type DealDocumentSharedAudience = {
   allInvestors: boolean;
@@ -31,6 +32,9 @@ type InvestorLike = {
   investorClass?: string;
   investorRole?: string;
   addedByUserId?: string;
+  addedByEmail?: string;
+  addedByDisplayName?: string;
+  addedByIsCoSponsorOnDeal?: boolean;
 };
 
 function usableEmail(raw: unknown): string {
@@ -104,8 +108,10 @@ function hasAudienceSelection(audience: DealDocumentSharedAudience): boolean {
 
 /**
  * Resolve Shared With recipients from deal data (unredacted emails).
- * Lead/admin UIs hide co-sponsor LP emails; this still emails those LPs and the
- * selected co-sponsor when “Sponsor user investors” includes that co-sponsor.
+ * Lead/admin UIs hide co-sponsor LP emails; this still emails those LPs.
+ * When any co-sponsor LP is notified, that co-sponsor is notified too
+ * (unless they are the sender). Co-sponsor LPs from “Sponsor user investors”
+ * are included only when intercept is No intercept (`yes`).
  */
 export async function resolveDealDocumentSharedRecipients(params: {
   dealId: string;
@@ -133,20 +139,58 @@ export async function resolveDealDocumentSharedRecipients(params: {
     return [...byEmail.values()];
   }
 
-  const [investors, members, classRows] = await Promise.all([
-    loadUnredactedDealInvestors(params.dealId, params.viewerUserId),
-    listDealMembersMappedToInvestorApi(params.dealId, params.viewerUserId),
-    listInvestorClassesByDealId(params.dealId),
-  ]);
+  const [investors, members, classRows, interceptByUser, viewerEquivIds] =
+    await Promise.all([
+      loadUnredactedDealInvestors(params.dealId, params.viewerUserId),
+      listDealMembersMappedToInvestorApi(params.dealId, params.viewerUserId),
+      listInvestorClassesByDealId(params.dealId),
+      loadCoSponsorEmailInterceptByUserLower(params.dealId),
+      listEquivalentPortalUserIdsForUsers([params.viewerUserId]),
+    ]);
   const classes = classRows.map((c) => ({
     id: String(c.id),
     name: String(c.name ?? ""),
   }));
   const lpRows = (investors as InvestorLike[]).filter(isLpApiRow);
   const memberRows = members as InvestorLike[];
+  const viewerKeys = new Set(
+    [...viewerEquivIds, params.viewerUserId]
+      .map((id) => id.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  const includedLpRows: InvestorLike[] = [];
+
+  function includeLp(row: InvestorLike) {
+    includedLpRows.push(row);
+    add(row.userEmail, displayNameOf(row));
+  }
+
+  async function addCoSponsorsForIncludedLps() {
+    const missingEmailIds = new Set<string>();
+    for (const row of includedLpRows) {
+      const adder = String(row.addedByUserId ?? "").trim().toLowerCase();
+      if (!adder || viewerKeys.has(adder)) continue;
+      const isCo =
+        row.addedByIsCoSponsorOnDeal === true || interceptByUser.has(adder);
+      if (!isCo) continue;
+      add(row.addedByEmail, row.addedByDisplayName);
+      if (!usableEmail(row.addedByEmail)) missingEmailIds.add(adder);
+    }
+    if (missingEmailIds.size === 0) return;
+    const ids = [...missingEmailIds];
+    const [emailsById, namesById] = await Promise.all([
+      resolveUserEmailsByIds(ids),
+      resolveUserDisplayNamesByIds(ids),
+    ]);
+    for (const id of ids) {
+      add(emailsById.get(id), namesById.get(id));
+    }
+  }
 
   if (params.audience.allInvestors) {
-    for (const row of lpRows) add(row.userEmail, displayNameOf(row));
+    for (const row of lpRows) includeLp(row);
+    await addCoSponsorsForIncludedLps();
     return [...byEmail.values()];
   }
 
@@ -158,7 +202,7 @@ export async function resolveDealDocumentSharedRecipients(params: {
   if (investorIdSet.size > 0) {
     for (const row of lpRows) {
       if (rowMatchKeys(row).some((k) => investorIdSet.has(k))) {
-        add(row.userEmail, displayNameOf(row));
+        includeLp(row);
       }
     }
   }
@@ -168,7 +212,7 @@ export async function resolveDealDocumentSharedRecipients(params: {
     if (!cid) continue;
     for (const row of lpRows) {
       if (investorRowMatchesDealClass(row, cid, classes)) {
-        add(row.userEmail, displayNameOf(row));
+        includeLp(row);
       }
     }
   }
@@ -188,9 +232,9 @@ export async function resolveDealDocumentSharedRecipients(params: {
 
     for (const row of lpRows) {
       const adder = String(row.addedByUserId ?? "").trim().toLowerCase();
-      if (adder && sponsorKeys.has(adder)) {
-        add(row.userEmail, displayNameOf(row));
-      }
+      if (!adder || !sponsorKeys.has(adder)) continue;
+      if (interceptByUser.get(adder) === "no") continue;
+      includeLp(row);
     }
 
     const [emailsById, namesById] = await Promise.all([
@@ -209,5 +253,6 @@ export async function resolveDealDocumentSharedRecipients(params: {
     }
   }
 
+  await addCoSponsorsForIncludedLps();
   return [...byEmail.values()];
 }

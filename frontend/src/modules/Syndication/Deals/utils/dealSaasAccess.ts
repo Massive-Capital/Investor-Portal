@@ -16,15 +16,20 @@ export type DealSaasPaywallDeal = {
   nextBillingDate?: string | null
   billingSubscriptionStatus?: string
   viewerIsLeadSponsor?: boolean
+  suggestedPlanId?: string | null
+  needsPlanUpgrade?: boolean
   message?: string
 }
 
 export function dealSaasBillingSettingsPath(
   dealId: string,
   dealName?: string,
+  options?: { billing?: "pay" | "upgrade" },
 ): string {
   const id = dealId.trim()
-  const params = new URLSearchParams({ billing: "pay" })
+  const params = new URLSearchParams({
+    billing: options?.billing === "upgrade" ? "upgrade" : "pay",
+  })
   if (id) params.set("dealId", id)
   const name = String(dealName ?? "").trim()
   if (name) params.set("dealName", name)
@@ -44,10 +49,13 @@ export async function resolveUnpaidLeadSponsorPricingPath(): Promise<
   const result = await fetchCompanyBillingDeals(companyId)
   if (!result.ok || !result.canPay) return null
   const unpaid = result.deals.filter(
-    (row) => row.billable === true && !row.billed,
+    (row) =>
+      (row.billable === true || row.payable === true) && !row.billed,
   )
-  if (unpaid.length === 0) return null
-  const pick = [...unpaid].sort((a, b) => {
+  const upgrades = result.deals.filter((row) => row.needsPlanUpgrade === true)
+  const queue = unpaid.length > 0 ? unpaid : upgrades
+  if (queue.length === 0) return null
+  const pick = [...queue].sort((a, b) => {
     const ta = Date.parse(String(a.nextBillingDate ?? "")) || Number.POSITIVE_INFINITY
     const tb = Date.parse(String(b.nextBillingDate ?? "")) || Number.POSITIVE_INFINITY
     return ta - tb
@@ -84,6 +92,8 @@ function periodEndHasPassed(iso: string | null | undefined): boolean {
 export function isDealListRowSaasLocked(row: DealListRow): boolean {
   if (!row?.id || row.id === CREATE_DEAL_DRAFT_ROW_ID) return false
   if (isPlatformAdmin()) return false
+  const status = String(row.billingSubscriptionStatus ?? "").trim().toLowerCase()
+  if (status === "active" || status === "trialing") return false
   // Server evaluation is the source of truth (past due can still have a
   // future period end; complimentary month is unlocked there too).
   if (row.billingAccessLocked === true) return true
@@ -91,13 +101,23 @@ export function isDealListRowSaasLocked(row: DealListRow): boolean {
   if (!stageIsBillable(row)) return false
   // Fallback when list payload has no lock flags: complimentary until nextBillingDate.
   if (!periodEndHasPassed(row.nextBillingDate)) return false
-  const status = String(row.billingSubscriptionStatus ?? "").trim().toLowerCase()
-  if (status === "active" || status === "trialing") return false
   if (status === "past_due" || status === "unpaid") return true
   if (status === "none" || status === "canceled" || status === "incomplete") {
     return true
   }
   return false
+}
+
+export function billingPlanDisplayName(planId: string | null | undefined): string {
+  const id = String(planId ?? "").trim().toLowerCase()
+  if (id === "running") return "Running"
+  if (id === "growth") return "Growth"
+  if (id === "starter") return "Starter"
+  return id ? id.charAt(0).toUpperCase() + id.slice(1) : "the required plan"
+}
+
+export function isDealListRowPlanUpgradeNeeded(row: DealListRow): boolean {
+  return row.viewerIsLeadSponsor === true && row.needsPlanUpgrade === true
 }
 
 export function dealSaasPaywallFromListRow(row: DealListRow): DealSaasPaywallDeal {
@@ -114,6 +134,8 @@ export function dealSaasPaywallFromListRow(row: DealListRow): DealSaasPaywallDea
     dealName: row.dealName ?? "",
     reason,
     billingPlanId: row.billingPlanId ?? null,
+    suggestedPlanId: row.suggestedPlanId ?? null,
+    needsPlanUpgrade: row.needsPlanUpgrade === true,
     nextBillingDate: row.nextBillingDate ?? null,
     billingSubscriptionStatus: row.billingSubscriptionStatus,
     viewerIsLeadSponsor: row.viewerIsLeadSponsor === true,

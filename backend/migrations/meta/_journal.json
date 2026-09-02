@@ -582,6 +582,20 @@
       "when": 1894700000000,
       "tag": "0083_deal_member_lead_sponsor_email_intercept",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1894750000000,
+      "tag": "0084_drop_admin_billing_start_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1894800000000,
+      "tag": "0085_pending_deal_stage",
+      "breakpoints": true
     }
   ]
 }

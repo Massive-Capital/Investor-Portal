@@ -12,7 +12,8 @@ import {
 } from "../../config/stripe.config.js";
 import {
   DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER,
-  isGeneralPartnerStoredRole,
+  isDealCompanyUserStoredRole,
+  isLpInvestorRole,
 } from "../deal/dealInvestment.service.js";
 
 const STARTER_MAX_CENTS = 3_000_000;
@@ -140,7 +141,7 @@ export async function countDealCompanyUsers(dealId: string): Promise<number> {
     if (!contactId || contactId === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER) {
       continue;
     }
-    if (!isGeneralPartnerStoredRole(row.dealMemberRole)) continue;
+    if (!isDealCompanyUserStoredRole(row.dealMemberRole)) continue;
     ids.add(contactId.toLowerCase());
   }
   return ids.size;
@@ -167,7 +168,7 @@ export async function contactIsDealCompanyUser(
         sql`lower(trim(${dealMember.contactMemberId})) = ${cid.toLowerCase()}`,
       ),
     );
-  return rows.some((row) => isGeneralPartnerStoredRole(row.dealMemberRole));
+  return rows.some((row) => isDealCompanyUserStoredRole(row.dealMemberRole));
 }
 
 async function resolveDealPlanId(
@@ -230,7 +231,10 @@ export async function assertExtraCompanyUserAllowedForAdd(params: {
   | { ok: true }
   | { ok: false; status: number; payload: ExtraCompanyUserPaymentRequiredPayload }
 > {
-  if (!isGeneralPartnerStoredRole(params.investorRole)) {
+  if (isLpInvestorRole(params.investorRole)) {
+    return { ok: true };
+  }
+  if (!isDealCompanyUserStoredRole(params.investorRole)) {
     return { ok: true };
   }
   const contactId = String(params.contactId ?? "").trim();

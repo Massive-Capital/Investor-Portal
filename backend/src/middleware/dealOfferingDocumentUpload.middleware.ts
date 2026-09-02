@@ -1,6 +1,9 @@
 import { type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 
+const MAX_OFFERING_DOCUMENT_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_OFFERING_DOCUMENT_FILES = 50;
+
 /**
  * Deal Documents tab uploads — register on `app` *before* `express.json()` so
  * Express 5 does not touch the stream before multer/busboy (Chrome/Edge
@@ -8,17 +11,20 @@ import multer from "multer";
  */
 const offeringDocumentUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024, files: 20 },
+  limits: {
+    fileSize: MAX_OFFERING_DOCUMENT_FILE_BYTES,
+    files: MAX_OFFERING_DOCUMENT_FILES,
+  },
 });
 
 function handleMulterError(res: Response, err: unknown): void {
   const m = err as { code?: string; message?: string };
   if (m.code === "LIMIT_FILE_SIZE") {
-    res.status(400).json({ message: "Document too large (max 20 MB each)." });
+    res.status(400).json({ message: "Document too large (max 100 MB each)." });
     return;
   }
   if (m.code === "LIMIT_FILE_COUNT") {
-    res.status(400).json({ message: "Too many documents (max 20 per request)." });
+    res.status(400).json({ message: "Too many documents (max 50 per request)." });
     return;
   }
   if (m.code) {
@@ -39,7 +45,10 @@ export function uploadDealOfferingDocumentFiles(
   res: Response,
   next: NextFunction,
 ): void {
-  void offeringDocumentUpload.array("documentFiles", 20)(
+  void offeringDocumentUpload.array(
+    "documentFiles",
+    MAX_OFFERING_DOCUMENT_FILES,
+  )(
     req,
     res,
     (err: unknown) => {

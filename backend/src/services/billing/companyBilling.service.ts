@@ -1,7 +1,8 @@
 import Stripe from "stripe";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import {
+  addDealForm,
   companies,
   companyBillingEvents,
   companyBillingInvoices,
@@ -29,6 +30,7 @@ import {
 } from "../../constants/roles.js";
 import { userHasAccessToOrganization } from "../org/orgResolution.service.js";
 import { releaseBillingPaymentHold } from "../../middleware/billingPaymentLock.js";
+import { periodEndFromSubscription } from "./dealBilling.service.js";
 
 let stripeClient: Stripe | null = null;
 
@@ -104,7 +106,9 @@ export async function resolveCompanyBillingAccess(
     return {
       canView: true,
       canManage: true,
-      canPay: true,
+      // Platform admins may view and manage records, but must not pay or
+      // change a customer’s payment cycle.
+      canPay: !isPlatformAdminRole(userRole),
       viewerScope: "all_deals",
       dealIds: null,
     };
@@ -144,6 +148,7 @@ export type CompanyBillingStatus = {
   canManage: boolean;
   canPay: boolean;
   viewerScope: CompanyBillingViewerScope;
+  saasBillingStartsAt: string | null;
   plansConfigured: Array<{
     id: StripeBillingPlanId;
     monthlyReady: boolean;
@@ -240,13 +245,17 @@ export async function getCompanyBillingStatus(
     canManage: options?.canManage ?? true,
     canPay: options?.canPay ?? options?.canManage ?? true,
     viewerScope: options?.viewerScope ?? "all_deals",
+    saasBillingStartsAt: null,
     plansConfigured: publicPlans,
   };
 
   try {
-    const { countBilledDealsForCompany } = await import(
-      "./dealBilling.service.js"
-    );
+    const {
+      countBilledDealsForCompany,
+      getPlatformSaasBillingStartsAtIso,
+    } = await import("./dealBilling.service.js");
+    const platformStart = await getPlatformSaasBillingStartsAtIso();
+    if (platformStart) status.saasBillingStartsAt = platformStart;
     const scopedDealIds = options?.dealIds;
     const dealBilling = await countBilledDealsForCompany(
       row.id,
@@ -452,6 +461,22 @@ export async function createCompanyCheckoutSession(params: {
       };
     }
     const deal = payable.deal;
+    const {
+      assertCheckoutPlanMatchesDeal,
+      upgradeDealStripeSubscription,
+      clearDealSaasSubscription,
+    } = await import("./dealBilling.service.js");
+    const planMatch = await assertCheckoutPlanMatchesDeal({
+      dealId: String(deal.id),
+      planId: resolvedPlan,
+    });
+    if (!planMatch.ok) {
+      return {
+        ok: false,
+        status: planMatch.status,
+        message: planMatch.message,
+      };
+    }
 
     const customerId = await ensureStripeCustomer({
       companyId: cid,
@@ -470,10 +495,34 @@ export async function createCompanyCheckoutSession(params: {
           cancelErr,
         );
       }
-      const { clearDealSaasSubscription } = await import(
-        "./dealBilling.service.js"
-      );
       await clearDealSaasSubscription(String(deal.id));
+    } else if (
+      existingDealSub &&
+      ["active", "trialing", "past_due", "unpaid"].includes(
+        dealSubStatus.toLowerCase(),
+      )
+    ) {
+      const upgraded = await upgradeDealStripeSubscription({
+        deal,
+        planId: resolvedPlan,
+        cycle,
+        seatBand: resolvedSeat,
+      });
+      if (!upgraded.ok) {
+        return {
+          ok: false,
+          status: upgraded.status,
+          message: upgraded.message,
+        };
+      }
+      await applySubscriptionToCompany(cid, upgraded.subscription);
+      if (upgraded.hostedInvoiceUrl) {
+        return { ok: true, url: upgraded.hostedInvoiceUrl };
+      }
+      return {
+        ok: true,
+        url: `${frontend}/settings?billing=success&dealId=${encodeURIComponent(String(deal.id))}`,
+      };
     }
 
     const {
@@ -689,7 +738,7 @@ export async function payCompanyDealWithSavedMethod(params: {
   }
 
   try {
-    const { loadPayableDeal, clearDealSaasSubscription, createDealStripeSubscription } =
+    const { loadPayableDeal, clearDealSaasSubscription, createDealStripeSubscription, assertCheckoutPlanMatchesDeal, upgradeDealStripeSubscription } =
       await import("./dealBilling.service.js");
     const payable = await loadPayableDeal({
       companyId: cid,
@@ -704,6 +753,17 @@ export async function payCompanyDealWithSavedMethod(params: {
       };
     }
     const deal = payable.deal;
+    const planMatch = await assertCheckoutPlanMatchesDeal({
+      dealId: String(deal.id),
+      planId: selection.planId,
+    });
+    if (!planMatch.ok) {
+      return {
+        ok: false,
+        status: planMatch.status,
+        message: planMatch.message,
+      };
+    }
 
     const methods = await listCompanyPaymentMethods(cid);
     const found = methods.find(
@@ -753,6 +813,50 @@ export async function payCompanyDealWithSavedMethod(params: {
       if (!alreadyAttached) {
         throw attachErr;
       }
+    }
+
+    const existingActive =
+      (deal.stripeSubscriptionId?.trim() ?? "") &&
+      ["active", "trialing", "past_due", "unpaid"].includes(
+        String(deal.stripeSubscriptionStatus ?? "none").toLowerCase(),
+      );
+    if (existingActive) {
+      const upgraded = await upgradeDealStripeSubscription({
+        deal,
+        planId: selection.planId,
+        cycle: selection.cycle,
+        seatBand: selection.seatBand,
+        paymentMethodId,
+      });
+      if (!upgraded.ok) {
+        return {
+          ok: false,
+          status: upgraded.status,
+          message: upgraded.message,
+        };
+      }
+      if (!upgraded.paid) {
+        return {
+          ok: false,
+          status: 402,
+          message:
+            "This payment method needs extra verification or was declined. Pay in Stripe instead.",
+        };
+      }
+      await applySubscriptionToCompany(cid, upgraded.subscription);
+      try {
+        await syncCompanyPaymentMethodsFromStripe(cid);
+      } catch (pmErr) {
+        console.warn("payCompanyDealWithSavedMethod sync methods:", pmErr);
+      }
+      const status = await getCompanyBillingStatus(cid, {
+        dealIds: params.allowedDealIds,
+      });
+      return {
+        ok: true,
+        paidDealId: String(deal.id),
+        status,
+      };
     }
 
     const sub = await createDealStripeSubscription({
@@ -971,7 +1075,7 @@ export async function createCompanySubscriptionPaymentElement(params: {
         message: "Select a deal to pay monthly SaaS billing for.",
       };
     }
-    const { loadPayableDeal, clearDealSaasSubscription } = await import(
+    const { loadPayableDeal, clearDealSaasSubscription, assertCheckoutPlanMatchesDeal } = await import(
       "./dealBilling.service.js"
     );
     const payable = await loadPayableDeal({
@@ -987,6 +1091,17 @@ export async function createCompanySubscriptionPaymentElement(params: {
       };
     }
     const deal = payable.deal;
+    const planMatch = await assertCheckoutPlanMatchesDeal({
+      dealId: String(deal.id),
+      planId: selection.planId,
+    });
+    if (!planMatch.ok) {
+      return {
+        ok: false,
+        status: planMatch.status,
+        message: planMatch.message,
+      };
+    }
     const stripe = getStripeClient();
 
     const existingDealSub = deal.stripeSubscriptionId?.trim() ?? "";
@@ -1003,6 +1118,18 @@ export async function createCompanySubscriptionPaymentElement(params: {
         );
       }
       await clearDealSaasSubscription(String(deal.id));
+    } else if (
+      existingDealSub &&
+      ["active", "trialing", "past_due", "unpaid"].includes(
+        String(deal.stripeSubscriptionStatus ?? "none").toLowerCase(),
+      )
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          "This deal already has a subscription. Use Pay in Stripe or a saved card to upgrade the plan.",
+      };
     }
 
     const customerId = await ensureStripeCustomer({
@@ -1239,7 +1366,9 @@ export async function syncCompanySubscriptionPayment(params: {
       };
     }
 
-    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data.price", "latest_invoice"],
+    });
     const metaCompany = normalizeCompanyId(sub.metadata?.companyId ?? null);
     if (metaCompany && metaCompany !== cid) {
       return {
@@ -1249,7 +1378,19 @@ export async function syncCompanySubscriptionPayment(params: {
       };
     }
 
-    await applySubscriptionToCompany(cid, sub);
+    let paidSub = sub;
+    if (String(sub.status ?? "").toLowerCase() === "incomplete") {
+      for (let i = 0; i < 4; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        paidSub = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ["items.data.price"],
+        });
+        const st = String(paidSub.status ?? "").toLowerCase();
+        if (st === "active" || st === "trialing" || st !== "incomplete") break;
+      }
+    }
+
+    await applySubscriptionToCompany(cid, paidSub);
     await syncDealSubscriptionsAfterCompanyPayment(cid);
     const customerId =
       typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
@@ -1351,12 +1492,14 @@ export type BillingInvoiceRow = {
   paymentFailedAt: string | null;
   dealId: string | null;
   dealName: string | null;
+  billingScope?: "deal" | "extra_company_user" | null;
 };
 
 function extrasFromStripeInvoice(inv: Stripe.Invoice): {
   periodStart: string;
   periodEnd: string;
   planId: string | null;
+  dealId: string | null;
 } {
   const line = inv.lines?.data?.[0];
   const period =
@@ -1390,10 +1533,20 @@ function extrasFromStripeInvoice(inv: Stripe.Invoice): {
     }
   }
   const mapped = planAndCycleFromPriceId(priceId);
+  const metaDealId = String(inv.metadata?.dealId ?? "").trim().toLowerCase();
+  const lineMeta =
+    line && typeof line === "object"
+      ? String(
+          (line as { metadata?: { dealId?: string } }).metadata?.dealId ?? "",
+        )
+          .trim()
+          .toLowerCase()
+      : "";
   return {
     periodStart,
     periodEnd,
     planId: mapped.planId,
+    dealId: metaDealId || lineMeta || null,
   };
 }
 
@@ -1407,6 +1560,151 @@ function formatMoneyCents(cents: number, currency: string): string {
 function isoDateOnly(d: Date | null | undefined): string {
   if (!d) return "";
   return d.toISOString().slice(0, 10);
+}
+
+async function mapCompanyDealNames(
+  companyId: string,
+  dealIdFilter?: string[] | null,
+): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const conditions = [eq(addDealForm.organizationId, companyId)];
+  if (dealIdFilter && dealIdFilter.length > 0) {
+    conditions.push(inArray(addDealForm.id, dealIdFilter));
+  }
+  const rows = await db
+    .select({ id: addDealForm.id, dealName: addDealForm.dealName })
+    .from(addDealForm)
+    .where(and(...conditions));
+  for (const row of rows) {
+    names.set(String(row.id).toLowerCase(), String(row.dealName ?? "").trim());
+  }
+  return names;
+}
+
+function extraCompanyUserInvoiceRow(params: {
+  id: string;
+  createdUnix: number;
+  amountCents: number;
+  currency: string;
+  status: string;
+  dealId: string | null;
+  dealName: string | null;
+  hostedInvoiceUrl?: string | null;
+}): BillingInvoiceRow {
+  const date = isoDateOnly(new Date(params.createdUnix * 1000));
+  return {
+    id: params.id,
+    invoiceNumber: "Extra company user",
+    invoiceDate: date,
+    dueDate: date,
+    periodStart: date,
+    periodEnd: date,
+    planId: null,
+    status: params.status,
+    amount: formatMoneyCents(params.amountCents, params.currency),
+    hostedInvoiceUrl: params.hostedInvoiceUrl ?? null,
+    invoicePdf: null,
+    paymentFailureMessage: null,
+    paymentFailedAt: null,
+    dealId: params.dealId,
+    dealName: params.dealName,
+    billingScope: "extra_company_user",
+  };
+}
+
+async function listExtraCompanyUserInvoiceRows(params: {
+  stripe: Stripe;
+  customerId: string;
+  dealNames: Map<string, string>;
+  allowedDealIds?: string[] | null;
+}): Promise<BillingInvoiceRow[]> {
+  const allowed = Array.isArray(params.allowedDealIds)
+    ? new Set(params.allowedDealIds.map((id) => id.toLowerCase()))
+    : null;
+  const rows: BillingInvoiceRow[] = [];
+  const seen = new Set<string>();
+
+  const resolveDeal = (rawId: string, rawName: string) => {
+    const dealId = rawId.trim().toLowerCase();
+    if (!dealId) {
+      return { dealId: null as string | null, dealName: null as string | null };
+    }
+    if (allowed && !allowed.has(dealId)) return null;
+    const dealName = rawName.trim() || params.dealNames.get(dealId) || null;
+    return { dealId, dealName };
+  };
+
+  try {
+    const sessions = await params.stripe.checkout.sessions.list({
+      customer: params.customerId,
+      limit: 50,
+    });
+    for (const session of sessions.data) {
+      if (String(session.metadata?.billingScope ?? "") !== "extra_company_user") {
+        continue;
+      }
+      const deal = resolveDeal(
+        String(session.metadata?.dealId ?? ""),
+        String(session.metadata?.dealName ?? ""),
+      );
+      if (!deal) continue;
+      const paid = String(session.payment_status ?? "").toLowerCase() === "paid";
+      const pi =
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? "";
+      if (pi) seen.add(pi);
+      seen.add(session.id);
+      rows.push(
+        extraCompanyUserInvoiceRow({
+          id: session.id,
+          createdUnix: session.created,
+          amountCents: session.amount_total ?? 0,
+          currency: session.currency ?? "usd",
+          status: paid ? "paid" : String(session.payment_status ?? "open"),
+          dealId: deal.dealId,
+          dealName: deal.dealName,
+          hostedInvoiceUrl: session.url,
+        }),
+      );
+    }
+  } catch (err) {
+    console.warn("listExtraCompanyUserInvoiceRows checkout sessions:", err);
+  }
+
+  try {
+    const intents = await params.stripe.paymentIntents.list({
+      customer: params.customerId,
+      limit: 50,
+    });
+    for (const pi of intents.data) {
+      if (String(pi.metadata?.billingScope ?? "") !== "extra_company_user") {
+        continue;
+      }
+      if (seen.has(pi.id)) continue;
+      const deal = resolveDeal(
+        String(pi.metadata?.dealId ?? ""),
+        String(pi.metadata?.dealName ?? ""),
+      );
+      if (!deal) continue;
+      const succeeded = String(pi.status ?? "").toLowerCase() === "succeeded";
+      rows.push(
+        extraCompanyUserInvoiceRow({
+          id: pi.id,
+          createdUnix: pi.created,
+          amountCents: pi.amount_received || pi.amount || 0,
+          currency: pi.currency ?? "usd",
+          status: succeeded ? "paid" : String(pi.status ?? "open"),
+          dealId: deal.dealId,
+          dealName: deal.dealName,
+        }),
+      );
+    }
+  } catch (err) {
+    console.warn("listExtraCompanyUserInvoiceRows payment intents:", err);
+  }
+
+  return rows;
 }
 
 async function recordBillingEvent(params: {
@@ -1638,16 +1936,30 @@ export async function listCompanyStripeInvoices(
     cid,
     options?.dealIds ?? null,
   );
+  const dealNames = await mapCompanyDealNames(cid, options?.dealIds ?? null);
   const scoped = Array.isArray(options?.dealIds);
+  if (scoped && (options?.dealIds?.length ?? 0) === 0) {
+    return { ok: true, invoices: [] };
+  }
+  const allowedDealIds = scoped
+    ? new Set((options?.dealIds ?? []).map((id) => id.toLowerCase()))
+    : null;
 
   const invoices: BillingInvoiceRow[] = [];
   for (const row of rows) {
     const sub = row.stripeSubscriptionId?.trim() ?? "";
     const deal = sub ? dealBySub.get(sub) : undefined;
-    if (scoped && !deal) continue;
     const extras = extrasByInvoice.get(row.stripeInvoiceId);
+    const metaDealId = extras?.dealId ?? null;
+    const dealId = deal?.dealId ?? metaDealId;
+    if (scoped && (!dealId || (allowedDealIds && !allowedDealIds.has(dealId)))) {
+      continue;
+    }
     const invoiceDate = isoDateOnly(row.invoiceDate);
     const dueDate = isoDateOnly(row.dueDate) || invoiceDate;
+    const dealName =
+      (deal?.dealName?.trim() ? deal.dealName : null) ||
+      (dealId ? dealNames.get(dealId) || null : null);
     invoices.push({
       id: row.stripeInvoiceId,
       invoiceNumber: row.invoiceNumber || row.stripeInvoiceId,
@@ -1669,19 +1981,25 @@ export async function listCompanyStripeInvoices(
       paymentFailedAt: row.paymentFailedAt
         ? row.paymentFailedAt.toISOString()
         : null,
-      dealId: deal?.dealId ?? null,
-      dealName: deal?.dealName?.trim() ? deal.dealName : null,
+      dealId,
+      dealName,
+      billingScope: "deal",
     });
   }
 
-  return { ok: true, invoices };
-}
+  const customerId = company.stripeCustomerId?.trim();
+  if (getStripeConfig() && customerId) {
+    const extraRows = await listExtraCompanyUserInvoiceRows({
+      stripe: getStripeClient(),
+      customerId,
+      dealNames,
+      allowedDealIds: options?.dealIds ?? null,
+    });
+    invoices.push(...extraRows);
+    invoices.sort((a, b) => String(b.invoiceDate).localeCompare(String(a.invoiceDate)));
+  }
 
-function periodEndFromSubscription(sub: Stripe.Subscription): Date | null {
-  // Stripe API 2025-03+ / Basil+: period end is on subscription items.
-  const end = sub.items?.data?.[0]?.current_period_end ?? null;
-  if (end == null || !Number.isFinite(end)) return null;
-  return new Date(end * 1000);
+  return { ok: true, invoices };
 }
 
 function priceIdFromSubscription(sub: Stripe.Subscription): string | null {
@@ -1719,6 +2037,7 @@ async function syncDealSubscriptionsAfterCompanyPayment(
 export async function applySubscriptionToCompany(
   companyId: string,
   sub: Stripe.Subscription,
+  extras?: { dealId?: string | null },
 ): Promise<void> {
   const cid = normalizeCompanyId(companyId);
   if (!cid) return;
@@ -1744,7 +2063,9 @@ export async function applySubscriptionToCompany(
   const clearFailure =
     status === "active" || status === "trialing" || status === "canceled";
 
-  const dealIdRaw = String(sub.metadata?.dealId ?? "").trim();
+  const dealIdRaw = String(
+    sub.metadata?.dealId ?? extras?.dealId ?? "",
+  ).trim();
   const isDealScoped = Boolean(dealIdRaw);
 
   const [existing] = await db
@@ -1938,9 +2259,12 @@ export async function syncCompanyBillingFromCheckoutSession(params: {
 
     const sub =
       typeof subRef === "string"
-        ? await stripe.subscriptions.retrieve(subId)
+        ? await stripe.subscriptions.retrieve(subId, {
+            expand: ["items.data.price"],
+          })
         : (subRef as Stripe.Subscription);
-    await applySubscriptionToCompany(cid, sub);
+    const sessionDealId = String(session.metadata?.dealId ?? "").trim();
+    await applySubscriptionToCompany(cid, sub, { dealId: sessionDealId });
     await syncDealSubscriptionsAfterCompanyPayment(cid);
 
     const customerId =
@@ -2530,6 +2854,17 @@ export async function createExtraCompanyUserCheckoutSession(params: {
         extraCompanyUsers: String(charge.extraUsersToPay),
         payerUserId: params.actorUserId,
       },
+      payment_intent_data: {
+        description: `${charge.extraUsersToPay} extra company user${charge.extraUsersToPay === 1 ? "" : "s"} at $10 each`,
+        metadata: {
+          companyId: cid,
+          dealId: charge.dealId,
+          dealName: charge.dealName,
+          billingScope: "extra_company_user",
+          extraCompanyUsers: String(charge.extraUsersToPay),
+          payerUserId: params.actorUserId,
+        },
+      },
     });
     if (!session.url) {
       return {
@@ -2631,6 +2966,7 @@ export async function payExtraCompanyUserWithSavedMethod(params: {
       metadata: {
         companyId: cid,
         dealId: charge.dealId,
+        dealName: charge.dealName,
         billingScope: "extra_company_user",
         extraCompanyUsers: String(charge.extraUsersToPay),
         payerUserId: params.actorUserId,

@@ -114,7 +114,7 @@ export function ExtraCompanyUserPayModal({
         </>
       }
       savedButtonLabel={`Pay $${dollars} with this method`}
-      stripeButtonLabel={`Pay $${dollars} in Stripe`}
+      stripeButtonLabel={`Pay $${dollars}`}
     />
   )
 }

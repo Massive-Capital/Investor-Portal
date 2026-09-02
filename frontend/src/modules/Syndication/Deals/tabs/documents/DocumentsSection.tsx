@@ -51,16 +51,26 @@ import {
   fetchDealInvestors,
   fetchDealMembers,
   DEAL_OFFERING_DOCUMENT_ACCEPT,
+  DEAL_OFFERING_DOCUMENT_LIMITS_HINT,
   DEAL_OFFERING_DOCUMENT_TYPES_LABEL,
   dealOfferingDocumentRejectMessage,
+  dealOfferingDocumentTooLargeMessage,
   isDealOfferingDocumentFile,
+  MAX_DEAL_OFFERING_DOCUMENT_FILE_BYTES,
+  MAX_DEAL_OFFERING_DOCUMENT_FILES,
   postDealOfferingDocumentUploads,
   syncCompletedEsignDocumentsToDocumentsTab,
   type DealDetailApi,
 } from "../../api/dealsApi"
 import {
   buildSponsorUserPickerOptions,
+  collectCoSponsorViewerUserIds,
+  collectLeadAdminViewerShareIds,
+  filterDocumentSectionsForCoSponsor,
+  filterDocumentSectionsForLeadOrAdminSponsor,
   filterLpInvestorsForDocumentSharedWith,
+  nestedDocumentIdsFromPreviewJson,
+  nestedDocumentVisibleToCoSponsor,
   sponsorAudienceSearchBlob,
 } from "../../utils/offeringPreviewDocumentAudience"
 import type { DealInvestorClass } from "../../types/deal-investor-class.types"
@@ -107,6 +117,12 @@ import {
   type OfferingPreviewSection,
   type SectionSharedWithScope,
 } from "../../utils/offeringPreviewDocSections"
+import {
+  applyOfferingInvestorPreviewJsonFromServer,
+  persistOfferingInvestorPreviewToServer,
+  scheduleOfferingInvestorPreviewServerSync,
+} from "../../utils/offeringPreviewServerState"
+import { isOfferingPreviewHydrated } from "../../utils/offeringPreviewRuntimeStore"
 
 /** After Shared With changes: first audience on a Hidden file → LP portal. */
 function patchDocAfterAudienceChange(
@@ -120,18 +136,12 @@ function patchDocAfterAudienceChange(
   return doc
 }
 
-import {
-  applyOfferingInvestorPreviewJsonFromServer,
-  persistOfferingInvestorPreviewToServer,
-  scheduleOfferingInvestorPreviewServerSync,
-} from "../../utils/offeringPreviewServerState"
-import { isOfferingPreviewHydrated } from "../../utils/offeringPreviewRuntimeStore"
-
 interface DocumentsSectionProps {
   dealId?: string
   dealName?: string | null
   offeringInvestorPreviewJson?: string | null
   investorsListRefreshKey?: number
+  viewerDealMemberRole?: ViewerDealMemberRole
   onOfferingPreviewSynced?: (deal: DealDetailApi) => void
 }
 
@@ -259,20 +269,45 @@ function sectionMatchesLabel(s: OfferingPreviewSection, label: string): boolean 
 function appendOfferingDocumentFilesFromPicker(
   prev: File[],
   input: FileList | File[] | null | undefined,
-): { next: File[]; rejectedNames: string[] } {
+): { next: File[]; rejectedNames: string[]; error: string | null } {
   const picked = input
     ? Array.isArray(input)
       ? input
       : Array.from(input)
     : []
-  if (picked.length === 0) return { next: prev, rejectedNames: [] }
+  if (picked.length === 0) return { next: prev, rejectedNames: [], error: null }
   const rejectedNames: string[] = []
+  const oversizedNames: string[] = []
   const accepted: File[] = []
   for (const file of picked) {
-    if (isDealOfferingDocumentFile(file)) accepted.push(file)
-    else rejectedNames.push(file.name)
+    if (!isDealOfferingDocumentFile(file)) {
+      rejectedNames.push(file.name)
+      continue
+    }
+    if (
+      typeof file.size === "number" &&
+      file.size > MAX_DEAL_OFFERING_DOCUMENT_FILE_BYTES
+    ) {
+      oversizedNames.push(file.name)
+      continue
+    }
+    accepted.push(file)
   }
-  return { next: [...prev, ...accepted], rejectedNames }
+  const remaining = Math.max(
+    0,
+    MAX_DEAL_OFFERING_DOCUMENT_FILES - prev.length,
+  )
+  const kept = accepted.slice(0, remaining)
+  const overCount = accepted.length > remaining
+  const error =
+    rejectedNames.length > 0
+      ? dealOfferingDocumentRejectMessage(rejectedNames)
+      : oversizedNames.length > 0
+        ? dealOfferingDocumentTooLargeMessage(oversizedNames[0]!)
+        : overCount
+          ? "Too many documents (max 50 per upload)."
+          : null
+  return { next: [...prev, ...kept], rejectedNames, error }
 }
 
 function formatPdfFileSize(bytes: number): string {
@@ -419,7 +454,7 @@ function DocumentsPdfUploadDropzone({
           <span className="deal_docs_section_modal_upload_sub">
             {isOpening
               ? "Your file manager is opening"
-              : "Click to browse or drop files here"}
+              : `Click to browse or drop files here. ${DEAL_OFFERING_DOCUMENT_LIMITS_HINT}.`}
           </span>
           {isOpening ? null : (
             <span className="deal_docs_section_modal_upload_formats" aria-hidden>
@@ -566,6 +601,7 @@ export function DocumentsSection({
   dealName,
   offeringInvestorPreviewJson,
   investorsListRefreshKey = 0,
+  viewerDealMemberRole: viewerDealMemberRoleProp = null,
   onOfferingPreviewSynced,
 }: DocumentsSectionProps) {
   const dealIdTrim = dealId?.trim() ?? ""
@@ -632,7 +668,7 @@ export function DocumentsSection({
   const [investorRows, setInvestorRows] = useState<DealInvestorRow[]>([])
   const [sponsorRosterRows, setSponsorRosterRows] = useState<DealInvestorRow[]>([])
   const [viewerDealMemberRole, setViewerDealMemberRole] =
-    useState<ViewerDealMemberRole>(null)
+    useState<ViewerDealMemberRole>(viewerDealMemberRoleProp)
   const [sponsorSignTarget, setSponsorSignTarget] = useState<{
     documentName: string
     signatureRequestId: string
@@ -641,18 +677,47 @@ export function DocumentsSection({
   onSyncedRef.current = onOfferingPreviewSynced
   const lastPersistedSectionsSnapshotRef = useRef("")
 
+  function previewJsonLooksCanonical(json: string | null | undefined): boolean {
+    if (!json?.trim()) return false
+    try {
+      const parsed = JSON.parse(json) as unknown
+      if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return false
+      }
+      const rec = parsed as Record<string, unknown>
+      return (
+        rec.v != null ||
+        rec.visibility != null ||
+        Array.isArray(rec.sections)
+      )
+    } catch {
+      return false
+    }
+  }
+
   function resolveWorkspaceSections(): OfferingPreviewSection[] {
     const fromServer = parseDocumentSectionsFromPreviewJson(
       offeringInvestorPreviewJson,
     )
+    const viewerRoleForHydrate =
+      viewerDealMemberRoleProp === "co_sponsor" ||
+      viewerDealMemberRole === "co_sponsor" ||
+      viewerDealMemberRoleProp === "lead_sponsor" ||
+      viewerDealMemberRole === "lead_sponsor" ||
+      viewerDealMemberRoleProp === "admin_sponsor" ||
+      viewerDealMemberRole === "admin_sponsor"
+    const rolePrefersServer =
+      viewerRoleForHydrate &&
+      previewJsonLooksCanonical(offeringInvestorPreviewJson)
     const nextSections =
-      fromServer.length > 0
+      fromServer.length > 0 || rolePrefersServer
         ? orderDocumentSections(fromServer)
         : readDealDocumentSectionsForWorkspace(dealIdTrim)
     return mergeAutoManagedDocumentSections(
       nextSections,
       dealIdTrim,
       offeringInvestorPreviewJson,
+      rolePrefersServer ? { preferPreviewJson: true } : undefined,
     )
   }
 
@@ -685,9 +750,23 @@ export function DocumentsSection({
       setCheckedDocsBySection({})
       return
     }
-    applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson)
-    setSectionsIfChanged(resolveWorkspaceSections())
+    applyOfferingInvestorPreviewJsonFromServer(id, offeringInvestorPreviewJson, {
+      notify: false,
+    })
+    const next = resolveWorkspaceSections()
+    setSectionsIfChanged(next)
     setPreviewHydrated(isOfferingPreviewHydrated(id))
+    lastPersistedSectionsSnapshotRef.current = documentSectionsSnapshot(
+      mergeAutoManagedDocumentSections(
+        next,
+        id,
+        offeringInvestorPreviewJson,
+        viewerDealMemberRoleProp === "co_sponsor" ||
+          viewerDealMemberRole === "co_sponsor"
+          ? { preferPreviewJson: true }
+          : undefined,
+      ),
+    )
   }, [dealIdTrim, offeringInvestorPreviewJson])
 
   /** Only collapse sections when switching deals — not after Shared With / visibility sync. */
@@ -733,14 +812,21 @@ export function DocumentsSection({
       setDealClasses(classes)
       setInvestorRows(payload.investors)
       setSponsorRosterRows(membersResult.members)
-      setViewerDealMemberRole(
-        parseViewerDealMemberRoleFromApi(membersResult.viewerDealMemberRole),
+      const fromApi = parseViewerDealMemberRoleFromApi(
+        membersResult.viewerDealMemberRole,
       )
+      setViewerDealMemberRole(fromApi ?? viewerDealMemberRoleProp)
     })()
     return () => {
       cancelled = true
     }
-  }, [dealIdTrim, investorsListRefreshKey])
+  }, [dealIdTrim, investorsListRefreshKey, viewerDealMemberRoleProp])
+
+  useEffect(() => {
+    if (viewerDealMemberRoleProp != null) {
+      setViewerDealMemberRole(viewerDealMemberRoleProp)
+    }
+  }, [viewerDealMemberRoleProp])
 
   useEffect(() => {
     const id = dealIdTrim
@@ -768,13 +854,20 @@ export function DocumentsSection({
   const sessionEmail = getSessionUserEmail()
   const sessionUserId = getSessionUserId()
   const effectiveViewerDealMemberRole = useMemo((): ViewerDealMemberRole => {
+    if (viewerDealMemberRoleProp != null) return viewerDealMemberRoleProp
     if (viewerDealMemberRole != null) return viewerDealMemberRole
     return resolveViewerDealMemberRole(
       sponsorRosterRows,
       sessionEmail,
       sessionUserId,
     )
-  }, [viewerDealMemberRole, sponsorRosterRows, sessionEmail, sessionUserId])
+  }, [
+    viewerDealMemberRoleProp,
+    viewerDealMemberRole,
+    sponsorRosterRows,
+    sessionEmail,
+    sessionUserId,
+  ])
 
   const viewerCanSponsorSign = viewerIsDealSponsorRole(
     effectiveViewerDealMemberRole,
@@ -782,6 +875,16 @@ export function DocumentsSection({
 
   const viewerCanRenameDocumentSections =
     isPlatformAdmin() || viewerCanSponsorSign
+
+  const lpInvestorRows = useMemo(
+    () => filterLpInvestorsForDocumentSharedWith(investorRows),
+    [investorRows],
+  )
+
+  const sponsorUserOptions = useMemo(
+    () => buildSponsorUserPickerOptions(sponsorRosterRows, lpInvestorRows),
+    [sponsorRosterRows, lpInvestorRows],
+  )
 
   const expandOnlySection = useCallback((sectionId: string) => {
     setExpandedSections({ [sectionId]: true })
@@ -980,8 +1083,18 @@ export function DocumentsSection({
         sections,
         dealIdTrim,
         offeringInvestorPreviewJson,
+        effectiveViewerDealMemberRole === "co_sponsor" ||
+        effectiveViewerDealMemberRole === "lead_sponsor" ||
+        effectiveViewerDealMemberRole === "admin_sponsor"
+          ? { preferPreviewJson: true }
+          : undefined,
       ),
-    [sections, dealIdTrim, offeringInvestorPreviewJson],
+    [
+      sections,
+      dealIdTrim,
+      offeringInvestorPreviewJson,
+      effectiveViewerDealMemberRole,
+    ],
   )
 
   useEffect(() => {
@@ -1012,6 +1125,12 @@ export function DocumentsSection({
       (n, s) => n + s.nestedDocuments.length,
       0,
     )
+    if (
+      effectiveViewerDealMemberRole === "co_sponsor" ||
+      effectiveViewerDealMemberRole === "lead_sponsor" ||
+      effectiveViewerDealMemberRole === "admin_sponsor"
+    )
+      return
     if (localCount === 0) return
     const serverCount = countNestedDocumentsInPreviewJson(
       offeringInvestorPreviewJson,
@@ -1026,6 +1145,7 @@ export function DocumentsSection({
     offeringInvestorPreviewJson,
     previewHydrated,
     sectionsForPersist,
+    effectiveViewerDealMemberRole,
   ])
 
   const onAddSection = useCallback(() => {
@@ -1043,16 +1163,12 @@ export function DocumentsSection({
 
   const appendSectionFiles = useCallback(
     (incoming: FileList | File[] | null | undefined) => {
-      const { next, rejectedNames } = appendOfferingDocumentFilesFromPicker(
+      const { next, error } = appendOfferingDocumentFilesFromPicker(
         sectionFiles,
         incoming,
       )
       setSectionFiles(next)
-      if (rejectedNames.length > 0) {
-        setAddSectionError(dealOfferingDocumentRejectMessage(rejectedNames))
-      } else {
-        setAddSectionError(null)
-      }
+      setAddSectionError(error)
     },
     [sectionFiles],
   )
@@ -1107,6 +1223,12 @@ export function DocumentsSection({
               )
               return
             }
+            const uploaderIsCoSponsor =
+              effectiveViewerDealMemberRole === "co_sponsor" &&
+              Boolean(sessionUserId.trim())
+            const uploaderSponsorIds = uploaderIsCoSponsor
+              ? [sessionUserId.trim()]
+              : []
             nestedDocuments = sectionFiles.map((file, i) => {
               const stored = dealAssetRelativePathToUploadsUrl(up.newPaths[i]!)
               return {
@@ -1118,8 +1240,14 @@ export function DocumentsSection({
                 sharedDealClassIds: [],
                 sharedInvestorIds: [],
                 sharedWithAllInvestors: false,
-                sharedSponsorUserIds: [],
+                sharedSponsorUserIds: uploaderSponsorIds,
                 sharedWithScope: "not_visible" as const,
+                ...(uploaderIsCoSponsor
+                  ? {
+                      uploadedByIsCoSponsor: true as const,
+                      uploadedByUserId: sessionUserId.trim(),
+                    }
+                  : {}),
               }
             })
           } catch (err) {
@@ -1162,7 +1290,13 @@ export function DocumentsSection({
         setAddSectionError(null)
       })()
     },
-    [dealIdTrim, sectionFiles, sectionName],
+    [
+      dealIdTrim,
+      sectionFiles,
+      sectionName,
+      effectiveViewerDealMemberRole,
+      sessionUserId,
+    ],
   )
 
   const appendUploadedFilesToSection = useCallback(
@@ -1188,6 +1322,12 @@ export function DocumentsSection({
           return "Upload did not return a path for each selected file."
         }
 
+        const uploaderIsCoSponsor =
+          effectiveViewerDealMemberRole === "co_sponsor" &&
+          Boolean(sessionUserId.trim())
+        const uploaderSponsorIds = uploaderIsCoSponsor
+          ? [sessionUserId.trim()]
+          : []
         const newNestedBase = files.map((file, i) => {
           const stored = dealAssetRelativePathToUploadsUrl(up.newPaths[i]!)
           return {
@@ -1199,8 +1339,14 @@ export function DocumentsSection({
             sharedDealClassIds: [] as string[],
             sharedInvestorIds: [] as string[],
             sharedWithAllInvestors: false,
-            sharedSponsorUserIds: [] as string[],
+            sharedSponsorUserIds: uploaderSponsorIds,
             sharedWithScope: "not_visible" as const,
+            ...(uploaderIsCoSponsor
+              ? {
+                  uploadedByIsCoSponsor: true as const,
+                  uploadedByUserId: sessionUserId.trim(),
+                }
+              : {}),
           }
         })
 
@@ -1245,7 +1391,7 @@ export function DocumentsSection({
         setDocumentUploadBusy(false)
       }
     },
-    [dealIdTrim, expandOnlySection],
+    [dealIdTrim, expandOnlySection, effectiveViewerDealMemberRole, sessionUserId],
   )
 
   const uploadFilesToDefaultSection = useCallback(
@@ -1319,16 +1465,12 @@ export function DocumentsSection({
 
   const appendUploadFiles = useCallback(
     (incoming: FileList | File[] | null | undefined) => {
-      const { next, rejectedNames } = appendOfferingDocumentFilesFromPicker(
+      const { next, error } = appendOfferingDocumentFilesFromPicker(
         uploadFiles,
         incoming,
       )
       setUploadFiles(next)
-      if (rejectedNames.length > 0) {
-        setUploadDocsError(dealOfferingDocumentRejectMessage(rejectedNames))
-      } else {
-        setUploadDocsError(null)
-      }
+      setUploadDocsError(error)
     },
     [uploadFiles],
   )
@@ -1404,6 +1546,34 @@ export function DocumentsSection({
   const removeSectionById = useCallback((sectionId: string) => {
     setSections((prev) => {
       const victim = prev.find((s) => s.id === sectionId)
+      if (
+        victim &&
+        effectiveViewerDealMemberRole === "co_sponsor"
+      ) {
+        const ctx = {
+          viewerUserIds: collectCoSponsorViewerUserIds(
+            sessionUserId,
+            lpInvestorRows,
+          ),
+          lpInvestors: lpInvestorRows,
+          dealClasses,
+        }
+        const kept = victim.nestedDocuments.filter(
+          (d) => !nestedDocumentVisibleToCoSponsor(d, ctx),
+        )
+        const next = orderDocumentSectionsWithDefaultFirst(
+          kept.length === 0
+            ? prev.filter((s) => s.id !== sectionId)
+            : prev.map((s) =>
+                s.id !== sectionId ? s : { ...s, nestedDocuments: kept },
+              ),
+        )
+        for (const d of victim.nestedDocuments) {
+          if (kept.some((k) => k.id === d.id)) continue
+          revokeBlobUrlIfOrphaned(d.url, next)
+        }
+        return next
+      }
       const next = orderDocumentSectionsWithDefaultFirst(
         prev.filter((s) => s.id !== sectionId),
       )
@@ -1420,7 +1590,12 @@ export function DocumentsSection({
       delete next[sectionId]
       return next
     })
-  }, [])
+  }, [
+    dealClasses,
+    effectiveViewerDealMemberRole,
+    lpInvestorRows,
+    sessionUserId,
+  ])
 
   const onConfirmDeletePending = useCallback(() => {
     if (!deletePending) return
@@ -1729,20 +1904,58 @@ export function DocumentsSection({
     [],
   )
 
-  const lpInvestorRows = useMemo(
-    () => filterLpInvestorsForDocumentSharedWith(investorRows),
-    [investorRows],
-  )
-
-  const sponsorUserOptions = useMemo(
-    () => buildSponsorUserPickerOptions(sponsorRosterRows, lpInvestorRows),
-    [sponsorRosterRows, lpInvestorRows],
-  )
+  const roleScopedSections = useMemo(() => {
+    if (effectiveViewerDealMemberRole === "co_sponsor") {
+      return orderDocumentSections(
+        filterDocumentSectionsForCoSponsor(
+          sections,
+          {
+            viewerUserIds: collectCoSponsorViewerUserIds(
+              sessionUserId,
+              lpInvestorRows,
+            ),
+            lpInvestors: lpInvestorRows,
+            dealClasses,
+          },
+          {
+            alwaysVisibleDocumentIds: nestedDocumentIdsFromPreviewJson(
+              offeringInvestorPreviewJson,
+            ),
+          },
+        ),
+      )
+    }
+    if (
+      effectiveViewerDealMemberRole === "lead_sponsor" ||
+      effectiveViewerDealMemberRole === "admin_sponsor"
+    ) {
+      return orderDocumentSections(
+        filterDocumentSectionsForLeadOrAdminSponsor(sections, {
+          viewerUserIds: collectLeadAdminViewerShareIds(
+            sessionUserId,
+            sessionEmail,
+            sponsorRosterRows,
+            lpInvestorRows,
+          ),
+        }),
+      )
+    }
+    return sections
+  }, [
+    sections,
+    effectiveViewerDealMemberRole,
+    sessionUserId,
+    sessionEmail,
+    sponsorRosterRows,
+    lpInvestorRows,
+    dealClasses,
+    offeringInvestorPreviewJson,
+  ])
 
   const filteredSections = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return sections
-    return sections.filter((s) => {
+    if (!q) return roleScopedSections
+    return roleScopedSections.filter((s) => {
       const blob = [
         s.sectionLabel,
         s.documentLabel,
@@ -1776,7 +1989,7 @@ export function DocumentsSection({
         .toLowerCase()
       return blob.includes(q)
     })
-  }, [sections, query, dealClasses, lpInvestorRows, sponsorUserOptions])
+  }, [roleScopedSections, query, dealClasses, lpInvestorRows, sponsorUserOptions])
 
   const emptySearchLabel = query.trim() ? "No sections match your search." : null
 
@@ -1852,6 +2065,11 @@ export function DocumentsSection({
                 ? "Uploading…"
                 : "Click or drag files"}
           </span>
+          {quickUploadPickerOpening || documentUploadBusy ? null : (
+            <span className="deal_docs_empty_dropzone_hint">
+              {DEAL_OFFERING_DOCUMENT_LIMITS_HINT}
+            </span>
+          )}
         </>
       ) : null}
     </div>
@@ -2217,8 +2435,14 @@ export function DocumentsSection({
                                       the deal can see the file when Visibility allows it.
                                       Or pick deal classes, <strong>Sponsor user investors</strong>,
                                       individual investors, or <strong>All Investors</strong> to
-                                      limit the LP portal. Use the email icon to notify those
-                                      investors.
+                                      limit the LP portal. Sharing with a co-sponsor includes
+                                      their investors only when that co-sponsor chose{" "}
+                                      <strong>No intercept</strong>. With{" "}
+                                      <strong>Yes intercept</strong>, the file stays with the
+                                      co-sponsor until they share it with their investors.
+                                      Use the email icon to notify those recipients.
+                                      If any of a co-sponsor’s investors are notified, that
+                                      co-sponsor is notified too.
                                     </p>
                                   }
                                 />
@@ -2829,7 +3053,8 @@ export function DocumentsSection({
                       info={
                         <p>
                           Add PDF, Word, PowerPoint, or Excel files to the
-                          selected section. They appear in this section&apos;s
+                          selected section. You can upload up to 50 files at a
+                          time, 100 MB each. They appear in this section&apos;s
                           document list after upload.
                         </p>
                       }

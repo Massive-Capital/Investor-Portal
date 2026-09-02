@@ -2,7 +2,11 @@ import type { NextFunction, Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../database/db.js";
 import { addDealForm } from "../schema/schema.js";
-import { normalizeDealId } from "../services/billing/dealBilling.service.js";
+import {
+  dealPaidPlanNeedsUpgrade,
+  normalizeDealId,
+  suggestedPlanIdForDeal,
+} from "../services/billing/dealBilling.service.js";
 import {
   acquireBillingPaymentHold,
   billingPaymentLockKey,
@@ -55,6 +59,7 @@ export async function billingAlreadyPaidMiddleware(
         organizationId: addDealForm.organizationId,
         stripeSubscriptionId: addDealForm.stripeSubscriptionId,
         stripeSubscriptionStatus: addDealForm.stripeSubscriptionStatus,
+        stripePlanId: addDealForm.stripePlanId,
       })
       .from(addDealForm)
       .where(eq(addDealForm.id, dealId))
@@ -70,6 +75,11 @@ export async function billingAlreadyPaidMiddleware(
 
     const status = String(deal.stripeSubscriptionStatus ?? "").toLowerCase();
     if (deal.stripeSubscriptionId?.trim() && ALREADY_BILLED.has(status)) {
+      const suggested = await suggestedPlanIdForDeal(dealId);
+      if (dealPaidPlanNeedsUpgrade(deal.stripePlanId, suggested)) {
+        next();
+        return;
+      }
       res.status(409).json({
         message:
           "This deal is already paid. A second payment cannot be started.",

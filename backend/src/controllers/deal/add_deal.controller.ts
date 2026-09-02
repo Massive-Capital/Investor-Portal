@@ -42,6 +42,10 @@ import {
   viewerIsDealSponsorOnAnyDeal,
   viewerMayEditDealProfile,
 } from "../../services/deal/dealMemberScope.service.js";
+import {
+  mergeCoSponsorOfferingInvestorPreviewJson,
+  scopeOfferingInvestorPreviewJsonForViewer,
+} from "../../services/deal/dealDocumentCoSponsorVisibility.service.js";
 import { canInvestorAccessPublicOffering } from "../../constants/deal-lifecycle/index.js";
 import { isDealStageDraft } from "../../constants/deal-lifecycle/deal-stage.js";
 import {
@@ -123,6 +127,7 @@ import {
   dealSaasPaymentRequiredPayload,
   ensureDealSaasComplimentaryPeriod,
   evaluateDealSaasWorkspaceAccess,
+  refreshDealSaasSubscriptionFromStripe,
 } from "../../services/billing/dealBilling.service.js";
 import { isInvestingPortalRequest } from "../../middleware/portalMode.middleware.js";
 
@@ -165,7 +170,18 @@ async function sendDealSaasLockIfNeeded(
       console.warn("ensureDealSaasComplimentaryPeriod:", row.id, err);
     });
   }
-  const access = evaluateDealSaasWorkspaceAccess(row);
+  let access = evaluateDealSaasWorkspaceAccess(row);
+  if (access.locked && row.stripeSubscriptionId?.trim()) {
+    try {
+      const fresh = await refreshDealSaasSubscriptionFromStripe(row);
+      if (fresh) {
+        row = fresh;
+        access = evaluateDealSaasWorkspaceAccess(fresh);
+      }
+    } catch (err) {
+      console.warn("sendDealSaasLockIfNeeded stripe refresh:", row.id, err);
+    }
+  }
   if (!access.locked) return false;
   const dealKey = String(row.id ?? "").trim().toLowerCase();
   let viewerIsLeadSponsor = false;
@@ -428,7 +444,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
         : new Map<string, number>();
 
     const [leadSponsorDealIds, leadOrAdminSponsorDealIds, coSponsorDealIds] =
-      !includeParticipantDeals && dealIds.length > 0
+      dealIds.length > 0
         ? await Promise.all([
             listDealIdsWhereViewerIsLeadSponsor(user.id),
             listDealIdsWhereViewerIsLeadOrAdminSponsor(user.id),
@@ -494,18 +510,18 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
                 ...listRow,
                 yourRole: lpRoleByDealId.get(id) ?? "LP Investor",
               };
-          const withBilling = !includeParticipantDeals
+          const dealKey = id.trim().toLowerCase();
+          const viewerIsLeadSponsor = leadSponsorDealIds.has(dealKey);
+          const withBilling =
+            !includeParticipantDeals || viewerIsLeadSponsor
             ? {
                 ...withRole,
-                ...dealSaasBillingListFields(r),
-                viewerIsLeadSponsor: leadSponsorDealIds.has(
-                  id.trim().toLowerCase(),
-                ),
+                ...(await dealSaasBillingListFields(r)),
+                viewerIsLeadSponsor,
                 viewerCanEditDeal: (() => {
-                  const k = id.trim().toLowerCase();
-                  if (leadOrAdminSponsorDealIds.has(k)) return true;
-                  if (coSponsorDealIds.has(k)) return false;
-                  return true;
+                  if (leadOrAdminSponsorDealIds.has(dealKey)) return true;
+                  if (coSponsorDealIds.has(dealKey)) return false;
+                  return !includeParticipantDeals;
                 })(),
               }
             : withRole;
@@ -799,7 +815,12 @@ export async function getDealOfferingInvestorPreview(
       return;
     }
     res.status(200).json({
-      offeringInvestorPreviewJson: row.offeringInvestorPreviewJson ?? null,
+      offeringInvestorPreviewJson: await scopeOfferingInvestorPreviewJsonForViewer({
+        dealId,
+        viewerUserId: user.id,
+        viewerRole: user.userRole,
+        json: row.offeringInvestorPreviewJson ?? null,
+      }),
     });
   } catch (err) {
     console.error("getDealOfferingInvestorPreview:", err);
@@ -838,17 +859,32 @@ export async function patchDealOfferingInvestorPreview(
     }
     if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
     const canonical = sanitizeOfferingInvestorPreviewBody(body);
+    const merged = await mergeCoSponsorOfferingInvestorPreviewJson({
+      dealId,
+      viewerUserId: user.id,
+      viewerRole: user.userRole,
+      existingJson: visible.offeringInvestorPreviewJson ?? null,
+      incomingCanonicalJson: canonical,
+    });
     const updated = await updateDealOfferingInvestorPreviewById(
       dealId,
-      canonical,
+      merged,
     );
     if (!updated) {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
+    const deal = await mapRowToJsonWithInvestmentCount(updated, scope);
+    deal.offeringInvestorPreviewJson =
+      await scopeOfferingInvestorPreviewJsonForViewer({
+        dealId,
+        viewerUserId: user.id,
+        viewerRole: user.userRole,
+        json: deal.offeringInvestorPreviewJson ?? null,
+      });
     res.status(200).json({
       message: "Offering investor preview updated",
-      deal: await mapRowToJsonWithInvestmentCount(updated, scope),
+      deal,
     });
   } catch (err: unknown) {
     if (err instanceof OfferingInvestorPreviewJsonInvalidError) {
@@ -1537,10 +1573,38 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
     const withPreview = await ensureDealOfferingPreviewTokenStored(dealId);
     const rowForJson = withPreview ?? row;
     const deal = await mapRowToJsonWithInvestmentCount(rowForJson, scope);
+    deal.offeringInvestorPreviewJson =
+      await scopeOfferingInvestorPreviewJsonForViewer({
+        dealId,
+        viewerUserId: user.id,
+        viewerRole: user.userRole,
+        json: deal.offeringInvestorPreviewJson ?? null,
+      });
+    const billing = await dealSaasBillingListFields(rowForJson);
+    let viewerIsLeadSponsor = false;
+    try {
+      const leadIds = await listDealIdsWhereViewerIsLeadSponsor(scope.userId);
+      viewerIsLeadSponsor = leadIds.some(
+        (id) => String(id).trim().toLowerCase() === String(dealId).trim().toLowerCase(),
+      );
+    } catch (err) {
+      console.warn("getDealById lead sponsor:", err);
+    }
+    const listRow =
+      deal && typeof deal === "object" && "listRow" in deal
+        ? {
+            ...(deal as { listRow?: Record<string, unknown> }).listRow,
+            ...billing,
+            viewerIsLeadSponsor,
+          }
+        : undefined;
     res.status(200).json({
       deal: {
         ...deal,
+        ...billing,
+        viewerIsLeadSponsor,
         viewerCanEditDeal: await viewerMayEditDealProfile(dealId, user.id),
+        ...(listRow ? { listRow } : {}),
       },
     });
   } catch (err) {

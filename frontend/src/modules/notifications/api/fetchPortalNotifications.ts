@@ -5,6 +5,12 @@ import {
   isPlatformAdmin,
 } from "@/common/auth/roleUtils"
 import { fetchPlatformSignupNotifications } from "./fetchPlatformSignupNotifications"
+import { getSessionOrganizationCompanyId } from "@/common/auth/sessionOrganization"
+import {
+  fetchCompanyBillingDeals,
+  fetchPlatformBillingStartDate,
+} from "@/modules/Syndication/company/companyBillingApi"
+import { formatDealListDateDisplay } from "@/modules/Syndication/Deals/dealsListDisplay"
 import { getMergedInvestmentListRows } from "@/modules/Investing/pages/investments/investmentsRuntimeData"
 import {
   fetchDealInvestors,
@@ -18,6 +24,7 @@ import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-inv
 import type { DealListRow } from "@/modules/Syndication/Deals/types/deals.types"
 import {
   dealSaasBillingSettingsPath,
+  billingPlanDisplayName,
   isDealListRowSaasLocked,
 } from "@/modules/Syndication/Deals/utils/dealSaasAccess"
 import {
@@ -335,41 +342,211 @@ function formatInvestorWhoPhrase(investors: { displayName?: string | null }[]): 
   return names.join(" and ")
 }
 
-/**
- * From the 1st of the billing month (Sep 1 this cycle), lead sponsors see an
- * in-app notice for each unpaid Capital Raising / Asset Managing deal.
- */
-function collectLeadSponsorBillingNotifications(
-  deals: DealListRow[],
+function pushLeadSponsorBillingAlert(
   out: NotificationDraft[],
+  row: {
+    id: string
+    dealName: string
+    nextBillingDate?: string | null
+    billed?: boolean
+    billable?: boolean
+    needsPlanUpgrade?: boolean
+    planId?: string | null
+    billingPlanId?: string | null
+    suggestedPlanId?: string | null
+    billingAccessLocked?: boolean
+    dealStage?: string
+    viewerIsLeadSponsor?: boolean
+    billingSubscriptionStatus?: string
+  },
 ): void {
-  for (const deal of deals) {
-    if (deal.archived) continue
-    if (deal.viewerIsLeadSponsor !== true) continue
-    if (!isDealListRowSaasLocked(deal)) continue
-    const dealId = deal.id.trim()
-    if (!dealId) continue
-    const dealName = deal.dealName?.trim() || "this deal"
+  const dealId = row.id.trim()
+  if (!dealId) return
+  const dealName = row.dealName?.trim() || "this deal"
+  const currentPlan = billingPlanDisplayName(
+    row.planId ?? row.billingPlanId,
+  )
+  const nextPlan = billingPlanDisplayName(row.suggestedPlanId)
+
+  if (row.needsPlanUpgrade === true) {
+    out.push({
+      id: `deal-billing-upgrade:${dealId}`,
+      title: "Deal plan upgrade needed",
+      message: `The raise for ${dealName} is above ${currentPlan}. SyndicationX selected ${nextPlan}. Upgrade billing for this deal.`,
+      category: "deal",
+      createdAt: isoOrNow(row.nextBillingDate),
+      href: dealSaasBillingSettingsPath(dealId, row.dealName, {
+        billing: "upgrade",
+      }),
+    })
+    return
+  }
+
+  const href = dealSaasBillingSettingsPath(dealId, row.dealName)
+
+  const locked =
+    row.billingAccessLocked === true ||
+    isDealListRowSaasLocked(row as DealListRow)
+  const billable =
+    row.billable === true ||
+    (() => {
+      const stage = String(row.dealStage ?? "").trim().toLowerCase().replace(/\s+/g, "_")
+      return (
+        stage === "capital_raising" ||
+        stage === "raising_capital" ||
+        stage === "asset_managing" ||
+        stage === "managing_asset"
+      )
+    })()
+  const status = String(row.billingSubscriptionStatus ?? "")
+    .trim()
+    .toLowerCase()
+  const paid = row.billed === true || status === "active" || status === "trialing"
+
+  if (locked) {
     out.push({
       id: `deal-billing-started:${dealId}`,
-      title: "Deal billing has started",
+      title: "Payment is due",
       message: `Monthly SaaS for ${dealName} is due. Pay now so this deal stays open to view and edit.`,
       category: "deal",
-      createdAt: isoOrNow(deal.nextBillingDate),
-      href: dealSaasBillingSettingsPath(dealId, deal.dealName),
+      createdAt: isoOrNow(row.nextBillingDate),
+      href,
     })
+    return
+  }
+
+  if (!billable || paid) return
+  const next = row.nextBillingDate?.trim()
+  if (!next) return
+  const nextMs = Date.parse(next)
+  const upcoming = Number.isFinite(nextMs) && nextMs > Date.now()
+  out.push({
+    id: upcoming
+      ? `deal-billing-upcoming:${dealId}`
+      : `deal-billing-started:${dealId}`,
+    title: upcoming ? "Billing coming up" : "Payment is due",
+    message: upcoming
+      ? `SaaS billing for ${dealName} starts soon. Pay so this deal stays open after the complimentary period.`
+      : `Monthly SaaS for ${dealName} is due. Pay now so this deal stays open to view and edit.`,
+    category: "deal",
+    createdAt: isoOrNow(next),
+    href,
+  })
+}
+
+/**
+ * Lead sponsors: payment due, upcoming SaaS charge, and plan upgrades
+ * when deal size outgrows the paid plan.
+ */
+async function collectLeadSponsorBillingNotifications(
+  deals: DealListRow[],
+  out: NotificationDraft[],
+  platformBilling?: {
+    saasBillingStartsAt: string | null
+    updatedAt: string | null
+  },
+): Promise<void> {
+  const leadDeals = deals.filter(
+    (deal) => deal.viewerIsLeadSponsor === true && !deal.archived,
+  )
+  const companyId = getSessionOrganizationCompanyId()?.trim() ?? ""
+  let billedFromCompany = false
+  if (companyId) {
+    const billing = await fetchCompanyBillingDeals(companyId)
+    if (billing.ok && billing.canPay) {
+      billedFromCompany = true
+      const payDeal = billing.deals.find((d) => !d.archived) ?? billing.deals[0]
+      if (platformBilling?.saasBillingStartsAt?.trim() && payDeal) {
+        const platformStart = platformBilling.saasBillingStartsAt.trim()
+        out.push({
+          id: `platform-billing-start:${platformStart.slice(0, 10)}`,
+          title: "Billing start date updated",
+          message: `SyndicationX billing starts on ${formatDealListDateDisplay(platformStart)}. Review billing for your deals so they stay open after that date.`,
+          category: "deal",
+          createdAt: isoOrNow(platformBilling.updatedAt || platformStart),
+          href: dealSaasBillingSettingsPath(payDeal.id, payDeal.dealName),
+        })
+      }
+      for (const row of billing.deals) {
+        if (row.archived) continue
+        const isLeadDeal =
+          billing.viewerScope === "lead_sponsor" ||
+          leadDeals.some(
+            (d) => d.id.trim().toLowerCase() === row.id.trim().toLowerCase(),
+          )
+        if (!isLeadDeal) continue
+        pushLeadSponsorBillingAlert(out, {
+          id: row.id,
+          dealName: row.dealName,
+          nextBillingDate: row.nextBillingDate,
+          billed: row.billed,
+          billable: row.billable,
+          needsPlanUpgrade: row.needsPlanUpgrade,
+          planId: row.planId,
+          suggestedPlanId: row.suggestedPlanId,
+        })
+      }
+    }
+  }
+
+  if (!billedFromCompany) {
+    const platformStart = platformBilling?.saasBillingStartsAt?.trim() ?? ""
+    if (platformStart && leadDeals.length > 0) {
+      const payDeal = leadDeals[0]
+      out.push({
+        id: `platform-billing-start:${platformStart.slice(0, 10)}`,
+        title: "Billing start date updated",
+        message: `SyndicationX billing starts on ${formatDealListDateDisplay(platformStart)}. Review billing for your deals so they stay open after that date.`,
+        category: "deal",
+        createdAt: isoOrNow(platformBilling?.updatedAt || platformStart),
+        href: dealSaasBillingSettingsPath(payDeal.id, payDeal.dealName),
+      })
+    }
+  }
+
+  for (const deal of leadDeals) {
+    if (billedFromCompany) {
+      const already = out.some(
+        (n) =>
+          n.id === `deal-billing-upgrade:${deal.id.trim()}` ||
+          n.id === `deal-billing-started:${deal.id.trim()}` ||
+          n.id === `deal-billing-upcoming:${deal.id.trim()}`,
+      )
+      if (already) continue
+    }
+    pushLeadSponsorBillingAlert(out, deal)
   }
 }
 
 async function collectSponsorNotifications(
   out: NotificationDraft[],
 ): Promise<void> {
-  const listed = (await fetchDealsList({ includeParticipantDeals: true })).filter(
-    (d) => !d.archived,
+  const [listed, workspaceDeals, platformBilling] = await Promise.all([
+    fetchDealsList({ includeParticipantDeals: true }),
+    fetchDealsList(),
+    fetchPlatformBillingStartDate(),
+  ])
+  const byId = new Map<string, DealListRow>()
+  for (const deal of [...workspaceDeals, ...listed]) {
+    if (deal.archived) continue
+    const key = deal.id.trim().toLowerCase()
+    if (!key) continue
+    const prev = byId.get(key)
+    if (!prev || deal.viewerIsLeadSponsor === true) byId.set(key, deal)
+  }
+  await collectLeadSponsorBillingNotifications(
+    [...byId.values()],
+    out,
+    platformBilling.ok
+      ? {
+          saasBillingStartsAt: platformBilling.saasBillingStartsAt,
+          updatedAt: platformBilling.updatedAt,
+        }
+      : undefined,
   )
-  collectLeadSponsorBillingNotifications(listed, out)
 
-  const deals = listed.slice(0, 20)
+  const dealsListed = listed.filter((d) => !d.archived)
+  const deals = dealsListed.slice(0, 20)
 
   if (deals.length === 0) return
 

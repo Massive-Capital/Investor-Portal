@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   BadgeDollarSign,
   Briefcase,
+  Building2,
   Calendar,
   Check,
   CreditCard,
+  DollarSign,
   ExternalLink,
+  Loader2,
   Plus,
   Minus,
   Receipt,
@@ -16,6 +20,7 @@ import {
   WalletCards,
   CircleDot,
   ChevronDown,
+  X,
 } from "lucide-react";
 import {
   DataTable,
@@ -25,6 +30,8 @@ import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/Ta
 import {
   fetchCompanyBillingDeals,
   fetchCompanyBillingInvoices,
+  fetchPlatformBillingDeals,
+  fetchPlatformOrganizationBilling,
   fetchCompanyBillingPaymentMethods,
   fetchCompanyBillingStatus,
   openCompanyBillingPortal,
@@ -38,6 +45,7 @@ import {
   updateCompanyDealBillingCycle,
   normalizeBillingDealId,
   type BillingSetupIntentSession,
+  type BillingOrganizationOption,
   type CompanyBillingInvoice,
   type CompanyBillingPaymentMethod,
   type CompanyBillingStatus,
@@ -50,11 +58,19 @@ import { dealStageLabel } from "../dealsDashboardUtils";
 import { formatDealListDateDisplay } from "../Deals/dealsListDisplay";
 import { dealStageChipCompactClassName } from "../Deals/utils/dealStageChip";
 import { DealAvatarIconRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell";
+import { ToolStyleCard } from "../../../common/components/tool-style-card/ToolStyleCard";
+import { cardCompactAmountOrDash } from "../../../common/components/card-compact-amount/CardCompactAmount";
+import { parseMoneyDigits } from "../Deals/utils/offeringMoneyFormat";
 import { toast } from "../../../common/components/Toast";
+import "../Deals/components/deal-stage-change-modal.css";
 
 type BillingSubTab = "pricing" | "deals" | "payment-methods" | "payment-history";
 type InvoiceRow = CompanyBillingInvoice;
 type SeatBand = "5" | "10" | "10plus";
+
+function dealRowIsPayable(row: CompanyDealBillingRow): boolean {
+  return row.payable === true || row.billable === true;
+}
 
 type DealTier = {
   id: "starter" | "running" | "growth";
@@ -228,6 +244,196 @@ function billingCycleLabel(cycle: string | null | undefined): string {
   return c ? c.charAt(0).toUpperCase() + c.slice(1) : "—";
 }
 
+function BillingCycleConfirmModal({
+  row,
+  nextCycle,
+  confirming,
+  onConfirm,
+  onCancel,
+}: {
+  row: CompanyDealBillingRow;
+  nextCycle: "monthly" | "annually";
+  confirming: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const titleId = useId();
+  const planId = String(dealPlanId(row) ?? "").trim().toLowerCase();
+  const tier =
+    DEAL_TIERS.find((t) => planId === t.id || planId.startsWith(`${t.id}_`)) ??
+    DEAL_TIERS[0];
+  const annual = nextCycle === "annually";
+  const price = annual ? tier.prices["5"].annual : tier.prices["5"].monthly;
+  const priceSuffix = annual ? "/yr" : "/mo";
+  const fromLabel =
+    billingCycleSelectValue(row.billingCycle) === "annually"
+      ? "yearly"
+      : billingCycleSelectValue(row.billingCycle) === "monthly"
+        ? "monthly"
+        : "the current cycle";
+  const toLabel = annual ? "yearly" : "monthly";
+  const dealName = row.dealName.trim() || "this deal";
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !confirming) onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirming, onCancel]);
+
+  return createPortal(
+    <div
+      className="deal_stage_modal_overlay portal_modal_z_boost"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !confirming) onCancel();
+      }}
+    >
+      <div
+        className="deal_stage_modal deal_stage_modal--saas_paywall deal_stage_modal--billing_cycle"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="deal_stage_modal_head">
+          <div className="deal_stage_modal_icon_wrap" aria-hidden>
+            <BadgeDollarSign size={22} strokeWidth={2} />
+          </div>
+          <div className="deal_stage_modal_head_text">
+            <p className="deal_stage_modal_eyebrow">Payment cycle</p>
+            <h2 id={titleId} className="deal_stage_modal_title">
+              Confirm {toLabel} billing
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="deal_stage_modal_close"
+            aria-label="Close"
+            disabled={confirming}
+            onClick={onCancel}
+          >
+            <X size={20} strokeWidth={2} aria-hidden />
+          </button>
+        </header>
+
+        <div className="deal_stage_modal_body">
+          <p className="deal_stage_modal_desc">
+            Switch {dealName} from {fromLabel} to {toLabel}? Review the plan
+            price below, then confirm to update the payment cycle.
+          </p>
+          <div
+            className={`cp_billing_plan_card cp_billing_cycle_confirm_card${
+              tier.featured ? " cp_billing_plan_card_featured" : ""
+            }`}
+          >
+            {tier.featured ? (
+              <span className="cp_billing_plan_badge">Most popular</span>
+            ) : (
+              <span className="cp_billing_plan_badge">Available now</span>
+            )}
+            <h4 className="cp_billing_plan_name">{tier.name}</h4>
+            <p className="cp_billing_plan_tagline">{tier.dealSize}</p>
+            <div className="cp_billing_plan_price">
+              <div className="cp_billing_plan_price_main">
+                <span className="cp_billing_plan_price_amount">${price}</span>
+                <span className="cp_billing_plan_price_suffix">
+                  {priceSuffix}
+                </span>
+              </div>
+              {annual ? (
+                <p className="cp_billing_plan_price_perk">2 months free</p>
+              ) : null}
+              <p className="cp_billing_plan_price_calc">
+                {annual ? "Billed yearly" : "Billed monthly"} · ACH or credit
+                card
+              </p>
+            </div>
+            <ul className="cp_billing_plan_features">
+              <li>
+                <Check size={16} aria-hidden="true" />
+                <span>{tier.dealSize}</span>
+              </li>
+              <li>
+                <Check size={16} aria-hidden="true" />
+                <span>
+                  {tier.companyUsers} company user
+                  {tier.companyUsers === 1 ? "" : "s"}
+                  {"; extra users $"}
+                  {EXTRA_COMPANY_USER_FEE_DOLLARS} each
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <footer className="deal_stage_modal_actions">
+          <button
+            type="button"
+            className="deal_stage_modal_btn deal_stage_modal_btn--cancel"
+            disabled={confirming}
+            onClick={onCancel}
+          >
+            <X size={16} strokeWidth={2} aria-hidden />
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="deal_stage_modal_btn deal_stage_modal_btn--confirm"
+            disabled={confirming}
+            onClick={onConfirm}
+          >
+            {confirming ? (
+              <>
+                <Loader2
+                  size={16}
+                  strokeWidth={2}
+                  className="deals_create_btn_spin"
+                  aria-hidden
+                />
+                Updating…
+              </>
+            ) : (
+              <>
+                <Check size={16} strokeWidth={2} aria-hidden />
+                Confirm {toLabel}
+              </>
+            )}
+          </button>
+        </footer>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function dealBillingCompanyId(
+  row: CompanyDealBillingRow,
+  fallbackCompanyId: string,
+): string {
+  const id = String(row.companyId ?? "").trim();
+  return id || fallbackCompanyId;
+}
+
+function dealOrganizationLabel(row: CompanyDealBillingRow): string {
+  return String(row.companyName ?? "").trim() || "—";
+}
+
+type BillingOrganizationTableRow = {
+  id: string;
+  name: string;
+  deals: CompanyDealBillingRow[];
+  billedCount: number;
+  totalPaidCents: number;
+  totalPaid: string;
+};
+
 function billingCycleSelectValue(
   cycle: string | null | undefined,
 ): "monthly" | "annually" | "" {
@@ -259,20 +465,94 @@ function latestInvoiceAmountForDeal(
   return amount || null;
 }
 
+function extraCompanyUserAmountParts(
+  row: CompanyDealBillingRow,
+): { paidLabel: string | null; dueLabel: string | null } {
+  const fee = Math.max(
+    0,
+    Number(row.extraUserFeeCents ?? EXTRA_COMPANY_USER_FEE_DOLLARS * 100) ||
+      EXTRA_COMPANY_USER_FEE_DOLLARS * 100,
+  );
+  const paid = Math.max(0, Number(row.extraCompanyUsersPaid ?? 0) || 0);
+  const due = Math.max(0, Number(row.extraCompanyUsersDue ?? 0) || 0);
+  const dollars = (cents: number) => `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+  return {
+    paidLabel:
+      paid > 0
+        ? `${dollars(paid * fee)} extra user${paid === 1 ? "" : "s"}`
+        : null,
+    dueLabel:
+      due > 0
+        ? `${dollars(due * fee)} extra user${due === 1 ? "" : "s"} due`
+        : null,
+  };
+}
+
+function dealAmountSearchText(
+  row: CompanyDealBillingRow,
+  invoices: CompanyBillingInvoice[],
+): string {
+  const extra = extraCompanyUserAmountParts(row);
+  return [
+    latestInvoiceAmountForDeal(
+      invoices.filter((inv) => inv.billingScope !== "extra_company_user"),
+      row.id,
+    ) ?? catalogPlanAmountLabel(row),
+    extra.paidLabel,
+    extra.dueLabel,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function DealAmountCell({
+  row,
+  invoices,
+}: {
+  row: CompanyDealBillingRow;
+  invoices: CompanyBillingInvoice[];
+}) {
+  const planAmount =
+    latestInvoiceAmountForDeal(
+      invoices.filter((inv) => inv.billingScope !== "extra_company_user"),
+      row.id,
+    ) ?? catalogPlanAmountLabel(row);
+  const extra = extraCompanyUserAmountParts(row);
+  return (
+    <span className="cp_billing_amount_stack">
+      <span>{planAmount}</span>
+      {extra.paidLabel ? (
+        <span className="cp_billing_amount_extra">{extra.paidLabel}</span>
+      ) : null}
+      {extra.dueLabel ? (
+        <span className="cp_billing_amount_extra">{extra.dueLabel}</span>
+      ) : null}
+    </span>
+  );
+}
+
 function dealAmountLabel(
   row: CompanyDealBillingRow,
   invoices: CompanyBillingInvoice[],
 ): string {
-  return (
-    latestInvoiceAmountForDeal(invoices, row.id) ?? catalogPlanAmountLabel(row)
-  );
+  return dealAmountSearchText(row, invoices);
+}
+
+function saasBillingStartIsInFuture(row: CompanyDealBillingRow): boolean {
+  const raw = String(row.saasBillingStartsAt ?? "").trim();
+  if (!raw) return false;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) && t > Date.now();
 }
 
 function dealBillingStatusLabel(row: CompanyDealBillingRow): string {
   const s = String(row.subscriptionStatus ?? "").trim().toLowerCase();
   const failed =
     s === "past_due" || s === "unpaid" || s === "incomplete";
-  if (row.billed) {
+  const onPaidCycle =
+    row.billed || s === "active" || s === "trialing";
+  if (onPaidCycle) {
+    if (row.needsPlanUpgrade) return "Upgrade needed";
     return failed ? "Failed for this month" : "Paid for this month";
   }
   if (failed) return "Failed for this month";
@@ -280,8 +560,9 @@ function dealBillingStatusLabel(row: CompanyDealBillingRow): string {
   const notBilled =
     row.archived || stage === "draft" || stage === "liquidated";
   if (notBilled) return "Not billed";
-  if (row.nextBillingDate && Date.parse(row.nextBillingDate) > Date.now()) {
-    return "Free for this month";
+  // Complimentary window only — not Stripe current_period_end (that is next renewal).
+  if (saasBillingStartIsInFuture(row)) {
+    return "Payment option will be available soon";
   }
   return "Pending for this month";
 }
@@ -290,7 +571,11 @@ function dealBillingStatusClassName(row: CompanyDealBillingRow): string {
   const label = dealBillingStatusLabel(row);
   if (label === "Paid for this month") return invoiceStatusClassName("paid");
   if (label === "Failed for this month") return invoiceStatusClassName("overdue");
-  if (label === "Pending for this month" || label === "Free for this month") {
+  if (
+    label === "Pending for this month" ||
+    label === "Payment option will be available soon" ||
+    label === "Upgrade needed"
+  ) {
     return invoiceStatusClassName("open");
   }
   return invoiceStatusClassName("void");
@@ -376,25 +661,32 @@ function BillingPricingPanel({
   const payOnceRef = useRef(false);
 
   useEffect(() => {
-    if (!companyId) {
+    const platformAdmin = isPlatformAdmin();
+    if (!platformAdmin && !companyId) {
       setPayableDeals([]);
       setSelectedDealId("");
       return;
     }
     let cancelled = false;
-    void fetchCompanyBillingDeals(companyId).then((result) => {
+    void (platformAdmin
+      ? fetchPlatformBillingDeals()
+      : fetchCompanyBillingDeals(companyId)
+    ).then((result) => {
       if (cancelled || !result.ok) return;
       const preferred = (initialDealId ?? "").trim();
       const preferredLc = preferred.toLowerCase();
       let payable = result.deals.filter(
-        (row) => row.billable === true && !row.billed,
+        (row) =>
+          dealRowIsPayable(row) &&
+          (!row.billed || row.needsPlanUpgrade === true),
       );
       if (preferredLc) {
         const focused = result.deals.find(
           (row) => row.id.trim().toLowerCase() === preferredLc,
         );
         if (
-          focused?.billable &&
+          focused &&
+          dealRowIsPayable(focused) &&
           !payable.some((row) => row.id === focused.id)
         ) {
           payable = [focused, ...payable];
@@ -418,6 +710,9 @@ function BillingPricingPanel({
   }, [companyId, billingStatus?.billedDealCount, initialDealId]);
 
   const selectedDeal = payableDeals.find((row) => row.id === selectedDealId);
+  const payCompanyId = selectedDeal
+    ? dealBillingCompanyId(selectedDeal, companyId)
+    : companyId;
   const dealDisplayName =
     selectedDeal?.dealName.trim() ||
     (initialDealName ?? "").trim() ||
@@ -440,6 +735,14 @@ function BillingPricingPanel({
     const due = Math.max(0, Number(selectedDeal?.extraCompanyUsersDue ?? 0) || 0);
     setExtraCompanyUsers(due);
   }, [selectedDeal?.id, selectedDeal?.extraCompanyUsersDue]);
+
+  useEffect(() => {
+    if (!wizardMode || !selectedDeal) return;
+    const cycle = billingCycleSelectValue(selectedDeal.billingCycle);
+    if (cycle === "monthly" || cycle === "annually") {
+      setWizardCycle(cycle);
+    }
+  }, [wizardMode, selectedDeal?.id, selectedDeal?.billingCycle]);
 
   const activePlanId = billingStatus?.planId?.trim().toLowerCase() ?? "";
   const subStatus =
@@ -475,7 +778,7 @@ function BillingPricingPanel({
       );
       return;
     }
-    if (!companyId) {
+    if (!payCompanyId) {
       setActionError("No company workspace selected.");
       return;
     }
@@ -525,7 +828,7 @@ function BillingPricingPanel({
     setPayModalLoading(true);
     setPayModalMethods([]);
     payOnceRef.current = false;
-    void fetchCompanyBillingPaymentMethods(companyId).then((result) => {
+    void fetchCompanyBillingPaymentMethods(payCompanyId).then((result) => {
       setPayModalLoading(false);
       if (!result.ok) {
         setPayModalMethods([]);
@@ -548,7 +851,7 @@ function BillingPricingPanel({
     setPayModalError("");
     setPayModalBusy("stripe");
     const result = await startCompanyBillingCheckout(
-      companyId,
+      payCompanyId,
       payModalPlanId,
       displayCycle,
       displaySeat,
@@ -570,7 +873,7 @@ function BillingPricingPanel({
     setPayModalError("");
     setPayModalBusy("saved");
     const result = await payCompanyBillingWithSavedMethod(
-      companyId,
+      payCompanyId,
       payModalPlanId,
       displayCycle,
       displaySeat,
@@ -616,8 +919,13 @@ function BillingPricingPanel({
         <h3 className="cp_settings_billing_tab_title">Billing</h3>
         <p className="cp_billing_subtitle">
           {allowPayment
-            ? "Pay when the deal is raising capital or asset managing — Draft and Archived are free. Monthly or yearly by card or ACH. Extra company users beyond the plan count are $10 each; contact us for $11M+ deals or 25+ company users."
-            : "Review plans here, then open a Capital Raising or Asset Managing deal to pay. Draft and Archived are free. Monthly or yearly by card or ACH. Extra company users beyond the plan count are $10 each; contact us for $11M+ deals or 25+ company users."}
+            ? "Pay when the deal is raising capital or asset managing — "
+            : "Review plans here, then open a Capital Raising or Asset Managing deal to pay. "}
+          <span className="cp_billing_deal_lead_free">
+            Draft and Archived are free.
+          </span>{" "}
+          Monthly or yearly by card or ACH. Extra company users beyond the plan
+          count are $10 each; contact us for $11M+ deals or 25+ company users.
         </p>
       </div>
 
@@ -1008,6 +1316,8 @@ function BillingPricingPanel({
                         ? "Redirecting…"
                         : wizardMode && !planCardsEnabled
                           ? "Choose cycle and Co-GPs first"
+                          : wizardMode && selectedDeal?.needsPlanUpgrade && isAppropriate
+                          ? `Upgrade to ${tier.name}`
                           : otherPlanLocked
                             ? "Not for this deal"
                             : "Proceed to pay"}
@@ -1218,7 +1528,14 @@ function DealMrrPaymentHistory({
   deal: CompanyDealBillingRow;
   invoices: CompanyBillingInvoice[];
 }) {
-  const rows = invoices.map((inv) => ({
+  const extra = extraCompanyUserAmountParts(deal);
+  const mrrInvoices = invoices.filter(
+    (inv) => inv.billingScope !== "extra_company_user",
+  );
+  const extraInvoices = invoices.filter(
+    (inv) => inv.billingScope === "extra_company_user",
+  );
+  const rows = mrrInvoices.map((inv) => ({
     id: inv.id,
     start: inv.periodStart || inv.invoiceDate,
     end: inv.periodEnd || inv.dueDate || inv.invoiceDate,
@@ -1257,6 +1574,44 @@ function DealMrrPaymentHistory({
           </tbody>
         </table>
       )}
+      <p className="cp_billing_deal_mrr_history_title">Extra company users</p>
+      {extra.paidLabel || extra.dueLabel || extraInvoices.length > 0 ? (
+        <>
+          {extra.paidLabel || extra.dueLabel ? (
+            <p className="cp_billing_deal_mrr_history_empty">
+              {[extra.paidLabel, extra.dueLabel].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+          {extraInvoices.length > 0 ? (
+            <table className="cp_billing_deal_mrr_table">
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extraInvoices.map((inv) => (
+                  <tr key={inv.id}>
+                    <td>
+                      {inv.invoiceDate
+                        ? formatDealListDateDisplay(inv.invoiceDate)
+                        : "—"}
+                    </td>
+                    <td>{inv.status}</td>
+                    <td>{inv.amount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </>
+      ) : (
+        <p className="cp_billing_deal_mrr_history_empty">
+          No extra company user charges for this deal.
+        </p>
+      )}
     </div>
   );
 }
@@ -1266,13 +1621,23 @@ function BillingDealDetailsPanel({
   viewerScope,
   canPay,
   onPaid,
+  onSelectOrganization,
 }: {
   companyId: string;
   viewerScope: "all_deals" | "lead_sponsor" | undefined;
   canPay: boolean;
   onPaid?: () => void;
+  onSelectOrganization?: (organizationId: string) => void;
 }) {
+  const platformAdmin = isPlatformAdmin();
   const [deals, setDeals] = useState<CompanyDealBillingRow[]>([]);
+  const [organizations, setOrganizations] = useState<
+    BillingOrganizationOption[]
+  >([]);
+  const [orgPaidTotals, setOrgPaidTotals] = useState<
+    Map<string, { cents: number; label: string }>
+  >(() => new Map());
+  const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -1284,12 +1649,16 @@ function BillingDealDetailsPanel({
   const [payBusyId, setPayBusyId] = useState<string | null>(null);
   const [payError, setPayError] = useState("");
   const [cycleBusyId, setCycleBusyId] = useState<string | null>(null);
+  const [cycleConfirm, setCycleConfirm] = useState<{
+    row: CompanyDealBillingRow;
+    next: "monthly" | "annually";
+  } | null>(null);
   const payOnceRef = useRef(false);
   const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<CompanyBillingInvoice[]>([]);
 
   useEffect(() => {
-    if (!companyId) {
+    if (!platformAdmin && !companyId) {
       setDeals([]);
       setInvoices([]);
       return;
@@ -1297,64 +1666,197 @@ function BillingDealDetailsPanel({
     let cancelled = false;
     setLoading(true);
     setLoadError("");
-    void Promise.all([
-      fetchCompanyBillingDeals(companyId),
-      fetchCompanyBillingInvoices(companyId),
-    ]).then(([dealResult, invoiceResult]) => {
+    void (async () => {
+      if (platformAdmin) {
+        const orgResult = await fetchPlatformOrganizationBilling();
+        if (cancelled) return;
+        if (!orgResult.ok) {
+          setLoading(false);
+          setLoadError(orgResult.message);
+          setDeals([]);
+          setOrganizations([]);
+          setOrgPaidTotals(new Map());
+          setInvoices([]);
+          return;
+        }
+        setOrganizations(
+          orgResult.organizations.map((row) => ({
+            id: row.id,
+            name: row.name,
+          })),
+        );
+        setOrgPaidTotals(
+          new Map(
+            orgResult.organizations.map((row) => [
+              row.id,
+              { cents: row.totalPaidCents, label: row.totalPaid },
+            ]),
+          ),
+        );
+        setDeals(orgResult.organizations.flatMap((row) => row.deals));
+        setResolvedScope(orgResult.viewerScope);
+        setInvoices([]);
+        setLoading(false);
+        return;
+      }
+
+      const dealResult = await fetchCompanyBillingDeals(companyId);
       if (cancelled) return;
-      setLoading(false);
       if (!dealResult.ok) {
+        setLoading(false);
         setLoadError(dealResult.message);
         setDeals([]);
+        setInvoices([]);
         return;
       }
       setDeals(dealResult.deals);
       setResolvedScope(dealResult.viewerScope);
+
+      const invoiceResult = companyId
+        ? await fetchCompanyBillingInvoices(companyId)
+        : { ok: false as const };
+      if (cancelled) return;
       setInvoices(invoiceResult.ok ? invoiceResult.invoices : []);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, platformAdmin]);
+
+  useEffect(() => {
+    if (!platformAdmin || !expandedOrgId) return;
+    const cid = expandedOrgId.trim();
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        cid,
+      )
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void fetchCompanyBillingInvoices(cid).then((result) => {
+      if (cancelled || !result.ok) return;
+      setInvoices((current) => {
+        const seen = new Set(current.map((inv) => inv.id));
+        const next = result.invoices.filter((inv) => !seen.has(inv.id));
+        return next.length === 0 ? current : [...current, ...next];
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [expandedOrgId, platformAdmin]);
 
-  const filteredDeals = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return deals;
-    return deals.filter((row) => {
+  const organizationRows = useMemo((): BillingOrganizationTableRow[] => {
+    const dealsByOrg = new Map<string, CompanyDealBillingRow[]>();
+    for (const deal of deals) {
+      const id = dealBillingCompanyId(deal, "") || "unassigned";
+      const list = dealsByOrg.get(id);
+      if (list) list.push(deal);
+      else dealsByOrg.set(id, [deal]);
+    }
+    const merged = new Map<string, string>();
+    for (const org of organizations) {
+      merged.set(org.id, org.name);
+    }
+    for (const [id, orgDeals] of dealsByOrg) {
+      const fromDeal = dealOrganizationLabel(orgDeals[0]);
+      if (!merged.has(id) || merged.get(id) === "Untitled organization") {
+        merged.set(id, fromDeal === "—" ? "Untitled organization" : fromDeal);
+      }
+    }
+    return [...merged.entries()]
+      .map(([id, name]) => {
+        const orgDeals = dealsByOrg.get(id) ?? [];
+        return {
+          id,
+          name,
+          deals: orgDeals,
+          billedCount: orgDeals.filter((row) => row.billed).length,
+          totalPaidCents: orgPaidTotals.get(id)?.cents ?? 0,
+          totalPaid: orgPaidTotals.get(id)?.label ?? "$0.00",
+        };
+      })
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+      );
+  }, [deals, orgPaidTotals, organizations]);
+
+  const dealMatchesQuery = useCallback(
+    (row: CompanyDealBillingRow, q: string) => {
       const name = row.dealName.toLowerCase();
+      const org = dealOrganizationLabel(row).toLowerCase();
       const plan = billingPlanLabel(dealPlanId(row)).toLowerCase();
       const amount = dealAmountLabel(row, invoices).toLowerCase();
       const status = dealBillingStatusLabel(row).toLowerCase();
-      const stage = dealStageLabel(row.dealStage).toLowerCase();
+      const stage = (
+        row.archived ? "Archived" : dealStageLabel(row.dealStage)
+      ).toLowerCase();
       return (
         name.includes(q) ||
+        org.includes(q) ||
         plan.includes(q) ||
         amount.includes(q) ||
         status.includes(q) ||
         stage.includes(q)
       );
-    });
-  }, [deals, invoices, query]);
+    },
+    [invoices],
+  );
+
+  const filteredOrganizationRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return organizationRows;
+    return organizationRows
+      .map((org) => {
+        const nameMatch =
+          org.name.toLowerCase().includes(q) ||
+          org.totalPaid.toLowerCase().includes(q);
+        const matchingDeals = nameMatch
+          ? org.deals
+          : org.deals.filter((row) => dealMatchesQuery(row, q));
+        if (!nameMatch && matchingDeals.length === 0) return null;
+        return {
+          ...org,
+          deals: matchingDeals,
+          billedCount: matchingDeals.filter((row) => row.billed).length,
+        };
+      })
+      .filter((row): row is BillingOrganizationTableRow => row != null);
+  }, [dealMatchesQuery, organizationRows, query]);
+
+  const filteredDeals = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return deals;
+    return deals.filter((row) => dealMatchesQuery(row, q));
+  }, [dealMatchesQuery, deals, query]);
 
   useEffect(() => {
     setPage(1);
   }, [query]);
 
+  const tableRowCount = platformAdmin
+    ? filteredOrganizationRows.length
+    : filteredDeals.length;
+
   useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filteredDeals.length / pageSize));
+    const totalPages = Math.max(1, Math.ceil(tableRowCount / pageSize));
     if (page > totalPages) setPage(totalPages);
-  }, [filteredDeals.length, pageSize, page]);
+  }, [tableRowCount, pageSize, page]);
 
   const pagination = useMemo(
     () => ({
       page,
       pageSize,
-      totalItems: filteredDeals.length,
+      totalItems: tableRowCount,
       onPageChange: setPage,
       onPageSizeChange: setPageSize,
-      ariaLabel: "Detailed billing table pagination",
+      ariaLabel: platformAdmin
+        ? "Organization billing table pagination"
+        : "Detailed billing table pagination",
     }),
-    [page, pageSize, filteredDeals.length],
+    [page, pageSize, platformAdmin, tableRowCount],
   );
 
   const billedCount = useMemo(
@@ -1362,9 +1864,35 @@ function BillingDealDetailsPanel({
     [deals],
   );
 
+  const platformPaidTotal = useMemo(() => {
+    const cents = organizationRows.reduce(
+      (sum, org) => sum + org.totalPaidCents,
+      0,
+    );
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(cents / 100);
+  }, [organizationRows]);
+
+  const sponsorPaidTotal = useMemo(() => {
+    let total = 0;
+    for (const inv of invoices) {
+      if (String(inv.status ?? "").trim().toLowerCase() !== "paid") continue;
+      const n = parseMoneyDigits(inv.amount);
+      if (Number.isFinite(n)) total += n;
+    }
+    return total;
+  }, [invoices]);
+
+  const billingSummaryAmount = platformAdmin
+    ? platformPaidTotal
+    : sponsorPaidTotal;
+
   const handlePayDeal = async (row: CompanyDealBillingRow) => {
     setPayError("");
-    if (!companyId) {
+    const payCompanyId = dealBillingCompanyId(row, companyId);
+    if (!payCompanyId) {
       setPayError("No company workspace selected.");
       return;
     }
@@ -1384,7 +1912,7 @@ function BillingDealDetailsPanel({
     payOnceRef.current = true;
     setPayBusyId(row.id);
     const result = await startCompanyBillingCheckout(
-      companyId,
+      payCompanyId,
       planId,
       rowCycle,
       "5",
@@ -1403,7 +1931,8 @@ function BillingDealDetailsPanel({
   const handleCycleChange = useCallback(
     async (row: CompanyDealBillingRow, next: "monthly" | "annually") => {
       setPayError("");
-      if (!companyId) {
+      const cycleCompanyId = dealBillingCompanyId(row, companyId);
+      if (!cycleCompanyId) {
         setPayError("No company workspace selected.");
         toast.error(
           "Could not update payment cycle",
@@ -1411,10 +1940,13 @@ function BillingDealDetailsPanel({
         );
         return;
       }
-      if (billingCycleSelectValue(row.billingCycle) === next) return;
+      if (billingCycleSelectValue(row.billingCycle) === next) {
+        setCycleConfirm(null);
+        return;
+      }
       setCycleBusyId(row.id);
       const result = await updateCompanyDealBillingCycle(
-        companyId,
+        cycleCompanyId,
         row.id,
         next,
       );
@@ -1424,6 +1956,7 @@ function BillingDealDetailsPanel({
         toast.error("Could not update payment cycle", result.message);
         return;
       }
+      setCycleConfirm(null);
       setDeals((current) =>
         current.map((deal) =>
           deal.id === row.id ? { ...deal, ...result.deal } : deal,
@@ -1483,12 +2016,23 @@ function BillingDealDetailsPanel({
       {
         id: "dealStage",
         header: "Stage",
-        sortValue: (row) => dealStageLabel(row.dealStage).toLowerCase(),
+        sortValue: (row) =>
+          (row.archived
+            ? "Archived"
+            : dealStageLabel(row.dealStage)
+          ).toLowerCase(),
         cell: (row) => {
-          const label = dealStageLabel(row.dealStage).trim() || "—";
+          const archived = Boolean(row.archived);
+          const label = archived
+            ? "Archived"
+            : dealStageLabel(row.dealStage).trim() || "—";
           return (
             <span
-              className={dealStageChipCompactClassName(row.dealStage)}
+              className={
+                archived
+                  ? "deals_stage_chip deals_stage_chip--compact deals_stage_chip--archived"
+                  : dealStageChipCompactClassName(row.dealStage)
+              }
               title={`Stage: ${label}`}
             >
               <span className="deals_list_stage_badge_icon" aria-hidden>
@@ -1512,7 +2056,7 @@ function BillingDealDetailsPanel({
         thClassName: "deals_th_align_right",
         tdClassName: "um_td_numeric cp_billing_amount_td",
         sortValue: (row) => dealAmountLabel(row, invoices).toLowerCase(),
-        cell: (row) => dealAmountLabel(row, invoices),
+        cell: (row) => <DealAmountCell row={row} invoices={invoices} />,
       },
       {
         id: "cycle",
@@ -1534,7 +2078,8 @@ function BillingDealDetailsPanel({
               onChange={(e) => {
                 const next = e.target.value;
                 if (next !== "monthly" && next !== "annually") return;
-                void handleCycleChange(row, next);
+                if (billingCycleSelectValue(row.billingCycle) === next) return;
+                setCycleConfirm({ row, next });
               }}
             >
               {value ? null : (
@@ -1551,6 +2096,8 @@ function BillingDealDetailsPanel({
       {
         id: "status",
         header: "Payment",
+        thClassName: "cp_billing_payment_status_col",
+        tdClassName: "cp_billing_payment_status_col",
         sortValue: (row) => dealBillingStatusLabel(row).toLowerCase(),
         cell: (row) => (
           <span className={dealBillingStatusClassName(row)}>
@@ -1576,7 +2123,9 @@ function BillingDealDetailsPanel({
               thClassName: "deals_th_align_center um_th_actions",
               tdClassName: "um_td_actions",
               cell: (row: CompanyDealBillingRow) => {
-                const canPayRow = row.billable === true && !row.billed;
+                const canPayRow =
+                  dealRowIsPayable(row) &&
+                  (!row.billed || row.needsPlanUpgrade === true);
                 if (!canPayRow) {
                   return <span className="um_status_muted">—</span>;
                 }
@@ -1588,7 +2137,7 @@ function BillingDealDetailsPanel({
                     disabled={busy}
                     onClick={() => void handlePayDeal(row)}
                   >
-                    {busy ? "Redirecting…" : "Pay"}
+                    {busy ? "Redirecting…" : row.needsPlanUpgrade ? "Upgrade" : "Pay"}
                   </button>
                 );
               },
@@ -1596,22 +2145,146 @@ function BillingDealDetailsPanel({
           ] satisfies DataTableColumn<CompanyDealBillingRow>[])
         : []),
     ],
-    [canPay, companyId, cycleBusyId, expandedDealId, handleCycleChange, onPaid, payBusyId],
+    [
+      canPay,
+      cycleBusyId,
+      expandedDealId,
+      invoices,
+      onPaid,
+      payBusyId,
+    ],
   );
+
+  const organizationColumns: DataTableColumn<BillingOrganizationTableRow>[] =
+    useMemo(
+      () => [
+        {
+          id: "name",
+          header: "Organization",
+          sortValue: (row) => row.name.toLowerCase(),
+          thClassName: "deals_col_deal_name",
+          tdClassName:
+            "um_td_user deals_col_deal_name cp_billing_invoice_number_td",
+          cell: (row) => {
+            const open = expandedOrgId === row.id;
+            return (
+              <div className="deals_list_name_cell cp_billing_deal_name_cell">
+                <div
+                  className="um_user_avatar_ring cp_company_avatar"
+                  aria-hidden
+                >
+                  <Building2 size={18} strokeWidth={2} />
+                </div>
+                <div className="deals_list_name_text">
+                  <button
+                    type="button"
+                    className={`cp_billing_org_name_btn${
+                      open ? " cp_billing_org_name_btn--open" : ""
+                    }`}
+                    aria-expanded={open}
+                    onClick={() => {
+                      const next = open ? null : row.id;
+                      setExpandedOrgId(next);
+                      if (next) onSelectOrganization?.(next);
+                    }}
+                  >
+                    <span>{row.name}</span>
+                    <ChevronDown size={16} aria-hidden />
+                  </button>
+                </div>
+              </div>
+            );
+          },
+        },
+        {
+          id: "deals",
+          header: "Deals",
+          align: "center" as const,
+          thClassName: "deals_th_align_center",
+          tdClassName: "deals_td_align_center",
+          sortValue: (row) => row.deals.length,
+          cell: (row) => String(row.deals.length),
+        },
+        {
+          id: "billed",
+          header: "Billed",
+          align: "center" as const,
+          thClassName: "deals_th_align_center",
+          tdClassName: "deals_td_align_center",
+          sortValue: (row) => row.billedCount,
+          cell: (row) => String(row.billedCount),
+        },
+        {
+          id: "totalPaid",
+          header: "Total paid",
+          align: "right" as const,
+          thClassName: "deals_th_align_right",
+          tdClassName: "um_td_numeric cp_billing_amount_td",
+          sortValue: (row) => row.totalPaidCents,
+          cell: (row) => row.totalPaid,
+        },
+      ],
+      [expandedOrgId, onSelectOrganization],
+    );
 
   const isLeadSponsorScope =
     (resolvedScope ?? viewerScope) === "lead_sponsor";
 
   return (
-    <div className="cp_billing_payment_history">
+    <div
+      className={`cp_billing_payment_history${
+        platformAdmin ? " cp_billing_payment_history--admin" : ""
+      }`}
+    >
       <header className="cp_billing_payment_history_head">
-        <h3 className="cp_billing_payment_history_title">Detailed billing</h3>
+        <h3 className="cp_billing_payment_history_title">
+          {platformAdmin ? "Organizations" : "Detailed billing"}
+        </h3>
         <p className="cp_billing_payment_history_lead cp_billing_deal_lead">
           {isLeadSponsorScope
             ? "You pay for deals you lead when they are raising capital or asset managing. Draft and Archived are free."
-            : "Lead sponsors pay per deal when it is raising capital or asset managing. Draft and Archived are free."}
+            : platformAdmin
+              ? "Totals across every organization. Expand a row to review that company’s deals."
+              : "Lead sponsors pay per deal when they are raising capital or asset managing. Draft and Archived are free."}
         </p>
       </header>
+
+      <section
+        className="cp_billing_kpi_metrics"
+        aria-label="Billing totals"
+        aria-busy={loading}
+      >
+        {platformAdmin ? (
+          <ToolStyleCard
+            variant="metric"
+            icon={Building2}
+            title="Organizations"
+            loading={loading}
+            description={String(organizationRows.length)}
+          />
+        ) : null}
+        <ToolStyleCard
+          variant="metric"
+          icon={Briefcase}
+          title="Total deals"
+          loading={loading}
+          description={String(deals.length)}
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={Receipt}
+          title="Billed deals"
+          loading={loading}
+          description={String(billedCount)}
+        />
+        <ToolStyleCard
+          variant="metric"
+          icon={DollarSign}
+          title="Total amount"
+          loading={loading}
+          description={cardCompactAmountOrDash(billingSummaryAmount)}
+        />
+      </section>
 
       {loadError ? (
         <p role="alert" style={{ color: "#b91c1c", marginBottom: "0.75rem" }}>
@@ -1627,7 +2300,7 @@ function BillingDealDetailsPanel({
       <div
         className="um_toolbar um_toolbar_export_then_search cp_billing_deal_search_toolbar"
         role="search"
-        aria-label="Search deals"
+        aria-label={platformAdmin ? "Search organizations" : "Search deals"}
       >
         <div className="um_search_wrap">
           <Search className="um_search_icon" size={18} aria-hidden />
@@ -1637,58 +2310,120 @@ function BillingDealDetailsPanel({
             className="um_search_input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search deals…"
-            aria-label="Search deals"
+            placeholder={
+              platformAdmin ? "Search organizations…" : "Search deals…"
+            }
+            aria-label={
+              platformAdmin ? "Search organizations" : "Search deals"
+            }
           />
         </div>
       </div>
 
-      <div
-        className="cp_billing_outstanding_banner cp_billing_outstanding_banner--center"
-        role="status"
-        aria-live="polite"
-      >
-        <span className="cp_billing_outstanding_icon" aria-hidden="true">
-          <Check size={14} strokeWidth={2.5} />
-        </span>
-        <p>
-          {loading
-            ? "Loading deal billing…"
-            : billedCount === 0
-              ? isLeadSponsorScope
-                ? "None of your deals have an active SaaS subscription yet."
-                : "No deals currently have an active SaaS subscription."
-              : `${billedCount} deal${billedCount === 1 ? "" : "s"} currently billed.`}
-        </p>
-      </div>
-
       <div className="cp_billing_invoices_table_wrap deal_inv_table_panel">
-        <DataTable
-          columns={columns}
-          rows={filteredDeals}
-          getRowKey={(row) => row.id}
-          emptyLabel={
-            loading ? "Loading deal billing…" : "No deals found for billing."
-          }
-          isLoading={loading}
-          visualVariant="members"
-          membersTableClassName="um_table_members deal_inv_table"
-          membersShell="default"
-          initialSort={{ columnId: "dealName", direction: "asc" }}
-          pagination={pagination}
-          getRowClassName={(row) =>
-            expandedDealId === row.id ? "cp_billing_deal_row_expanded" : ""
-          }
-          renderExpandedContent={(row) =>
-            expandedDealId === row.id ? (
-              <DealMrrPaymentHistory
-                deal={row}
-                invoices={invoices.filter((inv) => inv.dealId === row.id)}
-              />
-            ) : null
-          }
-        />
+        {platformAdmin ? (
+          <DataTable
+            columns={organizationColumns}
+            rows={filteredOrganizationRows}
+            getRowKey={(row) => row.id}
+            emptyLabel={
+              loading
+                ? "Loading organizations…"
+                : "No organizations found."
+            }
+            isLoading={loading}
+            visualVariant="members"
+            membersTableClassName="um_table_members deal_inv_table cp_billing_orgs_table"
+            membersShell="default"
+            initialSort={{ columnId: "name", direction: "asc" }}
+            pagination={pagination}
+            onBodyRowClick={(row) => {
+              const next = expandedOrgId === row.id ? null : row.id;
+              setExpandedOrgId(next);
+              if (next) onSelectOrganization?.(next);
+            }}
+            getRowClassName={(row) =>
+              expandedOrgId === row.id ? "cp_billing_deal_row_expanded" : ""
+            }
+            renderExpandedContent={(row) =>
+              expandedOrgId === row.id ? (
+                <div className="cp_billing_org_deals">
+                  {row.deals.length === 0 ? (
+                    <p className="cp_billing_org_empty">No deals</p>
+                  ) : (
+                    <DataTable
+                      columns={columns}
+                      rows={row.deals}
+                      getRowKey={(deal) => deal.id}
+                      emptyLabel="No deals"
+                      visualVariant="members"
+                      membersTableClassName="um_table_members deal_inv_table"
+                      membersShell="plain"
+                      stickyFirstColumn={false}
+                      initialSort={{ columnId: "dealName", direction: "asc" }}
+                      getRowClassName={(deal) =>
+                        expandedDealId === deal.id
+                          ? "cp_billing_deal_row_expanded"
+                          : ""
+                      }
+                      renderExpandedContent={(deal) =>
+                        expandedDealId === deal.id ? (
+                          <DealMrrPaymentHistory
+                            deal={deal}
+                            invoices={invoices.filter(
+                              (inv) => inv.dealId === deal.id,
+                            )}
+                          />
+                        ) : null
+                      }
+                    />
+                  )}
+                </div>
+              ) : null
+            }
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={filteredDeals}
+            getRowKey={(row) => row.id}
+            emptyLabel={
+              loading ? "Loading deal billing…" : "No deals found for billing."
+            }
+            isLoading={loading}
+            visualVariant="members"
+            membersTableClassName="um_table_members deal_inv_table"
+            membersShell="default"
+            initialSort={{ columnId: "dealName", direction: "asc" }}
+            pagination={pagination}
+            getRowClassName={(row) =>
+              expandedDealId === row.id ? "cp_billing_deal_row_expanded" : ""
+            }
+            renderExpandedContent={(row) =>
+              expandedDealId === row.id ? (
+                <DealMrrPaymentHistory
+                  deal={row}
+                  invoices={invoices.filter((inv) => inv.dealId === row.id)}
+                />
+              ) : null
+            }
+          />
+        )}
       </div>
+      {cycleConfirm ? (
+        <BillingCycleConfirmModal
+          row={cycleConfirm.row}
+          nextCycle={cycleConfirm.next}
+          confirming={cycleBusyId === cycleConfirm.row.id}
+          onConfirm={() =>
+            void handleCycleChange(cycleConfirm.row, cycleConfirm.next)
+          }
+          onCancel={() => {
+            if (cycleBusyId) return;
+            setCycleConfirm(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2065,17 +2800,19 @@ export function CompanyBillingTab({
 } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
-  const likelyManager = isCompanyAdmin() || isPlatformAdmin();
+  const platformAdmin = isPlatformAdmin();
+  const likelyManager = isCompanyAdmin() || platformAdmin;
   const billingQuery = new URLSearchParams(location.search).get("billing");
   const fromDealPayFlow =
-    billingQuery === "pay" && Boolean((focusDealId ?? "").trim());
+    (billingQuery === "pay" || billingQuery === "upgrade") &&
+    Boolean((focusDealId ?? "").trim());
   const canCheckout = fromDealPayFlow;
   const [billingSubTab, setBillingSubTab] = useState<BillingSubTab>(() => {
     if (typeof window !== "undefined") {
       const billing = new URLSearchParams(window.location.search).get(
         "billing",
       );
-      if (billing === "pay") return "pricing";
+      if (billing === "pay" || billing === "upgrade") return "pricing";
     }
     return "deals";
   });
@@ -2088,10 +2825,16 @@ export function CompanyBillingTab({
     CompanyBillingPaymentMethod[]
   >([]);
   const [statusError, setStatusError] = useState("");
-  const companyId = (workspaceCompanyId ?? "").trim();
+  const [selectedOrgId, setSelectedOrgId] = useState("");
+  const workspaceId = (workspaceCompanyId ?? "").trim();
+  const companyId = (
+    platformAdmin && selectedOrgId.trim() ? selectedOrgId : workspaceId
+  ).trim();
 
   const canManageBilling = billingStatus?.canManage ?? likelyManager;
-  const canPayBilling = billingStatus?.canPay ?? canManageBilling;
+  const canPayBilling =
+    !platformAdmin && (billingStatus?.canPay ?? canManageBilling);
+  const showPricingTab = platformAdmin || canPayBilling;
 
   const refreshPaymentMethods = useCallback(() => {
     if (!companyId) {
@@ -2285,7 +3028,7 @@ export function CompanyBillingTab({
 
   return (
     <div className="cp_settings_billing_tab">
-      {!companyId ? (
+      {!companyId && !platformAdmin ? (
         <p className="cp_billing_subtitle" role="status">
           Select a company workspace to manage billing.
         </p>
@@ -2307,7 +3050,7 @@ export function CompanyBillingTab({
             role="tablist"
             aria-label="Billing sections"
           >
-            {canPayBilling ? (
+            {showPricingTab ? (
               <button
                 type="button"
                 id="cp-billing-subtab-pricing"
@@ -2424,7 +3167,7 @@ export function CompanyBillingTab({
         </TabsScrollStrip>
       </div>
 
-      {canPayBilling ? (
+      {showPricingTab ? (
         <div
           id="cp-billing-panel-pricing"
           role="tabpanel"
@@ -2442,7 +3185,7 @@ export function CompanyBillingTab({
               onStatusRefresh={refreshStatus}
               initialDealId={fromDealPayFlow ? focusDealId : undefined}
               initialDealName={fromDealPayFlow ? focusDealName : undefined}
-              allowPayment={canCheckout}
+              allowPayment={canCheckout && !platformAdmin}
             />
           ) : null}
         </div>
@@ -2457,10 +3200,12 @@ export function CompanyBillingTab({
       >
         {billingSubTab === "deals" ? (
           <BillingDealDetailsPanel
+            key={isPlatformAdmin() ? "all-organizations" : companyId}
             companyId={companyId}
             viewerScope={billingStatus?.viewerScope}
             canPay={canPayBilling}
             onPaid={refreshStatus}
+            onSelectOrganization={setSelectedOrgId}
           />
         ) : null}
       </div>

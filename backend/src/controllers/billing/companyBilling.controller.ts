@@ -19,11 +19,18 @@ import {
   userCanManageCompanyBilling,
 } from "../../services/billing/companyBilling.service.js";
 import {
+  listDealBillingForAllOrganizations,
   listDealBillingForCompany,
+  listPlatformOrganizationBilling,
   updateDealBillingCycle,
+  getPlatformSaasBillingStartAlert,
 } from "../../services/billing/dealBilling.service.js";
 import { getStripePublicConfig } from "../../config/stripe.config.js";
 import { releaseBillingPaymentHold } from "../../middleware/billingPaymentLock.js";
+import { isPlatformAdminRole } from "../../constants/roles.js";
+import { db } from "../../database/db.js";
+import { users } from "../../schema/schema.js";
+import { eq } from "drizzle-orm";
 
 function paramStr(v: string | string[] | undefined): string {
   if (v == null) return "";
@@ -33,6 +40,21 @@ function paramStr(v: string | string[] | undefined): string {
 
 function bodyString(v: unknown): string {
   return typeof v === "string" ? v.trim() : v != null ? String(v).trim() : "";
+}
+
+async function jwtUserIsPlatformAdmin(user: {
+  id?: string;
+  userRole?: string;
+}): Promise<boolean> {
+  if (isPlatformAdminRole(user.userRole)) return true;
+  const id = String(user.id ?? "").trim();
+  if (!id) return false;
+  const [row] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  return isPlatformAdminRole(row?.role);
 }
 
 function extraCompanyUsersFromBody(body: Record<string, unknown>): number | undefined {
@@ -54,6 +76,33 @@ export async function getBillingConfig(
   res: Response,
 ): Promise<void> {
   res.status(200).json(getStripePublicConfig());
+}
+
+/**
+ * GET /billing/start-date
+ * Authenticated: hardcoded platform SaaS billing start (see saasBillingStartDate.ts).
+ */
+export async function getBillingStartDate(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const alert = await getPlatformSaasBillingStartAlert();
+    res.status(200).json({
+      saasBillingStartsAt: alert.startsAt
+        ? alert.startsAt.toISOString()
+        : null,
+      updatedAt: alert.updatedAt ? alert.updatedAt.toISOString() : null,
+    });
+  } catch (err) {
+    console.error("getBillingStartDate:", err);
+    res.status(500).json({ message: "Could not load billing start date" });
+  }
 }
 
 /**
@@ -497,6 +546,77 @@ export async function getCompanyBillingInvoices(
     return;
   }
   res.status(200).json({ invoices: result.invoices });
+}
+
+/**
+ * GET /billing/deals
+ * Platform admin: every deal across every organization.
+ */
+export async function getPlatformBillingDeals(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  if (!(await jwtUserIsPlatformAdmin(user))) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  try {
+    const deals = await listDealBillingForAllOrganizations();
+    res.status(200).json({
+      deals,
+      canManage: true,
+      canPay: false,
+      viewerScope: "all_deals",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[billing] list platform deal billing failed:", message);
+    res.status(500).json({
+      message:
+        "Could not load deal billing. Confirm the database has deal SaaS billing columns, then retry.",
+    });
+  }
+}
+
+/**
+ * GET /billing/organizations
+ * Platform admin: every organization, deals, and total paid.
+ */
+export async function getPlatformBillingOrganizations(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  if (!(await jwtUserIsPlatformAdmin(user))) {
+    res.status(403).json({ message: "Forbidden" });
+    return;
+  }
+
+  try {
+    const organizations = await listPlatformOrganizationBilling();
+    res.status(200).json({
+      organizations,
+      canManage: true,
+      canPay: false,
+      viewerScope: "all_deals",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[billing] list platform organization billing failed:", message);
+    res.status(500).json({
+      message: "Could not load organization billing.",
+    });
+  }
 }
 
 /**

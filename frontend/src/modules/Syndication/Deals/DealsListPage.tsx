@@ -678,17 +678,9 @@ export function DealsListPage({
 
   const openSyndicatingDeal = useCallback(
     (row: DealListRow) => {
-      if (dealsListContext === "investing") {
-        navigate(`/deals/${encodeURIComponent(row.id)}`)
-        return
-      }
-      if (isDealListRowSaasLocked(row)) {
-        setSaasPaywallDeal(dealSaasPaywallFromListRow(row))
-        return
-      }
       navigate(`/deals/${encodeURIComponent(row.id)}`)
     },
-    [dealsListContext, navigate],
+    [navigate],
   )
 
   const columns: DataTableColumn<DealListRow>[] = useMemo(() => {
@@ -819,7 +811,7 @@ export function DealsListPage({
       header: (
         <DealTableColumnHeader
           label="Next billing"
-          hint="This month every deal stays fully accessible. SaaS billing starts on the 1st of next month. Draft, archived, and liquidated deals are not billed."
+          hint="Until the platform billing start date the deal stays fully accessible. After you pay, this is the next Stripe renewal. Draft, archived, and liquidated deals are not billed."
           headerAlign="center"
         />
       ),

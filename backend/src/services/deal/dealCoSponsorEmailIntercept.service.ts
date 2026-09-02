@@ -211,10 +211,12 @@ export async function loadCoSponsorEmailInterceptByUserLower(
     );
 
   for (const row of rows) {
-    const intercept = normalizeCoSponsorEmailIntercept(row.intercept);
     const uid = await resolvePortalUserIdForContactMemberId(
       String(row.contactMemberId ?? ""),
     );
+    const intercept = normalizeCoSponsorEmailIntercept(row.intercept);
+    const contactKey = String(row.contactMemberId ?? "").trim().toLowerCase();
+    if (contactKey) out.set(contactKey, intercept);
     if (!uid) continue;
     const equiv = await listEquivalentPortalUserIdsForUser(uid);
     for (const id of [uid, ...equiv]) {

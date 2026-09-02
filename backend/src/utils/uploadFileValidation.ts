@@ -145,13 +145,25 @@ export function isAcceptableOfferingDocumentUpload(
   return isOfficeOpenXmlOrLegacyMime(m);
 }
 
+const MAX_OFFERING_DOCUMENT_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_OFFERING_DOCUMENT_FILES = 50;
+
 export function validateOfferingDocumentUploadFiles(
   files: UploadFileLike[],
 ):
   | { ok: true }
   | { ok: false; message: string } {
+  if (files.length > MAX_OFFERING_DOCUMENT_FILES) {
+    return { ok: false, message: "Too many documents (max 50 per request)." };
+  }
   for (const file of files) {
     if (!file.buffer?.length) continue;
+    if (file.buffer.length > MAX_OFFERING_DOCUMENT_FILE_BYTES) {
+      return {
+        ok: false,
+        message: "Document too large (max 100 MB each).",
+      };
+    }
     const ext = resolveUploadExtension(file);
     if (isBlockedUploadExtension(ext)) {
       return { ok: false, message: "Document file type is not allowed." };

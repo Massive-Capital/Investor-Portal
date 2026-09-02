@@ -2209,6 +2209,62 @@ select.cp_settings_input_pill.um_field_select {
 .cp_settings_billing_tab {
   max-width: none;
 }
+
+.cp_billing_start {
+  margin: 0 0 1.35rem;
+  padding: 1.05rem 1.15rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--portal-card-radius, 4px);
+  background: var(--portal-surface, #fff);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 5%);
+}
+
+.cp_billing_start_head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+}
+
+.cp_billing_start_actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.cp_billing_start_field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 12rem;
+}
+
+.cp_billing_start_field .cp_billing_filter_input {
+  width: 12.5rem;
+  min-height: var(--um-toolbar-control-height, 2.25rem);
+}
+
+.cp_billing_start_actions .um_btn_primary {
+  min-height: var(--um-toolbar-control-height, 2.25rem);
+}
+
+@media (max-width: 640px) {
+  .cp_billing_start_actions,
+  .cp_billing_start_field,
+  .cp_billing_start_field .cp_billing_filter_input,
+  .cp_billing_start_actions .um_btn_primary {
+    width: 100%;
+  }
+}
+
+:root[data-theme="dark"] .cp_billing_start {
+  background: var(--portal-surface, rgba(15, 23, 42, 0.35));
+  border-color: var(--portal-border, rgba(148, 163, 184, 0.28));
+  box-shadow: none;
+}
 .cp_billing_subtabs_outer {
   margin-bottom: 1.25em;
 }
@@ -2462,6 +2518,63 @@ select.cp_settings_input_pill.um_field_select {
   gap: 0.35rem;
 }
 
+.cp_billing_kpi_metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  width: 100%;
+  margin: 0 0 0.15rem;
+}
+
+.cp_billing_payment_history--admin .cp_billing_kpi_metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cp_billing_kpi_metrics > .tool_style_card--metric {
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  padding: 0.65rem 0.85rem 0.7rem;
+  justify-content: flex-start;
+}
+
+.cp_billing_kpi_metrics .tool_style_card--metric .tool_style_card_icon_box {
+  width: 1.7em;
+  height: 1.7em;
+}
+
+.cp_billing_kpi_metrics .tool_style_card--metric .tool_style_card_icon {
+  width: 1.05em;
+  height: 1.05em;
+  color: var(--portal-gold-accent, #d4af37);
+  opacity: 1;
+}
+
+.cp_billing_kpi_metrics .tool_style_card--metric .tool_style_card_value_lead,
+.cp_billing_kpi_metrics .tool_style_card--metric .tool_style_card_value_loading--metric {
+  margin-top: 0.3rem;
+}
+
+.cp_billing_kpi_metrics .tool_style_card--metric .tool_style_card_value_lead {
+  font-size: 1.15rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 900px) {
+  .cp_billing_kpi_metrics,
+  .cp_billing_payment_history--admin .cp_billing_kpi_metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .cp_billing_kpi_metrics,
+  .cp_billing_payment_history--admin .cp_billing_kpi_metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cp_billing_payment_history_title {
   margin: 0;
   font-family: var(--portal-font-sans, "Inter", sans-serif);
@@ -2481,6 +2594,22 @@ select.cp_settings_input_pill.um_field_select {
 
 .cp_billing_deal_lead {
   max-width: none;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cp_billing_deal_lead_free {
+  white-space: nowrap;
+}
+
+.cp_billing_invoices_table_wrap .deals_stage_chip--compact {
+  max-width: none;
+}
+
+.cp_billing_invoices_table_wrap .deals_stage_chip--compact > span:not(.deals_list_stage_badge_icon) {
+  overflow: visible;
+  text-overflow: unset;
   white-space: nowrap;
 }
 
@@ -2603,6 +2732,138 @@ select.cp_settings_input_pill.um_field_select {
   justify-content: flex-end;
   margin-bottom: 1rem;
 }
+
+.cp_billing_org_deals {
+  padding: 0.75rem 0.25rem 0.35rem;
+  overflow-x: auto;
+}
+
+.cp_billing_org_name_btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cp_billing_org_name_btn span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cp_billing_org_name_btn svg {
+  flex: 0 0 auto;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.cp_billing_org_name_btn--open svg {
+  transform: rotate(180deg);
+}
+
+/*
+.cp_billing_org_stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0 0 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--portal-surface, #fff) 88%, #f8fafc);
+}
+
+.cp_billing_org_stats div {
+  min-width: 0;
+}
+
+.cp_billing_org_stats dt {
+  margin: 0 0 0.15rem;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.cp_billing_org_stats dd {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--portal-text, #0f172a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+*/
+
+.cp_billing_org_empty {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--portal-text-muted, #64748b);
+}
+
+.cp_billing_org_deals .um_table_wrap {
+  margin: 0;
+  border-radius: 6px;
+}
+
+.cp_billing_org_deals .um_table.deal_inv_table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+/* Org roster: stable columns so expand / name length does not shift widths. */
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table th.deals_col_deal_name,
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table td.deals_col_deal_name {
+  width: 40%;
+  min-width: var(--cp-table-name-col-min, 16rem);
+}
+
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table th.deals_th_align_center,
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table td.deals_td_align_center,
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table th.deals_th_align_right,
+.cp_billing_invoices_table_wrap .um_table.cp_billing_orgs_table td.cp_billing_amount_td {
+  width: 20%;
+}
+
+.cp_billing_payment_history--admin {
+  gap: 0.85rem;
+}
+
+/*
+:root[data-theme="dark"] .cp_billing_org_stats {
+  background: color-mix(in srgb, var(--portal-surface, #0f172a) 88%, #1e293b);
+}
+*/
+
+:root[data-theme="dark"] .cp_billing_org_name_btn svg {
+  color: #94a3b8;
+}
+
+/*
+@media (max-width: 900px) {
+  .cp_billing_org_stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+*/
 
 .cp_billing_reset_btn,
 .cp_billing_search_btn {
@@ -2727,6 +2988,20 @@ select.cp_settings_input_pill.um_field_select {
   padding: 0.35rem 0.15rem 0.15rem;
 }
 
+.cp_billing_amount_stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  line-height: 1.25;
+}
+
+.cp_billing_amount_extra {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
+
 .cp_billing_deal_mrr_history_title {
   margin: 0 0 0.55rem;
   font-size: 0.75rem;
@@ -2776,9 +3051,17 @@ select.cp_settings_input_pill.um_field_select {
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.25;
+  white-space: nowrap;
   text-transform: capitalize;
   color: var(--portal-text-muted, #64748b);
   background: color-mix(in srgb, var(--portal-text) 4%, var(--portal-surface, #fff));
+}
+
+.deal_inv_table_panel .um_table.deal_inv_table th.cp_billing_payment_status_col,
+.deal_inv_table_panel .um_table.deal_inv_table td.cp_billing_payment_status_col {
+  white-space: nowrap;
+  min-width: 16.5rem;
+  width: 16.5rem;
 }
 
 .cp_billing_invoice_status--paid {
@@ -2929,6 +3212,9 @@ select.cp_settings_input_pill.um_field_select {
   margin: 0;
   font-size: 0.875em;
   color: #64748b;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Billing filters: cycle on top, seats below */
@@ -3110,6 +3396,23 @@ select.cp_settings_input_pill.um_field_select {
   min-width: 0;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.25em;
+}
+
+.deal_stage_modal--billing_cycle {
+  width: min(24rem, 100%);
+  max-height: min(92vh, 44rem);
+}
+
+.deal_stage_modal--billing_cycle .deal_stage_modal_body {
+  overflow: auto;
+}
+
+.cp_billing_cycle_confirm_card {
+  margin-top: 0.85rem;
+}
+
+.cp_billing_cycle_confirm_card:hover {
+  transform: none;
 }
 
 .cp_billing_plan_card {

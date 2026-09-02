@@ -189,6 +189,10 @@ export type NestedPreviewDocument = {
   esignTemplateFileId?: string
   esignAwaitingSponsorSignature?: boolean
   esignSponsorSigned?: boolean
+  /** Portal user who uploaded this file from the Documents tab. */
+  uploadedByUserId?: string
+  /** Co-sponsor uploads stay hidden from lead / admin sponsors unless shared with them. */
+  uploadedByIsCoSponsor?: boolean
 }
 
 /** True when Shared With has at least one recipient / All Investors. */
@@ -414,6 +418,7 @@ export function mergeAutoManagedDocumentSections(
   localSections: OfferingPreviewSection[],
   dealId: string,
   previewJson?: string | null,
+  opts?: { preferPreviewJson?: boolean },
 ): OfferingPreviewSection[] {
   const id = dealId.trim()
   const fromJson = parseDocumentSectionsFromPreviewJson(previewJson).filter(
@@ -428,10 +433,12 @@ export function mergeAutoManagedDocumentSections(
   }
   for (const section of fromWorkspace) {
     const existing = autoById.get(section.id)
-    if (
-      !existing ||
-      section.nestedDocuments.length >= existing.nestedDocuments.length
-    ) {
+    if (!existing) {
+      autoById.set(section.id, section)
+      continue
+    }
+    if (opts?.preferPreviewJson) continue
+    if (section.nestedDocuments.length >= existing.nestedDocuments.length) {
       autoById.set(section.id, section)
     }
   }
@@ -751,6 +758,11 @@ function normalizeNested(
       : undefined
   const esignAwaitingSponsorSignature = Boolean(raw.esignAwaitingSponsorSignature)
   const esignSponsorSigned = Boolean(raw.esignSponsorSigned)
+  const uploadedByUserId =
+    typeof raw.uploadedByUserId === "string" && raw.uploadedByUserId.trim()
+      ? raw.uploadedByUserId.trim()
+      : undefined
+  const uploadedByIsCoSponsor = raw.uploadedByIsCoSponsor === true
   const sharedAtRaw =
     typeof raw.sharedAt === "string" && raw.sharedAt.trim()
       ? raw.sharedAt.trim()
@@ -775,6 +787,8 @@ function normalizeNested(
     ...(esignTemplateFileId ? { esignTemplateFileId } : {}),
     ...(esignAwaitingSponsorSignature ? { esignAwaitingSponsorSignature: true } : {}),
     ...(esignSponsorSigned ? { esignSponsorSigned: true } : {}),
+    ...(uploadedByUserId ? { uploadedByUserId } : {}),
+    ...(uploadedByIsCoSponsor ? { uploadedByIsCoSponsor: true } : {}),
   }
 }
 

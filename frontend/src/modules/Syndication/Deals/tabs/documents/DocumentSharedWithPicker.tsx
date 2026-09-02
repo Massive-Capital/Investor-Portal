@@ -19,6 +19,8 @@ import type { DealInvestorClass } from "../../types/deal-investor-class.types"
 import type { DealInvestorRow } from "../../types/deal-investors.types"
 import {
   lpInvestorsAddedBySponsorUserId,
+  lpInvestorsIncludedWhenSharingWithSponsorUser,
+  sponsorUserShareInterceptHoldsAtCoSponsor,
   SPONSOR_USER_INVESTORS_MENU_LABEL,
   type SponsorPickerOption,
 } from "../../utils/offeringPreviewDocumentAudience"
@@ -54,10 +56,18 @@ function formatDocumentSharedWithSummary(args: {
   }
   for (const uid of sponsorUserIds) {
     const o = sponsorUserOptions.find((x) => x.id === uid)
+    const holds = sponsorUserShareInterceptHoldsAtCoSponsor(uid, investors)
+    const included = lpInvestorsIncludedWhenSharingWithSponsorUser(
+      uid,
+      investors,
+    ).length
+    const label = o?.label ?? uid
     bits.push(
-      o
-        ? `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${o.label}`
-        : `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${uid}`,
+      holds
+        ? `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${label} (you only)`
+        : included > 0
+          ? `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${label} (+ investors)`
+          : `${SPONSOR_USER_INVESTORS_MENU_LABEL}: ${label}`,
     )
   }
   if (allInvestors) bits.push("All Investors")
@@ -131,6 +141,15 @@ function resolveSharedWithPeople(args: {
   function addRow(row: DealInvestorRow) {
     const name = row.displayName?.trim() || row.id
     addPerson(row.id || name, name, row.userEmail)
+    if (row.addedByIsCoSponsorOnDeal === true) {
+      const uid = row.addedByUserId?.trim()
+      const sponsorName = row.addedByDisplayName?.trim() || "Co-sponsor"
+      addPerson(
+        uid ? `sponsor:${uid}` : `sponsor:${sponsorName}`,
+        sponsorName,
+        row.addedByEmail,
+      )
+    }
   }
 
   if (allInvestors) {
@@ -149,7 +168,10 @@ function resolveSharedWithPeople(args: {
       const opt = sponsorUserOptions.find((x) => x.id === sponsorUid)
       const sponsorLabel = opt?.label?.trim() || sponsorUid
       addPerson(`sponsor:${sponsorUid}`, sponsorLabel)
-      for (const row of lpInvestorsAddedBySponsorUserId(sponsorUid, investors)) {
+      for (const row of lpInvestorsIncludedWhenSharingWithSponsorUser(
+        sponsorUid,
+        investors,
+      )) {
         addRow(row)
       }
     }
@@ -552,6 +574,10 @@ export function DocumentSharedWithPicker(args: {
           <p className="deal_docs_shared_with_menu_heading">
             {SPONSOR_USER_INVESTORS_MENU_LABEL}
           </p>
+          <p className="deal_docs_shared_with_menu_sub">
+            Co-sponsor investors are included only when that co-sponsor chose No
+            intercept. Yes intercept keeps the file with the co-sponsor.
+          </p>
           {sponsorUserOptions.length === 0 ? (
             <p className="deal_docs_shared_with_menu_empty">
               No sponsor users on this deal yet.
@@ -566,7 +592,15 @@ export function DocumentSharedWithPicker(args: {
                 const sid = s.id.trim()
                 const checked = sponsorUserIds.includes(sid)
                 const oid = `${idPrefix}-sponsor-user-${sid}`
-                const lpCount = lpInvestorsAddedBySponsorUserId(sid, investors).length
+                const lpCount = lpInvestorsAddedBySponsorUserId(sid, investors)
+                  .length
+                const includedCount =
+                  lpInvestorsIncludedWhenSharingWithSponsorUser(
+                    sid,
+                    investors,
+                  ).length
+                const holds =
+                  sponsorUserShareInterceptHoldsAtCoSponsor(sid, investors)
                 return (
                   <li key={sid}>
                     <label className="deal_docs_shared_with_menu_row" htmlFor={oid}>
@@ -581,7 +615,17 @@ export function DocumentSharedWithPicker(args: {
                         <span className="deal_docs_shared_with_menu_inv_name">
                           {s.label}
                         </span>
-                        {lpCount > 0 ? (
+                        {holds ? (
+                          <span className="deal_docs_shared_with_menu_inv_email">
+                            You only (Yes intercept) — {lpCount} investor
+                            {lpCount === 1 ? "" : "s"} not included
+                          </span>
+                        ) : includedCount > 0 ? (
+                          <span className="deal_docs_shared_with_menu_inv_email">
+                            You and {includedCount} investor
+                            {includedCount === 1 ? "" : "s"} (No intercept)
+                          </span>
+                        ) : lpCount > 0 ? (
                           <span className="deal_docs_shared_with_menu_inv_email">
                             {lpCount} investor{lpCount === 1 ? "" : "s"} on this deal
                           </span>

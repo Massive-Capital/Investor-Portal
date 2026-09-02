@@ -138,8 +138,8 @@ export const addDealForm = pgTable("add_deal_form", {
     withTimezone: true,
   }),
   /**
-   * First charge / paywall date. Set once to 00:00 UTC on the 1st of next
-   * month so the current calendar month stays fully accessible.
+   * First charge / paywall date (00:00 UTC). Defaults to the 1st of next
+   * month; platform admin may set another date.
    */
   saasBillingStartsAt: timestamp("saas_billing_starts_at", {
     withTimezone: true,
@@ -155,6 +155,11 @@ export const addDealForm = pgTable("add_deal_form", {
     "extra_company_users_last_payment_ref",
     { length: 255 },
   ),
+  /**
+   * Intended Capital Raising / Asset Managing stage while SaaS payment is
+   * pending. `deal_stage` stays Draft until payment completes.
+   */
+  pendingDealStage: varchar("pending_deal_stage", { length: 64 }),
 });
 
 export type AddDealFormRow = typeof addDealForm.$inferSelect;

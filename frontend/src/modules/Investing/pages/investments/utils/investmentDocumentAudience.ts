@@ -1,6 +1,7 @@
 import type { DealInvestorClass } from "@/modules/Syndication/Deals/types/deal-investor-class.types"
 import type { DealInvestorRow } from "@/modules/Syndication/Deals/types/deal-investors.types"
 import { investorEsignIsFullyCompletedForRow } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
+import { lpReceivesDocumentsSharedWithTheirSponsor } from "@/modules/Syndication/Deals/utils/offeringPreviewDocumentAudience"
 import {
   FUNDING_INFORMATION_DOCUMENTS_SECTION_ID,
   isFundingInstructionsAutoPdfDocument,
@@ -124,7 +125,10 @@ export function nestedDocumentVisibleToInvestor(
     const viewerUid = ctx.viewerUserId?.trim().toLowerCase()
     if (viewerUid && viewerUid === key) return true
     for (const row of viewerRows) {
-      if (row.addedByUserId?.trim().toLowerCase() === key) return true
+      if (row.addedByUserId?.trim().toLowerCase() === key) {
+        if (lpReceivesDocumentsSharedWithTheirSponsor(row)) return true
+        continue
+      }
       if (row.contactId?.trim().toLowerCase() === key) return true
     }
   }

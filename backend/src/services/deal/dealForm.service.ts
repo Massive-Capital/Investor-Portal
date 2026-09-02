@@ -47,6 +47,7 @@ import {
   cancelDealSaasBillingBeforeDelete,
   scheduleDealSaasBillingSync,
 } from "../billing/dealBilling.service.js";
+import { resolveDealStageForSaasPaymentHold } from "../billing/dealStageSaasPaymentHold.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
@@ -391,9 +392,10 @@ export async function insertAddDealForm(
       assetRelativePaths,
     ),
   };
-  const initialStageCanon = normalizeDealStageCanonical(
-    normalizedInput.dealStage,
-  );
+  const stageHold = resolveDealStageForSaasPaymentHold({
+    requestedStage: normalizedInput.dealStage,
+  });
+  const initialStageCanon = normalizeDealStageCanonical(stageHold.persistStage);
   const initialOfferingStatus =
     initialStageCanon != null
       ? resolveOfferingStatusForStageChange({
@@ -402,7 +404,7 @@ export async function insertAddDealForm(
         })
       : "draft_hidden";
 
-  const candidates = dealStageCandidates(normalizedInput.dealStage);
+  const candidates = dealStageCandidates(stageHold.persistStage);
   let lastErr: unknown = null;
   for (const stage of candidates) {
     try {
@@ -410,6 +412,7 @@ export async function insertAddDealForm(
         ...baseRow,
         dealStage: stage,
         offeringStatus: initialOfferingStatus,
+        pendingDealStage: stageHold.pendingDealStage,
       };
       const [created] = await db.insert(addDealForm).values(row).returning();
       if (!created) throw new Error("Insert failed");
@@ -1004,6 +1007,7 @@ export async function updateDealOfferingOverviewById(
   }
 
   let promotedDealStage: string | undefined;
+  let pendingDealStage: string | null | undefined;
   if (patch.offeringStatus !== undefined) {
     const nextStatus = normalizeDealStatus(patch.offeringStatus);
     if (
@@ -1017,7 +1021,16 @@ export async function updateDealOfferingOverviewById(
             "Add at least one investor class before opening to investment.",
         });
       }
-      promotedDealStage = normalizeDealStage("capital_raising");
+      const stageHold = resolveDealStageForSaasPaymentHold({
+        requestedStage: normalizeDealStage("capital_raising"),
+        existing,
+      });
+      if (isDealStageDraft(stageHold.persistStage)) {
+        pendingDealStage = stageHold.pendingDealStage;
+      } else {
+        promotedDealStage = stageHold.persistStage;
+        pendingDealStage = null;
+      }
     }
   }
 
@@ -1029,6 +1042,9 @@ export async function updateDealOfferingOverviewById(
         : {}),
       ...(promotedDealStage !== undefined
         ? { dealStage: promotedDealStage }
+        : {}),
+      ...(pendingDealStage !== undefined
+        ? { pendingDealStage }
         : {}),
       ...(patch.offeringVisibility !== undefined
         ? { offeringVisibility: patch.offeringVisibility }
@@ -1248,8 +1264,12 @@ export async function updateAddDealFormById(
       ? { organizationId: options.organizationId }
       : {};
 
+  const stageHold = resolveDealStageForSaasPaymentHold({
+    requestedStage: normalizedInput.dealStage,
+    existing,
+  });
   const prevStageCanon = normalizeDealStageCanonical(existing.dealStage);
-  const nextStageCanon = normalizeDealStageCanonical(normalizedInput.dealStage);
+  const nextStageCanon = normalizeDealStageCanonical(stageHold.persistStage);
   const stageChanged =
     prevStageCanon != null &&
     nextStageCanon != null &&
@@ -1283,8 +1303,9 @@ export async function updateAddDealFormById(
     ...(offeringStatusOnStageChange != null
       ? { offeringStatus: offeringStatusOnStageChange }
       : {}),
+    pendingDealStage: stageHold.pendingDealStage,
   };
-  const candidates = dealStageCandidates(normalizedInput.dealStage);
+  const candidates = dealStageCandidates(stageHold.persistStage);
   let lastErr: unknown = null;
   for (const stage of candidates) {
     try {

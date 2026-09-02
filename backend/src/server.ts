@@ -572,6 +572,12 @@ async function ensureDealSaasBillingColumns(): Promise<void> {
       ADD COLUMN IF NOT EXISTS extra_company_users_paid integer NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS extra_company_users_last_payment_ref varchar(255)
   `);
+  await pool.query(`
+    ALTER TABLE companies DROP COLUMN IF EXISTS saas_billing_starts_at
+  `);
+  await pool.query(`
+    DROP TABLE IF EXISTS platform_settings
+  `);
 }
 
 

@@ -108,9 +108,10 @@ export function DealBillableStageNoticeModal({
             <>
               <p className="deal_stage_modal_desc">
                 Billing starts when you start raising capital or asset managing.
-                You can keep working on this deal for the rest of this month at
-                no charge. Starting the 1st of next month, the lead sponsor
-                needs to pay so the deal stays open to view and edit.
+                This deal stays in Draft until payment is complete. After you
+                pay, the stage changes to {label}. You can keep working at no
+                charge until 10 September 2026. After that date, the lead
+                sponsor needs to pay so the deal stays open to view and edit.
               </p>
               <p
                 className="deal_stage_modal_desc"

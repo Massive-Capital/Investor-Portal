@@ -104,6 +104,20 @@ function DealStepBillingNote() {
   )
 }
 
+function dealSaasPaymentCompleteFromDetail(detail: {
+  listRow?: { billingSubscriptionStatus?: string }
+  billingSubscriptionStatus?: string
+}): boolean {
+  const status = String(
+    detail.listRow?.billingSubscriptionStatus ??
+      detail.billingSubscriptionStatus ??
+      "",
+  )
+    .trim()
+    .toLowerCase()
+  return status === "active" || status === "trialing"
+}
+
 export function CreateDealPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -178,6 +192,7 @@ export function CreateDealPage() {
   const dealStageStabilizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   )
+  const saasPaidRef = useRef(false)
   const latestCreateDealDraftRef = useRef({
     deal: emptyDealStepDraft(),
     asset: emptyAssetStepDraft(),
@@ -272,6 +287,7 @@ export function CreateDealPage() {
         setRetainedPropertyImagePaths(segs)
         setStep(mergedStep)
         setInitialDealStageCanonical(formDealStageToCanonical(detail.dealStage))
+        saasPaidRef.current = dealSaasPaymentCompleteFromDetail(detail)
         setStageConfirmedInSession(null)
         setPendingStageFormValue("")
       } catch (err) {
@@ -718,12 +734,19 @@ export function CreateDealPage() {
 
   const closeBillableStageNotice = useCallback(() => {
     if (billableStageNoticeBusy) return
-    if (billableStageNoticeMode === "complete_deal") {
-      patchDeal({ dealStage: "Draft" })
-      persistableDealStageRef.current = "Draft"
+    if (billableStageNoticeMode === "complete_deal" || !saasPaidRef.current) {
+      const formStage = initialDealStageCanonical
+        ? canonicalDealStageToFormValue(initialDealStageCanonical)
+        : "Draft"
+      patchDeal({ dealStage: formStage })
+      persistableDealStageRef.current = formStage
     }
     setBillableStageNoticeOpen(false)
-  }, [billableStageNoticeBusy, billableStageNoticeMode])
+  }, [
+    billableStageNoticeBusy,
+    billableStageNoticeMode,
+    initialDealStageCanonical,
+  ])
 
   async function ensureDealPersistedForBillableStage(
     stage: DealStageOption | "",
@@ -767,12 +790,17 @@ export function CreateDealPage() {
 
     const canon = formDealStageToCanonical(nextStage)
     const rememberPersistedStage = (dealId: string) => {
-      if (canon) {
+      if (saasPaidRef.current && canon) {
         setInitialDealStageCanonical(canon)
         setStageConfirmedInSession(canon)
+      } else {
+        setInitialDealStageCanonical("draft")
+        setStageConfirmedInSession(null)
       }
+      const storedStage =
+        saasPaidRef.current && nextStage ? nextStage : "Draft"
       saveCreateDealDraft({
-        deal: { ...deal, dealStage: nextStage },
+        deal: { ...deal, dealStage: storedStage },
         asset,
         step: st,
         backendDealId: dealId,
@@ -822,6 +850,20 @@ export function CreateDealPage() {
       const stage = billableStageNoticeStage || dealDraft.dealStage
       const dealId = await ensureDealPersistedForBillableStage(stage)
       if (!dealId) return
+      try {
+        const detail = await fetchDealById(dealId)
+        const canon = formDealStageToCanonical(detail.dealStage) ?? "draft"
+        const formStage = canonicalDealStageToFormValue(canon)
+        patchDeal({ dealStage: formStage })
+        persistableDealStageRef.current = formStage
+        setInitialDealStageCanonical(canon)
+        saasPaidRef.current = dealSaasPaymentCompleteFromDetail(detail)
+      } catch {
+        if (!saasPaidRef.current) {
+          patchDeal({ dealStage: "Draft" })
+          persistableDealStageRef.current = "Draft"
+        }
+      }
       setBillableStageNoticeOpen(false)
       navigate(
         dealSaasBillingSettingsPath(dealId, dealDraft.dealName),
@@ -945,7 +987,13 @@ export function CreateDealPage() {
         }
       }
       const nextCanon = formDealStageToCanonical(dealDraft.dealStage)
-      if (nextCanon) setInitialDealStageCanonical(nextCanon)
+      if (nextCanon) {
+        if (isDealStageSaasBillable(nextCanon) && !saasPaidRef.current) {
+          setInitialDealStageCanonical("draft")
+        } else {
+          setInitialDealStageCanonical(nextCanon)
+        }
+      }
       setStageConfirmedInSession(null)
       setPendingStageFormValue("")
       setStageChangeModalOpen(false)

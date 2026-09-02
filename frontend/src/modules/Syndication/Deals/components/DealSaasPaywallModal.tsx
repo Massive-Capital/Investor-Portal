@@ -8,11 +8,11 @@ import { useEffect, useId, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { getSessionOrganizationCompanyId } from "../../../../common/auth/sessionOrganization"
-import { isPlatformAdmin } from "../../../../common/auth/roleUtils"
 import { openCompanyBillingPortal } from "../../company/companyBillingApi"
 import { formatDealListDateDisplay } from "../dealsListDisplay"
 import {
   dealSaasBillingSettingsPath,
+  billingPlanDisplayName,
   type DealSaasPaywallDeal,
 } from "../utils/dealSaasAccess"
 import "./deal-stage-change-modal.css"
@@ -51,6 +51,9 @@ export function DealSaasPaywallModal({
   if (!deal) return null
 
   const lockedDeal = deal
+  const isPlanUpgrade = lockedDeal.needsPlanUpgrade === true
+  const suggestedLabel = billingPlanDisplayName(lockedDeal.suggestedPlanId)
+  const currentLabel = billingPlanDisplayName(lockedDeal.billingPlanId)
   const reason = lockedDeal.reason ?? "unpaid"
   const subStatus = String(
     lockedDeal.billingSubscriptionStatus ?? "",
@@ -58,27 +61,32 @@ export function DealSaasPaywallModal({
     .trim()
     .toLowerCase()
   const needsExistingInvoicePay =
-    reason === "past_due" ||
+    !isPlanUpgrade &&
+    (reason === "past_due" ||
     (reason === "expired" &&
       (subStatus === "active" ||
         subStatus === "trialing" ||
         subStatus === "past_due" ||
-        subStatus === "unpaid"))
-  const title =
-    reason === "expired"
+        subStatus === "unpaid")))
+  const title = isPlanUpgrade
+    ? "Upgrade this deal’s plan"
+    : reason === "expired"
       ? "Billing period ended"
       : reason === "past_due"
         ? "Payment past due"
-        : "Upgrade the plan to continue"
+        : "Payment is due"
   const dealLabel = lockedDeal.dealName.trim()
     ? `“${lockedDeal.dealName.trim()}”`
     : "this deal"
-  const canPayForDeal =
-    isPlatformAdmin() || lockedDeal.viewerIsLeadSponsor === true
+  const canPayForDeal = lockedDeal.viewerIsLeadSponsor === true
   const description = !canPayForDeal
-    ? `The lead sponsor must pay monthly SaaS for ${dealLabel} before this deal can be opened.`
+    ? isPlanUpgrade
+      ? `The lead sponsor must upgrade ${dealLabel} to ${suggestedLabel} after the deal size increased.`
+      : `The lead sponsor must pay monthly SaaS for ${dealLabel} before this deal can be opened.`
     : lockedDeal.message?.trim() ||
-      (reason === "expired"
+      (isPlanUpgrade
+        ? `The raise for ${dealLabel} is now above the ${currentLabel} plan. SyndicationX selected ${suggestedLabel}. Upgrade so billing matches this deal’s size.`
+        : reason === "expired"
         ? `The billing period for ${dealLabel} has ended. Pay monthly SaaS (MRR) to continue.`
         : reason === "past_due"
           ? `Monthly SaaS (MRR) for ${dealLabel} is past due. Pay now to continue.`
@@ -151,7 +159,9 @@ export function DealSaasPaywallModal({
 
         <div className="deal_stage_modal_body">
           <span className="deal_stage_modal_badge">
-            {reason === "expired"
+            {isPlanUpgrade
+              ? "Deal size increased"
+              : reason === "expired"
               ? "Billing date passed"
               : reason === "past_due"
                 ? "Past due"
@@ -181,40 +191,52 @@ export function DealSaasPaywallModal({
             Close
           </button>
           {canPayForDeal ? (
-          <>
-          <button
-            type="button"
-            className="deal_stage_modal_btn deal_stage_modal_btn--cancel"
-            disabled={busy}
-            onClick={goToFirstPayment}
-          >
-            <BadgeDollarSign size={16} strokeWidth={2} aria-hidden />
-            Upgrade plan
-          </button>
-          <button
-            type="button"
-            className="deal_stage_modal_btn deal_stage_modal_btn--confirm"
-            disabled={busy}
-            onClick={() => void handlePay()}
-          >
-            {busy ? (
-              <>
-                <Loader2
-                  size={16}
-                  strokeWidth={2}
-                  className="deals_create_btn_spin"
-                  aria-hidden
-                />
-                Redirecting…
-              </>
+            isPlanUpgrade ? (
+              <button
+                type="button"
+                className="deal_stage_modal_btn deal_stage_modal_btn--confirm"
+                disabled={busy}
+                onClick={goToFirstPayment}
+              >
+                <BadgeDollarSign size={16} strokeWidth={2} aria-hidden />
+                Upgrade plan
+              </button>
             ) : (
               <>
-                <CreditCard size={16} strokeWidth={2} aria-hidden />
-                {payLabel}
+                <button
+                  type="button"
+                  className="deal_stage_modal_btn deal_stage_modal_btn--cancel"
+                  disabled={busy}
+                  onClick={goToFirstPayment}
+                >
+                  <BadgeDollarSign size={16} strokeWidth={2} aria-hidden />
+                  Choose plan
+                </button>
+                <button
+                  type="button"
+                  className="deal_stage_modal_btn deal_stage_modal_btn--confirm"
+                  disabled={busy}
+                  onClick={() => void handlePay()}
+                >
+                  {busy ? (
+                    <>
+                      <Loader2
+                        size={16}
+                        strokeWidth={2}
+                        className="deals_create_btn_spin"
+                        aria-hidden
+                      />
+                      Redirecting…
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard size={16} strokeWidth={2} aria-hidden />
+                      {payLabel}
+                    </>
+                  )}
+                </button>
               </>
-            )}
-          </button>
-          </>
+            )
           ) : null}
         </footer>
       </div>

@@ -1302,10 +1302,14 @@ export function AddLpInvestorModal({
                   ariaDescribedBy={
                     fieldErrors.contactId ? "lp-inv-member-err" : undefined
                   }
-                  header={{
-                    label: "+ Add Contact",
-                    onClick: () => setAddContactModalOpen(true),
-                  }}
+                  header={
+                    isEditMode
+                      ? undefined
+                      : {
+                          label: "+ Add Contact",
+                          onClick: () => setAddContactModalOpen(true),
+                        }
+                  }
                   triggerClassName={DROPDOWN_TRIGGER_PILL}
                 />
                 {fieldErrors.contactId ? (

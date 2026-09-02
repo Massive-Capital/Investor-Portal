@@ -176,6 +176,8 @@ export function DealDetailPage() {
   const [dealDetailApi, setDealDetailApi] = useState<DealDetailApi | null>(null)
   const [saasPaywallDeal, setSaasPaywallDeal] =
     useState<DealSaasPaywallDeal | null>(null)
+  const [upgradePromptDeal, setUpgradePromptDeal] =
+    useState<DealSaasPaywallDeal | null>(null)
 
   const handleDealPersisted = useCallback((d: DealDetailApi) => {
     setDealDetailApi(d)
@@ -403,6 +405,7 @@ export function DealDetailPage() {
     setDeal(undefined)
     setDealDetailApi(null)
     setSaasPaywallDeal(null)
+    setUpgradePromptDeal(null)
     void (async () => {
       try {
         const d = await fetchDealById(id)
@@ -417,6 +420,34 @@ export function DealDetailPage() {
           }
           setDealDetailApi(d)
           setDeal(dealDetailApiToRecord(d))
+          if (
+            mode !== "investing" &&
+            d.viewerIsLeadSponsor === true &&
+            d.needsPlanUpgrade === true
+          ) {
+            const key = `sx-deal-upgrade-prompt:${d.id}`
+            try {
+              if (sessionStorage.getItem(key) !== "1") {
+                setUpgradePromptDeal({
+                  id: d.id,
+                  dealName: d.dealName ?? "",
+                  needsPlanUpgrade: true,
+                  suggestedPlanId: d.suggestedPlanId ?? null,
+                  billingPlanId: d.billingPlanId ?? d.listRow?.billingPlanId ?? null,
+                  viewerIsLeadSponsor: true,
+                })
+              }
+            } catch {
+              setUpgradePromptDeal({
+                id: d.id,
+                dealName: d.dealName ?? "",
+                needsPlanUpgrade: true,
+                suggestedPlanId: d.suggestedPlanId ?? null,
+                billingPlanId: d.billingPlanId ?? null,
+                viewerIsLeadSponsor: true,
+              })
+            }
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -981,6 +1012,7 @@ export function DealDetailPage() {
             dealName={displayName}
             offeringInvestorPreviewJson={dealDetailApi.offeringInvestorPreviewJson}
             investorsListRefreshKey={dealMembersRefreshKey}
+            viewerDealMemberRole={viewerDealMemberRole}
             onOfferingPreviewSynced={handleDealPersisted}
           />
         ) : activeTab === "esign_templates" ? (
@@ -1015,6 +1047,20 @@ export function DealDetailPage() {
       </div>
         </>
       ) : null}
+      <DealSaasPaywallModal
+        deal={upgradePromptDeal}
+        onClose={() => {
+          const id = upgradePromptDeal?.id?.trim()
+          if (id) {
+            try {
+              sessionStorage.setItem(`sx-deal-upgrade-prompt:${id}`, "1")
+            } catch {
+              /* ignore */
+            }
+          }
+          setUpgradePromptDeal(null)
+        }}
+      />
     </div>
   )
 }
