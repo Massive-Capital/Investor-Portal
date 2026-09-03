@@ -37,6 +37,7 @@ import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { getSessionUserId } from "@/common/auth/sessionUserId"
 import { isPlatformAdmin } from "@/common/auth/roleUtils"
 import { ConfirmDeleteModal } from "@/common/components/ConfirmDeleteModal"
+import { toast } from "@/common/components/Toast"
 import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
 import {
   FormTooltip,
@@ -53,6 +54,7 @@ import {
   DEAL_OFFERING_DOCUMENT_ACCEPT,
   DEAL_OFFERING_DOCUMENT_LIMITS_HINT,
   DEAL_OFFERING_DOCUMENT_TYPES_LABEL,
+  dealOfferingDocumentCountLimitMessage,
   dealOfferingDocumentRejectMessage,
   dealOfferingDocumentTooLargeMessage,
   isDealOfferingDocumentFile,
@@ -266,16 +268,30 @@ function sectionMatchesLabel(s: OfferingPreviewSection, label: string): boolean 
   )
 }
 
+type OfferingDocumentPickerResult = {
+  next: File[]
+  rejectedNames: string[]
+  oversizedNames: string[]
+  overCount: boolean
+}
+
 function appendOfferingDocumentFilesFromPicker(
   prev: File[],
   input: FileList | File[] | null | undefined,
-): { next: File[]; rejectedNames: string[]; error: string | null } {
+): OfferingDocumentPickerResult {
   const picked = input
     ? Array.isArray(input)
       ? input
       : Array.from(input)
     : []
-  if (picked.length === 0) return { next: prev, rejectedNames: [], error: null }
+  if (picked.length === 0) {
+    return {
+      next: prev,
+      rejectedNames: [],
+      oversizedNames: [],
+      overCount: false,
+    }
+  }
   const rejectedNames: string[] = []
   const oversizedNames: string[] = []
   const accepted: File[] = []
@@ -298,16 +314,67 @@ function appendOfferingDocumentFilesFromPicker(
     MAX_DEAL_OFFERING_DOCUMENT_FILES - prev.length,
   )
   const kept = accepted.slice(0, remaining)
-  const overCount = accepted.length > remaining
-  const error =
-    rejectedNames.length > 0
-      ? dealOfferingDocumentRejectMessage(rejectedNames)
-      : oversizedNames.length > 0
-        ? dealOfferingDocumentTooLargeMessage(oversizedNames[0]!)
-        : overCount
-          ? "Too many documents (max 50 per upload)."
-          : null
-  return { next: [...prev, ...kept], rejectedNames, error }
+  return {
+    next: [...prev, ...kept],
+    rejectedNames,
+    oversizedNames,
+    overCount: accepted.length > remaining,
+  }
+}
+
+function offeringDocumentSizeLimitAlert(names: string[]): string {
+  if (names.length === 1) {
+    return dealOfferingDocumentTooLargeMessage(names[0])
+  }
+  return `${names.length} files are larger than 100 MB. Each file must be 100 MB or smaller.`
+}
+
+function offeringDocumentCountLimitAlert(alreadySelected: number): string {
+  if (alreadySelected >= MAX_DEAL_OFFERING_DOCUMENT_FILES) {
+    return `You already selected ${MAX_DEAL_OFFERING_DOCUMENT_FILES} files. Remove some before adding more.`
+  }
+  return `${dealOfferingDocumentCountLimitMessage()} Extra files were not added.`
+}
+
+/** Toast + inline copy when the user exceeds type, size, or count limits. */
+function alertOfferingDocumentSelectionIssues(
+  result: OfferingDocumentPickerResult,
+  alreadySelected: number,
+): string | null {
+  let first: string | null = null
+  if (result.oversizedNames.length > 0) {
+    const description = offeringDocumentSizeLimitAlert(result.oversizedNames)
+    toast.error("File too large", description)
+    first ??= description
+  }
+  if (result.overCount) {
+    const description = offeringDocumentCountLimitAlert(alreadySelected)
+    toast.error("Upload limit exceeded", description)
+    first ??= description
+  }
+  if (result.rejectedNames.length > 0) {
+    const description = dealOfferingDocumentRejectMessage(result.rejectedNames)
+    toast.error("File type not supported", description)
+    first ??= description
+  }
+  return first
+}
+
+function toastDocumentUploadFailure(message: string): void {
+  const m = message.toLowerCase()
+  if (m.includes("100 mb") || m.includes("too large")) {
+    toast.error("File too large", message)
+    return
+  }
+  if (
+    m.includes("50 files") ||
+    m.includes("too many") ||
+    m.includes("upload limit")
+  ) {
+    toast.error("Upload limit exceeded", message)
+    return
+  }
+  toast.error("Upload failed", message)
 }
 
 function formatPdfFileSize(bytes: number): string {
@@ -1163,12 +1230,14 @@ export function DocumentsSection({
 
   const appendSectionFiles = useCallback(
     (incoming: FileList | File[] | null | undefined) => {
-      const { next, error } = appendOfferingDocumentFilesFromPicker(
+      const result = appendOfferingDocumentFilesFromPicker(
         sectionFiles,
         incoming,
       )
-      setSectionFiles(next)
-      setAddSectionError(error)
+      setSectionFiles(result.next)
+      setAddSectionError(
+        alertOfferingDocumentSelectionIssues(result, sectionFiles.length),
+      )
     },
     [sectionFiles],
   )
@@ -1214,6 +1283,7 @@ export function DocumentsSection({
               sectionFiles,
             )
             if (!up.ok) {
+              toastDocumentUploadFailure(up.message)
               setAddSectionError(up.message)
               return
             }
@@ -1251,9 +1321,10 @@ export function DocumentsSection({
               }
             })
           } catch (err) {
-            setAddSectionError(
-              err instanceof Error ? err.message : "Document upload failed.",
-            )
+            const failMessage =
+              err instanceof Error ? err.message : "Document upload failed."
+            toastDocumentUploadFailure(failMessage)
+            setAddSectionError(failMessage)
             return
           } finally {
             setDocumentUploadBusy(false)
@@ -1307,7 +1378,11 @@ export function DocumentsSection({
       if (files.length === 0) return "Select at least one document to upload."
       const nonAllowed = files.filter((f) => !isDealOfferingDocumentFile(f))
       if (nonAllowed.length > 0) {
-        return dealOfferingDocumentRejectMessage(nonAllowed.map((f) => f.name))
+        const message = dealOfferingDocumentRejectMessage(
+          nonAllowed.map((f) => f.name),
+        )
+        toast.error("File type not supported", message)
+        return message
       }
 
       const idTrim = dealIdTrim
@@ -1317,7 +1392,10 @@ export function DocumentsSection({
       setDocumentUploadBusy(true)
       try {
         const up = await postDealOfferingDocumentUploads(idTrim, files)
-        if (!up.ok) return up.message
+        if (!up.ok) {
+          toastDocumentUploadFailure(up.message)
+          return up.message
+        }
         if (up.newPaths.length !== files.length) {
           return "Upload did not return a path for each selected file."
         }
@@ -1386,7 +1464,10 @@ export function DocumentsSection({
         expandOnlySection(resolvedSectionId)
         return null
       } catch (err) {
-        return err instanceof Error ? err.message : "Document upload failed."
+        const failMessage =
+          err instanceof Error ? err.message : "Document upload failed."
+        toastDocumentUploadFailure(failMessage)
+        return failMessage
       } finally {
         setDocumentUploadBusy(false)
       }
@@ -1396,10 +1477,16 @@ export function DocumentsSection({
 
   const uploadFilesToDefaultSection = useCallback(
     async (files: File[]) => {
-      setQuickUploadError(null)
+      const result = appendOfferingDocumentFilesFromPicker([], files)
+      const selectionIssue = alertOfferingDocumentSelectionIssues(result, 0)
+      if (result.next.length === 0) {
+        setQuickUploadError(selectionIssue)
+        return
+      }
+      setQuickUploadError(selectionIssue)
       const err = await appendUploadedFilesToSection(
         DEFAULT_DOCUMENT_SECTION_ID,
-        files,
+        result.next,
       )
       if (err) setQuickUploadError(err)
     },
@@ -1465,12 +1552,14 @@ export function DocumentsSection({
 
   const appendUploadFiles = useCallback(
     (incoming: FileList | File[] | null | undefined) => {
-      const { next, error } = appendOfferingDocumentFilesFromPicker(
+      const result = appendOfferingDocumentFilesFromPicker(
         uploadFiles,
         incoming,
       )
-      setUploadFiles(next)
-      setUploadDocsError(error)
+      setUploadFiles(result.next)
+      setUploadDocsError(
+        alertOfferingDocumentSelectionIssues(result, uploadFiles.length),
+      )
     },
     [uploadFiles],
   )
@@ -1493,7 +1582,9 @@ export function DocumentsSection({
       e.preventDefault()
       void (async () => {
         if (uploadFiles.length === 0) {
-          setUploadDocsError("Upload at least one document.")
+          const message = "Upload at least one document."
+          toast.error("No files selected", message)
+          setUploadDocsError(message)
           return
         }
         const label = uploadTargetLabel.trim() || "Section"
@@ -2437,8 +2528,8 @@ export function DocumentsSection({
                                       individual investors, or <strong>All Investors</strong> to
                                       limit the LP portal. Sharing with a co-sponsor includes
                                       their investors only when that co-sponsor chose{" "}
-                                      <strong>No intercept</strong>. With{" "}
-                                      <strong>Yes intercept</strong>, the file stays with the
+                                      <strong>No interrupt</strong>. With{" "}
+                                      <strong>Yes interrupt</strong>, the file stays with the
                                       co-sponsor until they share it with their investors.
                                       Use the email icon to notify those recipients.
                                       If any of a co-sponsor’s investors are notified, that

@@ -1795,8 +1795,17 @@ export function dealOfferingDocumentRejectMessage(
   return `Only ${DEAL_OFFERING_DOCUMENT_TYPES_LABEL} files can be uploaded. Skipped: ${rejectedNames.join(", ")}.`
 }
 
-export function dealOfferingDocumentTooLargeMessage(fileName: string): string {
-  return `"${fileName}" is too large (max 100 MB each).`
+export function dealOfferingDocumentTooLargeMessage(
+  fileName?: string,
+): string {
+  if (fileName?.trim()) {
+    return `"${fileName.trim()}" is larger than 100 MB. Each file must be 100 MB or smaller.`
+  }
+  return "Each file must be 100 MB or smaller."
+}
+
+export function dealOfferingDocumentCountLimitMessage(): string {
+  return `You can upload up to ${MAX_DEAL_OFFERING_DOCUMENT_FILES} files at a time.`
 }
 
 /** Upload offering documents (Documents tab) so preview / investors get stable `/uploads/...` links. */
@@ -1815,7 +1824,7 @@ export async function postDealOfferingDocumentUploads(
   if (files.length > MAX_DEAL_OFFERING_DOCUMENT_FILES) {
     return {
       ok: false,
-      message: "Too many documents (max 50 per upload).",
+      message: dealOfferingDocumentCountLimitMessage(),
     }
   }
   const nonAllowed = files.filter((f) => !isDealOfferingDocumentFile(f))
@@ -3125,13 +3134,13 @@ export async function patchCoSponsorEmailIntercept(
     if (!res.ok) {
       return {
         ok: false,
-        message: data.message?.trim() || "Could not save intercept setting.",
+        message: data.message?.trim() || "Could not save interrupt setting.",
       }
     }
     const raw = String(data.intercept ?? intercept).trim().toLowerCase()
     return { ok: true, intercept: raw === "no" ? "no" : "yes" }
   } catch {
-    return { ok: false, message: "Could not save intercept setting." }
+    return { ok: false, message: "Could not save interrupt setting." }
   }
 }
 

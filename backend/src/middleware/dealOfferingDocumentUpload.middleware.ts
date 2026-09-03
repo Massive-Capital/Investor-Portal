@@ -20,11 +20,15 @@ const offeringDocumentUpload = multer({
 function handleMulterError(res: Response, err: unknown): void {
   const m = err as { code?: string; message?: string };
   if (m.code === "LIMIT_FILE_SIZE") {
-    res.status(400).json({ message: "Document too large (max 100 MB each)." });
+    res.status(400).json({
+      message: "Each file must be 100 MB or smaller.",
+    });
     return;
   }
   if (m.code === "LIMIT_FILE_COUNT") {
-    res.status(400).json({ message: "Too many documents (max 50 per request)." });
+    res.status(400).json({
+      message: "You can upload up to 50 files at a time.",
+    });
     return;
   }
   if (m.code) {

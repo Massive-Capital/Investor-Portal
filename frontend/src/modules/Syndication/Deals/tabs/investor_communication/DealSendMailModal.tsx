@@ -375,7 +375,7 @@ export function DealSendMailModal({
                   : viewerIsCosponsor
                     ? `${selectedRecipients.length} selected. This email goes only to your investors.`
                     : selectedReleaseCount > 0
-                      ? `${selectedRecipients.length} selected · ${selectedReleaseCount} held for co-sponsor (No intercept).`
+                      ? `${selectedRecipients.length} selected · ${selectedReleaseCount} held for co-sponsor (No interrupt).`
                       : `Sending to ${selectedRecipients.length} selected recipient${
                           selectedRecipients.length === 1 ? "" : "s"
                         } on this deal.`}

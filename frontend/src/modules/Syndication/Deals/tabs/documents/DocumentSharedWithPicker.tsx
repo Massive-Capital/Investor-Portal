@@ -576,7 +576,7 @@ export function DocumentSharedWithPicker(args: {
           </p>
           <p className="deal_docs_shared_with_menu_sub">
             Co-sponsor investors are included only when that co-sponsor chose No
-            intercept. Yes intercept keeps the file with the co-sponsor.
+            interrupt. Yes interrupt keeps the file with the co-sponsor.
           </p>
           {sponsorUserOptions.length === 0 ? (
             <p className="deal_docs_shared_with_menu_empty">
@@ -617,13 +617,13 @@ export function DocumentSharedWithPicker(args: {
                         </span>
                         {holds ? (
                           <span className="deal_docs_shared_with_menu_inv_email">
-                            You only (Yes intercept) — {lpCount} investor
+                            You only (Yes interrupt) — {lpCount} investor
                             {lpCount === 1 ? "" : "s"} not included
                           </span>
                         ) : includedCount > 0 ? (
                           <span className="deal_docs_shared_with_menu_inv_email">
                             You and {includedCount} investor
-                            {includedCount === 1 ? "" : "s"} (No intercept)
+                            {includedCount === 1 ? "" : "s"} (No interrupt)
                           </span>
                         ) : lpCount > 0 ? (
                           <span className="deal_docs_shared_with_menu_inv_email">

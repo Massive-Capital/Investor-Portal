@@ -46,12 +46,12 @@ export function CoSponsorEmailInterceptCard({
       setSaving(false)
       if (!result.ok) {
         setValue(previous)
-        toast.error("Could not save intercept", result.message)
+        toast.error("Could not save interrupt", result.message)
         return
       }
       setValue(result.intercept)
       toast.success(
-        "Intercept saved",
+        "Interrupt saved",
         result.intercept === "yes"
           ? "Lead-sponsor emails will go to you and your investors."
           : "Lead-sponsor emails will go to you only. You can later send the same template to your investors.",
@@ -78,15 +78,15 @@ export function CoSponsorEmailInterceptCard({
               : " deal_offering_cosponsor_intercept_badge_no"
           }`}
         >
-          {value === "yes" ? "No intercept" : "Yes intercept"}
+          {value === "yes" ? "No interrupt" : "Yes interrupt"}
         </span>
       </div>
       <p className="deal_offering_cosponsor_intercept_question" id={questionId}>
-        Do you want to intercept emails the lead sponsor sends for this deal?
+        Do you want to interrupt emails the lead sponsor sends for this deal?
       </p>
       <p className="deal_offering_cosponsor_intercept_help">
-        This setting applies only to you on this deal. No intercept sends
-        lead-sponsor emails to you and your investors. Yes intercept sends those
+        This setting applies only to you on this deal. No interrupt sends
+        lead-sponsor emails to you and your investors. Yes interrupt sends those
         emails to you only; you can later send the same template to your
         investors.
       </p>
@@ -104,7 +104,7 @@ export function CoSponsorEmailInterceptCard({
             disabled={saving}
             onChange={() => void onChange("yes")}
           />
-          <span>No intercept</span>
+          <span>No interrupt</span>
         </label>
         <label className="deal_offering_cosponsor_intercept_choice" htmlFor={noId}>
           <input
@@ -115,7 +115,7 @@ export function CoSponsorEmailInterceptCard({
             disabled={saving}
             onChange={() => void onChange("no")}
           />
-          <span>Yes intercept</span>
+          <span>Yes interrupt</span>
         </label>
       </div>
     </section>
