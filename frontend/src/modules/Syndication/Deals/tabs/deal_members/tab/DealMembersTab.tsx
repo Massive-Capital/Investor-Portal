@@ -143,7 +143,7 @@ const ROSTER_COPY: Record<
     searchAriaLabel: "Search general partners",
     addButton: "Add General Partner",
     empty:
-      "No general partners yet. Add a member with a General Partner, Lead Sponsor, Admin sponsor, or Co-sponsor role.",
+      "No general partners yet. Add a member with a Lead Sponsor, Admin sponsor, or Co-sponsor role.",
     loading: "Loading general partners…",
     loadingAria: "Loading general partners",
     exportTitle: "Export general partners",
@@ -838,13 +838,42 @@ export function DealMembersTab({
         // },
         {
           id: "committed",
-          header: "Committed",
+          header: (
+            <span className="deal_inv_th_investor_class_head deal_inv_th_commitment_head">
+              <span>Committed</span>
+              <FormTooltip
+                label="What this amount means"
+                content={
+                  <p className="deal_inv_class_tooltip_p">
+                    Same as General Partners → Investors added: the sum of
+                    Investors-tab Committed amounts on this deal for investors
+                    whose Sponsor name is this team member. Their own
+                    subscription is not included. Shown in USD.
+                  </p>
+                }
+                placement="bottom"
+                panelAlign="end"
+                openOnHover
+                nativeButtonTrigger={false}
+              />
+            </span>
+          ),
           align: "right",
           thClassName: "deals_th_align_right",
           sortValue: (row) =>
-            parseMoneyDigits(displayInvestorCommittedAmount(row)),
+            parseMoneyDigits(displayAddedInvestorsCommittedAmount(row)),
           tdClassName: "deal_inv_td_ellipsis deal_inv_td_committed um_td_numeric",
-          cell: (row) => <DealInvestorCommittedAmountCell row={row} />,
+          cell: (row) => {
+            if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return "—"
+            const text = displayAddedInvestorsCommittedAmount(row)
+            const display = String(text ?? "").trim()
+            if (!display || display === "—") return "—"
+            return (
+              <span className="deal_inv_ellipsis_text deal_inv_ellipsis_text_end">
+                <TableCompactAmountCell amount={display} />
+              </span>
+            )
+          },
         },
         {
           id: "signed",
@@ -1078,6 +1107,10 @@ export function DealMembersTab({
                   row.investorClass,
                   investorClasses,
                 ) || row.investorClass,
+              committed: displayAddedInvestorsCommittedAmount(row),
+              commitmentAmountRaw: "",
+              extraContributionAmounts: [],
+              fundApprovedCommitmentSnapshot: undefined,
             })),
             gpClassNamesLine,
           )

@@ -96,6 +96,8 @@ import investingProfileBookRoutes from "./routes/investingProfileBook.routes.js"
 
 import platformRoutes from "./routes/platformRoutes.routes.js";
 
+import feedbackRoutes from "./routes/feedback.routes.js";
+
 import ghlRoutes from "./routes/ghl.routes.js";
 
 import billingRoutes from "./routes/billing.routes.js";
@@ -370,6 +372,8 @@ app.use("/api/v1", [
   investmentSignatureRoutes,
 
   platformRoutes,
+
+  feedbackRoutes,
 
   ghlRoutes,
 

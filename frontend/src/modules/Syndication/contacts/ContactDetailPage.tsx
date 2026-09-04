@@ -68,7 +68,7 @@ const ACTIVITY_FILTERS: ReadonlyArray<{
   { id: "pipelines", label: "Pipelines" },
   { id: "automations", label: "Automations" },
   { id: "tasks", label: "Tasks" },
-  { id: "meetings", label: "Meetings", isNew: true },
+  { id: "meetings", label: "Meetings" },
   { id: "texts", label: "Texts" },
 ]
 
@@ -513,14 +513,14 @@ function ContactDetailPage() {
               </div>
             </TabsScrollStrip>
           </div>
-          <a
+          {/* <a
             className="cd_demo_link"
             href="https://www.cashflowportal.com"
             target="_blank"
             rel="noreferrer"
           >
             Schedule a demo
-          </a>
+          </a> */}
         </div>
 
         {mainTab === "activities" ? (

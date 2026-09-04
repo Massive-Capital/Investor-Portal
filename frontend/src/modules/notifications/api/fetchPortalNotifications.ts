@@ -1,5 +1,6 @@
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import {
+  canAccessFeedback,
   getLpInvestorDealIdsFromSession,
   isLpInvestorSessionUser,
   isPlatformAdmin,
@@ -49,6 +50,9 @@ import {
   filterInvestorOfferingDocumentSectionGroups,
   listInvestmentDetailDocumentSectionGroups,
 } from "@/modules/Investing/pages/investments/utils/investmentDetailDocuments"
+import { fetchMyFeedbackAlerts } from "@/modules/feedback"
+import { feedbackLocationLabel } from "@/modules/feedback/feedbackLocation"
+import type { FeedbackAlertKind, FeedbackItem } from "@/modules/feedback/types"
 import type { PortalNotification } from "../types/notification.types"
 import { mapWithConcurrency } from "../utils/mapWithConcurrency"
 import {
@@ -639,11 +643,91 @@ function viewerHasLpNotificationScope(): boolean {
   return getLpInvestorDealIdsFromSession().length > 0
 }
 
+function feedbackViewHref(id: string): string {
+  return `/feedback?view=${encodeURIComponent(id)}`
+}
+
+function feedbackAlertKinds(item: FeedbackItem): FeedbackAlertKind[] {
+  if (item.alertKinds?.length) return item.alertKinds
+  const kinds: FeedbackAlertKind[] = []
+  if (item.viewerIsSubmitter && item.status === "Reviewed") {
+    kinds.push("submitter_reviewed")
+  }
+  if (item.viewerIsSubmitter && item.status === "Resolved") {
+    kinds.push("submitter_resolved")
+  }
+  return kinds
+}
+
+async function collectFeedbackReviewNotifications(
+  out: NotificationDraft[],
+): Promise<void> {
+  if (!canAccessFeedback()) return
+  const items = await fetchMyFeedbackAlerts()
+  for (const item of items) {
+    const location = feedbackLocationLabel(item)
+    const who = item.username.trim() || item.userEmail.trim() || "a user"
+    const href = feedbackViewHref(item.id)
+    for (const kind of feedbackAlertKinds(item)) {
+      if (kind === "submitter_reviewed") {
+        out.push({
+          id: `feedback-reviewed:${item.id}`,
+          title: "Feedback Reviewed",
+          message: `Your feedback regarding ${location} has been reviewed by the Platform Admin.`,
+          category: "system",
+          createdAt: isoOrNow(item.reviewedAt ?? item.createdAt),
+          href,
+          actionLabel: "View feedback",
+        })
+      }
+      if (kind === "submitter_resolved") {
+        const response = item.adminResponse?.trim()
+        out.push({
+          id: `feedback-resolved:${item.id}`,
+          title: "Feedback Resolved",
+          message: response
+            ? `Your feedback regarding ${location} has been resolved. Review Comments: ${response}`
+            : `Your feedback regarding ${location} has been resolved.`,
+          category: "system",
+          createdAt: isoOrNow(item.resolvedAt ?? item.reviewedAt ?? item.createdAt),
+          href,
+          actionLabel: "View feedback",
+        })
+      }
+      if (kind === "admin_new") {
+        out.push({
+          id: `feedback-new:${item.id}`,
+          title: "New Feedback Received",
+          message: `${who} submitted feedback for ${location}.`,
+          category: "system",
+          createdAt: isoOrNow(item.createdAt),
+          href,
+          actionLabel: "View feedback",
+        })
+      }
+      if (kind === "admin_updated") {
+        out.push({
+          id: `feedback-admin-updated:${item.id}:${item.status.toLowerCase()}`,
+          title: "Feedback Updated",
+          message: `Feedback submitted by ${who} has been marked as ${item.status}.`,
+          category: "system",
+          createdAt: isoOrNow(
+            item.resolvedAt ?? item.reviewedAt ?? item.createdAt,
+          ),
+          href,
+          actionLabel: "View feedback",
+        })
+      }
+    }
+  }
+}
+
 export async function fetchPortalNotifications(): Promise<NotificationDraft[]> {
   const out: NotificationDraft[] = []
   const isLpOnly = isLpInvestorSessionUser()
 
   await collectDealInvitationNotifications(out)
+  await collectFeedbackReviewNotifications(out)
 
   if (isLpOnly) {
     await Promise.all([

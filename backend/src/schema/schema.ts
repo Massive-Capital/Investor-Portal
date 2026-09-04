@@ -137,3 +137,18 @@ export {
   type PlatformSignupNotificationInsert,
   type PlatformSignupNotificationRow,
 } from "./platformSignupNotification.schema.js";
+export {
+  userFeedback,
+  feedbackPageCatalog,
+  FEEDBACK_STATUS_PENDING,
+  FEEDBACK_STATUS_REVIEWED,
+  FEEDBACK_STATUS_RESOLVED,
+  FEEDBACK_SUB_PAGE_OTHER_KEY,
+  FEEDBACK_SUB_PAGE_OTHER_LABEL,
+  type FeedbackStatus,
+  type FeedbackReviewAction,
+  type FeedbackSubPageOption,
+  type UserFeedbackRow,
+  type UserFeedbackInsert,
+  type FeedbackPageCatalogRow,
+} from "./feedback.schema.js";

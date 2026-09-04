@@ -60,6 +60,7 @@ import {
 import { getApiV1Base } from "../../../../../../common/utils/apiBaseUrl"
 import { MEMBER_SELECT_OPTIONS } from "../../../constants/member-options"
 import {
+  DEAL_MEMBER_ROLE_VALUE,
   DEAL_MEMBERS_TAB_ROLE_VALUES,
   GENERAL_PARTNER_ROLE_LABEL,
   GENERAL_PARTNER_ROLE_VALUE,
@@ -468,7 +469,9 @@ export function AddInvestmentModal({
             ]
           : INVESTOR_ROLE_SELECT_OPTIONS.filter(
               (o) =>
-                !o.value || DEAL_MEMBERS_TAB_ROLE_VALUES.has(o.value),
+                (!o.value || DEAL_MEMBERS_TAB_ROLE_VALUES.has(o.value)) &&
+                (o.value !== DEAL_MEMBER_ROLE_VALUE ||
+                  form.investorRole === DEAL_MEMBER_ROLE_VALUE),
             ).map((o) => ({
               value: o.value,
               label: o.label,
@@ -481,6 +484,7 @@ export function AddInvestmentModal({
     [
       isInvestorEntry,
       isGpEntry,
+      form.investorRole,
       leadSponsorOptionDisabled,
       adminCoBlockedForSelectedContact,
     ],

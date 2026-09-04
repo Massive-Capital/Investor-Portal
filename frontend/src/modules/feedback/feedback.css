@@ -1,0 +1,231 @@
+.feedback_page {
+  min-width: 0;
+}
+
+.feedback_header_actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.feedback_user_lead {
+  margin: 0 0 1em;
+  max-width: 40rem;
+  color: var(--font-color-muted, #64748b);
+  line-height: 1.45;
+}
+
+.feedback_form_modal,
+.feedback_catalog_modal,
+.feedback_details_modal {
+  width: min(36rem, 100%);
+}
+
+.feedback_details_modal {
+  width: min(40rem, 100%);
+  max-height: min(90vh, 52rem);
+  overflow: auto;
+}
+
+.feedback_readonly_grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.feedback_readonly_grid dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--font-color-muted, #64748b);
+}
+
+.feedback_readonly_grid dd {
+  margin: 0.2rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.feedback_readonly_text {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: var(--ui-button-border-radius, 4px);
+  background: color-mix(in srgb, var(--portal-border, #e2e8f0) 28%, var(--portal-surface, #fff));
+  font-weight: 400;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.feedback_review_actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.feedback_catalog_modal {
+  width: min(44rem, 100%);
+  max-height: min(90vh, 48rem);
+  overflow: auto;
+}
+
+.feedback_form,
+.feedback_catalog_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0 0.15rem 0.25rem;
+}
+
+.feedback_field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--font-color-title, #1b1b1d);
+}
+
+.feedback_other_input,
+.feedback_textarea {
+  width: 100%;
+  min-height: 8rem;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--portal-border, #cbd5e1);
+  border-radius: var(--ui-button-border-radius, 4px);
+  background: var(--portal-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+
+.feedback_other_input {
+  min-height: 2.25rem;
+  height: 2.25rem;
+  resize: none;
+}
+
+.feedback_other_input:focus,
+.feedback_textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--portal-focus, #2563eb) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.feedback_form_error {
+  margin: 0 0 0.75rem;
+  padding: 0.55em 0.7em;
+  border-radius: 4px;
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+.feedback_spin {
+  animation: feedback_spin 0.8s linear infinite;
+}
+
+@keyframes feedback_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.feedback_tab_count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4em;
+  padding: 0.05em 0.4em;
+  margin-left: 0.15em;
+  border-radius: 999px;
+  font-size: 0.75em;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--font-color-title, #1b1b1d) 10%, transparent);
+}
+
+.feedback_desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 22rem;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.feedback_review_btn {
+  min-height: 2rem;
+  height: 2rem;
+  padding: 0 0.85em;
+  font-size: 0.8125rem;
+}
+
+.feedback_row_actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.feedback_catalog_lead {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--font-color-muted, #64748b);
+}
+
+.feedback_catalog_page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--portal-border, #e2e8f0);
+  border-radius: 8px;
+}
+
+.feedback_catalog_page_head,
+.feedback_catalog_tabs li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.feedback_catalog_tabs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.feedback_catalog_input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2.15rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--portal-border, #cbd5e1);
+  border-radius: 4px;
+  background: var(--portal-surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.feedback_icon_btn {
+  min-width: 2.15rem;
+  padding: 0 0.5em;
+}
+
+.feedback_empty {
+  margin: 0.5rem 0;
+  color: var(--font-color-muted, #64748b);
+}
+
+:root[data-theme="dark"] .feedback_form_error {
+  background: color-mix(in srgb, #f87171 16%, transparent);
+  color: #fecaca;
+}

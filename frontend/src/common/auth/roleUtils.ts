@@ -154,6 +154,25 @@ export function isDealSponsorSessionUser(): boolean {
 }
 
 /**
+ * Feedback nav + submit page: company admin, company member, and deal
+ * Lead / Admin / Co-sponsor. Platform admin keeps access to review.
+ * LP-only investors do not see Feedback.
+ */
+export function canAccessFeedback(): boolean {
+  if (isPlatformAdmin()) return true;
+  if (isLpInvestorSessionUser()) return false;
+  if (isDealSponsorSessionUser()) return true;
+  const r = getStoredUserRole();
+  return r === COMPANY_ADMIN || r === COMPANY_USER || r === PLATFORM_USER;
+}
+
+/** Lead / Admin / Co-sponsor may edit their own feedback while it is still Pending. */
+export function canEditOwnPendingFeedback(): boolean {
+  if (isPlatformAdmin()) return false;
+  return isDealSponsorSessionUser();
+}
+
+/**
  * Company admin / company member who switched into Investing — they still see
  * workspace deals (Contacts Visibility applies on the API).
  * Lead / Admin / Co-sponsor use investor deal scope instead.

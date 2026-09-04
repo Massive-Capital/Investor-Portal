@@ -1231,6 +1231,25 @@ export async function postDealOfferingGalleryUploads(
       return;
     }
     if (await sendDealSaasLockIfNeeded(res, visible, scope)) return;
+    /** Keep in sync with frontend `ASSET_MAX_IMAGE_COUNT`. */
+    const ASSET_MAX_IMAGE_COUNT = 10;
+    const alreadyOnDeal = (
+      visible.assetImagePath?.split(";").filter(Boolean) ?? []
+    ).length;
+    if (alreadyOnDeal >= ASSET_MAX_IMAGE_COUNT) {
+      res.status(400).json({
+        message:
+          "Each asset can have up to 10 images. Remove one or more to add more.",
+      });
+      return;
+    }
+    if (alreadyOnDeal + fileList.length > ASSET_MAX_IMAGE_COUNT) {
+      const left = ASSET_MAX_IMAGE_COUNT - alreadyOnDeal;
+      res.status(400).json({
+        message: `Each asset can have up to 10 images. You can add ${left} more.`,
+      });
+      return;
+    }
     const newPaths = await saveDealAssetFiles({
       files: fileList,
       dealId,

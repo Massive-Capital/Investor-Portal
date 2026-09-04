@@ -7,6 +7,7 @@ import { LpInvestorShellGuard } from "@/modules/Investing";
 import { RequireAuth } from "./common/auth/RequireAuth";
 import {
   canAccessCompanyPage,
+  canAccessFeedback,
   isDealSponsorSessionUser,
   isLpInvestorSessionUser,
   isPlatformAdmin,
@@ -72,6 +73,7 @@ import { CompanyOverview } from "./modules/Investing/pages/company_overview/Comp
 import Landing_Page from "./modules/Landing_Page/Landing_Page";
 import ClassicLandingPage from "./modules/Landing_Page/pages/ClassicLandingPage";
 import { NotificationsPage } from "@/modules/notifications";
+import { FeedbackPage } from "@/modules/feedback";
 
 type PlaceholderPageProps = {
   title: string;
@@ -127,6 +129,13 @@ function CustomersRoute() {
     return <Navigate to="/settings" replace />;
   }
   return <CompanyPage variant="customers" />;
+}
+
+function FeedbackRoute() {
+  const token = sessionStorage.getItem(SESSION_BEARER_KEY);
+  if (!token) return <Navigate to="/signin" replace />;
+  if (!canAccessFeedback()) return <Navigate to="/dashboard" replace />;
+  return <FeedbackPage />;
 }
 
 function MetricsRoute() {
@@ -267,14 +276,9 @@ function App() {
             />
             <Route
               path="investing/feedback"
-              element={
-                <WorkInProgressPage
-                  title="Feedback"
-                  backTo="/dashboard"
-                  backLabel="Dashboard"
-                />
-              }
+              element={<Navigate to="/feedback" replace />}
             />
+            <Route path="feedback" element={<FeedbackRoute />} />
             <Route
               path="investing/cashflows"
               element={<InvestorCashflowsPage />}

@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { FEEDBACK_PENDING_CHANGED_EVENT } from "@/modules/feedback/api/feedbackApi"
 import { fetchPortalNotifications } from "../api/fetchPortalNotifications"
 import type { PortalNotification } from "../types/notification.types"
 import {
@@ -63,8 +64,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     function onFocus() {
       void refresh()
     }
+    function onFeedbackChanged() {
+      void refresh()
+    }
     window.addEventListener("focus", onFocus)
-    return () => window.removeEventListener("focus", onFocus)
+    window.addEventListener(FEEDBACK_PENDING_CHANGED_EVENT, onFeedbackChanged)
+    return () => {
+      window.removeEventListener("focus", onFocus)
+      window.removeEventListener(
+        FEEDBACK_PENDING_CHANGED_EVENT,
+        onFeedbackChanged,
+      )
+    }
   }, [refresh])
 
   const unreadCount = useMemo(

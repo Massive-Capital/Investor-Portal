@@ -76,6 +76,15 @@ import {
 import "../deals-create.css"
 import "../deals-list.css"
 
+function segmentsFromAssetImagePath(path: string | null | undefined): string[] {
+  return dedupeStoredImagePathSegments(
+    String(path ?? "")
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+}
+
 function isDealStepRequiredDataFilled(deal: DealStepDraft): boolean {
   const name = deal.dealName.trim()
   if (!name || name.toLowerCase() === AUTOSAVE_DEFAULT_DEAL_NAME.toLowerCase()) {
@@ -138,8 +147,8 @@ export function CreateDealPage() {
   const [assetDraft, setAssetDraft] = useState(emptyAssetStepDraft)
   const [assetImages, setAssetImages] = useState<File[]>([])
   /**
-   * Edit deal (`?edit=id`): upload-relative segments for property images still on the deal.
-   * Drives thumbnails + `retained_asset_image_path` on PUT so removals persist.
+   * Saved property-image path segments (edit deal and in-progress create).
+   * Drives thumbnails, the 10-image cap, and `retained_asset_image_path` on PUT.
    */
   const [retainedPropertyImagePaths, setRetainedPropertyImagePaths] = useState<
     string[]
@@ -183,6 +192,9 @@ export function CreateDealPage() {
   const backendAutosaveInFlightRef = useRef(false)
   const galleryUploadInFlightRef = useRef(false)
   const uploadedImageKeysRef = useRef<Set<string>>(new Set())
+  const lastImageUploadErrorRef = useRef<string | null>(null)
+  const galleryHydratedForDealRef = useRef<string | null>(null)
+  const retainedPropertyImagePathsRef = useRef<string[]>([])
   const assetImagesRef = useRef<File[]>([])
   const backendAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -235,7 +247,10 @@ export function CreateDealPage() {
         setBackendDealId(null)
         backendDealIdRef.current = null
       }
+      setAssetImages([])
       setRetainedPropertyImagePaths([])
+      uploadedImageKeysRef.current = new Set()
+      galleryHydratedForDealRef.current = null
       return
     }
     skipOverwriteEmptySessionDraftRef.current = true
@@ -247,6 +262,7 @@ export function CreateDealPage() {
     setAssetImages([])
     setRetainedPropertyImagePaths([])
     uploadedImageKeysRef.current = new Set()
+    galleryHydratedForDealRef.current = null
   }, [editDealId, resumeDraft])
 
   useEffect(() => {
@@ -278,12 +294,7 @@ export function CreateDealPage() {
         setAssetDraft(asset)
         setAssetImages([])
         uploadedImageKeysRef.current = new Set()
-        const segs = dedupeStoredImagePathSegments(
-          detail.assetImagePath
-            ?.split(";")
-            .map((s: string) => s.trim())
-            .filter(Boolean) ?? [],
-        )
+        const segs = segmentsFromAssetImagePath(detail.assetImagePath)
         setRetainedPropertyImagePaths(segs)
         setStep(mergedStep)
         setInitialDealStageCanonical(formDealStageToCanonical(detail.dealStage))
@@ -312,6 +323,34 @@ export function CreateDealPage() {
     }
   }, [editDealId, navigate, postSavePath])
 
+  /** Resume / in-progress create: count images already on the server toward the 10-image cap. */
+  useEffect(() => {
+    if (editDealId) return
+    const id = backendDealId?.trim()
+    if (!id) {
+      galleryHydratedForDealRef.current = null
+      return
+    }
+    if (galleryHydratedForDealRef.current === id) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const detail = await fetchDealById(id)
+        if (cancelled) return
+        const segs = segmentsFromAssetImagePath(detail.assetImagePath)
+        galleryHydratedForDealRef.current = id
+        setRetainedPropertyImagePaths((prev) =>
+          dedupeStoredImagePathSegments([...segs, ...prev]),
+        )
+      } catch {
+        /* Keep local thumbnails if the deal cannot be loaded yet. */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [editDealId, backendDealId])
+
   useEffect(() => {
     if (stepScrollBootRef.current) {
       stepScrollBootRef.current = false
@@ -322,6 +361,7 @@ export function CreateDealPage() {
 
   backendDealIdRef.current = backendDealId
   assetImagesRef.current = assetImages
+  retainedPropertyImagePathsRef.current = retainedPropertyImagePaths
 
   const existingPropertyImageUrls = useMemo(
     () =>
@@ -330,6 +370,14 @@ export function CreateDealPage() {
         : assetImagePathsToUrls(retainedPropertyImagePaths.join(";")),
     [retainedPropertyImagePaths],
   )
+
+  useEffect(() => {
+    const room = Math.max(
+      0,
+      ASSET_MAX_IMAGE_COUNT - retainedPropertyImagePaths.length,
+    )
+    setAssetImages((prev) => (prev.length <= room ? prev : prev.slice(0, room)))
+  }, [retainedPropertyImagePaths])
 
   latestCreateDealDraftRef.current = {
     deal: dealDraft,
@@ -397,20 +445,12 @@ export function CreateDealPage() {
 
       galleryUploadInFlightRef.current = true
       const claimKeys = new Set(pending.map(dealImageFileKey))
-      setAssetImages((prev) =>
-        prev.filter((f) => !claimKeys.has(dealImageFileKey(f))),
-      )
-      assetImagesRef.current = assetImagesRef.current.filter(
-        (f) => !claimKeys.has(dealImageFileKey(f)),
-      )
 
       try {
         let materialized: File[]
         try {
           materialized = await materializeDealImageFiles(pending)
         } catch (e) {
-          setAssetImages((prev) => [...prev, ...pending])
-          assetImagesRef.current = [...assetImagesRef.current, ...pending]
           const message =
             e instanceof Error && e.message
               ? e.message
@@ -419,18 +459,28 @@ export function CreateDealPage() {
         }
         const up = await postDealOfferingGalleryUploads(dealId, materialized)
         if (!up.ok) {
-          setAssetImages((prev) => [...prev, ...pending])
-          assetImagesRef.current = [...assetImagesRef.current, ...pending]
           return up
         }
+        lastImageUploadErrorRef.current = null
         for (const f of pending) {
           uploadedImageKeysRef.current.add(dealImageFileKey(f))
         }
-        if (up.newPaths.length > 0) {
-          setRetainedPropertyImagePaths((prev) =>
-            dedupeStoredImagePathSegments([...prev, ...up.newPaths]),
-          )
-        }
+        const fromDeal = segmentsFromAssetImagePath(up.deal.assetImagePath)
+        const segs =
+          fromDeal.length > 0
+            ? fromDeal
+            : dedupeStoredImagePathSegments([
+                ...retainedPropertyImagePathsRef.current,
+                ...up.newPaths,
+              ])
+        setRetainedPropertyImagePaths(segs)
+        const room = Math.max(0, ASSET_MAX_IMAGE_COUNT - segs.length)
+        const keepPending = (files: File[]) =>
+          files
+            .filter((f) => !claimKeys.has(dealImageFileKey(f)))
+            .slice(0, room)
+        setAssetImages((prev) => keepPending(prev))
+        assetImagesRef.current = keepPending(assetImagesRef.current)
         return { ok: true, newPaths: up.newPaths }
       } finally {
         galleryUploadInFlightRef.current = false
@@ -494,9 +544,10 @@ export function CreateDealPage() {
         const persistedId = editDealId ?? backendDealIdRef.current
         const { deal, asset, step: st } = latestCreateDealDraftRef.current
         const imgsSnapshot = [...assetImagesRef.current]
-        const imageOpts = editDealId
-          ? { retainedAssetImagePath: retainedPropertyImagePaths }
-          : undefined
+        const imageOpts =
+          editDealId || retainedPropertyImagePathsRef.current.length > 0
+            ? { retainedAssetImagePath: retainedPropertyImagePathsRef.current }
+            : undefined
 
         if (!editDealId) {
           const draftCheck: CreateDealFormDraft = {
@@ -544,10 +595,14 @@ export function CreateDealPage() {
                     backendDealId: recreate.dealId,
                   })
                   notifyDealsListRefetch()
-                  await uploadPendingDealGalleryImages(
+                  const up = await uploadPendingDealGalleryImages(
                     recreate.dealId,
                     imgsSnapshot,
                   )
+                  if (!up.ok && lastImageUploadErrorRef.current !== up.message) {
+                    lastImageUploadErrorRef.current = up.message
+                    toast.error("Could not upload image", up.message)
+                  }
                 } else if (import.meta.env.DEV) {
                   console.warn(
                     "[Create deal] Autosave recreate failed:",
@@ -562,8 +617,14 @@ export function CreateDealPage() {
                 persistedId,
                 imgsSnapshot,
               )
-              if (!up.ok && import.meta.env.DEV) {
-                console.warn("[Create deal] Image upload failed:", up.message)
+              if (!up.ok) {
+                if (lastImageUploadErrorRef.current !== up.message) {
+                  lastImageUploadErrorRef.current = up.message
+                  toast.error("Could not upload image", up.message)
+                }
+                if (import.meta.env.DEV) {
+                  console.warn("[Create deal] Image upload failed:", up.message)
+                }
               }
             }
             /* Intentionally no notifyDealsListRefetch on PUT — refetching the whole
@@ -594,10 +655,14 @@ export function CreateDealPage() {
                   step: st,
                   backendDealId: result.dealId,
                 })
-                await uploadPendingDealGalleryImages(
+                const up = await uploadPendingDealGalleryImages(
                   result.dealId,
                   imgsSnapshot,
                 )
+                if (!up.ok && lastImageUploadErrorRef.current !== up.message) {
+                  lastImageUploadErrorRef.current = up.message
+                  toast.error("Could not upload image", up.message)
+                }
               }
             notifyDealsListRefetch()
           } else if (import.meta.env.DEV)
@@ -945,7 +1010,7 @@ export function CreateDealPage() {
         dealDraft,
         assetDraft,
         [],
-        editDealId
+        editDealId || retainedPropertyImagePaths.length > 0
           ? { retainedAssetImagePath: retainedPropertyImagePaths }
           : undefined,
       )
@@ -1185,16 +1250,11 @@ export function CreateDealPage() {
                 imageFiles={assetImages}
                 onChange={patchAsset}
                 onImageFilesChange={setAssetImages}
-                existingImageUrls={
-                  editDealId ? existingPropertyImageUrls : undefined
-                }
-                onRemoveExistingImage={
-                  editDealId
-                    ? (i: number) =>
-                        setRetainedPropertyImagePaths((prev) =>
-                          prev.filter((_, j: number) => j !== i),
-                        )
-                    : undefined
+                existingImageUrls={existingPropertyImageUrls}
+                onRemoveExistingImage={(i: number) =>
+                  setRetainedPropertyImagePaths((prev) =>
+                    prev.filter((_, j: number) => j !== i),
+                  )
                 }
               />
             )}
