@@ -43,7 +43,7 @@ export function dealSaasBillingSettingsPath(
 export async function resolveUnpaidLeadSponsorPricingPath(): Promise<
   string | null
 > {
-  if (isPlatformAdmin() || isLpInvestorSessionUser()) return null
+  if (isLpInvestorSessionUser()) return null
   const companyId = getSessionOrganizationCompanyId()?.trim() ?? ""
   if (!companyId) return null
   const result = await fetchCompanyBillingDeals(companyId)
@@ -91,7 +91,7 @@ function periodEndHasPassed(iso: string | null | undefined): boolean {
 /** True when the syndicating workspace must pay MRR before view/edit. */
 export function isDealListRowSaasLocked(row: DealListRow): boolean {
   if (!row?.id || row.id === CREATE_DEAL_DRAFT_ROW_ID) return false
-  if (isPlatformAdmin()) return false
+  if (isPlatformAdmin() && row.viewerIsLeadSponsor !== true) return false
   const status = String(row.billingSubscriptionStatus ?? "").trim().toLowerCase()
   if (status === "active" || status === "trialing") return false
   // Server evaluation is the source of truth (past due can still have a

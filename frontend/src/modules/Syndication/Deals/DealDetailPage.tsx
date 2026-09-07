@@ -451,7 +451,7 @@ export function DealDetailPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          if (mode !== "investing" && isDealSaasPaymentRequiredError(err)) {
+          if (isDealSaasPaymentRequiredError(err)) {
             setSaasPaywallDeal({
               ...err.payload,
               id: err.payload.id || id,

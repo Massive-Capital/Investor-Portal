@@ -353,6 +353,29 @@ export async function getPlatformSaasBillingStartsAtIso(): Promise<
  * After that date, unpaid / past-due / expired MRR locks view and edit.
  * Draft, archived, and liquidated are free. Stripe unset → no gate.
  */
+export async function evaluateDealSaasWorkspaceAccessRefreshing(
+  row: AddDealFormRow,
+): Promise<{ row: AddDealFormRow; access: DealSaasAccessEvaluation }> {
+  if (!row.saasBillingStartsAt) {
+    void ensureDealSaasComplimentaryPeriod(row).catch((err) => {
+      console.warn("ensureDealSaasComplimentaryPeriod:", row.id, err);
+    });
+  }
+  let access = evaluateDealSaasWorkspaceAccess(row);
+  if (access.locked && row.stripeSubscriptionId?.trim()) {
+    try {
+      const fresh = await refreshDealSaasSubscriptionFromStripe(row);
+      if (fresh) {
+        row = fresh;
+        access = evaluateDealSaasWorkspaceAccess(fresh);
+      }
+    } catch (err) {
+      console.warn("evaluateDealSaasWorkspaceAccessRefreshing:", row.id, err);
+    }
+  }
+  return { row, access };
+}
+
 export function evaluateDealSaasWorkspaceAccess(
   row: Pick<
     AddDealFormRow,
@@ -401,6 +424,19 @@ export function dealSaasPaymentRequiredMessage(
   return `Pay monthly SaaS (MRR) for ${label} to continue.`;
 }
 
+export async function dealSaasLockHttpPayload(
+  row: AddDealFormRow,
+  extras?: { viewerIsLeadSponsor?: boolean },
+): Promise<DealSaasPaymentRequiredPayload | null> {
+  const evaluated = await evaluateDealSaasWorkspaceAccessRefreshing(row);
+  if (!evaluated.access.locked) return null;
+  return dealSaasPaymentRequiredPayload(
+    evaluated.row,
+    evaluated.access,
+    extras,
+  );
+}
+
 export function dealSaasPaymentRequiredPayload(
   row: AddDealFormRow,
   access?: DealSaasAccessEvaluation,
@@ -433,7 +469,7 @@ function nextBillingDateForList(
     | "saasBillingStartsAt"
   >,
 ): string | null {
-  if (!isDealSaasBillable(row)) return periodEndIso(row);
+  if (!isDealSaasBillable(row)) return null;
   const status = String(row.stripeSubscriptionStatus ?? "none").toLowerCase();
   const activelyBilled =
     dealIsActivelyBilled(row) ||
@@ -564,6 +600,22 @@ export async function applyStripeSubscriptionToDeal(
 ): Promise<void> {
   const id = normalizeDealId(dealId);
   if (!id) return;
+  const [deal] = await db
+    .select({
+      archived: addDealForm.archived,
+      dealStage: addDealForm.dealStage,
+    })
+    .from(addDealForm)
+    .where(eq(addDealForm.id, id))
+    .limit(1);
+  if (deal && !isDealSaasBillable(deal)) {
+    const status = String(sub.status ?? "").toLowerCase();
+    if (status !== "canceled" && status !== "incomplete_expired") {
+      await cancelStripeSubscriptionQuietly(sub.id);
+    }
+    await clearDealSaasSubscription(id);
+    return;
+  }
   const fresh = await subscriptionWithPeriodFields(sub);
   const mapped = planCycleSeatFromSubscription(fresh);
   const status = String(fresh.status ?? "none");
@@ -630,11 +682,27 @@ export async function refreshDealSaasSubscriptionFromStripe(
 ): Promise<AddDealFormRow | null> {
   const id = normalizeDealId(String(deal.id));
   const subId = deal.stripeSubscriptionId?.trim() ?? "";
-  if (!id || !subId || !getStripeConfig()) {
-    const [row] = id
-      ? await db.select().from(addDealForm).where(eq(addDealForm.id, id)).limit(1)
-      : [];
-    return row ?? null;
+  if (!id) return null;
+  const [current] = await db
+    .select()
+    .from(addDealForm)
+    .where(eq(addDealForm.id, id))
+    .limit(1);
+  if (!current) return null;
+  if (!isDealSaasBillable(current)) {
+    if (subId) {
+      await cancelStripeSubscriptionQuietly(subId);
+      await clearDealSaasSubscription(id);
+    }
+    const [cleared] = await db
+      .select()
+      .from(addDealForm)
+      .where(eq(addDealForm.id, id))
+      .limit(1);
+    return cleared ?? current;
+  }
+  if (!subId || !getStripeConfig()) {
+    return current;
   }
   try {
     const sub = await getStripeClient().subscriptions.retrieve(subId, {
@@ -666,12 +734,21 @@ export async function refreshDealSaasSubscriptionsFromStripe(
   const deals = await db
     .select({
       id: addDealForm.id,
+      archived: addDealForm.archived,
+      dealStage: addDealForm.dealStage,
       stripeSubscriptionId: addDealForm.stripeSubscriptionId,
     })
     .from(addDealForm)
     .where(eq(addDealForm.organizationId, cid));
   for (const deal of deals) {
     const subId = deal.stripeSubscriptionId?.trim() ?? "";
+    if (!isDealSaasBillable(deal)) {
+      if (subId) {
+        await cancelStripeSubscriptionQuietly(subId);
+        await clearDealSaasSubscription(String(deal.id));
+      }
+      continue;
+    }
     if (!subId) continue;
     try {
       const sub = await stripe.subscriptions.retrieve(subId, {
@@ -1056,13 +1133,13 @@ export async function upgradeDealStripeSubscription(params: {
 
 /**
  * Start, stop, or realign this deal's SaaS subscription.
- * No-ops when Stripe is unset or the company has no customer / payment method.
+ * Archived / draft / liquidated deals drop MRR even when Stripe is unset.
  */
 export async function syncDealSaasBillingForDeal(
   dealId: string,
 ): Promise<void> {
   const id = normalizeDealId(dealId);
-  if (!id || !getStripeConfig()) return;
+  if (!id) return;
   const [deal] = await db
     .select()
     .from(addDealForm)
@@ -1074,14 +1151,20 @@ export async function syncDealSaasBillingForDeal(
     if (deal.stripeSubscriptionId?.trim()) {
       await cancelStripeSubscriptionQuietly(deal.stripeSubscriptionId);
       await clearDealSaasSubscription(id);
-    } else if (deal.stripeCurrentPeriodEnd) {
-      await db
-        .update(addDealForm)
-        .set({ stripeCurrentPeriodEnd: null })
-        .where(eq(addDealForm.id, id));
+    } else if (
+      deal.stripeCurrentPeriodEnd ||
+      (deal.stripeSubscriptionStatus &&
+        deal.stripeSubscriptionStatus !== "canceled" &&
+        deal.stripeSubscriptionStatus !== "none")
+    ) {
+      await clearDealSaasSubscription(id);
     }
+    const orgId = String(deal.organizationId ?? "").trim();
+    if (orgId) await refreshCompanyBillingFromDeals(orgId);
     return;
   }
+
+  if (!getStripeConfig()) return;
 
   await ensureDealSaasComplimentaryPeriod(deal);
 
@@ -1527,7 +1610,9 @@ async function mapDealBillingQueryRows(
       (!dated.archived && isSaasBillableDealStage(row.pendingDealStage));
     const raise = payable ? await raiseAmountForDeal(String(row.id)) : 0;
     const suggestedPlanId = payable ? planIdForDealRaiseAmount(raise) : null;
-    const companyUsers = await getDealCompanyUserSnapshot(String(row.id));
+    const companyUsers = payable
+      ? await getDealCompanyUserSnapshot(String(row.id))
+      : null;
     list.push({
       id: String(row.id),
       companyId: String(row.organizationId ?? "").trim().toLowerCase(),
@@ -1535,11 +1620,13 @@ async function mapDealBillingQueryRows(
       dealName: row.dealName ?? "",
       dealStage: row.dealStage ?? "",
       archived: Boolean(row.archived),
-      planId: row.stripePlanId ?? null,
+      planId: payable ? row.stripePlanId ?? null : null,
       suggestedPlanId,
       needsPlanUpgrade: dealShouldAlertPlanUpgrade(dated, suggestedPlanId),
-      billingCycle: row.stripeBillingCycle ?? null,
-      subscriptionStatus: row.stripeSubscriptionStatus || "none",
+      billingCycle: payable ? row.stripeBillingCycle ?? null : null,
+      subscriptionStatus: payable
+        ? row.stripeSubscriptionStatus || "none"
+        : "canceled",
       nextBillingDate: nextBillingDateForList(dated),
       saasBillingStartsAt: saasBillingStartsAt
         ? saasBillingStartsAt.toISOString()
@@ -1549,8 +1636,10 @@ async function mapDealBillingQueryRows(
       payable,
       includedCompanyUsers: companyUsers?.includedCompanyUsers ?? 1,
       currentCompanyUsers: companyUsers?.currentCompanyUsers ?? 0,
-      extraCompanyUsersPaid: companyUsers?.extraCompanyUsersPaid ?? 0,
-      extraCompanyUsersDue: companyUsers?.extraCompanyUsersDue ?? 0,
+      extraCompanyUsersPaid: payable
+        ? companyUsers?.extraCompanyUsersPaid ?? 0
+        : 0,
+      extraCompanyUsersDue: payable ? companyUsers?.extraCompanyUsersDue ?? 0 : 0,
       extraUserFeeCents: companyUsers?.extraUserFeeCents ?? 1000,
     });
   }

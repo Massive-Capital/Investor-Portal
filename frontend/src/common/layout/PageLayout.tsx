@@ -42,7 +42,7 @@ import {
   isLpDealOfferingPortfolioPath,
 } from "@/modules/Investing/shell/LpInvestorShellGuard"
 import { PortalSwitchLoader } from "@/modules/Investing/components/portal-switch-loader/PortalSwitchLoader"
-import { NotificationsProvider } from "@/modules/notifications"
+import { NotificationsProvider } from "@/modules/notifications/context/NotificationsProvider"
 import {
   pageTitleForAppPathname,
   setAppDocumentTitle,

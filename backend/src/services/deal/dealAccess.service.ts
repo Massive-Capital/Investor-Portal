@@ -8,6 +8,7 @@ import {
   DEAL_PARTICIPANT,
   isCompanyAdminRole,
   isPlatformAdminRole,
+  ORG_DIRECTORY_MEMBER_ROLES,
   PLATFORM_USER,
 } from "../../constants/roles.js";
 import { db } from "../../database/db.js";
@@ -33,6 +34,8 @@ import {
   isPortalUserOnDealMemberRoster,
   listDealIdsFromDealMemberRosterForUser,
   listDealIdsWhereViewerIsCoSponsor,
+  listDealIdsWhereViewerIsLeadOrAdminSponsor,
+  isPortalUserDealSponsorOnDeal,
   viewerHasNonCoSponsorDealMemberRole,
 } from "./dealMemberScope.service.js";
 import { assignCreatorAsLeadSponsorOnDeal } from "./dealMember.service.js";
@@ -41,6 +44,10 @@ import { isDealAllowedByContactOfferingVisibility } from "../contact/contactOffe
 import { isInvestingPortalRequest } from "../../middleware/portalMode.middleware.js";
 
 export type { DealViewerScope } from "./dealForm.service.js";
+
+function isOrgWorkspaceStaffRole(role: string): boolean {
+  return (ORG_DIRECTORY_MEMBER_ROLES as readonly string[]).includes(role);
+}
 
 async function viewerEmailNormForScope(scope: DealViewerScope): Promise<string> {
   const [row] = await db
@@ -86,29 +93,34 @@ export async function resolveDealViewerScope(
     (isPlatformAdmin || (role === PLATFORM_USER && organizationId == null));
 
   const emailNorm = String(row?.email ?? "").trim().toLowerCase();
-  const [lpDealIds, coSponsorDealIdsEarly] = await Promise.all([
-    listLpInvestorDealIdsForUserEmail(emailNorm),
-    listDealIdsWhereViewerIsCoSponsor(userId),
-  ]);
+  const [lpDealIds, coSponsorDealIdsEarly, leadAdminSponsorDealIds] =
+    await Promise.all([
+      listLpInvestorDealIdsForUserEmail(emailNorm),
+      listDealIdsWhereViewerIsCoSponsor(userId),
+      listDealIdsWhereViewerIsLeadOrAdminSponsor(userId),
+    ]);
+  const viewerIsSponsorOnAnyDeal =
+    coSponsorDealIdsEarly.length > 0 || leadAdminSponsorDealIds.length > 0;
   /**
-   * Co-sponsors keep syndication deal scope (co-sponsor / org roster). LP email
-   * scope must not replace that list — Investing uses `includeParticipantDeals`
+   * Sponsors (Lead / Admin / Co) keep syndicating deal scope. LP email scope
+   * must not replace that list — Investing uses `includeParticipantDeals`
    * separately when they have an investor profile / LP rows.
    */
   const applyLpEmailScope =
     lpDealIds.length > 0 &&
-    coSponsorDealIdsEarly.length === 0 &&
+    !viewerIsSponsorOnAnyDeal &&
     !isPlatformAdminRole(role) &&
     !isCompanyAdminRole(role);
 
   let lpInvestorEmailScopedDealIds: string[] | null = null;
   if (applyLpEmailScope) {
-    // Direct LP deals + sponsor-scoped offerings, already filtered by
-    // contact.show_offerings_visibility (ALL / HIDE / 506C_ONLY).
+    // Direct LP deals + inviting-sponsor offerings. Contact offering
+    // visibility is applied only in Investing Mode.
     lpInvestorEmailScopedDealIds =
       await listInvestingParticipantDealIdsForUser({
         userId,
         emailNorm,
+        applyContactOfferingVisibility: isInvestingPortalRequest(),
       });
   }
 
@@ -128,13 +140,21 @@ export async function resolveDealViewerScope(
   }
 
   /**
-   * Contacts Visibility (Show / Hide / 506(c) only) applies in Investing Mode for
-   * LP investors and for Lead, Admin, Co-sponsor, company member, and company admin.
-   * Pure LP email scope always enforces it. Platform admins skip.
+   * CRM Contacts Visibility (Show / Hide / 506(c) only) applies only in Investing
+   * Mode. Syndicating lists and deal access ignore it so sponsors / dual-role
+   * users still see every workspace deal they are entitled to.
    */
   const enforceContactOfferingVisibility =
-    !isPlatformAdmin &&
-    (isInvestingPortalRequest() || lpInvestorEmailScopedDealIds != null);
+    !isPlatformAdmin && isInvestingPortalRequest();
+
+  /**
+   * Users from Contacts (deal_participant / investor — not org staff) may only
+   * see syndicating deals where they are Lead, Admin, or Co-sponsor.
+   */
+  const syndicationSponsorOnly = !isOrgWorkspaceStaffRole(role);
+  const syndicationSponsorDealIds = syndicationSponsorOnly
+    ? [...new Set([...leadAdminSponsorDealIds, ...coSponsorDealIdsEarly])]
+    : null;
 
   return {
     userId,
@@ -145,6 +165,8 @@ export async function resolveDealViewerScope(
     lpInvestorEmailScopedDealIds,
     coSponsorDashboardDealIds,
     enforceContactOfferingVisibility,
+    syndicationSponsorOnly,
+    syndicationSponsorDealIds,
   };
 }
 
@@ -154,6 +176,10 @@ export async function viewerHasSyndicationDealWorkspaceAccess(
   scope: DealViewerScope,
 ): Promise<boolean> {
   const dealId = String(deal.id);
+  if (scope.syndicationSponsorOnly) {
+    if (scope.syndicationSponsorDealIds?.includes(dealId)) return true;
+    return isPortalUserDealSponsorOnDeal(dealId, scope.userId);
+  }
   if (scope.seesAllDeals) return true;
   if (await isPortalUserOnDealMemberRoster(dealId, scope.userId)) return true;
   if (scope.coSponsorDashboardDealIds?.includes(dealId)) return true;
@@ -197,20 +223,11 @@ export async function dealAccessibleToViewerScope(
 
   /**
    * CRM Contacts Visibility (Hide / 506c-only) gates Investing Mode deal access
-   * for LP investors and for Lead / Admin / Co / company roles who switched modes.
-   * Syndicating workspace access still bypasses it so sponsors can open org deals.
+   * only. Syndicating workspace access never applies this preference.
    */
   async function passesContactOfferingVisibility(): Promise<boolean> {
-    if (scope.isPlatformAdmin) return true;
-    if (!scope.enforceContactOfferingVisibility) {
-      if (await viewerHasSyndicationDealWorkspaceAccess(dealRow, scope))
-        return true;
-      if (
-        scope.assignedParticipationOnly &&
-        (await isUserAssignedToDeal(scope.userId, dealId))
-      ) {
-        return true;
-      }
+    if (scope.isPlatformAdmin || !scope.enforceContactOfferingVisibility) {
+      return true;
     }
     const emailNorm = await viewerEmailNormForScope(scope);
     if (!emailNorm) return true;
@@ -222,7 +239,9 @@ export async function dealAccessibleToViewerScope(
   }
 
   let baseOk = false;
-  if (await isPortalUserOnDealMemberRoster(dealId, scope.userId)) {
+  if (scope.syndicationSponsorOnly && !isInvestingPortalRequest()) {
+    baseOk = await viewerHasSyndicationDealWorkspaceAccess(dealRow, scope);
+  } else if (await isPortalUserOnDealMemberRoster(dealId, scope.userId)) {
     baseOk = true;
   } else if (scope.lpInvestorEmailScopedDealIds != null) {
     if (scope.lpInvestorEmailScopedDealIds.includes(dealId)) {
@@ -312,12 +331,14 @@ export async function assertDealIdReadableOrAssignedParticipant(
   const dealSecType = row.secType;
   if (!(await investorParticipantMayReadDeal(row, scope))) return false;
   if (await dealAccessibleToViewerScope(row, scope)) return true;
+  if (scope.syndicationSponsorOnly && !isInvestingPortalRequest()) return false;
   /** LP email scope (incl. empty after Hide Offerings) — no org/assigned fallthrough. */
   if (scope.lpInvestorEmailScopedDealIds != null) return false;
   if (scope.coSponsorDashboardDealIds != null) return false;
   const emailNorm = await viewerEmailNormForScope(scope);
   async function passesOffering(): Promise<boolean> {
     if (scope.isPlatformAdmin || !emailNorm) return true;
+    if (!scope.enforceContactOfferingVisibility) return true;
     return isDealAllowedByContactOfferingVisibility({
       emailNorm,
       dealId,
@@ -358,11 +379,15 @@ export async function getAddDealFormForViewerOrAssignedParticipant(
   const dealSecType = row.secType;
   if (!(await investorParticipantMayReadDeal(row, scope))) return undefined;
   if (await dealAccessibleToViewerScope(row, scope)) return row;
+  if (scope.syndicationSponsorOnly && !isInvestingPortalRequest()) {
+    return undefined;
+  }
   if (scope.lpInvestorEmailScopedDealIds != null) return undefined;
   if (scope.coSponsorDashboardDealIds != null) return undefined;
   const emailNorm = await viewerEmailNormForScope(scope);
   async function passesOffering(): Promise<boolean> {
     if (scope.isPlatformAdmin || !emailNorm) return true;
+    if (!scope.enforceContactOfferingVisibility) return true;
     return isDealAllowedByContactOfferingVisibility({
       emailNorm,
       dealId,
@@ -384,22 +409,51 @@ export async function getAddDealFormForViewerOrAssignedParticipant(
   return undefined;
 }
 
+async function mergeDealRowsById(
+  base: AddDealFormRow[],
+  extraIds: string[],
+): Promise<AddDealFormRow[]> {
+  const visibleIds = new Set(base.map((r) => String(r.id)));
+  const missing = extraIds.filter((id) => !visibleIds.has(id));
+  if (missing.length === 0) return base;
+  const extraRows = await listAddDealFormsByIds(missing);
+  if (extraRows.length === 0) return base;
+  const byId = new Map<string, AddDealFormRow>();
+  for (const r of base) byId.set(String(r.id), r);
+  for (const r of extraRows) byId.set(String(r.id), r);
+  return [...byId.values()].sort((a, b) =>
+    String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
+  );
+}
+
 export async function listDealsForViewer(
   scope: DealViewerScope,
 ): Promise<AddDealFormRow[]> {
+  if (scope.syndicationSponsorOnly) {
+    return listAddDealFormsByIds(scope.syndicationSponsorDealIds ?? []);
+  }
   const base = await listAddDealFormsForViewer(scope);
   if (scope.seesAllDeals) return base;
-  // LP email–scoped viewers already have the full visible set (incl. contact
-  // offering visibility). Do not re-add deal_member roster rows that would
-  // bypass Hide Offerings / 506(c)-only.
-  if (scope.lpInvestorEmailScopedDealIds != null) return base;
+
+  const [leadAdminIds, coSponsorIds] = await Promise.all([
+    listDealIdsWhereViewerIsLeadOrAdminSponsor(scope.userId),
+    listDealIdsWhereViewerIsCoSponsor(scope.userId),
+  ]);
+  /**
+   * Syndicating: always include every deal the viewer is Lead / Admin / Co on,
+   * including deals outside the active org and when they also have LP rows.
+   */
+  const sponsorIds = [...new Set([...leadAdminIds, ...coSponsorIds])];
+  let rows = await mergeDealRowsById(base, sponsorIds);
+
+  if (scope.lpInvestorEmailScopedDealIds != null) return rows;
 
   const rosterIds = await listDealIdsFromDealMemberRosterForUser(scope.userId);
-  if (rosterIds.length === 0) return base;
+  if (rosterIds.length === 0) return rows;
 
-  const visibleIds = new Set(base.map((r) => String(r.id)));
+  const visibleIds = new Set(rows.map((r) => String(r.id)));
   const missing = rosterIds.filter((id) => !visibleIds.has(id));
-  if (missing.length === 0) return base;
+  if (missing.length === 0) return rows;
 
   const extraRows = await listAddDealFormsByIds(missing);
   const orgId = scope.organizationId;
@@ -413,13 +467,11 @@ export async function listDealsForViewer(
           )
         ).filter((r): r is AddDealFormRow => r != null)
       : extraRows;
-  if (scopedExtras.length === 0) return base;
+  if (scopedExtras.length === 0) return rows;
 
-  const byId = new Map<string, AddDealFormRow>();
-  for (const r of base) byId.set(String(r.id), r);
-  for (const r of scopedExtras) byId.set(String(r.id), r);
-  return [...byId.values()].sort((a, b) =>
-    String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
+  return mergeDealRowsById(
+    rows,
+    scopedExtras.map((r) => String(r.id)),
   );
 }
 

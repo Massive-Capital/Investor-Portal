@@ -548,6 +548,19 @@ export async function isPortalUserLeadOrAdminSponsorOnDeal(
   return role === "lead_sponsor" || role === "admin_sponsor";
 }
 
+/** Lead Sponsor, Admin sponsor, or Co-sponsor on this deal. */
+export async function isPortalUserDealSponsorOnDeal(
+  dealId: string,
+  userId: string,
+): Promise<boolean> {
+  const role = await resolveViewerDealMemberRoleOnDeal(dealId, userId);
+  return (
+    role === "lead_sponsor" ||
+    role === "admin_sponsor" ||
+    role === "co_sponsor"
+  );
+}
+
 /**
  * Deal profile PUT (name, stage, property, etc.): co-sponsors and LP roster
  * members cannot edit. Lead / admin sponsor and other workspace viewers can.

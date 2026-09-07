@@ -101,23 +101,34 @@ export async function resolveCompanyBillingAccess(
   const cid = normalizeCompanyId(companyId);
   if (!cid) return DENIED_BILLING_ACCESS;
 
+  const { listLeadSponsorDealIdsInCompany } = await import(
+    "./dealBilling.service.js"
+  );
+  const leadDealIds = await listLeadSponsorDealIdsInCompany(userId, cid);
   const canManage = await userCanManageCompanyBilling(userId, userRole, cid);
   if (canManage) {
+    const platformAdmin = isPlatformAdminRole(userRole);
+    if (platformAdmin && leadDealIds.length > 0) {
+      return {
+        canView: true,
+        canManage: true,
+        canPay: true,
+        viewerScope: "lead_sponsor",
+        dealIds: leadDealIds,
+      };
+    }
     return {
       canView: true,
       canManage: true,
-      // Platform admins may view and manage records, but must not pay or
-      // change a customer’s payment cycle.
-      canPay: !isPlatformAdminRole(userRole),
+      // Platform admins may view other customers’ records, but only pay when
+      // they are the lead sponsor on the deal.
+      canPay: !platformAdmin,
       viewerScope: "all_deals",
       dealIds: null,
     };
   }
 
-  const { listLeadSponsorDealIdsInCompany } = await import(
-    "./dealBilling.service.js"
-  );
-  const dealIds = await listLeadSponsorDealIdsInCompany(userId, cid);
+  const dealIds = leadDealIds;
   if (dealIds.length === 0) return DENIED_BILLING_ACCESS;
   return {
     canView: true,

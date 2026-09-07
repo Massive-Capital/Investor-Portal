@@ -41,6 +41,11 @@ import "@/modules/Syndication/usermanagement/user_management.css"
 import "@/modules/Syndication/Deals/deals-list.css"
 import "@/modules/Syndication/contacts/contacts.css"
 import "@/modules/Investing/pages/profiles/investing-profiles.css"
+import { DealSaasPaywallModal } from "@/modules/Syndication/Deals/components/DealSaasPaywallModal"
+import {
+  isDealSaasPaymentRequiredError,
+  type DealSaasPaywallDeal,
+} from "@/modules/Syndication/Deals/utils/dealSaasAccess"
 import { loadInvestmentDetailFromDeal } from "./investmentsListFromDeals"
 import {
   getInvestmentDetail,
@@ -1106,6 +1111,7 @@ function DetailForm({ d }: { d: InvestmentDetailRecord }) {
 }
 
 export default function InvestmentDetailPage() {
+  const navigate = useNavigate()
   const { investmentId = "" } = useParams<{ investmentId: string }>()
   const decodedId = useMemo(
     () => decodeURIComponent(investmentId.trim()),
@@ -1119,10 +1125,13 @@ export default function InvestmentDetailPage() {
     undefined,
   )
   const [loadPending, setLoadPending] = useState(false)
+  const [saasPaywallDeal, setSaasPaywallDeal] =
+    useState<DealSaasPaywallDeal | null>(null)
 
   useEffect(() => {
     if (!decodedId) {
       setFromApi(null)
+      setSaasPaywallDeal(null)
       return
     }
     // Always load server deal + investors for this investment so the Profile and investment
@@ -1130,12 +1139,21 @@ export default function InvestmentDetailPage() {
     // from local/runtime storage when both exist).
     let cancelled = false
     setLoadPending(true)
+    setSaasPaywallDeal(null)
     void (async () => {
       try {
         const d = await loadInvestmentDetailFromDeal(decodedId)
         if (!cancelled) setFromApi(d ?? null)
-      } catch {
-        if (!cancelled) setFromApi(null)
+      } catch (err) {
+        if (!cancelled) {
+          if (isDealSaasPaymentRequiredError(err)) {
+            setSaasPaywallDeal({
+              ...err.payload,
+              id: err.payload.id || decodedId,
+            })
+          }
+          setFromApi(null)
+        }
       } finally {
         if (!cancelled) setLoadPending(false)
       }
@@ -1146,13 +1164,14 @@ export default function InvestmentDetailPage() {
   }, [decodedId])
 
   const detail = useMemo((): InvestmentDetailRecord | null => {
+    if (saasPaywallDeal) return null
     if (fromApi) {
       return fromLocal
         ? mergeServerInvestmentDetailWithLocal(fromApi, fromLocal)
         : fromApi
     }
     return fromLocal ?? null
-  }, [fromApi, fromLocal])
+  }, [fromApi, fromLocal, saasPaywallDeal])
 
   useEffect(() => {
     if (loadPending && !fromLocal) {
@@ -1186,6 +1205,26 @@ export default function InvestmentDetailPage() {
         <p className="deals_list_not_found" role="status">
           Loading investment…
         </p>
+      </div>
+    )
+  }
+
+  if (saasPaywallDeal) {
+    return (
+      <div className="um_page deals_list_page deals_detail_page investment_detail_page">
+        <p className="deals_list_not_found">
+          {saasPaywallDeal.dealName.trim()
+            ? `This deal is unavailable until monthly SaaS is paid for “${saasPaywallDeal.dealName.trim()}”.`
+            : "This deal is unavailable until monthly SaaS is paid."}{" "}
+          <Link to="/investing/investments" className="deals_list_inline_back">
+            <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+            Back to investments
+          </Link>
+        </p>
+        <DealSaasPaywallModal
+          deal={saasPaywallDeal}
+          onClose={() => navigate("/investing/investments")}
+        />
       </div>
     )
   }

@@ -45,6 +45,11 @@ import {
   isDealUuidForOfferingPreview,
 } from "./dealOfferingPreviewShared"
 import { DealOfferingPreviewInner } from "./DealOfferingPreviewInner"
+import { DealSaasPaywallModal } from "./components/DealSaasPaywallModal"
+import {
+  isDealSaasPaymentRequiredError,
+  type DealSaasPaywallDeal,
+} from "./utils/dealSaasAccess"
 import {
   canInvestorAccessPublicOffering,
   effectiveOfferingStatusForAccess,
@@ -142,6 +147,8 @@ export function DealOfferingPortfolioPage() {
     useState<DealInvestorsPayload>(EMPTY_INVESTORS_PAYLOAD)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [saasPaywallDeal, setSaasPaywallDeal] =
+    useState<DealSaasPaywallDeal | null>(null)
 
   const [lpShareToken, setLpShareToken] = useState<string | null>(null)
   const [lpShareSponsorRef, setLpShareSponsorRef] = useState<string | null>(null)
@@ -451,6 +458,7 @@ export function DealOfferingPortfolioPage() {
     let cancelled = false
     setLoading(true)
     setNotFound(false)
+    setSaasPaywallDeal(null)
     void (async () => {
       try {
         if (isPublicOfferingRoute) {
@@ -497,12 +505,18 @@ export function DealOfferingPortfolioPage() {
               : EMPTY_INVESTORS_PAYLOAD,
           )
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          if (isDealSaasPaymentRequiredError(err)) {
+            setSaasPaywallDeal({
+              ...err.payload,
+              id: err.payload.id || effectiveDealId || "",
+            })
+          }
           setDetail(null)
           setClasses([])
           setInvestorsPayload(EMPTY_INVESTORS_PAYLOAD)
-          setNotFound(true)
+          setNotFound(!isDealSaasPaymentRequiredError(err))
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -554,6 +568,26 @@ export function DealOfferingPortfolioPage() {
           />
           <p className="deal_offer_pf_state_text">Loading offering preview…</p>
         </div>
+      </div>
+    )
+  }
+
+  if (saasPaywallDeal) {
+    return (
+      <div className="deals_list_page deals_detail_page">
+        <p className="deals_list_not_found">
+          {saasPaywallDeal.dealName.trim()
+            ? `This offering is unavailable until monthly SaaS is paid for “${saasPaywallDeal.dealName.trim()}”.`
+            : "This offering is unavailable until monthly SaaS is paid."}{" "}
+          <Link to={portfolioBackTo} className="deal_offer_pf_back">
+            <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+            Back
+          </Link>
+        </p>
+        <DealSaasPaywallModal
+          deal={saasPaywallDeal}
+          onClose={() => navigate(portfolioBackTo)}
+        />
       </div>
     )
   }

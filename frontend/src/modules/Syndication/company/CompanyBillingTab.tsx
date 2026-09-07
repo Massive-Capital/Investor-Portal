@@ -69,6 +69,7 @@ type InvoiceRow = CompanyBillingInvoice;
 type SeatBand = "5" | "10" | "10plus";
 
 function dealRowIsPayable(row: CompanyDealBillingRow): boolean {
+  if (row.archived) return false;
   return row.payable === true || row.billable === true;
 }
 
@@ -444,6 +445,7 @@ function billingCycleSelectValue(
 }
 
 function catalogPlanAmountLabel(row: CompanyDealBillingRow): string {
+  if (dealIsNotBilled(row)) return "—";
   const id = String(dealPlanId(row) ?? "").trim().toLowerCase();
   const tier = DEAL_TIERS.find((t) => t.id === id);
   if (!tier) return "—";
@@ -468,6 +470,9 @@ function latestInvoiceAmountForDeal(
 function extraCompanyUserAmountParts(
   row: CompanyDealBillingRow,
 ): { paidLabel: string | null; dueLabel: string | null } {
+  if (dealIsNotBilled(row)) {
+    return { paidLabel: null, dueLabel: null };
+  }
   const fee = Math.max(
     0,
     Number(row.extraUserFeeCents ?? EXTRA_COMPANY_USER_FEE_DOLLARS * 100) ||
@@ -492,6 +497,7 @@ function dealAmountSearchText(
   row: CompanyDealBillingRow,
   invoices: CompanyBillingInvoice[],
 ): string {
+  if (dealIsNotBilled(row)) return "—";
   const extra = extraCompanyUserAmountParts(row);
   return [
     latestInvoiceAmountForDeal(
@@ -512,6 +518,9 @@ function DealAmountCell({
   row: CompanyDealBillingRow;
   invoices: CompanyBillingInvoice[];
 }) {
+  if (dealIsNotBilled(row)) {
+    return <span>—</span>;
+  }
   const planAmount =
     latestInvoiceAmountForDeal(
       invoices.filter((inv) => inv.billingScope !== "extra_company_user"),
@@ -545,7 +554,18 @@ function saasBillingStartIsInFuture(row: CompanyDealBillingRow): boolean {
   return Number.isFinite(t) && t > Date.now();
 }
 
+function dealIsNotBilled(row: CompanyDealBillingRow): boolean {
+  const stage = (row.dealStage ?? "").trim().toLowerCase();
+  return (
+    Boolean(row.archived) ||
+    row.billable === false ||
+    stage === "draft" ||
+    stage === "liquidated"
+  );
+}
+
 function dealBillingStatusLabel(row: CompanyDealBillingRow): string {
+  if (dealIsNotBilled(row)) return "Not billed";
   const s = String(row.subscriptionStatus ?? "").trim().toLowerCase();
   const failed =
     s === "past_due" || s === "unpaid" || s === "incomplete";
@@ -556,10 +576,6 @@ function dealBillingStatusLabel(row: CompanyDealBillingRow): string {
     return failed ? "Failed for this month" : "Paid for this month";
   }
   if (failed) return "Failed for this month";
-  const stage = (row.dealStage ?? "").trim().toLowerCase();
-  const notBilled =
-    row.archived || stage === "draft" || stage === "liquidated";
-  if (notBilled) return "Not billed";
   // Complimentary window only — not Stripe current_period_end (that is next renewal).
   if (saasBillingStartIsInFuture(row)) {
     return "Payment option will be available soon";
@@ -2831,9 +2847,27 @@ export function CompanyBillingTab({
     platformAdmin && selectedOrgId.trim() ? selectedOrgId : workspaceId
   ).trim();
 
+  useEffect(() => {
+    if (!platformAdmin || selectedOrgId.trim() || !focusDealId?.trim()) return;
+    const dealKey = focusDealId.trim().toLowerCase();
+    let cancelled = false;
+    void fetchPlatformBillingDeals().then((result) => {
+      if (cancelled || !result.ok) return;
+      const row = result.deals.find(
+        (deal) => deal.id.trim().toLowerCase() === dealKey,
+      );
+      const orgId = String(row?.companyId ?? "").trim();
+      if (orgId) setSelectedOrgId(orgId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [platformAdmin, selectedOrgId, focusDealId]);
+
   const canManageBilling = billingStatus?.canManage ?? likelyManager;
-  const canPayBilling =
-    !platformAdmin && (billingStatus?.canPay ?? canManageBilling);
+  const canPayBilling = Boolean(
+    billingStatus?.canPay ?? (!platformAdmin && canManageBilling),
+  );
   const showPricingTab = platformAdmin || canPayBilling;
 
   const refreshPaymentMethods = useCallback(() => {

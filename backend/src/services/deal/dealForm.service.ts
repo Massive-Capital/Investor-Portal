@@ -46,6 +46,7 @@ import {
 import {
   cancelDealSaasBillingBeforeDelete,
   scheduleDealSaasBillingSync,
+  syncDealSaasBillingForDeal,
 } from "../billing/dealBilling.service.js";
 import { resolveDealStageForSaasPaymentHold } from "../billing/dealStageSaasPaymentHold.js";
 
@@ -463,9 +464,16 @@ export type DealViewerScope = {
    */
   coSponsorDashboardDealIds: string[] | null;
   /**
-   * Investing Mode (and LP-email-scoped viewers): apply CRM Contacts Visibility
-   * (`show_offerings_visibility`) even for Lead / Admin / Co / company roles.
-   * Syndicating workspace lists skip this so sponsors still see every org deal.
+   * Contact / deal_participant / investor (not company workspace staff):
+   * syndicating lists and deal access are limited to Lead / Admin / Co deals.
+   */
+  syndicationSponsorOnly: boolean;
+  /** Deal ids for {@link syndicationSponsorOnly} (Lead / Admin / Co). */
+  syndicationSponsorDealIds: string[] | null;
+  /**
+   * Investing Mode only: apply CRM Contacts Visibility (`show_offerings_visibility`)
+   * for LP investors and for Lead / Admin / Co / company roles who switched modes.
+   * Syndicating workspace lists and deal access skip this.
    */
   enforceContactOfferingVisibility: boolean;
 };
@@ -640,7 +648,13 @@ export async function updateDealArchivedById(
     .set({ archived })
     .where(eq(addDealForm.id, id))
     .returning();
-  if (updated) scheduleDealSaasBillingSync(String(updated.id));
+  if (updated) {
+    if (archived) {
+      await syncDealSaasBillingForDeal(String(updated.id));
+    } else {
+      scheduleDealSaasBillingSync(String(updated.id));
+    }
+  }
   return updated;
 }
 

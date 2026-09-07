@@ -3,7 +3,7 @@ export type ContactStatus = "active" | "suspended"
 export type ContactSource = "local" | "ghl"
 
 /**
- * Per-contact offering visibility on the investor portal.
+ * Per-contact offering visibility on the Investing portal only.
  * `null` / unset → treat as all offerings when filtering deals.
  */
 export type ContactOfferingVisibility =

@@ -1039,6 +1039,15 @@ export async function fetchPublicOfferingPreview(
   )
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
+    if (res.status === 402) {
+      throw new DealSaasPaymentRequiredError(
+        parseDealSaasPaymentRequiredBody(data) ?? {
+          id: "",
+          dealName: "",
+        },
+        typeof data.message === "string" ? data.message : undefined,
+      )
+    }
     throw new Error(
       typeof data.message === "string"
         ? data.message

@@ -6,7 +6,7 @@ import type {
   InvestmentDetailDocumentSectionGroup,
 } from "../utils/investmentDetailDocuments"
 import { isInvestorOfferingDocumentSectionExcluded } from "@/modules/Syndication/Deals/utils/offeringPreviewDocSections"
-import { NotificationsContext } from "@/modules/notifications/context/NotificationsProvider"
+import { NotificationsContext } from "@/modules/notifications/context/notificationsContext"
 import {
   isNewlySharedOfferingDoc,
   markOfferingDocSeen,

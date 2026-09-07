@@ -1,5 +1,5 @@
 /**
- * Contact offering visibility — CRM preference applied to investor portal deal lists.
+ * Contact offering visibility — CRM preference applied only in Investing Mode.
  */
 import { inArray, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";

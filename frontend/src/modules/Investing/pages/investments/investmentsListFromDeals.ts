@@ -33,6 +33,7 @@ import {
   fetchDealMembers,
   fetchDealsList,
 } from "@/modules/Syndication/Deals/api/dealsApi"
+import { isDealSaasPaymentRequiredError } from "@/modules/Syndication/Deals/utils/dealSaasAccess"
 import type { DealDetailApi } from "@/modules/Syndication/Deals/api/dealsApi"
 import {
   fetchMyDealDistributions,
@@ -473,7 +474,8 @@ export async function loadInvestmentDetailFromDeal(
     payload = payloadRow
     members = membersResult.members
     leadSponsorDisplayName = membersResult.leadSponsorDisplayName
-  } catch {
+  } catch (err) {
+    if (isDealSaasPaymentRequiredError(err)) throw err
     const resolvedDealId = await resolveDealIdFromInvestmentRowId(did)
     if (!resolvedDealId) return undefined
     did = resolvedDealId
@@ -487,7 +489,8 @@ export async function loadInvestmentDetailFromDeal(
       payload = payloadRow
       members = membersResult.members
       leadSponsorDisplayName = membersResult.leadSponsorDisplayName
-    } catch {
+    } catch (retryErr) {
+      if (isDealSaasPaymentRequiredError(retryErr)) throw retryErr
       return undefined
     }
   }

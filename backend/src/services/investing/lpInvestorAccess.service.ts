@@ -388,6 +388,7 @@ async function listDealIdsWhereSponsorUsersOnRoster(
  */
 export async function listInvestorSponsorScopedDealIdsForUser(
   emailNorm: string,
+  opts?: { applyContactOfferingVisibility?: boolean },
 ): Promise<string[]> {
   const e = String(emailNorm ?? "").trim().toLowerCase();
   if (!e || !e.includes("@")) return [];
@@ -397,6 +398,7 @@ export async function listInvestorSponsorScopedDealIdsForUser(
       ? await listDealIdsFromLpInvestorTableForEmail(e)
       : await listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
   const visible = await filterDealIdsVisibleToInvestors(raw);
+  if (opts?.applyContactOfferingVisibility === false) return visible;
   return filterDealIdsByContactOfferingVisibility(e, visible);
 }
 
@@ -475,6 +477,7 @@ export async function listInvestorVisibleComingSoonDealIds(): Promise<string[]> 
 export async function listDirectInvestingParticipantDealIdsForUser(params: {
   userId: string;
   emailNorm: string;
+  applyContactOfferingVisibility?: boolean;
 }): Promise<string[]> {
   const emailNorm = String(params.emailNorm ?? "").trim().toLowerCase();
   const userId = String(params.userId ?? "").trim();
@@ -510,6 +513,7 @@ export async function listDirectInvestingParticipantDealIdsForUser(params: {
   ];
   const visible = await filterDealIdsVisibleToInvestors(merged);
   if (!emailNorm.includes("@")) return visible;
+  if (params.applyContactOfferingVisibility === false) return visible;
   return filterDealIdsByContactOfferingVisibility(emailNorm, visible);
 }
 
@@ -543,7 +547,10 @@ export async function isDealInDirectInvestingParticipationForUser(
 ): Promise<boolean> {
   const id = String(dealId ?? "").trim();
   if (!id) return false;
-  const ids = await listDirectInvestingParticipantDealIdsForUser(params);
+  const ids = await listDirectInvestingParticipantDealIdsForUser({
+    ...params,
+    applyContactOfferingVisibility: false,
+  });
   return ids.includes(id);
 }
 
@@ -553,7 +560,10 @@ export async function isDealInInvestingParticipantListForUser(
 ): Promise<boolean> {
   const id = String(dealId ?? "").trim();
   if (!id) return false;
-  const ids = await listInvestingParticipantDealIdsForUser(params);
+  const ids = await listInvestingParticipantDealIdsForUser({
+    ...params,
+    applyContactOfferingVisibility: false,
+  });
   return ids.includes(id);
 }
 
@@ -564,19 +574,27 @@ export async function isDealInInvestingParticipantListForUser(
 export async function listInvestingParticipantDealIdsForUser(params: {
   userId: string;
   emailNorm: string;
+  applyContactOfferingVisibility?: boolean;
 }): Promise<string[]> {
   const emailNorm = String(params.emailNorm ?? "").trim().toLowerCase();
   const userId = String(params.userId ?? "").trim();
   if (!userId) return [];
+  const applyContactOfferingVisibility =
+    params.applyContactOfferingVisibility !== false;
 
   const [direct, sponsorScoped] = await Promise.all([
-    listDirectInvestingParticipantDealIdsForUser({ userId, emailNorm }),
+    listDirectInvestingParticipantDealIdsForUser({
+      userId,
+      emailNorm,
+      applyContactOfferingVisibility,
+    }),
     emailNorm.includes("@")
-      ? listInvestorSponsorScopedDealIdsForUser(emailNorm)
+      ? listInvestorSponsorScopedDealIdsForUser(emailNorm, {
+          applyContactOfferingVisibility,
+        })
       : Promise.resolve([] as string[]),
   ]);
 
-  // Both helpers already apply contact offering visibility when email is usable.
   return [...new Set([...direct, ...sponsorScoped])];
 }
 

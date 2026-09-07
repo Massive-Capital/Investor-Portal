@@ -56,6 +56,11 @@ import { investorOnboardingSelectableClasses } from "@/modules/Syndication/Deals
 import { canInvestorCommitInvestOrOnboard } from "@/modules/Syndication/Deals/constants/deal-lifecycle"
 import { dealWorkspacePath } from "@/modules/Syndication/Deals/utils/dealWorkspacePath"
 import { dealInvestNowPath } from "@/modules/Syndication/Deals/utils/dealInvestNowPath"
+import { DealSaasPaywallModal } from "@/modules/Syndication/Deals/components/DealSaasPaywallModal"
+import {
+  isDealSaasPaymentRequiredError,
+  type DealSaasPaywallDeal,
+} from "@/modules/Syndication/Deals/utils/dealSaasAccess"
 import {
   buildBlockedProfileKeysForInvestNow,
   lpProfileUseKey,
@@ -176,6 +181,8 @@ export function DealInvestNowPage() {
     ],
   )
 
+  const [saasPaywallDeal, setSaasPaywallDeal] =
+    useState<DealSaasPaywallDeal | null>(null)
   const [loading, setLoading] = useState(true)
   const [resumeLoading, setResumeLoading] = useState(entryMode === "resume")
   const [resumeLoadError, setResumeLoadError] = useState("")
@@ -438,6 +445,7 @@ export function DealInvestNowPage() {
     }
     let cancelled = false
     setLoading(true)
+    setSaasPaywallDeal(null)
     const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
     void (async () => {
       try {
@@ -531,8 +539,17 @@ export function DealInvestNowPage() {
             viewerInvestorClass: viewerClass,
           }),
         )
-      } catch {
-        if (!cancelled) exitInvestNowFlow({ replace: true })
+      } catch (err) {
+        if (!cancelled) {
+          if (isDealSaasPaymentRequiredError(err)) {
+            setSaasPaywallDeal({
+              ...err.payload,
+              id: err.payload.id || dealId,
+            })
+          } else {
+            exitInvestNowFlow({ replace: true })
+          }
+        }
       } finally {
         if (!cancelled) {
           setBookLoading(false)
@@ -1659,6 +1676,22 @@ export function DealInvestNowPage() {
     return (
       <div className="deals_list_page deals_detail_page invest_now_flow_page">
         <p className="deals_list_not_found">Missing deal.</p>
+      </div>
+    )
+  }
+
+  if (saasPaywallDeal) {
+    return (
+      <div className="deals_list_page deals_detail_page invest_now_flow_page">
+        <p className="deals_list_not_found">
+          {saasPaywallDeal.dealName.trim()
+            ? `Investing is unavailable until monthly SaaS is paid for “${saasPaywallDeal.dealName.trim()}”.`
+            : "Investing is unavailable until monthly SaaS is paid for this deal."}
+        </p>
+        <DealSaasPaywallModal
+          deal={saasPaywallDeal}
+          onClose={() => exitInvestNowFlow({ replace: true })}
+        />
       </div>
     )
   }

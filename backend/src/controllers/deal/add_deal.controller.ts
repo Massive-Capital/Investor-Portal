@@ -125,11 +125,8 @@ import { enrichDealListRowForApi } from "../../services/deal/dealListRowEnrichme
 import {
   dealSaasBillingListFields,
   dealSaasPaymentRequiredPayload,
-  ensureDealSaasComplimentaryPeriod,
-  evaluateDealSaasWorkspaceAccess,
-  refreshDealSaasSubscriptionFromStripe,
+  evaluateDealSaasWorkspaceAccessRefreshing,
 } from "../../services/billing/dealBilling.service.js";
-import { isInvestingPortalRequest } from "../../middleware/portalMode.middleware.js";
 
 function parseBoolField(
   v: unknown,
@@ -153,49 +150,35 @@ function organizationIdFromBody(b: Record<string, unknown>): string | null {
 }
 
 /**
- * Billable deals stay in the list. This month they remain viewable; from next
- * month unpaid MRR locks view/edit (Deal billing / Upgrade the plan to continue).
- * Returns true when the response has already been sent.
+ * Unpaid / past-due / expired MRR locks the deal for sponsors and investors.
+ * Returns true when the 402 response has already been sent.
  */
 async function sendDealSaasLockIfNeeded(
   res: Response,
   row: AddDealFormRow,
-  scope: DealViewerScope,
-  opts?: { allowInvestingRead?: boolean },
+  scope?: DealViewerScope | null,
 ): Promise<boolean> {
-  if (scope.isPlatformAdmin) return false;
-  if (opts?.allowInvestingRead && isInvestingPortalRequest()) return false;
-  if (!row.saasBillingStartsAt) {
-    void ensureDealSaasComplimentaryPeriod(row).catch((err) => {
-      console.warn("ensureDealSaasComplimentaryPeriod:", row.id, err);
-    });
-  }
-  let access = evaluateDealSaasWorkspaceAccess(row);
-  if (access.locked && row.stripeSubscriptionId?.trim()) {
+  const evaluated = await evaluateDealSaasWorkspaceAccessRefreshing(row);
+  if (!evaluated.access.locked) return false;
+  const dealKey = String(evaluated.row.id ?? "").trim().toLowerCase();
+  let viewerIsLeadSponsor = false;
+  if (scope?.userId) {
     try {
-      const fresh = await refreshDealSaasSubscriptionFromStripe(row);
-      if (fresh) {
-        row = fresh;
-        access = evaluateDealSaasWorkspaceAccess(fresh);
-      }
+      const leadIds = await listDealIdsWhereViewerIsLeadSponsor(scope.userId);
+      viewerIsLeadSponsor = leadIds.some(
+        (id) => String(id).trim().toLowerCase() === dealKey,
+      );
     } catch (err) {
-      console.warn("sendDealSaasLockIfNeeded stripe refresh:", row.id, err);
+      console.warn("sendDealSaasLockIfNeeded lead sponsor:", err);
     }
   }
-  if (!access.locked) return false;
-  const dealKey = String(row.id ?? "").trim().toLowerCase();
-  let viewerIsLeadSponsor = false;
-  try {
-    const leadIds = await listDealIdsWhereViewerIsLeadSponsor(scope.userId);
-    viewerIsLeadSponsor = leadIds.some(
-      (id) => String(id).trim().toLowerCase() === dealKey,
-    );
-  } catch (err) {
-    console.warn("sendDealSaasLockIfNeeded lead sponsor:", err);
-  }
-  res
-    .status(402)
-    .json(dealSaasPaymentRequiredPayload(row, access, { viewerIsLeadSponsor }));
+  // Platform admin still pays MRR when they are the lead sponsor on this deal.
+  if (scope?.isPlatformAdmin && !viewerIsLeadSponsor) return false;
+  res.status(402).json(
+    dealSaasPaymentRequiredPayload(evaluated.row, evaluated.access, {
+      viewerIsLeadSponsor,
+    }),
+  );
   return true;
 }
 
@@ -366,6 +349,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
           ? await listInvestingParticipantDealIdsForUser({
               userId: user.id,
               emailNorm: includeParticipantViewerEmailNorm,
+              applyContactOfferingVisibility: true,
             })
           : [];
         rows =
@@ -408,7 +392,7 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
     }
 
     /**
-     * Investing Mode (and LP-email-scoped viewers): apply CRM Contacts Visibility.
+     * Investing Mode only: apply CRM Contacts Visibility.
      * Syndicating lists skip this so Lead / Admin / Co / company roles still see
      * every workspace deal.
      */
@@ -809,9 +793,7 @@ export async function getDealOfferingInvestorPreview(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (
-      await sendDealSaasLockIfNeeded(res, row, scope, { allowInvestingRead: true })
-    ) {
+    if (await sendDealSaasLockIfNeeded(res, row, scope)) {
       return;
     }
     res.status(200).json({
@@ -1310,9 +1292,7 @@ export async function getOfferingPreviewToken(
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (
-      await sendDealSaasLockIfNeeded(res, visible, scope, { allowInvestingRead: true })
-    ) {
+    if (await sendDealSaasLockIfNeeded(res, visible, scope)) {
       return;
     }
     if (isDealStageDraft(visible.dealStage)) {
@@ -1522,6 +1502,9 @@ export async function getPublicOfferingPreview(
       res.status(404).json({ message: "Offering not found." });
       return;
     }
+    if (await sendDealSaasLockIfNeeded(res, row)) {
+      return;
+    }
     if (
       !canInvestorAccessPublicOffering(row.dealStage, row.offeringStatus)
     ) {
@@ -1584,9 +1567,7 @@ export async function getDealById(req: Request, res: Response): Promise<void> {
       res.status(404).json({ message: "Deal not found" });
       return;
     }
-    if (
-      await sendDealSaasLockIfNeeded(res, row, scope, { allowInvestingRead: true })
-    ) {
+    if (await sendDealSaasLockIfNeeded(res, row, scope)) {
       return;
     }
     const withPreview = await ensureDealOfferingPreviewTokenStored(dealId);

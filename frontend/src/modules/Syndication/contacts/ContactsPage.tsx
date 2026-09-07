@@ -135,6 +135,16 @@ type OfferingVisibilityFilter =
   | ContactOfferingVisibility
   | "unset"
 
+function offeringVisibilityLabel(
+  value: ContactOfferingVisibility | "" | null,
+): string {
+  if (!value) return "—"
+  return (
+    CONTACT_OFFERING_VISIBILITY_OPTIONS.find((o) => o.value === value)?.label ??
+    value
+  )
+}
+
 function contactRowIsSuspended(row: ContactRow): boolean {
   return row.status === "suspended"
 }
@@ -245,6 +255,7 @@ function TagsCell({ items }: { items: string[] }) {
 function ContactsPage() {
   const navigate = useNavigate()
   const suspendAllTitleId = useId()
+  const offeringVisibilityTitleId = useId()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<ContactRow[]>([])
   const [orgScopeKey, setOrgScopeKey] = useState(
@@ -290,6 +301,12 @@ function ContactsPage() {
   >("all")
   const [offeringVisibilityFilter, setOfferingVisibilityFilter] =
     useState<OfferingVisibilityFilter>("all")
+  const [offeringVisibilityPending, setOfferingVisibilityPending] = useState<{
+    row: ContactRow
+    next: ContactOfferingVisibility | null
+  } | null>(null)
+  const [offeringVisibilitySaving, setOfferingVisibilitySaving] =
+    useState(false)
   const [tagCatalog, setTagCatalog] = useState<ContactLabelRow[]>([])
   const [listCatalog, setListCatalog] = useState<ContactLabelRow[]>([])
   const [tagsSearchQuery, setTagsSearchQuery] = useState("")
@@ -818,35 +835,53 @@ function ContactsPage() {
     navigate(`/contacts/${encodeURIComponent(row.id)}`)
   }, [navigate])
 
-  const onShowOfferingsChange = useCallback(
-    async (row: ContactRow, value: ContactOfferingVisibility | "") => {
+  const requestShowOfferingsChange = useCallback(
+    (row: ContactRow, value: ContactOfferingVisibility | "") => {
       const next = value === "" ? null : value
       const prev = row.showOfferingsVisibility ?? null
       if (prev === next) return
-      setRows((list) =>
-        list.map((r) =>
-          r.id === row.id ? { ...r, showOfferingsVisibility: next } : r,
-        ),
-      )
-      try {
-        const updated = await patchContactShowOfferings(row.id, next)
-        setRows((list) =>
-          list.map((r) => (r.id === updated.id ? updated : r)),
-        )
-      } catch (err) {
-        setRows((list) =>
-          list.map((r) =>
-            r.id === row.id ? { ...r, showOfferingsVisibility: prev } : r,
-          ),
-        )
-        toast.error(
-          "Could not update",
-          err instanceof Error ? err.message : "Try again.",
-        )
-      }
+      setOfferingVisibilityPending({ row, next })
     },
     [],
   )
+
+  const closeOfferingVisibilityConfirm = useCallback(() => {
+    if (offeringVisibilitySaving) return
+    setOfferingVisibilityPending(null)
+  }, [offeringVisibilitySaving])
+
+  useEffect(() => {
+    if (!offeringVisibilityPending) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !offeringVisibilitySaving) {
+        setOfferingVisibilityPending(null)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [offeringVisibilityPending, offeringVisibilitySaving])
+
+  const confirmShowOfferingsChange = useCallback(async () => {
+    if (!offeringVisibilityPending) return
+    const { row, next } = offeringVisibilityPending
+    setOfferingVisibilitySaving(true)
+    try {
+      const updated = await patchContactShowOfferings(row.id, next)
+      setRows((list) => list.map((r) => (r.id === updated.id ? updated : r)))
+      toast.success(
+        "Offering visibility updated",
+        `${contactDisplayName(row)} is set to ${offeringVisibilityLabel(next)}.`,
+      )
+      setOfferingVisibilityPending(null)
+    } catch (err) {
+      toast.error(
+        "Could not update offering visibility",
+        err instanceof Error ? err.message : "Try again.",
+      )
+    } finally {
+      setOfferingVisibilitySaving(false)
+    }
+  }, [offeringVisibilityPending])
 
   const openSuspendContact = useCallback((row: ContactRow) => {
     setSuspendRow(row)
@@ -1449,7 +1484,7 @@ function ContactsPage() {
               ariaLabel={`Offering visibility for ${contactDisplayName(row)}`}
               useFixedPanel
               onChange={(v) => {
-                void onShowOfferingsChange(
+                requestShowOfferingsChange(
                   row,
                   v as ContactOfferingVisibility | "",
                 )
@@ -1585,7 +1620,7 @@ function ContactsPage() {
       filteredRows.length,
       loading,
       navigate,
-      onShowOfferingsChange,
+      requestShowOfferingsChange,
       openEditPanel,
       openSuspendContact,
       openViewPanel,
@@ -2509,6 +2544,86 @@ function ContactsPage() {
         onClose={() => setSendMailEmailPreview(null)}
         onSaved={handleSendMailPreviewSaved}
       />
+
+      {offeringVisibilityPending ? (
+        <div
+          className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeOfferingVisibilityConfirm()
+          }}
+        >
+          <div
+            className="um_modal um_modal_view deals_add_inv_modal_panel deals_suspend_all_modal_panel"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={offeringVisibilityTitleId}
+          >
+            <div className="um_modal_head">
+              <h3
+                id={offeringVisibilityTitleId}
+                className="um_modal_title"
+              >
+                Update offering visibility?
+              </h3>
+              <button
+                type="button"
+                className="um_modal_close"
+                onClick={closeOfferingVisibilityConfirm}
+                disabled={offeringVisibilitySaving}
+                aria-label="Close"
+              >
+                <X size={20} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
+            <div className="deals_suspend_all_modal_body">
+              <p className="deals_suspend_all_modal_message">
+                Change offering visibility for{" "}
+                <strong>
+                  {contactDisplayName(offeringVisibilityPending.row)}
+                </strong>{" "}
+                from{" "}
+                <strong>
+                  {offeringVisibilityLabel(
+                    offeringVisibilityPending.row.showOfferingsVisibility ??
+                      null,
+                  )}
+                </strong>{" "}
+                to{" "}
+                <strong>
+                  {offeringVisibilityLabel(offeringVisibilityPending.next)}
+                </strong>
+                ? This only applies in Investing — it does not change which
+                deals they see in Syndication.
+              </p>
+            </div>
+            <div className="um_modal_actions add_contact_modal_actions">
+              <button
+                type="button"
+                className="um_btn_secondary"
+                onClick={closeOfferingVisibilityConfirm}
+                disabled={offeringVisibilitySaving}
+              >
+                <X size={16} strokeWidth={2} aria-hidden />
+                Close
+              </button>
+              <button
+                type="button"
+                className="um_btn_primary"
+                onClick={() => void confirmShowOfferingsChange()}
+                disabled={offeringVisibilitySaving}
+              >
+                {offeringVisibilitySaving ? (
+                  <Loader2 size={16} strokeWidth={2} aria-hidden />
+                ) : (
+                  <Eye size={16} strokeWidth={2} aria-hidden />
+                )}
+                {offeringVisibilitySaving ? "Updating…" : "Update"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {suspendAllOpen ? (
         <div
