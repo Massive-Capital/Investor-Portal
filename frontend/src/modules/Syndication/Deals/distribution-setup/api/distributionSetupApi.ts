@@ -240,6 +240,10 @@ function normalizeBundle(raw: Record<string, unknown>): DistributionSetupBundle 
             ? {}
             : { visible: true }),
         ...(investorPayments.length ? { investorPayments } : {}),
+        ...(row.investorPaymentsHiddenForViewer === true ||
+        row.investor_payments_hidden_for_viewer === true
+          ? { investorPaymentsHiddenForViewer: true }
+          : {}),
       }
     })
     .filter((p): p is PriorDistributionRecord => p != null)

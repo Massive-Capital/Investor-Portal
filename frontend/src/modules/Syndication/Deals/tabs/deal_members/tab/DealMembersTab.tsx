@@ -61,12 +61,11 @@ import {
 } from "../../../utils/investorClassOverviewFields"
 import type { DealInvestorRow } from "../../../types/deal-investors.types"
 import {
-  buildDealInvestorsExportCsv,
-  buildDealMembersTableExportCsv,
-  downloadDealExportCsv,
+  buildDealInvestorsExportMatrix,
+  buildDealMembersTableExportMatrix,
+  downloadDealRosterExportXlsx,
   exportAuditLinesForDealInvestorRows,
 } from "../../../utils/dealInvestorExportCsv"
-import { buildTableExportFilename } from "../../../../../../common/utils/tableExportFilename"
 import { dealInvestorStatusDisplayLabel } from "../../../utils/dealInvestorTableDisplay"
 import { applyInvitationMailSentMarks, rowInvitationMailMarkedSent } from "../../../utils/dealInvitationMailStatus"
 import {
@@ -147,7 +146,8 @@ const ROSTER_COPY: Record<
     loading: "Loading general partners…",
     loadingAria: "Loading general partners",
     exportTitle: "Export general partners",
-    exportHint: "Search and select members, then export to Excel (CSV format).",
+    exportHint:
+      "Search and select general partners, then export to Excel. The sheet is named General Partners.",
     exportSearchPlaceholder: "Search general partners…",
     exportSearchAria: "Search general partners in export list",
     exportListAria: "General partners to export",
@@ -164,7 +164,7 @@ const ROSTER_COPY: Record<
     loadingAria: "Loading team members",
     exportTitle: "Export team members",
     exportHint:
-      "Search and select team members, then export to Excel (CSV format).",
+      "Search and select team members, then export to Excel. The sheet is named Team Members.",
     exportSearchPlaceholder: "Search team members…",
     exportSearchAria: "Search team members in export list",
     exportListAria: "Team members to export",
@@ -1097,38 +1097,38 @@ export function DealMembersTab({
   ])
 
   function handleExportDealMembers(selected: DealInvestorRow[]) {
-    const csv =
-      rosterKind === "general_partners"
-        ? buildDealInvestorsExportCsv(
-            selected.map((row) => ({
-              ...row,
-              investorClass:
-                formatInvestorClassTableLabel(
-                  row.investorClass,
-                  investorClasses,
-                ) || row.investorClass,
-              committed: displayAddedInvestorsCommittedAmount(row),
-              commitmentAmountRaw: "",
-              extraContributionAmounts: [],
-              fundApprovedCommitmentSnapshot: undefined,
-            })),
-            gpClassNamesLine,
-          )
-        : buildDealMembersTableExportCsv(selected)
-    const filename = buildTableExportFilename({
+    const isTeamMembers = rosterKind === "general_partners"
+    const sheetName = isTeamMembers ? "Team Members" : "General Partners"
+    const matrix = isTeamMembers
+      ? buildDealInvestorsExportMatrix(
+          selected.map((row) => ({
+            ...row,
+            investorClass:
+              formatInvestorClassTableLabel(
+                row.investorClass,
+                investorClasses,
+              ) || row.investorClass,
+            committed: displayAddedInvestorsCommittedAmount(row),
+            commitmentAmountRaw: "",
+            extraContributionAmounts: [],
+            fundApprovedCommitmentSnapshot: undefined,
+          })),
+          gpClassNamesLine,
+        )
+      : buildDealMembersTableExportMatrix(selected)
+    const filename = downloadDealRosterExportXlsx({
+      sheetName,
+      matrix,
       dealName,
-      tableSlug:
-        rosterKind === "general_partners" ? "general-partner" : "deal-member",
+      tableSlug: isTeamMembers ? "team-members" : "general-partners",
     })
-    downloadDealExportCsv(csv, filename)
     void notifyDealMembersExportAudit(dealId, {
       rowCount: selected.length,
       exportedLines: exportAuditLinesForDealInvestorRows(selected),
+      rosterLabel: sheetName,
     })
     toast.success(
-      rosterKind === "general_partners"
-        ? "Team members exported"
-        : "General partners exported",
+      isTeamMembers ? "Team members exported" : "General partners exported",
       `Saved as ${filename}`,
     )
   }

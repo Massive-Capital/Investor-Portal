@@ -121,11 +121,14 @@ import {
 } from "../../constants/investor-profile";
 import { INVESTMENT_STATUS_APPROVE_FUND } from "../../constants/investment-status";
 import { formatMemberUsername } from "../../../usermanagement/memberAdminShared";
+import { fetchDistributionSetup } from "../../distribution-setup/api/distributionSetupApi";
 import {
   buildDealInvestorsExportCsv,
+  dealInvestorRowExportKey,
   downloadDealExportCsv,
   exportAuditLinesForDealInvestorRows,
 } from "../../utils/dealInvestorExportCsv";
+import { buildInvestorDistributionHistory } from "./investorDistributionHistory";
 import { buildTableExportFilename } from "@/common/utils/tableExportFilename";
 import {
   dealInvestorStatusDisplayLabel,
@@ -1384,8 +1387,46 @@ function DealInvestorsPopulated({
     ],
   );
 
-  function handleExportInvestors(selected: DealInvestorRow[]) {
-    const csv = buildDealInvestorsExportCsv(selected, dealAllClassNamesLine);
+  async function handleExportInvestors(selected: DealInvestorRow[]) {
+    const historyByRowKey = new Map<
+      string,
+      { memo: string; type: string; paymentDate: string; payment: number }[]
+    >();
+    try {
+      const [bundle, invPack] = await Promise.all([
+        fetchDistributionSetup(dealId),
+        fetchDealInvestors(dealId, { lpInvestorsOnly: false }),
+      ]);
+      const dealInvestors = invPack.investors ?? rows;
+      const classes = bundle.classes ?? [];
+      const priorDistributions = bundle.priorDistributions ?? [];
+      for (const row of selected) {
+        const history = buildInvestorDistributionHistory({
+          investor: row,
+          priorDistributions,
+          dealInvestors,
+          classes,
+        });
+        historyByRowKey.set(
+          dealInvestorRowExportKey(row),
+          history.map((h) => ({
+            memo: h.distributionName || h.memo,
+            type: h.type,
+            paymentDate: h.date || h.paymentDate,
+            payment: h.payment,
+          })),
+        );
+      }
+    } catch {
+      toast.error(
+        "Distribution details unavailable",
+        "Investor rows were exported without completed distribution history.",
+      );
+    }
+    const csv = buildDealInvestorsExportCsv(selected, dealAllClassNamesLine, {
+      includeDistributionDetails: true,
+      historyByRowKey,
+    });
     const filename = buildTableExportFilename({
       dealName,
       tableSlug: "investor",
@@ -1490,7 +1531,7 @@ function DealInvestorsPopulated({
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         title="Export deal investors"
-        hint="Search and select investors, then export to Excel (CSV format)."
+        hint="Search and select investors, then export to Excel (CSV). The file includes ownership, allocation, total distributed, and each completed distribution."
         searchPlaceholder="Search investors…"
         searchAriaLabel="Search investors in export list"
         listAriaLabel="Deal investors to export"

@@ -415,10 +415,12 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
       downloadDistributionsExportCsv({
         rows: selected,
         dealName: resolvedDealName || dealName,
+        setupClasses: classes,
+        investors,
       })
       setExportOpen(false)
     },
-    [filtered, resolvedDealName, dealName],
+    [filtered, resolvedDealName, dealName, classes, investors],
   )
 
   // const handleClearAll = useCallback(async () => {
@@ -463,10 +465,12 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
       downloadDistributionsExportCsv({
         rows: [row],
         dealName: resolvedDealName || dealName,
+        setupClasses: classes,
+        investors,
       })
       toast.success("Exported", `“${distributionDisplayName(row)}” downloaded.`)
     },
-    [resolvedDealName, dealName],
+    [resolvedDealName, dealName, classes, investors],
   )
 
   const handleDeleteOne = useCallback((row: PriorDistributionRecord) => {
@@ -1063,7 +1067,7 @@ export function DistributionsTab({ dealId, dealName }: DistributionsTabProps) {
               open={exportOpen}
               onClose={() => setExportOpen(false)}
               title="Export distributions"
-              hint="Choose which completed distribution runs to include in the Excel/CSV file."
+              hint="Choose which completed distribution runs to include. Each run is a sheet named after the distribution, with class and investor tables."
               searchPlaceholder="Search runs…"
               searchAriaLabel="Search export rows"
               listAriaLabel="Distributions to export"

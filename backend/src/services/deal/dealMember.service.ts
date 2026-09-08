@@ -54,6 +54,29 @@ function sendInvitationYesFromInput(raw: string | null | undefined): "yes" | "no
   return String(raw ?? "").toLowerCase() === "yes" ? "yes" : "no";
 }
 
+function investorClassIsLpOrGp(
+  stored: string | null | undefined,
+  classes: ReadonlyArray<{
+    id: string;
+    name: string;
+    subscriptionType: string;
+  }>,
+): boolean {
+  const t = String(stored ?? "").trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  const matched = classes.find(
+    (c) =>
+      c.id.trim().toLowerCase() === lower ||
+      c.name.trim().toLowerCase() === lower,
+  );
+  if (matched) {
+    const type = matched.subscriptionType.trim().toLowerCase();
+    return type === "lp" || type === "gp";
+  }
+  return /\blp\b|\bgp\b|limited partner|general partner/.test(lower);
+}
+
 /**
  * On upsert, keep `send_invitation_mail = yes` when the client sends `no` (edit/autosave
  * default) so a prior successful invite is not cleared.
@@ -325,6 +348,13 @@ export async function listDealMembersMappedToInvestorApi(
       .from(dealLpInvestor)
       .where(eq(dealLpInvestor.dealId, dealId)),
   ]);
+  // console.log("[Deal Members query]", {
+  //   dealId,
+  //   rawDealMemberRows: members.length,
+  //   investmentRows: investments.length,
+  //   investorClassRows: classes.length,
+  //   lpRosterRows: lpRoster.length,
+  // });
   const allContactIdsForCanonical = [
     ...members.map((m) => m.contactMemberId),
     ...investments.map((inv) => inv.contactId),
@@ -402,9 +432,18 @@ export async function listDealMembersMappedToInvestorApi(
   for (const inv of investments) {
     const k = normalizeContactKey(inv.contactId ?? "");
     const canonical = k ? canonicalOf(k) : "";
-    if (!canonical || coveredCanonical.has(canonical)) continue;
+    if (!canonical) continue;
+    const alreadyHasRosterRow = coveredCanonical.has(canonical);
+    const shouldShowClassRowForRosterMember =
+      alreadyHasRosterRow && investorClassIsLpOrGp(inv.investorClass, classes);
     if (
-      !rowIsGeneralPartnerForRoster(inv.investor_role, inv.investorClass, classes)
+      !shouldShowClassRowForRosterMember &&
+      (alreadyHasRosterRow ||
+        !rowIsGeneralPartnerForRoster(
+          inv.investor_role,
+          inv.investorClass,
+          classes,
+        ))
     ) {
       continue;
     }
@@ -419,7 +458,7 @@ export async function listDealMembersMappedToInvestorApi(
       addedBy: null,
       contactMemberId: inv.contactId,
     });
-    coveredCanonical.add(canonical);
+    if (!alreadyHasRosterRow) coveredCanonical.add(canonical);
   }
 
   for (const m of lpRoster) {
@@ -470,7 +509,7 @@ export async function listDealMembersMappedToInvestorApi(
     new Set<string>(),
   );
 
-  return patched.map((r, i) => {
+  const result = patched.map((r, i) => {
     const m = rowMeta[i];
     const invitationMailSent = invitationMailFlags[i] === true;
     const base = mapRowToInvestorApi(r, resolved, { invitationMailSent });
@@ -498,6 +537,12 @@ export async function listDealMembersMappedToInvestorApi(
       ...(m?.investorKind ? { investorKind: m.investorKind } : {}),
     };
   });
+  console.log("[Deal Members result]", {
+    dealId,
+    mergedRowsBeforeMapping: patched.length,
+    returnedRows: result.length,
+  });
+  return result;
 }
 
 /**

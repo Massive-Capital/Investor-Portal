@@ -164,6 +164,7 @@ function linesFromStoredPayments(
   distribution: PriorDistributionRecord,
   investors: DealInvestorRow[] = [],
 ): InvestorDistributionLine[] | null {
+  if (distribution.investorPaymentsHiddenForViewer) return []
   const stored = distribution.investorPayments
   if (!stored?.length) return null
 

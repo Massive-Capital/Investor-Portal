@@ -49,6 +49,8 @@ export interface PriorDistributionRecord {
   /** Investor portal visibility. */
   visible?: boolean
   investorPayments?: InvestorDistributionPayment[]
+  /** Co-sponsor viewer: stored lines exist but none are in their investor scope. */
+  investorPaymentsHiddenForViewer?: boolean
 }
 
 export interface InvestorDistributionPayment {
