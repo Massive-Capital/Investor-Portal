@@ -1,9 +1,24 @@
-import { CheckCircle2, ClipboardList, Loader2, MessageSquareText, X } from "lucide-react"
+import { ViewReadonlyField } from "@/common/components/ViewReadonlyField"
+import { displayEmail } from "@/common/utils/displayEmail"
+import { formatDateDdMmmYyyy } from "@/common/utils/formatDateDisplay"
+import {
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  FileText,
+  LayoutGrid,
+  List,
+  Loader2,
+  Mail,
+  MessageSquareText,
+  User,
+  UserCheck,
+  X,
+} from "lucide-react"
 import { useEffect, useId, useState, type FormEvent } from "react"
 import { createPortal } from "react-dom"
-import { formatDateDdMmmYyyy } from "@/common/utils/formatDateDisplay"
-import { feedbackLocationLabel } from "./feedbackLocation"
-import type { FeedbackItem, FeedbackReviewAction } from "./types"
+import "../Syndication/usermanagement/user_management.css"
+import type { FeedbackItem, FeedbackReviewAction, FeedbackStatus } from "./types"
 import "./feedback.css"
 
 function formatDateTime(raw: string | null | undefined): string {
@@ -16,6 +31,21 @@ function formatDateTime(raw: string | null | undefined): string {
     minute: "2-digit",
   })
   return `${date} ${time}`
+}
+
+function StatusCell({ status }: { status: FeedbackStatus }) {
+  const tone =
+    status === "Resolved"
+      ? "um_status_dot_active"
+      : status === "Reviewed"
+        ? "um_status_dot_invited"
+        : "um_status_dot_invited"
+  return (
+    <span className="um_status_cell">
+      <span className={`um_status_dot ${tone}`} />
+      <span className="um_status_label">{status}</span>
+    </span>
+  )
 }
 
 export function FeedbackDetailsModal({
@@ -34,6 +64,7 @@ export function FeedbackDetailsModal({
   onAction?: (action: FeedbackReviewAction, adminResponse: string) => void
 }) {
   const titleId = useId()
+  const notesId = useId()
   const [notes, setNotes] = useState("")
   const [error, setError] = useState<string | null>(null)
 
@@ -42,6 +73,15 @@ export function FeedbackDetailsModal({
     setNotes(item?.adminResponse ?? "")
     setError(null)
   }, [open, item?.id, item?.adminResponse])
+
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -77,25 +117,22 @@ export function FeedbackDetailsModal({
 
   return createPortal(
     <div
-      className="um_modal_overlay contacts_suspend_overlay portal_modal_z_boost"
+      className="um_modal_overlay portal_modal_z_boost"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose()
       }}
     >
       <div
-        className="um_modal feedback_form_modal feedback_details_modal"
+        className="um_modal um_modal_view feedback_details_modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="um_modal_head add_contact_modal_head">
-          <div className="add_contact_modal_head_main">
-            <h3 id={titleId} className="um_modal_title um_title_with_icon">
-              <MessageSquareText size={20} aria-hidden />
-              {reviewMode ? "Review feedback" : "Feedback details"}
-            </h3>
-          </div>
+        <div className="um_modal_head">
+          <h3 id={titleId} className="um_modal_title">
+            {reviewMode ? "Review feedback" : "Feedback details"}
+          </h3>
           <button
             type="button"
             className="um_modal_close"
@@ -103,86 +140,127 @@ export function FeedbackDetailsModal({
             disabled={submitting}
             aria-label="Close"
           >
-            <X size={18} />
+            <X size={20} strokeWidth={2} aria-hidden />
           </button>
         </div>
-        <form className="feedback_form" onSubmit={handleSubmit}>
-          {error ? <p className="feedback_form_error">{error}</p> : null}
-          <dl className="feedback_readonly_grid">
-            <div>
-              <dt>Submitted by</dt>
-              <dd>{item.username || "—"}</dd>
-            </div>
-            <div>
-              <dt>Email</dt>
-              <dd>{item.userEmail || "—"}</dd>
-            </div>
-            <div>
-              <dt>Page</dt>
-              <dd>{feedbackLocationLabel(item)}</dd>
-            </div>
-            <div>
-              <dt>Submitted</dt>
-              <dd>{formatDateTime(item.createdAt)}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>{item.status}</dd>
-            </div>
-            {item.reviewedByName ? (
-              <div>
-                <dt>Reviewed by</dt>
-                <dd>{item.reviewedByName}</dd>
-              </div>
-            ) : null}
-            {item.reviewedAt ? (
-              <div>
-                <dt>Reviewed date</dt>
-                <dd>{formatDateTime(item.reviewedAt)}</dd>
-              </div>
-            ) : null}
-            {item.resolvedAt ? (
-              <div>
-                <dt>Resolved date</dt>
-                <dd>{formatDateTime(item.resolvedAt)}</dd>
-              </div>
-            ) : null}
-          </dl>
-          <label className="feedback_field">
-            <span>Original feedback</span>
-            <p className="feedback_readonly_text">{item.description || "—"}</p>
-          </label>
-          {reviewMode ? (
-            <label className="feedback_field">
-              <span>Review Comments</span>
-              <textarea
-                className="feedback_textarea"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={5}
-                maxLength={8000}
-                disabled={submitting}
-                placeholder="Describe the review or how the issue was resolved…"
+
+        <form
+          className="feedback_details_form"
+          onSubmit={handleSubmit}
+        >
+          <div className="feedback_details_scroll">
+            {error ? <p className="feedback_form_error">{error}</p> : null}
+
+            <div className="um_view_grid feedback_details_grid">
+              <ViewReadonlyField
+                Icon={User}
+                label="Submitted by"
+                value={item.username || "—"}
               />
-            </label>
-          ) : item.adminResponse ? (
-            <label className="feedback_field">
-              <span>Review Comments</span>
-              <p className="feedback_readonly_text">{item.adminResponse}</p>
-            </label>
-          ) : null}
-          <div className="um_modal_actions add_contact_modal_actions">
+              <ViewReadonlyField
+                Icon={Mail}
+                label="Email"
+                value={displayEmail(item.userEmail)}
+              />
+              <ViewReadonlyField
+                Icon={LayoutGrid}
+                label="Page"
+                value={item.pageLabel || "—"}
+              />
+              <ViewReadonlyField
+                Icon={List}
+                label="Sub page / Tab"
+                value={item.subPageLabel || "—"}
+              />
+              <ViewReadonlyField
+                Icon={CalendarClock}
+                label="Submitted"
+                value={formatDateTime(item.createdAt)}
+              />
+              <ViewReadonlyField
+                Icon={ClipboardList}
+                label="Status"
+                value={<StatusCell status={item.status} />}
+              />
+              {item.reviewedByName ? (
+                <ViewReadonlyField
+                  Icon={UserCheck}
+                  label="Reviewed by"
+                  value={item.reviewedByName}
+                />
+              ) : null}
+              {item.reviewedAt ? (
+                <ViewReadonlyField
+                  Icon={CalendarClock}
+                  label="Reviewed date"
+                  value={formatDateTime(item.reviewedAt)}
+                />
+              ) : null}
+              {item.resolvedAt ? (
+                <ViewReadonlyField
+                  Icon={CalendarClock}
+                  label="Resolved date"
+                  value={formatDateTime(item.resolvedAt)}
+                  fieldClassName={
+                    item.reviewedByName && item.reviewedAt
+                      ? "um_view_field_span_full"
+                      : undefined
+                  }
+                />
+              ) : null}
+              <ViewReadonlyField
+                Icon={FileText}
+                label="Original feedback"
+                value={item.description?.trim() || "—"}
+                fieldClassName="um_view_field_span_full feedback_view_field_multiline"
+              />
+              {reviewMode ? (
+                <div className="um_view_field um_view_field_span_full feedback_view_field_multiline">
+                  <div className="um_view_field_head">
+                    <MessageSquareText
+                      className="um_view_field_icon"
+                      size={18}
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                    <label htmlFor={notesId} className="um_view_field_label">
+                      Review comments
+                    </label>
+                  </div>
+                  <textarea
+                    id={notesId}
+                    className="um_field_textarea feedback_review_textarea"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={5}
+                    maxLength={8000}
+                    disabled={submitting}
+                    placeholder="Describe the review or how the issue was resolved…"
+                  />
+                </div>
+              ) : item.adminResponse ? (
+                <ViewReadonlyField
+                  Icon={MessageSquareText}
+                  label="Review comments"
+                  value={item.adminResponse}
+                  fieldClassName="um_view_field_span_full feedback_view_field_multiline"
+                />
+              ) : null}
+            </div>
+          </div>
+
+          <div className="um_modal_actions um_modal_actions_view feedback_details_footer">
             <button
               type="button"
               className="um_btn_secondary"
               onClick={onClose}
               disabled={submitting}
             >
-              <X size={16} aria-hidden />
+              <X size={16} strokeWidth={2} aria-hidden />
               {reviewMode ? "Cancel" : "Close"}
             </button>
             {reviewMode ? (
-              <div className="add_contact_modal_actions_trailing feedback_review_actions">
+              <>
                 {canMarkReviewed ? (
                   <button
                     type="button"
@@ -193,7 +271,7 @@ export function FeedbackDetailsModal({
                     {submitting ? (
                       <Loader2 size={16} className="feedback_spin" aria-hidden />
                     ) : (
-                      <ClipboardList size={16} aria-hidden />
+                      <ClipboardList size={16} strokeWidth={2} aria-hidden />
                     )}
                     Mark as Reviewed
                   </button>
@@ -208,12 +286,12 @@ export function FeedbackDetailsModal({
                     {submitting ? (
                       <Loader2 size={16} className="feedback_spin" aria-hidden />
                     ) : (
-                      <CheckCircle2 size={16} aria-hidden />
+                      <CheckCircle2 size={16} strokeWidth={2} aria-hidden />
                     )}
                     Mark as Resolved
                   </button>
                 ) : null}
-              </div>
+              </>
             ) : null}
           </div>
         </form>

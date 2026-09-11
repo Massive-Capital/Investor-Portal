@@ -1214,8 +1214,8 @@ export default function InvestmentDetailPage() {
       <div className="um_page deals_list_page deals_detail_page investment_detail_page">
         <p className="deals_list_not_found">
           {saasPaywallDeal.dealName.trim()
-            ? `This deal is unavailable until monthly SaaS is paid for “${saasPaywallDeal.dealName.trim()}”.`
-            : "This deal is unavailable until monthly SaaS is paid."}{" "}
+            ? `Contact your sponsor for access to “${saasPaywallDeal.dealName.trim()}”.`
+            : "Contact your sponsor for access to this deal."}{" "}
           <Link to="/investing/investments" className="deals_list_inline_back">
             <ArrowLeft size={18} strokeWidth={2} aria-hidden />
             Back to investments
@@ -1223,6 +1223,7 @@ export default function InvestmentDetailPage() {
         </p>
         <DealSaasPaywallModal
           deal={saasPaywallDeal}
+          investorFacing
           onClose={() => navigate("/investing/investments")}
         />
       </div>

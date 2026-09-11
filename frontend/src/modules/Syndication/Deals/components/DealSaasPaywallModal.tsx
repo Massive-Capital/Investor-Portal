@@ -2,11 +2,13 @@ import {
   BadgeDollarSign,
   CreditCard,
   Loader2,
+  Mail,
   X,
 } from "lucide-react"
 import { useEffect, useId, useState } from "react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
+import { isLpInvestorSessionUser } from "../../../../common/auth/roleUtils"
 import { getSessionOrganizationCompanyId } from "../../../../common/auth/sessionOrganization"
 import { openCompanyBillingPortal } from "../../company/companyBillingApi"
 import { formatDealListDateDisplay } from "../dealsListDisplay"
@@ -20,9 +22,12 @@ import "./deal-stage-change-modal.css"
 export function DealSaasPaywallModal({
   deal,
   onClose,
+  investorFacing = false,
 }: {
   deal: DealSaasPaywallDeal | null
   onClose: () => void
+  /** Investors should not see billing / payment-due copy. */
+  investorFacing?: boolean
 }) {
   const titleId = useId()
   const navigate = useNavigate()
@@ -68,18 +73,24 @@ export function DealSaasPaywallModal({
         subStatus === "trialing" ||
         subStatus === "past_due" ||
         subStatus === "unpaid")))
-  const title = isPlanUpgrade
-    ? "Upgrade this deal’s plan"
-    : reason === "expired"
-      ? "Billing period ended"
-      : reason === "past_due"
-        ? "Payment past due"
-        : "Payment is due"
   const dealLabel = lockedDeal.dealName.trim()
     ? `“${lockedDeal.dealName.trim()}”`
     : "this deal"
   const canPayForDeal = lockedDeal.viewerIsLeadSponsor === true
-  const description = !canPayForDeal
+  const showInvestorCopy =
+    !canPayForDeal && (investorFacing || isLpInvestorSessionUser())
+  const title = showInvestorCopy
+    ? "Contact your sponsor"
+    : isPlanUpgrade
+      ? "Upgrade this deal’s plan"
+      : reason === "expired"
+        ? "Billing period ended"
+        : reason === "past_due"
+          ? "Payment past due"
+          : "Payment is due"
+  const description = showInvestorCopy
+    ? `This deal is not available right now. Contact your sponsor for access to ${dealLabel}.`
+    : !canPayForDeal
     ? isPlanUpgrade
       ? `The lead sponsor must upgrade ${dealLabel} to ${suggestedLabel} after the deal size increased.`
       : `The lead sponsor must pay monthly SaaS for ${dealLabel} before this deal can be opened.`
@@ -138,10 +149,16 @@ export function DealSaasPaywallModal({
       >
         <header className="deal_stage_modal_head">
           <div className="deal_stage_modal_icon_wrap" aria-hidden>
-            <CreditCard size={22} strokeWidth={2} />
+            {showInvestorCopy ? (
+              <Mail size={22} strokeWidth={2} />
+            ) : (
+              <CreditCard size={22} strokeWidth={2} />
+            )}
           </div>
           <div className="deal_stage_modal_head_text">
-            <p className="deal_stage_modal_eyebrow">Deal billing</p>
+            <p className="deal_stage_modal_eyebrow">
+              {showInvestorCopy ? "Deal access" : "Deal billing"}
+            </p>
             <h2 id={titleId} className="deal_stage_modal_title">
               {title}
             </h2>
@@ -159,7 +176,9 @@ export function DealSaasPaywallModal({
 
         <div className="deal_stage_modal_body">
           <span className="deal_stage_modal_badge">
-            {isPlanUpgrade
+            {showInvestorCopy
+              ? "Contact sponsor"
+              : isPlanUpgrade
               ? "Deal size increased"
               : reason === "expired"
               ? "Billing date passed"
@@ -168,7 +187,7 @@ export function DealSaasPaywallModal({
                 : "Payment required"}
           </span>
           <p className="deal_stage_modal_desc">{description}</p>
-          {nextBillingLabel ? (
+          {!showInvestorCopy && nextBillingLabel ? (
             <p className="deal_stage_modal_desc" style={{ marginTop: "0.65rem" }}>
               Billing date: {nextBillingLabel}
             </p>

@@ -2,6 +2,7 @@ import { portalAuthHeaders, organizationIdQueryParam } from "@/common/auth/porta
 import { getApiV1Base } from "@/common/utils/apiBaseUrl"
 import type {
   ContactOfferingVisibility,
+  ContactOwnerSponsorOption,
   ContactRow,
   ContactStatus,
 } from "../types/contact.types"
@@ -451,5 +452,64 @@ export async function fetchOrganizationContactLists(options?: {
       : []
   } catch {
     return []
+  }
+}
+
+function normalizeOwnerSponsor(
+  raw: Record<string, unknown>,
+): ContactOwnerSponsorOption | null {
+  const displayName = String(raw.displayName ?? raw.display_name ?? "").trim()
+  const userId = String(raw.userId ?? raw.user_id ?? "").trim()
+  if (!displayName) return null
+  return {
+    userId,
+    displayName,
+    email: String(raw.email ?? "").trim(),
+  }
+}
+
+/** Org / role-scoped sponsors for the contact Owners dropdown. */
+export async function fetchContactOwnerSponsors(options?: {
+  contactId?: string
+}): Promise<{
+  sponsors: ContactOwnerSponsorOption[]
+  lockToListed: boolean
+}> {
+  const empty = { sponsors: [] as ContactOwnerSponsorOption[], lockToListed: false }
+  const base = getApiV1Base()
+  if (!base) return empty
+  try {
+    const params = new URLSearchParams()
+    const oid = organizationIdQueryParam()
+    if (oid) params.set("organizationId", oid)
+    const contactId = options?.contactId?.trim()
+    if (contactId) params.set("contactId", contactId)
+    const q = params.toString()
+    const res = await fetch(
+      `${base}/contacts/owner-sponsors${q ? `?${q}` : ""}`,
+      {
+        headers: { ...authHeaders() },
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      sponsors?: unknown
+      lockToListed?: unknown
+    }
+    if (!res.ok) return empty
+    const list = data.sponsors
+    if (!Array.isArray(list)) return empty
+    return {
+      sponsors: list
+        .filter(
+          (x): x is Record<string, unknown> =>
+            x != null && typeof x === "object" && !Array.isArray(x),
+        )
+        .map(normalizeOwnerSponsor)
+        .filter((x): x is ContactOwnerSponsorOption => x != null),
+      lockToListed: data.lockToListed === true,
+    }
+  } catch {
+    return empty
   }
 }

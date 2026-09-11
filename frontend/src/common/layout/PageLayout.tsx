@@ -138,15 +138,17 @@ function SidebarNavItem({
   const badgeText = badge?.trim()
   const badgeClass = badgeText ? " app_sidebar_link_with_badge" : ""
   const badgeEl = badgeText ? (
-    <span className="app_sidebar_sublink_badge app_sidebar_count_badge">
+    <span className="app_sidebar_count_badge" aria-hidden>
       {badgeText}
     </span>
   ) : null
+  const badgeAria = badgeText ? `${label}, ${badgeText} pending` : undefined
   if (end !== undefined) {
     return (
       <NavLink
         to={to}
         end={end}
+        aria-label={badgeAria}
         className={({ isActive: navActive }) =>
           `app_sidebar_link${badgeClass}${navActive ? " app_sidebar_link_active" : ""}`
         }
@@ -163,6 +165,7 @@ function SidebarNavItem({
       to={to}
       className={`app_sidebar_link${badgeClass}${active ? " app_sidebar_link_active" : ""}`}
       aria-current={active ? "page" : undefined}
+      aria-label={badgeAria}
     >
       <Icon size={18} />
       <span>{label}</span>

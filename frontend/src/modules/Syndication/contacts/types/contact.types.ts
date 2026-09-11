@@ -74,3 +74,10 @@ export interface ContactRow {
   customFields?: Array<{ label: string; value: string }>
   updatedAt?: string
 }
+
+/** Sponsor the viewer may assign as a contact owner (org / role scoped). */
+export interface ContactOwnerSponsorOption {
+  userId: string
+  displayName: string
+  email: string
+}

@@ -398,6 +398,21 @@ function emailFromContactIdLiteral(contactId: string): string | null {
   return t.includes("@") ? t : null;
 }
 
+function isUsableInvestorEmail(raw: string | null | undefined): boolean {
+  const em = String(raw ?? "").trim();
+  if (!em || !em.includes("@")) return false;
+  if (/redacted/i.test(em)) return false;
+  return true;
+}
+
+function personNameKey(first: string, last: string, full?: string): string {
+  const fromParts = `${String(first ?? "").trim()} ${String(last ?? "").trim()}`
+    .trim()
+    .toLowerCase();
+  if (fromParts) return fromParts;
+  return String(full ?? "").trim().toLowerCase();
+}
+
 export async function resolveUsersByContactIds(
   rows: DealInvestmentRow[],
 ): Promise<Map<string, ResolvedPortalUser>> {
@@ -445,33 +460,74 @@ export async function resolveUsersByContactIds(
       lastName: String(u.lastName ?? "").trim(),
     });
   }
-  const notInUsers = ids.filter((id) => !m.has(id.toLowerCase()));
-  if (notInUsers.length > 0) {
-    const contactRows = await db
-      .select({
-        id: contact.id,
-        email: contact.email,
-        firstName: contact.firstName,
-        lastName: contact.lastName,
-      })
-      .from(contact)
-      .where(inArray(contact.id, notInUsers));
-    for (const c of contactRows) {
-      const key = String(c.id).toLowerCase();
-      const firstName = String(c.firstName ?? "").trim();
-      const lastName = String(c.lastName ?? "").trim();
-      const displayName =
-        [firstName, lastName].filter(Boolean).join(" ").trim() || "—";
-      const email = c.email?.trim() || "—";
-      m.set(key, {
-        displayName,
-        userDisplayName: "—",
-        userEmail: email,
-        firstName,
-        lastName,
-      });
-    }
+  const nameKeys = new Set<string>();
+  for (const r of rows) {
+    const fromRow = personNameKey("", "", r.contactDisplayName ?? "");
+    if (fromRow) nameKeys.add(fromRow);
   }
+  for (const resolved of m.values()) {
+    const fromUser = personNameKey(resolved.firstName, resolved.lastName);
+    if (fromUser) nameKeys.add(fromUser);
+  }
+
+  const contactRows = await db
+    .select({
+      id: contact.id,
+      email: contact.email,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      fullName: contact.fullName,
+    })
+    .from(contact)
+    .where(
+      nameKeys.size > 0
+        ? sql`${inArray(contact.id, ids)} OR lower(trim(${contact.fullName})) in (${sql.join(
+            [...nameKeys].map((k) => sql`${k}`),
+            sql`, `,
+          )}) OR lower(trim(concat_ws(' ', ${contact.firstName}, ${contact.lastName}))) in (${sql.join(
+            [...nameKeys].map((k) => sql`${k}`),
+            sql`, `,
+          )})`
+        : inArray(contact.id, ids),
+    );
+
+  const contactById = new Map<string, (typeof contactRows)[number]>();
+  const contactByName = new Map<string, (typeof contactRows)[number]>();
+  for (const c of contactRows) {
+    contactById.set(String(c.id).toLowerCase(), c);
+    const name = personNameKey(c.firstName, c.lastName, c.fullName);
+    if (name && isUsableInvestorEmail(c.email)) contactByName.set(name, c);
+  }
+
+  for (const id of ids) {
+    const key = id.toLowerCase();
+    const existing = m.get(key);
+    const c = contactById.get(key);
+    const byName = existing
+      ? contactByName.get(personNameKey(existing.firstName, existing.lastName))
+      : undefined;
+    const source = c ?? byName;
+    if (!source) continue;
+    const firstName = String(source.firstName ?? "").trim();
+    const lastName = String(source.lastName ?? "").trim();
+    const displayName =
+      [firstName, lastName].filter(Boolean).join(" ").trim() ||
+      existing?.displayName ||
+      "—";
+    const email = isUsableInvestorEmail(source.email)
+      ? String(source.email).trim()
+      : isUsableInvestorEmail(existing?.userEmail)
+        ? String(existing?.userEmail).trim()
+        : String(source.email ?? "").trim() || "—";
+    m.set(key, {
+      displayName,
+      userDisplayName: existing?.userDisplayName ?? "—",
+      userEmail: email,
+      firstName: firstName || existing?.firstName || "",
+      lastName: lastName || existing?.lastName || "",
+    });
+  }
+
   return m;
 }
 
@@ -1880,12 +1936,13 @@ async function resolveDealLeadSponsorFallback(dealId: string): Promise<{
 const INVESTOR_EMAIL_REDACTED = "Email unavailable";
 
 /**
- * Lead / admin sponsors see the full investor roster but must not see email for
- * any row added by a co-sponsor on this deal (regardless of intercept).
+ * Lead / admin see the full roster, but not emails on investors added by a
+ * co-sponsor. A viewer who is that investor's sponsor still sees the email.
  */
 export async function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer<
   T extends {
     userEmail?: string;
+    addedByUserId?: string;
     addedByIsCoSponsorOnDeal?: boolean;
     addedByCoSponsorEmailIntercept?: string;
   },
@@ -1893,8 +1950,14 @@ export async function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer<
   const viewer = String(viewerUserId ?? "").trim();
   if (!viewer || rows.length === 0) return rows;
   if (!(await isPortalUserLeadOrAdminSponsorOnDeal(dealId, viewer))) return rows;
+  const viewerIds = await listEquivalentPortalUserIdsForUser(viewer);
+  const viewerIdSet = new Set(
+    [...viewerIds, viewer].map((id) => String(id).trim().toLowerCase()),
+  );
   return rows.map((row) => {
     if (row.addedByIsCoSponsorOnDeal !== true) return row;
+    const addedBy = String(row.addedByUserId ?? "").trim().toLowerCase();
+    if (addedBy && viewerIdSet.has(addedBy)) return row;
     return { ...row, userEmail: INVESTOR_EMAIL_REDACTED };
   });
 }

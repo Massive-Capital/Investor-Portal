@@ -34,6 +34,11 @@ import {
   listOrganizationContactListNames,
   listOrganizationContactTagNames,
 } from "../services/contact/organizationContactLabels.service.js";
+import {
+  allowedOwnerNamesFromSponsors,
+  filterOwnersToAllowedNames,
+  listContactOwnerSponsorsForViewer,
+} from "../services/contact/contactOwnerSponsors.service.js";
 import type {
   ContactEmailTemplateRow,
   ContactRow,
@@ -315,6 +320,39 @@ export async function getOrganizationContactTags(
   }
 }
 
+/** GET /contacts/owner-sponsors — scoped sponsor options for the Owners dropdown. */
+export async function getContactOwnerSponsors(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const orgId = await resolveOrganizationIdForContactLabels(req, user.id);
+    const [actor] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    const contactId = paramStr(
+      (req.query.contactId ?? req.query.contact_id) as string | string[] | undefined,
+    );
+    const { sponsors, lockToListed } = await listContactOwnerSponsorsForViewer({
+      viewerUserId: user.id,
+      viewerRole: actor?.role ?? user.userRole,
+      organizationId: orgId,
+      contactId,
+    });
+    res.status(200).json({ sponsors, lockToListed });
+  } catch (err) {
+    console.error("getContactOwnerSponsors:", err);
+    res.status(500).json({ message: "Could not load contact owners" });
+  }
+}
+
 /** GET /contacts/organization-lists — names from `organization_contact_list`. */
 export async function getOrganizationContactLists(
   req: Request,
@@ -456,10 +494,29 @@ export async function postContact(req: Request, res: Response): Promise<void> {
     const fallback =
       user.email?.trim() || creatorLabel || "User";
     const primaryOwner = creatorLabel || fallback;
-    const owners = dedupeOwnersPreserveOrder([
-      primaryOwner,
-      ...ownersFromClient,
-    ]);
+    const orgId = await resolveOrganizationIdForContactLabels(req, user.id);
+    const [actor] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    const { sponsors, lockToListed } = await listContactOwnerSponsorsForViewer({
+      viewerUserId: user.id,
+      viewerRole: actor?.role ?? user.userRole,
+      organizationId: orgId,
+    });
+    const allowed = allowedOwnerNamesFromSponsors(
+      sponsors,
+      lockToListed ? [] : [primaryOwner],
+    );
+    const filtered = filterOwnersToAllowedNames(ownersFromClient, allowed);
+    const owners = lockToListed
+      ? dedupeOwnersPreserveOrder(
+          filtered.length > 0
+            ? filtered
+            : sponsors.map((s) => s.displayName).filter(Boolean),
+        )
+      : dedupeOwnersPreserveOrder([primaryOwner, ...filtered]);
 
     const row = await insertContact({
       input: {
@@ -544,7 +601,38 @@ export async function patchContact(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const owners = dedupeOwnersPreserveOrder(ownersFromClient);
+    const existing = await getContactForViewer(
+      user.id,
+      contactId,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!existing) {
+      res.status(404).json({ message: "Contact not found or access denied" });
+      return;
+    }
+    const orgId = await resolveOrganizationIdForContactLabels(req, user.id);
+    const [actor] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    const { sponsors, lockToListed } = await listContactOwnerSponsorsForViewer({
+      viewerUserId: user.id,
+      viewerRole: actor?.role ?? user.userRole,
+      organizationId: orgId,
+      contactId,
+    });
+    const allowed = allowedOwnerNamesFromSponsors(
+      sponsors,
+      lockToListed ? [] : (existing.owners ?? []),
+    );
+    const filtered = filterOwnersToAllowedNames(ownersFromClient, allowed);
+    const owners = dedupeOwnersPreserveOrder(
+      lockToListed && filtered.length === 0
+        ? sponsors.map((s) => s.displayName).filter(Boolean)
+        : filtered,
+    );
 
     const updated = await updateContactFieldsForViewer(
       user.id,

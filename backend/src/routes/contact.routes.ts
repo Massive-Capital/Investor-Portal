@@ -3,6 +3,7 @@ import {
   deleteContactEmailTemplate,
   getContact,
   getContactEmailTemplates,
+  getContactOwnerSponsors,
   getContacts,
   getOrganizationContactLists,
   getOrganizationContactTags,
@@ -23,6 +24,7 @@ router.get("/contacts", getContacts);
 router.get("/contacts/email-templates", getContactEmailTemplates);
 router.get("/contacts/organization-tags", getOrganizationContactTags);
 router.get("/contacts/organization-lists", getOrganizationContactLists);
+router.get("/contacts/owner-sponsors", getContactOwnerSponsors);
 router.get("/contacts/:contactId", getContact);
 router.post("/contacts", postContact);
 router.post("/contacts/email-templates", postContactEmailTemplate);

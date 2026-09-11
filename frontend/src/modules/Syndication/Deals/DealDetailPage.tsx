@@ -196,7 +196,7 @@ export function DealDetailPage() {
     DealInvestorRow[]
   >([])
   const [viewerDealMemberRoleFromApi, setViewerDealMemberRoleFromApi] =
-    useState<ViewerDealMemberRole | null>(null)
+    useState<ViewerDealMemberRole | undefined>(undefined)
 
   const openInvestNow = useCallback(() => {
     const id = dealId?.trim()
@@ -209,7 +209,7 @@ export function DealDetailPage() {
   }, [dealId])
 
   useEffect(() => {
-    setViewerDealMemberRoleFromApi(null)
+    setViewerDealMemberRoleFromApi(undefined)
     if (!dealId?.trim()) return
     let cancelled = false
     void fetchDealMembers(dealId).then((result) => {
@@ -228,7 +228,9 @@ export function DealDetailPage() {
   const sessionUserId = getSessionUserId()
 
   const viewerDealMemberRole = useMemo(() => {
-    if (viewerDealMemberRoleFromApi != null) return viewerDealMemberRoleFromApi
+    if (viewerDealMemberRoleFromApi !== undefined) {
+      return viewerDealMemberRoleFromApi
+    }
     return resolveViewerDealMemberRole(
       memberRosterForTabs,
       sessionEmail,
@@ -247,8 +249,9 @@ export function DealDetailPage() {
     () =>
       visibleDealDetailTabIds(viewerDealMemberRole, {
         isWorkspaceAdmin,
+        isRoleLoading: viewerDealMemberRoleFromApi === undefined,
       }),
-    [viewerDealMemberRole, isWorkspaceAdmin],
+    [viewerDealMemberRole, viewerDealMemberRoleFromApi, isWorkspaceAdmin],
   )
 
   const canUploadEsignTemplates = useMemo(

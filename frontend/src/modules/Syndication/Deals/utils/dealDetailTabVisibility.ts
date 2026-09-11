@@ -260,30 +260,38 @@ export function filterDealInvestorRowsForCoSponsorViewer(
 }
 
 /**
- * Investors tab: co-sponsor rows are already limited to that viewer’s Sponsor-name
- * investors by the API; lead/admin get full roster with co-sponsor emails redacted.
+ * Investors tab: co-sponsor rows are limited to that viewer’s Sponsor-name
+ * investors by the API; lead/admin get the full roster with co-sponsor emails hidden.
  */
 export function scopeDealInvestorRowsForViewer(
   rows: DealInvestorRow[],
   viewerRole: ViewerDealMemberRole,
-  _sessionUserId: string,
+  sessionUserId: string,
 ): DealInvestorRow[] {
-  return redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(rows, viewerRole)
+  return redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
+    rows,
+    viewerRole,
+    sessionUserId,
+  )
 }
 
 /**
- * Lead / admin sponsors see the full roster; hide email on rows a co-sponsor added.
- * Uses API `addedByIsCoSponsorOnDeal` when present (matches backend redaction).
+ * Lead / admin see the full roster, but not emails on investors a co-sponsor added.
+ * If the viewer is that investor's sponsor, the email stays visible.
  */
 export function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
   rows: DealInvestorRow[],
   viewerRole: ViewerDealMemberRole,
+  sessionUserId?: string,
 ): DealInvestorRow[] {
   if (viewerRole !== "lead_sponsor" && viewerRole !== "admin_sponsor") {
     return rows
   }
+  const viewer = String(sessionUserId ?? "").trim().toLowerCase()
   return rows.map((row) => {
     if (row.addedByIsCoSponsorOnDeal !== true) return row
+    const addedBy = String(row.addedByUserId ?? "").trim().toLowerCase()
+    if (viewer && addedBy && addedBy === viewer) return row
     return { ...row, userEmail: EMAIL_UNAVAILABLE_LABEL }
   })
 }
@@ -291,7 +299,7 @@ export function redactCoSponsorAddedInvestorEmailsForLeadAdminViewer(
 /** Which deal detail tab ids the viewer may open, based on roster role. */
 export function visibleDealDetailTabIds(
   role: ViewerDealMemberRole,
-  opts?: { isWorkspaceAdmin?: boolean },
+  opts?: { isWorkspaceAdmin?: boolean; isRoleLoading?: boolean },
 ): Set<string> {
   const all = new Set([
     "offering_details",
@@ -302,16 +310,24 @@ export function visibleDealDetailTabIds(
     "distributions",
     "deal_members",
   ])
+  // Keep the restricted tab hidden until the deal-specific roster role is known.
+  // Otherwise co-sponsors briefly see it while the members request is loading.
+  if (opts?.isRoleLoading) {
+    const s = new Set(all)
+    s.delete("deal_members")
+    return s
+  }
+  // Deal-specific co-sponsor restrictions take precedence over workspace roles.
+  if (role === "co_sponsor") {
+    const s = new Set(all)
+    s.delete("deal_members")
+    return s
+  }
   // Company / platform admin keep Deal Members even if they are also an LP on the deal.
   if (opts?.isWorkspaceAdmin) return all
   if (role === null) return all
   if (role === "lead_sponsor" || role === "admin_sponsor") {
     return all
-  }
-  if (role === "co_sponsor") {
-    const s = new Set(all)
-    s.delete("deal_members")
-    return s
   }
   if (role === "lp_investor") {
     const s = new Set(all)

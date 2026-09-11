@@ -49,6 +49,12 @@ function normalizeContactKey(raw: string): string {
     .toLowerCase();
 }
 
+function isUuidContactKey(raw: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    raw.trim(),
+  );
+}
+
 type LpRosterPercentFields = {
   percentOfClassOwnership: string;
   percentOfClassDistributions: string;
@@ -72,20 +78,27 @@ function percentFieldsFromLpRosterRow(
 }
 
 /**
- * Index LP roster percents by LP row id and by canonical contact key
- * (email-linked user UUID ↔ contact UUID), so investment rows still get DB %.
+ * Index LP roster fields by LP row id and by canonical contact key
+ * (email-linked user UUID ↔ contact UUID), so shadowing investment rows still
+ * receive the roster email and percentages.
  */
 async function indexLpRosterPercents(params: {
   roster: DealLpInvestorRow[];
   investorContactIds: string[];
 }): Promise<{
   byLpId: Map<string, LpRosterPercentFields>;
+  emailByLpId: Map<string, string>;
   lookupByContactId: (
     contactId: string | null | undefined,
   ) => LpRosterPercentFields | undefined;
+  lookupEmailByContactId: (
+    contactId: string | null | undefined,
+  ) => string | undefined;
 }> {
   const byLpId = new Map<string, LpRosterPercentFields>();
   const byCanonical = new Map<string, LpRosterPercentFields>();
+  const emailByLpId = new Map<string, string>();
+  const emailByCanonical = new Map<string, string>();
 
   const allRawIds: string[] = [];
   for (const m of params.roster) {
@@ -100,22 +113,100 @@ async function indexLpRosterPercents(params: {
   const rawToCanonical =
     await mapContactIdsToCanonicalCommitmentKeys(allRawIds);
 
+  const contactIds = [
+    ...new Set(
+      params.roster
+        .map((m) => String(m.contactMemberId ?? "").trim())
+        .filter(isUuidContactKey),
+    ),
+  ];
+  const currentContactEmailById = new Map<string, string>();
+  const currentContactEmailByName = new Map<string, string>();
+  const rosterNames = [
+    ...new Set(
+      params.roster
+        .map((m) => String(m.investorName ?? "").trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (contactIds.length > 0 || rosterNames.length > 0) {
+    const contactRows = await db
+      .select({
+        id: contact.id,
+        email: contact.email,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        fullName: contact.fullName,
+      })
+      .from(contact)
+      .where(
+        contactIds.length > 0 && rosterNames.length > 0
+          ? sql`${inArray(contact.id, contactIds)} OR lower(trim(${contact.fullName})) in (${sql.join(
+              rosterNames.map((n) => sql`${n}`),
+              sql`, `,
+            )}) OR lower(trim(concat_ws(' ', ${contact.firstName}, ${contact.lastName}))) in (${sql.join(
+              rosterNames.map((n) => sql`${n}`),
+              sql`, `,
+            )})`
+          : contactIds.length > 0
+            ? inArray(contact.id, contactIds)
+            : sql`lower(trim(${contact.fullName})) in (${sql.join(
+                rosterNames.map((n) => sql`${n}`),
+                sql`, `,
+              )}) OR lower(trim(concat_ws(' ', ${contact.firstName}, ${contact.lastName}))) in (${sql.join(
+                rosterNames.map((n) => sql`${n}`),
+                sql`, `,
+              )})`,
+      );
+    for (const row of contactRows) {
+      const email = String(row.email ?? "").trim();
+      if (!email || /redacted/i.test(email) || !email.includes("@")) continue;
+      currentContactEmailById.set(String(row.id).toLowerCase(), email);
+      const name = `${String(row.firstName ?? "").trim()} ${String(row.lastName ?? "").trim()}`
+        .trim()
+        .toLowerCase();
+      const full = String(row.fullName ?? "").trim().toLowerCase();
+      if (name) currentContactEmailByName.set(name, email);
+      if (full) currentContactEmailByName.set(full, email);
+    }
+  }
+
   for (const m of params.roster) {
     const pct = percentFieldsFromLpRosterRow(m);
-    byLpId.set(String(m.id).toLowerCase(), pct);
+    const lpId = String(m.id).toLowerCase();
     const contactKey = normalizeContactKey(m.contactMemberId);
+    const stored = String(m.email ?? "").trim();
+    const storedUsable = stored.includes("@") && !/redacted/i.test(stored);
+    // CRM contact is the source of truth, including when the roster key is a
+    // portal-user id and the denormalized email was privacy-redacted.
+    const email =
+      currentContactEmailById.get(contactKey) ??
+      currentContactEmailByName.get(
+        String(m.investorName ?? "").trim().toLowerCase(),
+      ) ??
+      (storedUsable ? stored : "");
+    byLpId.set(lpId, pct);
+    if (email) emailByLpId.set(lpId, email);
     if (!contactKey) continue;
     const canonical = rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
     byCanonical.set(canonical, pct);
+    if (email) emailByCanonical.set(canonical, email);
   }
 
   return {
     byLpId,
+    emailByLpId,
     lookupByContactId(contactId) {
       const contactKey = normalizeContactKey(String(contactId ?? ""));
       if (!contactKey) return undefined;
       const canonical = rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
       return byCanonical.get(canonical);
+    },
+    lookupEmailByContactId(contactId) {
+      const contactKey = normalizeContactKey(String(contactId ?? ""));
+      if (!contactKey) return undefined;
+      const canonical = rawToCanonical.get(contactKey) ?? `id:${contactKey}`;
+      return emailByCanonical.get(canonical);
     },
   };
 }
@@ -496,22 +587,20 @@ export async function buildLpInvestorsFromMerged(
     .from(dealLpInvestor)
     .where(eq(dealLpInvestor.dealId, dealId));
 
-  const rosterEmailByLpId = new Map<string, string>();
-  for (const m of roster) {
-    const em = String(m.email ?? "").trim();
-    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em);
-  }
-
-  const { byLpId, lookupByContactId } = await indexLpRosterPercents({
+  const {
+    byLpId,
+    emailByLpId,
+    lookupByContactId,
+    lookupEmailByContactId,
+  } = await indexLpRosterPercents({
     roster,
     investorContactIds: base.map((inv) => String(inv.contactId ?? "")),
   });
 
   const investorsMerged = base.map((inv) => {
     const id = String(inv.id ?? "").toLowerCase();
-    const storedEmail = lpRosterIds.has(id)
-      ? rosterEmailByLpId.get(id)
-      : undefined;
+    const storedEmail =
+      emailByLpId.get(id) ?? lookupEmailByContactId(inv.contactId);
     const emailPatch = storedEmail?.trim()
       ? { userEmail: storedEmail.trim() }
       : {};
@@ -599,13 +688,12 @@ export async function enrichFullInvestorApiFromLpRoster(
 
   if (roster.length === 0) return investors;
 
-  const rosterEmailByLpId = new Map<string, string>();
-  for (const m of roster) {
-    const em = String(m.email ?? "").trim();
-    if (em) rosterEmailByLpId.set(String(m.id).toLowerCase(), em);
-  }
-
-  const { byLpId, lookupByContactId } = await indexLpRosterPercents({
+  const {
+    byLpId,
+    emailByLpId,
+    lookupByContactId,
+    lookupEmailByContactId,
+  } = await indexLpRosterPercents({
     roster,
     investorContactIds: investors.map((inv) => String(inv.contactId ?? "")),
   });
@@ -613,9 +701,9 @@ export async function enrichFullInvestorApiFromLpRoster(
   return investors.map((inv) => {
     const id = String(inv.id ?? "").toLowerCase();
     const isLpRoster = lpRosterIds.has(id);
-    const storedEmail = isLpRoster
-      ? rosterEmailByLpId.get(id)?.trim()
-      : undefined;
+    const storedEmail = (
+      emailByLpId.get(id) ?? lookupEmailByContactId(inv.contactId)
+    )?.trim();
     const pct = byLpId.get(id) ?? lookupByContactId(inv.contactId);
     return {
       ...inv,

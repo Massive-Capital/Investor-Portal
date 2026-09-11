@@ -1685,11 +1685,12 @@ export function DealInvestNowPage() {
       <div className="deals_list_page deals_detail_page invest_now_flow_page">
         <p className="deals_list_not_found">
           {saasPaywallDeal.dealName.trim()
-            ? `Investing is unavailable until monthly SaaS is paid for “${saasPaywallDeal.dealName.trim()}”.`
-            : "Investing is unavailable until monthly SaaS is paid for this deal."}
+            ? `Contact your sponsor for access to “${saasPaywallDeal.dealName.trim()}”.`
+            : "Contact your sponsor for access to this deal."}
         </p>
         <DealSaasPaywallModal
           deal={saasPaywallDeal}
+          investorFacing
           onClose={() => exitInvestNowFlow({ replace: true })}
         />
       </div>

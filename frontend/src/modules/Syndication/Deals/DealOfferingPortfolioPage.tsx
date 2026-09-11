@@ -577,8 +577,8 @@ export function DealOfferingPortfolioPage() {
       <div className="deals_list_page deals_detail_page">
         <p className="deals_list_not_found">
           {saasPaywallDeal.dealName.trim()
-            ? `This offering is unavailable until monthly SaaS is paid for “${saasPaywallDeal.dealName.trim()}”.`
-            : "This offering is unavailable until monthly SaaS is paid."}{" "}
+            ? `Contact your sponsor for access to “${saasPaywallDeal.dealName.trim()}”.`
+            : "Contact your sponsor for access to this deal."}{" "}
           <Link to={portfolioBackTo} className="deal_offer_pf_back">
             <ArrowLeft size={18} strokeWidth={2} aria-hidden />
             Back
@@ -586,6 +586,7 @@ export function DealOfferingPortfolioPage() {
         </p>
         <DealSaasPaywallModal
           deal={saasPaywallDeal}
+          investorFacing={mode === "investing" || isPublicOfferingRoute}
           onClose={() => navigate(portfolioBackTo)}
         />
       </div>

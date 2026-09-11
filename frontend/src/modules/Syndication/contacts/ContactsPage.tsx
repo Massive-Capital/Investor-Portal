@@ -65,6 +65,7 @@ import { getSessionOrganizationCompanyId } from "../../../common/auth/sessionOrg
 import "../usermanagement/user_management.css"
 import {
   createContact,
+  fetchContactOwnerSponsors,
   fetchContacts,
   fetchOrganizationContactLists,
   fetchOrganizationContactTags,
@@ -301,6 +302,10 @@ function ContactsPage() {
   >("all")
   const [offeringVisibilityFilter, setOfferingVisibilityFilter] =
     useState<OfferingVisibilityFilter>("all")
+  const [ownerFilter, setOwnerFilter] = useState("all")
+  const [ownerSponsorOptions, setOwnerSponsorOptions] = useState<
+    DropdownSelectOption[]
+  >([{ value: "all", label: "All owners" }])
   const [offeringVisibilityPending, setOfferingVisibilityPending] = useState<{
     row: ContactRow
     next: ContactOfferingVisibility | null
@@ -446,6 +451,11 @@ function ContactsPage() {
           const vis = r.showOfferingsVisibility ?? null
           if (offeringVisibilityFilter === "unset") return vis == null
           return vis === offeringVisibilityFilter
+        })
+        .filter((r) => {
+          if (ownerFilter === "all") return true
+          const want = ownerFilter.trim().toLowerCase()
+          return r.owners.some((o) => o.trim().toLowerCase() === want)
         }),
     [
       tabRows,
@@ -453,6 +463,7 @@ function ContactsPage() {
       tagFilter,
       accreditationFilter,
       offeringVisibilityFilter,
+      ownerFilter,
     ],
   )
 
@@ -554,14 +565,33 @@ function ContactsPage() {
   const loadContacts = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, dbTags, dbLists] = await Promise.all([
+      const [list, dbTags, dbLists, ownerResult] = await Promise.all([
         fetchContacts(),
         fetchOrganizationContactTags(),
         fetchOrganizationContactLists(),
+        fetchContactOwnerSponsors(),
       ])
+      const sponsors = ownerResult.sponsors
       setRows(list)
       setDbCatalogTagNames(dbTags)
       setDbCatalogListNames(dbLists)
+      const seen = new Set<string>()
+      const sponsorOpts: DropdownSelectOption[] = [
+        { value: "all", label: "All owners" },
+      ]
+      for (const s of sponsors) {
+        const name = s.displayName.trim()
+        if (!name) continue
+        const key = name.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        const email = s.email.trim()
+        sponsorOpts.push({
+          value: name,
+          label: email ? `${name} (${email})` : name,
+        })
+      }
+      setOwnerSponsorOptions(sponsorOpts)
     } finally {
       setLoading(false)
     }
@@ -586,6 +616,7 @@ function ContactsPage() {
   }, [])
 
   useEffect(() => {
+    setOwnerFilter("all")
     void loadContacts()
   }, [loadContacts])
 
@@ -1638,6 +1669,7 @@ function ContactsPage() {
     tagFilter,
     accreditationFilter,
     offeringVisibilityFilter,
+    ownerFilter,
   ])
 
   useEffect(() => {
@@ -1968,6 +2000,28 @@ function ContactsPage() {
                       </div>
                       <div className="contacts_toolbar_filter">
                         <DropdownSelect
+                          id="contacts-filter-owner"
+                          className="contacts_toolbar_filter_dropdown"
+                          triggerClassName="contacts_toolbar_filter_dropdown_trigger"
+                          panelClassName="contacts_toolbar_filter_dropdown_panel"
+                          value={ownerFilter}
+                          options={ownerSponsorOptions}
+                          disabled={loading}
+                          ariaLabel="Filter by owner"
+                          placeholder="Owner"
+                          useFixedPanel
+                          searchable
+                          searchPlaceholder="Search Lead or Admin sponsors…"
+                          searchAriaLabel="Search owners"
+                          searchShowOptionCountHint
+                          onChange={(v) => {
+                            setOwnerFilter(v)
+                            setToolbarNotice("")
+                          }}
+                        />
+                      </div>
+                      <div className="contacts_toolbar_filter">
+                        <DropdownSelect
                           id="contacts-filter-accreditation"
                           className="contacts_toolbar_filter_dropdown contacts_accreditation_filter_select"
                           triggerClassName="contacts_toolbar_filter_dropdown_trigger"
@@ -2082,7 +2136,9 @@ function ContactsPage() {
                             ? "No contacts match this offering visibility filter."
                             : accreditationFilter !== "all"
                               ? "No contacts match this accreditation filter."
-                              : "No contacts match your search."
+                              : ownerFilter !== "all"
+                                ? "No contacts match this owner filter."
+                                : "No contacts match your search."
                 }
                 emptyStateRole={loading ? "status" : undefined}
                 pagination={

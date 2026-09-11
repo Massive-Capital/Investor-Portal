@@ -29,7 +29,11 @@ import {
   resolveOrganizationIdForUserId,
   userHasAccessToOrganization,
 } from "../org/orgResolution.service.js";
-import { companies, userCompanyMembership } from "../../schema/schema.js";
+import {
+  companies,
+  dealLpInvestor,
+  userCompanyMembership,
+} from "../../schema/schema.js";
 import {
   contact,
   type ContactInsert,
@@ -178,6 +182,98 @@ async function userIdsInOrganization(organizationId: string): Promise<string[]> 
 
 function normalizeContactEmailForScope(e: string): string {
   return e.trim().toLowerCase();
+}
+
+/**
+ * Keep denormalized `deal_lp_investor.email` in sync when CRM contact email changes.
+ * Matches roster rows keyed by this contact id, the previous email literal, or a
+ * portal user whose login email was the previous contact email.
+ */
+async function syncDealLpInvestorEmailForContactUpdate(params: {
+  contactId: string;
+  previousEmail: string;
+  nextEmail: string;
+}): Promise<void> {
+  const contactId = String(params.contactId ?? "").trim();
+  const nextStored = String(params.nextEmail ?? "").trim();
+  if (!contactId || !nextStored.includes("@")) return;
+
+  const prev = normalizeContactEmailForScope(params.previousEmail);
+  const next = normalizeContactEmailForScope(nextStored);
+  const memberKeys = new Set<string>([contactId.toLowerCase()]);
+  if (prev.includes("@")) memberKeys.add(prev);
+  if (next.includes("@")) memberKeys.add(next);
+
+  const userEmails = [prev, next].filter((e) => e.includes("@"));
+  if (userEmails.length > 0) {
+    const linkedUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        sql`lower(trim(${users.email})) in (${sql.join(
+          userEmails.map((e) => sql`${e}`),
+          sql`, `,
+        )})`,
+      );
+    for (const u of linkedUsers) {
+      const id = String(u.id ?? "").trim().toLowerCase();
+      if (id) memberKeys.add(id);
+    }
+  }
+
+  const [contactRow] = await db
+    .select({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      fullName: contact.fullName,
+    })
+    .from(contact)
+    .where(eq(contact.id, contactId))
+    .limit(1);
+  const first = String(contactRow?.firstName ?? "").trim().toLowerCase();
+  const last = String(contactRow?.lastName ?? "").trim().toLowerCase();
+  const full = String(contactRow?.fullName ?? "").trim().toLowerCase();
+  const personName = `${first} ${last}`.trim() || full;
+  if (first && last) {
+    const namedUsers = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        sql`lower(trim(${users.firstName})) = ${first} AND lower(trim(${users.lastName})) = ${last}`,
+      );
+    for (const u of namedUsers) {
+      const id = String(u.id ?? "").trim().toLowerCase();
+      if (id) memberKeys.add(id);
+    }
+  }
+
+  const keys = [...memberKeys];
+  const memberMatch = sql`lower(trim(${dealLpInvestor.contactMemberId})) in (${sql.join(
+    keys.map((k) => sql`${k}`),
+    sql`, `,
+  )})`;
+  const emailMatch = prev.includes("@")
+    ? sql`lower(trim(${dealLpInvestor.email})) = ${prev}`
+    : undefined;
+  const nameMatch = personName
+    ? sql`lower(trim(${dealLpInvestor.investorName})) = ${personName}`
+    : undefined;
+
+  await db
+    .update(dealLpInvestor)
+    .set({
+      email: nextStored,
+      updatedAt: new Date(),
+    })
+    .where(
+      nameMatch && emailMatch
+        ? sql`${memberMatch} OR ${emailMatch} OR ${nameMatch}`
+        : nameMatch
+          ? sql`${memberMatch} OR ${nameMatch}`
+          : emailMatch
+            ? sql`${memberMatch} OR ${emailMatch}`
+            : memberMatch,
+    );
 }
 
 /**
@@ -1262,6 +1358,11 @@ export async function updateContactFieldsForViewer(
     .where(eq(contact.id, contactId))
     .returning();
   if (!updated) return null;
+  await syncDealLpInvestorEmailForContactUpdate({
+    contactId,
+    previousEmail: row.email,
+    nextEmail: updated.email,
+  });
   const orgForLabels =
     updated.organizationId ??
     (await resolveOrganizationIdForUserId(row.createdBy));
