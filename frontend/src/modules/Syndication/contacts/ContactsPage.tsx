@@ -800,6 +800,7 @@ function ContactsPage() {
       ccRaw: sendMailCc,
       templateSubject: template.subject,
       templateBodyHtml: template.body,
+      templateAttachment: template.attachment,
       senderEmail,
     })
     if (!result.ok) {

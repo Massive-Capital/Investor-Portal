@@ -19,7 +19,6 @@ import {
 import { toast } from "../../../../common/components/Toast"
 import {
   EMAIL_TEMPLATE_BODY_HTML_MAX,
-  EMAIL_TEMPLATE_BODY_MAX,
   EMAIL_TEMPLATE_SUBJECT_MAX,
   attachmentToObjectUrl,
   formatEmailAttachmentSize,
@@ -79,7 +78,6 @@ export function SendMailEmailPreviewModal({
   const [editing, setEditing] = useState(false)
   const [draftSubject, setDraftSubject] = useState("")
   const [saveBusy, setSaveBusy] = useState(false)
-  const [bodyPlainLen, setBodyPlainLen] = useState(0)
 
   const editorRef = useRef<HTMLDivElement>(null)
   const quillRef = useRef<Quill | null>(null)
@@ -146,16 +144,9 @@ export function SendMailEmailPreviewModal({
       }
     }
 
-    const updatePlainLen = () => {
-      const t = quill.getText().replace(/\n$/, "").trim()
-      setBodyPlainLen(t.length)
-    }
-    updatePlainLen()
-    quill.on("text-change", updatePlainLen)
     quillRef.current = quill
 
     return () => {
-      quill.off("text-change", updatePlainLen)
       quillRef.current = null
       removeQuillSnowArtifacts(editorRef.current)
     }
@@ -184,14 +175,6 @@ export function SendMailEmailPreviewModal({
     const quill = quillRef.current
     if (!quill) {
       toast.error("Editor not ready", "Please wait a moment and try again.")
-      return
-    }
-    const plain = quill.getText().replace(/\n$/, "").trim()
-    if (plain.length > EMAIL_TEMPLATE_BODY_MAX) {
-      toast.error(
-        "Body too long",
-        `Use at most ${EMAIL_TEMPLATE_BODY_MAX} characters of text.`,
-      )
       return
     }
     let bodyHtml = quill.root.innerHTML
@@ -298,9 +281,6 @@ export function SendMailEmailPreviewModal({
                   onChange={(e) => setDraftSubject(e.target.value)}
                   autoComplete="off"
                 />
-                <p className="email_preview_body_len_hint" aria-live="polite">
-                  Body text: {bodyPlainLen} / {EMAIL_TEMPLATE_BODY_MAX}
-                </p>
                 <div
                   ref={editorRef}
                   className="email_preview_quill_host"

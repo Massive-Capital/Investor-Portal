@@ -51,6 +51,10 @@ function isLpApiRow(row: {
   return role !== "lead sponsor" && role !== "admin sponsor" && role !== "co-sponsor";
 }
 
+function roleIsLeadSponsor(role: string): boolean {
+  return role.trim().toLowerCase() === "lead sponsor";
+}
+
 function roleIsAdminSponsor(role: string): boolean {
   return role.trim().toLowerCase() === "admin sponsor";
 }
@@ -58,6 +62,30 @@ function roleIsAdminSponsor(role: string): boolean {
 function roleIsCoSponsor(role: string): boolean {
   const t = role.trim().toLowerCase();
   return t === "co-sponsor" || t === "co sponsor";
+}
+
+function roleIsRosterSponsor(role: string): boolean {
+  return (
+    roleIsLeadSponsor(role) || roleIsAdminSponsor(role) || roleIsCoSponsor(role)
+  );
+}
+
+/**
+ * Sponsor role per address from `deal_member`. Investment rows carry the LP role even for
+ * sponsors who also committed, so the roster is what identifies them.
+ */
+function rosterSponsorRolesByEmail(
+  members: { userEmail?: string; investorRole?: string }[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of members) {
+    const email = usableEmail(m.userEmail);
+    if (!email || out.has(email)) continue;
+    const role = String(m.investorRole ?? "").trim();
+    if (!roleIsRosterSponsor(role)) continue;
+    out.set(email, role);
+  }
+  return out;
 }
 
 function sourceRowIdFromRecipient(
@@ -117,6 +145,7 @@ export async function applyInvestorCommunicationDeliveryRouting(params: {
   const memberById = new Map(
     members.map((row) => [String(row.id ?? "").trim().toLowerCase(), row]),
   );
+  const rosterSponsorRoleByEmail = rosterSponsorRolesByEmail(members);
 
   const delivery = new Set<string>();
   const out: DealInvestorCommunicationRecipient[] = [];
@@ -156,12 +185,20 @@ export async function applyInvestorCommunicationDeliveryRouting(params: {
       (row as { addedByCoSponsorEmailIntercept?: string })
         .addedByCoSponsorEmailIntercept,
     );
+    const rosterSponsorRole =
+      rosterSponsorRoleByEmail.get(lpEmail) ??
+      rosterSponsorRoleByEmail.get(usableEmail(selected.email)) ??
+      "";
     const roleLabel = displayRoleLabel(
-      String(row.investorRole ?? "").trim() || selected.roleLabel || "—",
+      rosterSponsorRole ||
+        String(row.investorRole ?? "").trim() ||
+        selected.roleLabel ||
+        "—",
     );
     const classKind = isLpApiRow(row) ? "lp" : "gp";
+    /** Holding applies to a co-sponsor's LP investors, not to sponsors on the roster. */
     const holdAtCoSponsor =
-      classKind === "lp" && isCoAdded && intercept === "no";
+      !rosterSponsorRole && classKind === "lp" && isCoAdded && intercept === "no";
     const passThroughWithCoSponsor =
       classKind === "lp" && isCoAdded && intercept === "yes";
 
@@ -195,8 +232,8 @@ export async function applyInvestorCommunicationDeliveryRouting(params: {
       continue;
     }
 
-    const memberRole = String(row.investorRole ?? "");
-    if (roleIsAdminSponsor(memberRole) || roleIsCoSponsor(memberRole)) {
+    const memberRole = rosterSponsorRole || String(row.investorRole ?? "");
+    if (roleIsRosterSponsor(memberRole)) {
       if (lpEmail) delivery.add(lpEmail);
       out.push({
         ...selected,

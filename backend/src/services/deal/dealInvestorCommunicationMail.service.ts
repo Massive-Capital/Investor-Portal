@@ -1,8 +1,10 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import emailConfig, {
-  getEmailBccFromEnv,
-  smtpEnvelopeForSendMail,
-} from "../../functions/emailconfig.js";
+import { getEmailBccFromEnv } from "../../functions/emailconfig.js";
+import {
+  sendHtmlMailPerRecipient,
+  type MailAttachment,
+} from "../mail/sendHtmlMailPerRecipient.service.js";
+import { contactEmailTemplate } from "../../schema/contact.schema.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/auth.schema/signin.js";
 import {
@@ -531,6 +533,29 @@ export interface SendDealInvestorCommunicationMailInput {
   deliveryEmails?: string[];
 }
 
+/** Template attachment is read server-side so the client never re-uploads it. */
+async function resolveTemplateAttachments(
+  templateId: string | null,
+): Promise<MailAttachment[]> {
+  if (!templateId) return [];
+  const [row] = await db
+    .select({ attachment: contactEmailTemplate.attachment })
+    .from(contactEmailTemplate)
+    .where(eq(contactEmailTemplate.id, templateId))
+    .limit(1);
+  const att = row?.attachment;
+  if (!att?.fileName || !att.dataBase64) return [];
+  const content = Buffer.from(att.dataBase64, "base64");
+  if (content.length === 0) return [];
+  return [
+    {
+      filename: att.fileName,
+      content,
+      contentType: att.mimeType || "application/octet-stream",
+    },
+  ];
+}
+
 export async function sendDealInvestorCommunicationMail(
   input: SendDealInvestorCommunicationMailInput,
 ): Promise<
@@ -630,33 +655,20 @@ export async function sendDealInvestorCommunicationMail(
           .map((x) => x.trim())
           .filter((x) => x.includes("@"))
       : [];
-  const senderNorm = senderEmail.toLowerCase();
-  const headerTo = [senderEmail];
-  const bcc = [
-    ...new Set(
-      [...deliveryEmails, ...envBcc].filter(
-        (addr) => addr.toLowerCase() !== senderNorm,
-      ),
-    ),
-  ];
+  const bcc = [...new Set([...envBcc, senderEmail].filter((x) => !!x))];
 
   try {
-    const transporter = emailConfig();
-    await transporter.sendMail({
+    await sendHtmlMailPerRecipient({
       from: senderEmail,
-      to: headerTo,
-      ...(cc.length > 0 ? { cc } : {}),
-      ...(bcc.length > 0 ? { bcc } : {}),
+      to: deliveryEmails,
+      cc,
+      bcc,
       replyTo: senderEmail,
       subject,
       html: input.bodyHtml || "<p></p>",
       text: input.bodyText || "",
-      envelope: smtpEnvelopeForSendMail({
-        fromAddress: configuredSenderAddress,
-        to: headerTo,
-        ...(cc.length > 0 ? { cc } : {}),
-        ...(bcc.length > 0 ? { bcc } : {}),
-      }),
+      envelopeFrom: configuredSenderAddress,
+      attachments: await resolveTemplateAttachments(templateId),
     });
     const row = await presentLoggedRow(await insertLog("sent"));
     if (!row) {

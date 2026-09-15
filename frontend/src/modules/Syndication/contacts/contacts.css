@@ -135,7 +135,11 @@
   color: var(--portal-text-muted);
 }
 
+/* Scroll region between the pinned modal head and footer. */
 .email_templates_view_modal_body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   padding: 0 1.25rem 1rem;
   box-sizing: border-box;
 }
@@ -301,8 +305,6 @@
   color: var(--portal-text, #0f172a);
   overflow-wrap: anywhere;
   word-break: break-word;
-  max-height: min(52vh, 26rem);
-  overflow: auto;
 }
 
 .email_preview_message_body :first-child {
@@ -1365,6 +1367,7 @@
 
 .contacts_view_modal .um_modal_head {
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .contacts_view_modal .um_modal_head .um_modal_title {
@@ -1430,6 +1433,8 @@
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+  flex-shrink: 0;
+  padding-top: 0.75rem;
 }
 
 .contacts_view_modal_footer .contacts_view_modal_close_btn {

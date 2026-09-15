@@ -36,7 +36,7 @@ import {
 } from "../../../contacts/components/SendMailEmailPreviewModal"
 import { DealMailRecipientPicker } from "./DealMailRecipientPicker"
 import {
-  appendAdminAndCoSponsorMembersAsRecipients,
+  appendDealRosterSponsorsAsRecipients,
   buildDealMailRecipients,
   defaultDealMailRecipientIds,
   deliveryEmailsForRecipients,
@@ -169,16 +169,13 @@ export function DealSendMailModal({
             viewerUserId: getSessionUserId(),
             viewerEmail: getSessionUserEmail(),
           })
-        : appendAdminAndCoSponsorMembersAsRecipients(
+        : appendDealRosterSponsorsAsRecipients(
             built,
             membersPayload.members ?? [],
           )
       setRecipients(merged)
       setSelectedRecipientIds(
         defaultDealMailRecipientIds(merged, {
-          viewerIsCosponsor: viewerIsCo,
-          viewerUserId: getSessionUserId(),
-          viewerEmail: getSessionUserEmail(),
           preselectEmails: releaseToOwnInvestors ? [] : [...preselectEmails],
         }),
       )

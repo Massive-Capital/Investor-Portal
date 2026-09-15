@@ -51,6 +51,7 @@ export interface DealMailLpSponsorGroup {
 export interface DealMailRecipientTree {
   gps: DealMailRecipient[]
   lps: DealMailRecipient[]
+  sponsors: DealMailRecipient[]
   lpGroups: DealMailLpSponsorGroup[]
 }
 
@@ -166,6 +167,10 @@ function viewerOwnsSponsor(
   return false
 }
 
+function roleIsLeadSponsor(role: string): boolean {
+  return role.trim().toLowerCase() === "lead sponsor"
+}
+
 function roleIsAdminSponsor(role: string): boolean {
   return role.trim().toLowerCase() === "admin sponsor"
 }
@@ -173,6 +178,12 @@ function roleIsAdminSponsor(role: string): boolean {
 function roleIsCoSponsor(role: string): boolean {
   const t = role.trim().toLowerCase()
   return t === "co-sponsor" || t === "co sponsor"
+}
+
+function roleIsRosterSponsor(role: string): boolean {
+  return (
+    roleIsLeadSponsor(role) || roleIsAdminSponsor(role) || roleIsCoSponsor(role)
+  )
 }
 
 function memberRoles(row: DealInvestorRow): string[] {
@@ -186,12 +197,38 @@ function memberRoles(row: DealInvestorRow): string[] {
   return out
 }
 
-function rowIsAdminSponsor(row: DealInvestorRow): boolean {
-  return memberRoles(row).some(roleIsAdminSponsor)
+function rowIsRosterSponsor(row: DealInvestorRow): boolean {
+  return memberRoles(row).some(roleIsRosterSponsor)
 }
 
 function rowIsCoSponsorMember(row: DealInvestorRow): boolean {
   return memberRoles(row).some(roleIsCoSponsor)
+}
+
+/** Recipient holds a Lead Sponsor, Admin sponsor, or Co-sponsor role on this deal. */
+export function isSponsorMailRecipient(recipient: {
+  roleLabel: string
+}): boolean {
+  return recipient.roleLabel.split(",").some(roleIsRosterSponsor)
+}
+
+function isClassBGeneralPartnerClassName(className: string): boolean {
+  const n = className.trim().toLowerCase()
+  if (!n) return false
+  if (/\bclass\s*b\b/.test(n)) return true
+  if (n.includes("general partner")) return true
+  if (/\bgp\b/.test(n)) return true
+  return false
+}
+
+/** Class B / GP-class investors only — not admin or co-sponsors. */
+export function isClassBGeneralPartnerMailRecipient(
+  recipient: DealMailRecipient,
+): boolean {
+  if (isSponsorMailRecipient(recipient)) return false
+  if (isClassBGeneralPartnerClassName(recipient.className)) return true
+  const role = recipient.roleLabel.trim().toLowerCase()
+  return role === "general partner" || role === "team member"
 }
 
 function sortByName(a: DealMailRecipient, b: DealMailRecipient): number {
@@ -272,8 +309,20 @@ export function buildDealMailRecipients({
 export function groupDealMailRecipients(
   recipients: DealMailRecipient[],
 ): DealMailRecipientTree {
-  const gps = recipients.filter((r) => r.classKind === "gp").sort(sortByName)
-  const lps = recipients.filter((r) => r.classKind === "lp").sort(sortByName)
+  const sponsors = recipients
+    .filter(isSponsorMailRecipient)
+    .sort(sortByName)
+  const gps = recipients
+    .filter(isClassBGeneralPartnerMailRecipient)
+    .sort(sortByName)
+  const lps = recipients
+    .filter(
+      (r) =>
+        r.classKind === "lp" &&
+        !isSponsorMailRecipient(r) &&
+        !isClassBGeneralPartnerMailRecipient(r),
+    )
+    .sort(sortByName)
   const bySponsor = new Map<string, DealMailLpSponsorGroup>()
 
   for (const r of lps) {
@@ -316,7 +365,7 @@ export function groupDealMailRecipients(
     })
   })
 
-  return { gps, lps, lpGroups }
+  return { gps, lps, sponsors, lpGroups }
 }
 
 export function deliveryEmailsForRecipients(
@@ -358,37 +407,101 @@ export function mergeDealInvestorRowsForMail(
   return [...byId.values()]
 }
 
-function memberAlreadyListed(
+/** Positions of recipients that are the same person as this roster row. */
+function listedRecipientIndexes(
   recipients: DealMailRecipient[],
   row: DealInvestorRow,
-): boolean {
+): number[] {
   const email = usableEmail(row.userEmail).toLowerCase()
   const contactId = String(row.contactId ?? "").trim().toLowerCase()
-  return recipients.some((r) => {
-    if (email && r.email.trim().toLowerCase() === email) return true
-    if (contactId && r.sourceRowId.trim().toLowerCase() === contactId) return true
-    if (r.sourceRowId && r.sourceRowId === row.id) return true
-    return false
+  const out: number[] = []
+  recipients.forEach((r, i) => {
+    if (email && r.email.trim().toLowerCase() === email) out.push(i)
+    else if (contactId && r.sourceRowId.trim().toLowerCase() === contactId)
+      out.push(i)
+    else if (r.sourceRowId && r.sourceRowId === row.id) out.push(i)
   })
+  return out
 }
 
-/** Add admin sponsor and co-sponsor roster people as GP recipients. */
-export function appendAdminAndCoSponsorMembersAsRecipients(
+function rosterSponsorFallbackName(row: DealInvestorRow): string {
+  for (const role of memberRoles(row)) {
+    if (roleIsLeadSponsor(role)) return "Lead sponsor"
+    if (roleIsAdminSponsor(role)) return "Admin sponsor"
+    if (roleIsCoSponsor(role)) return "Co-sponsor"
+  }
+  return "Sponsor"
+}
+
+function withRosterSponsorRole(
+  recipient: DealMailRecipient,
+  row: DealInvestorRow,
+): DealMailRecipient {
+  const seen = new Set<string>()
+  const labels: string[] = []
+  for (const label of [roleLabelForRow(row), recipient.roleLabel]) {
+    for (const part of label.split(",")) {
+      const t = part.trim()
+      if (!t || t === "—") continue
+      const key = t.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      labels.push(t)
+    }
+  }
+  const rosterEmail = usableEmail(row.userEmail)
+  return {
+    ...recipient,
+    roleLabel: labels.length > 0 ? labels.join(", ") : "—",
+    groups: recipient.groups.includes("deal_member")
+      ? recipient.groups
+      : [...recipient.groups, "deal_member"],
+    /**
+     * A sponsor's own address is already on the General Partners roster, so mail reaches
+     * them directly instead of being held for whoever added their commitment. Any
+     * co-sponsor copy on that commitment still applies.
+     */
+    ...(rosterEmail
+      ? {
+          email: rosterEmail,
+          requiresCosponsorRelease: false,
+          canDeliver: true,
+        }
+      : {}),
+  }
+}
+
+/**
+ * Deal roster sponsors (Lead Sponsor, Admin sponsor, Co-sponsor) belong on the Sponsors
+ * tab even when they also hold a commitment on the deal. The roster role is stamped onto
+ * their existing investor line so they stop being grouped by investor class, and any
+ * further commitment rows for the same person collapse into that one line.
+ */
+export function appendDealRosterSponsorsAsRecipients(
   recipients: DealMailRecipient[],
   members: DealInvestorRow[],
 ): DealMailRecipient[] {
-  const extra: DealMailRecipient[] = []
+  const out = [...recipients]
+  const collapsed = new Set<number>()
   for (const row of members) {
     if (row.id === ADD_MEMBER_DRAFT_ROW_ID) continue
-    if (!rowIsAdminSponsor(row) && !rowIsCoSponsorMember(row)) continue
-    if (memberAlreadyListed(recipients, row)) continue
+    if (!rowIsRosterSponsor(row)) continue
+    const matches = listedRecipientIndexes(out, row).filter(
+      (i) => !collapsed.has(i),
+    )
+    const [keep, ...duplicates] = matches
+    if (keep !== undefined) {
+      out[keep] = withRosterSponsorRole(out[keep]!, row)
+      for (const i of duplicates) collapsed.add(i)
+      continue
+    }
     const email = usableEmail(row.userEmail)
     const displayName =
       row.displayName?.trim() ||
       row.userDisplayName?.trim() ||
       email ||
-      (rowIsAdminSponsor(row) ? "Admin sponsor" : "Co-sponsor")
-    extra.push({
+      rosterSponsorFallbackName(row)
+    out.push({
       id: `member-${row.id}-${email || row.id}`,
       displayName,
       email,
@@ -408,59 +521,28 @@ export function appendAdminAndCoSponsorMembersAsRecipients(
       canDeliver: Boolean(email),
     })
   }
-  return [...recipients, ...extra].sort(sortByName)
+  return out.filter((_, i) => !collapsed.has(i)).sort(sortByName)
 }
 
 export function defaultDealMailRecipientIds(
   recipients: DealMailRecipient[],
-  opts: {
-    viewerIsCosponsor: boolean
-    viewerUserId?: string
-    viewerEmail?: string
-    preselectEmails?: string[]
-  },
+  opts: { preselectEmails?: string[] } = {},
 ): Set<string> {
   const preselect = new Set(
     (opts.preselectEmails ?? [])
       .map((e) => e.trim().toLowerCase())
       .filter((e) => e.includes("@")),
   )
-  if (preselect.size > 0) {
-    return new Set(
-      recipients
-        .filter((r) => {
-          const email = r.email.trim().toLowerCase()
-          const sponsor = r.sponsorEmail.trim().toLowerCase()
-          return (
-            (email && preselect.has(email)) ||
-            (sponsor && preselect.has(sponsor))
-          )
-        })
-        .map((r) => r.id),
-    )
-  }
-  const viewerId = String(opts.viewerUserId ?? "").trim().toLowerCase()
-  const viewerEm = String(opts.viewerEmail ?? "").trim().toLowerCase()
-  if (opts.viewerIsCosponsor) {
-    return new Set(
-      recipients
-        .filter((r) => {
-          if (r.classKind !== "lp") return false
-          const uid = r.addedByUserId.trim().toLowerCase()
-          if (viewerId && uid && uid === viewerId) return true
-          const sponsor = r.sponsorEmail.trim().toLowerCase()
-          if (viewerEm && sponsor && sponsor === viewerEm) return true
-          return false
-        })
-        .map((r) => r.id),
-    )
-  }
+  if (preselect.size === 0) return new Set()
   return new Set(
     recipients
       .filter((r) => {
-        if (r.classKind === "lp") return true
-        const role = r.roleLabel.trim().toLowerCase()
-        return roleIsAdminSponsor(role) || roleIsCoSponsor(role)
+        const email = r.email.trim().toLowerCase()
+        const sponsor = r.sponsorEmail.trim().toLowerCase()
+        return (
+          (email && preselect.has(email)) ||
+          (sponsor && preselect.has(sponsor))
+        )
       })
       .map((r) => r.id),
   )
@@ -470,7 +552,7 @@ export function mergeDealInvestorsAndMembersToRecipients(
   investors: DealInvestorRow[],
   members: DealInvestorRow[] = [],
 ): DealMailRecipient[] {
-  return appendAdminAndCoSponsorMembersAsRecipients(
+  return appendDealRosterSponsorsAsRecipients(
     buildDealMailRecipients({ investors, classes: [] }),
     members,
   )

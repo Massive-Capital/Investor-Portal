@@ -933,7 +933,8 @@ export async function patchContactKnownSince(
 const EMAIL_TEMPLATE_SUBJECT_MAX = 255;
 const EMAIL_TEMPLATE_NAME_MAX = 255;
 const EMAIL_TEMPLATE_BODY_HTML_MAX = 200_000;
-const EMAIL_TEMPLATE_ATTACHMENT_BASE64_MAX = 1_400_000;
+/** Base64 of a 30 MB file is ~40 MB (4/3). */
+const EMAIL_TEMPLATE_ATTACHMENT_BASE64_MAX = 42_000_000;
 
 /** GET /contacts/email-templates */
 export async function getContactEmailTemplates(
