@@ -53,6 +53,7 @@ import {
   mapLegacyOfferingVisibility,
   offeringStatusFromApi,
   offeringStatusOptionsForOverview,
+  offeringStatusPickerValue,
   OFFERING_VISIBILITY_OPTIONS,
   type OfferingVisibilityValue,
 } from "../../utils/offeringOverviewForm"
@@ -886,7 +887,7 @@ export function OfferingOverviewSection({
                 {statusFieldEditable ? (
                   <DealOfferingStatusSelect
                     id={`deal-ov-status-${id}`}
-                    value={draft.offeringStatus}
+                    value={offeringStatusPickerValue(draft.offeringStatus)}
                     options={statusOptions}
                     ariaDescribedBy={statusControlDescribedBy}
                     onChange={(next) => {
@@ -898,7 +899,9 @@ export function OfferingOverviewSection({
                     id={`deal-ov-status-${id}`}
                     aria-describedby={statusControlDescribedBy}
                   >
-                    <DealOfferingStatusReadonly value={detail.offeringStatus} />
+                    <DealOfferingStatusReadonly
+                      value={offeringStatusPickerValue(detail.offeringStatus)}
+                    />
                   </div>
                 )}
                 {statusFieldLockedHint ? (

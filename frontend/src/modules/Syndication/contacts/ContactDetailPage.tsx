@@ -24,7 +24,10 @@ import {
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
 import { fetchContact } from "./api/contactsApi"
-import type { ContactRow } from "./types/contact.types"
+import {
+  withPlatformContactTag,
+  type ContactRow,
+} from "./types/contact.types"
 import "../Deals/deals-list.css"
 import "./contacts.css"
 import "./contact-detail.css"
@@ -194,7 +197,7 @@ function ContactDetailPage() {
     setLoading(true)
     try {
       const row = await fetchContact(id)
-      setContact(row)
+      setContact(row ? withPlatformContactTag(row) : row)
       if (!row) toast.error("Not found", "This contact could not be loaded.")
     } catch {
       setContact(null)

@@ -41,6 +41,7 @@ import {
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
 import {
+  areRequiredDealListRowFieldsIncomplete,
   deleteDeal,
   fetchDealInvestorClasses,
   fetchDealInvestors,
@@ -1062,6 +1063,9 @@ export function DealsListPage({
           <div className="deal_members_actions_cell">
             <DealRowActions
               draftRow={row.id === CREATE_DEAL_DRAFT_ROW_ID}
+              requiredFieldsIncomplete={areRequiredDealListRowFieldsIncomplete(
+                row,
+              )}
               readOnlyActions={dealsListContext === "investing"}
               canEditDeal={row.viewerCanEditDeal !== false}
               dealId={row.id}

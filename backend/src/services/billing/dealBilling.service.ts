@@ -33,8 +33,18 @@ import {
   parseExtraCompanyUsersQuantity,
   attachExtraCompanyUserInvoiceItems,
 } from "./dealExtraCompanyUser.service.js";
-import { notifyLeadSponsorsOfDealPlanUpgrade } from "./dealPlanUpgradeAlert.service.js";
-import { HARDCODED_SAAS_BILLING_STARTS_AT } from "./saasBillingStartDate.js";
+import {
+  notifyLeadSponsorsOfDealBillingStartDate,
+  notifyLeadSponsorsOfDealPlanUpgrade,
+} from "./dealPlanUpgradeAlert.service.js";
+import {
+  HARDCODED_SAAS_BILLING_STARTS_AT,
+  dealSaasBillingHasStarted,
+  dealSaasBillingNotYetDueMessage,
+  dealSaasBillingStartsAt,
+  utcMidnightFromYmdString,
+  utcMidnightToday,
+} from "./saasBillingStartDate.js";
 
 let stripeClient: Stripe | null = null;
 
@@ -110,6 +120,20 @@ export function isDealSaasBillable(
   return stage === "capital_raising" || stage === "asset_managing";
 }
 
+/**
+ * After the SaaS start date, unpaid CR/AM deals stay Draft with
+ * `pending_deal_stage` until Checkout succeeds. Those rows must keep the
+ * Stripe subscription so payment can promote the stage.
+ */
+function dealShouldKeepStripeSaasSubscription(
+  row: Pick<AddDealFormRow, "archived" | "dealStage" | "pendingDealStage">,
+): boolean {
+  if (row.archived) return false;
+  return (
+    isDealSaasBillable(row) || isSaasBillableDealStage(row.pendingDealStage)
+  );
+}
+
 function parseMoneyAmount(raw: string | null | undefined): number {
   const n = Number.parseFloat(String(raw ?? "").replace(/[^0-9.-]/g, ""));
   return Number.isFinite(n) ? n : 0;
@@ -161,8 +185,10 @@ export function dealPaidPlanNeedsUpgrade(
 
 export async function suggestedPlanIdForDeal(
   dealId: string,
+  /** Precomputed raise (see `mapDealRaiseAmountByDealIds`) to skip the per-deal query. */
+  raiseAmount?: number,
 ): Promise<StripeBillingPlanId> {
-  const raise = await raiseAmountForDeal(dealId);
+  const raise = raiseAmount ?? (await raiseAmountForDeal(dealId));
   return planIdForDealRaiseAmount(raise);
 }
 
@@ -201,6 +227,46 @@ async function raiseAmountForDeal(dealId: string): Promise<number> {
     quota += parseMoneyAmount(c.billingRaiseQuota);
   }
   return quota > 0 ? quota : offering;
+}
+
+/** `raiseAmountForDeal` for many deals in one query (deals list billing columns). */
+export async function mapDealRaiseAmountByDealIds(
+  dealIds: readonly string[],
+): Promise<Map<string, number>> {
+  const raiseByDealId = new Map<string, number>();
+  const ids = [
+    ...new Set(dealIds.map((d) => String(d ?? "").trim()).filter(Boolean)),
+  ];
+  if (ids.length === 0) return raiseByDealId;
+
+  const classes = await db
+    .select({
+      dealId: dealInvestorClass.dealId,
+      offeringSize: dealInvestorClass.offeringSize,
+      billingRaiseQuota: dealInvestorClass.billingRaiseQuota,
+    })
+    .from(dealInvestorClass)
+    .where(inArray(dealInvestorClass.dealId, ids));
+
+  const offeringByDealId = new Map<string, number>();
+  const quotaByDealId = new Map<string, number>();
+  for (const c of classes) {
+    const key = String(c.dealId);
+    offeringByDealId.set(
+      key,
+      (offeringByDealId.get(key) ?? 0) + parseMoneyAmount(c.offeringSize),
+    );
+    quotaByDealId.set(
+      key,
+      (quotaByDealId.get(key) ?? 0) + parseMoneyAmount(c.billingRaiseQuota),
+    );
+  }
+
+  for (const id of ids) {
+    const quota = quotaByDealId.get(id) ?? 0;
+    raiseByDealId.set(id, quota > 0 ? quota : (offeringByDealId.get(id) ?? 0));
+  }
+  return raiseByDealId;
 }
 
 function unixSecondsToDate(value: unknown): Date | null {
@@ -281,21 +347,44 @@ function periodEndHasPassed(
   return Number.isFinite(t) && t < nowMs;
 }
 
+function paidBillingPeriodIsLocked(
+  row: Pick<
+    AddDealFormRow,
+    "stripeSubscriptionStatus" | "stripeCurrentPeriodEnd"
+  >,
+  nowMs = Date.now(),
+): boolean {
+  const status = String(row.stripeSubscriptionStatus ?? "").trim().toLowerCase();
+  if (!PAID_ACCESS_STATUSES.has(status)) return false;
+  if (!row.stripeCurrentPeriodEnd) return true;
+  const end =
+    row.stripeCurrentPeriodEnd instanceof Date
+      ? row.stripeCurrentPeriodEnd.getTime()
+      : Date.parse(String(row.stripeCurrentPeriodEnd));
+  return !Number.isFinite(end) || end > nowMs;
+}
+
+function paidBillingPeriodLockedMessage(
+  row: Pick<AddDealFormRow, "stripeCurrentPeriodEnd">,
+): string {
+  const end = row.stripeCurrentPeriodEnd;
+  if (!end) {
+    return "Billing settings are locked while this deal is in its current paid billing period.";
+  }
+  return `Billing settings are locked until the next billing date, ${end.toISOString()}.`;
+}
+
 function billingStartsAtDate(
-  _row?: Pick<AddDealFormRow, "saasBillingStartsAt">,
+  row?: Pick<AddDealFormRow, "saasBillingStartsAt">,
 ): Date {
-  // Date picker is off: always use backend/src/services/billing/saasBillingStartDate.ts
-  return HARDCODED_SAAS_BILLING_STARTS_AT;
+  return dealSaasBillingStartsAt(row);
 }
 
 function saasBillingHasStarted(
-  row: Pick<AddDealFormRow, "saasBillingStartsAt">,
+  row?: Pick<AddDealFormRow, "saasBillingStartsAt">,
   nowMs = Date.now(),
 ): boolean {
-  return periodEndHasPassed(
-    { stripeCurrentPeriodEnd: billingStartsAtDate(row) },
-    nowMs,
-  );
+  return dealSaasBillingHasStarted(row, nowMs);
 }
 
 export async function ensureDealSaasComplimentaryPeriod(
@@ -309,14 +398,9 @@ export async function ensureDealSaasComplimentaryPeriod(
     | "organizationId"
   >,
 ): Promise<Date | null> {
-  if (!isDealSaasBillable(deal)) return deal.saasBillingStartsAt ?? null;
+  if (deal.saasBillingStartsAt) return deal.saasBillingStartsAt;
+  if (!isDealSaasBillable(deal)) return null;
   const startsAt = HARDCODED_SAAS_BILLING_STARTS_AT;
-  if (
-    deal.saasBillingStartsAt &&
-    deal.saasBillingStartsAt.getTime() === startsAt.getTime()
-  ) {
-    return deal.saasBillingStartsAt;
-  }
   const id = normalizeDealId(String(deal.id));
   if (!id) return startsAt;
   await db
@@ -349,7 +433,7 @@ export async function getPlatformSaasBillingStartsAtIso(): Promise<
 }
 
 /**
- * Until the hardcoded SaaS billing start date the workspace stays open.
+ * Until the deal SaaS billing start date the workspace stays open.
  * After that date, unpaid / past-due / expired MRR locks view and edit.
  * Draft, archived, and liquidated are free. Stripe unset → no gate.
  */
@@ -463,13 +547,14 @@ function nextBillingDateForList(
     AddDealFormRow,
     | "archived"
     | "dealStage"
+    | "pendingDealStage"
     | "stripeSubscriptionId"
     | "stripeSubscriptionStatus"
     | "stripeCurrentPeriodEnd"
     | "saasBillingStartsAt"
   >,
 ): string | null {
-  if (!isDealSaasBillable(row)) return null;
+  if (!dealShouldKeepStripeSaasSubscription(row)) return null;
   const status = String(row.stripeSubscriptionStatus ?? "none").toLowerCase();
   const activelyBilled =
     dealIsActivelyBilled(row) ||
@@ -490,6 +575,7 @@ function nextBillingDateForList(
 
 export async function dealSaasBillingListFields(
   row: AddDealFormRow,
+  options?: { raiseAmount?: number },
 ): Promise<DealSaasBillingListFields> {
   const access = evaluateDealSaasWorkspaceAccess(row);
   if (
@@ -502,13 +588,13 @@ export async function dealSaasBillingListFields(
   }
   const billable = isDealSaasBillable(row);
   const suggestedPlanId = billable
-    ? await suggestedPlanIdForDeal(String(row.id))
+    ? await suggestedPlanIdForDeal(String(row.id), options?.raiseAmount)
     : null;
   const billed = dealIsActivelyBilled(row);
   return {
     viewerIsLeadSponsor: true,
     nextBillingDate: nextBillingDateForList(row),
-    saasBillingStartsAt: HARDCODED_SAAS_BILLING_STARTS_AT.toISOString(),
+    saasBillingStartsAt: billingStartsAtDate(row).toISOString(),
     billingSubscriptionStatus: row.stripeSubscriptionStatus || "none",
     billingPlanId: row.stripePlanId ?? null,
     suggestedPlanId,
@@ -604,11 +690,12 @@ export async function applyStripeSubscriptionToDeal(
     .select({
       archived: addDealForm.archived,
       dealStage: addDealForm.dealStage,
+      pendingDealStage: addDealForm.pendingDealStage,
     })
     .from(addDealForm)
     .where(eq(addDealForm.id, id))
     .limit(1);
-  if (deal && !isDealSaasBillable(deal)) {
+  if (deal && !dealShouldKeepStripeSaasSubscription(deal)) {
     const status = String(sub.status ?? "").toLowerCase();
     if (status !== "canceled" && status !== "incomplete_expired") {
       await cancelStripeSubscriptionQuietly(sub.id);
@@ -689,7 +776,7 @@ export async function refreshDealSaasSubscriptionFromStripe(
     .where(eq(addDealForm.id, id))
     .limit(1);
   if (!current) return null;
-  if (!isDealSaasBillable(current)) {
+  if (!dealShouldKeepStripeSaasSubscription(current)) {
     if (subId) {
       await cancelStripeSubscriptionQuietly(subId);
       await clearDealSaasSubscription(id);
@@ -736,13 +823,14 @@ export async function refreshDealSaasSubscriptionsFromStripe(
       id: addDealForm.id,
       archived: addDealForm.archived,
       dealStage: addDealForm.dealStage,
+      pendingDealStage: addDealForm.pendingDealStage,
       stripeSubscriptionId: addDealForm.stripeSubscriptionId,
     })
     .from(addDealForm)
     .where(eq(addDealForm.organizationId, cid));
   for (const deal of deals) {
     const subId = deal.stripeSubscriptionId?.trim() ?? "";
-    if (!isDealSaasBillable(deal)) {
+    if (!dealShouldKeepStripeSaasSubscription(deal)) {
       if (subId) {
         await cancelStripeSubscriptionQuietly(subId);
         await clearDealSaasSubscription(String(deal.id));
@@ -1147,7 +1235,7 @@ export async function syncDealSaasBillingForDeal(
     .limit(1);
   if (!deal) return;
 
-  if (!isDealSaasBillable(deal)) {
+  if (!dealShouldKeepStripeSaasSubscription(deal)) {
     if (deal.stripeSubscriptionId?.trim()) {
       await cancelStripeSubscriptionQuietly(deal.stripeSubscriptionId);
       await clearDealSaasSubscription(id);
@@ -1246,7 +1334,9 @@ export async function syncCompanyDealSaasSubscriptions(
   const stripe = getStripeClient();
   const deals = await listCompanyDeals(cid);
   const billable = deals.filter((d) => isDealSaasBillable(d));
-  const notBillable = deals.filter((d) => !isDealSaasBillable(d));
+  const notBillable = deals.filter(
+    (d) => !dealShouldKeepStripeSaasSubscription(d),
+  );
 
   for (const deal of notBillable) {
     if (!deal.stripeSubscriptionId?.trim()) continue;
@@ -1639,7 +1729,10 @@ async function mapDealBillingQueryRows(
       extraCompanyUsersPaid: payable
         ? companyUsers?.extraCompanyUsersPaid ?? 0
         : 0,
-      extraCompanyUsersDue: payable ? companyUsers?.extraCompanyUsersDue ?? 0 : 0,
+      extraCompanyUsersDue:
+        payable && dealSaasBillingHasStarted(dated)
+          ? companyUsers?.extraCompanyUsersDue ?? 0
+          : 0,
       extraUserFeeCents: companyUsers?.extraUserFeeCents ?? 1000,
     });
   }
@@ -1836,12 +1929,19 @@ export async function updateDealBillingCycle(params: {
   if (!deal) {
     return { ok: false, status: 404, message: "Deal not found." };
   }
-  if (!isDealSaasBillable(deal)) {
+  if (!dealShouldKeepStripeSaasSubscription(deal)) {
     return {
       ok: false,
       status: 400,
       message:
         "Billing cycle applies when the deal is raising capital or asset managing.",
+    };
+  }
+  if (paidBillingPeriodIsLocked(deal)) {
+    return {
+      ok: false,
+      status: 409,
+      message: paidBillingPeriodLockedMessage(deal),
     };
   }
 
@@ -1910,6 +2010,77 @@ export async function updateDealBillingCycle(params: {
   return { ok: true, deal: row };
 }
 
+export async function updateDealSaasBillingStartsAt(params: {
+  companyId: string;
+  dealId: string;
+  saasBillingStartsAt: string;
+}): Promise<
+  | { ok: true; deal: DealBillingListRow }
+  | { ok: false; status: number; message: string }
+> {
+  const startsAt = utcMidnightFromYmdString(params.saasBillingStartsAt);
+  if (!startsAt) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Choose a valid billing start date.",
+    };
+  }
+  if (startsAt.getTime() < utcMidnightToday().getTime()) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Billing start date cannot be in the past.",
+    };
+  }
+
+  const cid = normalizeDealId(params.companyId);
+  const dealId = normalizeDealId(params.dealId);
+  if (!cid || !dealId) {
+    return { ok: false, status: 400, message: "Select a deal first." };
+  }
+
+  const [deal] = await db
+    .select({
+      id: addDealForm.id,
+      stripeSubscriptionStatus: addDealForm.stripeSubscriptionStatus,
+      stripeCurrentPeriodEnd: addDealForm.stripeCurrentPeriodEnd,
+    })
+    .from(addDealForm)
+    .where(and(eq(addDealForm.id, dealId), eq(addDealForm.organizationId, cid)))
+    .limit(1);
+  if (!deal) {
+    return { ok: false, status: 404, message: "Deal not found." };
+  }
+  if (paidBillingPeriodIsLocked(deal)) {
+    return {
+      ok: false,
+      status: 409,
+      message: paidBillingPeriodLockedMessage(deal),
+    };
+  }
+
+  await db
+    .update(addDealForm)
+    .set({ saasBillingStartsAt: startsAt })
+    .where(eq(addDealForm.id, dealId));
+
+  const [row] = await listDealBillingForCompany(params.companyId, [dealId]);
+  if (!row) {
+    return { ok: false, status: 404, message: "Deal not found." };
+  }
+
+  void notifyLeadSponsorsOfDealBillingStartDate({
+    dealId,
+    dealName: row.dealName,
+    saasBillingStartsAt: startsAt,
+  }).catch((err) => {
+    console.warn("notifyLeadSponsorsOfDealBillingStartDate:", dealId, err);
+  });
+
+  return { ok: true, deal: row };
+}
+
 export async function loadPayableDeal(params: {
   companyId: string;
   dealId: string;
@@ -1942,6 +2113,13 @@ export async function loadPayableDeal(params: {
     .limit(1);
   if (!deal) {
     return { ok: false, status: 404, message: "Deal not found." };
+  }
+  if (!dealSaasBillingHasStarted(deal)) {
+    return {
+      ok: false,
+      status: 400,
+      message: dealSaasBillingNotYetDueMessage(deal),
+    };
   }
   if (deal.archived) {
     return {

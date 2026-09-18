@@ -44,10 +44,14 @@ import {
 } from "../../../../../../common/components/dropdown-select"
 import {
   createContact,
-  fetchContacts,
+  fetchDealContactPickerLists,
 } from "../../../../contacts/api/contactsApi"
 import { AddContactPanel } from "../../../../contacts/components/AddContactPanel"
-import type { ContactRow } from "../../../../contacts/types/contact.types"
+import {
+  PLATFORM_CONTACTS_PICKER_HINT,
+  type AddContactSavePayload,
+  type ContactRow,
+} from "../../../../contacts/types/contact.types"
 import {
   fetchDealInvestorClasses,
   fetchDealMembers,
@@ -356,6 +360,9 @@ export function AddInvestmentModal({
   const [submitting, setSubmitting] = useState(false)
   const [memberRows, setMemberRows] = useState<Record<string, unknown>[]>([])
   const [contactRows, setContactRows] = useState<ContactRow[]>([])
+  const [platformContactRows, setPlatformContactRows] = useState<ContactRow[]>(
+    [],
+  )
   const [allDealClasses, setAllDealClasses] = useState<DealInvestorClass[]>([])
   const dealClasses = useMemo(() => {
     if (isGpEntry) return allDealClasses.filter((c) => isGpInvestorClass(c))
@@ -844,6 +851,7 @@ export function AddInvestmentModal({
     isInvestorEntry,
     membersLoading,
     contactRows,
+    platformContactRows,
     memberRows,
   ])
 
@@ -894,14 +902,15 @@ export function AddInvestmentModal({
     setInvestorClassesReady(false)
     setInvestorClassOptions([{ value: "", label: "Loading investor classes…" }])
     void (async () => {
-      const [users, contacts, classes] = await Promise.all([
+      const [users, picker, classes] = await Promise.all([
         fetchUsersForMemberSelect(),
-        fetchContacts(),
+        fetchDealContactPickerLists({ sort: "name" }),
         fetchDealInvestorClasses(dealId),
       ])
       if (cancelled) return
       setMemberRows(users)
-      setContactRows(contacts)
+      setContactRows(picker.contacts)
+      setPlatformContactRows(picker.platformContacts)
       setAllDealClasses(classes)
       setInvestorClassesReady(true)
       setMembersLoading(false)
@@ -1022,7 +1031,9 @@ export function AddInvestmentModal({
       if (raw.startsWith(PREFIX_CONTACT)) {
         const id = raw.slice(PREFIX_CONTACT.length)
         if (isLeadSponsorBlockedForAdminCo(id)) return
-        const c = contactRows.find((x) => x.id === id)
+        const c =
+          contactRows.find((x) => x.id === id) ??
+          platformContactRows.find((x) => x.id === id)
         if (c) {
           const display = contactOptionLabel(c)
           patch({
@@ -1075,6 +1086,7 @@ export function AddInvestmentModal({
     },
     [
       contactRows,
+      platformContactRows,
       memberRows,
       patch,
       leadSponsorContactId,
@@ -1088,12 +1100,12 @@ export function AddInvestmentModal({
       resolveInvestorMemberSelectValue({
         contactId: form.contactId,
         contactEmail: form.contactEmail,
-        contactRows,
+        contactRows: [...contactRows, ...platformContactRows],
         memberRows,
         prefixContact: PREFIX_CONTACT,
         prefixUser: PREFIX_USER,
       }),
-    [form.contactId, form.contactEmail, contactRows, memberRows],
+    [form.contactId, form.contactEmail, contactRows, platformContactRows, memberRows],
   )
 
   const memberDropdownSections = useMemo((): DropdownSelectSection[] => {
@@ -1153,6 +1165,30 @@ export function AddInvestmentModal({
         }),
       })
     }
+    if (platformContactRows.length > 0) {
+      sections.push({
+        heading: "Platform Contacts",
+        headingHint: PLATFORM_CONTACTS_PICKER_HINT,
+        options: platformContactRows.map((c) => {
+          const value = `${PREFIX_CONTACT}${c.id}`
+          const baseLabel = contactOptionLabel(c)
+          const onDeal = isAlreadyOnDealRoster(c.id, c.email ?? "")
+          const lsConflict = optionDisabledForLeadSponsorConflict(value)
+          const meta = buildContactRosterDropdownOption(
+            baseLabel,
+            c,
+            onDeal,
+            lsConflict,
+          )
+          return {
+            value,
+            label: baseLabel,
+            disabled: meta.disabled,
+            labelContent: meta.labelContent,
+          }
+        }),
+      })
+    }
     if (memberRows.length > 0) {
       const directoryOptions = memberRows
         .map((u) => memberOptionFromUser(u))
@@ -1191,6 +1227,7 @@ export function AddInvestmentModal({
     })
   }, [
     contactRows,
+    platformContactRows,
     memberRows,
     isInvestorEntry,
     leadSponsorContactId,
@@ -1206,11 +1243,12 @@ export function AddInvestmentModal({
   useEffect(() => {
     const id = form.contactId.trim()
     if (!id) return
-    if (contactRows.length === 0 && memberRows.length === 0) return
+    if (contactRows.length === 0 && platformContactRows.length === 0 && memberRows.length === 0) return
+    const pickerContacts = [...contactRows, ...platformContactRows]
     const resolved = resolveInvestorMemberSelectValue({
       contactId: id,
       contactEmail: form.contactEmail,
-      contactRows,
+      contactRows: pickerContacts,
       memberRows,
       prefixContact: PREFIX_CONTACT,
       prefixUser: PREFIX_USER,
@@ -1222,7 +1260,7 @@ export function AddInvestmentModal({
     let nextName = String(form.contactDisplayName ?? "").trim()
     if (resolved.startsWith(PREFIX_CONTACT)) {
       nextId = resolved.slice(PREFIX_CONTACT.length).trim()
-      const c = contactRows.find(
+      const c = pickerContacts.find(
         (row) =>
           String(row.id).trim().toLowerCase() === nextId.toLowerCase(),
       )
@@ -1264,6 +1302,7 @@ export function AddInvestmentModal({
     form.contactEmail,
     form.contactDisplayName,
     contactRows,
+    platformContactRows,
     memberRows,
     patch,
   ])
@@ -1272,7 +1311,13 @@ export function AddInvestmentModal({
     (contact: ContactRow) => {
       setContactRows((prev) => {
         if (prev.some((c) => c.id === contact.id)) return prev
-        return [...prev, contact]
+        return [...prev, contact].sort((a, b) =>
+          `${a.firstName} ${a.lastName} ${a.email}`.localeCompare(
+            `${b.firstName} ${b.lastName} ${b.email}`,
+            undefined,
+            { sensitivity: "base" },
+          ),
+        )
       })
       const display = contactOptionLabel(contact)
       const namePart = display.split(" — ")[0]?.trim() || display
@@ -1293,13 +1338,18 @@ export function AddInvestmentModal({
   )
 
   const handleAddContactSave = useCallback(
-    async (
-      contact: Omit<ContactRow, "id" | "createdByDisplayName">,
-    ) => {
-      const created = await createContact(contact)
+    async (contact: AddContactSavePayload) => {
+      const { sendInvitationMail, ...rest } = contact
+      const created = await createContact({
+        ...rest,
+        sendInvitationMail: "no",
+      })
+      patch({
+        sendInvitationMail: sendInvitationMail === "no" ? "no" : "yes",
+      })
       handleContactCreated(created)
     },
-    [handleContactCreated],
+    [handleContactCreated, patch],
   )
 
   const noDealClasses =
@@ -1689,6 +1739,22 @@ export function AddInvestmentModal({
                         value={memberSelectValue}
                         disabled={membersLoading || memberContactSelectLocked}
                         onChange={(v) => patchMemberById(v)}
+                        searchable
+                        searchShowOptionCountHint
+                        searchPlaceholder={
+                          isInvestorEntry
+                            ? "Search investors or contacts…"
+                            : isGpEntry
+                              ? "Search team members or contacts…"
+                              : "Search general partners or contacts…"
+                        }
+                        searchAriaLabel={
+                          isInvestorEntry
+                            ? "Search investors or contacts"
+                            : isGpEntry
+                              ? "Search team members or contacts"
+                              : "Search general partners or contacts"
+                        }
                         placeholder={
                           membersLoading
                             ? isInvestorEntry
@@ -2311,7 +2377,7 @@ export function AddInvestmentModal({
       onClose={() => setAddContactModalOpen(false)}
       onSave={handleAddContactSave}
       contactToEdit={null}
-      existingContacts={contactRows}
+      existingContacts={[...contactRows, ...platformContactRows]}
     />
     <ExtraCompanyUserPayModal
       payload={extraUserPayment}

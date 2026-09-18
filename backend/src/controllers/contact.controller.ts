@@ -12,13 +12,21 @@ import {
   getUserDisplayNameById,
   insertContact,
   isSelfRegisteredInvestorContactRow,
-  listContactsForViewer,
+  type ContactListFilters,
+  listContactIdsForViewerFilters,
+  listContactsForViewerCached,
+  listContactsPageForViewer,
+  listPlatformVisibleContactsCached,
   loadContactCreatorUsersById,
+  markContactInvitationEmailSent,
   patchContactShowOfferingsForViewer,
   patchContactAccreditationStatusForViewer,
   patchContactKnownSinceForViewer,
+  patchContactRelationship506bForViewer,
   patchContactStatusForViewer,
+  type ContactRelationship506b,
   resolveContactDisplayFields,
+  resolveDealAdderNamesByContactIdForViewer,
   updateContactFieldsForViewer,
   type ContactOfferingVisibility,
 } from "../services/contact/contact.service.js";
@@ -39,6 +47,11 @@ import {
   filterOwnersToAllowedNames,
   listContactOwnerSponsorsForViewer,
 } from "../services/contact/contactOwnerSponsors.service.js";
+import {
+  contactCanSendInvitationEmail,
+  contactInvitationEmailBlockReason,
+  sendContactInvitationEmailIfRequested,
+} from "../services/contact/contactInvitationEmail.service.js";
 import type {
   ContactEmailTemplateRow,
   ContactRow,
@@ -54,6 +67,8 @@ import {
   resolveActiveOrganizationIdForUser,
   userHasAccessToOrganization,
 } from "../services/org/orgResolution.service.js";
+import { invalidateContactDirectoryCache } from "../services/cache/listReadCache.js";
+import { pageEnvelope, parsePageQuery } from "../common/pagination.js";
 
 const ORG_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -95,6 +110,56 @@ async function resolveOrganizationIdForContactLabels(
   if (active) return active;
   if (selfOrg) return selfOrg;
   return getOrganizationIdForUser(userId);
+}
+
+function truthyQuery(v: unknown): boolean {
+  const s = String(Array.isArray(v) ? v[0] : (v ?? ""))
+    .trim()
+    .toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+function contactListSortFromQuery(req: Request): "name" | "createdAt" {
+  const sortRaw = String(req.query.sort ?? req.query.order ?? "")
+    .trim()
+    .toLowerCase();
+  return sortRaw === "name" || sortRaw === "asc" || sortRaw === "alphabetical"
+    ? "name"
+    : "createdAt";
+}
+
+function queryString(v: unknown): string {
+  return String(Array.isArray(v) ? (v[0] ?? "") : (v ?? "")).trim();
+}
+
+/** Contacts toolbar filters; `"all"` (the default option) means "do not filter". */
+function contactListFiltersFromQuery(req: Request): ContactListFilters {
+  const notAll = (raw: string) =>
+    raw && raw.toLowerCase() !== "all" ? raw : undefined;
+  const status = queryString(req.query.status).toLowerCase();
+  return {
+    status: status === "active" || status === "archived" ? status : undefined,
+    tag: notAll(queryString(req.query.tag)),
+    owner: notAll(queryString(req.query.owner)),
+    accreditation: notAll(queryString(req.query.accreditation)),
+    offeringVisibility: notAll(queryString(req.query.offeringVisibility)),
+  };
+}
+
+function parseIdListQuery(v: unknown, max = 100): string[] {
+  const raw = Array.isArray(v) ? v.join(",") : String(v ?? "");
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const id = part.trim();
+    if (!id) continue;
+    const key = id.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(id);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 function paramStr(v: string | string[] | undefined): string {
@@ -164,6 +229,35 @@ function formatKnownSince(raw: unknown): string | null {
   return m ? m[1]! : null;
 }
 
+function normalizeRelationship506b(
+  raw: unknown,
+): ContactRelationship506b | null {
+  if (raw == null || String(raw).trim() === "") return null;
+  const s = String(raw)
+    .trim()
+    .toUpperCase()
+    .replace(/[\s()-]+/g, "_");
+  if (
+    s === "YES" ||
+    s === "506B_YES" ||
+    s === "506B" ||
+    s === "TRUE" ||
+    s === "1"
+  )
+    return "YES";
+  if (s === "NO" || s === "FALSE" || s === "0") return "NO";
+  return null;
+}
+
+function parseRelationship506bInput(
+  raw: unknown,
+): ContactRelationship506b | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || String(raw).trim() === "") return null;
+  const v = normalizeRelationship506b(raw);
+  return v ?? undefined;
+}
+
 function mapContactToJson(row: ContactRow) {
   const showOfferingsVisibility = normalizeShowOfferingsVisibility(row);
   const accreditationStatus =
@@ -172,6 +266,8 @@ function mapContactToJson(row: ContactRow) {
       ? String(row.accreditationStatus).trim()
       : null;
   const knownSince = formatKnownSince(row.knownSince);
+  const relationship506b =
+    normalizeRelationship506b(row.relationship506b) ?? "NO";
   return {
     id: row.id,
     organizationId: row.organizationId ?? null,
@@ -203,7 +299,19 @@ function mapContactToJson(row: ContactRow) {
     accreditation_status: accreditationStatus,
     knownSince,
     known_since: knownSince,
+    relationship506b,
+    relationship_506b: relationship506b,
+    visibleToUsers: Boolean(row.visibleToUsers),
+    visible_to_users: Boolean(row.visibleToUsers),
+    platformAdminOnly: Boolean(row.platformAdminOnly),
+    platform_admin_only: Boolean(row.platformAdminOnly),
     lastEditReason: row.lastEditReason?.trim() || undefined,
+    invitationEmailSent: Boolean(row.invitationEmailSent),
+    invitation_email_sent: Boolean(row.invitationEmailSent),
+    canSendInvitationEmail: contactCanSendInvitationEmail(row),
+    can_send_invitation_email: contactCanSendInvitationEmail(row),
+    isPortalUser: Boolean(row.isPortalUser),
+    is_portal_user: Boolean(row.isPortalUser),
   };
 }
 
@@ -237,6 +345,7 @@ async function mapContactEmailTemplateToJsonWithName(
 async function mapContactsToJsonWithNames(
   rows: ContactRow[],
   dealCounts?: Map<string, number>,
+  dealAdderNames?: Map<string, string>,
 ) {
   const creatorById = await loadContactCreatorUsersById(
     rows.map((row) => row.createdBy),
@@ -267,12 +376,13 @@ async function mapContactsToJsonWithNames(
     const base = mapContactToJson(row);
     const { createdBy: _createdBy, ...rest } = base;
     const creator = creatorById.get(row.createdBy) ?? null;
+    const idKey = String(row.id).trim().toLowerCase();
     const display = resolveContactDisplayFields(
       row,
       creator,
       displayNameByCreatorId.get(row.createdBy) ?? "",
+      dealAdderNames?.get(idKey),
     );
-    const idKey = String(row.id).trim().toLowerCase();
     const dealCount = dealCounts?.get(idKey) ?? 0;
     return {
       ...rest,
@@ -286,8 +396,13 @@ async function mapContactsToJsonWithNames(
 async function mapContactToJsonWithNames(
   row: ContactRow,
   dealCounts?: Map<string, number>,
+  dealAdderNames?: Map<string, string>,
 ) {
-  const [mapped] = await mapContactsToJsonWithNames([row], dealCounts);
+  const [mapped] = await mapContactsToJsonWithNames(
+    [row],
+    dealCounts,
+    dealAdderNames,
+  );
   return mapped;
 }
 
@@ -393,27 +508,213 @@ export async function getContacts(
   }
   try {
     const requestedOrg = requestedOrganizationIdFromRequest(req);
-    const rows = await listContactsForViewer(
-      user.id,
-      user.userRole,
-      requestedOrg,
+    const sort = contactListSortFromQuery(req);
+    const lean = truthyQuery(req.query.lean);
+    const pageQuery = parsePageQuery(req);
+    let total: number | null = null;
+    let statusTotals: { activeTotal: number; archivedTotal: number } | null =
+      null;
+    let rows: ContactRow[];
+    if (pageQuery.paginated) {
+      const page = await listContactsPageForViewer({
+        viewerUserId: user.id,
+        viewerRole: user.userRole,
+        requestedOrganizationId: requestedOrg,
+        sort,
+        search: pageQuery.search,
+        filters: contactListFiltersFromQuery(req),
+        includeOptedInSelfRegistered: truthyQuery(
+          req.query.includePlatformContacts,
+        ),
+        limit: pageQuery.pageSize,
+        offset: pageQuery.offset,
+      });
+      rows = page.rows;
+      total = page.total;
+      statusTotals = {
+        activeTotal: page.activeTotal,
+        archivedTotal: page.archivedTotal,
+      };
+    } else {
+      rows = await listContactsForViewerCached(
+        user.id,
+        user.userRole,
+        requestedOrg,
+        sort,
+      );
+    }
+    let dealCounts: Map<string, number> | undefined;
+    let dealAdderNames: Map<string, string> | undefined;
+    if (!lean) {
+      const contactIds = rows.map((r) => String(r.id));
+      [dealCounts, dealAdderNames] = await Promise.all([
+        countDealInvestmentsByContactIdForViewer({
+          viewerUserId: user.id,
+          jwtUserRole: user.userRole,
+          contactIds,
+          requestedOrganizationId: requestedOrg,
+        }),
+        resolveDealAdderNamesByContactIdForViewer({
+          viewerUserId: user.id,
+          jwtUserRole: user.userRole,
+          contactIds,
+          requestedOrganizationId: requestedOrg,
+        }),
+      ]);
+    }
+    const contacts = await mapContactsToJsonWithNames(
+      rows,
+      dealCounts,
+      dealAdderNames,
     );
-    const contactIds = rows.map((r) => String(r.id));
-    const dealCounts = await countDealInvestmentsByContactIdForViewer({
-      viewerUserId: user.id,
-      jwtUserRole: user.userRole,
-      contactIds,
-      requestedOrganizationId: requestedOrg,
+    logSocContactDirectoryView({
+      actorUserId: user.id,
+      resultCount: contacts.length,
     });
-    const contacts = await mapContactsToJsonWithNames(rows, dealCounts);
+    res.status(200).json({
+      contacts,
+      ...pageEnvelope(pageQuery, total ?? contacts.length),
+      ...(statusTotals ?? {}),
+    });
+  } catch (err) {
+    console.error("getContacts:", err);
+    res.status(500).json({ message: "Could not load contacts" });
+  }
+}
+
+/**
+ * GET /contacts/matching-ids — ids of every contact matching the current search
+ * and filters, so "select all" and CSV export cover the whole result set rather
+ * than just the page the table has loaded.
+ */
+export async function getContactMatchingIds(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const ids = await listContactIdsForViewerFilters({
+      viewerUserId: user.id,
+      viewerRole: user.userRole,
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
+      search: parsePageQuery(req).search,
+      filters: contactListFiltersFromQuery(req),
+      includeOptedInSelfRegistered: truthyQuery(
+        req.query.includePlatformContacts,
+      ),
+    });
+    res.status(200).json({ ids, total: ids.length });
+  } catch (err) {
+    console.error("getContactMatchingIds:", err);
+    res.status(500).json({ message: "Could not load matching contacts" });
+  }
+}
+
+/**
+ * GET /contacts/platform-contacts — Platform Contacts section: self-registered
+ * investors. Opted-in only for company users; all self-signups for platform admins.
+ */
+export async function getPlatformContacts(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const sort = contactListSortFromQuery(req);
+    const lean = truthyQuery(req.query.lean);
+    const rows = await listPlatformVisibleContactsCached(user.id, sort, user.userRole);
+    const dealAdderNames = lean
+      ? undefined
+      : await resolveDealAdderNamesByContactIdForViewer({
+          viewerUserId: user.id,
+          jwtUserRole: user.userRole,
+          contactIds: rows.map((r) => String(r.id)),
+          requestedOrganizationId: requestedOrganizationIdFromRequest(req),
+        });
+    const contacts = await mapContactsToJsonWithNames(
+      rows,
+      undefined,
+      dealAdderNames,
+    );
     logSocContactDirectoryView({
       actorUserId: user.id,
       resultCount: contacts.length,
     });
     res.status(200).json({ contacts });
   } catch (err) {
-    console.error("getContacts:", err);
-    res.status(500).json({ message: "Could not load contacts" });
+    console.error("getPlatformContacts:", err);
+    res.status(500).json({ message: "Could not load platform contacts" });
+  }
+}
+
+/** GET /contacts/deal-stats?ids= — deal counts / owners for the visible table page. */
+export async function getContactDealStats(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const ids = parseIdListQuery(req.query.ids, 100);
+    if (ids.length === 0) {
+      res.status(200).json({ contacts: [] });
+      return;
+    }
+    const requestedOrg = requestedOrganizationIdFromRequest(req);
+    const sort = contactListSortFromQuery(req);
+    const wanted = new Set(ids.map((id) => id.trim().toLowerCase()));
+    const [orgRows, platformRows] = await Promise.all([
+      listContactsForViewerCached(
+        user.id,
+        user.userRole,
+        requestedOrg,
+        sort,
+      ),
+      listPlatformVisibleContactsCached(user.id, sort, user.userRole),
+    ]);
+    const seen = new Set<string>();
+    const matched: typeof orgRows = [];
+    for (const row of [...orgRows, ...platformRows]) {
+      const key = String(row.id).trim().toLowerCase();
+      if (!wanted.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      matched.push(row);
+    }
+    const contactIds = matched.map((r) => String(r.id));
+    const [dealCounts, dealAdderNames] = await Promise.all([
+      countDealInvestmentsByContactIdForViewer({
+        viewerUserId: user.id,
+        jwtUserRole: user.userRole,
+        contactIds,
+        requestedOrganizationId: requestedOrg,
+      }),
+      resolveDealAdderNamesByContactIdForViewer({
+        viewerUserId: user.id,
+        jwtUserRole: user.userRole,
+        contactIds,
+        requestedOrganizationId: requestedOrg,
+      }),
+    ]);
+    const contacts = await mapContactsToJsonWithNames(
+      matched,
+      dealCounts,
+      dealAdderNames,
+    );
+    res.status(200).json({ contacts });
+  } catch (err) {
+    console.error("getContactDealStats:", err);
+    res.status(500).json({ message: "Could not load contact deal stats" });
   }
 }
 
@@ -444,14 +745,22 @@ export async function getContact(
       res.status(404).json({ message: "Contact not found or access denied" });
       return;
     }
-    const dealCounts = await countDealInvestmentsByContactIdForViewer({
-      viewerUserId: user.id,
-      jwtUserRole: user.userRole,
-      contactIds: [String(row.id)],
-      requestedOrganizationId: requestedOrg,
-    });
+    const [dealCounts, dealAdderNames] = await Promise.all([
+      countDealInvestmentsByContactIdForViewer({
+        viewerUserId: user.id,
+        jwtUserRole: user.userRole,
+        contactIds: [String(row.id)],
+        requestedOrganizationId: requestedOrg,
+      }),
+      resolveDealAdderNamesByContactIdForViewer({
+        viewerUserId: user.id,
+        jwtUserRole: user.userRole,
+        contactIds: [String(row.id)],
+        requestedOrganizationId: requestedOrg,
+      }),
+    ]);
     res.status(200).json({
-      contact: await mapContactToJsonWithNames(row, dealCounts),
+      contact: await mapContactToJsonWithNames(row, dealCounts, dealAdderNames),
     });
   } catch (err) {
     console.error("getContact:", err);
@@ -475,6 +784,9 @@ export async function postContact(req: Request, res: Response): Promise<void> {
   const tags = bodyStringArray(b.tags);
   const lists = bodyStringArray(b.lists);
   const ownersFromClient = bodyStringArray(b.owners);
+  const sendInvitationMail = bodyString(
+    b.send_invitation_mail ?? b.sendInvitationMail,
+  );
 
   if (!firstName) {
     res.status(400).json({ message: "First name is required" });
@@ -531,6 +843,7 @@ export async function postContact(req: Request, res: Response): Promise<void> {
       },
       createdByUserId: user.id,
     });
+    invalidateContactDirectoryCache();
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
@@ -541,9 +854,25 @@ export async function postContact(req: Request, res: Response): Promise<void> {
       actorUserId: user.id,
       contactId: String(row.id),
     });
+    const invitationResult = await sendContactInvitationEmailIfRequested({
+      sendInvitationMail,
+      email,
+      organizationId: row.organizationId,
+      skipBecausePortalUser: row.isPortalUser,
+    });
+    const saved =
+      invitationResult === "sent"
+        ? ((await markContactInvitationEmailSent(row.id)) ?? row)
+        : row;
     res.status(201).json({
-      message: "Contact created",
-      contact: await mapContactToJsonWithNames(row, dealCounts),
+      message:
+        invitationResult === "sent"
+          ? "Contact created and invitation email sent"
+          : invitationResult === "failed"
+            ? "Contact created, but the invitation email could not be sent"
+            : "Contact created",
+      contact: await mapContactToJsonWithNames(saved, dealCounts),
+      invitationEmailSent: invitationResult === "sent",
     });
   } catch (err) {
     if (err instanceof ContactInvalidPhoneError) {
@@ -556,6 +885,75 @@ export async function postContact(req: Request, res: Response): Promise<void> {
     }
     console.error("postContact:", err);
     res.status(500).json({ message: "Could not create contact" });
+  }
+}
+
+/** POST /contacts/:contactId/send-invitation */
+export async function postContactInvitation(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const contactId = paramStr(req.params.contactId);
+  if (!contactId) {
+    res.status(400).json({ message: "Contact id required" });
+    return;
+  }
+  try {
+    const row = await getContactForViewer(
+      user.id,
+      contactId,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!row) {
+      res.status(404).json({ message: "Contact not found or access denied" });
+      return;
+    }
+    const blocked = contactInvitationEmailBlockReason(row);
+    if (blocked) {
+      res.status(409).json({ message: blocked });
+      return;
+    }
+    const invitationResult = await sendContactInvitationEmailIfRequested({
+      sendInvitationMail: "yes",
+      email: row.email,
+      organizationId: row.organizationId,
+      skipBecausePortalUser: row.isPortalUser,
+    });
+    if (invitationResult !== "sent") {
+      res.status(502).json({
+        message: "The invitation email could not be sent",
+      });
+      return;
+    }
+    const saved = (await markContactInvitationEmailSent(row.id)) ?? {
+      ...row,
+      invitationEmailSent: true,
+    };
+    const dealCounts = await countDealInvestmentsByContactIdForViewer({
+      viewerUserId: user.id,
+      jwtUserRole: user.userRole,
+      contactIds: [String(saved.id)],
+      requestedOrganizationId: requestedOrganizationIdFromRequest(req),
+    });
+    logSocContactWrite({
+      operation: "update",
+      actorUserId: user.id,
+      contactId: String(saved.id),
+    });
+    res.status(200).json({
+      message: "Invitation email sent",
+      contact: await mapContactToJsonWithNames(saved, dealCounts),
+      invitationEmailSent: true,
+    });
+  } catch (err) {
+    console.error("postContactInvitation:", err);
+    res.status(500).json({ message: "Could not send invitation email" });
   }
 }
 
@@ -655,6 +1053,7 @@ export async function patchContact(req: Request, res: Response): Promise<void> {
       res.status(404).json({ message: "Contact not found or access denied" });
       return;
     }
+    invalidateContactDirectoryCache();
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
@@ -713,6 +1112,7 @@ export async function patchContactStatus(
       res.status(404).json({ message: "Contact not found or access denied" });
       return;
     }
+    invalidateContactDirectoryCache();
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
@@ -794,6 +1194,7 @@ export async function patchContactShowOfferings(
       res.status(404).json({ message: "Contact not found or access denied" });
       return;
     }
+    invalidateContactDirectoryCache();
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
@@ -853,6 +1254,7 @@ export async function patchContactAccreditationStatus(
       res.status(404).json({ message: "Contact not found or access denied" });
       return;
     }
+    invalidateContactDirectoryCache();
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
@@ -910,6 +1312,7 @@ export async function patchContactKnownSince(
       res.status(404).json({ message: "Contact not found or access denied" });
       return;
     }
+    invalidateContactDirectoryCache();
     const dealCounts = await countDealInvestmentsByContactIdForViewer({
       viewerUserId: user.id,
       jwtUserRole: user.userRole,
@@ -927,6 +1330,64 @@ export async function patchContactKnownSince(
   } catch (err) {
     console.error("patchContactKnownSince:", err);
     res.status(500).json({ message: "Could not update known since" });
+  }
+}
+
+/** PATCH /contacts/:contactId/relationship-506b */
+export async function patchContactRelationship506b(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const contactId = paramStr(req.params.contactId);
+  if (!contactId) {
+    res.status(400).json({ message: "Contact id required" });
+    return;
+  }
+  const b = req.body as Record<string, unknown>;
+  const relationship506b = parseRelationship506bInput(
+    b.relationship506b ?? b.relationship_506b,
+  );
+  if (relationship506b === undefined) {
+    res.status(400).json({
+      message: "relationship506b must be YES, NO, or empty/null to clear",
+    });
+    return;
+  }
+  try {
+    const updated = await patchContactRelationship506bForViewer(
+      user.id,
+      contactId,
+      relationship506b,
+      user.userRole,
+      requestedOrganizationIdFromRequest(req),
+    );
+    if (!updated) {
+      res.status(404).json({ message: "Contact not found or access denied" });
+      return;
+    }
+    invalidateContactDirectoryCache();
+    const dealCounts = await countDealInvestmentsByContactIdForViewer({
+      viewerUserId: user.id,
+      jwtUserRole: user.userRole,
+      contactIds: [String(updated.id)],
+    });
+    logSocContactWrite({
+      operation: "update",
+      actorUserId: user.id,
+      contactId: String(updated.id),
+    });
+    res.status(200).json({
+      message: "Contact relationship updated",
+      contact: await mapContactToJsonWithNames(updated, dealCounts),
+    });
+  } catch (err) {
+    console.error("patchContactRelationship506b:", err);
+    res.status(500).json({ message: "Could not update relationship" });
   }
 }
 

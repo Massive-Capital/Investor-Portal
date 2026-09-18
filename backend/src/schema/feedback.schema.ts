@@ -22,6 +22,39 @@ export type FeedbackStatus =
 
 export type FeedbackReviewAction = "reviewed" | "resolved";
 
+export const FEEDBACK_PRIORITY_P0 = "P0";
+export const FEEDBACK_PRIORITY_P1 = "P1";
+export const FEEDBACK_PRIORITY_P2 = "P2";
+export const FEEDBACK_PRIORITY_P3 = "P3";
+
+export type FeedbackPriority =
+  | typeof FEEDBACK_PRIORITY_P0
+  | typeof FEEDBACK_PRIORITY_P1
+  | typeof FEEDBACK_PRIORITY_P2
+  | typeof FEEDBACK_PRIORITY_P3;
+
+export const FEEDBACK_PRIORITIES: FeedbackPriority[] = [
+  FEEDBACK_PRIORITY_P0,
+  FEEDBACK_PRIORITY_P1,
+  FEEDBACK_PRIORITY_P2,
+  FEEDBACK_PRIORITY_P3,
+];
+
+export function parseFeedbackPriority(
+  raw: unknown,
+): FeedbackPriority | null {
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (
+    s === FEEDBACK_PRIORITY_P0 ||
+    s === FEEDBACK_PRIORITY_P1 ||
+    s === FEEDBACK_PRIORITY_P2 ||
+    s === FEEDBACK_PRIORITY_P3
+  ) {
+    return s;
+  }
+  return null;
+}
+
 export type FeedbackSubPageOption = {
   key: string;
   label: string;
@@ -41,6 +74,8 @@ export const userFeedback = pgTable(
     subPageKey: varchar("sub_page_key", { length: 120 }).notNull().default(""),
     subPageLabel: varchar("sub_page_label", { length: 200 }).notNull().default(""),
     description: text("description").notNull(),
+    /** P0–P3; set only by a platform admin after submit. */
+    priority: varchar("priority", { length: 8 }).$type<FeedbackPriority>(),
     status: varchar("status", { length: 32 })
       .notNull()
       .default(FEEDBACK_STATUS_PENDING),
@@ -59,6 +94,7 @@ export const userFeedback = pgTable(
     statusIdx: index("user_feedback_status_idx").on(t.status),
     userIdx: index("user_feedback_user_id_idx").on(t.userId),
     createdIdx: index("user_feedback_created_at_idx").on(t.createdAt),
+    priorityIdx: index("user_feedback_priority_idx").on(t.priority),
   }),
 );
 

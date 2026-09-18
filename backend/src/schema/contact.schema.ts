@@ -30,9 +30,14 @@ export const contact = pgTable("contact", {
   /** True when this email is linked to a row in `users` — excluded from All Contacts lists. */
   isPortalUser: boolean("is_portal_user").notNull().default(false),
   /**
-   * Self-registered investor CRM rows (no company) — visible to platform admins only.
+   * Self-registered investor CRM rows (no company) — visible to platform admins only
+   * unless `visibleToUsers` is true.
    */
   platformAdminOnly: boolean("platform_admin_only").notNull().default(false),
+  /**
+   * Self-registered investor opted in (My account) to appear in company All Contacts.
+   */
+  visibleToUsers: boolean("visible_to_users").notNull().default(false),
   phone: varchar("phone", { length: 64 }).notNull().default(""),
   note: text("note").notNull().default(""),
   tags: jsonb("tags").$type<string[]>().notNull(),
@@ -48,7 +53,14 @@ export const contact = pgTable("contact", {
   accreditationStatus: text("accreditation_status"),
   /** Date the relationship with this contact was established; nullable when unset. */
   knownSince: date("known_since"),
+  /**
+   * Whether this contact has a 506(b) pre-existing relationship.
+   * `YES` | `NO` — defaults to `NO`.
+   */
+  relationship506b: varchar("relationship_506b", { length: 16 }).default("NO"),
   lastEditReason: text("last_edit_reason"),
+  /** True after a portal signup invitation email was successfully sent. */
+  invitationEmailSent: boolean("invitation_email_sent").notNull().default(false),
   createdBy: uuid("created_by")
     .notNull()
     .references(() => users.id, { onDelete: "restrict" }),

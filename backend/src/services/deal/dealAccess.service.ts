@@ -11,6 +11,7 @@ import {
   ORG_DIRECTORY_MEMBER_ROLES,
   PLATFORM_USER,
 } from "../../constants/roles.js";
+import { mapWithConcurrency } from "../../common/mapWithConcurrency.js";
 import { db } from "../../database/db.js";
 import type { AddDealFormRow } from "../../schema/deal.schema/add-deal-form.schema.js";
 import { users } from "../../schema/schema.js";
@@ -205,11 +206,10 @@ export async function filterDealsVisibleToInvestorParticipants(
   rows: AddDealFormRow[],
   scope: DealViewerScope,
 ): Promise<AddDealFormRow[]> {
-  const out: AddDealFormRow[] = [];
-  for (const row of rows) {
-    if (await investorParticipantMayReadDeal(row, scope)) out.push(row);
-  }
-  return out;
+  const visible = await mapWithConcurrency(rows, 8, (row) =>
+    investorParticipantMayReadDeal(row, scope),
+  );
+  return rows.filter((_, i) => visible[i] === true);
 }
 
 export async function dealAccessibleToViewerScope(

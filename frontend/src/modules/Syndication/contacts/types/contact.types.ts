@@ -20,6 +20,17 @@ export const CONTACT_OFFERING_VISIBILITY_OPTIONS: ReadonlyArray<{
   { value: "506C_ONLY", label: "506(c) offerings only" },
 ]
 
+/** 506(b) pre-existing relationship on a CRM contact. */
+export type ContactRelationship506b = "YES" | "NO"
+
+export const CONTACT_RELATIONSHIP_506B_OPTIONS: ReadonlyArray<{
+  value: ContactRelationship506b
+  label: string
+}> = [
+  { value: "YES", label: "506(b) Yes" },
+  { value: "NO", label: "506(b) No" },
+]
+
 export interface ContactRow {
   id: string
   firstName: string
@@ -42,12 +53,33 @@ export interface ContactRow {
   accreditationStatus?: string | null
   /** Relationship start date (YYYY-MM-DD); `null` when unset */
   knownSince?: string | null
+  /**
+   * 506(b) pre-existing relationship.
+   * Defaults to `NO` when unset. Stored as `contact.relationship_506b`.
+   */
+  relationship506b?: ContactRelationship506b | null
   /** Reason from the most recent edit (required when saving edits) */
   lastEditReason?: string
   /** Resolved display name for the user who created the row (from API) */
   createdByDisplayName?: string
   /** ISO timestamp when the contact was created (from API) */
   createdAt?: string
+  /**
+   * Self-registered investor opted in to appear in Platform Contacts
+   * for company users. Platform admins see the row either way.
+   */
+  visibleToUsers?: boolean
+  /**
+   * Self-registered investor CRM row. Hidden (`visibleToUsers` false) rows
+   * cannot be added to deals.
+   */
+  platformAdminOnly?: boolean
+  /** Linked to a portal `users` row for this email. */
+  isPortalUser?: boolean
+  /** True after a portal signup invitation was successfully emailed. */
+  invitationEmailSent?: boolean
+  /** Server-computed: invite can be sent from row actions. */
+  canSendInvitationEmail?: boolean
   /**
    * Distinct deals linked to this contact (viewer deal scope): investment
    * `contact_id` equals this contact id, or a portal user with the same email.
@@ -75,9 +107,40 @@ export interface ContactRow {
   updatedAt?: string
 }
 
+/**
+ * Tag shown on self-registered investors listed inside an organization's CRM.
+ * Derived on read — never persisted on `contact.tags`.
+ */
+export const PLATFORM_CONTACT_TAG = "Platform Contact"
+
+/** Info-icon text on the Platform Contacts group in deal member / investor pickers. */
+export const PLATFORM_CONTACTS_PICKER_HINT =
+  "These contacts belong to the platform — investors who signed up individually."
+
+/** Self-registered investor row (owned by the investor, not by the org CRM). */
+export function isPlatformDirectoryContact(row: ContactRow): boolean {
+  return row.platformAdminOnly === true
+}
+
+/** Adds the derived Platform Contact tag for display. */
+export function withPlatformContactTag(row: ContactRow): ContactRow {
+  if (!isPlatformDirectoryContact(row)) return row
+  const target = PLATFORM_CONTACT_TAG.toLowerCase()
+  if (row.tags.some((t) => t.trim().toLowerCase() === target)) return row
+  return { ...row, tags: [...row.tags, PLATFORM_CONTACT_TAG] }
+}
+
 /** Sponsor the viewer may assign as a contact owner (org / role scoped). */
 export interface ContactOwnerSponsorOption {
   userId: string
   displayName: string
   email: string
+}
+
+/** Payload for creating a contact from Add contact (invitation flag is create-only). */
+export type AddContactSavePayload = Omit<
+  ContactRow,
+  "id" | "createdByDisplayName"
+> & {
+  sendInvitationMail?: "yes" | "no"
 }

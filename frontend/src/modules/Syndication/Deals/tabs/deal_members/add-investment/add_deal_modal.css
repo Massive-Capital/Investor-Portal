@@ -305,6 +305,17 @@
   margin-bottom: 0.85em;
 }
 
+/* Add Investors: sections sit on the same rhythm as fields (no extra gap above headings). */
+.deals_add_lp_inv_panel .deal_inv_view_body {
+  gap: 0.85em;
+}
+
+.deals_add_lp_inv_panel.deals_add_inv_modal_panel.add_contact_panel
+  .add_contact_section.deal_inv_view_section
+  > *:last-child {
+  margin-bottom: 0;
+}
+
 .deals_add_inv_modal_form .portal_dropdown_select {
   width: 100%;
   min-width: 0;

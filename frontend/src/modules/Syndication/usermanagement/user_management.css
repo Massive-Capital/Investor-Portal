@@ -324,6 +324,25 @@ a.um_toolbar_export_btn {
   color: #64748b;
 }
 
+.um_toolbar_notice--error {
+  color: #b91c1c;
+}
+
+.um_toolbar_notice_retry {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  border-radius: 0.375em;
+  padding: 0.1em 0.6em;
+  font: inherit;
+  cursor: pointer;
+}
+
+.um_toolbar_notice_retry:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .um_btn_primary,
 .um_btn_secondary {
   display: inline-flex;

@@ -1,4 +1,4 @@
-import { ChevronDown, Plus } from "lucide-react"
+import { ChevronDown, Info, Plus } from "lucide-react"
 import {
   Fragment,
   useCallback,
@@ -49,6 +49,8 @@ export interface DropdownSelectOption {
 export interface DropdownSelectSection {
   heading: string
   options: DropdownSelectOption[]
+  /** Explains the group; shown as an info icon with this text beside the heading. */
+  headingHint?: string
 }
 
 export interface DropdownSelectFooterAction {
@@ -79,7 +81,7 @@ export interface DropdownSelectProps {
   invalid?: boolean
   /** Rich trigger content; `displayLabel` still comes from the selected option `label`. */
   triggerContent?: ReactNode
-  /** Show a filter field above options (long lists). Uses flat option list; section headings are omitted while active. */
+  /** Show a filter field above options (long lists). Section headings stay visible when using `sections`. */
   searchable?: boolean
   searchPlaceholder?: string
   searchAriaLabel?: string
@@ -129,12 +131,29 @@ export function DropdownSelect({
     return options
   }, [sections, options])
 
+  const filteredSections = useMemo(() => {
+    if (!sections?.length) return undefined
+    if (!searchable) return sections
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return sections
+    return sections
+      .map((s) => ({
+        heading: s.heading,
+        headingHint: s.headingHint,
+        options: s.options.filter((o) => o.label.toLowerCase().includes(q)),
+      }))
+      .filter((s) => s.options.length > 0)
+  }, [sections, searchable, searchQuery])
+
   const visibleOptions = useMemo(() => {
+    if (filteredSections?.length) {
+      return filteredSections.flatMap((s) => s.options)
+    }
     if (!searchable) return flatOptions
     const q = searchQuery.trim().toLowerCase()
     if (!q) return flatOptions
     return flatOptions.filter((o) => o.label.toLowerCase().includes(q))
-  }, [searchable, flatOptions, searchQuery])
+  }, [filteredSections, searchable, flatOptions, searchQuery])
 
   const countableOptions = useMemo(
     () =>
@@ -180,7 +199,7 @@ export function DropdownSelect({
     searchAriaLabel,
   ])
 
-  const showSectionLayout = Boolean(sections?.length) && !searchable
+  const showSectionLayout = Boolean(filteredSections?.length)
 
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -330,11 +349,6 @@ export function DropdownSelect({
   /** Index into `visibleOptions` (filtered list when `searchable`). */
   function selectByVisibleIndex(i: number) {
     applyOption(visibleOptions[i])
-  }
-
-  /** Index into full `flatOptions` (section layout / non-search). */
-  function selectByFlatIndex(i: number) {
-    applyOption(flatOptions[i])
   }
 
   function moveActive(delta: number) {
@@ -488,13 +502,23 @@ export function DropdownSelect({
       ) : null}
 
       {showSectionLayout
-        ? sections!.map((section, si) => (
+        ? filteredSections!.map((section, si) => (
             <Fragment key={`sec-${section.heading}-${si}`}>
               <li
                 className="portal_dropdown_select_heading"
                 role="presentation"
               >
                 {section.heading}
+                {section.headingHint ? (
+                  <span
+                    className="portal_dropdown_select_heading_hint"
+                    role="img"
+                    aria-label={section.headingHint}
+                    title={section.headingHint}
+                  >
+                    <Info size={13} strokeWidth={2} aria-hidden />
+                  </span>
+                ) : null}
               </li>
               {section.options.map((opt, oi) => {
                 const i = optionFlatIndex++
@@ -521,7 +545,7 @@ export function DropdownSelect({
                         .filter(Boolean)
                         .join(" ")}
                       onMouseEnter={() => setActiveIndex(i)}
-                      onClick={() => selectByFlatIndex(i)}
+                      onClick={() => selectByVisibleIndex(i)}
                       aria-label={
                         opt.labelContent && opt.disabled
                           ? `${opt.label}, already added`

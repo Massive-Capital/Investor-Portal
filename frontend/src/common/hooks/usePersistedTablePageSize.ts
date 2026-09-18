@@ -17,6 +17,7 @@ export const TABLE_PAGE_SIZE_ID = {
   dealInvestors: "deal-investors",
   dealMembers: "deal-members",
   generalPartners: "general-partners",
+  feedback: "feedback",
 } as const
 
 export type TablePageSizeId =

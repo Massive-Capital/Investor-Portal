@@ -7,6 +7,7 @@ import type {
   FeedbackReviewAction,
   FeedbackStatus,
 } from "../types"
+import { parseFeedbackPriority } from "../types"
 
 export const FEEDBACK_PENDING_CHANGED_EVENT =
   "syndicationx:feedback-pending-changed"
@@ -54,11 +55,13 @@ function asFeedback(raw: unknown): FeedbackItem | null {
     userId: String(r.userId ?? "").trim(),
     username: String(r.username ?? "").trim(),
     userEmail: String(r.userEmail ?? "").trim(),
+    userRole: String(r.userRole ?? "").trim() || null,
     pageKey: String(r.pageKey ?? "").trim(),
     pageLabel: String(r.pageLabel ?? "").trim(),
     subPageKey: String(r.subPageKey ?? "").trim(),
     subPageLabel: String(r.subPageLabel ?? "").trim(),
     description: String(r.description ?? ""),
+    priority: parseFeedbackPriority(r.priority),
     status,
     adminResponse:
       typeof r.adminResponse === "string" && r.adminResponse.trim()
@@ -266,6 +269,71 @@ export async function fetchFeedbackList(
   }
 }
 
+/**
+ * One page of feedback, searched, sorted and counted by the API.
+ *
+ * Admins get every submission filtered by the status tab; everyone else gets
+ * their own submissions from `/feedback/mine`.
+ */
+export async function fetchFeedbackPage(params: {
+  admin: boolean
+  status?: FeedbackStatus
+  page: number
+  pageSize: number
+  search: string
+  sort: { columnId: string; direction: "asc" | "desc" } | null
+  signal?: AbortSignal
+}): Promise<{
+  rows: FeedbackItem[]
+  total: number
+  /** Per-status totals for the admin tab badges; absent for `/feedback/mine`. */
+  counts?: Record<FeedbackStatus, number>
+}> {
+  const base = getApiV1Base()
+  const query = new URLSearchParams()
+  query.set("page", String(params.page))
+  query.set("pageSize", String(params.pageSize))
+  if (params.search) query.set("search", params.search)
+  if (params.admin && params.status) query.set("status", params.status)
+  if (params.sort) {
+    query.set("sort", params.sort.columnId)
+    query.set("sortDir", params.sort.direction)
+  }
+  const path = params.admin ? "/feedback" : "/feedback/mine"
+  const res = await fetch(`${base}${path}?${query.toString()}`, {
+    headers: authHeaders(),
+    credentials: "include",
+    signal: params.signal,
+  })
+  const data: unknown = await res.json().catch(() => null)
+  if (!res.ok) {
+    throw new Error(messageFromBody(data, "Could not load feedback."))
+  }
+  const body = (data && typeof data === "object" ? data : {}) as {
+    items?: unknown
+    total?: unknown
+    counts?: unknown
+  }
+  const rows = Array.isArray(body.items)
+    ? body.items.map(asFeedback).filter((x): x is FeedbackItem => x != null)
+    : []
+  const total = Number(body.total)
+  const rawCounts = body.counts
+  const counts =
+    rawCounts && typeof rawCounts === "object"
+      ? {
+          Pending: Number((rawCounts as Record<string, unknown>).Pending) || 0,
+          Reviewed: Number((rawCounts as Record<string, unknown>).Reviewed) || 0,
+          Resolved: Number((rawCounts as Record<string, unknown>).Resolved) || 0,
+        }
+      : undefined
+  return {
+    rows,
+    total: Number.isFinite(total) ? total : rows.length,
+    counts,
+  }
+}
+
 export async function fetchMyFeedbackAlerts(): Promise<FeedbackItem[]> {
   const base = getApiV1Base()
   try {
@@ -391,6 +459,44 @@ export async function updateFeedback(
     return { ok: true, feedback }
   } catch {
     return { ok: false, message: "Could not update feedback." }
+  }
+}
+
+export async function setFeedbackPriority(
+  feedbackId: string,
+  priority: string,
+): Promise<
+  { ok: true; feedback: FeedbackItem } | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  try {
+    const res = await fetch(
+      `${base}/feedback/${encodeURIComponent(feedbackId)}/priority`,
+      {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ priority }),
+      },
+    )
+    const data: unknown = await res.json().catch(() => null)
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: messageFromBody(data, "Could not update priority."),
+      }
+    }
+    const feedback = asFeedback(
+      data && typeof data === "object"
+        ? (data as { feedback?: unknown }).feedback
+        : null,
+    )
+    if (!feedback) {
+      return { ok: false, message: "Could not update priority." }
+    }
+    return { ok: true, feedback }
+  } catch {
+    return { ok: false, message: "Could not update priority." }
   }
 }
 

@@ -1342,6 +1342,26 @@
   color: inherit;
 }
 
+.contacts_platform_note {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--portal-text-muted, #64748b);
+}
+
+/* Platform Contacts toolbar: note on the left, search + refresh on the right. */
+.contacts_platform_toolbar .contacts_directory_toolbar_start {
+  flex: 1 1 18rem;
+  min-width: min(18rem, 100%);
+}
+
+@media (max-width: 1100px) {
+  .contacts_platform_toolbar .contacts_directory_toolbar_start {
+    flex-basis: 100%;
+  }
+}
+
 /* View contact: stay inside the viewport; body scrolls, header/footer stay put. */
 .contacts_view_modal_overlay.um_modal_overlay {
   align-items: center;
@@ -2002,6 +2022,17 @@
 .add_contact_name_grid .um_field_label_row {
   min-height: 1.375em;
   flex-shrink: 0;
+}
+
+.add_contact_panel .mail_text_label {
+  font-size: var(--portal-form-label-font-size, 0.8125rem);
+  font-weight: var(--portal-form-label-font-weight, 600);
+  letter-spacing: var(--portal-form-label-letter-spacing, -0.01em);
+  color: var(--portal-form-label-color, var(--portal-text-muted, #64748b));
+}
+
+.add_contact_panel .portal_yesno_field_block {
+  margin-top: 0.35em;
 }
 
 .add_contact_name_grid .um_field_label_with_suffix {
@@ -2839,6 +2870,41 @@
   box-sizing: border-box;
 }
 
+.contacts_th_platform_visible,
+.contacts_td_platform_visible {
+  width: 8.75rem;
+  min-width: 8.25rem;
+  max-width: 10rem;
+  vertical-align: middle;
+  box-sizing: border-box;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.contacts_th_joined,
+.contacts_td_joined {
+  width: 8.5rem;
+  min-width: 7.5rem;
+  max-width: 9.5rem;
+  vertical-align: middle;
+  box-sizing: border-box;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.contacts_th_relationship,
+.contacts_td_relationship {
+  width: 8.25rem;
+  min-width: 7.75rem;
+  max-width: 8.75rem;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.contacts_td_relationship {
+  white-space: nowrap;
+}
+
 .contacts_td_show_offerings {
   white-space: nowrap;
 }
@@ -2917,6 +2983,12 @@
   .um_table.deal_inv_table
   thead
   th.contacts_th_show_offerings
+  .um_sort_header_label,
+.contacts_page
+  .contacts_table_panel
+  .um_table.deal_inv_table
+  thead
+  th.contacts_th_relationship
   .um_sort_header_label,
 .contacts_page
   .contacts_table_panel
@@ -3059,6 +3131,37 @@
 }
 
 .contacts_accreditation_badge--na {
+  color: #6b7280;
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+  font-weight: 500;
+}
+
+/* Platform Contacts: whether a self-signup opted in to be visible to users. */
+.contacts_platform_visible_badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 3.5rem;
+  min-width: 3.5rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.contacts_platform_visible_badge--yes {
+  color: #16a34a;
+  background: color-mix(in srgb, #16a34a 14%, #ffffff);
+  border-color: color-mix(in srgb, #16a34a 28%, #ffffff);
+}
+
+.contacts_platform_visible_badge--no {
   color: #6b7280;
   background: #f3f4f6;
   border-color: #e5e7eb;

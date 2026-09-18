@@ -7,7 +7,9 @@ import {
   type CompanyBillingPaymentMethod,
 } from "./companyBillingApi"
 import { BillingPayMethodModal } from "./BillingPayMethodModal"
+import { PlatformComplimentaryNoticeModal } from "./PlatformComplimentaryNoticeModal"
 import type { ExtraCompanyUserPaymentRequired } from "../Deals/utils/extraCompanyUserBilling"
+import { platformSaasBillingHasStarted } from "../Deals/utils/saasBillingStartDate"
 
 export function ExtraCompanyUserPayModal({
   payload,
@@ -29,7 +31,7 @@ export function ExtraCompanyUserPayModal({
   const extraCount = payload?.extraUsersToPay ?? 1
 
   useEffect(() => {
-    if (!payload || !companyId) {
+    if (!payload || !companyId || !platformSaasBillingHasStarted()) {
       setMethods([])
       return
     }
@@ -48,6 +50,12 @@ export function ExtraCompanyUserPayModal({
   }, [payload, companyId])
 
   if (!payload) return null
+
+  if (!platformSaasBillingHasStarted()) {
+    return (
+      <PlatformComplimentaryNoticeModal open onClose={onClose} />
+    )
+  }
 
   const handlePayStripe = async () => {
     if (payOnceRef.current) return

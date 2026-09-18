@@ -28,6 +28,10 @@ import {
 import "../../../../usermanagement/user_management.css"
 import "./deal-member-row-actions.css"
 
+/** Menu-sized variant of the add/edit modal’s “notify the member” hint. */
+export const INVITATION_EMAILS_BLOCKED_ACTION_TITLE =
+  "Invitation emails are unavailable while the deal is in draft or required deal details are incomplete."
+
 export interface DealMemberRowActionsProps {
   row: DealInvestorRow
   /** Open read-only details (parent may refetch roster first). */
@@ -50,6 +54,11 @@ export interface DealMemberRowActionsProps {
   invitationMailSent?: boolean
   /** True while this row’s invitation email request is in flight. */
   invitationMailSending?: boolean
+  /**
+   * Deal lifecycle blocks invitation emails (draft stage or incomplete deal details) —
+   * same rule the add/edit modal uses to lock its “notify the member” choice to No.
+   */
+  invitationMailBlocked?: boolean
   /**
    * When false, “Copy offering link” is disabled (e.g. visibility is not “Only visible with link”).
    */
@@ -78,6 +87,7 @@ export function DealMemberRowActions({
   draftRow = false,
   invitationMailSent = false,
   invitationMailSending = false,
+  invitationMailBlocked = false,
   offeringLinkAvailable = false,
   offeringLinkBlockedBecauseDraft = false,
   onApproveFund,
@@ -434,23 +444,32 @@ export function DealMemberRowActions({
                   <button
                     type="button"
                     className={`um_kebab_menuitem${
-                      draftRow || invitationMailSending
+                      draftRow || invitationMailSending || invitationMailBlocked
                         ? " um_kebab_menuitem_disabled"
                         : ""
                     }`}
                     role="menuitem"
-                    disabled={draftRow || invitationMailSending}
+                    disabled={
+                      draftRow || invitationMailSending || invitationMailBlocked
+                    }
                     title={
                       draftRow
                         ? "Available after the member is saved"
                         : invitationMailSending
                           ? "Sending invitation email"
+                        : invitationMailBlocked
+                          ? INVITATION_EMAILS_BLOCKED_ACTION_TITLE
                         : invitationMailSent
                           ? "Send another invitation email"
                           : undefined
                     }
                     onClick={() => {
-                      if (draftRow || invitationMailSending) return
+                      if (
+                        draftRow ||
+                        invitationMailSending ||
+                        invitationMailBlocked
+                      )
+                        return
                       runMenuAction(() => onSendInvite(row))
                     }}
                   >

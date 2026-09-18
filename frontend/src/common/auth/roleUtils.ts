@@ -142,6 +142,7 @@ export function isDealParticipantUser(): boolean {
  * can switch to syndicating.
  */
 export function isLpInvestorSessionUser(): boolean {
+  if (getStoredUserRole() === INVESTOR) return true;
   const u = getStoredSessionUserRecord();
   if (!u) return false;
   return u.lp_investor_nav === true;

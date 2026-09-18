@@ -6,6 +6,14 @@ import {
   resolveDealViewerScope,
 } from "../../services/deal/dealAccess.service.js";
 import { requestedOrganizationIdFromRequest } from "../../services/org/orgResolution.service.js";
+import {
+  filterRowsBySearch,
+  paginateInMemory,
+  parsePageQuery,
+  sortRowsBy,
+  type PageEnvelope,
+  type PageQuery,
+} from "../../common/pagination.js";
 import { reconcileAssigningDealUsersForDeal } from "../../services/deal/assigningDealUser.service.js";
 import {
   enrichFullInvestorApiFromLpRoster,
@@ -122,6 +130,67 @@ async function rejectIfExtraCompanyUserUnpaid(
   return true;
 }
 
+/**
+ * Sort values for the Deal Investors table columns, keyed by the UI column ids.
+ * Unknown columns return `undefined`, which keeps the roster's own ordering.
+ */
+function investorSortValue(
+  row: Record<string, unknown>,
+  sortId: string,
+): string | number | undefined {
+  const text = (v: unknown) => String(v ?? "").trim().toLowerCase();
+  const esign = (row.esignStatus ?? {}) as Record<string, unknown>;
+  switch (sortId) {
+    case "investor":
+      return [
+        row.displayName,
+        row.entitySubtitle,
+        row.userDisplayName,
+        row.userEmail,
+        row.firstName,
+        row.lastName,
+      ]
+        .map(text)
+        .join(" ");
+    case "role":
+      return text(row.investorRole);
+    case "investorClass":
+      return text(row.investorClass);
+    case "status":
+      return text(row.status);
+    case "added_by":
+      return text(row.addedByDisplayName);
+    case "committed":
+      return Number(row.commitmentAmountRaw ?? row.commitmentAmount ?? 0) || 0;
+    case "signed":
+      return text(esign.completedAt ?? esign.signedAt);
+    case "selfAcc":
+      return text(row.selfAccredited);
+    case "verifiedAcc":
+      return text(row.verifiedAccLabel);
+    case "mailStatus":
+      return text(row.mailStatus);
+    default:
+      return undefined;
+  }
+}
+
+/** Search, sort and slice investor rows the roster pipeline has already built. */
+function pageInvestorRows<T>(
+  investors: T[],
+  pageQuery: PageQuery,
+): { items: T[]; envelope: PageEnvelope } {
+  const matched = filterRowsBySearch(investors, pageQuery.search);
+  const sorted = sortRowsBy(
+    matched,
+    pageQuery.sortId,
+    pageQuery.sortDir,
+    (row, sortId) =>
+      investorSortValue(row as Record<string, unknown>, sortId),
+  );
+  return paginateInMemory(sorted, pageQuery);
+}
+
 export async function getDealInvestors(
   req: Request,
   res: Response,
@@ -153,22 +222,27 @@ export async function getDealInvestors(
       lpRaw === "1" ||
       lpRaw === "true" ||
       String(lpRaw).toLowerCase() === "yes";
+    /**
+     * KPIs summarise the whole roster, so they are always built from every row
+     * and only the `investors` array is narrowed to the requested page.
+     */
+    const pageQuery = parsePageQuery(req);
     if (lpInvestorsOnly) {
       const { kpis, investors } = await getLpInvestorsTabPayload(
         dealId,
         user.id,
       );
-      res.status(200).json({ kpis, investors });
+      const page = pageInvestorRows(investors, pageQuery);
+      res.status(200).json({ kpis, investors: page.items, ...page.envelope });
       return;
     }
-    try {
-      const { syncDealInvestorEsignStatusesForDeal } = await import(
-        "../../services/deal/dealMemberEsignCompletion.service.js"
-      );
-      await syncDealInvestorEsignStatusesForDeal(dealId);
-    } catch (err) {
-      console.warn("syncDealInvestorEsignStatusesForDeal:", err);
-    }
+    void import("../../services/deal/dealMemberEsignCompletion.service.js")
+      .then(({ scheduleDealInvestorEsignSync }) =>
+        scheduleDealInvestorEsignSync(dealId),
+      )
+      .catch((err: unknown) => {
+        console.warn("scheduleDealInvestorEsignSync:", err);
+      });
     let rows = await listDealInvestmentsByDealId(dealId, {
       lpInvestorsOnly: false,
     });
@@ -197,9 +271,11 @@ export async function getDealInvestors(
       withAddedBy,
     );
     const kpis = buildInvestorKpisFromRows(rows);
+    const page = pageInvestorRows(investors, pageQuery);
     res.status(200).json({
       kpis,
-      investors,
+      investors: page.items,
+      ...page.envelope,
     });
   } catch (err) {
     console.error("getDealInvestors:", err);
@@ -363,7 +439,7 @@ export async function putDealInvestment(
     if (!contactIsPlaceholder) {
       const prevContactId = String(existing.contactId ?? "").trim();
       if (prevContactId.toLowerCase() !== contactId.trim().toLowerCase()) {
-        await assertEligibleForNewDealRosterAdd(contactId.trim());
+        await assertEligibleForNewDealRosterAdd(contactId.trim(), user.id);
       }
     }
     if (
@@ -449,6 +525,7 @@ export async function putDealInvestment(
             commitmentAmount,
             extraContributionAmounts,
             documentStoragePath,
+            isDraft: autosave,
           },
         })
       : await updateDealInvestment({
@@ -472,6 +549,8 @@ export async function putDealInvestment(
             commitmentAmount,
             extraContributionAmounts,
             documentStoragePath,
+            /* Autosave leaves the stored flag alone; explicit Save promotes the draft row. */
+            ...(autosave ? {} : { isDraft: false }),
           },
         });
     if (!row) {
@@ -484,6 +563,7 @@ export async function putDealInvestment(
         dealMemberRole: investor_role,
         sendInvitationMail,
         addedByUserId: user.id,
+        isDraft: autosave,
       });
     }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
@@ -664,7 +744,7 @@ export async function postDealInvestment(
     const contactIsPlaceholder =
       contactId.trim() === DEAL_INVESTMENT_AUTOSAVE_CONTACT_PLACEHOLDER;
     if (!contactIsPlaceholder) {
-      await assertEligibleForNewDealRosterAdd(contactId.trim());
+      await assertEligibleForNewDealRosterAdd(contactId.trim(), user.id);
     }
     if (
       await rejectIfExtraCompanyUserUnpaid(res, {
@@ -733,6 +813,7 @@ export async function postDealInvestment(
         commitmentAmount,
         extraContributionAmounts,
         documentStoragePath,
+        isDraft: autosave,
       },
     });
 
@@ -742,6 +823,7 @@ export async function postDealInvestment(
         dealMemberRole: investor_role,
         sendInvitationMail,
         addedByUserId: user.id,
+        isDraft: autosave,
       });
     }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);

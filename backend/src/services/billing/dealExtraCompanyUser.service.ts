@@ -15,6 +15,7 @@ import {
   isDealCompanyUserStoredRole,
   isLpInvestorRole,
 } from "../deal/dealInvestment.service.js";
+import { dealSaasBillingHasStarted } from "./saasBillingStartDate.js";
 
 const STARTER_MAX_CENTS = 3_000_000;
 const RUNNING_MAX_CENTS = 5_000_000;
@@ -93,6 +94,7 @@ export type DealCompanyUserSnapshot = {
   extraCompanyUsersPaid: number;
   extraCompanyUsersDue: number;
   extraUserFeeCents: number;
+  saasBillingStartsAt: Date | null;
 };
 
 export type ExtraCompanyUserPaymentRequiredPayload = {
@@ -134,7 +136,7 @@ export async function countDealCompanyUsers(dealId: string): Promise<number> {
       dealMemberRole: dealMember.dealMemberRole,
     })
     .from(dealMember)
-    .where(eq(dealMember.dealId, did));
+    .where(and(eq(dealMember.dealId, did), eq(dealMember.isDraft, false)));
   const ids = new Set<string>();
   for (const row of rows) {
     const contactId = String(row.contactMemberId ?? "").trim();
@@ -165,6 +167,7 @@ export async function contactIsDealCompanyUser(
     .where(
       and(
         eq(dealMember.dealId, did),
+        eq(dealMember.isDraft, false),
         sql`lower(trim(${dealMember.contactMemberId})) = ${cid.toLowerCase()}`,
       ),
     );
@@ -193,6 +196,7 @@ export async function getDealCompanyUserSnapshot(
       organizationId: addDealForm.organizationId,
       stripePlanId: addDealForm.stripePlanId,
       extraCompanyUsersPaid: addDealForm.extraCompanyUsersPaid,
+      saasBillingStartsAt: addDealForm.saasBillingStartsAt,
     })
     .from(addDealForm)
     .where(eq(addDealForm.id, did))
@@ -212,6 +216,7 @@ export async function getDealCompanyUserSnapshot(
     extraCompanyUsersPaid: paid,
     extraCompanyUsersDue: Math.max(0, current - included - paid),
     extraUserFeeCents: EXTRA_COMPANY_USER_FEE_CENTS,
+    saasBillingStartsAt: deal.saasBillingStartsAt ?? null,
   };
 }
 
@@ -270,6 +275,7 @@ export async function assertExtraCompanyUserAllowedForAdd(params: {
 
   const allowed = snapshot.includedCompanyUsers + snapshot.extraCompanyUsersPaid;
   if (nextCount <= allowed) return { ok: true };
+  if (!dealSaasBillingHasStarted(snapshot)) return { ok: true };
 
   const extraUsersToPay = nextCount - allowed;
   const amountDueCents = extraUsersToPay * EXTRA_COMPANY_USER_FEE_CENTS;

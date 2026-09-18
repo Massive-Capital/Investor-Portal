@@ -27,6 +27,7 @@ import { getSessionUserId } from "../../../common/auth/sessionUserId"
 import { isCompanyAdmin, isPlatformAdmin } from "../../../common/auth/roleUtils"
 import { setAppDocumentTitle } from "../../../common/utils/appDocumentTitle"
 import {
+  areRequiredDealDetailFieldsIncomplete,
   buildDealOfferingPreviewShareUrl,
   deleteDealMemberRoster,
   fetchDealById,
@@ -42,6 +43,7 @@ import {
 } from "./api/dealsApi"
 import { DealAnnouncementBanner } from "./components/DealAnnouncementBanner"
 import { DealsPageCenteredLoader } from "./components/DealsPageCenteredLoader"
+import { DealManageStageModal } from "./components/DealManageStageModal"
 import { DealSaasPaywallModal } from "./components/DealSaasPaywallModal"
 import {
   dealInvestNowPath,
@@ -176,6 +178,7 @@ export function DealDetailPage() {
   const [dealDetailApi, setDealDetailApi] = useState<DealDetailApi | null>(null)
   const [saasPaywallDeal, setSaasPaywallDeal] =
     useState<DealSaasPaywallDeal | null>(null)
+  const [manageStageOpen, setManageStageOpen] = useState(false)
   const [upgradePromptDeal, setUpgradePromptDeal] =
     useState<DealSaasPaywallDeal | null>(null)
 
@@ -560,16 +563,30 @@ export function DealDetailPage() {
   /** Stage chip already says Draft — avoid a second draft marker beside the title. */
   const showIncompleteDraftBadge = dealFormIncomplete && !isDealDraftStage
 
+  /** Same rule the add/edit modal uses to lock “notify the member” to No. */
+  const rosterInvitationMailBlocked =
+    dealDetailApi != null &&
+    (areRequiredDealDetailFieldsIncomplete(dealDetailApi) || isDealDraftStage)
+
   const offeringLinkAvailable = useMemo(
     () => dealHasOfferingShareLink(dealDetailApi) && !isDealOfferingShareBlocked,
     [dealDetailApi, isDealOfferingShareBlocked],
   )
 
+  /** Required fields still hold autosave placeholders — the wizard must be finished first. */
+  const dealRequiredFieldsIncomplete =
+    dealDetailApi != null &&
+    areRequiredDealDetailFieldsIncomplete(dealDetailApi)
+
   const handleEditDeal = useCallback(() => {
     if (!dealId?.trim()) return
+    if (!dealRequiredFieldsIncomplete) {
+      setManageStageOpen(true)
+      return
+    }
     const id = encodeURIComponent(dealId.trim())
     navigate(`/deals/create?edit=${id}&from=detail`)
-  }, [dealId, navigate])
+  }, [dealId, dealRequiredFieldsIncomplete, navigate])
 
   const handleCopyMemberOfferingLink = useCallback(
     async (row: DealInvestorRow) => {
@@ -840,7 +857,9 @@ export function DealDetailPage() {
             onClick={handleEditDeal}
           >
             <Pencil size={16} strokeWidth={2} aria-hidden />
-            {dealFormIncomplete ? "Continue editing" : "Edit deal"}
+            {dealRequiredFieldsIncomplete
+              ? "Continue editing"
+              : "Manage deal stage"}
           </button>
           ) : null}
         </div>
@@ -933,6 +952,7 @@ export function DealDetailPage() {
                 investorsRefreshKey={dealMembersRefreshKey}
                 invitationMailStatusByRowId={invitationMailSentByRowId}
                 invitationMailSendingByRowId={invitationMailSendingByRowId}
+                invitationMailBlocked={rosterInvitationMailBlocked}
                 onAddMember={(kind) => {
                   setInvestmentModalEntry(
                     dealInvestmentModalEntryFromRosterKind(kind),
@@ -1050,6 +1070,27 @@ export function DealDetailPage() {
       </div>
         </>
       ) : null}
+      <DealManageStageModal
+        open={manageStageOpen && dealDetailApi != null}
+        dealId={dealId ?? ""}
+        dealName={displayName}
+        currentStage={dealDetailApi?.dealStage ?? ""}
+        onClose={() => setManageStageOpen(false)}
+        onSaved={(updated, pendingDealStage) => {
+          handleDealPersisted(updated)
+          if (pendingDealStage) {
+            toast.error(
+              "Stage change on hold",
+              "Pay monthly SaaS (MRR) for this deal to move it out of Draft.",
+            )
+            return
+          }
+          toast.success(
+            "Deal stage updated",
+            `This deal is now ${dealStageLabel(updated.dealStage)}.`,
+          )
+        }}
+      />
       <DealSaasPaywallModal
         deal={upgradePromptDeal}
         onClose={() => {

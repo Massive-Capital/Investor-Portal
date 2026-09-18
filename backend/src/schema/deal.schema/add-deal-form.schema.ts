@@ -48,7 +48,7 @@ export const addDealForm = pgTable("add_deal_form", {
   dealAnnouncementTitle: text("deal_announcement_title"),
   dealAnnouncementMessage: text("deal_announcement_message"),
   /** Investor-facing offering workflow status (Offering details → Overview). */
-  offeringStatus: text("offering_status").notNull().default("draft_hidden"),
+  offeringStatus: text("offering_status").notNull().default("coming_soon"),
   offeringVisibility: text("offering_visibility")
     .notNull()
     .default("show_on_dashboard"),
@@ -138,8 +138,8 @@ export const addDealForm = pgTable("add_deal_form", {
     withTimezone: true,
   }),
   /**
-   * First charge / paywall date (00:00 UTC). Defaults to the 1st of next
-   * month; platform admin may set another date.
+   * First charge / paywall date (00:00 UTC). Defaults to the platform SaaS
+   * start date; a platform admin can set another date per deal.
    */
   saasBillingStartsAt: timestamp("saas_billing_starts_at", {
     withTimezone: true,

@@ -259,6 +259,11 @@ interface DealMembersTabProps {
   invitationMailStatusByRowId?: Record<string, true>
   /** Rows currently sending invitation email — Email status shows a loader. */
   invitationMailSendingByRowId?: Record<string, true>
+  /**
+   * Deal is in draft or required deal details are incomplete — disables “Send invitation
+   * email” row actions, matching the add/edit modal’s notify-the-member rule.
+   */
+  invitationMailBlocked?: boolean
 }
 
 export function DealMembersTab({
@@ -277,6 +282,7 @@ export function DealMembersTab({
   investorsRefreshKey = 0,
   invitationMailStatusByRowId,
   invitationMailSendingByRowId,
+  invitationMailBlocked = false,
 }: DealMembersTabProps) {
   const navigate = useNavigate()
   const [rows, setRows] = useState<DealInvestorRow[]>([])
@@ -694,6 +700,7 @@ export function DealMembersTab({
               r,
               invitationMailSendingByRowId,
             )}
+            invitationMailBlocked={invitationMailBlocked}
             offeringLinkAvailable={offeringLinkAvailable}
             offeringLinkBlockedBecauseDraft={offeringLinkBlockedBecauseDraft}
             onView={handleViewMember}
@@ -1094,6 +1101,7 @@ export function DealMembersTab({
     onDeleteMember,
     handleViewMember,
     invitationMailSendingByRowId,
+    invitationMailBlocked,
   ])
 
   function handleExportDealMembers(selected: DealInvestorRow[]) {

@@ -8,6 +8,7 @@ import {
   ContactRound,
   Download,
   Eye,
+  Globe,
   Info,
   LayoutList,
   Mail,
@@ -60,18 +61,26 @@ import {
   TABLE_PAGE_SIZE_ID,
   usePersistedTablePageSize,
 } from "@/common/hooks/usePersistedTablePageSize"
+import { isPlatformAdmin } from "../../../common/auth/roleUtils"
 import { PORTAL_ACTIVE_COMPANY_CHANGED_EVENT } from "../../../common/auth/setActiveCompany"
 import { getSessionOrganizationCompanyId } from "../../../common/auth/sessionOrganization"
 import "../usermanagement/user_management.css"
 import {
   createContact,
   fetchContactOwnerSponsors,
-  fetchContacts,
+  fetchContactDealStats,
+  fetchContactsResult,
+  fetchPlatformContacts,
+  hydrateContactDealStatsInChunks,
+  invalidateContactsListCache,
+  platformContactsNotAlreadyInList,
   fetchOrganizationContactLists,
   fetchOrganizationContactTags,
   notifyContactsExportAudit,
   patchContactShowOfferings,
   patchContactStatus,
+  patchContactRelationship506b,
+  sendContactInvitation,
   updateContact,
 } from "./api/contactsApi"
 import {
@@ -98,16 +107,22 @@ import "../Deals/deals-list.css"
 import "./contacts.css"
 import "../Deals/deal-investors-tab.css"
 import type {
+  AddContactSavePayload,
   ContactOfferingVisibility,
+  ContactRelationship506b,
   ContactRow,
 } from "./types/contact.types"
 import {
   CONTACT_OFFERING_VISIBILITY_OPTIONS,
+  CONTACT_RELATIONSHIP_506B_OPTIONS,
+  isPlatformDirectoryContact,
+  withPlatformContactTag,
 } from "./types/contact.types"
 import {
   buildContactsCsv,
   downloadContactsCsv,
   exportAuditLinesForContacts,
+  formatContactSinceLabel,
 } from "./utils/contactCsv"
 import {
   buildTableExportFilename,
@@ -131,6 +146,27 @@ const OFFERING_VISIBILITY_FILTER_OPTIONS: DropdownSelectOption[] = [
   { value: "unset", label: "Unset" },
 ]
 
+const RELATIONSHIP_506B_CELL_OPTIONS: DropdownSelectOption[] = [
+  { value: "YES", label: "506(b) Yes" },
+  { value: "NO", label: "506(b) No" },
+]
+
+function relationship506bValue(
+  value: ContactRelationship506b | "" | null | undefined,
+): ContactRelationship506b {
+  return value === "YES" ? "YES" : "NO"
+}
+
+function relationship506bLabel(
+  value: ContactRelationship506b | "" | null,
+): string {
+  const resolved = relationship506bValue(value)
+  return (
+    CONTACT_RELATIONSHIP_506B_OPTIONS.find((o) => o.value === resolved)?.label ??
+    "506(b) No"
+  )
+}
+
 type OfferingVisibilityFilter =
   | "all"
   | ContactOfferingVisibility
@@ -150,9 +186,19 @@ function contactRowIsSuspended(row: ContactRow): boolean {
   return row.status === "suspended"
 }
 
+function contactCanSendInvitationFromActions(row: ContactRow): boolean {
+  if (row.canSendInvitationEmail === true) return true
+  if (row.canSendInvitationEmail === false) return false
+  if (row.invitationEmailSent === true) return false
+  if (row.platformAdminOnly === true) return false
+  if (row.isPortalUser === true) return false
+  if (contactRowIsSuspended(row)) return false
+  return isDisplayableEmail(row.email)
+}
+
 type ContactsListTab = "active" | "archived"
 
-type ContactsMainTab = "contacts" | "tags" | "lists"
+type ContactsMainTab = "contacts" | "platform" | "tags" | "lists"
 
 /** Wide enough for the “Actions” header on one line (see contacts.css). */
 const CONTACTS_ACTIONS_COL_WIDTH = "7rem" as const
@@ -190,6 +236,7 @@ function toContactUpdatePayload(
     showOfferingsVisibility: r.showOfferingsVisibility ?? null,
     accreditationStatus: r.accreditationStatus ?? null,
     knownSince: r.knownSince ?? null,
+    relationship506b: r.relationship506b ?? null,
     lastEditReason: r.lastEditReason,
   }
 }
@@ -210,6 +257,7 @@ function contactRowMatchesSearch(row: ContactRow, query: string): boolean {
     ...row.owners,
     row.createdByDisplayName ?? "",
     String(row.dealCount ?? 0),
+    relationship506bLabel(row.relationship506b ?? null),
   ]
     .map((s) => String(s).toLowerCase())
     .join(" ")
@@ -239,6 +287,29 @@ function contactHasTag(row: ContactRow, tagName: string): boolean {
   return row.tags.some((t) => t.trim().toLowerCase() === target)
 }
 
+function accreditationBadge(status: string | null | undefined) {
+  const raw = (status ?? "").trim().toLowerCase()
+  const tone =
+    raw === "accredited"
+      ? "accredited"
+      : raw === "not accredited"
+        ? "not-accredited"
+        : "na"
+  const label =
+    tone === "accredited"
+      ? "Accredited"
+      : tone === "not-accredited"
+        ? "Not Accredited"
+        : "N/A"
+  return (
+    <span
+      className={`contacts_accreditation_badge contacts_accreditation_badge--${tone}`}
+    >
+      {label}
+    </span>
+  )
+}
+
 function TagsCell({ items }: { items: string[] }) {
   if (!items.length)
     return <span className="um_status_muted">—</span>
@@ -255,6 +326,7 @@ function TagsCell({ items }: { items: string[] }) {
 
 function ContactsPage() {
   const navigate = useNavigate()
+  const platformAdmin = isPlatformAdmin()
   const suspendAllTitleId = useId()
   const offeringVisibilityTitleId = useId()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -267,6 +339,9 @@ function ContactsPage() {
   const [contactToEdit, setContactToEdit] = useState<ContactRow | null>(null)
   const [viewContactId, setViewContactId] = useState<string | null>(null)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [exportListKind, setExportListKind] = useState<
+    "active" | "archived" | "platform"
+  >("active")
   const [sendMailModalOpen, setSendMailModalOpen] = useState(false)
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateRow[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
@@ -281,7 +356,11 @@ function ContactsPage() {
   const [tableResetKey, setTableResetKey] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
   const [toolbarNotice, setToolbarNotice] = useState("")
+  /** Set when the contacts request itself failed, so the table is not shown as simply empty. */
+  const [contactsLoadError, setContactsLoadError] = useState("")
   const [suspendRow, setSuspendRow] = useState<ContactRow | null>(null)
+  const [inviteRow, setInviteRow] = useState<ContactRow | null>(null)
+  const [inviteSaving, setInviteSaving] = useState(false)
   const [suspendReason, setSuspendReason] = useState("")
   const [suspendSaving, setSuspendSaving] = useState(false)
   const [suspendErr, setSuspendErr] = useState("")
@@ -312,6 +391,18 @@ function ContactsPage() {
   } | null>(null)
   const [offeringVisibilitySaving, setOfferingVisibilitySaving] =
     useState(false)
+  const [relationshipSavingIds, setRelationshipSavingIds] = useState<
+    Set<string>
+  >(() => new Set())
+  /**
+   * Self-registered investors: the Platform Contacts tab for platform admins,
+   * and the opted-in rows merged into the Contact tab for organizations.
+   */
+  const [platformRows, setPlatformRows] = useState<ContactRow[]>([])
+  const [platformLoading, setPlatformLoading] = useState(true)
+  const [platformSearchQuery, setPlatformSearchQuery] = useState("")
+  const [platformPage, setPlatformPage] = useState(1)
+  const [platformPageSize, setPlatformPageSize] = useState(10)
   const [tagCatalog, setTagCatalog] = useState<ContactLabelRow[]>([])
   const [listCatalog, setListCatalog] = useState<ContactLabelRow[]>([])
   const [tagsSearchQuery, setTagsSearchQuery] = useState("")
@@ -415,24 +506,55 @@ function ContactsPage() {
     })
   }, [rows, dbCatalogListNames])
 
+  /**
+   * Organizations see opted-in self-signups alongside their CRM contacts,
+   * tagged as Platform Contact. Platform admins keep them on their own tab.
+   */
+  const platformDirectoryRows = useMemo(
+    () =>
+      platformAdmin
+        ? []
+        : platformContactsNotAlreadyInList(rows, platformRows).map(
+            withPlatformContactTag,
+          ),
+    [platformAdmin, rows, platformRows],
+  )
+
+  const directoryRows = useMemo(
+    () =>
+      platformDirectoryRows.length > 0
+        ? [...rows, ...platformDirectoryRows]
+        : rows,
+    [rows, platformDirectoryRows],
+  )
+
+  /** Contact tab waits for both lists when platform contacts are merged in. */
+  const contactsLoading = loading || (!platformAdmin && platformLoading)
+
   const tabRows = useMemo(
     () =>
-      rows.filter((r) =>
+      directoryRows.filter((r) =>
         contactsListTab === "archived"
           ? contactRowIsSuspended(r)
           : !contactRowIsSuspended(r),
       ),
-    [rows, contactsListTab],
+    [directoryRows, contactsListTab],
+  )
+
+  /** Platform contacts belong to the investor, so bulk suspend skips them. */
+  const suspendableTabRows = useMemo(
+    () => tabRows.filter((r) => !isPlatformDirectoryContact(r)),
+    [tabRows],
   )
 
   const activeCount = useMemo(
-    () => rows.filter((r) => !contactRowIsSuspended(r)).length,
-    [rows],
+    () => directoryRows.filter((r) => !contactRowIsSuspended(r)).length,
+    [directoryRows],
   )
 
   const archivedCount = useMemo(
-    () => rows.filter((r) => contactRowIsSuspended(r)).length,
-    [rows],
+    () => directoryRows.filter((r) => contactRowIsSuspended(r)).length,
+    [directoryRows],
   )
 
   const filteredRows = useMemo(
@@ -466,6 +588,43 @@ function ContactsPage() {
       ownerFilter,
     ],
   )
+
+  const applyContactDealStats = useCallback((stats: Map<string, ContactRow>) => {
+    if (stats.size === 0) return
+    const merge = (row: ContactRow): ContactRow => {
+      const next = stats.get(row.id)
+      if (!next) return row
+      return {
+        ...row,
+        dealCount: next.dealCount,
+        owners: next.owners.length > 0 ? next.owners : row.owners,
+        createdByDisplayName:
+          next.createdByDisplayName ?? row.createdByDisplayName,
+      }
+    }
+    setRows((prev) => prev.map(merge))
+    setPlatformRows((prev) => prev.map(merge))
+  }, [])
+
+  const visibleContactIdsKey = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filteredRows
+      .slice(start, start + pageSize)
+      .map((r) => r.id)
+      .join(",")
+  }, [filteredRows, page, pageSize])
+
+  useEffect(() => {
+    const ids = visibleContactIdsKey.split(",").filter(Boolean)
+    if (ids.length === 0) return
+    let cancelled = false
+    void fetchContactDealStats(ids).then((stats) => {
+      if (!cancelled) applyContactDealStats(stats)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [visibleContactIdsKey, applyContactDealStats])
 
   const openContactsForTag = useCallback((tagName: string) => {
     const name = tagName.trim()
@@ -565,14 +724,20 @@ function ContactsPage() {
   const loadContacts = useCallback(async () => {
     setLoading(true)
     try {
-      const [list, dbTags, dbLists, ownerResult] = await Promise.all([
-        fetchContacts(),
+      const [listResult, dbTags, dbLists, ownerResult] = await Promise.all([
+        fetchContactsResult({ lean: true }),
         fetchOrganizationContactTags(),
         fetchOrganizationContactLists(),
         fetchContactOwnerSponsors(),
       ])
       const sponsors = ownerResult.sponsors
-      setRows(list)
+      if (listResult.ok) {
+        setContactsLoadError("")
+        setRows(listResult.contacts)
+      } else {
+        /* Keep whatever is already on screen rather than blanking the directory. */
+        setContactsLoadError(listResult.error)
+      }
       setDbCatalogTagNames(dbTags)
       setDbCatalogListNames(dbLists)
       const seen = new Set<string>()
@@ -597,13 +762,26 @@ function ContactsPage() {
     }
   }, [orgScopeKey])
 
+  const loadPlatformContacts = useCallback(async () => {
+    setPlatformLoading(true)
+    try {
+      setPlatformRows(await fetchPlatformContacts({ lean: true }))
+    } finally {
+      setPlatformLoading(false)
+    }
+  }, [])
+
   const handleRefreshContacts = useCallback(async () => {
     setTableResetKey((k) => k + 1)
     setPage(1)
     setToolbarNotice("")
     setSelectedContactIds(new Set())
-    await loadContacts()
-  }, [loadContacts])
+    invalidateContactsListCache()
+    await Promise.all([
+      loadContacts(),
+      loadPlatformContacts(),
+    ])
+  }, [loadContacts, loadPlatformContacts])
 
   useEffect(() => {
     const syncOrgScope = () => {
@@ -621,6 +799,16 @@ function ContactsPage() {
   }, [loadContacts])
 
   useEffect(() => {
+    if (!platformAdmin && mainTab === "platform") {
+      setMainTab("contacts")
+    }
+  }, [platformAdmin, mainTab])
+
+  useEffect(() => {
+    void loadPlatformContacts()
+  }, [loadPlatformContacts])
+
+  useEffect(() => {
     if (searchParams.get("addContact") !== "1") return
     setViewContactId(null)
     setContactToEdit(null)
@@ -631,7 +819,7 @@ function ContactsPage() {
   }, [searchParams, setSearchParams])
 
   function handleSuspendAll() {
-    if (contactsListTab !== "active" || tabRows.length === 0) return
+    if (contactsListTab !== "active" || suspendableTabRows.length === 0) return
     setToolbarNotice("")
     setSuspendAllOpen(true)
   }
@@ -642,8 +830,8 @@ function ContactsPage() {
   }
 
   function confirmSuspendAll() {
-    if (contactsListTab !== "active" || tabRows.length === 0) return
-    const targets = [...tabRows]
+    if (contactsListTab !== "active" || suspendableTabRows.length === 0) return
+    const targets = [...suspendableTabRows]
     const n = targets.length
     setSuspendAllBusy(true)
     void (async () => {
@@ -818,13 +1006,25 @@ function ContactsPage() {
     closeSendMailModal,
   ])
 
-  async function handleSave(contact: Omit<ContactRow, "id" | "createdByDisplayName">) {
+  async function handleSave(contact: AddContactSavePayload) {
     const created = await createContact(contact)
     setRows((prev) => [created, ...prev])
-    toast.success(
-      "Contact added",
-      `${contactDisplayName(created)} is in your contact list.`,
-    )
+    if (created.invitationEmailSent) {
+      toast.success(
+        "Contact added",
+        `Invitation email sent to ${contactDisplayName(created)}.`,
+      )
+    } else if (contact.sendInvitationMail === "yes") {
+      toast.success(
+        "Contact added",
+        `${contactDisplayName(created)} is in your contact list. The invitation email was not sent.`,
+      )
+    } else {
+      toast.success(
+        "Contact added",
+        `${contactDisplayName(created)} is in your contact list.`,
+      )
+    }
   }
 
   const handleUpdate = useCallback(
@@ -853,15 +1053,17 @@ function ContactsPage() {
 
   const viewContact = useMemo(
     () =>
-      viewContactId ? rows.find((r) => r.id === viewContactId) ?? null : null,
-    [rows, viewContactId],
+      viewContactId
+        ? directoryRows.find((r) => r.id === viewContactId) ?? null
+        : null,
+    [directoryRows, viewContactId],
   )
 
   useEffect(() => {
-    if (viewContactId && !rows.some((r) => r.id === viewContactId)) {
+    if (viewContactId && !directoryRows.some((r) => r.id === viewContactId)) {
       setViewContactId(null)
     }
-  }, [rows, viewContactId])
+  }, [directoryRows, viewContactId])
 
   const openViewPanel = useCallback((row: ContactRow) => {
     navigate(`/contacts/${encodeURIComponent(row.id)}`)
@@ -915,6 +1117,39 @@ function ContactsPage() {
     }
   }, [offeringVisibilityPending])
 
+  const saveRelationship506b = useCallback(
+    async (row: ContactRow, value: ContactRelationship506b | "") => {
+      const next = relationship506bValue(value)
+      const prev = relationship506bValue(row.relationship506b)
+      if (prev === next) return
+      setRelationshipSavingIds((ids) => {
+        const nextIds = new Set(ids)
+        nextIds.add(row.id)
+        return nextIds
+      })
+      try {
+        const updated = await patchContactRelationship506b(row.id, next)
+        setRows((list) => list.map((r) => (r.id === updated.id ? updated : r)))
+        toast.success(
+          "Relationship updated",
+          `${contactDisplayName(row)} is set to ${relationship506bLabel(next)}.`,
+        )
+      } catch (err) {
+        toast.error(
+          "Could not update relationship",
+          err instanceof Error ? err.message : "Try again.",
+        )
+      } finally {
+        setRelationshipSavingIds((ids) => {
+          const nextIds = new Set(ids)
+          nextIds.delete(row.id)
+          return nextIds
+        })
+      }
+    },
+    [],
+  )
+
   const openSuspendContact = useCallback((row: ContactRow) => {
     setSuspendRow(row)
     setSuspendReason("")
@@ -926,6 +1161,36 @@ function ContactsPage() {
     setSuspendReason("")
     setSuspendErr("")
   }, [])
+
+  const openInviteContact = useCallback((row: ContactRow) => {
+    setInviteRow(row)
+  }, [])
+
+  const closeInviteContact = useCallback(() => {
+    if (inviteSaving) return
+    setInviteRow(null)
+  }, [inviteSaving])
+
+  const submitInviteContact = useCallback(async () => {
+    if (!inviteRow) return
+    setInviteSaving(true)
+    try {
+      const updated = await sendContactInvitation(inviteRow.id)
+      setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+      toast.success(
+        "Invitation email sent",
+        `Sent to ${contactDisplayName(updated)}.`,
+      )
+      setInviteRow(null)
+    } catch (err) {
+      toast.error(
+        "Could not send invitation email",
+        err instanceof Error ? err.message : "Try again.",
+      )
+    } finally {
+      setInviteSaving(false)
+    }
+  }, [inviteRow])
 
   const exportContactRow = useCallback((row: ContactRow) => {
     const csv = buildContactsCsv([row])
@@ -1105,6 +1370,84 @@ function ContactsPage() {
     [listsPage, listsPageSize, filteredListCatalogRows.length],
   )
 
+  const filteredPlatformRows = useMemo(
+    () =>
+      platformRows.filter((r) =>
+        contactRowMatchesSearch(r, platformSearchQuery),
+      ),
+    [platformRows, platformSearchQuery],
+  )
+
+  const visiblePlatformIdsKey = useMemo(() => {
+    const start = (platformPage - 1) * platformPageSize
+    return filteredPlatformRows
+      .slice(start, start + platformPageSize)
+      .map((r) => r.id)
+      .join(",")
+  }, [filteredPlatformRows, platformPage, platformPageSize])
+
+  useEffect(() => {
+    if (mainTab !== "platform") return
+    const ids = visiblePlatformIdsKey.split(",").filter(Boolean)
+    if (ids.length === 0) return
+    let cancelled = false
+    void fetchContactDealStats(ids).then((stats) => {
+      if (!cancelled) applyContactDealStats(stats)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mainTab, visiblePlatformIdsKey, applyContactDealStats])
+
+  useEffect(() => {
+    if (!exportModalOpen) return
+    const source =
+      exportListKind === "platform"
+        ? platformRows
+        : exportListKind === "archived"
+          ? directoryRows.filter((r) => contactRowIsSuspended(r))
+          : directoryRows.filter((r) => !contactRowIsSuspended(r))
+    const ids = source.map((r) => r.id)
+    if (ids.length === 0) return
+    let cancelled = false
+    void hydrateContactDealStatsInChunks(ids).then((stats) => {
+      if (!cancelled) applyContactDealStats(stats)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    exportModalOpen,
+    exportListKind,
+    platformRows,
+    directoryRows,
+    applyContactDealStats,
+  ])
+
+  useEffect(() => {
+    setPlatformPage(1)
+  }, [platformSearchQuery])
+
+  useEffect(() => {
+    const total = Math.max(
+      1,
+      Math.ceil(filteredPlatformRows.length / platformPageSize),
+    )
+    if (platformPage > total) setPlatformPage(total)
+  }, [filteredPlatformRows.length, platformPage, platformPageSize])
+
+  const platformPagination = useMemo(
+    () => ({
+      page: platformPage,
+      pageSize: platformPageSize,
+      totalItems: filteredPlatformRows.length,
+      onPageChange: setPlatformPage,
+      onPageSizeChange: setPlatformPageSize,
+      ariaLabel: "Platform contacts table pagination",
+    }),
+    [platformPage, platformPageSize, filteredPlatformRows.length],
+  )
+
   const catalogTagNames = useMemo(
     () => tagCatalog.map((t) => t.name.trim()).filter(Boolean),
     [tagCatalog],
@@ -1261,6 +1604,113 @@ function ContactsPage() {
       tagCatalog,
       listCatalog,
     ],
+  )
+
+  /** Read-only: these rows belong to investors, not to the viewer's CRM. */
+  const platformColumns: DataTableColumn<ContactRow>[] = useMemo(
+    () => [
+      {
+        id: "user",
+        header: "User",
+        colWidth: CONTACTS_USER_COL_WIDTH,
+        sortValue: (row) =>
+          `${row.firstName} ${row.lastName} ${row.email}`.toLowerCase(),
+        thClassName: "contacts_th_user",
+        tdClassName: "um_td_user contacts_td_user",
+        cell: (row) => {
+          const rawEmail = row.email.trim()
+          return (
+            <div className="um_user_cell">
+              <div className="um_user_avatar_ring" aria-hidden>
+                <span className="um_user_initials">
+                  {initialsFromContact(row)}
+                </span>
+              </div>
+              <div className="um_user_meta">
+                <span className="um_user_meta_username">
+                  {contactDisplayName(row)}
+                </span>
+                {isDisplayableEmail(rawEmail) ? (
+                  <a
+                    href={`mailto:${encodeURIComponent(rawEmail)}`}
+                    className="um_user_meta_email um_user_meta_email_link"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {rawEmail}
+                  </a>
+                ) : (
+                  <span className="um_user_meta_email um_status_muted">
+                    {displayEmail(rawEmail)}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        },
+      },
+      {
+        id: "phone",
+        header: "Phone",
+        sortValue: (row) =>
+          nationalDigitsFromStoredPhone(String(row.phone ?? "")),
+        thClassName: "contacts_th_phone",
+        tdClassName: "contacts_td_phone",
+        cell: (row) => {
+          const phone = formatUsPhoneStoredForUi(row.phone).trim()
+          return phone ? phone : <span className="um_status_muted">—</span>
+        },
+      },
+      {
+        id: "accreditationStatus",
+        header: "Accreditation Status",
+        align: "center",
+        sortValue: (row) => row.accreditationStatus ?? "",
+        thClassName: "contacts_th_accreditation",
+        tdClassName: "contacts_td_accreditation",
+        cell: (row) => accreditationBadge(row.accreditationStatus),
+      },
+      ...(platformAdmin
+        ? ([
+            {
+              id: "visibleToUsers",
+              header: "Visible on platform",
+              align: "center",
+              sortValue: (row) => (row.visibleToUsers === true ? 1 : 0),
+              thClassName: "contacts_th_platform_visible",
+              tdClassName: "contacts_td_platform_visible",
+              cell: (row) => {
+                const visible = row.visibleToUsers === true
+                return (
+                  <span
+                    className={`contacts_platform_visible_badge contacts_platform_visible_badge--${
+                      visible ? "yes" : "no"
+                    }`}
+                  >
+                    {visible ? "Yes" : "No"}
+                  </span>
+                )
+              },
+            },
+          ] satisfies DataTableColumn<ContactRow>[])
+        : []),
+      {
+        id: "createdAt",
+        header: "Joined",
+        align: "center",
+        sortValue: (row) => {
+          const t = row.createdAt ? new Date(row.createdAt).getTime() : NaN
+          return Number.isFinite(t) ? t : 0
+        },
+        thClassName: "contacts_th_joined",
+        tdClassName: "contacts_td_joined",
+        cell: (row) => (
+          <span title={row.createdAt}>
+            {formatContactSinceLabel(row.createdAt)}
+          </span>
+        ),
+      },
+    ],
+    [platformAdmin],
   )
 
   const tagColumns: DataTableColumn<ContactLabelRow>[] = useMemo(
@@ -1512,7 +1962,11 @@ function ContactsPage() {
               panelClassName="contacts_show_offerings_dropdown_panel"
               value={row.showOfferingsVisibility ?? ""}
               options={OFFERING_VISIBILITY_CELL_OPTIONS}
-              disabled={loading || contactsListTab === "archived"}
+              disabled={
+                loading ||
+                contactsListTab === "archived" ||
+                isPlatformDirectoryContact(row)
+              }
               ariaLabel={`Offering visibility for ${contactDisplayName(row)}`}
               useFixedPanel
               onChange={(v) => {
@@ -1526,34 +1980,50 @@ function ContactsPage() {
         ),
       },
       {
+        id: "relationship506b",
+        header: "Relationship",
+        sortValue: (row) => relationship506bValue(row.relationship506b),
+        thClassName: "contacts_th_relationship",
+        tdClassName: "contacts_td_relationship",
+        cell: (row) => (
+          <div
+            className="contacts_show_offerings_dd"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <DropdownSelect
+              className="contacts_show_offerings_dropdown"
+              triggerClassName="contacts_show_offerings_dropdown_trigger"
+              panelClassName="contacts_show_offerings_dropdown_panel"
+              value={relationship506bValue(row.relationship506b)}
+              options={RELATIONSHIP_506B_CELL_OPTIONS}
+              placeholder="506(b) No"
+              disabled={
+                loading ||
+                contactsListTab === "archived" ||
+                relationshipSavingIds.has(row.id) ||
+                isPlatformDirectoryContact(row)
+              }
+              ariaLabel={`Relationship for ${contactDisplayName(row)}`}
+              useFixedPanel
+              onChange={(v) => {
+                void saveRelationship506b(
+                  row,
+                  v as ContactRelationship506b | "",
+                )
+              }}
+            />
+          </div>
+        ),
+      },
+      {
         id: "accreditationStatus",
         header: "Accreditation Status",
         align: "center",
         sortValue: (row) => row.accreditationStatus ?? "",
         thClassName: "contacts_th_accreditation",
         tdClassName: "contacts_td_accreditation",
-        cell: (row) => {
-          const status = (row.accreditationStatus ?? "").trim()
-          const tone =
-            status.toLowerCase() === "accredited"
-              ? "accredited"
-              : status.toLowerCase() === "not accredited"
-                ? "not-accredited"
-                : "na"
-          const label =
-            tone === "accredited"
-              ? "Accredited"
-              : tone === "not-accredited"
-                ? "Not Accredited"
-                : "N/A"
-          return (
-            <span
-              className={`contacts_accreditation_badge contacts_accreditation_badge--${tone}`}
-            >
-              {label}
-            </span>
-          )
-        },
+        cell: (row) => accreditationBadge(row.accreditationStatus),
       },
       {
         id: "knownSince",
@@ -1633,14 +2103,23 @@ function ContactsPage() {
               "Contact"
             }
             isSuspended={contactRowIsSuspended(row)}
+            viewOnly={isPlatformDirectoryContact(row)}
             onView={() => openViewPanel(row)}
             onEdit={
-              contactsListTab === "archived"
+              contactsListTab === "archived" ||
+              isPlatformDirectoryContact(row)
                 ? undefined
                 : () => openEditPanel(row)
             }
             onSuspend={() => openSuspendContact(row)}
             onExport={() => exportContactRow(row)}
+            onSendInvitation={
+              contactsListTab === "archived" ||
+              !contactCanSendInvitationFromActions(row)
+                ? undefined
+                : () => openInviteContact(row)
+            }
+            invitationSending={inviteSaving && inviteRow?.id === row.id}
           />
         ),
       },
@@ -1653,9 +2132,14 @@ function ContactsPage() {
       loading,
       navigate,
       requestShowOfferingsChange,
+      saveRelationship506b,
+      relationshipSavingIds,
       openEditPanel,
+      openInviteContact,
       openSuspendContact,
       openViewPanel,
+      inviteRow,
+      inviteSaving,
       selectedContactIds,
       toggleSelectAllContactsFiltered,
       toggleSelectContact,
@@ -1738,7 +2222,7 @@ function ContactsPage() {
               <Plus size={18} strokeWidth={2} aria-hidden />
               Add Contact
             </button>
-          ) : mainTab === "tags" ? (
+          ) : mainTab === "platform" ? null : mainTab === "tags" ? (
             <button
               type="button"
               className="um_btn_primary contacts_toolbar_add_btn"
@@ -1791,6 +2275,36 @@ function ContactsPage() {
                 Contact
               </span>
             </button>
+            {platformAdmin ? (
+            <button
+              type="button"
+              id="contacts-main-tab-platform"
+              role="tab"
+              aria-selected={mainTab === "platform"}
+              aria-controls="contacts-main-panel-platform"
+              aria-label={`Platform Contacts, ${platformRows.length}`}
+              className={`um_members_tab deals_tabs_tab um_segmented_tab${
+                mainTab === "platform" ? " um_members_tab_active" : ""
+              }`}
+              onClick={() => {
+                setMainTab("platform")
+                setToolbarNotice("")
+              }}
+            >
+              <Globe
+                className="deals_tabs_icon um_segmented_tab_icon"
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="deals_tabs_label um_segmented_tab_label">
+                Platform Contacts
+              </span>
+              <span className="deals_tabs_count contacts_tab_count" aria-hidden>
+                ({platformRows.length})
+              </span>
+            </button>
+            ) : null}
             <button
               type="button"
               id="contacts-main-tab-tags"
@@ -1939,9 +2453,9 @@ function ContactsPage() {
                           className="um_btn_toolbar"
                           onClick={handleSuspendAll}
                           disabled={
-                            loading ||
+                            contactsLoading ||
                             contactsListTab === "archived" ||
-                            tabRows.length === 0
+                            suspendableTabRows.length === 0
                           }
                         >
                           <Ban size={16} strokeWidth={2} aria-hidden />
@@ -1950,8 +2464,11 @@ function ContactsPage() {
                         <button
                           type="button"
                           className="um_toolbar_export_btn"
-                          onClick={() => setExportModalOpen(true)}
-                          disabled={loading || tabRows.length === 0}
+                          onClick={() => {
+                            setExportListKind(contactsListTab)
+                            setExportModalOpen(true)
+                          }}
+                          disabled={contactsLoading || tabRows.length === 0}
                         >
                           <Download size={16} strokeWidth={2} aria-hidden />
                           <span>Export</span>
@@ -2078,6 +2595,19 @@ function ContactsPage() {
                       </div>
                     </div>
                   </div>
+              {contactsLoadError ? (
+                <p className="um_toolbar_notice um_toolbar_notice--error" role="alert">
+                  {contactsLoadError}{" "}
+                  <button
+                    type="button"
+                    className="um_toolbar_notice_retry"
+                    onClick={() => void handleRefreshContacts()}
+                    disabled={loading}
+                  >
+                    Retry
+                  </button>
+                </p>
+              ) : null}
               {toolbarNotice ? (
                 <p className="um_toolbar_notice" role="status">
                   {toolbarNotice}
@@ -2114,8 +2644,8 @@ function ContactsPage() {
                 visualVariant="members"
                 stickyFirstColumn
                 columns={columns}
-                rows={loading ? [] : filteredRows}
-                isLoading={loading}
+                rows={contactsLoading ? [] : filteredRows}
+                isLoading={contactsLoading}
                 getRowKey={(row) => row.id}
                 getRowClassName={(row) =>
                   contactsListTab === "active" && contactRowIsSuspended(row)
@@ -2123,10 +2653,12 @@ function ContactsPage() {
                     : undefined
                 }
                 emptyLabel={
-                  loading
+                  contactsLoading
                     ? "Loading contacts…"
-                    : rows.length === 0
-                      ? "No contacts yet. Add a contact to see it here."
+                    : directoryRows.length === 0
+                      ? platformAdmin && !orgScopeKey
+                        ? "Select a company to see that company's contacts. Self-signups are under Platform Contacts."
+                        : "No contacts yet. Add a contact to see it here."
                       : tabRows.length === 0
                         ? contactsListTab === "archived"
                           ? "No archived contacts. Suspend a contact from Active to move it here."
@@ -2141,14 +2673,97 @@ function ContactsPage() {
                                 ? "No contacts match this owner filter."
                                 : "No contacts match your search."
                 }
-                emptyStateRole={loading ? "status" : undefined}
+                emptyStateRole={contactsLoading ? "status" : undefined}
                 pagination={
-                  !loading && filteredRows.length > 0 ? pagination : undefined
+                  !contactsLoading && filteredRows.length > 0
+                    ? pagination
+                    : undefined
                 }
               />
             </div>
       </div>
       </div>
+      ) : mainTab === "platform" && platformAdmin ? (
+        <div
+          className="um_members_tab_content contacts_main_tab_content_flush"
+          id="contacts-main-panel-platform"
+          role="tabpanel"
+          aria-labelledby="contacts-main-tab-platform"
+        >
+          <div className="um_panel um_members_tab_panel deal_inv_table_panel contacts_table_panel">
+            <div className="contacts_directory_toolbar contacts_platform_toolbar">
+              <div className="contacts_directory_toolbar_start">
+                <p className="contacts_platform_note">
+                  Investors who signed up on their own. You see every self-signup,
+                  including those who did not opt in. Only investors visible on the
+                  platform can be added to a deal.
+                </p>
+              </div>
+
+              <div className="contacts_directory_toolbar_end">
+                <div className="um_search_wrap contacts_directory_search">
+                  <Search className="um_search_icon" size={16} aria-hidden />
+                  <input
+                    type="search"
+                    className="um_search_input"
+                    placeholder="Search platform contacts…"
+                    value={platformSearchQuery}
+                    onChange={(e) => setPlatformSearchQuery(e.target.value)}
+                    aria-label="Search platform contacts"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="um_toolbar_export_btn"
+                  onClick={() => {
+                    setExportListKind("platform")
+                    setExportModalOpen(true)
+                  }}
+                  disabled={platformLoading || platformRows.length === 0}
+                >
+                  <Download size={16} strokeWidth={2} aria-hidden />
+                  <span>Export</span>
+                </button>
+                <button
+                  type="button"
+                  className="um_btn_toolbar"
+                  onClick={() => void loadPlatformContacts()}
+                  disabled={platformLoading}
+                  aria-label="Refresh platform contacts"
+                >
+                  {platformLoading ? (
+                    <Loader2
+                      size={16}
+                      strokeWidth={2}
+                      className="um_spin"
+                      aria-hidden
+                    />
+                  ) : (
+                    <RefreshCw size={16} strokeWidth={2} aria-hidden />
+                  )}
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <DataTable
+              visualVariant="members"
+              columns={platformColumns}
+              rows={platformLoading ? [] : filteredPlatformRows}
+              isLoading={platformLoading}
+              getRowKey={(r) => r.id}
+              emptyLabel={
+                platformRows.length === 0
+                  ? "No self-signup investors yet."
+                  : "No platform contacts match your search."
+              }
+              pagination={
+                !platformLoading && filteredPlatformRows.length > 0
+                  ? platformPagination
+                  : undefined
+              }
+            />
+          </div>
+        </div>
       ) : mainTab === "tags" ? (
         <>
           <UsageFilterTabs
@@ -2425,8 +3040,11 @@ function ContactsPage() {
       <ExportContactsModal
         open={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
-        contacts={tabRows}
-        listKind={contactsListTab}
+        contacts={exportListKind === "platform" ? platformRows : tabRows}
+        listKind={exportListKind}
+        includePlatformVisibility={
+          platformAdmin && exportListKind === "platform"
+        }
       />
 
       {sendMailModalOpen ? (
@@ -2712,8 +3330,8 @@ function ContactsPage() {
             </div>
             <div className="deals_suspend_all_modal_body">
               <p className="deals_suspend_all_modal_message">
-                Suspend {tabRows.length} active contact
-                {tabRows.length === 1 ? "" : "s"}? They will move to the
+                Suspend {suspendableTabRows.length} active contact
+                {suspendableTabRows.length === 1 ? "" : "s"}? They will move to the
                 Archived tab and can be activated again later.
               </p>
             </div>
@@ -2915,6 +3533,109 @@ function ContactsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {inviteRow ? (
+        <div
+          className="um_modal_overlay contacts_suspend_overlay"
+          role="presentation"
+        >
+          <div
+            className="um_modal contacts_suspend_modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contacts-invite-title"
+            aria-describedby="contacts-invite-desc"
+          >
+            <div className="um_modal_head">
+              <h3
+                id="contacts-invite-title"
+                className="um_modal_title um_title_with_icon"
+              >
+                <Mail
+                  className="um_title_icon contacts_suspend_title_icon contacts_suspend_title_icon_info"
+                  size={22}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span>Send invitation email</span>
+              </h3>
+              <button
+                type="button"
+                className="um_modal_close"
+                aria-label="Close"
+                disabled={inviteSaving}
+                onClick={() => closeInviteContact()}
+              >
+                <X size={20} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
+
+            <p
+              id="contacts-invite-desc"
+              className="contacts_suspend_modal_desc contacts_suspend_modal_desc_info"
+            >
+              <Info
+                className="contacts_suspend_modal_desc_icon"
+                size={18}
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span>
+                Send a portal signup invitation to this contact. This option is
+                removed after the email is sent.
+              </span>
+            </p>
+
+            <div className="contacts_suspend_modal_grid">
+              <ViewReadonlyField
+                Icon={User}
+                label="Name"
+                value={
+                  [inviteRow.firstName, inviteRow.lastName]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() || "—"
+                }
+              />
+              <ViewReadonlyField
+                Icon={Mail}
+                label="Email"
+                value={displayEmail(inviteRow.email)}
+              />
+            </div>
+
+            <div className="um_modal_actions contacts_suspend_modal_actions">
+              <button
+                type="button"
+                className="um_btn_secondary"
+                disabled={inviteSaving}
+                onClick={() => closeInviteContact()}
+              >
+                <X size={16} strokeWidth={2} aria-hidden />
+                Close
+              </button>
+              <button
+                type="button"
+                className="um_btn_primary"
+                disabled={inviteSaving}
+                onClick={() => void submitInviteContact()}
+              >
+                {inviteSaving ? (
+                  <Loader2
+                    size={16}
+                    strokeWidth={2}
+                    className="um_spin"
+                    aria-hidden
+                  />
+                ) : (
+                  <Send size={16} strokeWidth={2} aria-hidden />
+                )}
+                {inviteSaving ? "Sending…" : "Send invitation"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

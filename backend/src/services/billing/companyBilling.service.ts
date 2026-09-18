@@ -31,6 +31,10 @@ import {
 import { userHasAccessToOrganization } from "../org/orgResolution.service.js";
 import { releaseBillingPaymentHold } from "../../middleware/billingPaymentLock.js";
 import { periodEndFromSubscription } from "./dealBilling.service.js";
+import {
+  dealSaasBillingHasStarted,
+  dealSaasBillingNotYetDueMessage,
+} from "./saasBillingStartDate.js";
 
 let stripeClient: Stripe | null = null;
 
@@ -2780,6 +2784,13 @@ async function resolveExtraCompanyUserCharge(params: {
     )
   ) {
     return { ok: false, status: 403, message: "Forbidden" };
+  }
+  if (!dealSaasBillingHasStarted(snapshot)) {
+    return {
+      ok: false,
+      status: 400,
+      message: dealSaasBillingNotYetDueMessage(snapshot),
+    };
   }
   const extraUsersToPay = extraCompanyUsersToCharge(
     snapshot,

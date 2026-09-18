@@ -610,6 +610,62 @@
       "when": 1894900000000,
       "tag": "0087_feedback_resolution",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1894950000000,
+      "tag": "0088_roster_draft_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1895000000000,
+      "tag": "0089_contact_relationship_506b",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1895050000000,
+      "tag": "0090_feedback_priority",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1895100000000,
+      "tag": "0091_draft_stage_coming_soon",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1895150000000,
+      "tag": "0092_contact_relationship_506b_default_no",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1895200000000,
+      "tag": "0093_contact_visible_to_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1895250000000,
+      "tag": "0094_contact_invitation_email_sent",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1895300000000,
+      "tag": "0095_list_query_performance_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
   Asterisk,
   Building2,
   CircleAlert,
+  CircleCheck,
   Eye,
   EyeOff,
   Loader2,
@@ -18,6 +19,7 @@ import {
   Mail,
   Phone,
   User,
+  Users,
 } from "lucide-react";
 import FooterForm from "../../../common/components/FooterForm";
 import Input from "../../../common/components/Input";
@@ -42,16 +44,29 @@ import { dealWorkspacePath } from "../../Syndication/Deals/utils/dealWorkspacePa
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import {
   applyOfferingPortfolioPostAuth,
+  claimOfferingPortfolioAccess,
   consumeOfferingPortfolioAuthIntent,
+  isPublicOfferingPortfolioReturnPath,
+  readOfferingPortfolioAuthIntent,
 } from "../../Syndication/Deals/utils/offeringPortfolioAuthIntent";
 import "./signup_form.css";
 import { decodeJwtPayload } from "../utils/decode-jwt-payload";
+import { toast } from "../../../common/components/Toast";
 
 const LOGIN_PATH = "/signin";
+
+type SignupAs = "" | "investor" | "syndicator" | "both";
+
+const SIGNUP_AS_OPTIONS: { value: Exclude<SignupAs, "">; label: string }[] = [
+  { value: "investor", label: "Investor" },
+  { value: "syndicator", label: "Syndicator" },
+  { value: "both", label: "Both" },
+];
 
 type SigninResponse = {
   message?: string;
   token?: string;
+  accessToken?: string;
   userDetails?: unknown;
   activitySessionId?: string;
 };
@@ -89,6 +104,7 @@ export default function SignupForm() {
   const [isVisible, setIsVisible] = useState(false);
   const [isVisibleConfirm, setIsVisibleConfirm] = useState(false);
   const [isError, setIsError] = useState("");
+  const [successNotice, setSuccessNotice] = useState("");
   const [linkExpired, setLinkExpired] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -293,6 +309,7 @@ export default function SignupForm() {
   const [signUpFormData, setSignUpFormData] = useState<SignUpFormState>({
     email: resolvedInviteEmail,
     companyName: "",
+    signupAs: "",
     userName: "",
     phone: "",
     firstName: "",
@@ -309,6 +326,15 @@ export default function SignupForm() {
     if (isError) setIsError("");
   }
 
+  function handleSignupAsChange(value: SignupAs) {
+    setSignUpFormData((prev) => ({
+      ...prev,
+      signupAs: value,
+      ...(value === "investor" ? { companyName: "" } : {}),
+    }));
+    if (isError) setIsError("");
+  }
+
   function passwordVisible() {
     setIsVisible((prev) => !prev);
   }
@@ -320,6 +346,17 @@ export default function SignupForm() {
   const phoneNational = nationalTenDigitsFromRawInput(signUpFormData.phone);
   const phoneOk = isValidUsNanp10(phoneNational);
 
+  const isSelfServeSignup = !token;
+  const companyRequiredForRole =
+    isSelfServeSignup &&
+    (signUpFormData.signupAs === "syndicator" ||
+      signUpFormData.signupAs === "both");
+  const companyFieldEnabled =
+    !isSelfServeSignup ||
+    (Boolean(signUpFormData.signupAs) &&
+      signUpFormData.signupAs !== "investor");
+  const companyDisabledForInvestor =
+    isSelfServeSignup && signUpFormData.signupAs === "investor";
   const requiredSignupFields = [
     signUpFormData.email,
     signUpFormData.phone,
@@ -327,6 +364,8 @@ export default function SignupForm() {
     signUpFormData.lastName,
     signUpFormData.newPassword,
     signUpFormData.confirmPassword,
+    ...(isSelfServeSignup ? [signUpFormData.signupAs] : []),
+    ...(companyRequiredForRole ? [signUpFormData.companyName] : []),
   ];
   const isDisabledBtn =
     requiredSignupFields.some((val) => val.trim() === "") ||
@@ -335,13 +374,17 @@ export default function SignupForm() {
     !termsAccepted;
 
   function persistSigninSession(data: SigninResponse) {
-    if (data.token) {
-      sessionStorage.setItem(SESSION_BEARER_KEY, data.token);
+    const accessToken = data.token?.trim() || data.accessToken?.trim()
+    if (accessToken) {
+      sessionStorage.setItem(SESSION_BEARER_KEY, accessToken);
     }
     if (data.userDetails != null) {
+      const details = Array.isArray(data.userDetails)
+        ? data.userDetails
+        : [data.userDetails];
       sessionStorage.setItem(
         SESSION_USER_DETAILS_KEY,
-        JSON.stringify(data.userDetails),
+        JSON.stringify(details),
       );
     } else {
       sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
@@ -378,7 +421,10 @@ export default function SignupForm() {
     let postAuthState: { investNow: true } | { returnTo: string } | undefined;
     if (portfolioIntent?.dealId) {
       const applied = applyOfferingPortfolioPostAuth(portfolioIntent.dealId);
-      redirectTo = from ?? applied.redirectTo;
+      redirectTo =
+        from && !isPublicOfferingPortfolioReturnPath(from)
+          ? from
+          : applied.redirectTo;
       postAuthState = applied.postAuthState;
     } else if (!from && dealId) {
       redirectTo = dealWorkspacePath(dealId);
@@ -414,6 +460,27 @@ export default function SignupForm() {
       return false;
     }
     persistSigninSession(data);
+    const pendingPortfolioIntent = readOfferingPortfolioAuthIntent();
+    if (pendingPortfolioIntent?.previewToken) {
+      try {
+        const claimed = await claimOfferingPortfolioAccess(
+          pendingPortfolioIntent,
+        );
+        if (claimed?.userDetails != null) {
+          sessionStorage.setItem(
+            SESSION_USER_DETAILS_KEY,
+            JSON.stringify(claimed.userDetails),
+          );
+        }
+      } catch (claimError) {
+        toast.error(
+          "Offering access not added",
+          claimError instanceof Error
+            ? claimError.message
+            : "You can still view the public offering.",
+        );
+      }
+    }
     const { redirectTo, postAuthState } = resolvePostAuthPath();
     navigate(redirectTo, { replace: true, state: postAuthState });
     return true;
@@ -425,6 +492,14 @@ export default function SignupForm() {
       setIsError("API base URL is not configured (VITE_BASE_URL).");
       return;
     }
+    if (isSelfServeSignup && !signUpFormData.signupAs) {
+      setIsError("Select whether you are an investor, syndicator, or both.");
+      return;
+    }
+    if (companyRequiredForRole && !signUpFormData.companyName.trim()) {
+      setIsError("Company name is required for syndicator accounts.");
+      return;
+    }
     const phoneE164 = national10ToE164(signUpFormData.phone);
     if (!phoneE164) {
       setIsError(
@@ -434,6 +509,7 @@ export default function SignupForm() {
     }
     setIsLoading(true);
     setIsError("");
+    setSuccessNotice("");
     try {
       const submitUrl = token
         ? buildApiUrl(apiV1, `auth/signup/${encodeURIComponent(token)}`)
@@ -447,8 +523,12 @@ export default function SignupForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: signUpFormData.email.trim().toLowerCase(),
-          companyName: signUpFormData.companyName.trim(),
-          userName: signUpFormData.userName.trim(),
+          companyName:
+            signUpFormData.signupAs === "investor"
+              ? ""
+              : signUpFormData.companyName.trim(),
+          ...(isSelfServeSignup ? { signupAs: signUpFormData.signupAs } : {}),
+          userName: "",
           phone: phoneE164,
           firstName: signUpFormData.firstName.trim(),
           lastName: signUpFormData.lastName.trim(),
@@ -458,12 +538,23 @@ export default function SignupForm() {
       });
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
+        joinedExistingCompany?: boolean;
+        companyCreated?: boolean;
       };
       if (!response.ok) {
         setIsError(
           data.message || "Could not create your account. Please try again.",
         );
         return;
+      }
+      if (data.joinedExistingCompany || data.companyCreated) {
+        setSuccessNotice(
+          data.message?.trim() ||
+            (data.joinedExistingCompany
+              ? "This company already exists. Your account was added to that company."
+              : "Your company was created and added to the platform."),
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, 1800));
       }
       const email = signUpFormData.email.trim().toLowerCase();
       await signInAfterSignup(email, signUpFormData.newPassword);
@@ -524,84 +615,191 @@ export default function SignupForm() {
                 required
               />
             </div>
-            <div className="emailData">
-              <Input
-                labelName="Company (optional)"
-                id="signup-companyName"
-                icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
-                type="text"
-                name="companyName"
-                placeholder="Leave blank for investor-only access"
-                value={signUpFormData.companyName}
-                onChange={handleChange}
-                readOnly={Boolean(token && resolvedInviteCompanyName)}
-                disabled={isLoading}
-                aria-invalid={!!isError}
-                requiredIndicator={false}
-              />
-            </div>
-          </div>
-
-          <div className="signupForm_row">
-            <div className="emailData">
-              <Input
-                labelName="Account Name"
-                id="signup-userName"
-                icon={<User width={20} strokeWidth={1.5} aria-hidden />}
-                type="text"
-                name="userName"
-                placeholder="John Smith"
-                value={signUpFormData.userName}
-                onChange={handleChange}
-                disabled={isLoading}
-                aria-invalid={!!isError}
-                requiredIndicator={false}
-              />
-            </div>
-            <div className="emailData">
-              <div className="input_wrapper">
-                <label
-                  htmlFor="signup-phone"
-                  className="input_wrapper__label_row"
-                >
-                  <span className="input_wrapper__label_leading">
-                    <span className="input_wrapper__label_icon">
-                      <Phone width={20} strokeWidth={1.5} aria-hidden />
-                    </span>
-                    <span className="input_wrapper__label_text">
-                      Phone number
-                    </span>
-                  </span>
-                  <span
-                    className="input_wrapper__required_mark"
-                    title="Required"
-                    aria-hidden
+            {isSelfServeSignup ? (
+              <div className="emailData">
+                <div className="input_wrapper">
+                  <label
+                    htmlFor="signup-signupAs"
+                    className="input_wrapper__label_row"
                   >
-                    <Asterisk
-                      className="input_wrapper__required_icon"
-                      size={14}
-                      strokeWidth={2.5}
+                    <span className="input_wrapper__label_leading">
+                      <span className="input_wrapper__label_icon">
+                        <Users width={20} strokeWidth={1.5} aria-hidden />
+                      </span>
+                      <span className="input_wrapper__label_text">
+                        Are you an
+                      </span>
+                    </span>
+                    <span
+                      className="input_wrapper__required_mark"
+                      title="Required"
                       aria-hidden
-                    />
-                  </span>
-                </label>
-                <UsPhoneInput
-                  id="signup-phone"
-                  name="phone"
-                  placeholder="(555) 123-4567"
-                  nationalDigits={signUpFormData.phone}
-                  onNationalDigitsChange={(digits) => {
-                    setSignUpFormData((prev) => ({ ...prev, phone: digits }));
-                    if (isError) setIsError("");
-                  }}
-                  readOnly={lockedPrefill.phone}
+                    >
+                      <Asterisk
+                        className="input_wrapper__required_icon"
+                        size={14}
+                        strokeWidth={2.5}
+                        aria-hidden
+                      />
+                    </span>
+                  </label>
+                  <select
+                    id="signup-signupAs"
+                    name="signupAs"
+                    className={`input_field signup_as_select${signUpFormData.signupAs ? "" : " signup_as_select--placeholder"}`}
+                    value={signUpFormData.signupAs}
+                    onChange={(e) =>
+                      handleSignupAsChange(e.target.value as SignupAs)
+                    }
+                    disabled={isLoading}
+                    required
+                    aria-invalid={!!isError}
+                  >
+                    <option value="">Select…</option>
+                    {SIGNUP_AS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="emailData">
+                <Input
+                  labelName="Company"
+                  id="signup-companyName"
+                  icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
+                  type="text"
+                  name="companyName"
+                  placeholder="Company name"
+                  value={signUpFormData.companyName}
+                  onChange={handleChange}
+                  readOnly={Boolean(token && resolvedInviteCompanyName)}
                   disabled={isLoading}
-                  className="input_field"
                   aria-invalid={!!isError}
+                  requiredIndicator={false}
                 />
               </div>
-            </div>
+            )}
           </div>
+
+          {isSelfServeSignup ? (
+            <div className="signupForm_row">
+              <div className="emailData">
+                <Input
+                  labelName="Company"
+                  id="signup-companyName"
+                  icon={<Building2 width={20} strokeWidth={1.5} aria-hidden />}
+                  type="text"
+                  name="companyName"
+                  placeholder={
+                    !signUpFormData.signupAs
+                      ? "Select how you are signing up"
+                      : companyDisabledForInvestor
+                        ? "Add your company later in My account"
+                        : "Your company name"
+                  }
+                  value={signUpFormData.companyName}
+                  onChange={handleChange}
+                  disabled={isLoading || !companyFieldEnabled}
+                  aria-invalid={!!isError}
+                  required={companyRequiredForRole}
+                  requiredIndicator={companyRequiredForRole}
+                  optionalIndicator={!companyRequiredForRole}
+                />
+              </div>
+              <div className="emailData">
+                <div className="input_wrapper">
+                  <label
+                    htmlFor="signup-phone"
+                    className="input_wrapper__label_row"
+                  >
+                    <span className="input_wrapper__label_leading">
+                      <span className="input_wrapper__label_icon">
+                        <Phone width={20} strokeWidth={1.5} aria-hidden />
+                      </span>
+                      <span className="input_wrapper__label_text">
+                        Phone number
+                      </span>
+                    </span>
+                    <span
+                      className="input_wrapper__required_mark"
+                      title="Required"
+                      aria-hidden
+                    >
+                      <Asterisk
+                        className="input_wrapper__required_icon"
+                        size={14}
+                        strokeWidth={2.5}
+                        aria-hidden
+                      />
+                    </span>
+                  </label>
+                  <UsPhoneInput
+                    id="signup-phone"
+                    name="phone"
+                    placeholder="(555) 123-4567"
+                    nationalDigits={signUpFormData.phone}
+                    onNationalDigitsChange={(digits) => {
+                      setSignUpFormData((prev) => ({ ...prev, phone: digits }));
+                      if (isError) setIsError("");
+                    }}
+                    readOnly={lockedPrefill.phone}
+                    disabled={isLoading}
+                    className="input_field"
+                    aria-invalid={!!isError}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="signupForm_row">
+              <div className="emailData">
+                <div className="input_wrapper">
+                  <label
+                    htmlFor="signup-phone"
+                    className="input_wrapper__label_row"
+                  >
+                    <span className="input_wrapper__label_leading">
+                      <span className="input_wrapper__label_icon">
+                        <Phone width={20} strokeWidth={1.5} aria-hidden />
+                      </span>
+                      <span className="input_wrapper__label_text">
+                        Phone number
+                      </span>
+                    </span>
+                    <span
+                      className="input_wrapper__required_mark"
+                      title="Required"
+                      aria-hidden
+                    >
+                      <Asterisk
+                        className="input_wrapper__required_icon"
+                        size={14}
+                        strokeWidth={2.5}
+                        aria-hidden
+                      />
+                    </span>
+                  </label>
+                  <UsPhoneInput
+                    id="signup-phone"
+                    name="phone"
+                    placeholder="(555) 123-4567"
+                    nationalDigits={signUpFormData.phone}
+                    onNationalDigitsChange={(digits) => {
+                      setSignUpFormData((prev) => ({ ...prev, phone: digits }));
+                      if (isError) setIsError("");
+                    }}
+                    readOnly={lockedPrefill.phone}
+                    disabled={isLoading}
+                    className="input_field"
+                    aria-invalid={!!isError}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="signupForm_row">
             <div className="emailData">
@@ -753,6 +951,16 @@ export default function SignupForm() {
           </label>
         </div>
 
+        {successNotice ? (
+          <div
+            className="authMessage authMessage--success"
+            style={{ marginTop: "0.5em", marginBottom: 0 }}
+          >
+            <CircleCheck className="authMessage__icon" size={16} aria-hidden />
+            <p>{successNotice}</p>
+          </div>
+        ) : null}
+
         {isError ? (
           <div
             className="authMessage authMessage--error"
@@ -796,6 +1004,7 @@ export default function SignupForm() {
 interface SignUpFormState {
   email: string;
   companyName: string;
+  signupAs: SignupAs;
   userName: string;
   firstName: string;
   lastName: string;

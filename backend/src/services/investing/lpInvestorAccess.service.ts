@@ -56,7 +56,8 @@ async function listDealIdsFromLpInvestorTableForEmail(
   const res = await pool.query<{ deal_id: string }>(
     `SELECT DISTINCT dli.deal_id::text AS deal_id
      FROM deal_lp_investor dli
-     WHERE
+     WHERE dli.is_draft = false
+     AND (
        (
          $1::text <> ''
          AND position('@' in $1) > 1
@@ -84,7 +85,8 @@ async function listDealIdsFromLpInvestorTableForEmail(
          AND lower(trim(dli.contact_member_id)) = ANY (
            SELECT lower(trim(x)) FROM unnest($2::text[]) AS x
          )
-       )`,
+       )
+     )`,
     [e.includes("@") ? e : "", extraIds],
   );
 
@@ -111,6 +113,7 @@ async function listDealIdsFromSponsorInvitedDealMemberForEmail(
      INNER JOIN users adder_u ON adder_u.id = dm_investor.added_by
      INNER JOIN deal_member dm_sponsor ON
        dm_sponsor.deal_id = dm_investor.deal_id
+       AND dm_sponsor.is_draft = false
        AND lower(trim(dm_sponsor.deal_member_role)) IN (
          'lead sponsor', 'admin sponsor', 'co-sponsor', 'co sponsor'
        )
@@ -123,6 +126,7 @@ async function listDealIdsFromSponsorInvitedDealMemberForEmail(
          )
        )
      WHERE dm_investor.added_by IS NOT NULL
+       AND dm_investor.is_draft = false
        AND (
          trim(dm_investor.contact_member_id) = viewer_u.id::text
          OR EXISTS (
@@ -156,6 +160,7 @@ async function listDealIdsFromDealInvestmentForEmail(
      FROM deal_investment di
      INNER JOIN users viewer_u ON lower(trim(viewer_u.email)) = $1
      WHERE nullif(trim(di.contact_id), '') IS NOT NULL
+       AND di.is_draft = false
        AND (
          trim(both from di.contact_id) = viewer_u.id::text
          OR EXISTS (
@@ -187,7 +192,8 @@ async function hasSponsorDealMemberRoleForEmail(
     `SELECT 1 AS ok
      FROM deal_member dm
      INNER JOIN users u ON lower(trim(u.email)) = $1
-     WHERE lower(trim(dm.deal_member_role)) IN (
+     WHERE dm.is_draft = false
+       AND lower(trim(dm.deal_member_role)) IN (
        'lead sponsor', 'admin sponsor', 'co-sponsor', 'co sponsor'
      )
        AND (
@@ -223,7 +229,8 @@ export async function listDealIdsFromSponsorDealMemberForEmail(
     `SELECT DISTINCT dm.deal_id::text AS deal_id
      FROM deal_member dm
      INNER JOIN users u ON lower(trim(u.email)) = $1
-     WHERE lower(trim(dm.deal_member_role)) IN (
+     WHERE dm.is_draft = false
+       AND lower(trim(dm.deal_member_role)) IN (
        'lead sponsor', 'admin sponsor', 'co-sponsor', 'co sponsor'
      )
        AND (
@@ -264,6 +271,7 @@ async function listSponsorUserIdsForInvestorEmail(
      INNER JOIN users adder_u ON adder_u.id = lp.added_by
      INNER JOIN deal_member dm_sponsor ON
        dm_sponsor.deal_id = lp.deal_id
+       AND dm_sponsor.is_draft = false
        AND lower(trim(dm_sponsor.deal_member_role)) IN (
          ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
        )
@@ -276,6 +284,7 @@ async function listSponsorUserIdsForInvestorEmail(
          )
        )
      WHERE lp.added_by IS NOT NULL
+       AND lp.is_draft = false
        AND (
          trim(lp.contact_member_id) = viewer_u.id::text
          OR (
@@ -297,6 +306,7 @@ async function listSponsorUserIdsForInvestorEmail(
      INNER JOIN users adder_u ON adder_u.id = dm_investor.added_by
      INNER JOIN deal_member dm_sponsor ON
        dm_sponsor.deal_id = dm_investor.deal_id
+       AND dm_sponsor.is_draft = false
        AND lower(trim(dm_sponsor.deal_member_role)) IN (
          ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
        )
@@ -309,6 +319,7 @@ async function listSponsorUserIdsForInvestorEmail(
          )
        )
      WHERE dm_investor.added_by IS NOT NULL
+       AND dm_investor.is_draft = false
        AND (
          trim(dm_investor.contact_member_id) = viewer_u.id::text
          OR EXISTS (
@@ -327,7 +338,8 @@ async function listSponsorUserIdsForInvestorEmail(
      WHERE lower(trim(c_inv.email)) = $1
        AND EXISTS (
          SELECT 1 FROM deal_member dm
-         WHERE lower(trim(dm.deal_member_role)) IN (
+         WHERE dm.is_draft = false
+         AND lower(trim(dm.deal_member_role)) IN (
            ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
          )
          AND (
@@ -361,7 +373,8 @@ async function listDealIdsWhereSponsorUsersOnRoster(
   const res = await pool.query<{ deal_id: string }>(
     `SELECT DISTINCT dm.deal_id::text AS deal_id
      FROM deal_member dm
-     WHERE lower(trim(dm.deal_member_role)) IN (
+     WHERE dm.is_draft = false
+     AND lower(trim(dm.deal_member_role)) IN (
        ${SPONSOR_DEAL_MEMBER_ROLES_SQL}
      )
      AND (
@@ -623,6 +636,7 @@ export async function mapLpInvestorRoleDisplayByDealIdForUserEmail(
     .where(
       and(
         inArray(dealLpInvestor.dealId, ids),
+        eq(dealLpInvestor.isDraft, false),
         or(
           sql`(nullif(trim(${contact.email}), '') IS NOT NULL AND lower(trim(${contact.email})) = ${e})`,
           sql`nullif(trim(${dealLpInvestor.email}), '') IS NOT NULL AND lower(trim(${dealLpInvestor.email})) = ${e}`,

@@ -31,7 +31,10 @@ import { resolveUnpaidLeadSponsorPricingPath } from "../../Syndication/Deals/uti
 import { consumeInvestNowIntent } from "../../Syndication/Deals/utils/investNowIntent";
 import {
   applyOfferingPortfolioPostAuth,
+  claimOfferingPortfolioAccess,
   consumeOfferingPortfolioAuthIntent,
+  isPublicOfferingPortfolioReturnPath,
+  readOfferingPortfolioAuthIntent,
 } from "../../Syndication/Deals/utils/offeringPortfolioAuthIntent";
 import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import { toast } from "../../../common/components/Toast";
@@ -145,6 +148,27 @@ const SigninForm = () => {
       } else {
         sessionStorage.removeItem(SESSION_ACTIVITY_SESSION_ID_KEY);
       }
+      const pendingPortfolioIntent = readOfferingPortfolioAuthIntent();
+      if (pendingPortfolioIntent?.previewToken) {
+        try {
+          const claimed = await claimOfferingPortfolioAccess(
+            pendingPortfolioIntent,
+          );
+          if (claimed?.userDetails != null) {
+            sessionStorage.setItem(
+              SESSION_USER_DETAILS_KEY,
+              JSON.stringify(claimed.userDetails),
+            );
+          }
+        } catch (claimError) {
+          toast.error(
+            "Offering access not added",
+            claimError instanceof Error
+              ? claimError.message
+              : "You can still view the public offering.",
+          );
+        }
+      }
       const state = location.state as
         | { from?: string; investNow?: boolean }
         | undefined;
@@ -166,7 +190,10 @@ const SigninForm = () => {
         | undefined;
       if (portfolioIntent?.dealId) {
         const applied = applyOfferingPortfolioPostAuth(portfolioIntent.dealId);
-        redirectTo = from ?? applied.redirectTo;
+        redirectTo =
+          from && !isPublicOfferingPortfolioReturnPath(from)
+            ? from
+            : applied.redirectTo;
         postSignInState = applied.postAuthState;
       } else if (!from && storedIntent?.dealId) {
         redirectTo = dealInvestNowPath(storedIntent.dealId);
@@ -334,7 +361,9 @@ const SigninForm = () => {
 
         <p className="auth_footer_links">
           Don&apos;t have an account?{" "}
-          <Link to="/signup">Sign up</Link>
+          <Link to="/signup" state={location.state}>
+            Sign up
+          </Link>
         </p>
 
         <div className="auth_help companyContent">

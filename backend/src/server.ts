@@ -50,6 +50,8 @@ import { uploadCompanySettingsBranding } from "./middleware/companySettingsBrand
 
 import { socHttpAuditMiddleware } from "./middleware/socHttpAudit.middleware.js";
 
+import { requestBudgetMiddleware } from "./middleware/requestBudget.middleware.js";
+
 import { protectedUploadsMiddleware } from "./middleware/protectedUploads.middleware.js";
 
 import { signflowWebhookBodyParser } from "./middleware/signflowWebhook.middleware.js";
@@ -151,6 +153,9 @@ app.use((req, res, next) => {
   next();
 
 });
+
+/* Latency budget observer — mounted before uploads so every /api/v1 call is measured. */
+app.use("/api/v1", requestBudgetMiddleware);
 
 
 

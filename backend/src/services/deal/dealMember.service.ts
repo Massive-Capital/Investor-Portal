@@ -41,6 +41,11 @@ export type UpsertDealMemberInput = {
   sendInvitationMail: string;
   /** Set on insert only; not overwritten on conflict update. */
   addedByUserId: string;
+  /**
+   * Autosave from the add modal. A draft write never demotes an existing saved
+   * member; an explicit Save always clears the flag.
+   */
+  isDraft?: boolean;
 };
 
 /** Stored `deal_member.deal_member_role` for the single Lead Sponsor slot per deal. */
@@ -180,6 +185,7 @@ function syntheticInvestmentFromDealMember(m: DealMemberRow): DealInvestmentRow 
     profileId: "",
     userInvestorProfileId: null,
     investor_role: m.dealMemberRole,
+    isDraft: m.isDraft,
     fundApproved: false,
     fundApprovedBy: null,
     fundApprovedAt: null,
@@ -211,6 +217,7 @@ function syntheticInvestmentFromGpLpRoster(
     profileId: m.profileId?.trim() ?? "",
     userInvestorProfileId: m.userInvestorProfileId ?? null,
     investor_role: GENERAL_PARTNER_ROLE_STORED,
+    isDraft: m.isDraft,
     fundApproved: false,
     fundApprovedBy: null,
     fundApprovedAt: null,
@@ -254,12 +261,13 @@ export async function upsertDealMemberForDeal(
     )
     .limit(1);
   if (!existing) {
-    await assertEligibleForNewDealRosterAdd(cid);
+    await assertEligibleForNewDealRosterAdd(cid, input.addedByUserId);
   }
 
   const send = sendInvitationYesFromInput(input.sendInvitationMail);
   const now = new Date();
   const role = input.dealMemberRole?.trim() ?? "";
+  const isDraft = input.isDraft === true;
 
   await db
     .insert(dealMember)
@@ -269,6 +277,7 @@ export async function upsertDealMemberForDeal(
       contactMemberId: cid,
       dealMemberRole: role,
       sendInvitationMail: send,
+      isDraft,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -280,6 +289,7 @@ export async function upsertDealMemberForDeal(
           input.sendInvitationMail,
           dealMember.sendInvitationMail,
         ),
+        ...(isDraft ? {} : { isDraft: false }),
         updatedAt: now,
       },
     });
@@ -302,6 +312,7 @@ export async function assignCreatorAsLeadSponsorOnDeal(
     .where(
       and(
         eq(dealMember.dealId, did),
+        eq(dealMember.isDraft, false),
         sql`lower(trim(${dealMember.dealMemberRole})) = 'lead sponsor'`,
       ),
     )
@@ -337,7 +348,7 @@ export async function listDealMembersMappedToInvestorApi(
   const members = await db
     .select()
     .from(dealMember)
-    .where(eq(dealMember.dealId, dealId))
+    .where(and(eq(dealMember.dealId, dealId), eq(dealMember.isDraft, false)))
     .orderBy(desc(dealMember.updatedAt));
 
   const [investments, classes, lpRoster] = await Promise.all([
@@ -346,7 +357,12 @@ export async function listDealMembersMappedToInvestorApi(
     db
       .select()
       .from(dealLpInvestor)
-      .where(eq(dealLpInvestor.dealId, dealId)),
+      .where(
+        and(
+          eq(dealLpInvestor.dealId, dealId),
+          eq(dealLpInvestor.isDraft, false),
+        ),
+      ),
   ]);
   // console.log("[Deal Members query]", {
   //   dealId,

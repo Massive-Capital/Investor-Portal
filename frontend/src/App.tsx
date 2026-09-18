@@ -68,6 +68,7 @@ import { usePortalMode } from "./modules/Investing/context/PortalModeContext";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
 import { MyAccountCompanyPage } from "./modules/myaccount/MyAccountCompanyPage";
 import { MyAccountPersonalPage } from "./modules/myaccount/MyAccountPersonalPage";
+import { MyAccountIndexRedirect } from "./modules/myaccount/MyAccountIndexRedirect";
 import { MyAccountPasswordPage } from "./modules/myaccount/MyAccountPasswordPage";
 import { CompanyOverview } from "./modules/Investing/pages/company_overview/CompanyOverview";
 import Landing_Page from "./modules/Landing_Page/Landing_Page";
@@ -284,7 +285,7 @@ function App() {
               element={<InvestorCashflowsPage />}
             />
             <Route path="account" element={<MyAccountLayout />}>
-              <Route index element={<Navigate to="/account/company" replace />} />
+              <Route index element={<MyAccountIndexRedirect />} />
               <Route path="company" element={<MyAccountCompanyPage />} />
               <Route path="personal" element={<MyAccountPersonalPage />} />
               <Route path="password" element={<MyAccountPasswordPage />} />

@@ -181,6 +181,13 @@ export function ViewContactModal({
               />
             ) : null}
             <ViewReadonlyField
+              Icon={Users}
+              label="Relationship"
+              value={
+                contact.relationship506b === "YES" ? "506(b) Yes" : "506(b) No"
+              }
+            />
+            <ViewReadonlyField
               Icon={FileText}
               label="Note"
               value={contact.note?.trim() ? contact.note : "—"}
