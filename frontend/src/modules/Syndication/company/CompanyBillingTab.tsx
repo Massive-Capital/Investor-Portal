@@ -10,6 +10,7 @@ import {
   CreditCard,
   DollarSign,
   ExternalLink,
+  Info,
   Loader2,
   Plus,
   Minus,
@@ -84,6 +85,16 @@ function dealRowCheckoutAllowed(row: CompanyDealBillingRow): boolean {
   if (!dealRowIsPayable(row)) return false;
   if (!dealSaasBillingHasStarted(row.saasBillingStartsAt)) return false;
   return true;
+}
+
+function dealCanSavePaymentMethodForFutureBilling(
+  row: CompanyDealBillingRow,
+): boolean {
+  return (
+    dealRowIsPayable(row) &&
+    !dealIsNotBilled(row) &&
+    saasBillingStartIsInFuture(row)
+  );
 }
 
 type DealTier = {
@@ -1880,6 +1891,11 @@ function BillingDealDetailsPanel({
   const [payBusyId, setPayBusyId] = useState<string | null>(null);
   const [payError, setPayError] = useState("");
   const [complimentaryNoticeOpen, setComplimentaryNoticeOpen] = useState(false);
+  const [futureBillingSetup, setFutureBillingSetup] = useState<{
+    row: CompanyDealBillingRow;
+    companyId: string;
+    session: BillingSetupIntentSession;
+  } | null>(null);
   const [cycleBusyId, setCycleBusyId] = useState<string | null>(null);
   const [cycleConfirm, setCycleConfirm] = useState<{
     row: CompanyDealBillingRow;
@@ -2125,18 +2141,35 @@ function BillingDealDetailsPanel({
     ? platformPaidTotal
     : sponsorPaidTotal;
 
-  const handlePayDeal = async (row: CompanyDealBillingRow) => {
-    setPayError("");
-    if (!dealRowCheckoutAllowed(row)) {
-      setComplimentaryNoticeOpen(true);
+  const handleFutureBillingPaymentMethodSetup = async (
+    row: CompanyDealBillingRow,
+  ) => {
+    const setupCompanyId = dealBillingCompanyId(row, companyId);
+    if (!setupCompanyId) {
+      setPayError("No company workspace selected.");
       return;
     }
+    setPayBusyId(row.id);
+    const result = await startCompanyBillingSetupIntent(setupCompanyId);
+    setPayBusyId(null);
+    if (!result.ok) {
+      setPayError(result.message);
+      return;
+    }
+    setFutureBillingSetup({
+      row,
+      companyId: setupCompanyId,
+      session: result.session,
+    });
+  };
+
+  const handlePayDeal = async (row: CompanyDealBillingRow) => {
+    setPayError("");
     const payCompanyId = dealBillingCompanyId(row, companyId);
     if (!payCompanyId) {
       setPayError("No company workspace selected.");
       return;
     }
-    if (payOnceRef.current) return;
     const planId = (
       row.suggestedPlanId ||
       row.planId ||
@@ -2149,6 +2182,15 @@ function BillingDealDetailsPanel({
       setPayError("Choose monthly or yearly billing first.");
       return;
     }
+    if (!dealRowCheckoutAllowed(row)) {
+      if (dealCanSavePaymentMethodForFutureBilling(row)) {
+        await handleFutureBillingPaymentMethodSetup(row);
+        return;
+      }
+      setComplimentaryNoticeOpen(true);
+      return;
+    }
+    if (payOnceRef.current) return;
     payOnceRef.current = true;
     setPayBusyId(row.id);
     const result = await startCompanyBillingCheckout(
@@ -2443,9 +2485,21 @@ function BillingDealDetailsPanel({
                     type="button"
                     className="um_btn_primary cp_billing_pay_btn"
                     disabled={busy}
+                    aria-label={busy ? "Loading payment options" : undefined}
                     onClick={() => void handlePayDeal(row)}
                   >
-                    {busy ? "Redirecting…" : row.needsPlanUpgrade ? "Upgrade" : "Pay"}
+                    {busy ? (
+                      <Loader2
+                        size={16}
+                        strokeWidth={2}
+                        className="deals_create_btn_spin"
+                        aria-hidden="true"
+                      />
+                    ) : row.needsPlanUpgrade ? (
+                      "Upgrade"
+                    ) : (
+                      "Pay"
+                    )}
                   </button>
                 );
               },
@@ -2662,7 +2716,11 @@ function BillingDealDetailsPanel({
         </div>
       </div>
 
-      <div className="cp_billing_invoices_table_wrap deal_inv_table_panel">
+      <div
+        className={`cp_billing_invoices_table_wrap deal_inv_table_panel${
+          platformAdmin ? "" : " cp_billing_detail_table_wrap"
+        }`}
+      >
         {platformAdmin ? (
           <DataTable
             columns={organizationColumns}
@@ -2699,9 +2757,11 @@ function BillingDealDetailsPanel({
                       getRowKey={(deal) => deal.id}
                       emptyLabel="No deals"
                       visualVariant="members"
-                      membersTableClassName="um_table_members deal_inv_table"
+                      membersTableClassName="um_table_members deal_inv_table cp_billing_org_deals_table"
                       membersShell="plain"
                       stickyFirstColumn={false}
+                      forceHorizontalScroll={false}
+                      floatingHorizontalScroll={false}
                       initialSort={{ columnId: "dealName", direction: "asc" }}
                       getRowClassName={(deal) =>
                         expandedDealId === deal.id
@@ -2734,8 +2794,10 @@ function BillingDealDetailsPanel({
             }
             isLoading={loading}
             visualVariant="members"
-            membersTableClassName="um_table_members deal_inv_table"
+            membersTableClassName="um_table_members deal_inv_table cp_billing_detail_table"
             membersShell="default"
+            forceHorizontalScroll={false}
+            floatingHorizontalScroll={false}
             initialSort={{ columnId: "dealName", direction: "asc" }}
             pagination={pagination}
             getRowClassName={(row) =>
@@ -2775,6 +2837,43 @@ function BillingDealDetailsPanel({
           onCancel={() => {
             if (startDateBusy) return;
             setStartDateRow(null);
+          }}
+        />
+      ) : null}
+      {futureBillingSetup ? (
+        <BillingPaymentElementModal
+          open
+          mode="setup"
+          companyId={futureBillingSetup.companyId}
+          clientSecret={futureBillingSetup.session.clientSecret}
+          publishableKeyHint={futureBillingSetup.session.publishableKey}
+          title="Add payment method for future billing"
+          subtitle={`${futureBillingSetup.row.dealName.trim() || "This deal"} is complimentary until ${formatSaasBillingStartIsoDisplay(
+            futureBillingSetup.row.saasBillingStartsAt,
+          )}.`}
+          footerInfo={
+            <span className="cp_billing_future_method_note">
+              <Info size={15} strokeWidth={2} aria-hidden="true" />
+              <span>
+                You will not be charged today. This payment method will be
+                added now, and the SaaS amount will be deducted from the SaaS
+                billing date. Payments stop only when the deal is archived or
+                liquidated.
+              </span>
+            </span>
+          }
+          submitLabel="Save and proceed"
+          onClose={() => setFutureBillingSetup(null)}
+          onSuccess={() => {
+            const row = futureBillingSetup.row;
+            setFutureBillingSetup(null);
+            onPaid?.();
+            toast.success(
+              "Payment method saved",
+              `Payment for ${row.dealName.trim() || "this deal"} will start with this method on the SaaS billing date, ${formatSaasBillingStartIsoDisplay(
+                row.saasBillingStartsAt,
+              )}.`,
+            );
           }}
         />
       ) : null}

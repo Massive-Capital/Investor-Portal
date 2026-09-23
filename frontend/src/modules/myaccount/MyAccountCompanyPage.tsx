@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import {
   Building2,
   CircleUser,
+  Eye,
   Loader2,
   Rocket,
   Save,
@@ -18,6 +19,7 @@ import {
   orgRoleLabelForMyAccount,
   viewerShowsOrgRoleInMyAccount,
 } from "./myAccountOrgRole"
+import { canSetPlatformVisibility } from "./myAccountIndividual"
 import { profileRoleLabelForMyAccount } from "./myAccountProfileRole"
 import { MyAccountPanelLoader } from "./MyAccountPanelLoader"
 import {
@@ -34,10 +36,24 @@ const START_SYNDICATING_OPTIONS = [
   { value: "no", label: "No" },
 ] as const
 
+const VISIBLE_TO_USERS_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+] as const
+
 type StartSyndicatingChoice = "yes" | "no"
+type VisibleToUsersChoice = "yes" | "no"
 
 function sessionRole(u: Record<string, unknown> | null): string {
   return String(u?.role ?? "").trim()
+}
+
+function visibleToUsersChoiceFromUser(
+  u: Record<string, unknown> | null,
+): VisibleToUsersChoice {
+  return u?.visibleToUsers === true || u?.visible_to_users === true
+    ? "yes"
+    : "no"
 }
 
 export function MyAccountCompanyPage() {
@@ -51,6 +67,11 @@ export function MyAccountCompanyPage() {
   )
   const [startSyndicating, setStartSyndicating] =
     useState<StartSyndicatingChoice>("no")
+  const [showVisibleToUsers, setShowVisibleToUsers] = useState(false)
+  const [visibleToUsers, setVisibleToUsers] =
+    useState<VisibleToUsersChoice>("no")
+  const [initialVisibleToUsers, setInitialVisibleToUsers] =
+    useState<VisibleToUsersChoice>("no")
   const [error, setError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -65,15 +86,27 @@ export function MyAccountCompanyPage() {
     const u = readSessionUser()
     setSessionUser(u)
     const name = getActiveWorkspaceCompanyName()
+    const visibility = visibleToUsersChoiceFromUser(u)
     setCompanyName(name)
     setInitialCompanyName(name)
+    setShowVisibleToUsers(canSetPlatformVisibility(u))
+    setVisibleToUsers(visibility)
+    setInitialVisibleToUsers(visibility)
   }, [])
 
   const hasChanges = useMemo(
     () =>
       companyName.trim() !== initialCompanyName.trim() ||
-      startSyndicating === "yes",
-    [companyName, initialCompanyName, startSyndicating],
+      startSyndicating === "yes" ||
+      (showVisibleToUsers && visibleToUsers !== initialVisibleToUsers),
+    [
+      companyName,
+      initialCompanyName,
+      startSyndicating,
+      showVisibleToUsers,
+      visibleToUsers,
+      initialVisibleToUsers,
+    ],
   )
 
   useEffect(() => {
@@ -114,16 +147,23 @@ export function MyAccountCompanyPage() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (!canEditCompanyName || !hasChanges || isSaving) return
+    if (!hasChanges || isSaving) return
     const name = companyName.trim()
-    if (!name) {
+    const companyNameChanged = name !== initialCompanyName.trim()
+    const wantsSyndicating = startSyndicating === "yes"
+    const visibilityChanged =
+      showVisibleToUsers && visibleToUsers !== initialVisibleToUsers
+    const needsCompanyName = companyNameChanged || wantsSyndicating
+    if (needsCompanyName && !canEditCompanyName) return
+    if (needsCompanyName && !name) {
       setError("Enter a company name.")
       return
     }
     setError("")
     setIsSaving(true)
     try {
-      if (canRenameOrgCompany) {
+      let companyNameSaved = false
+      if (canRenameOrgCompany && companyNameChanged) {
         const companyId = getSessionOrganizationCompanyId()
         if (!companyId) {
           setError("Company workspace is not available.")
@@ -169,41 +209,57 @@ export function MyAccountCompanyPage() {
         }
         loadFromSession()
         window.dispatchEvent(new CustomEvent(PORTAL_ACTIVE_COMPANY_CHANGED_EVENT))
-        toast.success("Saved", "Company name updated.")
-        return
+        companyNameSaved = true
       }
-      const wantsSyndicating = startSyndicating === "yes"
-      const { user, joinedExistingCompany, startedSyndicating } =
-        await patchMyProfile({
-          companyName: name,
+
+      let joinedExistingCompany = false
+      if (!canRenameOrgCompany || visibilityChanged) {
+        const profilePatch: Parameters<typeof patchMyProfile>[0] = {
+          ...(canRenameOrgCompany || !needsCompanyName
+            ? {}
+            : { companyName: name }),
           ...(wantsSyndicating ? { startSyndicating: true } : {}),
-        })
-      mergeSessionUserDetails(user)
-      loadFromSession()
-      if (startedSyndicating) {
-        // New role lives in the access token, so mint a fresh pair before the
-        // syndicating workspace loads.
-        await refreshAuthTokens()
-        const refreshed = await fetchMyProfile()
-        if (refreshed) mergeSessionUserDetails(refreshed)
-        setStartSyndicating("no")
-        toast.success(
-          "Syndicating is on",
-          `You can now run deals for ${name}.`,
-        )
-        switchToSyndicating()
-        navigate("/dashboard", { replace: true })
-        return
+          ...(visibilityChanged
+            ? { visibleToUsers: visibleToUsers === "yes" }
+            : {}),
+        }
+        const { user, joinedExistingCompany: joined, startedSyndicating } =
+          await patchMyProfile(profilePatch)
+        joinedExistingCompany = Boolean(joined)
+        mergeSessionUserDetails(user)
+        loadFromSession()
+        if (startedSyndicating) {
+          // New role lives in the access token, so mint a fresh pair before the
+          // syndicating workspace loads.
+          await refreshAuthTokens()
+          const refreshed = await fetchMyProfile()
+          if (refreshed) mergeSessionUserDetails(refreshed)
+          setStartSyndicating("no")
+          toast.success(
+            "Syndicating is on",
+            `You can now run deals for ${name}.`,
+          )
+          switchToSyndicating()
+          navigate("/dashboard", { replace: true })
+          return
+        }
       }
-      toast.success(
-        "Company details saved",
-        joinedExistingCompany
-          ? `This company already exists. Your account was added to ${name}.`
-          : `${name} was created and linked to your account.`,
-      )
+
+      if (companyNameSaved && !visibilityChanged) {
+        toast.success("Saved", "Company name updated.")
+      } else if (!canRenameOrgCompany && companyNameChanged) {
+        toast.success(
+          "Company details saved",
+          joinedExistingCompany
+            ? `This company already exists. Your account was added to ${name}.`
+            : `${name} was created and linked to your account.`,
+        )
+      } else {
+        toast.success("Company details saved", "Your details were updated.")
+      }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not save company name.",
+        err instanceof Error ? err.message : "Could not save company details.",
       )
     } finally {
       setIsSaving(false)
@@ -278,6 +334,39 @@ export function MyAccountCompanyPage() {
             />
           </div>
         ) : null}
+        {showVisibleToUsers ? (
+          <section
+            className="um_panel myaccount_question_card"
+            aria-labelledby="myaccount-visible-to-users-label"
+          >
+            <p
+              id="myaccount-visible-to-users-label"
+              className="um_field_label_row"
+            >
+              <Eye className="um_field_label_icon" size={17} aria-hidden />
+              <span>Do you want to be visible to users?</span>
+            </p>
+            <p className="myaccount_field_hint">
+              Choose Yes to appear for all platform users under Contacts →
+              Platform Contacts.
+            </p>
+            <fieldset
+              className="myaccount_question_fieldset"
+              disabled={isSaving}
+            >
+              <RadioPillGroup
+                name="myaccount-visible-to-users"
+                value={visibleToUsers}
+                options={VISIBLE_TO_USERS_OPTIONS}
+                onChange={(next) => {
+                  setVisibleToUsers(next)
+                  if (error) setError("")
+                }}
+                ariaLabelledBy="myaccount-visible-to-users-label"
+              />
+            </fieldset>
+          </section>
+        ) : null}
         {isInvestorAccount ? (
           <section
             className="um_panel myaccount_question_card"
@@ -312,12 +401,18 @@ export function MyAccountCompanyPage() {
             </fieldset>
           </section>
         ) : null}
-        {canEditCompanyName ? (
+        {canEditCompanyName || showVisibleToUsers ? (
           <div className="myaccount_actions">
             <button
               type="submit"
               className="um_btn_primary"
-              disabled={isSaving || !hasChanges || !companyName.trim()}
+              disabled={
+                isSaving ||
+                !hasChanges ||
+                ((companyName.trim() !== initialCompanyName.trim() ||
+                  startSyndicating === "yes") &&
+                  !companyName.trim())
+              }
             >
               {isSaving ? (
                 <>

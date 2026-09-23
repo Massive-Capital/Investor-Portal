@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../../database/db.js";
 import {
   addDealForm,
@@ -30,7 +30,12 @@ import {
 } from "../../constants/roles.js";
 import { userHasAccessToOrganization } from "../org/orgResolution.service.js";
 import { releaseBillingPaymentHold } from "../../middleware/billingPaymentLock.js";
-import { periodEndFromSubscription } from "./dealBilling.service.js";
+import {
+  createDealStripeSubscription,
+  isDealSaasBillable,
+  periodEndFromSubscription,
+  suggestedPlanIdForDeal,
+} from "./dealBilling.service.js";
 import {
   dealSaasBillingHasStarted,
   dealSaasBillingNotYetDueMessage,
@@ -944,6 +949,145 @@ export async function payCompanyDealWithSavedMethod(params: {
       err instanceof Error ? err.message : "Could not pay with this method";
     return { ok: false, status: 502, message: msg };
   }
+}
+
+const AUTO_DEAL_BILLING_ACTIVE_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+]);
+
+function billingCycleForAutomaticDealBilling(
+  raw: string | null | undefined,
+): StripeBillingCycle {
+  const s = String(raw ?? "").trim().toLowerCase();
+  return s === "annual" || s === "annually" || s === "yearly"
+    ? "annual"
+    : "monthly";
+}
+
+export async function processDueDealSaasBillingFromSavedMethods(
+  options: { limit?: number } = {},
+): Promise<{
+  checked: number;
+  started: number;
+  skipped: number;
+  failed: number;
+}> {
+  if (!getStripeConfig()) {
+    return { checked: 0, started: 0, skipped: 0, failed: 0 };
+  }
+
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 50), 1), 200);
+  const dueRows = await db
+    .select({
+      deal: addDealForm,
+      companyId: companies.id,
+      stripeCustomerId: companies.stripeCustomerId,
+    })
+    .from(addDealForm)
+    .innerJoin(companies, eq(addDealForm.organizationId, companies.id))
+    .where(
+      and(
+        eq(addDealForm.archived, false),
+        sql`${addDealForm.saasBillingStartsAt} IS NOT NULL`,
+        sql`${addDealForm.saasBillingStartsAt} <= now()`,
+        sql`coalesce(${addDealForm.stripeSubscriptionStatus}, 'none') not in ('active', 'trialing', 'past_due', 'unpaid')`,
+      ),
+    )
+    .limit(limit);
+
+  let started = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const row of dueRows) {
+    const deal = row.deal;
+    const dealId = String(deal.id ?? "").trim();
+    const companyId = normalizeCompanyId(String(row.companyId ?? ""));
+    const customerId = String(row.stripeCustomerId ?? "").trim();
+    if (
+      !dealId ||
+      !companyId ||
+      !customerId ||
+      !isDealSaasBillable(deal) ||
+      AUTO_DEAL_BILLING_ACTIVE_STATUSES.has(
+        String(deal.stripeSubscriptionStatus ?? "").trim().toLowerCase(),
+      )
+    ) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const paymentMethodId = await resolveDefaultPaymentMethodId(customerId);
+      if (!paymentMethodId) {
+        skipped += 1;
+        continue;
+      }
+
+      const planId = await suggestedPlanIdForDeal(dealId);
+      const cycle = billingCycleForAutomaticDealBilling(
+        deal.stripeBillingCycle,
+      );
+      const sub = await createDealStripeSubscription({
+        deal,
+        customerId,
+        paymentMethodId,
+        planId,
+        cycle,
+        seatBand: "5",
+        paymentBehavior: "error_if_incomplete",
+      });
+      if (!sub) {
+        failed += 1;
+        continue;
+      }
+
+      const status = String(sub.status ?? "").toLowerCase();
+      if (status !== "active" && status !== "trialing") {
+        try {
+          await getStripeClient().subscriptions.cancel(sub.id);
+        } catch {
+          /* ignore cleanup failure */
+        }
+        failed += 1;
+        continue;
+      }
+
+      await applySubscriptionToCompany(companyId, sub, { dealId });
+      await recordBillingEvent({
+        companyId,
+        eventType: "deal_saas.auto_billing_started",
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: customerId,
+        message: `Automatic SaaS billing started for deal ${dealId}`,
+        payload: {
+          dealId,
+          planId,
+          cycle,
+          paymentMethodId,
+          saasBillingStartsAt: deal.saasBillingStartsAt,
+        },
+      });
+      started += 1;
+    } catch (err) {
+      failed += 1;
+      console.warn(
+        "processDueDealSaasBillingFromSavedMethods:",
+        dealId,
+        err,
+      );
+    }
+  }
+
+  return {
+    checked: dueRows.length,
+    started,
+    skipped,
+    failed,
+  };
 }
 
 type InvoiceWithSecrets = Stripe.Invoice & {

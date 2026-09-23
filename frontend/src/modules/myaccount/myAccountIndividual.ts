@@ -15,7 +15,7 @@ export function isStandaloneIndividualAccount(
 }
 
 /**
- * Shows the Platform Contacts visibility question on Personal details. Every
+ * Shows the Platform Contacts visibility question on Company details. Every
  * signed-in account gets it, including contacts who became portal users and
  * company members.
  */
@@ -25,7 +25,7 @@ export function canSetPlatformVisibility(
   return Boolean(u)
 }
 
-/** `/account` landing tab: individuals start on Personal details (visibility question). */
+/** `/account` landing tab: standalone individuals still start on Personal details. */
 export function myAccountDefaultTabPath(
   u: Record<string, unknown> | null,
 ): "/account/personal" | "/account/company" {
