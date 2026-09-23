@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Navigate } from "react-router-dom"
 import { fetchMyProfile } from "./accountApi"
 import { myAccountDefaultTabPath } from "./myAccountIndividual"
+import { MyAccountPanelLoader } from "./MyAccountPanelLoader"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
 
 /**
@@ -25,6 +26,6 @@ export function MyAccountIndexRedirect() {
     }
   }, [])
 
-  if (!ready) return null
+  if (!ready) return <MyAccountPanelLoader />
   return <Navigate to={myAccountDefaultTabPath(user)} replace />
 }

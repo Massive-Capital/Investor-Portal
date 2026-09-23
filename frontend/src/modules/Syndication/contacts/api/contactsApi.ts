@@ -645,6 +645,30 @@ export async function sendContactInvitation(
   return normalizeContact(c)
 }
 
+/** This user's own investor signup link; signups through it become their contacts. */
+export async function fetchInvestorInviteLink(): Promise<string> {
+  const base = getApiV1Base()
+  if (!base) {
+    throw new Error("API is not configured (VITE_BASE_URL).")
+  }
+  const res = await fetch(`${base}/contacts/investor-invite-link`, {
+    headers: { ...authHeaders() },
+    credentials: "include",
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    message?: unknown
+    inviteUrl?: unknown
+  }
+  if (!res.ok) {
+    const msg =
+      data?.message != null ? String(data.message) : `Error ${res.status}`
+    throw new Error(msg)
+  }
+  const url = String(data.inviteUrl ?? "").trim()
+  if (!url) throw new Error("Invalid response")
+  return url
+}
+
 export async function updateContact(
   id: string,
   payload: Omit<ContactRow, "id" | "createdByDisplayName">,

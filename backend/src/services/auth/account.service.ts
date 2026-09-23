@@ -16,13 +16,20 @@ import {
   upsertUserCompanyMembership,
 } from "./userCompanyMembership.service.js";
 import { revokeAllUserAuthTokens } from "./token.service.js";
-import { ensureCompanyByName } from "../company/company.service.js";
-import { COMPANY_ADMIN, isInvestorPortalRole } from "../../constants/roles.js";
 import {
-  getSelfRegisteredContactVisibleToUsers,
+  COMPANY_NAME_TAKEN_MESSAGE,
+  ensureCompanyByName,
+  isCompanyNameTaken,
+} from "../company/company.service.js";
+import {
+  COMPANY_ADMIN,
+  isCompanyAdminRole,
+  isInvestorPortalRole,
+} from "../../constants/roles.js";
+import {
+  getSelfRegisteredContactVisibility,
   setSelfRegisteredContactVisibleToUsers,
 } from "../contact/contact.service.js";
-
 const BCRYPT_ROUNDS = 10;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 16;
@@ -60,18 +67,6 @@ function userDetailsShape(u: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-function isStandaloneIndividualAccount(payload: Record<string, unknown>): boolean {
-  if (!isInvestorPortalRole(String(payload.role ?? ""))) return false;
-  const orgId = String(
-    payload.organization_id ?? payload.organizationId ?? "",
-  ).trim();
-  if (orgId) return false;
-  const memberships = Array.isArray(payload.memberships)
-    ? payload.memberships
-    : [];
-  return memberships.length === 0;
-}
-
 export function parseVisibleToUsersFlag(raw: unknown): boolean | undefined {
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "number") {
@@ -86,17 +81,18 @@ export function parseVisibleToUsersFlag(raw: unknown): boolean | undefined {
   return undefined;
 }
 
-async function attachStandaloneInvestorVisibility(
+/**
+ * "Do you want to be visible to users?" is on Personal details for every
+ * account. The answer lives on the account's own CRM row, so the payload
+ * carries whatever that row currently holds.
+ */
+async function attachIndividualSignupVisibility(
   userId: string,
   payload: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const standalone = isStandaloneIndividualAccount(payload);
-  payload.canSetVisibleToUsers = standalone;
-  if (!standalone) {
-    payload.visibleToUsers = false;
-    return payload;
-  }
-  payload.visibleToUsers = await getSelfRegisteredContactVisibleToUsers(userId);
+  const selfRegistered = await getSelfRegisteredContactVisibility(userId);
+  payload.canSetVisibleToUsers = true;
+  payload.visibleToUsers = selfRegistered.visibleToUsers;
   return payload;
 }
 
@@ -125,7 +121,7 @@ async function userDetailsShapeWithDealParticipant(
     portalRole: u.role as string | undefined,
     userId,
   });
-  return attachStandaloneInvestorVisibility(userId, withLp);
+  return attachIndividualSignupVisibility(userId, withLp);
 }
 
 export async function changePasswordForUser(
@@ -404,7 +400,20 @@ export async function updateOwnProfile(
         status: 400,
         message: "No organization to update",
       };
+    } else if (!isCompanyAdminRole(row.role)) {
+      return {
+        ok: false,
+        status: 403,
+        message: "Only company administrators can update the company name",
+      };
     } else {
+      if (await isCompanyNameTaken(name, row.organizationId)) {
+        return {
+          ok: false,
+          status: 409,
+          message: COMPANY_NAME_TAKEN_MESSAGE,
+        };
+      }
       await db
         .update(companies)
         .set({ name, updatedAt: new Date() })
@@ -475,18 +484,6 @@ export async function updateOwnProfile(
   }
 
   if (hasVisibleToUsers) {
-    const memberships = await listUserCompanyMemberships(userId);
-    const standalone =
-      isInvestorPortalRole(row.role) &&
-      !String(row.organizationId ?? "").trim() &&
-      memberships.length === 0;
-    if (!standalone) {
-      return {
-        ok: false,
-        status: 400,
-        message: "This setting is only available for individual accounts.",
-      };
-    }
     await setSelfRegisteredContactVisibleToUsers({
       userId,
       emailNorm: String(row.email ?? "").trim().toLowerCase(),

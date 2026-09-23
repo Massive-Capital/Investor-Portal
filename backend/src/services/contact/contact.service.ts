@@ -24,7 +24,11 @@ import {
   viewerShouldSeeOnlySelfCreatedContacts,
 } from "../deal/dealMemberScope.service.js";
 import { listAddDealFormsForViewer } from "../deal/dealForm.service.js";
-import { visibleDealIdsCache, contactDirectoryCache } from "../cache/listReadCache.js";
+import {
+  visibleDealIdsCache,
+  contactDirectoryCache,
+  invalidateContactDirectoryCache,
+} from "../cache/listReadCache.js";
 import {
   normalizeOrganizationUuid,
   resolveActiveOrganizationIdForUser,
@@ -439,25 +443,28 @@ function excludePlatformAdminOnlyContactsWhere(): SQL {
   return eq(contact.platformAdminOnly, false);
 }
 
-/** Self-registered CRM rows the investor opted in to share with company users. */
+/**
+ * CRM rows whose person answered Yes to "Do you want to be visible to users?".
+ * Keyed on the answer alone: a contact a sponsor added opts in on the same row
+ * they already own, so it never carries `platform_admin_only`.
+ */
 function optedInSelfRegisteredContactsWhere(): SQL {
-  return and(
-    eq(contact.platformAdminOnly, true),
-    eq(contact.visibleToUsers, true),
-  )!;
+  return eq(contact.visibleToUsers, true);
 }
 
 export function isOptedInSelfRegisteredContactRow(
   row: Pick<ContactRow, "platformAdminOnly" | "visibleToUsers">,
 ): boolean {
-  return Boolean(row.platformAdminOnly) && Boolean(row.visibleToUsers);
+  return Boolean(row.visibleToUsers);
 }
 
 /**
- * Platform Contacts section: self-registered investors.
- * Company users see only those who opted in (`visible_to_users`).
- * Platform admins see every self-registered row, including visibility No.
- * Own row is omitted.
+ * Platform Contacts section.
+ * Company users see opted-in self-registered rows only (`platform_admin_only`
+ * + `visible_to_users`) — org CRM stays on the Contact tab.
+ * Platform admins see every self-registered row, plus any org contact who
+ * answered Yes to “visible to users”. A No keeps that person on the org list
+ * only. Own row is omitted.
  */
 export async function listPlatformVisibleContacts(
   viewerUserId: string,
@@ -472,7 +479,10 @@ export async function listPlatformVisibleContacts(
   const viewerEmailNorm = normalizeContactEmailForScope(viewer?.email ?? "");
   const role = String(viewer?.role ?? viewerRole ?? "").trim();
   const visibility = isPlatformAdminRole(role)
-    ? eq(contact.platformAdminOnly, true)
+    ? or(
+        eq(contact.platformAdminOnly, true),
+        eq(contact.visibleToUsers, true),
+      )!
     : optedInSelfRegisteredContactsWhere();
   const parts: SQL[] = [visibility];
   if (viewerEmailNorm.includes("@")) {
@@ -609,19 +619,64 @@ export async function ensureSelfRegisteredInvestorContact(params: {
   return String(inserted?.id ?? "").trim() || null;
 }
 
-export async function getSelfRegisteredContactVisibleToUsers(
+/**
+ * The CRM row that stands for this account: their own self-registered row when
+ * they have one, otherwise the row a sponsor added for the same email. The
+ * Personal details visibility answer is stored on whichever row this returns.
+ */
+async function findAccountContactId(
   userId: string,
-): Promise<boolean> {
+  emailNorm?: string,
+): Promise<string | null> {
   const uid = String(userId ?? "").trim();
-  if (!uid) return false;
-  const [row] = await db
-    .select({ visibleToUsers: contact.visibleToUsers })
+  if (!uid) return null;
+
+  const [own] = await db
+    .select({ id: contact.id })
     .from(contact)
     .where(
       and(eq(contact.createdBy, uid), eq(contact.platformAdminOnly, true)),
     )
     .limit(1);
-  return Boolean(row?.visibleToUsers);
+  if (own) return String(own.id).trim() || null;
+
+  let email = normalizeContactEmailForScope(emailNorm ?? "");
+  if (!email) {
+    const [user] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, uid))
+      .limit(1);
+    email = normalizeContactEmailForScope(user?.email ?? "");
+  }
+  if (!email || !email.includes("@")) return null;
+
+  const [byEmail] = await db
+    .select({ id: contact.id })
+    .from(contact)
+    .where(sql`lower(trim(${contact.email})) = ${email}`)
+    .limit(1);
+  return byEmail ? String(byEmail.id).trim() || null : null;
+}
+
+/**
+ * Current answer to "Do you want to be visible to users?" for this account.
+ * `exists` reports whether any CRM row represents them yet.
+ */
+export async function getSelfRegisteredContactVisibility(
+  userId: string,
+): Promise<{ exists: boolean; visibleToUsers: boolean }> {
+  const contactId = await findAccountContactId(userId);
+  if (!contactId) return { exists: false, visibleToUsers: false };
+  const [row] = await db
+    .select({ visibleToUsers: contact.visibleToUsers })
+    .from(contact)
+    .where(eq(contact.id, contactId))
+    .limit(1);
+  return {
+    exists: Boolean(row),
+    visibleToUsers: Boolean(row?.visibleToUsers),
+  };
 }
 
 export async function setSelfRegisteredContactVisibleToUsers(params: {
@@ -634,22 +689,25 @@ export async function setSelfRegisteredContactVisibleToUsers(params: {
 }): Promise<void> {
   const uid = String(params.userId ?? "").trim();
   if (!uid) return;
-  const contactId = await ensureSelfRegisteredInvestorContact({
-    userId: uid,
-    emailNorm: params.emailNorm,
-    firstName: params.firstName,
-    lastName: params.lastName,
-    phone: params.phone,
-  });
+  const contactId =
+    (await findAccountContactId(uid, params.emailNorm)) ??
+    (await ensureSelfRegisteredInvestorContact({
+      userId: uid,
+      emailNorm: params.emailNorm,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      phone: params.phone,
+    }));
   if (!contactId) return;
   const [updated] = await db
     .update(contact)
     .set({ visibleToUsers: params.visibleToUsers })
-    .where(
-      and(eq(contact.id, contactId), eq(contact.platformAdminOnly, true)),
-    )
+    .where(eq(contact.id, contactId))
     .returning();
-  if (updated) queueGhlContactRowSync(updated);
+  if (updated) {
+    invalidateContactDirectoryCache();
+    queueGhlContactRowSync(updated);
+  }
 }
 
 export function isSelfRegisteredInvestorContactRow(
@@ -1798,6 +1856,7 @@ async function viewerCanAccessContactRow(
     );
   }
   if (isPlatformAdminRole(ctx.roleForScope)) {
+    if (Boolean(row.visibleToUsers)) return true;
     if (!ctx.organizationId) return false;
     return contactRowBelongsToOrganization(
       row,
@@ -1966,6 +2025,11 @@ export async function markContactInvitationEmailSent(
 
 export type { ContactOfferingVisibility };
 
+/**
+ * Read-only lookup. Someone who opted in to platform visibility is readable by
+ * any user, matching the list scope; editing them still needs owner access, so
+ * the write paths keep using {@link viewerCanAccessContactRow} on its own.
+ */
 export async function getContactForViewer(
   viewerUserId: string,
   contactId: string,
@@ -1974,6 +2038,7 @@ export async function getContactForViewer(
 ): Promise<ContactRow | null> {
   const row = await getContactById(contactId);
   if (!row) return null;
+  if (isOptedInSelfRegisteredContactRow(row)) return row;
   if (
     !(await viewerCanAccessContactRow(
       viewerUserId,

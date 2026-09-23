@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
 import { refreshAuthTokens } from "../../common/auth/authTokensApi"
-import { INVESTOR } from "../../common/auth/roleUtils"
+import { COMPANY_ADMIN, INVESTOR } from "../../common/auth/roleUtils"
 import { RadioPillGroup } from "../../common/components/radio-pill-group/RadioPillGroup"
 import { fetchMyProfile, patchMyProfile } from "./accountApi"
 import {
@@ -19,7 +19,12 @@ import {
   viewerShowsOrgRoleInMyAccount,
 } from "./myAccountOrgRole"
 import { profileRoleLabelForMyAccount } from "./myAccountProfileRole"
-import { getActiveWorkspaceCompanyName } from "../../common/auth/sessionOrganization"
+import { MyAccountPanelLoader } from "./MyAccountPanelLoader"
+import {
+  getActiveWorkspaceCompanyName,
+  getSessionOrganizationCompanyId,
+} from "../../common/auth/sessionOrganization"
+import { patchCompanyDisplayName } from "../Syndication/company/companyWorkspaceSettingsApi"
 import { PORTAL_ACTIVE_COMPANY_CHANGED_EVENT } from "../../common/auth/setActiveCompany"
 import { toast } from "../../common/components/Toast"
 import { mergeSessionUserDetails, readSessionUser } from "./sessionUser"
@@ -48,10 +53,13 @@ export function MyAccountCompanyPage() {
     useState<StartSyndicatingChoice>("no")
   const [error, setError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const portalRoleLabel = profileRoleLabelForMyAccount(portalMode)
   const showOrgRole = viewerShowsOrgRoleInMyAccount(sessionUser)
   const orgRoleLabel = orgRoleLabelForMyAccount(sessionUser)
-  const canEditCompanyName = sessionRole(sessionUser) === INVESTOR
+  const isInvestorAccount = sessionRole(sessionUser) === INVESTOR
+  const canRenameOrgCompany = sessionRole(sessionUser) === COMPANY_ADMIN
+  const canEditCompanyName = isInvestorAccount || canRenameOrgCompany
 
   const loadFromSession = useCallback(() => {
     const u = readSessionUser()
@@ -69,11 +77,18 @@ export function MyAccountCompanyPage() {
   )
 
   useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
     loadFromSession()
     void fetchMyProfile().then((user) => {
+      if (cancelled) return
       if (user) mergeSessionUserDetails(user)
       loadFromSession()
+      setIsLoading(false)
     })
+    return () => {
+      cancelled = true
+    }
   }, [location.pathname, loadFromSession])
 
   useEffect(() => {
@@ -108,6 +123,55 @@ export function MyAccountCompanyPage() {
     setError("")
     setIsSaving(true)
     try {
+      if (canRenameOrgCompany) {
+        const companyId = getSessionOrganizationCompanyId()
+        if (!companyId) {
+          setError("Company workspace is not available.")
+          return
+        }
+        const result = await patchCompanyDisplayName(companyId, name)
+        if (!result.ok) {
+          setError(result.message)
+          toast.error("Could not update company name", result.message)
+          return
+        }
+        const saved = result.name
+        mergeSessionUserDetails({
+          companyName: saved,
+          company_name: saved,
+          organizationName: saved,
+          organization_name: saved,
+        })
+        const session = readSessionUser()
+        if (session && Array.isArray(session.memberships)) {
+          const id = companyId.trim().toLowerCase()
+          mergeSessionUserDetails({
+            memberships: session.memberships.map((item) => {
+              if (item == null || typeof item !== "object" || Array.isArray(item)) {
+                return item
+              }
+              const rec = item as Record<string, unknown>
+              const recId = String(
+                rec.companyId ?? rec.company_id ?? "",
+              )
+                .trim()
+                .toLowerCase()
+              if (recId !== id) return item
+              return {
+                ...rec,
+                companyName: saved,
+                company_name: saved,
+                company: saved,
+                organization_name: saved,
+              }
+            }),
+          })
+        }
+        loadFromSession()
+        window.dispatchEvent(new CustomEvent(PORTAL_ACTIVE_COMPANY_CHANGED_EVENT))
+        toast.success("Saved", "Company name updated.")
+        return
+      }
       const wantsSyndicating = startSyndicating === "yes"
       const { user, joinedExistingCompany, startedSyndicating } =
         await patchMyProfile({
@@ -145,6 +209,8 @@ export function MyAccountCompanyPage() {
       setIsSaving(false)
     }
   }
+
+  if (isLoading) return <MyAccountPanelLoader label="Loading company details…" />
 
   return (
     <div className="myaccount_form_body myaccount_form_body--grid">
@@ -212,7 +278,7 @@ export function MyAccountCompanyPage() {
             />
           </div>
         ) : null}
-        {canEditCompanyName ? (
+        {isInvestorAccount ? (
           <section
             className="um_panel myaccount_question_card"
             aria-labelledby="myaccount-start-syndicating-label"

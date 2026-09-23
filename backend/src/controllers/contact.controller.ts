@@ -48,6 +48,10 @@ import {
   listContactOwnerSponsorsForViewer,
 } from "../services/contact/contactOwnerSponsors.service.js";
 import {
+  buildInvestorInviteLinkForDeal,
+  buildInvestorInviteLinkForUser,
+} from "../services/contact/investorInviteLink.service.js";
+import {
   contactCanSendInvitationEmail,
   contactInvitationEmailBlockReason,
   sendContactInvitationEmailIfRequested,
@@ -465,6 +469,55 @@ export async function getContactOwnerSponsors(
   } catch (err) {
     console.error("getContactOwnerSponsors:", err);
     res.status(500).json({ message: "Could not load contact owners" });
+  }
+}
+
+/** GET /contacts/investor-invite-link — this user's own investor signup link. */
+export async function getInvestorInviteLink(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  try {
+    const link = await buildInvestorInviteLinkForUser(user.id);
+    if (!link) {
+      res
+        .status(403)
+        .json({ message: "This account cannot share an investor invite link." });
+      return;
+    }
+    res.status(200).json(link);
+  } catch (err) {
+    console.error("getInvestorInviteLink:", err);
+    res.status(500).json({ message: "Could not build the invite link" });
+  }
+}
+
+/** GET /deals/:dealId/investor-invite-link — unique to this lead / admin / co-sponsor. */
+export async function getDealInvestorInviteLink(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const dealId = String(req.params.dealId ?? "").trim();
+  try {
+    const result = await buildInvestorInviteLinkForDeal(user.id, dealId);
+    if (!result.ok) {
+      res.status(result.status).json({ message: result.message });
+      return;
+    }
+    res.status(200).json(result.link);
+  } catch (err) {
+    console.error("getDealInvestorInviteLink:", err);
+    res.status(500).json({ message: "Could not build the invite link" });
   }
 }
 

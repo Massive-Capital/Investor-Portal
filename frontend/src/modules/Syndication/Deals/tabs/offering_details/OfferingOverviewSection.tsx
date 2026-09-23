@@ -222,10 +222,13 @@ function isMoneyFieldEmpty(raw: string): boolean {
     .trim() === ""
 }
 
-function overviewDraftPricePerUnit(draft: OverviewDraft): string {
+function overviewDraftPricePerUnit(
+  draft: OverviewDraft,
+  raiseAmountDistributions: string,
+): string {
   return computeInvestorClassPricePerUnitFromForm({
     offeringSize: draft.classOfferingSize,
-    raiseAmountDistributions: "",
+    raiseAmountDistributions,
     numberOfUnits: draft.classNumberOfUnits,
   })
 }
@@ -234,12 +237,16 @@ function withOverviewAutoPricePerUnit(
   patch: Partial<OverviewDraft>,
   current: OverviewDraft,
   isLpClass: boolean,
+  raiseAmountDistributions: string,
 ): OverviewDraft {
   const merged = { ...current, ...patch }
   if (!isLpClass) return merged
   return {
     ...merged,
-    classPricePerUnit: overviewDraftPricePerUnit(merged),
+    classPricePerUnit: overviewDraftPricePerUnit(
+      merged,
+      raiseAmountDistributions,
+    ),
   }
 }
 
@@ -674,7 +681,7 @@ export function OfferingOverviewSection({
         form.minimumInvestment = draft.classMinimumInvestment
         form.numberOfUnits = draft.classNumberOfUnits
         form.pricePerUnit = isLpInvestorClass(row)
-          ? overviewDraftPricePerUnit(draft)
+          ? overviewDraftPricePerUnit(draft, form.raiseAmountDistributions)
           : draft.classPricePerUnit
         form.advanced.investmentType = draft.classInvestmentType.trim() || "equity"
         try {
@@ -846,6 +853,9 @@ export function OfferingOverviewSection({
   )
 
   const isSelectedLpClass = isLpInvestorClass(selectedClassRow)
+
+  const selectedClassRaiseAmountDistributions =
+    selectedClassRow?.raiseAmountDistributions ?? ""
 
   const showNumberOfUnitsRow = isSelectedLpClass
 
@@ -1363,6 +1373,7 @@ export function OfferingOverviewSection({
                         },
                         d,
                         isSelectedLpClass,
+                        selectedClassRaiseAmountDistributions,
                       ),
                     )
                   }}
@@ -1374,6 +1385,7 @@ export function OfferingOverviewSection({
                         },
                         d,
                         isSelectedLpClass,
+                        selectedClassRaiseAmountDistributions,
                       ),
                     )
                   }
@@ -1421,6 +1433,7 @@ export function OfferingOverviewSection({
                           },
                           d,
                           isSelectedLpClass,
+                          selectedClassRaiseAmountDistributions,
                         ),
                       )
                     }
@@ -1434,6 +1447,7 @@ export function OfferingOverviewSection({
                           },
                           d,
                           isSelectedLpClass,
+                          selectedClassRaiseAmountDistributions,
                         ),
                       )
                     }

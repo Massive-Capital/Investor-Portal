@@ -22,6 +22,7 @@ import {
   putDeal,
   deleteDeal,
 } from "../controllers/deal/add_deal.controller.js";
+import { getDealInvestorInviteLink } from "../controllers/contact.controller.js";
 import {
   deleteDealPriorDistribution,
   postDealDistributionComplete,
@@ -290,6 +291,10 @@ router.patch("/deals/:dealId/deal-stage", patchDealStage);
 router.get(
   "/deals/:dealId/offering-preview-token",
   getOfferingPreviewToken,
+);
+router.get(
+  "/deals/:dealId/investor-invite-link",
+  getDealInvestorInviteLink,
 );
 router.post(
   "/deals/:dealId/offering-preview-share-email",

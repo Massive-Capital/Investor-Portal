@@ -1187,6 +1187,50 @@
   flex-shrink: 0;
 }
 
+.contacts_header_actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem 0.75rem;
+}
+
+.contacts_header_invite_link_group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.contacts_invite_link_field {
+  margin-bottom: 1em;
+}
+
+.contacts_invite_link_copy_row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.contacts_invite_link_copy_row input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
+  height: var(--portal-button-height, var(--top-navbar-control-height, 2.25rem));
+}
+
+.contacts_invite_link_copy_btn {
+  flex-shrink: 0;
+}
+
+.contacts_invite_link_error {
+  margin: 0.45em 0 0;
+  font-size: 0.875em;
+  color: var(--portal-danger, #b91c1c);
+}
+
 .contacts_main_tab_content_flush.um_members_tab_content {
   margin-top: 0;
 }

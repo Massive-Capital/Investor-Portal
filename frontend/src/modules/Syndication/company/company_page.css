@@ -2818,10 +2818,68 @@ select.cp_settings_input_pill.um_field_select {
   border-radius: 6px;
 }
 
-.cp_billing_org_deals .um_table.deal_inv_table {
-  width: max-content;
-  min-width: 100%;
+/*
+ * Expanded org row: the nested deal table fits the parent row width instead of
+ * growing to `max-content`, so opening a company never adds a horizontal
+ * scrollbar inside the dropdown.
+ */
+.deal_inv_table_panel .cp_billing_org_deals .um_table.deal_inv_table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   table-layout: auto;
+}
+
+.deal_inv_table_panel .cp_billing_org_deals .um_table.deal_inv_table th,
+.deal_inv_table_panel .cp_billing_org_deals .um_table.deal_inv_table td {
+  min-width: 0;
+  padding-inline: 0.4em;
+  overflow-wrap: anywhere;
+}
+
+.deal_inv_table_panel
+  .cp_billing_org_deals
+  .um_table.deal_inv_table
+  .um_sort_header_ctl {
+  padding-inline: 0.15em;
+}
+
+.deal_inv_table_panel .cp_billing_org_deals .um_table.deal_inv_table .um_td_user {
+  min-width: 10rem;
+}
+
+.deal_inv_table_panel .cp_billing_org_deals thead th.deals_th_align_center {
+  min-width: 4.5rem;
+}
+
+.deal_inv_table_panel .cp_billing_org_deals thead th.deals_th_align_right {
+  min-width: 5.5rem;
+}
+
+.deal_inv_table_panel
+  .cp_billing_org_deals
+  .um_table.deal_inv_table
+  th.cp_billing_payment_status_col,
+.deal_inv_table_panel
+  .cp_billing_org_deals
+  .um_table.deal_inv_table
+  td.cp_billing_payment_status_col {
+  width: auto;
+  min-width: 6.5rem;
+  white-space: normal;
+}
+
+.deal_inv_table_panel .cp_billing_org_deals .cp_billing_invoice_status {
+  white-space: normal;
+  text-align: center;
+}
+
+.deal_inv_table_panel .cp_billing_org_deals .cp_billing_cycle_select {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding-inline: 0.45rem 1.6em;
+  background-position: right 0.4em center;
 }
 
 /* Org roster: stable columns so expand / name length does not shift widths. */

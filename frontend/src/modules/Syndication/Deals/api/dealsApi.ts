@@ -905,6 +905,37 @@ export async function fetchOfferingPreviewToken(
   }
 }
 
+/** Unique investor signup/signin link for this deal, attributed to the current sponsor. */
+export async function fetchDealInvestorInviteLink(
+  dealId: string,
+): Promise<string> {
+  const id = dealId.trim()
+  if (!id) throw new Error("Missing deal id.")
+  const base = getApiV1Base()
+  if (!base) throw new Error("VITE_BASE_URL is not configured.")
+  const res = await fetch(
+    `${base}/deals/${encodeURIComponent(id)}/investor-invite-link`,
+    {
+      headers: { ...authHeaders() },
+      credentials: "include",
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    inviteUrl?: unknown
+    message?: unknown
+  }
+  if (!res.ok) {
+    throw new Error(
+      data?.message != null
+        ? String(data.message)
+        : `Could not get invite link (${res.status})`,
+    )
+  }
+  const url = String(data.inviteUrl ?? "").trim()
+  if (!url) throw new Error("Invalid invite link response.")
+  return url
+}
+
 export type OfferingPreviewShareEmailFailure = {
   email: string
   message: string
@@ -3579,6 +3610,7 @@ export async function postDealEsignAddInvestorDataField(
   fileId: string,
   fieldKey: string,
   profileIds?: string[],
+  page?: number,
 ): Promise<PostDealEsignAddInvestorDataFieldResult> {
   const base = getApiV1Base()
   if (!base) {
@@ -3597,6 +3629,9 @@ export async function postDealEsignAddInvestorDataField(
         body: JSON.stringify({
           fieldKey,
           profileIds: profileIds ?? [],
+          ...(Number.isFinite(page) && page && page >= 1
+            ? { page: Math.floor(page) }
+            : {}),
         }),
       },
     )

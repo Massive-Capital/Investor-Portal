@@ -27,6 +27,23 @@
   background: var(--portal-surface, #1a1a1a);
 }
 
+.myaccount_panel_loading {
+  min-height: 18rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: center;
+}
+
+.myaccount_panel_loading_text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--portal-text-muted, #64748b);
+}
+
 .myaccount_form_body {
   display: flex;
   flex-direction: column;

@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { companies } from "./company.schema/company.js";
 import { users } from "./auth.schema/signin.js";
+import { addDealForm } from "./deal.schema/add-deal-form.schema.js";
 
 /** CRM-style contacts added from the portal; `created_by` is the authenticated user who saved the row */
 export const contact = pgTable("contact", {
@@ -61,6 +62,13 @@ export const contact = pgTable("contact", {
   lastEditReason: text("last_edit_reason"),
   /** True after a portal signup invitation email was successfully sent. */
   invitationEmailSent: boolean("invitation_email_sent").notNull().default(false),
+  /**
+   * Deal whose lead / admin / co-sponsor invite link attributed this contact.
+   * Null for contacts added by hand or org-only invite links.
+   */
+  referredByDealId: uuid("referred_by_deal_id").references(() => addDealForm.id, {
+    onDelete: "set null",
+  }),
   createdBy: uuid("created_by")
     .notNull()
     .references(() => users.id, { onDelete: "restrict" }),

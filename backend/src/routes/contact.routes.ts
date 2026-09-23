@@ -7,6 +7,7 @@ import {
   getContacts,
   getContactDealStats,
   getContactMatchingIds,
+  getInvestorInviteLink,
   getOrganizationContactLists,
   getOrganizationContactTags,
   getPlatformContacts,
@@ -32,6 +33,7 @@ router.get("/contacts/email-templates", getContactEmailTemplates);
 router.get("/contacts/organization-tags", getOrganizationContactTags);
 router.get("/contacts/organization-lists", getOrganizationContactLists);
 router.get("/contacts/owner-sponsors", getContactOwnerSponsors);
+router.get("/contacts/investor-invite-link", getInvestorInviteLink);
 router.get("/contacts/platform-contacts", getPlatformContacts);
 router.get("/contacts/:contactId", getContact);
 router.post("/contacts", postContact);

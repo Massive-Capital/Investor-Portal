@@ -20,6 +20,9 @@ import {
   markContactsAsPortalUserByEmailNorm,
 } from "../contact/contact.service.js";
 import {
+  applyInvestorInviteAfterAuth,
+} from "../contact/investorInviteLink.service.js";
+import {
   recordPlatformSelfServeSignupNotification,
   type PlatformSelfServeSignupKind,
 } from "../platform/platformSignupNotification.service.js";
@@ -59,6 +62,8 @@ export type SignupBody = {
   companyName?: unknown;
   /** Self-serve only: `investor` | `syndicator` | `both`. */
   signupAs?: unknown;
+  /** Self-serve only: `ref` from a sponsor's investor invite link. */
+  inviteRef?: unknown;
   userName?: unknown;
   phone?: unknown;
   firstName?: unknown;
@@ -506,16 +511,32 @@ export async function registerUser(
     let selfRegisteredContactId: string | null = null;
 
     if (createdUserId && roleForUser === INVESTOR && !organizationId) {
+      const invited = isSelfServeSignup
+        ? await applyInvestorInviteAfterAuth({
+            inviteRef: str(body.inviteRef),
+            userId: createdUserId,
+            emailNorm,
+            firstName,
+            lastName,
+            phone,
+            role: roleForUser,
+          }).catch((e) => {
+            console.error("applyInvestorInviteAfterAuth during signup:", e);
+            return { applied: false, contactId: null };
+          })
+        : { applied: false, contactId: null };
       try {
-        selfRegisteredContactId = await ensureSelfRegisteredInvestorContact({
-          userId: createdUserId,
-          emailNorm,
-          firstName,
-          lastName,
-          phone,
-        });
+        selfRegisteredContactId = invited.applied
+          ? invited.contactId
+          : await ensureSelfRegisteredInvestorContact({
+              userId: createdUserId,
+              emailNorm,
+              firstName,
+              lastName,
+              phone,
+            });
       } catch (e) {
-        console.error("ensureSelfRegisteredInvestorContact after signup:", e);
+        console.error("investor contact creation after signup:", e);
       }
     }
 

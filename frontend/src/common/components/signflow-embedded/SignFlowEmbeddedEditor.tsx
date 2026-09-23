@@ -70,6 +70,7 @@ type SignFlowEmbedMessage = {
   canSaveTemplate?: boolean
   documentId?: string
   title?: string
+  currentPage?: number
 }
 
 function requestSignFlowEmbedSave(iframe: HTMLIFrameElement | null): void {
@@ -125,6 +126,7 @@ export function SignFlowEmbeddedEditor({
   const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>(() => [
     ...ESIGN_ENTITY_PROFILE_IDS,
   ])
+  const [builderCurrentPage, setBuilderCurrentPage] = useState(1)
   const [addingField, setAddingField] = useState(false)
   const fieldSelectId = useId()
   const profileGroupId = useId()
@@ -179,6 +181,7 @@ export function SignFlowEmbeddedEditor({
     setSaving(false)
     setViewNonce(0)
     setPreloadNonce(null)
+    setBuilderCurrentPage(1)
   }, [url, docId])
 
   useEffect(() => {
@@ -240,6 +243,9 @@ export function SignFlowEmbeddedEditor({
     const onMessage = (event: MessageEvent) => {
       const data = event.data as SignFlowEmbedMessage | undefined
       if (!data || data.source !== "signflow-embed") return
+      if (Number.isFinite(data.currentPage) && Number(data.currentPage) >= 1) {
+        setBuilderCurrentPage(Math.floor(Number(data.currentPage)))
+      }
       if (data.event === "builder-ready" || data.event === "builder-document-loaded") {
         setBuilderReady(true)
         // Keep Save unlocked across background iframe refreshes after edits.
@@ -386,6 +392,7 @@ export function SignFlowEmbeddedEditor({
         fId,
         key,
         selectedProfileIds,
+        builderCurrentPage,
       )
       if (!result.ok) {
         toast.error("Could not add field", result.message)
@@ -408,6 +415,7 @@ export function SignFlowEmbeddedEditor({
     fileId,
     flushEmbedLayout,
     markTemplateDirty,
+    builderCurrentPage,
     selectedFieldKey,
     selectedProfileIds,
     viewNonce,

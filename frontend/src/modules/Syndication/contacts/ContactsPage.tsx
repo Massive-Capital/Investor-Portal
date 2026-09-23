@@ -3,14 +3,17 @@ import {
   AlignLeft,
   Archive,
   Ban,
+  Check,
   CheckCircle2,
   ClipboardList,
   ContactRound,
+  Copy,
   Download,
   Eye,
   Globe,
   Info,
   LayoutList,
+  Link2,
   Mail,
   Pencil,
   Loader2,
@@ -51,6 +54,7 @@ import {
   nationalDigitsFromStoredPhone,
 } from "../../../common/phone/usPhoneNumber"
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField"
+import { FormTooltip } from "../../../common/components/form-tooltip/FormTooltip"
 import {
   UsageFilterTabs,
   type UsageFilterTab,
@@ -69,6 +73,7 @@ import {
   createContact,
   fetchContactOwnerSponsors,
   fetchContactDealStats,
+  fetchInvestorInviteLink,
   fetchContactsResult,
   fetchPlatformContacts,
   hydrateContactDealStatsInChunks,
@@ -361,6 +366,11 @@ function ContactsPage() {
   const [suspendRow, setSuspendRow] = useState<ContactRow | null>(null)
   const [inviteRow, setInviteRow] = useState<ContactRow | null>(null)
   const [inviteSaving, setInviteSaving] = useState(false)
+  const [inviteLinkOpen, setInviteLinkOpen] = useState(false)
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false)
+  const [inviteShareUrl, setInviteShareUrl] = useState("")
+  const [inviteLinkLoading, setInviteLinkLoading] = useState(false)
+  const [inviteLinkError, setInviteLinkError] = useState("")
   const [suspendReason, setSuspendReason] = useState("")
   const [suspendSaving, setSuspendSaving] = useState(false)
   const [suspendErr, setSuspendErr] = useState("")
@@ -1170,6 +1180,42 @@ function ContactsPage() {
     if (inviteSaving) return
     setInviteRow(null)
   }, [inviteSaving])
+
+  const openInviteLinkModal = useCallback(() => {
+    setInviteLinkCopied(false)
+    setInviteLinkError("")
+    setInviteLinkOpen(true)
+    if (inviteShareUrl) return
+    setInviteLinkLoading(true)
+    void (async () => {
+      try {
+        setInviteShareUrl(await fetchInvestorInviteLink())
+      } catch (err) {
+        setInviteLinkError(
+          err instanceof Error ? err.message : "Could not load your invite link.",
+        )
+      } finally {
+        setInviteLinkLoading(false)
+      }
+    })()
+  }, [inviteShareUrl])
+
+  const closeInviteLinkModal = useCallback(() => {
+    setInviteLinkOpen(false)
+    setInviteLinkCopied(false)
+  }, [])
+
+  const copyInviteSignupLink = useCallback(async () => {
+    if (!inviteShareUrl) return
+    try {
+      await navigator.clipboard.writeText(inviteShareUrl)
+      setInviteLinkCopied(true)
+      toast.success("Link copied")
+      window.setTimeout(() => setInviteLinkCopied(false), 2000)
+    } catch {
+      toast.error("Could not copy link", "Copy the link from the field instead.")
+    }
+  }, [inviteShareUrl])
 
   const submitInviteContact = useCallback(async () => {
     if (!inviteRow) return
@@ -2214,14 +2260,36 @@ function ContactsPage() {
             Contacts
           </h2>
           {mainTab === "contacts" ? (
-            <button
-              type="button"
-              className="um_btn_primary contacts_toolbar_add_btn"
-              onClick={openAddPanel}
-            >
-              <Plus size={18} strokeWidth={2} aria-hidden />
-              Add Contact
-            </button>
+            <div className="contacts_header_actions">
+              <div className="contacts_header_invite_link_group">
+                <button
+                  type="button"
+                  className="um_btn_secondary contacts_toolbar_add_btn"
+                  onClick={openInviteLinkModal}
+                >
+                  <Link2 size={18} strokeWidth={2} aria-hidden />
+                  Invite Investor Link
+                </button>
+                <FormTooltip
+                  label="Investor invite link for signup"
+                  content={
+                    <p className="deals_table_header_tooltip_p">
+                      Investor invite link for signup
+                    </p>
+                  }
+                  placement="bottom"
+                  panelAlign="end"
+                />
+              </div>
+              <button
+                type="button"
+                className="um_btn_primary contacts_toolbar_add_btn"
+                onClick={openAddPanel}
+              >
+                <Plus size={18} strokeWidth={2} aria-hidden />
+                Add Contact
+              </button>
+            </div>
           ) : mainTab === "platform" ? null : mainTab === "tags" ? (
             <button
               type="button"
@@ -3533,6 +3601,97 @@ function ContactsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {inviteLinkOpen ? (
+        <div
+          className="um_modal_overlay contacts_suspend_overlay"
+          role="presentation"
+          onClick={closeInviteLinkModal}
+        >
+          <div
+            className="um_modal contacts_suspend_modal contacts_invite_link_modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contacts-invite-link-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="um_modal_head">
+              <h3
+                id="contacts-invite-link-title"
+                className="um_modal_title um_title_with_icon"
+              >
+                <Link2
+                  className="um_title_icon contacts_suspend_title_icon contacts_suspend_title_icon_info"
+                  size={22}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span>Invite Investor Link</span>
+              </h3>
+              <button
+                type="button"
+                className="um_modal_close"
+                aria-label="Close"
+                onClick={closeInviteLinkModal}
+              >
+                <X size={20} strokeWidth={2} aria-hidden />
+              </button>
+            </div>
+
+            <div className="um_field contacts_invite_link_field">
+              <div className="um_field_label_row">
+                <Link2
+                  className="um_field_label_icon"
+                  size={16}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <label htmlFor="contacts-invite-share-url">Sharable link</label>
+              </div>
+              <div className="contacts_invite_link_copy_row">
+                <input
+                  id="contacts-invite-share-url"
+                  type="text"
+                  readOnly
+                  value={
+                    inviteLinkLoading
+                      ? "Loading your link…"
+                      : inviteShareUrl || "—"
+                  }
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  className="um_btn_primary contacts_invite_link_copy_btn"
+                  disabled={inviteLinkLoading || !inviteShareUrl}
+                  onClick={() => void copyInviteSignupLink()}
+                >
+                  {inviteLinkCopied ? (
+                    <Check size={16} strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Copy size={16} strokeWidth={2} aria-hidden />
+                  )}
+                  {inviteLinkCopied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              {inviteLinkError ? (
+                <p className="contacts_invite_link_error">{inviteLinkError}</p>
+              ) : null}
+            </div>
+
+            <div className="um_modal_actions contacts_suspend_modal_actions">
+              <button
+                type="button"
+                className="um_btn_secondary"
+                onClick={closeInviteLinkModal}
+              >
+                <X size={16} strokeWidth={2} aria-hidden />
+                Close
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -1,6 +1,6 @@
 import React from "react";
 import FooterForm from "../../../common/components/FooterForm";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight,
   CheckCircle,
@@ -44,8 +44,10 @@ import "./signin_form.css";
 const SigninForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const resetSuccess = location.state?.resetSuccess;
   const apiV1 = getApiV1Base();
+  const inviteRef = searchParams.get("ref")?.trim() || "";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -70,6 +72,7 @@ const SigninForm = () => {
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password,
+          ...(inviteRef ? { inviteRef } : {}),
         }),
       });
       const rawBody = await response.text().catch(() => "");
@@ -361,7 +364,19 @@ const SigninForm = () => {
 
         <p className="auth_footer_links">
           Don&apos;t have an account?{" "}
-          <Link to="/signup" state={location.state}>
+          <Link
+            to={
+              inviteRef || searchParams.get("next")
+                ? `/signup?${new URLSearchParams({
+                    ...(inviteRef ? { ref: inviteRef } : {}),
+                    ...(searchParams.get("next")?.trim()
+                      ? { next: searchParams.get("next")!.trim() }
+                      : {}),
+                  }).toString()}`
+                : "/signup"
+            }
+            state={location.state}
+          >
             Sign up
           </Link>
         </p>

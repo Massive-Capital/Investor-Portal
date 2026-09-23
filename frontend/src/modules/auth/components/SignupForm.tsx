@@ -100,6 +100,8 @@ export default function SignupForm() {
   const { token: tokenParam } = useParams();
   const [searchParams] = useSearchParams();
   const token = (tokenParam ?? "").trim() || searchParams.get("token")?.trim() || "";
+  /** Sponsor's investor invite link — attributes this signup to them (see contacts page). */
+  const inviteRef = searchParams.get("ref")?.trim() || "";
 
   const [isVisible, setIsVisible] = useState(false);
   const [isVisibleConfirm, setIsVisibleConfirm] = useState(false);
@@ -309,7 +311,7 @@ export default function SignupForm() {
   const [signUpFormData, setSignUpFormData] = useState<SignUpFormState>({
     email: resolvedInviteEmail,
     companyName: "",
-    signupAs: "",
+    signupAs: inviteRef ? "investor" : "",
     userName: "",
     phone: "",
     firstName: "",
@@ -449,7 +451,7 @@ export default function SignupForm() {
     const response = await fetch(signInUrl.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(inviteRef ? { inviteRef } : {}) }),
     });
     const data = (await response.json().catch(() => ({}))) as SigninResponse;
     if (!response.ok) {
@@ -528,6 +530,7 @@ export default function SignupForm() {
               ? ""
               : signUpFormData.companyName.trim(),
           ...(isSelfServeSignup ? { signupAs: signUpFormData.signupAs } : {}),
+          ...(isSelfServeSignup && inviteRef ? { inviteRef } : {}),
           userName: "",
           phone: phoneE164,
           firstName: signUpFormData.firstName.trim(),
@@ -988,7 +991,21 @@ export default function SignupForm() {
           </button>
         </div>
         <p className="auth_footer_links">
-          Already have an account? <Link to="/signin">Sign in</Link>
+          Already have an account?{" "}
+          <Link
+            to={
+              inviteRef || searchParams.get("next")
+                ? `/signin?${new URLSearchParams({
+                    ...(inviteRef ? { ref: inviteRef } : {}),
+                    ...(searchParams.get("next")?.trim()
+                      ? { next: searchParams.get("next")!.trim() }
+                      : {}),
+                  }).toString()}`
+                : "/signin"
+            }
+          >
+            Sign in
+          </Link>
         </p>
 
         <div className="auth_help companyContent">
