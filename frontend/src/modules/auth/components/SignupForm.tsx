@@ -520,6 +520,9 @@ export default function SignupForm() {
         setIsError("API base URL is invalid. Check VITE_BASE_URL.");
         return;
       }
+      const offeringPreviewIntent = isSelfServeSignup
+        ? readOfferingPortfolioAuthIntent()
+        : null;
       const response = await fetch(submitUrl.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -531,6 +534,18 @@ export default function SignupForm() {
               : signUpFormData.companyName.trim(),
           ...(isSelfServeSignup ? { signupAs: signUpFormData.signupAs } : {}),
           ...(isSelfServeSignup && inviteRef ? { inviteRef } : {}),
+          ...(isSelfServeSignup &&
+          signUpFormData.signupAs === "investor" &&
+          offeringPreviewIntent?.previewToken
+            ? {
+                offeringPreviewToken: offeringPreviewIntent.previewToken,
+                ...(offeringPreviewIntent.sponsorRef
+                  ? {
+                      offeringPreviewSponsorRef: offeringPreviewIntent.sponsorRef,
+                    }
+                  : {}),
+              }
+            : {}),
           userName: "",
           phone: phoneE164,
           firstName: signUpFormData.firstName.trim(),

@@ -22,6 +22,7 @@ import {
 import {
   applyInvestorInviteAfterAuth,
 } from "../contact/investorInviteLink.service.js";
+import { applyOfferingPreviewSignupContact } from "../deal/offeringPreviewInvestorAccess.service.js";
 import {
   recordPlatformSelfServeSignupNotification,
   type PlatformSelfServeSignupKind,
@@ -64,6 +65,10 @@ export type SignupBody = {
   signupAs?: unknown;
   /** Self-serve only: `ref` from a sponsor's investor invite link. */
   inviteRef?: unknown;
+  /** Self-serve only: offering preview token from the shared portfolio link. */
+  offeringPreviewToken?: unknown;
+  /** Self-serve only: sponsor `ref` on the shared offering preview link. */
+  offeringPreviewSponsorRef?: unknown;
   userName?: unknown;
   phone?: unknown;
   firstName?: unknown;
@@ -525,16 +530,36 @@ export async function registerUser(
             return { applied: false, contactId: null };
           })
         : { applied: false, contactId: null };
-      try {
-        selfRegisteredContactId = invited.applied
-          ? invited.contactId
-          : await ensureSelfRegisteredInvestorContact({
+      const previewAttributed =
+        invited.applied || !isSelfServeSignup
+          ? invited
+          : await applyOfferingPreviewSignupContact({
+              previewToken: str(body.offeringPreviewToken),
+              sponsorRef: str(body.offeringPreviewSponsorRef),
               userId: createdUserId,
               emailNorm,
               firstName,
               lastName,
               phone,
+            }).catch((e) => {
+              console.error("applyOfferingPreviewSignupContact during signup:", e);
+              return { applied: false, contactId: null as string | null };
             });
+      const fromOfferingPreview = Boolean(
+        str(body.offeringPreviewToken) || str(body.offeringPreviewSponsorRef),
+      );
+      try {
+        if (previewAttributed.applied || fromOfferingPreview) {
+          selfRegisteredContactId = previewAttributed.contactId;
+        } else {
+          selfRegisteredContactId = await ensureSelfRegisteredInvestorContact({
+            userId: createdUserId,
+            emailNorm,
+            firstName,
+            lastName,
+            phone,
+          });
+        }
       } catch (e) {
         console.error("investor contact creation after signup:", e);
       }
@@ -546,7 +571,10 @@ export async function registerUser(
       console.error("markContactsAsPortalUserByEmailNorm after signup:", e);
     }
 
-    if (createdUserId && isSelfServeSignup) {
+    const offeringPreviewSignup = Boolean(
+      str(body.offeringPreviewToken) || str(body.offeringPreviewSponsorRef),
+    );
+    if (createdUserId && isSelfServeSignup && !offeringPreviewSignup) {
       try {
         const signupKind: PlatformSelfServeSignupKind =
           roleForUser === INVESTOR ? "investor" : "company";

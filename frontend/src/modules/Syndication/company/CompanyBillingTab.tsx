@@ -1890,6 +1890,21 @@ function BillingDealDetailsPanel({
   >(viewerScope);
   const [payBusyId, setPayBusyId] = useState<string | null>(null);
   const [payError, setPayError] = useState("");
+  const [dealsRefresh, setDealsRefresh] = useState(0);
+  const [payChoice, setPayChoice] = useState<{
+    row: CompanyDealBillingRow;
+    companyId: string;
+    planId: string;
+    cycle: "monthly" | "annually";
+  } | null>(null);
+  const [payChoiceMethods, setPayChoiceMethods] = useState<
+    CompanyBillingPaymentMethod[]
+  >([]);
+  const [payChoiceLoading, setPayChoiceLoading] = useState(false);
+  const [payChoiceBusy, setPayChoiceBusy] = useState<"saved" | "stripe" | null>(
+    null,
+  );
+  const [payChoiceError, setPayChoiceError] = useState("");
   const [complimentaryNoticeOpen, setComplimentaryNoticeOpen] = useState(false);
   const [futureBillingSetup, setFutureBillingSetup] = useState<{
     row: CompanyDealBillingRow;
@@ -1974,7 +1989,7 @@ function BillingDealDetailsPanel({
     return () => {
       cancelled = true;
     };
-  }, [companyId, platformAdmin]);
+  }, [companyId, platformAdmin, dealsRefresh]);
 
   useEffect(() => {
     if (!platformAdmin || !expandedOrgId) return;
@@ -2190,24 +2205,79 @@ function BillingDealDetailsPanel({
       setComplimentaryNoticeOpen(true);
       return;
     }
-    if (payOnceRef.current) return;
-    payOnceRef.current = true;
-    setPayBusyId(row.id);
-    const result = await startCompanyBillingCheckout(
-      payCompanyId,
+    payOnceRef.current = false;
+    setPayChoice({
+      row,
+      companyId: payCompanyId,
       planId,
-      rowCycle,
+      cycle: rowCycle,
+    });
+    setPayChoiceError("");
+    setPayChoiceBusy(null);
+    setPayChoiceLoading(true);
+    setPayChoiceMethods([]);
+    const methodsResult = await fetchCompanyBillingPaymentMethods(payCompanyId);
+    setPayChoiceLoading(false);
+    if (methodsResult.ok) {
+      setPayChoiceMethods(methodsResult.paymentMethods);
+    }
+  };
+
+  const closePayChoice = () => {
+    if (payChoiceBusy) return;
+    setPayChoice(null);
+    setPayChoiceError("");
+    setPayChoiceBusy(null);
+  };
+
+  const handlePayDealInStripe = async () => {
+    if (!payChoice || payOnceRef.current) return;
+    payOnceRef.current = true;
+    setPayChoiceError("");
+    setPayChoiceBusy("stripe");
+    const result = await startCompanyBillingCheckout(
+      payChoice.companyId,
+      payChoice.planId,
+      payChoice.cycle,
       "5",
-      row.id,
+      payChoice.row.id,
     );
     if (!result.ok) {
       payOnceRef.current = false;
-      setPayBusyId(null);
-      setPayError(result.message);
+      setPayChoiceBusy(null);
+      setPayChoiceError(result.message);
       return;
     }
     onPaid?.();
     window.location.assign(result.url);
+  };
+
+  const handlePayDealWithSavedMethod = async (paymentMethodId: string) => {
+    if (!payChoice || payOnceRef.current) return;
+    payOnceRef.current = true;
+    setPayChoiceError("");
+    setPayChoiceBusy("saved");
+    const result = await payCompanyBillingWithSavedMethod(
+      payChoice.companyId,
+      payChoice.planId,
+      payChoice.cycle,
+      "5",
+      payChoice.row.id,
+      paymentMethodId,
+    );
+    if (!result.ok) {
+      payOnceRef.current = false;
+      setPayChoiceBusy(null);
+      setPayChoiceError(result.message);
+      return;
+    }
+    const dealName = payChoice.row.dealName.trim() || "this deal";
+    setPayChoice(null);
+    setPayChoiceBusy(null);
+    setPayChoiceError("");
+    onPaid?.();
+    setDealsRefresh((n) => n + 1);
+    toast.success("Payment received", `${dealName} was paid with the selected method.`);
   };
 
   const handleCycleChange = useCallback(
@@ -2542,6 +2612,7 @@ function BillingDealDetailsPanel({
     ],
     [
       canPay,
+      companyId,
       cycleBusyId,
       expandedDealId,
       invoices,
@@ -2877,6 +2948,26 @@ function BillingDealDetailsPanel({
           }}
         />
       ) : null}
+      <BillingPayMethodModal
+        open={payChoice != null}
+        dealName={payChoice?.row.dealName ?? ""}
+        methods={payChoiceMethods}
+        loading={payChoiceLoading}
+        busy={payChoiceBusy}
+        error={payChoiceError}
+        title={
+          payChoice?.row.needsPlanUpgrade
+            ? "Choose how to upgrade"
+            : "Choose how to pay"
+        }
+        onClose={closePayChoice}
+        onPaySaved={(paymentMethodId) => {
+          void handlePayDealWithSavedMethod(paymentMethodId);
+        }}
+        onPayStripe={() => {
+          void handlePayDealInStripe();
+        }}
+      />
       <PlatformComplimentaryNoticeModal
         open={complimentaryNoticeOpen}
         onClose={() => setComplimentaryNoticeOpen(false)}
