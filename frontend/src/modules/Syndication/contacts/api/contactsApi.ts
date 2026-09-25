@@ -1,4 +1,8 @@
-import { portalAuthHeaders, organizationIdQueryParam } from "@/common/auth/portalAuthHeaders"
+import {
+  portalAuthHeaders,
+  organizationIdQueryParam,
+  PORTAL_OMIT_ACTIVE_ORG_HEADER,
+} from "@/common/auth/portalAuthHeaders"
 import { getApiV1Base } from "@/common/utils/apiBaseUrl"
 import type {
   ContactOfferingVisibility,
@@ -8,8 +12,15 @@ import type {
   ContactStatus,
 } from "../types/contact.types"
 
-function authHeaders(): HeadersInit {
-  return portalAuthHeaders()
+function authHeaders(options?: { omitActiveOrganization?: boolean }): HeadersInit {
+  const headers = portalAuthHeaders({
+    omitActiveOrganization: options?.omitActiveOrganization,
+  })
+  if (!options?.omitActiveOrganization) return headers
+  return {
+    ...(headers as Record<string, string>),
+    [PORTAL_OMIT_ACTIVE_ORG_HEADER]: "1",
+  }
 }
 
 function normalizeStatus(raw: unknown): ContactRow["status"] {
@@ -123,6 +134,27 @@ function normalizeContact(raw: Record<string, unknown>): ContactRow {
       raw.createdByDisplayName != null || raw.created_by_display_name != null
         ? String(raw.createdByDisplayName ?? raw.created_by_display_name)
         : undefined,
+    invitedByDisplayName:
+      raw.invitedByDisplayName != null || raw.invited_by_display_name != null
+        ? String(
+            raw.invitedByDisplayName ?? raw.invited_by_display_name,
+          ).trim() || undefined
+        : undefined,
+    invitedByUserId:
+      raw.invitedByUserId != null || raw.invited_by_user_id != null
+        ? String(raw.invitedByUserId ?? raw.invited_by_user_id).trim() ||
+          undefined
+        : undefined,
+    createdByUserId:
+      raw.createdByUserId != null || raw.created_by_user_id != null
+        ? String(raw.createdByUserId ?? raw.created_by_user_id).trim() ||
+          undefined
+        : undefined,
+    organizationName:
+      raw.organizationName != null || raw.organization_name != null
+        ? String(raw.organizationName ?? raw.organization_name).trim() ||
+          undefined
+        : undefined,
     createdAt:
       raw.createdAt != null || raw.created_at != null
         ? String(raw.createdAt ?? raw.created_at).trim() || undefined
@@ -176,9 +208,13 @@ function contactsListCacheKey(options?: {
   sort?: "name" | "createdAt"
   lean?: boolean
   platform?: boolean
+  organizationId?: string
+  allOrganizations?: boolean
 }): string {
   return [
-    organizationIdQueryParam() ?? "",
+    options?.allOrganizations
+      ? "all-organizations"
+      : options?.organizationId?.trim() || organizationIdQueryParam() || "",
     options?.sort ?? "createdAt",
     options?.lean ? "lean" : "full",
     options?.platform ? "platform" : "org",
@@ -193,6 +229,10 @@ export async function fetchContactsResult(options?: {
   sort?: "name" | "createdAt"
   lean?: boolean
   force?: boolean
+  /** Platform admin: CRM for this company, not the active workspace. */
+  organizationId?: string
+  /** Platform admin All Contacts: every company, ignoring the workspace. */
+  allOrganizations?: boolean
 }): Promise<ContactsFetchResult> {
   const base = getApiV1Base()
   if (!base) return { ok: false, error: "API base URL is not configured." }
@@ -207,13 +247,20 @@ export async function fetchContactsResult(options?: {
   }
   try {
     const params = new URLSearchParams()
-    const oid = organizationIdQueryParam()
+    const allOrganizations = options?.allOrganizations === true
+    const oid = allOrganizations
+      ? ""
+      : options?.organizationId?.trim() || organizationIdQueryParam() || ""
     if (oid) params.set("organizationId", oid)
     if (options?.sort === "name") params.set("sort", "name")
     if (options?.lean) params.set("lean", "1")
     const q = params.toString()
     const res = await fetch(`${base}/contacts${q ? `?${q}` : ""}`, {
-      headers: { ...authHeaders() },
+      headers: {
+        ...authHeaders(
+          allOrganizations ? { omitActiveOrganization: true } : undefined,
+        ),
+      },
       credentials: "include",
     })
     const data = (await res.json().catch(() => ({}))) as {
@@ -245,6 +292,55 @@ export async function fetchContactsResult(options?: {
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Could not load contacts.",
+    }
+  }
+}
+
+/** Signups that used a company member's invite link (Customers member dropdown). */
+export async function fetchMemberInviteeContacts(
+  organizationId: string,
+): Promise<ContactsFetchResult> {
+  const base = getApiV1Base()
+  if (!base) return { ok: false, error: "API base URL is not configured." }
+  const orgId = organizationId.trim()
+  if (!orgId) return { ok: false, error: "Organization id is required." }
+  try {
+    const params = new URLSearchParams()
+    params.set("organizationId", orgId)
+    const res = await fetch(
+      `${base}/contacts/member-invitees?${params.toString()}`,
+      {
+        headers: { ...authHeaders() },
+        credentials: "include",
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as {
+      contacts?: unknown
+      message?: unknown
+    }
+    if (!res.ok) {
+      const message =
+        typeof data.message === "string" && data.message.trim()
+          ? data.message
+          : `Could not load invited contacts (${res.status}).`
+      return { ok: false, error: message }
+    }
+    const list = data.contacts
+    if (!Array.isArray(list)) {
+      return { ok: false, error: "Invited contacts response was not in the expected format." }
+    }
+    return {
+      ok: true,
+      contacts: list
+        .filter(
+          (x): x is Record<string, unknown> => x != null && typeof x === "object",
+        )
+        .map(normalizeContact),
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Could not load invited contacts.",
     }
   }
 }

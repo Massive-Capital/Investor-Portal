@@ -12,6 +12,7 @@ import {
 } from "../../utils/offeringPreviewCrypto.js";
 import { dealSaasLockHttpPayload } from "../billing/dealBilling.service.js";
 import { isDealAllowedByContactOfferingVisibility } from "../contact/contactOfferingVisibility.service.js";
+import { invalidateContactDirectoryCache } from "../cache/listReadCache.js";
 import { ensureReferredInvestorContact } from "../contact/investorInviteLink.service.js";
 import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
 import {
@@ -160,6 +161,7 @@ export async function applyOfferingPreviewSignupContact(params: {
         isPortalUser: true,
       })
       .where(eq(contact.id, contactId));
+    invalidateContactDirectoryCache();
     return { applied: true, contactId };
   } catch (e) {
     console.error("ensure offering preview signup contact:", e);

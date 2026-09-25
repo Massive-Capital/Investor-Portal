@@ -1,9 +1,10 @@
 import type { Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getValidJwtUser } from "../middleware/jwtUser.js";
 import { isPlatformAdminRole } from "../constants/roles.js";
 import { db } from "../database/db.js";
 import { users } from "../schema/auth.schema/signin.js";
+import { companies } from "../schema/company.schema/company.js";
 import {
   ContactInvalidPhoneError,
   ContactScopeConflictError,
@@ -16,6 +17,7 @@ import {
   listContactIdsForViewerFilters,
   listContactsForViewerCached,
   listContactsPageForViewer,
+  listInviteeContactsForOrganization,
   listPlatformVisibleContactsCached,
   loadContactCreatorUsersById,
   markContactInvitationEmailSent,
@@ -27,6 +29,7 @@ import {
   type ContactRelationship506b,
   resolveContactDisplayFields,
   resolveDealAdderNamesByContactIdForViewer,
+  resolveInvitedByDisplayNameByContactId,
   updateContactFieldsForViewer,
   type ContactOfferingVisibility,
 } from "../services/contact/contact.service.js";
@@ -346,14 +349,42 @@ async function mapContactEmailTemplateToJsonWithName(
   };
 }
 
+async function loadOrganizationNamesById(
+  ids: Array<string | null | undefined>,
+): Promise<Map<string, string>> {
+  const unique = [
+    ...new Set(
+      ids.map((id) => String(id ?? "").trim()).filter((id) => id.length > 0),
+    ),
+  ];
+  const names = new Map<string, string>();
+  if (unique.length === 0) return names;
+  const found = await db
+    .select({ id: companies.id, name: companies.name })
+    .from(companies)
+    .where(inArray(companies.id, unique));
+  for (const row of found) {
+    const name = String(row.name ?? "").trim();
+    if (!name) continue;
+    names.set(String(row.id).trim().toLowerCase(), name);
+  }
+  return names;
+}
+
 async function mapContactsToJsonWithNames(
   rows: ContactRow[],
   dealCounts?: Map<string, number>,
   dealAdderNames?: Map<string, string>,
 ) {
+  const orgNameByIdPromise = loadOrganizationNamesById(
+    rows.map((row) => row.organizationId),
+  );
   const creatorById = await loadContactCreatorUsersById(
     rows.map((row) => row.createdBy),
   );
+
+  const invitedByNameByContactId =
+    await resolveInvitedByDisplayNameByContactId(rows);
 
   const displayNameByCreatorId = new Map<string, string>();
   const creatorIdsNeedingName = [
@@ -376,11 +407,16 @@ async function mapContactsToJsonWithNames(
     }),
   );
 
+  const orgNameById = await orgNameByIdPromise;
+
   return rows.map((row) => {
     const base = mapContactToJson(row);
     const { createdBy: _createdBy, ...rest } = base;
     const creator = creatorById.get(row.createdBy) ?? null;
     const idKey = String(row.id).trim().toLowerCase();
+    const organizationName =
+      orgNameById.get(String(row.organizationId ?? "").trim().toLowerCase()) ||
+      undefined;
     const display = resolveContactDisplayFields(
       row,
       creator,
@@ -391,7 +427,17 @@ async function mapContactsToJsonWithNames(
     return {
       ...rest,
       owners: display.owners,
+      organizationName,
+      organization_name: organizationName,
+      createdByUserId: row.createdBy,
+      created_by_user_id: row.createdBy,
       createdByDisplayName: display.createdByDisplayName || undefined,
+      invitedByUserId: invitedByNameByContactId.get(idKey)?.userId || undefined,
+      invited_by_user_id: invitedByNameByContactId.get(idKey)?.userId || undefined,
+      invitedByDisplayName:
+        invitedByNameByContactId.get(idKey)?.displayName || undefined,
+      invited_by_display_name:
+        invitedByNameByContactId.get(idKey)?.displayName || undefined,
       dealCount,
     };
   });
@@ -547,6 +593,48 @@ export async function getOrganizationContactLists(
   } catch (err) {
     console.error("getOrganizationContactLists:", err);
     res.status(500).json({ message: "Could not load organization lists" });
+  }
+}
+
+/**
+ * GET /contacts/member-invitees?organizationId=
+ * Signups that used a company member's invite link. Used by the platform-admin
+ * Customers member dropdown.
+ */
+export async function getMemberInviteeContacts(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const orgId = requestedOrganizationIdFromRequest(req);
+  if (!orgId) {
+    res.status(400).json({ message: "Organization id required" });
+    return;
+  }
+  try {
+    const [actor] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    const role = String(actor?.role ?? user.userRole ?? "").trim();
+    if (!isPlatformAdminRole(role)) {
+      const allowed = await userHasAccessToOrganization(user.id, orgId);
+      if (!allowed) {
+        res.status(403).json({ message: "Not allowed" });
+        return;
+      }
+    }
+    const rows = await listInviteeContactsForOrganization(orgId);
+    const contacts = await mapContactsToJsonWithNames(rows);
+    res.status(200).json({ contacts });
+  } catch (err) {
+    console.error("getMemberInviteeContacts:", err);
+    res.status(500).json({ message: "Could not load invited contacts" });
   }
 }
 

@@ -53,6 +53,7 @@ import { ReportingPage } from "./modules/Syndication/Reporting/ReportingPage";
 import CompanyPage from "./modules/Syndication/company/CompanyPage";
 import CompanyMembersPage from "./modules/Syndication/company/CompanyMembersPage";
 import CompanyDealsPage from "./modules/Syndication/company/CompanyDealsPage";
+import CompanyContactsPage from "./modules/Syndication/company/CompanyContactsPage";
 import CustomerCompanyLayout from "./modules/Syndication/company/CustomerCompanyLayout";
 import MembersLayout from "./modules/Syndication/usermanagement/MembersLayout";
 import { UserManagementPage } from "./modules/Syndication/usermanagement/UserManagementPage";
@@ -307,6 +308,7 @@ function App() {
                 element={<Navigate to="members" replace />}
               />
               <Route path="members" element={<CompanyMembersPage />} />
+              <Route path="contacts" element={<CompanyContactsPage />} />
               <Route path="deals" element={<CompanyDealsPage />} />
             </Route>
             <Route path="customers" element={<CustomersRoute />} />

@@ -261,6 +261,9 @@ function contactRowMatchesSearch(row: ContactRow, query: string): boolean {
     ...row.lists,
     ...row.owners,
     row.createdByDisplayName ?? "",
+    row.invitedByDisplayName ?? "",
+    row.organizationName ?? "",
+    row.visibleToUsers === true ? "yes" : "no",
     String(row.dealCount ?? 0),
     relationship506bLabel(row.relationship506b ?? null),
   ]
@@ -284,6 +287,18 @@ function initialsFromContact(row: ContactRow): string {
 function contactDisplayName(row: ContactRow): string {
   const n = [row.firstName, row.lastName].filter(Boolean).join(" ").trim()
   return n || "—"
+}
+
+function platformVisibleBadge(visible: boolean) {
+  return (
+    <span
+      className={`contacts_platform_visible_badge contacts_platform_visible_badge--${
+        visible ? "yes" : "no"
+      }`}
+    >
+      {visible ? "Yes" : "No"}
+    </span>
+  )
 }
 
 function contactHasTag(row: ContactRow, tagName: string): boolean {
@@ -735,7 +750,10 @@ function ContactsPage() {
     setLoading(true)
     try {
       const [listResult, dbTags, dbLists, ownerResult] = await Promise.all([
-        fetchContactsResult({ lean: true }),
+        fetchContactsResult({
+          lean: true,
+          allOrganizations: platformAdmin,
+        }),
         fetchOrganizationContactTags(),
         fetchOrganizationContactLists(),
         fetchContactOwnerSponsors(),
@@ -770,7 +788,7 @@ function ContactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [orgScopeKey])
+  }, [orgScopeKey, platformAdmin])
 
   const loadPlatformContacts = useCallback(async () => {
     setPlatformLoading(true)
@@ -1239,7 +1257,10 @@ function ContactsPage() {
   }, [inviteRow])
 
   const exportContactRow = useCallback((row: ContactRow) => {
-    const csv = buildContactsCsv([row])
+    const csv = buildContactsCsv([row], {
+      includeVisibility: platformAdmin,
+      includeOrganization: platformAdmin,
+    })
     const filename = buildTableExportFilename({ dealName: contactDisplayName(row) })
     downloadContactsCsv(csv, filename)
     void notifyContactsExportAudit({
@@ -1247,7 +1268,7 @@ function ContactsPage() {
       exportedContactLines: exportAuditLinesForContacts([row]),
     })
     toast.success("Contact exported", `Saved as ${filename}`)
-  }, [])
+  }, [platformAdmin])
 
   const submitSuspendContact = useCallback(
     async (e: FormEvent) => {
@@ -1715,6 +1736,17 @@ function ContactsPage() {
         tdClassName: "contacts_td_accreditation",
         cell: (row) => accreditationBadge(row.accreditationStatus),
       },
+      {
+        id: "invitedBy",
+        header: "Invited by",
+        sortValue: (row) => row.invitedByDisplayName ?? "",
+        thClassName: "contacts_th_invited_by",
+        tdClassName: "contacts_td_invited_by",
+        cell: (row) => {
+          const name = row.invitedByDisplayName?.trim()
+          return name ? name : <span className="um_status_muted">—</span>
+        },
+      },
       ...(platformAdmin
         ? ([
             {
@@ -1724,18 +1756,7 @@ function ContactsPage() {
               sortValue: (row) => (row.visibleToUsers === true ? 1 : 0),
               thClassName: "contacts_th_platform_visible",
               tdClassName: "contacts_td_platform_visible",
-              cell: (row) => {
-                const visible = row.visibleToUsers === true
-                return (
-                  <span
-                    className={`contacts_platform_visible_badge contacts_platform_visible_badge--${
-                      visible ? "yes" : "no"
-                    }`}
-                  >
-                    {visible ? "Yes" : "No"}
-                  </span>
-                )
-              },
+              cell: (row) => platformVisibleBadge(row.visibleToUsers === true),
             },
           ] satisfies DataTableColumn<ContactRow>[])
         : []),
@@ -2115,6 +2136,57 @@ function ContactsPage() {
         sortValue: (row) => row.owners.join(" "),
         cell: (row) => <TagsCell items={row.owners} />,
       },
+      ...(platformAdmin
+        ? ([
+            {
+              id: "organization",
+              header: "Organization",
+              sortValue: (row) => row.organizationName ?? "",
+              thClassName: "contacts_th_organization",
+              tdClassName: "contacts_td_organization",
+              cell: (row) => {
+                const name = row.organizationName?.trim()
+                return name ? (
+                  <span className="contacts_organization" title={name}>
+                    {name}
+                  </span>
+                ) : (
+                  <span className="um_status_muted">—</span>
+                )
+              },
+            },
+          ] satisfies DataTableColumn<ContactRow>[])
+        : []),
+      {
+        id: "invitedBy",
+        header: "Invited by",
+        sortValue: (row) => row.invitedByDisplayName ?? "",
+        thClassName: "contacts_th_invited_by",
+        tdClassName: "contacts_td_invited_by",
+        cell: (row) => {
+          const name = row.invitedByDisplayName?.trim()
+          return name ? (
+            <span className="contacts_invited_by" title={name}>
+              {name}
+            </span>
+          ) : (
+            <span className="um_status_muted">—</span>
+          )
+        },
+      },
+      ...(platformAdmin
+        ? ([
+            {
+              id: "visibleToUsers",
+              header: "Visible on platform",
+              align: "center",
+              sortValue: (row) => (row.visibleToUsers === true ? 1 : 0),
+              thClassName: "contacts_th_platform_visible",
+              tdClassName: "contacts_td_platform_visible",
+              cell: (row) => platformVisibleBadge(row.visibleToUsers === true),
+            },
+          ] satisfies DataTableColumn<ContactRow>[])
+        : []),
       // {
       //   id: "createdBy",
       //   header: "Added by",
@@ -2186,6 +2258,7 @@ function ContactsPage() {
       openViewPanel,
       inviteRow,
       inviteSaving,
+      platformAdmin,
       selectedContactIds,
       toggleSelectAllContactsFiltered,
       toggleSelectContact,
@@ -2350,7 +2423,7 @@ function ContactsPage() {
               role="tab"
               aria-selected={mainTab === "platform"}
               aria-controls="contacts-main-panel-platform"
-              aria-label={`Platform Contacts, ${platformRows.length}`}
+              aria-label="Platform Contacts"
               className={`um_members_tab deals_tabs_tab um_segmented_tab${
                 mainTab === "platform" ? " um_members_tab_active" : ""
               }`}
@@ -2367,9 +2440,6 @@ function ContactsPage() {
               />
               <span className="deals_tabs_label um_segmented_tab_label">
                 Platform Contacts
-              </span>
-              <span className="deals_tabs_count contacts_tab_count" aria-hidden>
-                ({platformRows.length})
               </span>
             </button>
             ) : null}
@@ -2724,9 +2794,7 @@ function ContactsPage() {
                   contactsLoading
                     ? "Loading contacts…"
                     : directoryRows.length === 0
-                      ? platformAdmin && !orgScopeKey
-                        ? "Select a company to see that company's contacts. Self-signups are under Platform Contacts."
-                        : "No contacts yet. Add a contact to see it here."
+                      ? "No contacts yet. Add a contact to see it here."
                       : tabRows.length === 0
                         ? contactsListTab === "archived"
                           ? "No archived contacts. Suspend a contact from Active to move it here."
@@ -3110,9 +3178,7 @@ function ContactsPage() {
         onClose={() => setExportModalOpen(false)}
         contacts={exportListKind === "platform" ? platformRows : tabRows}
         listKind={exportListKind}
-        includePlatformVisibility={
-          platformAdmin && exportListKind === "platform"
-        }
+        includePlatformVisibility={platformAdmin}
       />
 
       {sendMailModalOpen ? (

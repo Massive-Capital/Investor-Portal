@@ -3212,6 +3212,36 @@
   font-weight: 500;
 }
 
+.contacts_th_organization,
+.contacts_td_organization {
+  min-width: 8.5rem;
+  max-width: 14rem;
+}
+
+.contacts_organization {
+  display: inline-block;
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.contacts_th_invited_by,
+.contacts_td_invited_by {
+  min-width: 8.5rem;
+  max-width: 12rem;
+}
+
+.contacts_invited_by {
+  display: inline-block;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .contacts_toolbar_trailing {
   display: flex;
   flex-wrap: wrap;

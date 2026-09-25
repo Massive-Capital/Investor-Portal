@@ -358,11 +358,17 @@ async function getViewerContactScopeContext(
         role: row.role,
       }
     : null;
-  const organizationId = await resolveActiveOrganizationIdForUser(
+  const requested = normalizeOrganizationUuid(requestedOrganizationId);
+  let organizationId = await resolveActiveOrganizationIdForUser(
     viewerUserId,
     requestedOrganizationId,
     preloaded,
   );
+  // Platform admins are not members of customer companies. A requested
+  // organization id still scopes Customers → Contacts to that company.
+  if (isPlatformAdminRole(roleForScope) && requested) {
+    organizationId = requested;
+  }
 
   return {
     roleForScope,
@@ -385,6 +391,8 @@ function fullOrgContactListVisibilityWhere(viewerEmailNorm: string): SQL {
  * - **Company admin** or **Lead Sponsor / Admin sponsor** on any deal: same org pool;
  *   include portal + external member contacts; exclude own email only.
  * - **Everyone else** (e.g. company_user, LP, co-sponsor): external only (`is_portal_user` false); exclude own email.
+ *   Invite-link signups (`users.referred_by_user_id` = this viewer) are added back in
+ *   {@link buildContactsScopeWhere} so they still appear under the inviter.
  */
 function contactsVisibilityWhereForRole(
   roleForScope: string,
@@ -750,6 +758,158 @@ export function resolveContactDisplayFields(
   };
 }
 
+function portalUserDisplayName(row: {
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  username: string | null;
+}): string {
+  const full = [row.firstName, row.lastName]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return full || String(row.email ?? "").trim() || String(row.username ?? "").trim();
+}
+
+/**
+ * Contacts whose portal account signed up through one of these users' invite
+ * links (`users.referred_by_user_id`). Used so that person still appears on
+ * the inviter's contacts list when portal users are otherwise hidden.
+ */
+function contactsReferredByUserIdsWhere(userIds: string[]): SQL | null {
+  const ids = [
+    ...new Set(userIds.map((id) => String(id).trim()).filter(Boolean)),
+  ];
+  if (ids.length === 0) return null;
+  return sql`exists (
+    select 1
+    from "users" invitee
+    where lower(trim(invitee.email)) = lower(trim(${contact.email}))
+      and position('@' in trim(invitee.email)) > 1
+      and invitee.referred_by_user_id in (${sql.join(
+        ids.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})
+  )`;
+}
+
+/**
+ * Portal users who signed up through an invite link shared by someone in this
+ * company (contacts page, deal invite, or offering link).
+ */
+function contactsReferredByOrganizationMembersWhere(orgId: string): SQL {
+  const oid = String(orgId ?? "").trim();
+  return sql`exists (
+    select 1
+    from "users" invitee
+    inner join "users" sponsor on sponsor.id = invitee.referred_by_user_id
+    where lower(trim(invitee.email)) = lower(trim(${contact.email}))
+      and position('@' in trim(invitee.email)) > 1
+      and (
+        sponsor.organization_id = ${oid}::uuid
+        or exists (
+          select 1
+          from "user_company_membership" membership
+          where membership.user_id = sponsor.id
+            and membership.company_id = ${oid}::uuid
+        )
+      )
+  )`;
+}
+
+export type ContactInvitedBy = {
+  userId: string;
+  displayName: string;
+};
+
+/**
+ * Person who brought this contact in via an invite link
+ * (`users.referred_by_user_id`), including a deal or offering link
+ * (`contact.referred_by_deal_id` + the sponsor who created the row).
+ * Contacts added by hand stay blank.
+ */
+export async function resolveInvitedByDisplayNameByContactId(
+  rows: Array<Pick<ContactRow, "id" | "email" | "createdBy" | "referredByDealId">>,
+): Promise<Map<string, ContactInvitedBy>> {
+  const invitedBy = new Map<string, ContactInvitedBy>();
+  if (rows.length === 0) return invitedBy;
+
+  const emails = [
+    ...new Set(
+      rows
+        .map((row) => normalizeContactEmailForScope(row.email))
+        .filter((email) => email.includes("@")),
+    ),
+  ];
+  const portalByEmail = new Map<
+    string,
+    { id: string; referredByUserId: string | null }
+  >();
+  if (emails.length > 0) {
+    const portalUsers = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        referredByUserId: users.referredByUserId,
+      })
+      .from(users)
+      .where(
+        sql`lower(trim(${users.email})) in (${sql.join(
+          emails.map((email) => sql`${email}`),
+          sql`, `,
+        )})`,
+      );
+    for (const user of portalUsers) {
+      const email = normalizeContactEmailForScope(user.email ?? "");
+      if (!email) continue;
+      portalByEmail.set(email, {
+        id: String(user.id),
+        referredByUserId: user.referredByUserId ?? null,
+      });
+    }
+  }
+
+  const inviterIdByContactId = new Map<string, string>();
+  const inviterIds = new Set<string>();
+  for (const row of rows) {
+    const contactId = String(row.id).trim().toLowerCase();
+    if (!contactId) continue;
+    const portal = portalByEmail.get(normalizeContactEmailForScope(row.email));
+    const referrerId = String(portal?.referredByUserId ?? "").trim();
+    const dealId = String(row.referredByDealId ?? "").trim();
+    const creatorId = String(row.createdBy ?? "").trim();
+    const inviterId =
+      referrerId || (dealId && creatorId ? creatorId : "");
+    if (!inviterId) continue;
+    inviterIdByContactId.set(contactId, inviterId);
+    inviterIds.add(inviterId);
+  }
+  if (inviterIds.size === 0) return invitedBy;
+
+  const inviters = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+      username: users.username,
+    })
+    .from(users)
+    .where(inArray(users.id, [...inviterIds]));
+  const nameById = new Map(
+    inviters.map((user) => [String(user.id), portalUserDisplayName(user)]),
+  );
+  for (const [contactId, inviterId] of inviterIdByContactId) {
+    const name = nameById.get(inviterId)?.trim() ?? "";
+    if (!name && !inviterId) continue;
+    invitedBy.set(contactId, {
+      userId: inviterId,
+      displayName: name,
+    });
+  }
+  return invitedBy;
+}
+
 export async function loadContactCreatorUsersById(
   userIds: string[],
 ): Promise<Map<string, ContactCreatorUserSnapshot>> {
@@ -1071,9 +1231,9 @@ async function viewerIncludesSameOrganizationAssociatedInvestors(
 
 /**
  * All Contacts list:
- * - **platform_admin**: company CRM for the active organization workspace only.
- *   With no company selected the list is empty. Self-signups are not mixed in;
- *   they are served by {@link listPlatformVisibleContacts}.
+ * - **platform_admin**: company CRM for the requested organization (Customers)
+ *   or the active workspace. With no company selected the list is empty.
+ *   Self-signups are not mixed in; they are served by {@link listPlatformVisibleContacts}.
  * - Users tied to a company: contacts with **`organization_id` = viewer’s org**, plus **legacy**
  *   rows (`organization_id` null) whose `created_by` is anyone in that org.
  * - No company / org: only contacts they created themselves.
@@ -1129,37 +1289,58 @@ async function buildContactsScopeWhere(
     ? or(vis, associatedIdsSql)!
     : vis;
 
+  const equivalentIds = await listEquivalentPortalUserIdsForUser(viewerUserId);
+  const referrerIds =
+    equivalentIds.length > 0 ? equivalentIds : [viewerUserId];
+  const invitedByViewer = contactsReferredByUserIdsWhere(referrerIds);
+  const visForList = invitedByViewer ? or(vis, invitedByViewer)! : vis;
+  const visOrAssociatedForList = invitedByViewer
+    ? or(visOrAssociated, invitedByViewer)!
+    : visOrAssociated;
+
   const orgId = ctx.organizationId;
 
   if (isPlatformAdminRole(ctx.roleForScope)) {
+    const requestedOrg = normalizeOrganizationUuid(requestedOrganizationId);
+    // All Contacts is every company. A company id is only applied when a
+    // caller asks for one company, such as Customers → Contacts.
+    if (!requestedOrg) {
+      return fullOrgContactListVisibilityWhere(ctx.viewerEmailNorm);
+    }
     if (!orgId) {
       return null;
     }
     const memberIds = await userIdsInOrganization(orgId);
-    const orgScope = buildOrganizationContactsWhere(
-      orgId,
-      viewerUserId,
-      memberIds,
-    );
-    return and(orgScope, excludePlatformAdminOnlyContactsWhere(), vis)!;
+    const legacyMemberContacts =
+      memberIds.length > 0
+        ? and(
+            isNull(contact.organizationId),
+            inArray(contact.createdBy, memberIds),
+          )!
+        : null;
+    const orgScope = legacyMemberContacts
+      ? or(eq(contact.organizationId, orgId), legacyMemberContacts)!
+      : eq(contact.organizationId, orgId);
+    const orgList = and(
+      orgScope,
+      excludePlatformAdminOnlyContactsWhere(),
+      visForList,
+    )!;
+    return or(orgList, contactsReferredByOrganizationMembersWhere(orgId))!;
   }
 
   if (!orgId) {
-    const equivalentIds = await listEquivalentPortalUserIdsForUser(
-      viewerUserId,
-    );
-    const creatorIds =
-      equivalentIds.length > 0 ? equivalentIds : [viewerUserId];
+    const creatorIds = referrerIds;
     if (!associatedIdsSql) {
       return and(
         inArray(contact.createdBy, creatorIds),
-        vis,
+        visForList,
         excludePlatformAdminOnlyContactsWhere(),
       )!;
     }
     return and(
       or(inArray(contact.createdBy, creatorIds), associatedIdsSql)!,
-      visOrAssociated,
+      visOrAssociatedForList,
       notPlatformAdminOnlyOrAssociated,
     )!;
   }
@@ -1173,15 +1354,11 @@ async function buildContactsScopeWhere(
 
   const parts: SQL[] = [
     orgOrAssociated,
-    visOrAssociated,
+    visOrAssociatedForList,
     notPlatformAdminOnlyOrAssociated,
   ];
   if (coSponsorNarrow) {
-    const equivalentIds = await listEquivalentPortalUserIdsForUser(
-      viewerUserId,
-    );
-    const creatorIds =
-      equivalentIds.length > 0 ? equivalentIds : [viewerUserId];
+    const creatorIds = referrerIds;
     if (!associatedIdsSql) {
       parts.push(inArray(contact.createdBy, creatorIds));
     } else {
@@ -1195,6 +1372,42 @@ async function buildContactsScopeWhere(
   }
 
   return and(...parts)!;
+}
+
+/**
+ * Contacts who signed up through an invite link owned by a member of this
+ * company (contacts-page link, deal invite, or offering link).
+ * Not filtered by CRM portal-user visibility — this feeds the Customers
+ * member dropdown.
+ */
+export async function listInviteeContactsForOrganization(
+  organizationId: string,
+): Promise<ContactRow[]> {
+  const orgId = String(organizationId ?? "").trim();
+  if (!orgId) return [];
+  const found = await pool.query<{ id: string }>(
+    `SELECT DISTINCT c.id
+     FROM contact c
+     INNER JOIN users invitee
+       ON lower(trim(invitee.email)) = lower(trim(c.email))
+     INNER JOIN users sponsor
+       ON sponsor.id = invitee.referred_by_user_id
+     WHERE position('@' in trim(invitee.email)) > 1
+       AND (
+         sponsor.organization_id = $1::uuid
+         OR c.organization_id = $1::uuid
+         OR EXISTS (
+           SELECT 1
+           FROM user_company_membership membership
+           WHERE membership.user_id = sponsor.id
+             AND membership.company_id = $1::uuid
+         )
+       )`,
+    [orgId],
+  );
+  const ids = found.rows.map((row) => String(row.id)).filter(Boolean);
+  if (ids.length === 0) return [];
+  return db.select().from(contact).where(inArray(contact.id, ids));
 }
 
 export async function listContactsForViewerScoped(
@@ -1846,22 +2059,13 @@ async function viewerCanAccessContactRow(
       viewerUserId,
       ctx.roleForScope,
     );
+  if (isPlatformAdminRole(ctx.roleForScope)) return true;
   if (isPlatformAdminOnlyContactRow(row)) {
-    if (isPlatformAdminRole(ctx.roleForScope)) return true;
     if (isOptedInSelfRegisteredContactRow(row)) return true;
     return contactIdIsSponsorAssociatedInvestor(
       viewerUserId,
       row.id,
       includeSameOrganization,
-    );
-  }
-  if (isPlatformAdminRole(ctx.roleForScope)) {
-    if (Boolean(row.visibleToUsers)) return true;
-    if (!ctx.organizationId) return false;
-    return contactRowBelongsToOrganization(
-      row,
-      ctx.organizationId,
-      viewerUserId,
     );
   }
   if (

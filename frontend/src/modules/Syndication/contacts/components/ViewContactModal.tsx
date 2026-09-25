@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react"
 import { useEffect } from "react"
+import { isPlatformAdmin } from "../../../../common/auth/roleUtils"
 import { ViewReadonlyField } from "../../../../common/components/ViewReadonlyField"
 import { formatUsPhoneStoredForUi } from "../../../../common/phone/usPhoneNumber"
 import { displayEmail } from "../../../../common/utils/displayEmail"
@@ -45,6 +46,7 @@ export function ViewContactModal({
   onEdit,
   loading = false,
 }: ViewContactModalProps) {
+  const platformAdmin = isPlatformAdmin()
   useEffect(() => {
     if (!contact) return
     const prev = document.body.style.overflow
@@ -231,6 +233,18 @@ export function ViewContactModal({
                 )
               }
             />
+            <ViewReadonlyField
+              Icon={User}
+              label="Invited by"
+              value={contact.invitedByDisplayName?.trim() || "—"}
+            />
+            {platformAdmin ? (
+              <ViewReadonlyField
+                Icon={Users}
+                label="Visible on platform"
+                value={contact.visibleToUsers === true ? "Yes" : "No"}
+              />
+            ) : null}
             <ViewReadonlyField
               Icon={User}
               label="Added by"

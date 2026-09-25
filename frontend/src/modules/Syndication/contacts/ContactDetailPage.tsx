@@ -21,6 +21,7 @@ import {
   displayEmail,
   isDisplayableEmail,
 } from "../../../common/utils/displayEmail"
+import { isPlatformAdmin } from "../../../common/auth/roleUtils"
 import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/TabsScrollStrip"
 import { toast } from "../../../common/components/Toast"
 import { fetchContact } from "./api/contactsApi"
@@ -178,6 +179,7 @@ function buildActivities(contact: ContactRow): ActivityItem[] {
 function ContactDetailPage() {
   const { contactId = "" } = useParams<{ contactId: string }>()
   const navigate = useNavigate()
+  const platformAdmin = isPlatformAdmin()
   const [contact, setContact] = useState<ContactRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [mainTab, setMainTab] = useState<MainTab>("activities")
@@ -433,6 +435,18 @@ function ContactDetailPage() {
                               : "—"}
                           </dd>
                         </div>
+                        <div>
+                          <dt>Invited by</dt>
+                          <dd>{contact.invitedByDisplayName?.trim() || "—"}</dd>
+                        </div>
+                        {platformAdmin ? (
+                          <div>
+                            <dt>Visible on platform</dt>
+                            <dd>
+                              {contact.visibleToUsers === true ? "Yes" : "No"}
+                            </dd>
+                          </div>
+                        ) : null}
                         <div>
                           <dt>Added by</dt>
                           <dd>{contact.createdByDisplayName?.trim() || "—"}</dd>

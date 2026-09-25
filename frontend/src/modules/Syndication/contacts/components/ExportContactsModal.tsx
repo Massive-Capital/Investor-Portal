@@ -62,6 +62,9 @@ export function ExportContactsModal({
           ...r.lists,
           ...r.owners,
           r.createdByDisplayName ?? "",
+          r.invitedByDisplayName ?? "",
+          r.organizationName ?? "",
+          r.visibleToUsers === true ? "yes" : "no",
           r.createdAt ?? "",
           formatContactSinceLabel(r.createdAt),
         ]
@@ -137,7 +140,10 @@ export function ExportContactsModal({
         ? buildPlatformContactsCsv(chosen, {
             includeVisibility: includePlatformVisibility,
           })
-        : buildContactsCsv(chosen)
+        : buildContactsCsv(chosen, {
+            includeVisibility: includePlatformVisibility,
+            includeOrganization: includePlatformVisibility,
+          })
     const filename = buildTableExportFilename({
       tableSlug:
         listKind === "archived"

@@ -13,6 +13,7 @@ const STORAGE_PREFIX = "sx_table_page_size:v1"
 /** Separate keys so each table remembers its own rows-per-page. */
 export const TABLE_PAGE_SIZE_ID = {
   contacts: "contacts",
+  customerContacts: "customer-contacts",
   deals: "deals",
   dealInvestors: "deal-investors",
   dealMembers: "deal-members",

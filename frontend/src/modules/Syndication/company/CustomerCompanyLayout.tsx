@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Briefcase, Users } from "lucide-react";
+import { ArrowLeft, Briefcase, Contact, Users } from "lucide-react";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys";
 import {
@@ -20,13 +20,20 @@ type CompanyRow = {
   user_count?: unknown;
   dealCount?: unknown;
   deal_count?: unknown;
+  contactCount?: unknown;
+  contact_count?: unknown;
 };
 
 function coalesceCompanyCount(
   row: CompanyRow,
-  key: "userCount" | "dealCount",
+  key: "userCount" | "dealCount" | "contactCount",
 ): number {
-  const snake = key === "userCount" ? row.user_count : row.deal_count;
+  const snake =
+    key === "userCount"
+      ? row.user_count
+      : key === "dealCount"
+        ? row.deal_count
+        : row.contact_count;
   const v = row[key] ?? snake;
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() !== "") {
@@ -51,6 +58,7 @@ export default function CustomerCompanyLayout() {
   const [companyName, setCompanyName] = useState("");
   const [memberCount, setMemberCount] = useState(0);
   const [dealCount, setDealCount] = useState(0);
+  const [contactCount, setContactCount] = useState(0);
 
   const idTrim = companyId.trim();
 
@@ -59,6 +67,7 @@ export default function CustomerCompanyLayout() {
       setCompanyName("");
       setMemberCount(0);
       setDealCount(0);
+      setContactCount(0);
       return;
     }
     try {
@@ -75,19 +84,23 @@ export default function CustomerCompanyLayout() {
         if (c) {
           setMemberCount(coalesceCompanyCount(c, "userCount"));
           setDealCount(coalesceCompanyCount(c, "dealCount"));
+          setContactCount(coalesceCompanyCount(c, "contactCount"));
         } else {
           setMemberCount(0);
           setDealCount(0);
+          setContactCount(0);
         }
       } else {
         setCompanyName("");
         setMemberCount(0);
         setDealCount(0);
+        setContactCount(0);
       }
     } catch {
       setCompanyName("");
       setMemberCount(0);
       setDealCount(0);
+      setContactCount(0);
     }
   }, [idTrim, token, apiV1]);
 
@@ -166,6 +179,23 @@ export default function CustomerCompanyLayout() {
             <span>Members</span>
             <span className="cp_company_detail_tab_count" aria-hidden>
               ({memberCount})
+            </span>
+          </NavLink>
+          <NavLink
+            to={`${base}/contacts`}
+            id="cp-company-tab-contacts"
+            role="tab"
+            aria-label={`Contacts, ${contactCount}`}
+            className={({ isActive }) =>
+              `um_members_tab cp_company_detail_tab${
+                isActive ? " um_members_tab_active" : ""
+              }`
+            }
+          >
+            <Contact size={18} strokeWidth={1.75} aria-hidden />
+            <span>Contacts</span>
+            <span className="cp_company_detail_tab_count" aria-hidden>
+              ({contactCount})
             </span>
           </NavLink>
           <NavLink

@@ -1,5 +1,6 @@
 import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { db, pool } from "../../database/db.js";
+import { users } from "../../schema/auth.schema/signin.js";
 import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
   companies,
@@ -38,7 +39,11 @@ export type CompanyWithStats = {
   updatedAt: Date;
   userCount: number;
   dealCount: number;
-  /** Rows in `contact` with `organization_id` = company id. */
+  /**
+   * Company CRM contacts: `organization_id` matches, plus legacy rows with no
+   * organization whose creator belongs to the company. Platform-only contacts
+   * are excluded.
+   */
   contactCount: number;
 };
 
@@ -185,8 +190,14 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
    * `GET /deals?organizationId=…`.
    * Legacy deals may still be keyed by `owning_entity_name` when `organization_id` is null.
    */
-  const [rows, byOrgId, orgDealCounts, legacyDealNameCounts, orgContactCounts] =
-    await Promise.all([
+  const [
+    rows,
+    byOrgId,
+    orgDealCounts,
+    legacyDealNameCounts,
+    orgContactCounts,
+    legacyMemberContactCounts,
+  ] = await Promise.all([
     db
       .select({
         id: companies.id,
@@ -224,8 +235,28 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
         cnt: sql<number>`count(*)::int`,
       })
       .from(contact)
-      .where(isNotNull(contact.organizationId))
+      .where(
+        and(
+          isNotNull(contact.organizationId),
+          eq(contact.platformAdminOnly, false),
+        ),
+      )
       .groupBy(contact.organizationId),
+    db
+      .select({
+        organizationId: users.organizationId,
+        cnt: sql<number>`count(*)::int`,
+      })
+      .from(contact)
+      .innerJoin(users, eq(users.id, contact.createdBy))
+      .where(
+        and(
+          isNull(contact.organizationId),
+          eq(contact.platformAdminOnly, false),
+          isNotNull(users.organizationId),
+        ),
+      )
+      .groupBy(users.organizationId),
   ]);
 
   const byDealOrgId = new Map<string, number>();
@@ -244,6 +275,11 @@ export async function listCompanies(): Promise<CompanyWithStats[]> {
   for (const r of orgContactCounts) {
     const id = r.organizationId;
     if (id) byOrgContact.set(id, Number(r.cnt));
+  }
+  for (const r of legacyMemberContactCounts) {
+    const id = r.organizationId;
+    if (!id) continue;
+    byOrgContact.set(id, (byOrgContact.get(id) ?? 0) + Number(r.cnt));
   }
 
   return rows.map((r) => {

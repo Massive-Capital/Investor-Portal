@@ -43,6 +43,7 @@ export function buildPlatformContactsCsv(
     "Email",
     "Phone",
     "Accreditation Status",
+    "Invited by",
     ...(includeVisibility ? ["Visible on platform"] : []),
     "Joined",
   ]
@@ -55,6 +56,7 @@ export function buildPlatformContactsCsv(
       row.email,
       row.phone,
       status || "N/A",
+      row.invitedByDisplayName?.trim() ?? "",
       ...(includeVisibility
         ? [row.visibleToUsers === true ? "Yes" : "No"]
         : []),
@@ -65,7 +67,12 @@ export function buildPlatformContactsCsv(
   return `\uFEFF${lines.join("\r\n")}`
 }
 
-export function buildContactsCsv(rows: ContactRow[]): string {
+export function buildContactsCsv(
+  rows: ContactRow[],
+  opts?: { includeVisibility?: boolean; includeOrganization?: boolean },
+): string {
+  const includeVisibility = opts?.includeVisibility === true
+  const includeOrganization = opts?.includeOrganization === true
   const headers = [
     "First name",
     "Last name",
@@ -77,6 +84,9 @@ export function buildContactsCsv(rows: ContactRow[]): string {
     "Contact tags",
     "Lists",
     "Owners",
+    ...(includeOrganization ? ["Organization"] : []),
+    "Invited by",
+    ...(includeVisibility ? ["Visible on platform"] : []),
     "Added by",
     "Since",
   ]
@@ -96,6 +106,11 @@ export function buildContactsCsv(rows: ContactRow[]): string {
         joinMulti(row.tags),
         joinMulti(row.lists),
         joinMulti(row.owners),
+        ...(includeOrganization ? [row.organizationName?.trim() ?? ""] : []),
+        row.invitedByDisplayName?.trim() ?? "",
+        ...(includeVisibility
+          ? [row.visibleToUsers === true ? "Yes" : "No"]
+          : []),
         row.createdByDisplayName ?? "",
         sinceForCsv(row),
       ]

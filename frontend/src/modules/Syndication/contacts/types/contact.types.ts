@@ -62,6 +62,17 @@ export interface ContactRow {
   lastEditReason?: string
   /** Resolved display name for the user who created the row (from API) */
   createdByDisplayName?: string
+  /**
+   * Sponsor whose invite link was used, or the user who added the contact
+   * when that person is not the contact themselves.
+   */
+  invitedByDisplayName?: string
+  /** Portal user id of the person whose invite link was used. */
+  invitedByUserId?: string
+  /** Portal user id that created the CRM row. */
+  createdByUserId?: string
+  /** Company (`companies.name`) this contact belongs to. */
+  organizationName?: string
   /** ISO timestamp when the contact was created (from API) */
   createdAt?: string
   /**

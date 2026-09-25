@@ -642,7 +642,17 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         sortValue: (row) => Number(row.contactCount ?? 0),
         align: "center",
         tdClassName: "um_td_numeric",
-        cell: (row) => String(row.contactCount ?? 0),
+        cell: (row) =>
+          customersStandalone && platformAdmin ? (
+            <Link
+              className="um_user_meta_username cp_company_name_link"
+              to={`/customers/${encodeURIComponent(row.id)}/contacts`}
+            >
+              {String(row.contactCount ?? 0)}
+            </Link>
+          ) : (
+            String(row.contactCount ?? 0)
+          ),
       },
       {
         id: "status",

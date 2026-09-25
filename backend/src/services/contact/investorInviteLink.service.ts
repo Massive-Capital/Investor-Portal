@@ -13,6 +13,7 @@ import {
   encryptInvestorInviteRef,
 } from "../../utils/investorInviteRefCrypto.js";
 import { parseUsPhoneToE164 } from "../../utils/usPhone.js";
+import { invalidateContactDirectoryCache } from "../cache/listReadCache.js";
 import { queueGhlContactRowSync } from "../ghl/ghlContactSync.service.js";
 import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
 import { reconcileAssigningDealUsersForDeal } from "../deal/assigningDealUser.service.js";
@@ -300,7 +301,10 @@ export async function ensureReferredInvestorContact(params: {
       })
       .where(eq(contact.id, existing.id))
       .returning();
-    if (updated) queueGhlContactRowSync(updated);
+    if (updated) {
+      invalidateContactDirectoryCache();
+      queueGhlContactRowSync(updated);
+    }
     return String(updated?.id ?? existing.id).trim() || null;
   }
 
@@ -329,7 +333,10 @@ export async function ensureReferredInvestorContact(params: {
     })
     .returning();
 
-  if (inserted) queueGhlContactRowSync(inserted);
+  if (inserted) {
+    invalidateContactDirectoryCache();
+    queueGhlContactRowSync(inserted);
+  }
   return String(inserted?.id ?? "").trim() || null;
 }
 
