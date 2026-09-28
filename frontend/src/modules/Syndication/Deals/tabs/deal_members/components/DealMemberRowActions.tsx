@@ -50,6 +50,9 @@ export interface DealMemberRowActionsProps {
   confirmBeforeDelete?: boolean
   /** Session draft row: first menu item is "Continue editing" (opens add-member flow). */
   draftRow?: boolean
+  /** Disable Edit while keeping the rest of the row actions available. */
+  editDisabled?: boolean
+  editDisabledTitle?: string
   /** When true, the mail action label becomes “Re-send invitation mail”. */
   invitationMailSent?: boolean
   /** True while this row’s invitation email request is in flight. */
@@ -85,6 +88,8 @@ export function DealMemberRowActions({
   onDelete,
   confirmBeforeDelete = true,
   draftRow = false,
+  editDisabled = false,
+  editDisabledTitle,
   invitationMailSent = false,
   invitationMailSending = false,
   invitationMailBlocked = false,
@@ -361,9 +366,16 @@ export function DealMemberRowActions({
                 <li role="none">
                   <button
                     type="button"
-                    className="um_kebab_menuitem"
+                    className={`um_kebab_menuitem${
+                      editDisabled ? " um_kebab_menuitem_disabled" : ""
+                    }`}
                     role="menuitem"
-                    onClick={() => runMenuAction(() => onEdit(row))}
+                    disabled={editDisabled}
+                    title={editDisabledTitle}
+                    onClick={() => {
+                      if (editDisabled) return
+                      runMenuAction(() => onEdit(row))
+                    }}
                   >
                     <Pencil
                       className="um_kebab_menuitem_icon"

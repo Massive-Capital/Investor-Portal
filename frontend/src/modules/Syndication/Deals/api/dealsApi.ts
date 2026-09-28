@@ -2861,7 +2861,8 @@ function normalizeInvestorRowApi(
     ),
     investorKind: (() => {
       const ik = firstDefined(raw, ["investorKind", "investor_kind"])
-      if (ik === "lp_roster" || ik === "investment") return ik
+      if (ik === "lp_roster" || ik === "member_roster" || ik === "investment")
+        return ik
       if (ik === "lp_investor") return "lp_roster"
       return undefined
     })(),
@@ -4817,6 +4818,50 @@ export async function deleteDealMemberRoster(
   }
 }
 
+/**
+ * PUT `/deals/:dealId/members/:rowId` — updates a roster-only `deal_member` row.
+ */
+export async function putDealMemberRoster(
+  dealId: string,
+  rowId: string,
+  values: AddInvestmentFormValues,
+): Promise<PostDealInvestmentResult> {
+  const base = getApiV1Base()
+  if (!base) return { ok: true, mode: "client" }
+  const body: Record<string, unknown> = {
+    contact_id: values.contactId,
+    contact_display_name: values.contactDisplayName?.trim() ?? "",
+    contact_email: values.contactEmail?.trim() ?? "",
+    investor_role: values.investorRole?.trim() ?? "",
+    send_invitation_mail: values.sendInvitationMail ?? "no",
+    replacement_lead_sponsor_contact_id:
+      values.replacementLeadSponsorContactId?.trim() ?? "",
+  }
+  try {
+    const res = await fetch(
+      `${base}/deals/${encodeURIComponent(dealId)}/members/${encodeURIComponent(rowId)}`,
+      {
+        method: "PUT",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(body),
+      },
+    )
+    const data = (await res.json().catch(() => ({}))) as { message?: unknown }
+    if (!res.ok) {
+      const msg =
+        data.message != null ? String(data.message) : res.statusText
+      return { ok: false, message: msg || "Could not update member" }
+    }
+    return { ok: true, mode: "api" }
+  } catch {
+    return { ok: false, message: "Network error" }
+  }
+}
+
 export type PatchMyLpDealCommitmentResult =
   | { ok: true; investorsPayload: DealInvestorsPayload }
   | { ok: false; message: string }
@@ -5092,6 +5137,14 @@ function appendDealInvestmentMultipartFields(
     "fund_approved",
     values.fundApproved === true ? "true" : "false",
   )
+  const replacementLeadSponsorContactId =
+    values.replacementLeadSponsorContactId?.trim()
+  if (replacementLeadSponsorContactId) {
+    fd.append(
+      "replacement_lead_sponsor_contact_id",
+      replacementLeadSponsorContactId,
+    )
+  }
   if (options?.autosave) fd.append("autosave", "true")
 }
 

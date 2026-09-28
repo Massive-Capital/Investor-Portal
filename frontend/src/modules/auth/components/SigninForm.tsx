@@ -11,7 +11,7 @@ import {
   LockKeyhole,
   Mail,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Input from "../../../common/components/Input";
 import {
   AUTH_RETURN_NEXT_KEY,
@@ -48,14 +48,34 @@ const SigninForm = () => {
   const resetSuccess = location.state?.resetSuccess;
   const apiV1 = getApiV1Base();
   const inviteRef = searchParams.get("ref")?.trim() || "";
+  const routeState = location.state as
+    | {
+        from?: string;
+        investNow?: boolean;
+        email?: string;
+        resetSuccess?: boolean;
+      }
+    | undefined;
+  const emailPrefill = (
+    searchParams.get("email") ??
+    routeState?.email ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailPrefill);
   const [password, setPassword] = useState("");
   const [isVisible, setIsVisible] = useState(false);
   const [isError, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const passwordVisible = () => setIsVisible((prev) => !prev);
+
+  useEffect(() => {
+    if (!emailPrefill) return;
+    setEmail((prev) => (prev.trim() ? prev : emailPrefill));
+  }, [emailPrefill]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -172,13 +192,10 @@ const SigninForm = () => {
           );
         }
       }
-      const state = location.state as
-        | { from?: string; investNow?: boolean }
-        | undefined;
       const portfolioIntent = consumeOfferingPortfolioAuthIntent();
       const storedIntent = consumeInvestNowIntent();
       const from =
-        parseSafeNextPath(state?.from) ??
+        parseSafeNextPath(routeState?.from) ??
         parseSafeNextPath(new URLSearchParams(location.search).get("next")) ??
         parseSafeNextPath(sessionStorage.getItem(AUTH_RETURN_NEXT_KEY));
       sessionStorage.removeItem(AUTH_RETURN_NEXT_KEY);
@@ -201,7 +218,7 @@ const SigninForm = () => {
       } else if (!from && storedIntent?.dealId) {
         redirectTo = dealInvestNowPath(storedIntent.dealId);
         postSignInState = { investNow: true as const };
-      } else if (state?.investNow === true) {
+      } else if (routeState?.investNow === true) {
         postSignInState = { investNow: true as const };
       }
       if (redirectTo === "/") {
@@ -210,7 +227,7 @@ const SigninForm = () => {
       const keepExistingRedirect =
         Boolean(portfolioIntent?.dealId) ||
         Boolean(storedIntent?.dealId) ||
-        state?.investNow === true ||
+        routeState?.investNow === true ||
         (typeof from === "string" && /\/esign(?:\/|$|\?)/i.test(from));
       if (!keepExistingRedirect) {
         const billingPath = await resolveUnpaidLeadSponsorPricingPath();

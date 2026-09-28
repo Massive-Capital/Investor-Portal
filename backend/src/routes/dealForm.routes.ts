@@ -74,6 +74,7 @@ import {
   patchDealCoSponsorEmailIntercept,
   postDealMemberInvitationEmail,
   postDealMemberSendEsign,
+  putDealMember,
 } from "../controllers/deal/dealMember.controller.js";
 import {
   getDealMyEsignDocuments,
@@ -177,6 +178,7 @@ router.post(
   postDealMembersExportNotify,
 );
 router.delete("/deals/:dealId/members/:rowId", deleteDealMember);
+router.put("/deals/:dealId/members/:rowId", putDealMember);
 router.post(
   "/deals/:dealId/members/send-invitation-email",
   postDealMemberInvitationEmail,

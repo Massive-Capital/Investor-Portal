@@ -348,6 +348,11 @@ export function AddInvestmentModal({
   const backendInvPostInFlightRef = useRef(false)
   const backendInvAutosaveInFlightRef = useRef(false)
   const [form, setForm] = useState<AddInvestmentFormValues>(emptyForm)
+  const [replacementLeadSponsorContactId, setReplacementLeadSponsorContactId] =
+    useState("")
+  const [addContactTarget, setAddContactTarget] = useState<
+    "member" | "replacementLeadSponsor"
+  >("member")
   const addInvFormRef = useRef<HTMLFormElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [sectionTab, setSectionTab] =
@@ -383,6 +388,7 @@ export function AddInvestmentModal({
       contactId?: string
       profileId?: string
       userEmail?: string
+      displayName?: string
     }[]
   >([])
 
@@ -395,6 +401,7 @@ export function AddInvestmentModal({
           contactId: r.contactId,
           profileId: r.profileId,
           userEmail: r.userEmail,
+          displayName: r.displayName,
         })),
       )
     })
@@ -450,10 +457,67 @@ export function AddInvestmentModal({
     [leadSponsorContactId, form.contactId],
   )
 
+  const startedAsLeadSponsor = useMemo(
+    () =>
+      mode === "edit" &&
+      !isInvestorEntry &&
+      !isGpEntry &&
+      isLeadSponsorRole(initialValues?.investorRole),
+    [mode, isInvestorEntry, isGpEntry, initialValues?.investorRole],
+  )
+
+  const demotingLeadSponsorRequiresReplacement = useMemo(
+    () =>
+      startedAsLeadSponsor &&
+      isAdminSponsorOrCoSponsorRole(form.investorRole),
+    [startedAsLeadSponsor, form.investorRole],
+  )
+
+  const replacementLeadSponsorOptions = useMemo(() => {
+    const currentContactId = form.contactId.trim().toLowerCase()
+    const seen = new Set<string>()
+    const sponsorOptions = memberRosterForGate
+      .filter((r) => {
+        const cid = String(r.contactId ?? "").trim()
+        if (!cid) return false
+        if (cid.toLowerCase() === currentContactId) return false
+        if (seen.has(cid.toLowerCase())) return false
+        seen.add(cid.toLowerCase())
+        return true
+      })
+      .map((r) => {
+        const cid = String(r.contactId ?? "").trim()
+        const name = String(r.displayName ?? "").trim()
+        const email = String(r.userEmail ?? "").trim()
+        const role = String(r.investorRole ?? "").trim()
+        const identity = [name, email].filter(Boolean).join(" - ")
+        return {
+          value: cid,
+          label: [identity || "Sponsor", role].filter(Boolean).join(" - "),
+        }
+      })
+    const contactOptions = [...contactRows, ...platformContactRows]
+      .filter((c) => {
+        const cid = String(c.id ?? "").trim()
+        if (!cid) return false
+        if (cid.toLowerCase() === currentContactId) return false
+        if (seen.has(cid.toLowerCase())) return false
+        seen.add(cid.toLowerCase())
+        return true
+      })
+      .map((c) => ({
+        value: String(c.id).trim(),
+        label: `${contactOptionLabel(c)} - Contact`,
+      }))
+    return [...sponsorOptions, ...contactOptions]
+  }, [memberRosterForGate, contactRows, platformContactRows, form.contactId])
+
   /** Lead Sponsor is a single roster identity — do not allow changing member/contact while editing that row. */
   const memberContactSelectLocked = useMemo(
-    () => mode === "edit" && isLeadSponsorRole(form.investorRole),
-    [mode, form.investorRole],
+    () =>
+      mode === "edit" &&
+      (isLeadSponsorRole(form.investorRole) || startedAsLeadSponsor),
+    [mode, form.investorRole, startedAsLeadSponsor],
   )
 
   const investorRoleDropdownOptions = useMemo(
@@ -551,6 +615,7 @@ export function AddInvestmentModal({
   useLayoutEffect(() => {
     if (!open) return
     setSectionTab("investor")
+    setReplacementLeadSponsorContactId("")
     const rolePatch = isInvestorEntry
       ? { investorRole: LP_INVESTOR_ROLE_VALUE }
       : isGpEntry
@@ -641,6 +706,12 @@ export function AddInvestmentModal({
     isInvestorEntry,
     isGpEntry,
   ])
+
+  useEffect(() => {
+    if (!demotingLeadSponsorRequiresReplacement) {
+      setReplacementLeadSponsorContactId("")
+    }
+  }, [demotingLeadSponsorRequiresReplacement])
 
   latestAddMemberDraftRef.current = { form, step: 1 as const }
 
@@ -1321,6 +1392,14 @@ export function AddInvestmentModal({
       })
       const display = contactOptionLabel(contact)
       const namePart = display.split(" — ")[0]?.trim() || display
+      if (addContactTarget === "replacementLeadSponsor") {
+        setReplacementLeadSponsorContactId(contact.id)
+        toast.success(
+          "Contact added",
+          `${namePart} is selected as the new Lead Sponsor.`,
+        )
+        return
+      }
       patch({
         contactId: contact.id,
         contactDisplayName: namePart,
@@ -1334,7 +1413,7 @@ export function AddInvestmentModal({
           : `${namePart} is selected as the member for this investment.`,
       )
     },
-    [patch, isInvestorEntry],
+    [addContactTarget, patch, isInvestorEntry],
   )
 
   const handleAddContactSave = useCallback(
@@ -1359,6 +1438,10 @@ export function AddInvestmentModal({
     isInvestorEntry || (isGpEntry && dealClasses.length > 0)
 
   const showClassPercentFields = isInvestorEntry && !noDealClasses
+  const saveDisabled =
+    submitting ||
+    (demotingLeadSponsorRequiresReplacement &&
+      !replacementLeadSponsorContactId.trim())
 
   function blurFormatPercentClamped(raw: string): string {
     const t = sanitizePercentTypingInput(raw)
@@ -1427,6 +1510,12 @@ export function AddInvestmentModal({
       return "This deal already has a Lead Sponsor. Choose another role or edit the existing Lead Sponsor row."
     }
     if (
+      demotingLeadSponsorRequiresReplacement &&
+      !replacementLeadSponsorContactId.trim()
+    ) {
+      return "Select a new Lead Sponsor before saving."
+    }
+    if (
       isInvestorEntry &&
       form.sendInvitationMail === "yes" &&
       !String(form.profileId ?? "").trim()
@@ -1474,8 +1563,16 @@ export function AddInvestmentModal({
       return
     }
     setSubmitting(true)
+    const values = withInvitationMailPolicy(
+      {
+        ...form,
+        replacementLeadSponsorContactId: demotingLeadSponsorRequiresReplacement
+          ? replacementLeadSponsorContactId.trim()
+          : undefined,
+      },
+      dealBlocksInvitationEmails,
+    )
     try {
-      let values = withInvitationMailPolicy(form, dealBlocksInvitationEmails)
       await onSave(values, null)
       if (mode === "add") {
         skipFlushDraftAfterSaveRef.current = true
@@ -1487,10 +1584,7 @@ export function AddInvestmentModal({
       }
     } catch (err) {
       if (err instanceof ExtraCompanyUserPaymentRequiredError) {
-        pendingSaveAfterExtraPayRef.current = withInvitationMailPolicy(
-          form,
-          dealBlocksInvitationEmails,
-        )
+        pendingSaveAfterExtraPayRef.current = values
         setExtraUserPayment(err.payload)
         setError(err.message)
         return
@@ -1780,7 +1874,10 @@ export function AddInvestmentModal({
                             ? undefined
                             : {
                                 label: "+ Add Contact",
-                                onClick: () => setAddContactModalOpen(true),
+                                onClick: () => {
+                                  setAddContactTarget("member")
+                                  setAddContactModalOpen(true)
+                                },
                               }
                         }
                         triggerClassName={[
@@ -1946,6 +2043,42 @@ export function AddInvestmentModal({
                         />
                       )}
                     </InvFormField>
+                    {demotingLeadSponsorRequiresReplacement ? (
+                      <InvFormField
+                        id="add-inv-new-lead-sponsor"
+                        label="New Lead Sponsor"
+                        Icon={Shield}
+                        tight
+                      >
+                        <p
+                          className="contacts_suspend_modal_desc contacts_suspend_modal_desc_info deals_add_inv_lead_sponsor_warning"
+                          role="status"
+                        >
+                          This Deal must have one Lead Sponsor. Please select a new Lead Sponsor.
+                        </p>
+                        <DropdownSelect
+                          {...MODAL_DROPDOWN_SELECT_PROPS}
+                          id="add-inv-new-lead-sponsor"
+                          options={replacementLeadSponsorOptions}
+                          value={replacementLeadSponsorContactId}
+                          onChange={setReplacementLeadSponsorContactId}
+                          placeholder={
+                            replacementLeadSponsorOptions.length > 0
+                              ? "Select new Lead Sponsor"
+                              : "No other sponsors available"
+                          }
+                          ariaLabel="New Lead Sponsor"
+                          triggerClassName={DROPDOWN_TRIGGER_PILL}
+                          header={{
+                            label: "+ Add Contact",
+                            onClick: () => {
+                              setAddContactTarget("replacementLeadSponsor")
+                              setAddContactModalOpen(true)
+                            },
+                          }}
+                        />
+                      </InvFormField>
+                    ) : null}
                      {/* <InvFormField id="add-inv-status" label="Status" Icon={Activity}>
                     <DropdownSelect
                       id="add-inv-status"
@@ -2348,7 +2481,7 @@ export function AddInvestmentModal({
               <button
                 type="submit"
                 className="um_btn_primary"
-                disabled={submitting}
+                disabled={saveDisabled}
               >
                 {submitting ? (
                   <>

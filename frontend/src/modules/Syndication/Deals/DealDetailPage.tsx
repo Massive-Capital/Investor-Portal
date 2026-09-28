@@ -574,10 +574,8 @@ export function DealDetailPage() {
   /** Stage chip already says Draft — avoid a second draft marker beside the title. */
   const showIncompleteDraftBadge = dealFormIncomplete && !isDealDraftStage
 
-  /** Same rule the add/edit modal uses to lock “notify the member” to No. */
-  const rosterInvitationMailBlocked =
-    dealDetailApi != null &&
-    (areRequiredDealDetailFieldsIncomplete(dealDetailApi) || isDealDraftStage)
+  /** General Partner invitation emails can be sent from draft/incomplete deals. */
+  const rosterInvitationMailBlocked = false
 
   const offeringLinkAvailable = useMemo(
     () => dealHasOfferingShareLink(dealDetailApi) && !isDealOfferingShareBlocked,

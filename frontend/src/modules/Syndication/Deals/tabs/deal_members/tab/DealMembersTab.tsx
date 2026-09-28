@@ -20,6 +20,7 @@ import {
   useState,
 } from "react"
 import { toast } from "../../../../../../common/components/Toast"
+import { isPlatformAdmin } from "../../../../../../common/auth/roleUtils"
 import {
   TABLE_PAGE_SIZE_ID,
   usePersistedTablePageSize,
@@ -51,6 +52,7 @@ import {
   dealInvestorProfileDisplayName,
   investorRoleLabel,
   isDealMembersTabRole,
+  isLeadSponsorRole,
   type DealRosterKind,
 } from "../../../constants/investor-profile"
 import type { DealInvestorClass } from "../../../types/deal-investor-class.types"
@@ -695,6 +697,12 @@ export function DealMembersTab({
           <DealMemberRowActions
             row={r}
             draftRow={r.id === ADD_MEMBER_DRAFT_ROW_ID}
+            editDisabled={
+              !isPlatformAdmin() &&
+              r.id !== ADD_MEMBER_DRAFT_ROW_ID &&
+              isLeadSponsorRole(r.investorRole)
+            }
+            editDisabledTitle="Only platform admins can edit the Lead Sponsor."
             invitationMailSent={r.invitationMailSent === true}
             invitationMailSending={rowInvitationMailMarkedSent(
               r,

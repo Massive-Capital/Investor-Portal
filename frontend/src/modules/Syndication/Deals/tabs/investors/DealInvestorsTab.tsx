@@ -97,6 +97,7 @@ import {
   fetchDealInvestors,
   postDealInvestment,
   postDealLpInvestor,
+  putDealMemberRoster,
   putDealInvestment,
   putDealLpInvestor,
   type DealDetailApi,
@@ -104,7 +105,6 @@ import {
 import {
   ExtraCompanyUserPaymentRequiredError,
 } from "../../utils/extraCompanyUserBilling";
-import { isDealStageDraft } from "../../constants/deal-lifecycle";
 import type { DealInvestorClass } from "../../types/deal-investor-class.types";
 import {
   formatInvestorClassTableLabel,
@@ -343,6 +343,7 @@ function dealInvestorRowToFormValues(
 function investorRowSupportsApproveFund(row: DealInvestorRow): boolean {
   if (row.id === ADD_MEMBER_DRAFT_ROW_ID) return false;
   if (row.investorKind === "lp_roster") return false;
+  if (row.investorKind === "member_roster") return false;
   return true;
 }
 
@@ -2293,6 +2294,8 @@ export const DealInvestorsTab = forwardRef<
       const result =
         editRow.investorKind === "lp_roster"
           ? await putDealLpInvestor(dealId, editRow.id, values)
+          : editRow.investorKind === "member_roster"
+            ? await putDealMemberRoster(dealId, editRow.id, values)
           : await putDealInvestment(
               dealId,
               editRow.id,
@@ -2363,10 +2366,7 @@ export const DealInvestorsTab = forwardRef<
     dealDetail != null && areRequiredDealDetailFieldsIncomplete(dealDetail);
 
   const addModalBlocksInvites =
-    requiredDealDetailsIncomplete ||
-    (addEntryForModal !== "investor" &&
-      dealDetail != null &&
-      isDealStageDraft(dealDetail.dealStage));
+    addEntryForModal === "investor" && requiredDealDetailsIncomplete;
 
   const lpBlocksInvites = requiredDealDetailsIncomplete;
 

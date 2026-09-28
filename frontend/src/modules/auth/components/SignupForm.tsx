@@ -1015,7 +1015,14 @@ export default function SignupForm() {
                     ...(searchParams.get("next")?.trim()
                       ? { next: searchParams.get("next")!.trim() }
                       : {}),
+                    ...(signUpFormData.email.trim()
+                      ? { email: signUpFormData.email.trim().toLowerCase() }
+                      : {}),
                   }).toString()}`
+                : signUpFormData.email.trim()
+                  ? `/signin?${new URLSearchParams({
+                      email: signUpFormData.email.trim().toLowerCase(),
+                    }).toString()}`
                 : "/signin"
             }
           >

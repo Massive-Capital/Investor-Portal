@@ -239,7 +239,7 @@ function syntheticInvestmentFromGpLpRoster(
 type MemberListRowMeta = {
   addedBy: string | null;
   contactMemberId: string;
-  investorKind?: "lp_roster";
+  investorKind?: "lp_roster" | "member_roster";
 };
 
 /**
@@ -293,6 +293,262 @@ export async function upsertDealMemberForDeal(
         updatedAt: now,
       },
     });
+}
+
+export class DealLeadSponsorValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DealLeadSponsorValidationError";
+  }
+}
+
+function normalizeRoleLabel(raw: string | null | undefined): string {
+  return String(raw ?? "").trim().toLowerCase().replace(/[_\s]+/g, " ");
+}
+
+function roleIsLeadSponsor(raw: string | null | undefined): boolean {
+  return normalizeRoleLabel(raw) === "lead sponsor";
+}
+
+function normalizeRosterContactId(raw: string | null | undefined): string {
+  return String(raw ?? "").trim().toLowerCase();
+}
+
+export async function saveDealMemberRoleForDeal(
+  dealId: string,
+  input: UpsertDealMemberInput & {
+    replacementLeadSponsorContactId?: string;
+  },
+): Promise<void> {
+  const cid = input.contactMemberId.trim();
+  if (!cid) return;
+  if (input.isDraft === true) {
+    await upsertDealMemberForDeal(dealId, input);
+    return;
+  }
+
+  const members = await db
+    .select({
+      contactMemberId: dealMember.contactMemberId,
+      dealMemberRole: dealMember.dealMemberRole,
+    })
+    .from(dealMember)
+    .where(and(eq(dealMember.dealId, dealId), eq(dealMember.isDraft, false)));
+
+  const currentKey = normalizeRosterContactId(cid);
+  const replacementKey = normalizeRosterContactId(
+    input.replacementLeadSponsorContactId,
+  );
+  const existingCurrent = members.find(
+    (m) => normalizeRosterContactId(m.contactMemberId) === currentKey,
+  );
+  if (!existingCurrent) {
+    await assertEligibleForNewDealRosterAdd(cid, input.addedByUserId);
+  }
+
+  const finalRoles = new Map<string, string>();
+  for (const m of members) {
+    const key = normalizeRosterContactId(m.contactMemberId);
+    if (key) finalRoles.set(key, String(m.dealMemberRole ?? "").trim());
+  }
+
+  const currentWasLead = roleIsLeadSponsor(existingCurrent?.dealMemberRole);
+  const currentWillBeLead = roleIsLeadSponsor(input.dealMemberRole);
+  if (currentWasLead && !currentWillBeLead) {
+    if (!replacementKey) {
+      throw new DealLeadSponsorValidationError(
+        "This Deal must have one Lead Sponsor. Please select a new Lead Sponsor.",
+      );
+    }
+    if (replacementKey === currentKey) {
+      throw new DealLeadSponsorValidationError(
+        "Select another sponsor as the new Lead Sponsor.",
+      );
+    }
+    if (
+      !members.some(
+        (m) => normalizeRosterContactId(m.contactMemberId) === replacementKey,
+      )
+    ) {
+      await assertEligibleForNewDealRosterAdd(
+        input.replacementLeadSponsorContactId!.trim(),
+        input.addedByUserId,
+      );
+    }
+    finalRoles.set(replacementKey, LEAD_SPONSOR_DEAL_MEMBER_ROLE);
+  }
+
+  finalRoles.set(currentKey, input.dealMemberRole?.trim() ?? "");
+  const leadCount = [...finalRoles.values()].filter(roleIsLeadSponsor).length;
+  if (leadCount > 1) {
+    throw new DealLeadSponsorValidationError(
+      "This deal already has a Lead Sponsor. Choose another role or edit the existing Lead Sponsor row.",
+    );
+  }
+  if (leadCount < 1) {
+    throw new DealLeadSponsorValidationError(
+      "This Deal must have one Lead Sponsor. Please select a new Lead Sponsor.",
+    );
+  }
+
+  const send = sendInvitationYesFromInput(input.sendInvitationMail);
+  const now = new Date();
+  const role = input.dealMemberRole?.trim() ?? "";
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(dealMember)
+      .values({
+        dealId,
+        addedBy: input.addedByUserId,
+        contactMemberId: cid,
+        dealMemberRole: role,
+        sendInvitationMail: send,
+        isDraft: false,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [dealMember.dealId, dealMember.contactMemberId],
+        set: {
+          addedBy: sql`COALESCE(${dealMember.addedBy}, ${input.addedByUserId}::uuid)`,
+          dealMemberRole: role,
+          sendInvitationMail: sqlPreserveSendInvitationMailOnUpsert(
+            input.sendInvitationMail,
+            dealMember.sendInvitationMail,
+          ),
+          isDraft: false,
+          updatedAt: now,
+        },
+      });
+
+    if (currentWasLead && !currentWillBeLead && replacementKey) {
+      await tx
+        .insert(dealMember)
+        .values({
+          dealId,
+          addedBy: input.addedByUserId,
+          contactMemberId: input.replacementLeadSponsorContactId!.trim(),
+          dealMemberRole: LEAD_SPONSOR_DEAL_MEMBER_ROLE,
+          sendInvitationMail: "no",
+          isDraft: false,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [dealMember.dealId, dealMember.contactMemberId],
+          set: {
+            addedBy: sql`COALESCE(${dealMember.addedBy}, ${input.addedByUserId}::uuid)`,
+            dealMemberRole: LEAD_SPONSOR_DEAL_MEMBER_ROLE,
+            isDraft: false,
+            updatedAt: now,
+          },
+        });
+      await tx
+        .update(dealInvestment)
+        .set({ investor_role: LEAD_SPONSOR_DEAL_MEMBER_ROLE })
+        .where(
+          and(
+            eq(dealInvestment.dealId, dealId),
+            sql`lower(trim(${dealInvestment.contactId})) = ${replacementKey}`,
+            eq(dealInvestment.isDraft, false),
+          ),
+        );
+    }
+  });
+}
+
+export async function assertDealMemberLeadSponsorRoleAllowed(
+  dealId: string,
+  input: {
+    contactMemberId: string;
+    dealMemberRole: string;
+    replacementLeadSponsorContactId?: string;
+    isDraft?: boolean;
+  },
+): Promise<void> {
+  const cid = input.contactMemberId.trim();
+  if (!cid || input.isDraft === true) return;
+
+  const members = await db
+    .select({
+      contactMemberId: dealMember.contactMemberId,
+      dealMemberRole: dealMember.dealMemberRole,
+    })
+    .from(dealMember)
+    .where(and(eq(dealMember.dealId, dealId), eq(dealMember.isDraft, false)));
+
+  const currentKey = normalizeRosterContactId(cid);
+  const replacementKey = normalizeRosterContactId(
+    input.replacementLeadSponsorContactId,
+  );
+  const existingCurrent = members.find(
+    (m) => normalizeRosterContactId(m.contactMemberId) === currentKey,
+  );
+  const currentWasLead = roleIsLeadSponsor(existingCurrent?.dealMemberRole);
+  const currentWillBeLead = roleIsLeadSponsor(input.dealMemberRole);
+  const finalRoles = new Map<string, string>();
+  for (const m of members) {
+    const key = normalizeRosterContactId(m.contactMemberId);
+    if (key) finalRoles.set(key, String(m.dealMemberRole ?? "").trim());
+  }
+
+  if (currentWasLead && !currentWillBeLead) {
+    if (!replacementKey) {
+      throw new DealLeadSponsorValidationError(
+        "This Deal must have one Lead Sponsor. Please select a new Lead Sponsor.",
+      );
+    }
+    if (replacementKey === currentKey) {
+      throw new DealLeadSponsorValidationError(
+        "Select another sponsor as the new Lead Sponsor.",
+      );
+    }
+    finalRoles.set(replacementKey, LEAD_SPONSOR_DEAL_MEMBER_ROLE);
+  }
+
+  finalRoles.set(currentKey, input.dealMemberRole?.trim() ?? "");
+  const leadCount = [...finalRoles.values()].filter(roleIsLeadSponsor).length;
+  if (leadCount > 1) {
+    throw new DealLeadSponsorValidationError(
+      "This deal already has a Lead Sponsor. Choose another role or edit the existing Lead Sponsor row.",
+    );
+  }
+  if (leadCount < 1) {
+    throw new DealLeadSponsorValidationError(
+      "This Deal must have one Lead Sponsor. Please select a new Lead Sponsor.",
+    );
+  }
+}
+
+export async function dealMemberContactIsLeadSponsor(
+  dealId: string,
+  contactMemberId: string,
+): Promise<boolean> {
+  const cid = normalizeRosterContactId(contactMemberId);
+  if (!dealId.trim() || !cid) return false;
+  const [row] = await db
+    .select({ dealMemberRole: dealMember.dealMemberRole })
+    .from(dealMember)
+    .where(
+      and(
+        eq(dealMember.dealId, dealId),
+        sql`lower(trim(${dealMember.contactMemberId})) = ${cid}`,
+        eq(dealMember.isDraft, false),
+      ),
+    )
+    .limit(1);
+  return roleIsLeadSponsor(row?.dealMemberRole);
+}
+
+export async function getDealMemberRosterEntryById(
+  dealId: string,
+  rowId: string,
+): Promise<DealMemberRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(dealMember)
+    .where(and(eq(dealMember.dealId, dealId), eq(dealMember.id, rowId)))
+    .limit(1);
+  return row;
 }
 
 /**
@@ -439,6 +695,7 @@ export async function listDealMembersMappedToInvestorApi(
     rowMeta.push({
       addedBy: m.addedBy ?? null,
       contactMemberId: m.contactMemberId,
+      investorKind: picked ? undefined : "member_roster",
     });
     if (canonicalKey && canonicalKey !== "id:__empty__") {
       coveredCanonical.add(canonicalKey);
