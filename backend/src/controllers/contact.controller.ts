@@ -998,7 +998,7 @@ export async function postContact(req: Request, res: Response): Promise<void> {
     const invitationResult = await sendContactInvitationEmailIfRequested({
       sendInvitationMail,
       email,
-      organizationId: row.organizationId,
+      invitedByUserId: user.id,
       skipBecausePortalUser: row.isPortalUser,
     });
     const saved =
@@ -1063,7 +1063,7 @@ export async function postContactInvitation(
     const invitationResult = await sendContactInvitationEmailIfRequested({
       sendInvitationMail: "yes",
       email: row.email,
-      organizationId: row.organizationId,
+      invitedByUserId: user.id,
       skipBecausePortalUser: row.isPortalUser,
     });
     if (invitationResult !== "sent") {
@@ -1312,13 +1312,19 @@ export async function patchContactShowOfferings(
     return;
   }
   const b = req.body as Record<string, unknown>;
+  const rawShowOfferingsVisibility = Object.prototype.hasOwnProperty.call(
+    b,
+    "showOfferingsVisibility",
+  )
+    ? b.showOfferingsVisibility
+    : b.show_offerings_visibility;
   const showOfferingsVisibility = parseShowOfferingsVisibility(
-    b.showOfferingsVisibility ?? b.show_offerings_visibility,
+    rawShowOfferingsVisibility,
   );
   if (showOfferingsVisibility === undefined) {
     res.status(400).json({
       message:
-        "showOfferingsVisibility must be one of: ALL_OFFERINGS, HIDE_OFFERINGS, 506C_ONLY (or empty/null to clear)",
+        "showOfferingsVisibility must be one of: ALL_OFFERINGS, HIDE_OFFERINGS, 506B_ONLY, 506C_ONLY (or empty/null to clear)",
     });
     return;
   }

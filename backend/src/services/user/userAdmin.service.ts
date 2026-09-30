@@ -2,6 +2,7 @@ import { and, asc, desc, eq, getTableColumns, inArray, or, sql } from "drizzle-o
 import { db } from "../../database/db.js";
 import {
   companies,
+  contact,
   memberAdminAuditLogs,
   userCompanyMembership,
   users,
@@ -243,6 +244,21 @@ async function listUsersScopedToCompany(
   for (const r of rows) {
     const id = String(r.user.id ?? "").trim();
     if (!id) continue;
+    const contactPortalUser = await db
+      .select({ id: contact.id })
+      .from(contact)
+      .where(
+        and(
+          eq(contact.organizationId, companyId),
+          eq(contact.isPortalUser, true),
+          eq(contact.platformAdminOnly, false),
+          eq(contact.visibleToUsers, false),
+          sql`lower(trim(${contact.email})) = lower(trim(${r.user.email}))`,
+          sql`${contact.createdBy}::text <> ${id}`,
+        ),
+      )
+      .limit(1);
+    if (contactPortalUser.length > 0) continue;
     if (!deduped.has(id)) {
       deduped.set(id, { user: r.user, orgName: r.orgName });
     }

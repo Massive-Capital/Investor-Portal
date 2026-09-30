@@ -47,7 +47,7 @@ export const contact = pgTable("contact", {
   status: varchar("status", { length: 32 }).notNull().default("active"),
   /**
    * Per-contact offering visibility for the investor portal.
-   * `ALL_OFFERINGS` | `HIDE_OFFERINGS` | `506C_ONLY` — nullable when unset.
+   * `ALL_OFFERINGS` | `HIDE_OFFERINGS` | `506B_ONLY` | `506C_ONLY` — nullable when unset.
    */
   showOfferingsVisibility: varchar("show_offerings_visibility", { length: 32 }),
   /** Accreditation status label; nullable when unset. */

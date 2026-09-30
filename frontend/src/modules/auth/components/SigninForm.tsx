@@ -17,6 +17,7 @@ import {
   AUTH_RETURN_NEXT_KEY,
   SESSION_ACTIVITY_SESSION_ID_KEY,
   SESSION_BEARER_KEY,
+  SESSION_PORTAL_MODE_KEY,
   SESSION_REFRESH_KEY,
   SESSION_USER_DETAILS_KEY,
 } from "../../../common/auth/sessionKeys";
@@ -24,7 +25,7 @@ import { storeAuthTokens } from "../../../common/auth/authTokensApi";
 import {
   touchSessionActivity,
 } from "../../../common/auth/idleSession";
-import { isPlatformAdmin } from "../../../common/auth/roleUtils";
+import { INVESTOR, isPlatformAdmin } from "../../../common/auth/roleUtils";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
 import { dealInvestNowPath } from "../../Syndication/Deals/utils/dealInvestNowPath";
 import { resolveUnpaidLeadSponsorPricingPath } from "../../Syndication/Deals/utils/dealSaasAccess";
@@ -40,6 +41,20 @@ import { parseSafeNextPath } from "../../../common/auth/parseSafeNextPath";
 import { toast } from "../../../common/components/Toast";
 import { ensureActiveCompanyInitialized } from "../../../common/auth/setActiveCompany";
 import "./signin_form.css";
+
+/** Investor accounts stay `investor` after a sponsor roster add; open Syndicating on sign-in. */
+function openSyndicatingForInvestorSponsor(userDetails: unknown): void {
+  const first = Array.isArray(userDetails) ? userDetails[0] : null;
+  if (!first || typeof first !== "object") return;
+  const row = first as Record<string, unknown>;
+  if (String(row.role ?? "").trim() !== INVESTOR) return;
+  if (row.is_deal_sponsor !== true) return;
+  try {
+    sessionStorage.setItem(SESSION_PORTAL_MODE_KEY, "syndicating");
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
 
 const SigninForm = () => {
   const navigate = useNavigate();
@@ -160,6 +175,7 @@ const SigninForm = () => {
           JSON.stringify(data.userDetails),
         );
         ensureActiveCompanyInitialized();
+        openSyndicatingForInvestorSponsor(data.userDetails);
       } else {
         sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
       }

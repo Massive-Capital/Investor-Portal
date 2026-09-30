@@ -178,6 +178,12 @@ export async function registerUser(
 ): Promise<SignupResult> {
   // const userName = str(body.userName);
   let companyName = str(body.companyName);
+  const investorInviteRef = str(body.inviteRef);
+  const hasInvestorInviteRef =
+    !inviteToken?.trim() && investorInviteRef.trim() !== "";
+  if (hasInvestorInviteRef) {
+    companyName = "";
+  }
   const selfServeSignupAs = parseSelfServeSignupAs(body.signupAs);
   const phoneRaw = str(body.phone);
   const firstName = str(body.firstName);
@@ -317,7 +323,7 @@ export async function registerUser(
         message: "A valid email is required when signing up without an invite link",
       };
     }
-    if (!selfServeSignupAs) {
+    if (!selfServeSignupAs && !hasInvestorInviteRef) {
       return {
         ok: false,
         status: 400,
@@ -325,6 +331,7 @@ export async function registerUser(
       };
     }
     if (
+      !hasInvestorInviteRef &&
       (selfServeSignupAs === SIGNUP_AS_SYNDICATOR ||
         selfServeSignupAs === SIGNUP_AS_BOTH) &&
       !companyName
@@ -408,7 +415,10 @@ export async function registerUser(
       invitedRoleFromToken != null &&
       !isDealMemberInvite;
 
-    if (isDealMemberInvite) {
+    if (hasInvestorInviteRef) {
+      roleForUser = INVESTOR;
+      organizationId = undefined;
+    } else if (isDealMemberInvite) {
       roleForUser = DEAL_PARTICIPANT;
     } else if (!inviteToken?.trim() && selfServeSignupAs === SIGNUP_AS_INVESTOR) {
       /**
@@ -462,7 +472,9 @@ export async function registerUser(
 
     if (pendingId && existingByEmail) {
       const orgToSet =
-        organizationId ?? existingByEmail.organizationId ?? undefined;
+        hasInvestorInviteRef
+          ? undefined
+          : organizationId ?? existingByEmail.organizationId ?? undefined;
       membershipCompanyId = orgToSet;
       await db
         .update(users)
@@ -477,7 +489,11 @@ export async function registerUser(
           userSignupCompleted: "true",
           inviteExpiresAt: null,
           updatedAt: new Date(),
-          ...(orgToSet ? { organizationId: orgToSet } : {}),
+          ...(hasInvestorInviteRef
+            ? { organizationId: null }
+            : orgToSet
+              ? { organizationId: orgToSet }
+              : {}),
         })
         .where(eq(users.id, pendingId));
       createdUserId = pendingId;
@@ -518,7 +534,7 @@ export async function registerUser(
     if (createdUserId && roleForUser === INVESTOR && !organizationId) {
       const invited = isSelfServeSignup
         ? await applyInvestorInviteAfterAuth({
-            inviteRef: str(body.inviteRef),
+            inviteRef: investorInviteRef,
             userId: createdUserId,
             emailNorm,
             firstName,

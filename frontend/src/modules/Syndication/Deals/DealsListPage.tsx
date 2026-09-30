@@ -80,6 +80,7 @@ import { TableCompactAmountCell } from "../../../common/components/card-compact-
 import {
   committedSortValue,
   dateSortValue,
+  dealFieldsMatchSearch,
   dealTypeDisplayLabel,
   formatDealListDateDisplay,
   secTypeDisplayLabel,
@@ -482,7 +483,15 @@ export function DealsListPage({
     const q = query.trim().toLowerCase()
     if (!q) return [...rowsForTab]
     return rowsForTab.filter((r) =>
-      (r.dealName ?? "").toLowerCase().includes(q),
+      dealFieldsMatchSearch(
+        {
+          name: r.dealName,
+          dealType: r.dealType,
+          secType: r.secType,
+          location: r.locationDisplay,
+        },
+        q,
+      ),
     )
   }, [query, rowsForTab])
 
@@ -602,7 +611,15 @@ export function DealsListPage({
     const q = query.trim().toLowerCase()
     if (
       q &&
-      !(sessionCreateDealDraftRow.dealName ?? "").toLowerCase().includes(q)
+      !dealFieldsMatchSearch(
+        {
+          name: sessionCreateDealDraftRow.dealName,
+          dealType: sessionCreateDealDraftRow.dealType,
+          secType: sessionCreateDealDraftRow.secType,
+          location: sessionCreateDealDraftRow.locationDisplay,
+        },
+        q,
+      )
     )
       return base
     return [...base, sessionCreateDealDraftRow]

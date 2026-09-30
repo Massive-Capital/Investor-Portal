@@ -2069,6 +2069,10 @@ export function AddInvestmentModal({
                           }
                           ariaLabel="New Lead Sponsor"
                           triggerClassName={DROPDOWN_TRIGGER_PILL}
+                          searchable
+                          searchPlaceholder="Search lead sponsors"
+                          searchAriaLabel="Search lead sponsors"
+                          searchShowOptionCountHint
                           header={{
                             label: "+ Add Contact",
                             onClick: () => {

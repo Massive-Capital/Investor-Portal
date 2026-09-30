@@ -46,6 +46,14 @@ function normalizeOfferingVisibility(
   if (s === "HIDE_OFFERINGS" || s === "HIDE" || s === "HIDDEN")
     return "HIDE_OFFERINGS"
   if (
+    s === "506B_ONLY" ||
+    s === "506B" ||
+    s === "506_B" ||
+    s === "506_B_ONLY" ||
+    s === "506B_OFFERINGS_ONLY"
+  )
+    return "506B_ONLY"
+  if (
     s === "506C_ONLY" ||
     s === "506C" ||
     s === "506_C" ||

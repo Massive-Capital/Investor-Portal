@@ -271,6 +271,25 @@ export async function dealAccessibleToViewerScope(
     );
   }
 
+  /**
+   * Investing: offerings from the sponsors linked to this contact, already
+   * limited by Offering visibility (Show / Hide / 506(b) / 506(c)). A sponsor
+   * roster seat must not replace that list or block deals the contact is not
+   * personally on.
+   */
+  if (!baseOk && isInvestingPortalRequest() && !scope.isPlatformAdmin) {
+    const emailNorm = await viewerEmailNormForScope(scope);
+    if (
+      emailNorm &&
+      (await isDealInInvestingParticipantListForUser(dealId, {
+        userId: scope.userId,
+        emailNorm,
+      }))
+    ) {
+      baseOk = true;
+    }
+  }
+
   if (!baseOk) return false;
   return passesContactOfferingVisibility();
 }

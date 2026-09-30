@@ -1342,6 +1342,10 @@ export function AddLpInvestorModal({
                   disabled={membersLoading}
                   invalid={Boolean(fieldErrors.contactId)}
                   onChange={(v) => patchMemberById(v)}
+                  searchable
+                  searchShowOptionCountHint
+                  searchPlaceholder="Search investors or contacts…"
+                  searchAriaLabel="Search investors or contacts"
                   placeholder={
                     membersLoading
                       ? "Loading contacts and members…"

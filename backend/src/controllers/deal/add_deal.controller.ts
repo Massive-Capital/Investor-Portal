@@ -7,7 +7,10 @@ import {
 import { getValidJwtUser } from "../../middleware/jwtUser.js";
 import { db } from "../../database/db.js";
 import { users } from "../../schema/schema.js";
-import { isPlatformAdminRole } from "../../constants/roles.js";
+import {
+  isInvestorPortalRole,
+  isPlatformAdminRole,
+} from "../../constants/roles.js";
 import {
   filterRowsBySearch,
   paginateInMemory,
@@ -366,7 +369,13 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
        */
       const dealSponsorUsesInvestorScope =
         !scope.seesAllDeals && (await viewerIsDealSponsorOnAnyDeal(user.id));
+      /**
+       * Self-serve investors have no company deal list. Investing must use the
+       * contact’s offerings (506(c), plus 506(b) deals they are already on),
+       * even when they were later added as a sponsor.
+       */
       const investingUsesWorkspaceDeals =
+        !isInvestorPortalRole(user.userRole) &&
         !dealSponsorUsesInvestorScope &&
         (scope.seesAllDeals ||
           (scope.lpInvestorEmailScopedDealIds == null &&

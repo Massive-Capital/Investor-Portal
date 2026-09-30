@@ -1499,7 +1499,7 @@ export type ContactListFilters = {
   owner?: string;
   /** Exact label, or `"na"` for contacts with no accreditation set. */
   accreditation?: string;
-  /** `ALL_OFFERINGS` | `HIDE_OFFERINGS` | `506C_ONLY`, or `"unset"`. */
+  /** `ALL_OFFERINGS` | `HIDE_OFFERINGS` | `506B_ONLY` | `506C_ONLY`, or `"unset"`. */
   offeringVisibility?: string;
 };
 

@@ -22,7 +22,10 @@ import {
   filterDealIdsVisibleToInvestors,
   isAddDealFormIncomplete,
 } from "../deal/dealFormCompleteness.service.js";
-import { filterDealIdsByContactOfferingVisibility } from "../contact/contactOfferingVisibility.service.js";
+import {
+  filterDealIdsByContactOfferingVisibility,
+  listContactOrganizationInvestingDealIds,
+} from "../contact/contactOfferingVisibility.service.js";
 
 /** Stored `deal_lp_investor.role` values treated as LP Investor for nav + deal scope. */
 export function isLpInvestorRoleInLpTable(role: string | null | undefined): boolean {
@@ -396,8 +399,10 @@ async function listDealIdsWhereSponsorUsersOnRoster(
 }
 
 /**
- * Every deal an invited LP may see: all roster deals for sponsor(s) who added or
- * invited them — not organization-wide and not limited to deals they were named on.
+ * Every offering an invited LP may see from sponsor(s) who added or invited
+ * them — not organization-wide and not limited to deals they were named on.
+ * 506(c) offerings from those sponsors stay visible. Offering visibility
+ * only limits 506(b) and other non-506(c) deals in this set.
  */
 export async function listInvestorSponsorScopedDealIdsForUser(
   emailNorm: string,
@@ -412,7 +417,10 @@ export async function listInvestorSponsorScopedDealIdsForUser(
       : await listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
   const visible = await filterDealIdsVisibleToInvestors(raw);
   if (opts?.applyContactOfferingVisibility === false) return visible;
-  return filterDealIdsByContactOfferingVisibility(e, visible);
+  if (sponsorUserIds.length === 0) {
+    return filterDealIdsByContactOfferingVisibility(e, visible);
+  }
+  return filterSponsorScopedDealIdsByContactVisibility(e, visible);
 }
 
 /** Opportunity deal ids where at least one linked sponsor is on the deal roster. */
@@ -425,6 +433,14 @@ async function filterDealIdsToThoseWithSponsorUsersOnRoster(
   const sponsorScoped = await listDealIdsWhereSponsorUsersOnRoster(sponsorUserIds);
   const allowed = new Set(sponsorScoped);
   return ids.filter((id) => allowed.has(id));
+}
+
+/** Show Offerings, Hide Offerings, 506(b) only, or 506(c) only — same rules as the contact column. */
+async function filterSponsorScopedDealIdsByContactVisibility(
+  emailNorm: string,
+  dealIds: string[],
+): Promise<string[]> {
+  return filterDealIdsByContactOfferingVisibility(emailNorm, dealIds);
 }
 
 /**
@@ -445,7 +461,7 @@ export async function listInvestorVisibleComingSoonDealIdsForUser(
     allOpportunityIds,
     sponsorUserIds,
   );
-  return filterDealIdsByContactOfferingVisibility(e, scoped);
+  return filterSponsorScopedDealIdsByContactVisibility(e, scoped);
 }
 
 /**
@@ -581,8 +597,10 @@ export async function isDealInInvestingParticipantListForUser(
 }
 
 /**
- * Investing dashboard + `/investing/deals`: direct LP participation **plus every deal**
- * on the roster of sponsor(s) who invited or added this investor (not org-wide).
+ * Investing dashboard + `/investing/deals`.
+ * A CRM contact only sees deals in organizations where that email is a
+ * contact, filtered by that organization's visibility. Sponsor rosters and
+ * other companies are not added.
  */
 export async function listInvestingParticipantDealIdsForUser(params: {
   userId: string;
@@ -594,6 +612,12 @@ export async function listInvestingParticipantDealIdsForUser(params: {
   if (!userId) return [];
   const applyContactOfferingVisibility =
     params.applyContactOfferingVisibility !== false;
+
+  if (emailNorm.includes("@")) {
+    const organizationDeals =
+      await listContactOrganizationInvestingDealIds(emailNorm);
+    if (organizationDeals) return organizationDeals;
+  }
 
   const [direct, sponsorScoped] = await Promise.all([
     listDirectInvestingParticipantDealIdsForUser({

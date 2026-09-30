@@ -102,6 +102,11 @@ export default function SignupForm() {
   const token = (tokenParam ?? "").trim() || searchParams.get("token")?.trim() || "";
   /** Sponsor's investor invite link — attributes this signup to them (see contacts page). */
   const inviteRef = searchParams.get("ref")?.trim() || "";
+  /** Set when the link was emailed from Add Contact, so signup stays on that contact. */
+  const invitedEmail =
+    inviteRef && searchParams.get("email")?.trim()
+      ? searchParams.get("email")!.trim().toLowerCase()
+      : "";
 
   const [isVisible, setIsVisible] = useState(false);
   const [isVisibleConfirm, setIsVisibleConfirm] = useState(false);
@@ -208,14 +213,19 @@ export default function SignupForm() {
   }, [token]);
 
   /**
-   * Invite link: JWT carries email (and often company). GET /auth/signup/prefill
-   * fills first name, last name, and phone. With `dealId` (deal
-   * email invite), the server prefers roster rows for that deal.
+   * Invite link: JWT carries email (and often company). Add Contact invitations
+   * pass `ref` plus `email`. GET /auth/signup/prefill fills first name, last
+   * name, and phone from that contact. With `dealId` (deal email invite), the
+   * server prefers roster rows for that deal.
    */
+  const prefillEmail = (resolvedInviteEmail || invitedEmail).trim().toLowerCase();
   useEffect(() => {
-    if (!apiV1 || !token || !resolvedInviteEmail.trim()) return;
-    const d = decodeJwtPayload<{ exp?: number }>(token);
-    if (d?.exp != null && d.exp < Date.now() / 1000) return;
+    if (!apiV1 || !prefillEmail) return;
+    if (!token && !invitedEmail) return;
+    if (token) {
+      const d = decodeJwtPayload<{ exp?: number }>(token);
+      if (d?.exp != null && d.exp < Date.now() / 1000) return;
+    }
 
     const ac = new AbortController();
     void (async () => {
@@ -228,14 +238,14 @@ export default function SignupForm() {
           });
           return;
         }
-        u.searchParams.set("email", resolvedInviteEmail.trim().toLowerCase());
+        u.searchParams.set("email", prefillEmail);
         if (dealIdForPrefillQuery) {
           u.searchParams.set("dealId", dealIdForPrefillQuery);
         }
         console.log("[signup-prefill] request", {
           url: u.toString(),
           tokenPresent: Boolean(token),
-          inviteEmail: resolvedInviteEmail.trim().toLowerCase(),
+          inviteEmail: prefillEmail,
           dealId: dealIdForPrefillQuery || null,
         });
         const res = await fetch(u.toString(), { signal: ac.signal });
@@ -306,10 +316,10 @@ export default function SignupForm() {
       }
     })();
     return () => ac.abort();
-  }, [apiV1, token, resolvedInviteEmail, dealIdForPrefillQuery]);
+  }, [apiV1, token, prefillEmail, invitedEmail, dealIdForPrefillQuery]);
 
   const [signUpFormData, setSignUpFormData] = useState<SignUpFormState>({
-    email: resolvedInviteEmail,
+    email: resolvedInviteEmail || invitedEmail,
     companyName: "",
     signupAs: inviteRef ? "investor" : "",
     userName: "",
@@ -627,7 +637,9 @@ export default function SignupForm() {
                 placeholder="johndoe@domain.com"
                 value={signUpFormData.email}
                 onChange={handleChange}
-                readOnly={Boolean(token && resolvedInviteEmail)}
+                readOnly={Boolean(
+                  (token && resolvedInviteEmail) || invitedEmail,
+                )}
                 disabled={isLoading}
                 aria-invalid={!!isError}
                 required

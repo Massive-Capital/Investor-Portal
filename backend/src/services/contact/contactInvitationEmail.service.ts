@@ -1,9 +1,6 @@
-import { eq } from "drizzle-orm";
-import { db } from "../../database/db.js";
-import { companies } from "../../schema/schema.js";
 import type { ContactRow } from "../../schema/contact.schema.js";
-import { createInviteForEmail } from "../auth/invite.service.js";
 import { sendInviteSignupEmail } from "../auth/inviteEmail.service.js";
+import { buildInvestorInviteLinkForUser } from "./investorInviteLink.service.js";
 
 export function sendInvitationMailRequested(
   raw: string | null | undefined,
@@ -52,13 +49,15 @@ export function contactCanSendInvitationEmail(
 
 /**
  * Optional portal signup invitation after creating a CRM contact.
+ * Uses the same investor signup link as Invite Investor Link (`/signup?ref=…`),
+ * so the person becomes an investor attributed to the sender — not a company member.
  * Does not create a pending `users` row, so the contact stays on All Contacts
  * until they complete signup.
  */
 export async function sendContactInvitationEmailIfRequested(params: {
   sendInvitationMail: string;
   email: string;
-  organizationId: string | null | undefined;
+  invitedByUserId: string;
   skipBecausePortalUser: boolean;
 }): Promise<"sent" | "skipped" | "failed"> {
   if (!sendInvitationMailRequested(params.sendInvitationMail)) return "skipped";
@@ -67,34 +66,32 @@ export async function sendContactInvitationEmailIfRequested(params: {
   const email = params.email.trim().toLowerCase();
   if (!email.includes("@")) return "skipped";
 
-  let companyName: string | null = null;
-  const orgId = params.organizationId?.trim() || null;
-  if (orgId) {
-    const [co] = await db
-      .select({ name: companies.name })
-      .from(companies)
-      .where(eq(companies.id, orgId))
-      .limit(1);
-    companyName = co?.name?.trim() || null;
-  }
-
-  const invite = createInviteForEmail(
-    email,
-    orgId ? { companyId: orgId, companyName } : null,
-  );
-  if (!invite.ok) {
+  let inviteUrl = "";
+  try {
+    const link = await buildInvestorInviteLinkForUser(params.invitedByUserId);
+    const baseUrl = link?.inviteUrl?.trim() ?? "";
+    if (baseUrl) {
+      const url = new URL(baseUrl);
+      url.searchParams.set("email", email);
+      inviteUrl = url.toString();
+    }
+  } catch (err) {
     console.warn(
       "sendContactInvitationEmailIfRequested: could not build invite",
-      invite.message,
+      err,
+    );
+    return "failed";
+  }
+  if (!inviteUrl) {
+    console.warn(
+      "sendContactInvitationEmailIfRequested: this account cannot share an investor invite link",
     );
     return "failed";
   }
 
-  const sent = await sendInviteSignupEmail(
-    email,
-    invite.signupUrl,
-    invite.expiresIn,
-  );
+  const sent = await sendInviteSignupEmail(email, inviteUrl, "", {
+    persistentLink: true,
+  });
   if (!sent.ok) {
     console.warn(
       "sendContactInvitationEmailIfRequested: send failed",

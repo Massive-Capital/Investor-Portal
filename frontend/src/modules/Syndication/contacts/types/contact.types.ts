@@ -4,11 +4,12 @@ export type ContactSource = "local" | "ghl"
 
 /**
  * Per-contact offering visibility on the Investing portal only.
- * `null` / unset → treat as all offerings when filtering deals.
+ * Applied per organization. That sponsor's 506(c) offerings stay visible to every contact there. The setting only changes 506(b) and other non-506(c) deals. `null` / unset still shows a 506(b) deal only when this investor is already on it.
  */
 export type ContactOfferingVisibility =
   | "ALL_OFFERINGS"
   | "HIDE_OFFERINGS"
+  | "506B_ONLY"
   | "506C_ONLY"
 
 export const CONTACT_OFFERING_VISIBILITY_OPTIONS: ReadonlyArray<{
@@ -17,6 +18,7 @@ export const CONTACT_OFFERING_VISIBILITY_OPTIONS: ReadonlyArray<{
 }> = [
   { value: "ALL_OFFERINGS", label: "Show Offerings" },
   { value: "HIDE_OFFERINGS", label: "Hide Offerings" },
+  { value: "506B_ONLY", label: "506(b) offerings only" },
   { value: "506C_ONLY", label: "506(c) offerings only" },
 ]
 
