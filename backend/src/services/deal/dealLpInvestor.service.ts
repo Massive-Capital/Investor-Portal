@@ -803,6 +803,7 @@ export async function findDealLpInvestorByDealAndContact(
         eq(dealLpInvestor.contactMemberId, cid),
       ),
     )
+    .orderBy(desc(dealLpInvestor.updatedAt))
     .limit(1);
   return row;
 }
@@ -847,6 +848,37 @@ export async function upsertDealLpInvestor(
     contactDisplayName: input.contactDisplayName,
   });
 
+  if (existing) {
+    const sendToStore =
+      send === "yes" ||
+      String(existing.sendInvitationMail ?? "").trim().toLowerCase() === "yes"
+        ? "yes"
+        : "no";
+    const [row] = await db
+      .update(dealLpInvestor)
+      .set({
+        investorName,
+        addedBy: existing.addedBy ?? input.addedByUserId,
+        email: resolvedEmail || null,
+        role: roleToStore,
+        profileId,
+        userInvestorProfileId: uip,
+        investorClass: input.investorClass?.trim() ?? "",
+        percentOfClassOwnership: ownershipPct,
+        percentOfClassDistributions: distributionsPct,
+        entityOwnershipPercent: entityOwnershipPct,
+        distributionAllocationPercent: distributionAllocationPct,
+        sendInvitationMail: sendToStore,
+        isDraft: input.isDraft === true ? existing.isDraft : false,
+        updatedAt: now,
+      })
+      .where(eq(dealLpInvestor.id, existing.id))
+      .returning();
+
+    if (!row) throw new Error("UPDATE_DEAL_LP_INVESTOR_FAILED");
+    return row;
+  }
+
   const [row] = await db
     .insert(dealLpInvestor)
     .values({
@@ -867,31 +899,9 @@ export async function upsertDealLpInvestor(
       isDraft: input.isDraft === true,
       updatedAt: now,
     })
-    .onConflictDoUpdate({
-      target: [dealLpInvestor.dealId, dealLpInvestor.contactMemberId],
-      set: {
-        investorName,
-        addedBy: sql`COALESCE(${dealLpInvestor.addedBy}, ${input.addedByUserId}::uuid)`,
-        email: resolvedEmail || null,
-        role: roleToStore,
-        profileId,
-        userInvestorProfileId: uip,
-        investorClass: input.investorClass?.trim() ?? "",
-        percentOfClassOwnership: ownershipPct,
-        percentOfClassDistributions: distributionsPct,
-        entityOwnershipPercent: entityOwnershipPct,
-        distributionAllocationPercent: distributionAllocationPct,
-        sendInvitationMail: sqlPreserveSendInvitationMailOnUpsert(
-          input.sendInvitationMail,
-          dealLpInvestor.sendInvitationMail,
-        ),
-        ...(input.isDraft === true ? {} : { isDraft: false }),
-        updatedAt: now,
-      },
-    })
     .returning();
 
-  if (!row) throw new Error("UPSERT_DEAL_LP_INVESTOR_FAILED");
+  if (!row) throw new Error("INSERT_DEAL_LP_INVESTOR_FAILED");
   return row;
 }
 

@@ -3029,49 +3029,49 @@ select.cp_settings_input_pill.um_field_select {
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(1) {
-    width: 24%;
+    width: 18%;
   }
 
   .deal_inv_table_panel
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(2) {
-    width: 13%;
+    width: 11%;
   }
 
   .deal_inv_table_panel
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(3) {
-    width: 12%;
+    width: 10%;
   }
 
   .deal_inv_table_panel
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(4) {
-    width: 8%;
+    width: 22%;
   }
 
   .deal_inv_table_panel
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(5) {
-    width: 13%;
+    width: 12%;
   }
 
   .deal_inv_table_panel
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(6) {
-    width: 15%;
+    width: 14%;
   }
 
   .deal_inv_table_panel
     .cp_billing_org_deals
     .um_table.cp_billing_org_deals_table
     :is(th, td):nth-child(7) {
-    width: 10%;
+    width: 8%;
   }
 
   .deal_inv_table_panel
@@ -3201,44 +3201,44 @@ select.cp_settings_input_pill.um_field_select {
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     td.deals_col_deal_name {
-    width: 24%;
-    max-width: 24%;
+    width: 18%;
+    max-width: 18%;
   }
 
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     :is(th, td):nth-child(2) {
-    width: 13%;
+    width: 11%;
   }
 
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     :is(th, td):nth-child(3) {
-    width: 12%;
+    width: 10%;
   }
 
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     :is(th, td):nth-child(4) {
-    width: 8%;
+    width: 22%;
   }
 
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     :is(th, td):nth-child(5) {
-    width: 13%;
+    width: 12%;
   }
 
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     :is(th, td):nth-child(6) {
-    width: 15%;
+    width: 14%;
   }
 
   .cp_billing_detail_table_wrap
     .um_table.cp_billing_detail_table
     :is(th, td):nth-child(7) {
-    width: 10%;
+    width: 8%;
   }
 
   .cp_billing_detail_table_wrap
@@ -3459,17 +3459,56 @@ select.cp_settings_input_pill.um_field_select {
 }
 
 .cp_billing_amount_stack {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.15rem;
-  line-height: 1.25;
+  gap: 0.2rem;
+  width: 100%;
+  max-width: 100%;
+  line-height: 1.3;
+  white-space: normal;
+  text-align: right;
+}
+
+.cp_billing_amount_total {
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .cp_billing_amount_extra {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+  max-width: 100%;
   font-size: 0.75rem;
   font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
   color: var(--portal-text-muted, #64748b);
+}
+
+.um_table_members td.um_td_numeric.cp_billing_amount_col,
+.cp_billing_detail_table_wrap .um_table.cp_billing_detail_table :is(th, td).cp_billing_amount_col,
+.deal_inv_table_panel
+  .cp_billing_org_deals
+  .um_table.cp_billing_org_deals_table
+  :is(th, td).cp_billing_amount_col {
+  width: 22%;
+  min-width: 9.5rem;
+  overflow: visible;
+  white-space: normal;
+  vertical-align: top;
+}
+
+.cp_billing_deal_mrr_table th:last-child,
+.cp_billing_deal_mrr_table td.cp_billing_mrr_amount {
+  width: 42%;
+  min-width: 11rem;
+  text-align: right;
+  white-space: normal;
+  overflow: visible;
+  vertical-align: top;
 }
 
 .cp_billing_deal_mrr_history_title {

@@ -21,6 +21,7 @@ import {
 import {
   sendDealMemberInvitationEmail,
   sendDealMemberInviteForInvestmentIfRequested,
+  sendNewLeadSponsorInvitationIfAssigned,
 } from "../../services/deal/dealMemberInvitationEmail.service.js";
 import { isPortalUserSponsorOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { isPlatformAdminRole } from "../../constants/roles.js";
@@ -711,7 +712,7 @@ export async function putDealMember(
       return;
     }
 
-    await saveDealMemberRoleForDeal(dealId, {
+    const savedRole = await saveDealMemberRoleForDeal(dealId, {
       contactMemberId: existing.contactMemberId,
       dealMemberRole: investorRole,
       sendInvitationMail,
@@ -726,6 +727,12 @@ export async function putDealMember(
       dealMemberRole: investorRole,
       contactEmail: contactEmail.trim() || null,
       invitationSource: "deal_member",
+    });
+    await sendNewLeadSponsorInvitationIfAssigned({
+      dealId,
+      newLeadSponsorContactId: savedRole.newLeadSponsorContactId,
+      alreadyNotifiedContactId: existing.contactMemberId,
+      alreadyNotified: sendInvitationMail.toLowerCase() === "yes",
     });
     res.status(200).json({ message: "Member updated" });
   } catch (err) {

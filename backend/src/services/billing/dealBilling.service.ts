@@ -28,10 +28,12 @@ import {
 } from "../../config/stripe.config.js";
 import {
   creditExtraCompanyUsersPaid,
+  descriptionForExtraCompanyUserCharge,
+  extraCoGpSubscriptionItem,
+  extraCompanyUserChargeDescription,
   extraCompanyUsersToCharge,
   getDealCompanyUserSnapshot,
   parseExtraCompanyUsersQuantity,
-  attachExtraCompanyUserInvoiceItems,
 } from "./dealExtraCompanyUser.service.js";
 import {
   notifyLeadSponsorsOfDealBillingStartDate,
@@ -226,7 +228,7 @@ async function raiseAmountForDeal(dealId: string): Promise<number> {
     offering += parseMoneyAmount(c.offeringSize);
     quota += parseMoneyAmount(c.billingRaiseQuota);
   }
-  return quota > 0 ? quota : offering;
+  return offering > 0 ? offering : quota;
 }
 
 /** `raiseAmountForDeal` for many deals in one query (deals list billing columns). */
@@ -263,8 +265,9 @@ export async function mapDealRaiseAmountByDealIds(
   }
 
   for (const id of ids) {
+    const offering = offeringByDealId.get(id) ?? 0;
     const quota = quotaByDealId.get(id) ?? 0;
-    raiseByDealId.set(id, quota > 0 ? quota : (offeringByDealId.get(id) ?? 0));
+    raiseByDealId.set(id, offering > 0 ? offering : quota);
   }
   return raiseByDealId;
 }
@@ -1031,20 +1034,26 @@ export async function createDealStripeSubscription(params: {
     );
     return null;
   }
-  const snapshot = await getDealCompanyUserSnapshot(String(params.deal.id));
-  const extraUsers = snapshot
-    ? extraCompanyUsersToCharge(snapshot, params.extraCompanyUsers)
-    : Math.max(0, Math.floor(params.extraCompanyUsers ?? 0));
-  const stripe = getStripeClient();
-  await attachExtraCompanyUserInvoiceItems({
-    stripe,
-    customerId: params.customerId,
-    quantity: extraUsers,
-    dealId: String(params.deal.id),
+  const snapshot = await getDealCompanyUserSnapshot(String(params.deal.id), {
+    seatBand: params.seatBand,
   });
+  const extraUsers = snapshot ? extraCompanyUsersToCharge(snapshot) : 0;
+  const stripe = getStripeClient();
+  const extraUserComment = snapshot
+    ? descriptionForExtraCompanyUserCharge(snapshot, extraUsers)
+    : extraCompanyUserChargeDescription({ quantity: extraUsers });
+  const extraItem = await extraCoGpSubscriptionItem(
+    stripe,
+    extraUsers,
+    params.cycle,
+    extraUserComment,
+  );
   const sub = await stripe.subscriptions.create({
       customer: params.customerId,
-      items: [{ price: priceId, quantity: 1 }],
+      items: [
+        { price: priceId, quantity: 1 },
+        ...(extraItem ? [extraItem] : []),
+      ],
       default_payment_method: params.paymentMethodId,
       ...(params.paymentBehavior
         ? { payment_behavior: params.paymentBehavior }
@@ -1058,6 +1067,7 @@ export async function createDealStripeSubscription(params: {
         seatBand: params.seatBand,
         billingScope: "deal",
         extraCompanyUsers: String(extraUsers),
+        extraUserComment: extraUserComment.slice(0, 500),
         ...(params.payerUserId ? { payerUserId: params.payerUserId } : {}),
       },
     });
@@ -1250,6 +1260,16 @@ export async function syncDealSaasBillingForDeal(
     const orgId = String(deal.organizationId ?? "").trim();
     if (orgId) await refreshCompanyBillingFromDeals(orgId);
     return;
+  }
+
+  if (!dealIsActivelyBilled(deal)) {
+    const suggested = await suggestedPlanIdForDeal(id);
+    if (normalizeBillingPlanId(deal.stripePlanId) !== suggested) {
+      await db
+        .update(addDealForm)
+        .set({ stripePlanId: suggested })
+        .where(eq(addDealForm.id, id));
+    }
   }
 
   if (!getStripeConfig()) return;
@@ -1578,7 +1598,11 @@ export type DealBillingListRow = {
   currentCompanyUsers: number;
   extraCompanyUsersPaid: number;
   extraCompanyUsersDue: number;
+  coGpCount: number;
+  seatBand: string | null;
+  includedCoGps: number | null;
   extraUserFeeCents: number;
+  extraUserComment: string;
 };
 
 type DealBillingQueryRow = Pick<
@@ -1700,6 +1724,16 @@ async function mapDealBillingQueryRows(
       (!dated.archived && isSaasBillableDealStage(row.pendingDealStage));
     const raise = payable ? await raiseAmountForDeal(String(row.id)) : 0;
     const suggestedPlanId = payable ? planIdForDealRaiseAmount(raise) : null;
+    if (
+      !billed &&
+      suggestedPlanId &&
+      normalizeBillingPlanId(row.stripePlanId) !== suggestedPlanId
+    ) {
+      await db
+        .update(addDealForm)
+        .set({ stripePlanId: suggestedPlanId })
+        .where(eq(addDealForm.id, row.id));
+    }
     const companyUsers = payable
       ? await getDealCompanyUserSnapshot(String(row.id))
       : null;
@@ -1710,7 +1744,11 @@ async function mapDealBillingQueryRows(
       dealName: row.dealName ?? "",
       dealStage: row.dealStage ?? "",
       archived: Boolean(row.archived),
-      planId: payable ? row.stripePlanId ?? null : null,
+      planId: billed
+        ? row.stripePlanId ?? null
+        : payable
+          ? suggestedPlanId
+          : null,
       suggestedPlanId,
       needsPlanUpgrade: dealShouldAlertPlanUpgrade(dated, suggestedPlanId),
       billingCycle: payable ? row.stripeBillingCycle ?? null : null,
@@ -1729,11 +1767,12 @@ async function mapDealBillingQueryRows(
       extraCompanyUsersPaid: payable
         ? companyUsers?.extraCompanyUsersPaid ?? 0
         : 0,
-      extraCompanyUsersDue:
-        payable && dealSaasBillingHasStarted(dated)
-          ? companyUsers?.extraCompanyUsersDue ?? 0
-          : 0,
+      extraCompanyUsersDue: companyUsers?.extraCompanyUsersDue ?? 0,
+      coGpCount: companyUsers?.coGpCount ?? 0,
+      seatBand: companyUsers?.seatBand ?? null,
+      includedCoGps: companyUsers?.includedCoGps ?? null,
       extraUserFeeCents: companyUsers?.extraUserFeeCents ?? 1000,
+      extraUserComment: companyUsers?.extraUserComment ?? "",
     });
   }
 
@@ -1947,8 +1986,9 @@ export async function updateDealBillingCycle(params: {
 
   const raise = await raiseAmountForDeal(dealId);
   const suggestedPlan = planIdForDealRaiseAmount(raise);
-  const planId =
-    normalizeBillingPlanId(deal.stripePlanId) ?? suggestedPlan;
+  const planId = dealIsActivelyBilled(deal)
+    ? normalizeBillingPlanId(deal.stripePlanId) ?? suggestedPlan
+    : suggestedPlan;
 
   const existingSub = deal.stripeSubscriptionId?.trim() ?? "";
   if (existingSub && getStripeConfig()) {

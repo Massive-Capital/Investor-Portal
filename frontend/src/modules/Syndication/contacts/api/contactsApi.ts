@@ -11,6 +11,13 @@ import type {
   ContactRow,
   ContactStatus,
 } from "../types/contact.types"
+import type {
+  ContactImportConfirmResult,
+  ContactImportDuplicateMode,
+  ContactImportMapping,
+  ContactImportParseResult,
+  ContactImportPreviewResult,
+} from "../types/contactImport.types"
 
 function authHeaders(options?: { omitActiveOrganization?: boolean }): HeadersInit {
   const headers = portalAuthHeaders({
@@ -179,6 +186,10 @@ function normalizeContact(raw: Record<string, unknown>): ContactRow {
     invitationEmailSent: parseContactFlag(
       raw.invitationEmailSent ?? raw.invitation_email_sent,
     ),
+    importSource:
+      raw.importSource != null || raw.import_source != null
+        ? (String(raw.importSource ?? raw.import_source).trim() as ContactRow["importSource"])
+        : undefined,
     canSendInvitationEmail:
       raw.canSendInvitationEmail != null ||
       raw.can_send_invitation_email != null
@@ -494,6 +505,7 @@ export async function fetchContactMatchingIds(params: {
 /** Deal counts and owners for the visible contacts page (max 100 ids). */
 export async function fetchContactDealStats(
   ids: string[],
+  options?: { organizationId?: string },
 ): Promise<Map<string, ContactRow>> {
   const byId = new Map<string, ContactRow>()
   const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
@@ -502,7 +514,8 @@ export async function fetchContactDealStats(
   if (!base) return byId
   try {
     const params = new URLSearchParams()
-    const oid = organizationIdQueryParam()
+    const oid =
+      options?.organizationId?.trim() || organizationIdQueryParam() || ""
     if (oid) params.set("organizationId", oid)
     params.set("ids", unique.slice(0, 100).join(","))
     const res = await fetch(`${base}/contacts/deal-stats?${params.toString()}`, {
@@ -524,36 +537,53 @@ export async function fetchContactDealStats(
 
 export async function hydrateContactDealStatsInChunks(
   ids: string[],
+  options?: { organizationId?: string },
 ): Promise<Map<string, ContactRow>> {
   const byId = new Map<string, ContactRow>()
   const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))]
   for (let i = 0; i < unique.length; i += 100) {
-    const chunk = await fetchContactDealStats(unique.slice(i, i + 100))
+    const chunk = await fetchContactDealStats(unique.slice(i, i + 100), options)
     for (const [id, row] of chunk) byId.set(id, row)
   }
   return byId
 }
 
-/** Platform Contacts: opted-in self-signups, or all self-signups for platform admins. */
-export async function fetchPlatformContacts(options?: {
+export type PlatformContactsFetchOptions = {
   sort?: "name" | "createdAt"
   lean?: boolean
   force?: boolean
-}): Promise<ContactRow[]> {
+  /** One company (Customers → organization). Omit for the global Platform Contacts tab. */
+  organizationId?: string
+}
+
+/**
+ * Platform Contacts: opted-in self-signups, or all self-signups for platform admins.
+ * The global list is cached apart from a single company's list.
+ */
+export async function fetchPlatformContactsResult(
+  options?: PlatformContactsFetchOptions,
+): Promise<ContactsFetchResult> {
   const base = getApiV1Base()
-  if (!base) return []
-  const cacheKey = contactsListCacheKey({ ...options, platform: true })
+  if (!base) return { ok: false, error: "API base URL is not configured." }
+  const organizationId = options?.organizationId?.trim() ?? ""
+  const cacheKey = contactsListCacheKey({
+    sort: options?.sort,
+    lean: options?.lean,
+    platform: true,
+    organizationId,
+    allOrganizations: organizationId.length === 0,
+  })
   const cached = contactsListCache.get(cacheKey)
   if (
     !options?.force &&
     cached &&
-    Date.now() - cached.at < CONTACTS_LIST_TTL_MS &&
-    cached.result.ok
+    Date.now() - cached.at < CONTACTS_LIST_TTL_MS
   ) {
-    return cached.result.contacts
+    return cached.result
   }
   try {
     const params = new URLSearchParams()
+    if (organizationId) params.set("organizationId", organizationId)
     if (options?.sort === "name") params.set("sort", "name")
     if (options?.lean) params.set("lean", "1")
     const q = params.toString()
@@ -566,21 +596,47 @@ export async function fetchPlatformContacts(options?: {
     )
     const data = (await res.json().catch(() => ({}))) as {
       contacts?: unknown
+      message?: unknown
     }
-    if (!res.ok) return []
+    if (!res.ok) {
+      const message =
+        typeof data.message === "string" && data.message.trim()
+          ? data.message
+          : `Could not load platform contacts (${res.status}).`
+      return { ok: false, error: message }
+    }
     const list = data.contacts
-    if (!Array.isArray(list)) return []
-    const contacts = list
-      .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
-      .map(normalizeContact)
-    contactsListCache.set(cacheKey, {
-      at: Date.now(),
-      result: { ok: true, contacts },
-    })
-    return contacts
-  } catch {
-    return []
+    if (!Array.isArray(list)) {
+      return {
+        ok: false,
+        error: "Platform contacts response was not in the expected format.",
+      }
+    }
+    const result: ContactsFetchResult = {
+      ok: true,
+      contacts: list
+        .filter(
+          (x): x is Record<string, unknown> => x != null && typeof x === "object",
+        )
+        .map(normalizeContact),
+    }
+    contactsListCache.set(cacheKey, { at: Date.now(), result })
+    return result
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error ? err.message : "Could not load platform contacts.",
+    }
   }
+}
+
+/** Platform Contacts list. Failures become an empty list for pickers that only need rows. */
+export async function fetchPlatformContacts(
+  options?: PlatformContactsFetchOptions,
+): Promise<ContactRow[]> {
+  const result = await fetchPlatformContactsResult(options)
+  return result.ok ? result.contacts : []
 }
 
 function contactEmailKey(email: string): string {
@@ -663,17 +719,107 @@ export async function fetchContact(id: string): Promise<ContactRow | null> {
   }
 }
 
+function apiErrorMessage(data: unknown, fallback: string): string {
+  if (data && typeof data === "object") {
+    const msg = (data as { message?: unknown }).message
+    if (typeof msg === "string" && msg.trim()) return msg
+  }
+  return fallback
+}
+
+export async function parseContactImportFile(
+  file: File,
+): Promise<ContactImportParseResult> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+  const form = new FormData()
+  form.set("file", file)
+  const res = await fetch(`${base}/contacts/import/parse`, {
+    method: "POST",
+    headers: { ...authHeaders() },
+    credentials: "include",
+    body: form,
+  })
+  const data = (await res.json().catch(() => ({}))) as ContactImportParseResult & {
+    message?: string
+  }
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, `Could not parse file (${res.status}).`))
+  }
+  return data
+}
+
+export async function previewContactImport(params: {
+  batchId: string
+  mapping: ContactImportMapping
+}): Promise<ContactImportPreviewResult> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+  const res = await fetch(
+    `${base}/contacts/import/${encodeURIComponent(params.batchId)}/preview`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ mapping: params.mapping }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as ContactImportPreviewResult & {
+    message?: string
+  }
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, `Could not preview import (${res.status}).`))
+  }
+  return data
+}
+
+export async function confirmContactImport(params: {
+  batchId: string
+  duplicateMode: ContactImportDuplicateMode
+}): Promise<ContactImportConfirmResult> {
+  const base = getApiV1Base()
+  if (!base) throw new Error("API is not configured (VITE_BASE_URL).")
+  const res = await fetch(
+    `${base}/contacts/import/${encodeURIComponent(params.batchId)}/confirm`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ duplicateMode: params.duplicateMode }),
+    },
+  )
+  const data = (await res.json().catch(() => ({}))) as ContactImportConfirmResult & {
+    message?: string
+  }
+  if (!res.ok) {
+    throw new Error(apiErrorMessage(data, `Could not import contacts (${res.status}).`))
+  }
+  invalidateContactsListCache()
+  return data
+}
+
 export async function createContact(
   payload: Omit<ContactRow, "id" | "createdByDisplayName"> & {
     sendInvitationMail?: "yes" | "no"
   },
+  options?: { organizationId?: string },
 ): Promise<ContactRow & { invitationEmailSent?: boolean }> {
   const base = getApiV1Base()
   if (!base) {
     throw new Error("API is not configured (VITE_BASE_URL).")
   }
   invalidateContactsListCache()
-  const res = await fetch(`${base}/contacts`, {
+  const params = new URLSearchParams()
+  const oid = options?.organizationId?.trim() || ""
+  if (oid) params.set("organizationId", oid)
+  const q = params.toString()
+  const res = await fetch(`${base}/contacts${q ? `?${q}` : ""}`, {
     method: "POST",
     headers: {
       ...authHeaders(),
@@ -1087,6 +1233,7 @@ function normalizeOwnerSponsor(
 /** Org / role-scoped sponsors for the contact Owners dropdown. */
 export async function fetchContactOwnerSponsors(options?: {
   contactId?: string
+  organizationId?: string
 }): Promise<{
   sponsors: ContactOwnerSponsorOption[]
   lockToListed: boolean
@@ -1096,7 +1243,8 @@ export async function fetchContactOwnerSponsors(options?: {
   if (!base) return empty
   try {
     const params = new URLSearchParams()
-    const oid = organizationIdQueryParam()
+    const oid =
+      options?.organizationId?.trim() || organizationIdQueryParam() || ""
     if (oid) params.set("organizationId", oid)
     const contactId = options?.contactId?.trim()
     if (contactId) params.set("contactId", contactId)

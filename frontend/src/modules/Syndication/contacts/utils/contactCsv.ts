@@ -43,7 +43,7 @@ export function buildPlatformContactsCsv(
     "Email",
     "Phone",
     "Accreditation Status",
-    "Invited by",
+    // "Invited by",
     ...(includeVisibility ? ["Visible on platform"] : []),
     "Joined",
   ]
@@ -56,7 +56,7 @@ export function buildPlatformContactsCsv(
       row.email,
       row.phone,
       status || "N/A",
-      row.invitedByDisplayName?.trim() ?? "",
+      // row.invitedByDisplayName?.trim() ?? "",
       ...(includeVisibility
         ? [row.visibleToUsers === true ? "Yes" : "No"]
         : []),

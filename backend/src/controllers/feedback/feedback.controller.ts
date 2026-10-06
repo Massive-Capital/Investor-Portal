@@ -34,6 +34,7 @@ import {
   replaceFeedbackPageCatalog,
   reviewUserFeedback,
   setUserFeedbackPriority,
+  setUserFeedbackType,
   updateUserFeedback,
   type FeedbackPageCatalogItem,
 } from "../../services/feedback/feedback.service.js";
@@ -313,6 +314,49 @@ export async function patchFeedbackPriorityHandler(
           ? 400
           : 500;
     if (status === 500) console.error("patchFeedbackPriorityHandler:", err);
+    res.status(status).json({ message });
+  }
+}
+
+/**
+ * PATCH /feedback/:id/type — platform admin sets Feature Request / Bug Report / Change Request.
+ */
+export async function patchFeedbackTypeHandler(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const ctx = await requireActor(req, res);
+  if (!ctx) return;
+  if (!isPlatformAdminRole(actorRole(ctx.actor, ctx.jwtUser))) {
+    res.status(403).json({ message: "Not allowed" });
+    return;
+  }
+
+  const feedbackId = String(req.params.id ?? "").trim();
+  if (!feedbackId) {
+    res.status(400).json({ message: "Feedback id is required" });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  try {
+    const feedback = await setUserFeedbackType({
+      feedbackId,
+      feedbackType: body.feedbackType ?? body.type,
+    });
+    res.status(200).json({ feedback });
+  } catch (err) {
+    const message =
+      err instanceof Error && err.message.trim()
+        ? err.message
+        : "Could not update feedback type";
+    const status =
+      message === "Feedback not found"
+        ? 404
+        : message.startsWith("Select")
+          ? 400
+          : 500;
+    if (status === 500) console.error("patchFeedbackTypeHandler:", err);
     res.status(status).json({ message });
   }
 }

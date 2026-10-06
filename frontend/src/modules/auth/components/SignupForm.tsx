@@ -28,6 +28,7 @@ import {
   AUTH_RETURN_NEXT_KEY,
   SESSION_ACTIVITY_SESSION_ID_KEY,
   SESSION_BEARER_KEY,
+  SESSION_PORTAL_MODE_KEY,
   SESSION_USER_DETAILS_KEY,
 } from "../../../common/auth/sessionKeys";
 import { isPlatformAdmin } from "../../../common/auth/roleUtils";
@@ -473,6 +474,13 @@ export default function SignupForm() {
     }
     persistSigninSession(data);
     const pendingPortfolioIntent = readOfferingPortfolioAuthIntent();
+    if (pendingPortfolioIntent?.dealId) {
+      try {
+        sessionStorage.setItem(SESSION_PORTAL_MODE_KEY, "investing");
+      } catch {
+        /* sessionStorage unavailable */
+      }
+    }
     if (pendingPortfolioIntent?.previewToken) {
       try {
         const claimed = await claimOfferingPortfolioAccess(

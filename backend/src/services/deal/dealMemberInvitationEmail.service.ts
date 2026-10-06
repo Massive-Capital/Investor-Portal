@@ -235,3 +235,97 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
     toEmail: to,
   });
 }
+
+function sameRosterContact(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = String(a ?? "").trim().toLowerCase();
+  const right = String(b ?? "").trim().toLowerCase();
+  return Boolean(left) && left === right;
+}
+
+async function resolveDisplayNameForContactMemberId(
+  contactMemberId: string,
+): Promise<string> {
+  const id = contactMemberId.trim();
+  if (!UUID_RE.test(id)) return "";
+
+  const [u] = await db
+    .select({ firstName: users.firstName, lastName: users.lastName })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  const fromUser = [u?.firstName, u?.lastName]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  if (fromUser) return fromUser;
+
+  const [c] = await db
+    .select({
+      fullName: contact.fullName,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+    })
+    .from(contact)
+    .where(eq(contact.id, id))
+    .limit(1);
+  const fromFull = String(c?.fullName ?? "").trim();
+  if (fromFull) return fromFull;
+  return [c?.firstName, c?.lastName]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * When a platform admin assigns a new Lead Sponsor, email that person.
+ * Skipped when the form's notify choice already emailed the same contact.
+ */
+export async function sendNewLeadSponsorInvitationIfAssigned(input: {
+  dealId: string
+  newLeadSponsorContactId: string | null | undefined
+  alreadyNotifiedContactId?: string | null
+  alreadyNotified: boolean
+}): Promise<void> {
+  const contactId = String(input.newLeadSponsorContactId ?? "").trim();
+  if (!contactId) return;
+  if (
+    input.alreadyNotified &&
+    sameRosterContact(contactId, input.alreadyNotifiedContactId)
+  ) {
+    return;
+  }
+
+  const to = await resolveEmailForContactMemberId(contactId);
+  if (!to) {
+    console.warn(
+      "sendNewLeadSponsorInvitationIfAssigned: no email for contact",
+      contactId,
+    );
+    return;
+  }
+  const memberDisplayName = await resolveDisplayNameForContactMemberId(contactId);
+  const result = await sendDealMemberInvitationEmail({
+    dealId: input.dealId,
+    toEmail: to,
+    memberDisplayName,
+    invitationSource: "deal_member",
+    dealMemberRoleLabel: "Lead Sponsor",
+  });
+  if (!result.ok) {
+    console.warn(
+      "sendNewLeadSponsorInvitationIfAssigned: send failed",
+      result.error,
+    );
+    return;
+  }
+  const { markDealMemberInvitationMailSent } = await import(
+    "./dealMember.service.js"
+  );
+  await markDealMemberInvitationMailSent(input.dealId, {
+    contactMemberId: contactId,
+    toEmail: to,
+  });
+}

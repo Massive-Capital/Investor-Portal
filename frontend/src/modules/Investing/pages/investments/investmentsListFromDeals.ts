@@ -240,6 +240,15 @@ function listRowFromDealAndInvestors(
   const draftRow = hasDraft
     ? firstInvestNowDraftRowForViewer(investors, viewerEmailNorm)
     : undefined
+  const latestInvestedAtIso =
+    investors
+      .filter((row) => investorRowMatchesViewerEmail(row, viewerEmailNorm))
+      .map((row) => String(row.investedAtIso ?? "").trim())
+      .filter(Boolean)
+      .sort(
+        (a, b) =>
+          new Date(b).getTime() - new Date(a).getTime(),
+      )[0] ?? ""
   return {
     id: investmentRuntimeIdForDeal(dealId),
     dealId,
@@ -276,6 +285,7 @@ function listRowFromDealAndInvestors(
       viewerEmailNorm,
     ),
     archived: Boolean(listRow.archived),
+    latestInvestedAtIso: latestInvestedAtIso || undefined,
     dealType: listRow.dealType,
     secType: listRow.secType,
     propertyName: listRow.propertyName,

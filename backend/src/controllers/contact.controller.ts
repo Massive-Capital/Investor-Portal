@@ -29,6 +29,7 @@ import {
   type ContactRelationship506b,
   resolveContactDisplayFields,
   resolveDealAdderNamesByContactIdForViewer,
+  resolveFirstOrganizationInviterByContactId,
   resolveInvitedByDisplayNameByContactId,
   updateContactFieldsForViewer,
   type ContactOfferingVisibility,
@@ -55,6 +56,13 @@ import {
   buildInvestorInviteLinkForUser,
 } from "../services/contact/investorInviteLink.service.js";
 import {
+  confirmContactImport,
+  parseContactImportFile,
+  previewContactImport,
+  type ContactImportDuplicateMode,
+  type ContactImportMapping,
+} from "../services/contact/contactImport.service.js";
+import {
   contactCanSendInvitationEmail,
   contactInvitationEmailBlockReason,
   sendContactInvitationEmailIfRequested,
@@ -70,6 +78,7 @@ import {
   logSocContactWrite,
 } from "../audit/index.js";
 import {
+  organizationIdFromRequestQuery,
   requestedOrganizationIdFromRequest,
   resolveActiveOrganizationIdForUser,
   userHasAccessToOrganization,
@@ -308,6 +317,8 @@ function mapContactToJson(row: ContactRow) {
     known_since: knownSince,
     relationship506b,
     relationship_506b: relationship506b,
+    importSource: row.importSource ?? "manual",
+    import_source: row.importSource ?? "manual",
     visibleToUsers: Boolean(row.visibleToUsers),
     visible_to_users: Boolean(row.visibleToUsers),
     platformAdminOnly: Boolean(row.platformAdminOnly),
@@ -375,6 +386,7 @@ async function mapContactsToJsonWithNames(
   rows: ContactRow[],
   dealCounts?: Map<string, number>,
   dealAdderNames?: Map<string, string>,
+  organizationId?: string | null,
 ) {
   const orgNameByIdPromise = loadOrganizationNamesById(
     rows.map((row) => row.organizationId),
@@ -385,6 +397,10 @@ async function mapContactsToJsonWithNames(
 
   const invitedByNameByContactId =
     await resolveInvitedByDisplayNameByContactId(rows);
+  const orgId = String(organizationId ?? "").trim();
+  const orgInviterByContactId = orgId
+    ? await resolveFirstOrganizationInviterByContactId(rows, orgId)
+    : null;
 
   const displayNameByCreatorId = new Map<string, string>();
   const creatorIdsNeedingName = [
@@ -424,6 +440,9 @@ async function mapContactsToJsonWithNames(
       dealAdderNames?.get(idKey),
     );
     const dealCount = dealCounts?.get(idKey) ?? 0;
+    const invitedBy = orgId
+      ? orgInviterByContactId?.get(idKey)
+      : invitedByNameByContactId.get(idKey);
     return {
       ...rest,
       owners: display.owners,
@@ -432,12 +451,10 @@ async function mapContactsToJsonWithNames(
       createdByUserId: row.createdBy,
       created_by_user_id: row.createdBy,
       createdByDisplayName: display.createdByDisplayName || undefined,
-      invitedByUserId: invitedByNameByContactId.get(idKey)?.userId || undefined,
-      invited_by_user_id: invitedByNameByContactId.get(idKey)?.userId || undefined,
-      invitedByDisplayName:
-        invitedByNameByContactId.get(idKey)?.displayName || undefined,
-      invited_by_display_name:
-        invitedByNameByContactId.get(idKey)?.displayName || undefined,
+      invitedByUserId: invitedBy?.userId || undefined,
+      invited_by_user_id: invitedBy?.userId || undefined,
+      invitedByDisplayName: invitedBy?.displayName?.trim() || undefined,
+      invited_by_display_name: invitedBy?.displayName?.trim() || undefined,
       dealCount,
     };
   });
@@ -447,11 +464,13 @@ async function mapContactToJsonWithNames(
   row: ContactRow,
   dealCounts?: Map<string, number>,
   dealAdderNames?: Map<string, string>,
+  organizationId?: string | null,
 ) {
   const [mapped] = await mapContactsToJsonWithNames(
     [row],
     dealCounts,
     dealAdderNames,
+    organizationId,
   );
   return mapped;
 }
@@ -630,7 +649,12 @@ export async function getMemberInviteeContacts(
       }
     }
     const rows = await listInviteeContactsForOrganization(orgId);
-    const contacts = await mapContactsToJsonWithNames(rows);
+    const contacts = await mapContactsToJsonWithNames(
+      rows,
+      undefined,
+      undefined,
+      orgId,
+    );
     res.status(200).json({ contacts });
   } catch (err) {
     console.error("getMemberInviteeContacts:", err);
@@ -707,6 +731,7 @@ export async function getContacts(
       rows,
       dealCounts,
       dealAdderNames,
+      organizationIdFromRequestQuery(req),
     );
     logSocContactDirectoryView({
       actorUserId: user.id,
@@ -758,6 +783,8 @@ export async function getContactMatchingIds(
 /**
  * GET /contacts/platform-contacts — Platform Contacts section: self-registered
  * investors. Opted-in only for company users; all self-signups for platform admins.
+ * `?organizationId=` limits the list to one company. The active-org header is ignored
+ * so All Contacts / Platform Contacts stay global unless a company is requested.
  */
 export async function getPlatformContacts(
   req: Request,
@@ -771,7 +798,13 @@ export async function getPlatformContacts(
   try {
     const sort = contactListSortFromQuery(req);
     const lean = truthyQuery(req.query.lean);
-    const rows = await listPlatformVisibleContactsCached(user.id, sort, user.userRole);
+    const organizationId = organizationIdFromRequestQuery(req);
+    const rows = await listPlatformVisibleContactsCached(
+      user.id,
+      sort,
+      user.userRole,
+      organizationId,
+    );
     const dealAdderNames = lean
       ? undefined
       : await resolveDealAdderNamesByContactIdForViewer({
@@ -784,6 +817,7 @@ export async function getPlatformContacts(
       rows,
       undefined,
       dealAdderNames,
+      organizationId,
     );
     logSocContactDirectoryView({
       actorUserId: user.id,
@@ -851,6 +885,7 @@ export async function getContactDealStats(
       matched,
       dealCounts,
       dealAdderNames,
+      organizationIdFromRequestQuery(req),
     );
     res.status(200).json({ contacts });
   } catch (err) {
@@ -901,7 +936,12 @@ export async function getContact(
       }),
     ]);
     res.status(200).json({
-      contact: await mapContactToJsonWithNames(row, dealCounts, dealAdderNames),
+      contact: await mapContactToJsonWithNames(
+        row,
+        dealCounts,
+        dealAdderNames,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     console.error("getContact:", err);
@@ -1012,7 +1052,12 @@ export async function postContact(req: Request, res: Response): Promise<void> {
           : invitationResult === "failed"
             ? "Contact created, but the invitation email could not be sent"
             : "Contact created",
-      contact: await mapContactToJsonWithNames(saved, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        saved,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
       invitationEmailSent: invitationResult === "sent",
     });
   } catch (err) {
@@ -1026,6 +1071,126 @@ export async function postContact(req: Request, res: Response): Promise<void> {
     }
     console.error("postContact:", err);
     res.status(500).json({ message: "Could not create contact" });
+  }
+}
+
+function bodyImportMapping(raw: unknown): ContactImportMapping {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const allowed = new Set([
+    "firstName",
+    "lastName",
+    "fullName",
+    "email",
+    "phone",
+    "note",
+    "tags",
+    "lists",
+  ]);
+  const out: ContactImportMapping = {};
+  for (const [field, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!allowed.has(field)) continue;
+    out[field as keyof ContactImportMapping] =
+      value == null || String(value).trim() === "" ? null : String(value).trim();
+  }
+  return out;
+}
+
+export async function postContactImportParse(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+
+  const file = req.file;
+  if (!file?.buffer?.length) {
+    res.status(400).json({ message: "Upload a CSV or Excel file." });
+    return;
+  }
+
+  try {
+    const result = await parseContactImportFile({
+      userId: user.id,
+      fileName: file.originalname || "contacts.csv",
+      mimeType: file.mimetype || "",
+      buffer: file.buffer,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not parse import file.";
+    res.status(400).json({ message });
+  }
+}
+
+export async function postContactImportPreview(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const batchId = String(req.params.batchId ?? "").trim();
+  if (!batchId) {
+    res.status(400).json({ message: "Import batch id required" });
+    return;
+  }
+
+  try {
+    const result = await previewContactImport({
+      userId: user.id,
+      batchId,
+      mapping: bodyImportMapping((req.body as Record<string, unknown>)?.mapping),
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not preview import.";
+    res.status(400).json({ message });
+  }
+}
+
+export async function postContactImportConfirm(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const user = await getValidJwtUser(req);
+  if (!user?.id) {
+    res.status(401).json({ message: "Authorization required" });
+    return;
+  }
+  const batchId = String(req.params.batchId ?? "").trim();
+  if (!batchId) {
+    res.status(400).json({ message: "Import batch id required" });
+    return;
+  }
+
+  const rawMode = bodyString(
+    (req.body as Record<string, unknown>)?.duplicateMode ??
+      (req.body as Record<string, unknown>)?.duplicate_mode,
+  )
+    .trim()
+    .toLowerCase();
+  const duplicateMode: ContactImportDuplicateMode =
+    rawMode === "update" ? "update" : "skip";
+
+  try {
+    const result = await confirmContactImport({
+      userId: user.id,
+      batchId,
+      duplicateMode,
+    });
+    invalidateContactDirectoryCache();
+    res.status(200).json(result);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not import contacts.";
+    res.status(400).json({ message });
   }
 }
 
@@ -1089,7 +1254,12 @@ export async function postContactInvitation(
     });
     res.status(200).json({
       message: "Invitation email sent",
-      contact: await mapContactToJsonWithNames(saved, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        saved,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
       invitationEmailSent: true,
     });
   } catch (err) {
@@ -1207,7 +1377,12 @@ export async function patchContact(req: Request, res: Response): Promise<void> {
     });
     res.status(200).json({
       message: "Contact updated",
-      contact: await mapContactToJsonWithNames(updated, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        updated,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     if (err instanceof ContactInvalidPhoneError) {
@@ -1267,7 +1442,12 @@ export async function patchContactStatus(
     });
     res.status(200).json({
       message: "Contact status updated",
-      contact: await mapContactToJsonWithNames(updated, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        updated,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     console.error("patchContactStatus:", err);
@@ -1354,7 +1534,12 @@ export async function patchContactShowOfferings(
     });
     res.status(200).json({
       message: "Contact offerings visibility updated",
-      contact: await mapContactToJsonWithNames(updated, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        updated,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     console.error("patchContactShowOfferings:", err);
@@ -1414,7 +1599,12 @@ export async function patchContactAccreditationStatus(
     });
     res.status(200).json({
       message: "Contact accreditation status updated",
-      contact: await mapContactToJsonWithNames(updated, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        updated,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     console.error("patchContactAccreditationStatus:", err);
@@ -1472,7 +1662,12 @@ export async function patchContactKnownSince(
     });
     res.status(200).json({
       message: "Contact known since updated",
-      contact: await mapContactToJsonWithNames(updated, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        updated,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     console.error("patchContactKnownSince:", err);
@@ -1530,7 +1725,12 @@ export async function patchContactRelationship506b(
     });
     res.status(200).json({
       message: "Contact relationship updated",
-      contact: await mapContactToJsonWithNames(updated, dealCounts),
+      contact: await mapContactToJsonWithNames(
+        updated,
+        dealCounts,
+        undefined,
+        organizationIdFromRequestQuery(req),
+      ),
     });
   } catch (err) {
     console.error("patchContactRelationship506b:", err);

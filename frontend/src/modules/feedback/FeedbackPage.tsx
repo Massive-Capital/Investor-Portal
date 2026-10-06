@@ -31,6 +31,7 @@ import { ExportFeedbackModal } from "./ExportFeedbackModal"
 import { FeedbackDetailsModal } from "./FeedbackDetailsModal"
 import { FeedbackFormModal } from "./FeedbackFormModal"
 import { FeedbackPriorityModal } from "./FeedbackPriorityModal"
+import { FeedbackTypeModal } from "./FeedbackTypeModal"
 import {
   fetchFeedbackItem,
   fetchFeedbackList,
@@ -39,12 +40,14 @@ import {
   notifyFeedbackPendingChanged,
   reviewFeedback,
   setFeedbackPriority,
+  setFeedbackType,
 } from "./api/feedbackApi"
 import type {
   FeedbackItem,
   FeedbackPriority,
   FeedbackReviewAction,
   FeedbackStatus,
+  FeedbackType,
 } from "./types"
 import { feedbackPriorityLabel, feedbackUserRoleLabel } from "./types"
 import "../Syndication/usermanagement/user_management.css"
@@ -99,6 +102,8 @@ export default function FeedbackPage() {
   const [modalMode, setModalMode] = useState<"review" | "view">("view")
   const [priorityItem, setPriorityItem] = useState<FeedbackItem | null>(null)
   const [prioritySaving, setPrioritySaving] = useState(false)
+  const [typeItem, setTypeItem] = useState<FeedbackItem | null>(null)
+  const [typeSaving, setTypeSaving] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   /** Tab badges come from the API so they count every match, not just this page. */
   const [statusCounts, setStatusCounts] = useState<Record<FeedbackStatus, number>>({
@@ -271,6 +276,23 @@ export default function FeedbackPage() {
     toast.success("Priority updated", feedbackPriorityLabel(priority))
   }
 
+  async function handleTypeSave(feedbackType: FeedbackType) {
+    if (!typeItem) return
+    setTypeSaving(true)
+    const result = await setFeedbackType(typeItem.id, feedbackType)
+    setTypeSaving(false)
+    if (!result.ok) {
+      toast.error("Could not update feedback type", result.message)
+      return
+    }
+    setTypeItem(null)
+    setActiveItem((prev) =>
+      prev && prev.id === result.feedback.id ? result.feedback : prev,
+    )
+    refresh()
+    toast.success("Feedback type updated", feedbackType)
+  }
+
   const serialNoColumn = useMemo<DataTableColumn<FeedbackItem>>(
     () => ({
       id: "sno",
@@ -335,6 +357,24 @@ export default function FeedbackPage() {
           >
             <Flag size={13} strokeWidth={2} aria-hidden />
             {row.priority ? feedbackPriorityLabel(row.priority) : "Set"}
+          </button>
+        ),
+      },
+      {
+        id: "feedbackType",
+        header: "Feedback Type",
+        sortValue: (row) => row.feedbackType ?? "zzz",
+        cell: (row) => (
+          <button
+            type="button"
+            className={`feedback_priority_btn${
+              row.feedbackType ? " feedback_type_value" : ""
+            }`}
+            onClick={() => setTypeItem(row)}
+            title={row.feedbackType ? "Change feedback type" : "Set feedback type"}
+          >
+            <ClipboardList size={13} strokeWidth={2} aria-hidden />
+            {row.feedbackType ?? "Set"}
           </button>
         ),
       },
@@ -769,6 +809,16 @@ export default function FeedbackPage() {
           setPriorityItem(null)
         }}
         onSave={(priority) => void handlePrioritySave(priority)}
+      />
+      <FeedbackTypeModal
+        open={typeItem != null}
+        item={typeItem}
+        submitting={typeSaving}
+        onClose={() => {
+          if (typeSaving) return
+          setTypeItem(null)
+        }}
+        onSave={(feedbackType) => void handleTypeSave(feedbackType)}
       />
       <ExportFeedbackModal
         open={exportOpen}

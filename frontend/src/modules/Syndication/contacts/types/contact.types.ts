@@ -1,6 +1,13 @@
 export type ContactStatus = "active" | "suspended"
 
 export type ContactSource = "local" | "ghl"
+export type ContactImportSource =
+  | "manual"
+  | "csv"
+  | "excel"
+  | "invite_link"
+  | "portal_signup"
+  | "ghl"
 
 /**
  * Per-contact offering visibility on the Investing portal only.
@@ -98,6 +105,8 @@ export interface ContactRow {
    * `contact_id` equals this contact id, or a portal user with the same email.
    */
   dealCount?: number
+  /** Persisted provenance for how this CRM contact entered the database. */
+  importSource?: ContactImportSource
   /** Present when the row is sourced from GoHighLevel CRM */
   source?: ContactSource
   /** GoHighLevel contact id when `source` is `ghl` */

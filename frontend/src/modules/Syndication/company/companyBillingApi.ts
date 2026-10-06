@@ -57,6 +57,7 @@ export type CompanyBillingInvoice = {
   dealId?: string | null
   dealName?: string | null
   billingScope?: "deal" | "extra_company_user" | null
+  comment?: string | null
 }
 
 export type CompanyBillingPaymentMethod = {
@@ -431,7 +432,11 @@ export type CompanyDealBillingRow = {
   currentCompanyUsers?: number
   extraCompanyUsersPaid?: number
   extraCompanyUsersDue?: number
+  coGpCount?: number
+  seatBand?: "5" | "10" | "10plus" | string | null
+  includedCoGps?: number | null
   extraUserFeeCents?: number
+  extraUserComment?: string | null
 }
 
 export type BillingOrganizationOption = {

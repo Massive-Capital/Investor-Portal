@@ -87,6 +87,7 @@ export function ExportFeedbackModal({
           r.status,
           r.priority ?? "",
           feedbackPriorityLabel(r.priority),
+          r.feedbackType ?? "",
           r.adminResponse ?? "",
           r.reviewedByName ?? "",
         ]
@@ -324,6 +325,7 @@ export function ExportFeedbackModal({
                         {feedbackPriorityLabel(row.priority)}
                       </span>
                     ) : null}
+                    {row.feedbackType ? <span>{row.feedbackType}</span> : null}
                     <span>{row.status}</span>
                   </span>
                 </label>

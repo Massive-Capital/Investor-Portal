@@ -1,5 +1,6 @@
 import { ArrowLeft, ChevronRight, CircleCheck, Loader2, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { getSessionUserEmail } from "@/common/auth/sessionUserEmail"
 import { FormHeadingWithInfo } from "@/common/components/form-heading/FormHeadingWithInfo"
@@ -61,10 +62,7 @@ import {
   isDealSaasPaymentRequiredError,
   type DealSaasPaywallDeal,
 } from "@/modules/Syndication/Deals/utils/dealSaasAccess"
-import {
-  buildBlockedProfileKeysForInvestNow,
-  lpProfileUseKey,
-} from "@/modules/Syndication/Deals/utils/lpInvestNowProfileBlocking"
+import { lpProfileUseKey } from "@/modules/Syndication/Deals/utils/lpInvestNowProfileBlocking"
 import { parseMoneyDigits } from "@/modules/Syndication/Deals/utils/offeringMoneyFormat"
 import { parseInvestNowDocSignedCalendarDate } from "@/modules/Syndication/Deals/utils/prefillLpInvestNowFields"
 import { recordRecentlyViewedDeal } from "@/modules/Investing/pages/dashboard/recentlyViewedDeals"
@@ -74,7 +72,10 @@ import { investNowStepIndexForPhaseId } from "./investNowFlowSteps"
 import {
   findInvestorRowForInvestNowScope,
 } from "./investNowDraftUtils"
-import { investorEsignWasSent } from "@/modules/Syndication/Deals/utils/investorEsignStatus"
+import {
+  investorEsignIsFullyCompletedForRow,
+  investorEsignWasSent,
+} from "@/modules/Syndication/Deals/utils/investorEsignStatus"
 import {
   bookProfileTypeDisplayLabel,
   commitmentProfileIdFromBookProfile,
@@ -251,6 +252,13 @@ export function DealInvestNowPage() {
     string | null
   >(null)
   const investNowInvestmentIdRef = useRef<string | null>(null)
+  const duplicateProfileOverrideKeyRef = useRef("")
+  const duplicateProfileConfirmResolveRef = useRef<
+    ((confirmed: boolean) => void) | null
+  >(null)
+  const [duplicateProfileConfirmMessage, setDuplicateProfileConfirmMessage] =
+    useState("")
+  const [draftSavedModalOpen, setDraftSavedModalOpen] = useState(false)
   const esignSendInFlightRef = useRef(false)
   const [webhookSignStatus, setWebhookSignStatus] =
     useState<InvestmentSignStatusPayload | null>(null)
@@ -434,6 +442,13 @@ export function DealInvestNowPage() {
     [backTo, dealId, navigate],
   )
 
+  const goToPendingInvestments = useCallback(() => {
+    const id = dealId?.trim()
+    if (id) recordRecentlyViewedDeal(id)
+    switchToInvesting()
+    navigate("/investing/investments?tab=pending", { replace: true })
+  }, [dealId, navigate, switchToInvesting])
+
   useEffect(() => {
     switchToInvesting()
   }, [switchToInvesting])
@@ -494,20 +509,7 @@ export function DealInvestNowPage() {
         setBookAddresses((book.addresses ?? []) as SavedAddress[])
 
         setDealInvestors(inv.investors)
-        const resumeRow =
-          entryMode === "resume" && em
-            ? findInvestorRowForInvestNowScope(inv.investors, {
-                email: em,
-                ...resumeScope,
-              })
-            : undefined
-        setBlockedProfileKeys(
-          buildBlockedProfileKeysForInvestNow(
-            inv.investors,
-            em,
-            resumeRow?.id,
-          ),
-        )
+        setBlockedProfileKeys(new Set())
         setInvestorClasses(classes)
         let resolvedReferringSponsorName =
           members.referringSponsorDisplayName ?? referringSponsorDisplayName
@@ -692,6 +694,60 @@ export function DealInvestNowPage() {
     [savedUserProfileId, investNowInvestmentId, profileId],
   )
 
+  const selectedProfileUseKey = useMemo(
+    () => lpProfileUseKey(profileId, savedUserProfileId),
+    [profileId, savedUserProfileId],
+  )
+
+  const selectedProfileAlreadyUsed = useMemo(() => {
+    const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
+    const key = selectedProfileUseKey.trim()
+    if (!em || !key || !profileId.trim() || !savedUserProfileId.trim()) {
+      return false
+    }
+    const currentInvestmentId = investNowInvestmentId?.trim().toLowerCase() ?? ""
+    return dealInvestors.some((row) => {
+      if (String(row.userEmail ?? "").trim().toLowerCase() !== em) return false
+      // Roster rows mean the person is on the deal; only investment rows mean
+      // this saved profile was already used for an investment on this deal.
+      if (row.investorKind && row.investorKind !== "investment") return false
+      if (
+        currentInvestmentId &&
+        String(row.id ?? "").trim().toLowerCase() === currentInvestmentId
+      ) {
+        return false
+      }
+      return lpProfileUseKey(
+        String(row.profileId ?? ""),
+        row.userInvestorProfileId,
+      ) === key
+    })
+  }, [
+    dealInvestors,
+    investNowInvestmentId,
+    profileId,
+    savedUserProfileId,
+    selectedProfileUseKey,
+  ])
+
+  const selectedProfileExistingInvestmentId = useMemo(() => {
+    const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
+    const key = selectedProfileUseKey.trim()
+    if (!em || !key || !profileId.trim() || !savedUserProfileId.trim()) {
+      return ""
+    }
+    const row = dealInvestors.find((investor) => {
+      if (String(investor.userEmail ?? "").trim().toLowerCase() !== em) return false
+      if (investor.investorKind && investor.investorKind !== "investment") return false
+      if (investorEsignIsFullyCompletedForRow(investor)) return false
+      return lpProfileUseKey(
+        String(investor.profileId ?? ""),
+        investor.userInvestorProfileId,
+      ) === key
+    })
+    return String(row?.id ?? "").trim()
+  }, [dealInvestors, profileId, savedUserProfileId, selectedProfileUseKey])
+
   useEffect(() => {
     const nextSaved = savedUserProfileId.trim()
     const nextProfile = profileId.trim()
@@ -846,6 +902,20 @@ export function DealInvestNowPage() {
     })
   }, [])
 
+  const resolveDuplicateProfileConfirmation = useCallback((confirmed: boolean) => {
+    const resolve = duplicateProfileConfirmResolveRef.current
+    duplicateProfileConfirmResolveRef.current = null
+    setDuplicateProfileConfirmMessage("")
+    if (resolve) resolve(confirmed)
+  }, [])
+
+  const requestDuplicateProfileConfirmation = useCallback((message: string) => {
+    return new Promise<boolean>((resolve) => {
+      duplicateProfileConfirmResolveRef.current = resolve
+      setDuplicateProfileConfirmMessage(message)
+    })
+  }, [])
+
   const reportInvestNowFieldValidation = useCallback(
     (errors: InvestNowFieldErrors, opts?: { stepError?: string | null }) => {
       setFieldErrors(errors)
@@ -895,6 +965,7 @@ export function DealInvestNowPage() {
       fundingMethod?: string
       questionnaireAnswers?: Record<string, string>
       w9Form?: Record<string, string>
+      allowDuplicateProfile?: boolean
     }): Promise<string | null> => {
       const submitStatus = status.trim() || "Open to investment"
       setSubmitting(true)
@@ -911,6 +982,8 @@ export function DealInvestNowPage() {
           progressOnly: opts.progressOnly,
           skipCommittedAmount: opts.skipCommittedAmount,
           replaceCommittedAmount: true,
+          investmentId: investNowInvestmentIdRef.current?.trim() || undefined,
+          allowDuplicateProfile: opts.allowDuplicateProfile,
           ...(opts.fundingMethod !== undefined
             ? { fundingMethod: opts.fundingMethod }
             : fundingMethod.trim()
@@ -967,9 +1040,31 @@ export function DealInvestNowPage() {
     }
     setError("")
     clearInvestNowFieldErrors()
+    const selectedKey = selectedProfileUseKey.trim()
+    const existingInvestmentId = selectedProfileExistingInvestmentId.trim()
+    if (!investNowInvestmentIdRef.current?.trim() && existingInvestmentId) {
+      investNowInvestmentIdRef.current = existingInvestmentId
+      setInvestNowInvestmentId(existingInvestmentId)
+    }
+    let allowDuplicateProfile =
+      Boolean(selectedKey) &&
+      duplicateProfileOverrideKeyRef.current === selectedKey
+    if (
+      !investNowInvestmentIdRef.current?.trim() &&
+      selectedProfileAlreadyUsed &&
+      !allowDuplicateProfile
+    ) {
+      const confirmed = await requestDuplicateProfileConfirmation(
+        "You have already used this investor profile for this deal. Continuing will create another investment with the same profile.",
+      )
+      if (!confirmed) return
+      duplicateProfileOverrideKeyRef.current = selectedKey
+      allowDuplicateProfile = true
+    }
     const saveErr = await persistInvestNowProgress({
       progressOnly: true,
       skipCommittedAmount: true,
+      allowDuplicateProfile,
     })
     if (saveErr) {
       setError(saveErr)
@@ -988,6 +1083,10 @@ export function DealInvestNowPage() {
     reportInvestNowFieldValidation,
     clearInvestNowFieldErrors,
     persistInvestNowProgress,
+    requestDuplicateProfileConfirmation,
+    selectedProfileExistingInvestmentId,
+    selectedProfileAlreadyUsed,
+    selectedProfileUseKey,
   ])
 
   const validateAllQuestionnaireAndW9Fields = useCallback((): {
@@ -1408,6 +1507,51 @@ export function DealInvestNowPage() {
     return null
   }, [amount, w9Values, questionnaireAnswers, persistInvestNowProgress])
 
+  const saveDraftForMissingEsign = useCallback(async (): Promise<string | null> => {
+    const n = parseMoneyDigits(String(amount).trim())
+    setSubmitting(true)
+    const err = await persistInvestNowProgress({
+      committedAmount: Number.isFinite(n) && n > 0 ? String(n) : undefined,
+      skipCommittedAmount: !(Number.isFinite(n) && n > 0),
+      progressOnly: !(Number.isFinite(n) && n > 0),
+      w9Form: investNowW9FormApiPayload(w9Values),
+      ...(Object.keys(questionnaireAnswers).length > 0
+        ? { questionnaireAnswers }
+        : {}),
+    })
+    setSubmitting(false)
+    if (err) return err
+
+    upsertRuntimeInvestmentRow({
+      dealId,
+      investmentName: dealName,
+      offeringName: dealName,
+      investmentProfile: investorProfileLabel(profileId.trim()),
+      commitmentProfileId: profileId.trim() || undefined,
+      userInvestorProfileId: savedUserProfileId.trim() || undefined,
+      investedAmount: Number.isFinite(n) && n > 0 ? n : 0,
+      distributedAmount: 0,
+      currentValuation: offeringSize || "—",
+      dealCloseDate: formatDealCloseDateForInvestments(closeDate?.trim()),
+      status: "Active",
+      actionRequired: "Resume investing",
+      onboardingBucket: "pending",
+      hasInvestNowDraft: true,
+    })
+    return null
+  }, [
+    amount,
+    w9Values,
+    questionnaireAnswers,
+    persistInvestNowProgress,
+    dealId,
+    dealName,
+    profileId,
+    savedUserProfileId,
+    offeringSize,
+    closeDate,
+  ])
+
   const onContinueFromCurrentStep = useCallback(async () => {
     const stepDef = flowSteps[stepIndex]
     if (!stepDef) return
@@ -1553,6 +1697,20 @@ export function DealInvestNowPage() {
     // Finish runs only on the e-sign step — do not re-open step 1 (profile picker).
     const esignErr = validateEsignaturesStep()
     if (esignErr) {
+      const esignSetupMissing =
+        !esignTemplate || (!isDealEsignTemplateReady(esignTemplate) && !esignCompleted)
+      if (esignSetupMissing) {
+        const draftErr = await saveDraftForMissingEsign()
+        if (draftErr) {
+          setError(draftErr)
+          focusFirstFormErrorAfterUpdate({ container: investNowFormRef.current })
+          return
+        }
+        setError("")
+        setFieldErrors({})
+        setDraftSavedModalOpen(true)
+        return
+      }
       if (esignStepIndex >= 0) setStepIndex(esignStepIndex)
       setFieldErrors({})
       setError(esignErr)
@@ -1631,6 +1789,9 @@ export function DealInvestNowPage() {
     navigate("/investing/investments", { replace: true })
   }, [
     validateEsignaturesStep,
+    esignTemplate,
+    esignCompleted,
+    saveDraftForMissingEsign,
     esignStepIndex,
     dealId,
     profileId,
@@ -1932,8 +2093,127 @@ export function DealInvestNowPage() {
     ? investNowFlowStepSubtitle(currentStep)
     : ""
   const activeStepperPhaseId = investNowActiveStepperPhaseId(currentStep)
+  const duplicateProfileConfirmation =
+    duplicateProfileConfirmMessage && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                resolveDuplicateProfileConfirmation(false)
+              }
+            }}
+          >
+            <div
+              className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel invest_now_duplicate_profile_modal"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="invest-now-duplicate-profile-title"
+            >
+              <div className="um_modal_head add_contact_modal_head">
+                <h3
+                  id="invest-now-duplicate-profile-title"
+                  className="um_modal_title add_contact_modal_title"
+                >
+                  Profile already used
+                </h3>
+                <button
+                  type="button"
+                  className="um_modal_close"
+                  onClick={() => resolveDuplicateProfileConfirmation(false)}
+                  aria-label="Close"
+                >
+                  <X size={20} strokeWidth={2} aria-hidden />
+                </button>
+              </div>
+              <div className="deals_add_inv_modal_scroll">
+                <p className="deals_suspend_all_modal_message">
+                  {duplicateProfileConfirmMessage}
+                </p>
+              </div>
+              <div className="um_modal_actions add_contact_modal_actions">
+                <div className="add_contact_modal_actions_trailing">
+                  <button
+                    type="button"
+                    className="um_btn_secondary"
+                    onClick={() => resolveDuplicateProfileConfirmation(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="um_btn_primary"
+                    onClick={() => resolveDuplicateProfileConfirmation(true)}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null
+  const draftSavedModal =
+    draftSavedModalOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) goToPendingInvestments()
+            }}
+          >
+            <div
+              className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel invest_now_duplicate_profile_modal"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="invest-now-draft-saved-title"
+            >
+              <div className="um_modal_head add_contact_modal_head">
+                <h3
+                  id="invest-now-draft-saved-title"
+                  className="um_modal_title add_contact_modal_title"
+                >
+                  Saved as draft
+                </h3>
+                <button
+                  type="button"
+                  className="um_modal_close"
+                  onClick={goToPendingInvestments}
+                  aria-label="Close"
+                >
+                  <X size={20} strokeWidth={2} aria-hidden />
+                </button>
+              </div>
+              <div className="deals_add_inv_modal_scroll">
+                <p className="deals_suspend_all_modal_message">
+                  Your investment information has been saved as a draft because
+                  the eSign document is not ready for this investor profile yet.
+                  You can continue from the Pending tab once the sponsor uploads
+                  or completes the eSign setup.
+                </p>
+              </div>
+              <div className="um_modal_actions add_contact_modal_actions">
+                <div className="add_contact_modal_actions_trailing">
+                  <button
+                    type="button"
+                    className="um_btn_primary"
+                    onClick={goToPendingInvestments}
+                  >
+                    Go to Pending investments
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null
 
   return (
+    <>
     <div className="deals_list_page deals_detail_page deals_add_investor_class_page deals_add_deal_asset_page deals_create_flow invest_now_flow_page">
       <header className="deals_list_head deals_add_investor_class_page_head deals_create_page_head">
         <div className="deals_add_deal_asset_head_main deals_create_head_main">
@@ -2066,6 +2346,9 @@ export function DealInvestNowPage() {
         </form>
       </section>
     </div>
+    {duplicateProfileConfirmation}
+    {draftSavedModal}
+    </>
   )
 }
 

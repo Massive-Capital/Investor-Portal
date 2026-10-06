@@ -87,9 +87,16 @@ export {
 } from "./deal.schema/deal-investor-communication-mail.schema.js";
 export {
   contact,
+  contactImportBatch,
+  contactImportRow,
   contactEmailTemplate,
   type ContactInsert,
   type ContactRow,
+  type ContactImportBatchInsert,
+  type ContactImportBatchRow,
+  type ContactImportCounts,
+  type ContactImportRowInsert,
+  type ContactImportRowRow,
   type ContactEmailTemplateInsert,
   type ContactEmailTemplateRow,
   type EmailTemplateAttachment,

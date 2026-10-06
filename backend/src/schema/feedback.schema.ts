@@ -55,6 +55,35 @@ export function parseFeedbackPriority(
   return null;
 }
 
+export const FEEDBACK_TYPE_FEATURE_REQUEST = "Feature Request";
+export const FEEDBACK_TYPE_BUG_REPORT = "Bug Report";
+export const FEEDBACK_TYPE_CHANGE_REQUEST = "Change Request";
+
+export type FeedbackType =
+  | typeof FEEDBACK_TYPE_FEATURE_REQUEST
+  | typeof FEEDBACK_TYPE_BUG_REPORT
+  | typeof FEEDBACK_TYPE_CHANGE_REQUEST;
+
+export const FEEDBACK_TYPES: FeedbackType[] = [
+  FEEDBACK_TYPE_FEATURE_REQUEST,
+  FEEDBACK_TYPE_BUG_REPORT,
+  FEEDBACK_TYPE_CHANGE_REQUEST,
+];
+
+export function parseFeedbackType(raw: unknown): FeedbackType | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === FEEDBACK_TYPE_FEATURE_REQUEST.toLowerCase()) {
+    return FEEDBACK_TYPE_FEATURE_REQUEST;
+  }
+  if (s === FEEDBACK_TYPE_BUG_REPORT.toLowerCase()) {
+    return FEEDBACK_TYPE_BUG_REPORT;
+  }
+  if (s === FEEDBACK_TYPE_CHANGE_REQUEST.toLowerCase()) {
+    return FEEDBACK_TYPE_CHANGE_REQUEST;
+  }
+  return null;
+}
+
 export type FeedbackSubPageOption = {
   key: string;
   label: string;
@@ -76,6 +105,8 @@ export const userFeedback = pgTable(
     description: text("description").notNull(),
     /** P0–P3; set only by a platform admin after submit. */
     priority: varchar("priority", { length: 8 }).$type<FeedbackPriority>(),
+    /** Feature Request / Bug Report / Change Request; set only by a platform admin after submit. */
+    feedbackType: varchar("feedback_type", { length: 40 }).$type<FeedbackType>(),
     status: varchar("status", { length: 32 })
       .notNull()
       .default(FEEDBACK_STATUS_PENDING),
@@ -95,6 +126,7 @@ export const userFeedback = pgTable(
     userIdx: index("user_feedback_user_id_idx").on(t.userId),
     createdIdx: index("user_feedback_created_at_idx").on(t.createdAt),
     priorityIdx: index("user_feedback_priority_idx").on(t.priority),
+    feedbackTypeIdx: index("user_feedback_feedback_type_idx").on(t.feedbackType),
   }),
 );
 

@@ -23,6 +23,7 @@ import {
   Search,
   Send,
   Tag,
+  Upload,
   User,
   X,
 } from "lucide-react"
@@ -78,7 +79,6 @@ import {
   fetchPlatformContacts,
   hydrateContactDealStatsInChunks,
   invalidateContactsListCache,
-  platformContactsNotAlreadyInList,
   fetchOrganizationContactLists,
   fetchOrganizationContactTags,
   notifyContactsExportAudit,
@@ -94,6 +94,7 @@ import {
   parseEmailInput,
 } from "../../../common/features/send-mail"
 import { AddContactPanel } from "./components/AddContactPanel"
+import { ContactImportWizard } from "./ContactImportPage"
 import {
   ContactCatalogRowActions,
   ContactRowActions,
@@ -121,7 +122,6 @@ import {
   CONTACT_OFFERING_VISIBILITY_OPTIONS,
   CONTACT_RELATIONSHIP_506B_OPTIONS,
   isPlatformDirectoryContact,
-  withPlatformContactTag,
 } from "./types/contact.types"
 import {
   buildContactsCsv,
@@ -344,9 +344,27 @@ function TagsCell({ items }: { items: string[] }) {
   )
 }
 
-function ContactsPage() {
+export type ContactsPageProps = {
+  /** Customers → company: CRM directory for this organization only. */
+  organizationId?: string
+  /** Company tab: All Contacts directory only, without Platform / Tags / Lists. */
+  embedded?: boolean
+}
+
+function ContactsPage({
+  organizationId,
+  embedded = false,
+}: ContactsPageProps = {}) {
   const navigate = useNavigate()
   const platformAdmin = isPlatformAdmin()
+  const scopedOrganizationId = organizationId?.trim() ?? ""
+  const dealStatsOptions = useMemo(
+    () =>
+      scopedOrganizationId
+        ? { organizationId: scopedOrganizationId }
+        : undefined,
+    [scopedOrganizationId],
+  )
   const suspendAllTitleId = useId()
   const offeringVisibilityTitleId = useId()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -356,6 +374,7 @@ function ContactsPage() {
   )
   const [loading, setLoading] = useState(true)
   const [addOpen, setAddOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [contactToEdit, setContactToEdit] = useState<ContactRow | null>(null)
   const [viewContactId, setViewContactId] = useState<string | null>(null)
   const [exportModalOpen, setExportModalOpen] = useState(false)
@@ -419,10 +438,7 @@ function ContactsPage() {
   const [relationshipSavingIds, setRelationshipSavingIds] = useState<
     Set<string>
   >(() => new Set())
-  /**
-   * Self-registered investors: the Platform Contacts tab for platform admins,
-   * and the opted-in rows merged into the Contact tab for organizations.
-   */
+  /** Self-registered investors shown on the Platform Contacts tab. */
   const [platformRows, setPlatformRows] = useState<ContactRow[]>([])
   const [platformLoading, setPlatformLoading] = useState(true)
   const [platformSearchQuery, setPlatformSearchQuery] = useState("")
@@ -531,30 +547,10 @@ function ContactsPage() {
     })
   }, [rows, dbCatalogListNames])
 
-  /**
-   * Organizations see opted-in self-signups alongside their CRM contacts,
-   * tagged as Platform Contact. Platform admins keep them on their own tab.
-   */
-  const platformDirectoryRows = useMemo(
-    () =>
-      platformAdmin
-        ? []
-        : platformContactsNotAlreadyInList(rows, platformRows).map(
-            withPlatformContactTag,
-          ),
-    [platformAdmin, rows, platformRows],
-  )
+  /** All Contacts is the organization CRM. Platform contacts stay on their tab. */
+  const directoryRows = rows
 
-  const directoryRows = useMemo(
-    () =>
-      platformDirectoryRows.length > 0
-        ? [...rows, ...platformDirectoryRows]
-        : rows,
-    [rows, platformDirectoryRows],
-  )
-
-  /** Contact tab waits for both lists when platform contacts are merged in. */
-  const contactsLoading = loading || (!platformAdmin && platformLoading)
+  const contactsLoading = loading
 
   const tabRows = useMemo(
     () =>
@@ -643,13 +639,13 @@ function ContactsPage() {
     const ids = visibleContactIdsKey.split(",").filter(Boolean)
     if (ids.length === 0) return
     let cancelled = false
-    void fetchContactDealStats(ids).then((stats) => {
+    void fetchContactDealStats(ids, dealStatsOptions).then((stats) => {
       if (!cancelled) applyContactDealStats(stats)
     })
     return () => {
       cancelled = true
     }
-  }, [visibleContactIdsKey, applyContactDealStats])
+  }, [visibleContactIdsKey, applyContactDealStats, dealStatsOptions])
 
   const openContactsForTag = useCallback((tagName: string) => {
     const name = tagName.trim()
@@ -749,14 +745,18 @@ function ContactsPage() {
   const loadContacts = useCallback(async () => {
     setLoading(true)
     try {
+      const orgOptions = scopedOrganizationId
+        ? { organizationId: scopedOrganizationId }
+        : undefined
       const [listResult, dbTags, dbLists, ownerResult] = await Promise.all([
-        fetchContactsResult({
-          lean: true,
-          allOrganizations: platformAdmin,
-        }),
-        fetchOrganizationContactTags(),
-        fetchOrganizationContactLists(),
-        fetchContactOwnerSponsors(),
+        fetchContactsResult(
+          scopedOrganizationId
+            ? { lean: true, organizationId: scopedOrganizationId }
+            : { lean: true, allOrganizations: platformAdmin },
+        ),
+        fetchOrganizationContactTags(orgOptions),
+        fetchOrganizationContactLists(orgOptions),
+        fetchContactOwnerSponsors(orgOptions),
       ])
       const sponsors = ownerResult.sponsors
       if (listResult.ok) {
@@ -788,7 +788,7 @@ function ContactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [orgScopeKey, platformAdmin])
+  }, [orgScopeKey, platformAdmin, scopedOrganizationId])
 
   const loadPlatformContacts = useCallback(async () => {
     setPlatformLoading(true)
@@ -805,11 +805,12 @@ function ContactsPage() {
     setToolbarNotice("")
     setSelectedContactIds(new Set())
     invalidateContactsListCache()
-    await Promise.all([
-      loadContacts(),
-      loadPlatformContacts(),
-    ])
-  }, [loadContacts, loadPlatformContacts])
+    if (embedded) {
+      await loadContacts()
+      return
+    }
+    await Promise.all([loadContacts(), loadPlatformContacts()])
+  }, [loadContacts, loadPlatformContacts, embedded])
 
   useEffect(() => {
     const syncOrgScope = () => {
@@ -827,14 +828,9 @@ function ContactsPage() {
   }, [loadContacts])
 
   useEffect(() => {
-    if (!platformAdmin && mainTab === "platform") {
-      setMainTab("contacts")
-    }
-  }, [platformAdmin, mainTab])
-
-  useEffect(() => {
+    if (embedded) return
     void loadPlatformContacts()
-  }, [loadPlatformContacts])
+  }, [loadPlatformContacts, embedded])
 
   useEffect(() => {
     if (searchParams.get("addContact") !== "1") return
@@ -1035,7 +1031,12 @@ function ContactsPage() {
   ])
 
   async function handleSave(contact: AddContactSavePayload) {
-    const created = await createContact(contact)
+    const created = await createContact(
+      contact,
+      scopedOrganizationId
+        ? { organizationId: scopedOrganizationId }
+        : undefined,
+    )
     setRows((prev) => [created, ...prev])
     if (created.invitationEmailSent) {
       toast.success(
@@ -1458,13 +1459,13 @@ function ContactsPage() {
     const ids = visiblePlatformIdsKey.split(",").filter(Boolean)
     if (ids.length === 0) return
     let cancelled = false
-    void fetchContactDealStats(ids).then((stats) => {
+    void fetchContactDealStats(ids, dealStatsOptions).then((stats) => {
       if (!cancelled) applyContactDealStats(stats)
     })
     return () => {
       cancelled = true
     }
-  }, [mainTab, visiblePlatformIdsKey, applyContactDealStats])
+  }, [mainTab, visiblePlatformIdsKey, applyContactDealStats, dealStatsOptions])
 
   useEffect(() => {
     if (!exportModalOpen) return
@@ -1477,7 +1478,7 @@ function ContactsPage() {
     const ids = source.map((r) => r.id)
     if (ids.length === 0) return
     let cancelled = false
-    void hydrateContactDealStatsInChunks(ids).then((stats) => {
+    void hydrateContactDealStatsInChunks(ids, dealStatsOptions).then((stats) => {
       if (!cancelled) applyContactDealStats(stats)
     })
     return () => {
@@ -1489,6 +1490,7 @@ function ContactsPage() {
     platformRows,
     directoryRows,
     applyContactDealStats,
+    dealStatsOptions,
   ])
 
   useEffect(() => {
@@ -1736,6 +1738,7 @@ function ContactsPage() {
         tdClassName: "contacts_td_accreditation",
         cell: (row) => accreditationBadge(row.accreditationStatus),
       },
+      /* Hidden: Invited by on Platform Contacts for every role (restore by uncommenting)
       {
         id: "invitedBy",
         header: "Invited by",
@@ -1747,6 +1750,7 @@ function ContactsPage() {
           return name ? name : <span className="um_status_muted">—</span>
         },
       },
+      */
       ...(platformAdmin
         ? ([
             {
@@ -2320,9 +2324,18 @@ function ContactsPage() {
   ])
 
   return (
-    <section className="um_page contacts_page">
+    <section
+      className={`um_page contacts_page${
+        embedded ? " contacts_page_embedded" : ""
+      }`}
+    >
       <div className="um_members_header_block">
-        <div className="um_header_row">
+        <div
+          className={`um_header_row${
+            embedded ? " contacts_embedded_header_row" : ""
+          }`}
+        >
+          {embedded ? null : (
           <h2 className="um_title um_title_with_icon">
             <ContactRound
               className="um_title_icon"
@@ -2332,7 +2345,8 @@ function ContactsPage() {
             />
             Contacts
           </h2>
-          {mainTab === "contacts" ? (
+          )}
+          {embedded || mainTab === "contacts" ? (
             <div className="contacts_header_actions">
               <div className="contacts_header_invite_link_group">
                 <button
@@ -2356,6 +2370,14 @@ function ContactsPage() {
               </div>
               <button
                 type="button"
+                className="um_btn_secondary contacts_toolbar_add_btn"
+                onClick={() => setImportOpen(true)}
+              >
+                <Upload size={18} strokeWidth={2} aria-hidden />
+                Import
+              </button>
+              <button
+                type="button"
                 className="um_btn_primary contacts_toolbar_add_btn"
                 onClick={openAddPanel}
               >
@@ -2363,34 +2385,39 @@ function ContactsPage() {
                 Add Contact
               </button>
             </div>
-          ) : mainTab === "platform" ? null : mainTab === "tags" ? (
-            <button
-              type="button"
-              className="um_btn_primary contacts_toolbar_add_btn"
-              onClick={() => openLabelAdd("tag")}
-            >
-              <Plus size={18} strokeWidth={2} aria-hidden />
-              Add Tags
-            </button>
           ) : (
-            <button
-              type="button"
-              className="um_btn_primary contacts_toolbar_add_btn"
-              onClick={() => openLabelAdd("list")}
-            >
-              <Plus size={18} strokeWidth={2} aria-hidden />
-              Add Lists
-            </button>
+            <div className="contacts_header_actions">
+              {mainTab === "platform" ? null : mainTab === "tags" ? (
+                <button
+                  type="button"
+                  className="um_btn_primary contacts_toolbar_add_btn"
+                  onClick={() => openLabelAdd("tag")}
+                >
+                  <Plus size={18} strokeWidth={2} aria-hidden />
+                  Add Tags
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="um_btn_primary contacts_toolbar_add_btn"
+                  onClick={() => openLabelAdd("list")}
+                >
+                  <Plus size={18} strokeWidth={2} aria-hidden />
+                  Add Lists
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
+      {embedded ? null : (
       <div className="um_members_tabs_outer deals_tabs_outer contacts_main_tabs_outer um_segmented_tabs_outer">
         <TabsScrollStrip scrollClassName="deals_tabs_scroll um_segmented_tabs_scroll">
           <div
             className="um_members_tabs_row deals_tabs_row um_segmented_tabs_row"
             role="tablist"
-            aria-label="Contacts, tags, and lists"
+            aria-label="All contacts, platform contacts, tags, and lists"
           >
             <button
               type="button"
@@ -2413,10 +2440,9 @@ function ContactsPage() {
                 aria-hidden
               />
               <span className="deals_tabs_label um_segmented_tab_label">
-                Contact
+                All Contacts
               </span>
             </button>
-            {platformAdmin ? (
             <button
               type="button"
               id="contacts-main-tab-platform"
@@ -2442,7 +2468,6 @@ function ContactsPage() {
                 Platform Contacts
               </span>
             </button>
-            ) : null}
             <button
               type="button"
               id="contacts-main-tab-tags"
@@ -2498,12 +2523,13 @@ function ContactsPage() {
           </div>
         </TabsScrollStrip>
       </div>
+      )}
 
-      {mainTab === "contacts" ? (
+      {embedded || mainTab === "contacts" ? (
         <div
-          id="contacts-main-panel-contacts"
-          role="tabpanel"
-          aria-labelledby="contacts-main-tab-contacts"
+          id={embedded ? undefined : "contacts-main-panel-contacts"}
+          role={embedded ? undefined : "tabpanel"}
+          aria-labelledby={embedded ? undefined : "contacts-main-tab-contacts"}
           className="contacts_main_tab_panel_wrap"
         >
           <div className="um_members_tab_content contacts_main_tab_content_flush">
@@ -2819,7 +2845,7 @@ function ContactsPage() {
             </div>
       </div>
       </div>
-      ) : mainTab === "platform" && platformAdmin ? (
+      ) : mainTab === "platform" ? (
         <div
           className="um_members_tab_content contacts_main_tab_content_flush"
           id="contacts-main-panel-platform"
@@ -2830,9 +2856,9 @@ function ContactsPage() {
             <div className="contacts_directory_toolbar contacts_platform_toolbar">
               <div className="contacts_directory_toolbar_start">
                 <p className="contacts_platform_note">
-                  Investors who signed up on their own. You see every self-signup,
-                  including those who did not opt in. Only investors visible on the
-                  platform can be added to a deal.
+                  {platformAdmin
+                    ? "Investors who signed up on their own. You see every self-signup, including those who did not opt in. Only investors visible on the platform can be added to a deal."
+                    : "Investors who signed up on their own and chose to be visible on the platform. They can be added to a deal."}
                 </p>
               </div>
 
@@ -3180,6 +3206,28 @@ function ContactsPage() {
         listKind={exportListKind}
         includePlatformVisibility={platformAdmin}
       />
+
+      {importOpen ? (
+        <div
+          className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost contact_import_modal_overlay"
+          role="presentation"
+        >
+          <div
+            className="um_modal um_modal_view deals_add_inv_modal_panel add_contact_panel contact_import_modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-import-title"
+          >
+            <ContactImportWizard
+              mode="modal"
+              onClose={() => {
+                setImportOpen(false)
+                void loadContacts()
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {sendMailModalOpen ? (
         <div

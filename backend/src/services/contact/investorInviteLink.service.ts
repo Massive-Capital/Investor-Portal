@@ -1,4 +1,4 @@
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { INVESTOR } from "../../constants/roles.js";
 import {
   isDealStageDraft,
@@ -270,21 +270,27 @@ export async function ensureReferredInvestorContact(params: {
   const emailNorm = String(params.emailNorm ?? "").trim().toLowerCase();
   if (!sponsorUserId || !emailNorm.includes("@")) return null;
 
-  const scope = organizationId
-    ? or(
-        eq(contact.organizationId, organizationId),
-        and(isNull(contact.organizationId), eq(contact.createdBy, sponsorUserId))!,
-      )!
-    : eq(contact.createdBy, sponsorUserId);
-
-  const [existing] = await db
-    .select()
-    .from(contact)
-    .where(and(sql`lower(trim(${contact.email})) = ${emailNorm}`, scope))
-    .limit(1);
+  const emailMatch = sql`lower(trim(${contact.email})) = ${emailNorm}`;
+  const matches = await db.select().from(contact).where(emailMatch);
+  const orgId = String(organizationId ?? "").trim();
+  const orgKey = orgId.toLowerCase();
+  const inThisOrg = matches.find((row) => {
+    const rowOrg = String(row.organizationId ?? "").trim().toLowerCase();
+    if (orgKey && rowOrg === orgKey) return true;
+    return !rowOrg && row.createdBy === sponsorUserId;
+  });
+  const unassigned = matches.find(
+    (row) => row.platformAdminOnly || !String(row.organizationId ?? "").trim(),
+  );
+  const existing = inThisOrg ?? unassigned ?? null;
 
   const ownerName = (await getUserDisplayNameById(sponsorUserId)).trim();
   const dealToStore = String(dealId ?? "").trim() || null;
+
+  if (!existing && matches.length > 0) {
+    /** Already a CRM row for this email. Do not add a second contact for the same person. */
+    return String(matches[0]?.id ?? "").trim() || null;
+  }
 
   if (existing) {
     /** Keep an owner someone already assigned; only fill an empty Owners cell. */
@@ -330,6 +336,7 @@ export async function ensureReferredInvestorContact(params: {
       referredByDealId: dealToStore,
       isPortalUser: true,
       relationship506b: "NO",
+      importSource: "invite_link",
     })
     .returning();
 

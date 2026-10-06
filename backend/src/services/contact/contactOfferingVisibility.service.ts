@@ -359,6 +359,9 @@ function dealMatchesOrganizationVisibility(
   dealId: string,
   participantDealIds: Set<string>,
 ): boolean {
+  // A deal this investor is already on stays open. Hide / 506-only still
+  // applies to the rest of that company's offerings.
+  if (participantDealIds.has(dealId.trim().toLowerCase())) return true;
   // 506(c) of this sponsor's organization is visible to every contact there.
   if (isDealSecType506c(secType)) return true;
   if (visibility === "ALL_OFFERINGS") return true;
@@ -451,7 +454,7 @@ export async function filterDealIdsByContactOfferingVisibility(
       }
       continue;
     }
-    if (byOrg.size === 0 && participantDealIds.has(id.toLowerCase())) {
+    if (participantDealIds.has(id.toLowerCase())) {
       allowed.add(id);
     }
   }
@@ -487,6 +490,7 @@ export async function isDealAllowedByContactOfferingVisibility(params: {
     String(deal.organizationId ?? "").trim().toLowerCase();
   const participantDealIds = await listDealIdsInvestorIsPartOf(emailNorm);
   const secType = params.secType ?? deal.secType;
+  if (participantDealIds.has(dealId.toLowerCase())) return true;
   if (byOrg.has(orgId)) {
     return dealMatchesOrganizationVisibility(
       byOrg.get(orgId) ?? null,
@@ -496,5 +500,5 @@ export async function isDealAllowedByContactOfferingVisibility(params: {
     );
   }
   if (byOrg.size > 0) return false;
-  return participantDealIds.has(dealId.toLowerCase());
+  return false;
 }

@@ -46,9 +46,16 @@ export async function postOfferingPreviewAccessClaim(
         : typeof body.preview === "string"
           ? body.preview
           : "";
+    const sponsorRef =
+      typeof body.sponsorRef === "string"
+        ? body.sponsorRef
+        : typeof body.offeringPreviewSponsorRef === "string"
+          ? body.offeringPreviewSponsorRef
+          : "";
     const result = await grantOfferingPreviewInvestorAccess({
       userId: jwtUser.id,
       previewToken,
+      sponsorRef,
     });
     if (!result.ok) {
       res.status(result.status).json({ message: result.message });

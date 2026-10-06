@@ -60,7 +60,11 @@ async function sumLpDealInvestmentCommittedForContact(
 
 export type ApplyMyInvestNowCommitmentResult =
   | { ok: true }
-  | { ok: false; message: string };
+  | {
+      ok: false;
+      message: string;
+      code?: "duplicate_profile_for_deal";
+    };
 
 export type ApplyMyInvestNowCommitmentInput = {
   dealId: string;
@@ -85,6 +89,10 @@ export type ApplyMyInvestNowCommitmentInput = {
   skipCommittedAmount?: boolean;
   /** When true, set commitment to the posted value instead of adding to the existing total. */
   replaceCommittedAmount?: boolean;
+  /** Existing investment row to continue editing. */
+  investmentId?: string | null;
+  /** User confirmed they want a separate investment using the same saved profile. */
+  allowDuplicateProfile?: boolean;
   fundingMethodInBody?: boolean;
   fundingMethod?: string;
   investorClassInBody?: boolean;
@@ -361,23 +369,44 @@ export async function applyMyInvestNowCommitmentAddon(
         .orderBy(desc(dealInvestment.createdAt));
     const scopedUip = String(params.userInvestorProfileId ?? "").trim();
     const scopedProfile = profileOpt ?? "";
+    const scopedInvestmentId = String(params.investmentId ?? "").trim();
     let inv: (typeof invCandidates)[number] | undefined;
-    for (const row of invCandidates) {
-        if (!isLpInvestorRole(row.investor_role))
-            continue;
-        if (scopedUip) {
-            const rowUip = String(row.userInvestorProfileId ?? "").trim();
-            if (!rowUip || rowUip.toLowerCase() !== scopedUip.toLowerCase())
-                continue;
+    if (scopedInvestmentId) {
+        inv = invCandidates.find(
+            (row) =>
+                isLpInvestorRole(row.investor_role) &&
+                String(row.id).trim().toLowerCase() ===
+                    scopedInvestmentId.toLowerCase(),
+        );
+        if (!inv) {
+            return {
+                ok: false,
+                message: "The selected investment was not found for this deal.",
+            };
         }
-        else if (scopedProfile) {
-            if (String(row.profileId ?? "").trim() !== scopedProfile)
-                continue;
-        }
-        inv = row;
-        break;
     }
-    if (!inv && !scopedUip && !scopedProfile) {
+    else {
+        for (const row of invCandidates) {
+            if (!isLpInvestorRole(row.investor_role))
+                continue;
+            if (scopedUip) {
+                const rowUip = String(row.userInvestorProfileId ?? "").trim();
+                if (!rowUip || rowUip.toLowerCase() !== scopedUip.toLowerCase())
+                    continue;
+            }
+            else if (scopedProfile) {
+                if (String(row.profileId ?? "").trim() !== scopedProfile)
+                    continue;
+            }
+            inv = row;
+            break;
+        }
+    }
+    const duplicateProfileInv = !scopedInvestmentId && inv ? inv : undefined;
+    if (duplicateProfileInv && params.allowDuplicateProfile) {
+        inv = undefined;
+    }
+    if (!inv && !scopedInvestmentId && !scopedUip && !scopedProfile) {
         for (const row of invCandidates) {
             if (isLpInvestorRole(row.investor_role)) {
                 inv = row;

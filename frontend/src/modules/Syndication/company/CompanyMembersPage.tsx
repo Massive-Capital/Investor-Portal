@@ -293,7 +293,7 @@ function contactsForCompanyUser(
 ): ContactRow[] {
   const memberId = rowSelectionId(row).trim().toLowerCase()
   const names = memberNameKeys(row)
-  return contacts.filter((contact) => {
+  const matched = contacts.filter((contact) => {
     const invitedByUserId = String(contact.invitedByUserId ?? "")
       .trim()
       .toLowerCase()
@@ -314,6 +314,16 @@ function contactsForCompanyUser(
       .toLowerCase()
     return invitedBy !== "" && names.has(invitedBy)
   })
+  const seen = new Set<string>()
+  const unique: ContactRow[] = []
+  for (const contact of matched) {
+    const email = String(contact.email ?? "").trim().toLowerCase()
+    const key = email.includes("@") ? email : String(contact.id ?? "").trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    unique.push(contact)
+  }
+  return unique
 }
 
 function memberRowMatchesSearch(

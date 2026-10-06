@@ -370,6 +370,10 @@
   outline-offset: 1px;
 }
 
+.feedback_type_value {
+  color: var(--font-color-title, #1b1b1d);
+}
+
 .feedback_priority_modal {
   width: min(26rem, 100%);
 }
@@ -412,6 +416,10 @@
 
 :root[data-theme="dark"] .feedback_priority_p3 {
   color: #94a3b8;
+}
+
+:root[data-theme="dark"] .feedback_type_value {
+  color: var(--portal-text, rgba(255, 255, 255, 0.92));
 }
 
 :root[data-theme="dark"] .feedback_form_error {

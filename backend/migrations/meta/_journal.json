@@ -680,6 +680,20 @@
       "when": 1895400000000,
       "tag": "0097_contact_referred_by_deal",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1895450000000,
+      "tag": "0098_feedback_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1895500000000,
+      "tag": "0099_contact_import_source",
+      "breakpoints": true
     }
   ]
 }

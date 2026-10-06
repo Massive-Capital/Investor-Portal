@@ -115,9 +115,7 @@ export function ExtraCompanyUserPayModal({
       title={`Pay $${dollars} for extra company user${extraCount === 1 ? "" : "s"}`}
       description={
         <>
-          This deal’s plan includes {payload.includedCompanyUsers} company user
-          {payload.includedCompanyUsers === 1 ? "" : "s"}. Adding this extra
-          user is a one-time ${dollars} payment for{" "}
+          Extra Co-GPs are $10 each for{" "}
           <strong>{payload.dealName.trim() || "this deal"}</strong>.
         </>
       }

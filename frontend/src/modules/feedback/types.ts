@@ -4,6 +4,8 @@ export type FeedbackReviewAction = "reviewed" | "resolved"
 
 export type FeedbackPriority = "P0" | "P1" | "P2" | "P3"
 
+export type FeedbackType = "Feature Request" | "Bug Report" | "Change Request"
+
 export const FEEDBACK_PRIORITY_OPTIONS: {
   value: FeedbackPriority
   label: string
@@ -14,9 +16,26 @@ export const FEEDBACK_PRIORITY_OPTIONS: {
   { value: "P3", label: "Low" },
 ]
 
+export const FEEDBACK_TYPE_OPTIONS: {
+  value: FeedbackType
+  label: string
+}[] = [
+  { value: "Feature Request", label: "Feature Request" },
+  { value: "Bug Report", label: "Bug Report" },
+  { value: "Change Request", label: "Change Request" },
+]
+
 export function parseFeedbackPriority(raw: unknown): FeedbackPriority | null {
   const s = String(raw ?? "").trim().toUpperCase()
   if (s === "P0" || s === "P1" || s === "P2" || s === "P3") return s
+  return null
+}
+
+export function parseFeedbackType(raw: unknown): FeedbackType | null {
+  const s = String(raw ?? "").trim().toLowerCase()
+  if (s === "feature request") return "Feature Request"
+  if (s === "bug report") return "Bug Report"
+  if (s === "change request") return "Change Request"
   return null
 }
 
@@ -84,6 +103,7 @@ export type FeedbackItem = {
   subPageLabel: string
   description: string
   priority: FeedbackPriority | null
+  feedbackType: FeedbackType | null
   status: FeedbackStatus
   adminResponse: string | null
   createdAt: string

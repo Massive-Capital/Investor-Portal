@@ -13,7 +13,6 @@ import {
   Info,
   Loader2,
   Plus,
-  Minus,
   Receipt,
   RotateCcw,
   Search,
@@ -159,6 +158,7 @@ const CUSTOM_PLAN_CONTACT_HREF =
   "mailto:support@syndicationx.com?subject=Custom%20plan%20inquiry%20%E2%80%93%20SyndicationX";
 
 const EXTRA_COMPANY_USER_FEE_DOLLARS = 10;
+const EXTRA_CO_GP_ANNUAL_MONTHS = 10;
 
 const DEAL_TIERS: DealTier[] = [
   {
@@ -262,13 +262,14 @@ function billingPlanLabel(planId: string | null | undefined): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
-/** Paid Stripe plan if present; otherwise the plan that matches this deal’s raise. */
+/** Unpaid deals follow the current offering size. A paid subscription keeps its plan. */
 function dealPlanId(
-  row: Pick<CompanyDealBillingRow, "planId" | "suggestedPlanId">,
+  row: Pick<CompanyDealBillingRow, "planId" | "suggestedPlanId" | "billed">,
 ): string | null {
+  const suggested = String(row.suggestedPlanId ?? "").trim();
+  if (!row.billed && suggested) return suggested;
   const paid = String(row.planId ?? "").trim();
   if (paid) return paid;
-  const suggested = String(row.suggestedPlanId ?? "").trim();
   return suggested || null;
 }
 
@@ -308,7 +309,8 @@ function BillingCycleConfirmModal({
     DEAL_TIERS.find((t) => planId === t.id || planId.startsWith(`${t.id}_`)) ??
     DEAL_TIERS[0];
   const annual = nextCycle === "annually";
-  const price = annual ? tier.prices["5"].annual : tier.prices["5"].monthly;
+  const seat = catalogSeatBand(row);
+  const price = annual ? tier.prices[seat].annual : tier.prices[seat].monthly;
   const priceSuffix = annual ? "/yr" : "/mo";
   const fromLabel =
     billingCycleSelectValue(row.billingCycle) === "annually"
@@ -408,10 +410,11 @@ function BillingCycleConfirmModal({
               <li>
                 <Check size={16} aria-hidden="true" />
                 <span>
-                  {tier.companyUsers} company user
-                  {tier.companyUsers === 1 ? "" : "s"}
-                  {"; extra users $"}
-                  {EXTRA_COMPANY_USER_FEE_DOLLARS} each
+                  {seat === "10plus"
+                    ? "10+ co-sponsors are included"
+                    : `Beyond the ${
+                        seat === "10" ? "10" : "5"
+                      } co-sponsors are $${EXTRA_COMPANY_USER_FEE_DOLLARS} each`}
                 </span>
               </li>
             </ul>
@@ -632,16 +635,28 @@ function billingCycleSelectValue(
   return "";
 }
 
-function catalogPlanAmountLabel(row: CompanyDealBillingRow): string {
-  if (dealIsNotBilled(row)) return "—";
+function catalogSeatBand(row: CompanyDealBillingRow): SeatBand {
+  if (row.seatBand === "10" || row.seatBand === "10plus" || row.seatBand === "5") {
+    return row.seatBand;
+  }
+  return "5";
+}
+
+function catalogPlanAmountDollars(row: CompanyDealBillingRow): number | null {
+  if (dealIsNotBilled(row)) return null;
   const id = String(dealPlanId(row) ?? "").trim().toLowerCase();
   const tier = DEAL_TIERS.find((t) => t.id === id);
-  if (!tier) return "—";
+  if (!tier) return null;
   const cycle = String(row.billingCycle ?? "").trim().toLowerCase();
   const annual =
     cycle === "annual" || cycle === "annually" || cycle === "yearly";
-  const price = annual ? tier.prices["5"].annual : tier.prices["5"].monthly;
-  return `$${price}`;
+  const seat = catalogSeatBand(row);
+  return annual ? tier.prices[seat].annual : tier.prices[seat].monthly;
+}
+
+function catalogPlanAmountLabel(row: CompanyDealBillingRow): string {
+  const price = catalogPlanAmountDollars(row);
+  return price == null ? "—" : `$${price}`;
 }
 
 function latestInvoiceAmountForDeal(
@@ -655,28 +670,63 @@ function latestInvoiceAmountForDeal(
   return amount || null;
 }
 
+function resolvedIncludedCoGps(deal: CompanyDealBillingRow): number | null {
+  if (deal.seatBand === "10plus") return null;
+  if (deal.seatBand === "10") return 10;
+  if (deal.seatBand === "5") return 5;
+  const fromApi = Number(deal.includedCoGps);
+  if (Number.isFinite(fromApi) && fromApi > 0) return fromApi;
+  return 5;
+}
+
+function extraCoGpDetail(deal: CompanyDealBillingRow): {
+  count: number;
+  included: number | null;
+  extra: number;
+  paid: number;
+  dueDollars: number;
+  paidDollars: number;
+} {
+  const count = Math.max(0, Number(deal.coGpCount ?? 0) || 0);
+  const paid = Math.max(0, Number(deal.extraCompanyUsersPaid ?? 0) || 0);
+  const included = resolvedIncludedCoGps(deal);
+  const extra =
+    included == null
+      ? Math.max(0, Number(deal.extraCompanyUsersDue ?? 0) || 0)
+      : Math.max(0, count - included);
+  const due = Math.max(
+    extra,
+    Math.max(0, Number(deal.extraCompanyUsersDue ?? 0) || 0),
+  );
+  const annual = /annual|year/i.test(String(deal.billingCycle ?? ""));
+  const perExtra = annual
+    ? EXTRA_COMPANY_USER_FEE_DOLLARS * EXTRA_CO_GP_ANNUAL_MONTHS
+    : EXTRA_COMPANY_USER_FEE_DOLLARS;
+  return {
+    count,
+    included,
+    extra: due,
+    paid,
+    dueDollars: due * perExtra,
+    paidDollars: paid * perExtra,
+  };
+}
+
 function extraCompanyUserAmountParts(
   row: CompanyDealBillingRow,
 ): { paidLabel: string | null; dueLabel: string | null } {
-  if (dealIsNotBilled(row) || !platformSaasBillingHasStarted()) {
+  if (dealIsNotBilled(row)) {
     return { paidLabel: null, dueLabel: null };
   }
-  const fee = Math.max(
-    0,
-    Number(row.extraUserFeeCents ?? EXTRA_COMPANY_USER_FEE_DOLLARS * 100) ||
-      EXTRA_COMPANY_USER_FEE_DOLLARS * 100,
-  );
-  const paid = Math.max(0, Number(row.extraCompanyUsersPaid ?? 0) || 0);
-  const due = Math.max(0, Number(row.extraCompanyUsersDue ?? 0) || 0);
-  const dollars = (cents: number) => `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+  const detail = extraCoGpDetail(row);
   return {
     paidLabel:
-      paid > 0
-        ? `${dollars(paid * fee)} extra user${paid === 1 ? "" : "s"}`
+      detail.paid > 0
+        ? `$${detail.paidDollars} extra Co-GP${detail.paid === 1 ? "" : "s"}`
         : null,
     dueLabel:
-      due > 0
-        ? `${dollars(due * fee)} extra user${due === 1 ? "" : "s"} due`
+      detail.extra > 0
+        ? `$${detail.dueDollars} extra Co-GP${detail.extra === 1 ? "" : "s"} due`
         : null,
   };
 }
@@ -699,9 +749,41 @@ function dealAmountSearchText(
     .join(" ");
 }
 
+function formatBillingDollars(amount: number): string {
+  return `$${amount.toLocaleString("en-US")}`;
+}
+
+function BillingAmountBreakdown({
+  total,
+  base,
+  extra,
+  period,
+}: {
+  total: number | null;
+  base: number | null;
+  extra: number;
+  period: string;
+}) {
+  if (total == null) return <span>—</span>;
+  const showBreakdown = base != null && extra > 0;
+  return (
+    <span className="cp_billing_amount_stack">
+      <span className="cp_billing_amount_total">
+        {formatBillingDollars(total)}
+        {period}
+      </span>
+      {showBreakdown ? (
+        <span className="cp_billing_amount_extra">
+          <span>{formatBillingDollars(base)} deal price</span>
+          <span>+ {formatBillingDollars(extra)} extra users</span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function DealAmountCell({
   row,
-  invoices,
 }: {
   row: CompanyDealBillingRow;
   invoices: CompanyBillingInvoice[];
@@ -709,22 +791,22 @@ function DealAmountCell({
   if (dealIsNotBilled(row)) {
     return <span>—</span>;
   }
-  const planAmount =
-    latestInvoiceAmountForDeal(
-      invoices.filter((inv) => inv.billingScope !== "extra_company_user"),
-      row.id,
-    ) ?? catalogPlanAmountLabel(row);
-  const extra = extraCompanyUserAmountParts(row);
+  const base = catalogPlanAmountDollars(row);
+  const extra = extraCoGpDetail(row);
+  const annual = /annual|year/i.test(String(row.billingCycle ?? ""));
+  const period = annual ? "/yr" : "/mo";
+  const extraDollars = extra.extra > 0 ? extra.dueDollars : 0;
+  const total = base == null ? null : base + extraDollars;
+  if (total == null) {
+    return <span>{catalogPlanAmountLabel(row)}</span>;
+  }
   return (
-    <span className="cp_billing_amount_stack">
-      <span>{planAmount}</span>
-      {extra.paidLabel ? (
-        <span className="cp_billing_amount_extra">{extra.paidLabel}</span>
-      ) : null}
-      {extra.dueLabel ? (
-        <span className="cp_billing_amount_extra">{extra.dueLabel}</span>
-      ) : null}
-    </span>
+    <BillingAmountBreakdown
+      total={total}
+      base={base}
+      extra={extraDollars}
+      period={period}
+    />
   );
 }
 
@@ -961,9 +1043,24 @@ function BillingPricingPanel({
   const appropriatePlanId = suggestedPlanIdForDeal(selectedDeal);
 
   useEffect(() => {
+    const count = Math.max(0, Number(selectedDeal?.coGpCount ?? 0) || 0);
+    if (seatBand === "5" || seatBand === "10") {
+      const included = seatBand === "10" ? 10 : 5;
+      setExtraCompanyUsers(Math.max(0, count - included));
+      return;
+    }
+    if (seatBand === "10plus") {
+      setExtraCompanyUsers(0);
+      return;
+    }
     const due = Math.max(0, Number(selectedDeal?.extraCompanyUsersDue ?? 0) || 0);
     setExtraCompanyUsers(due);
-  }, [selectedDeal?.id, selectedDeal?.extraCompanyUsersDue]);
+  }, [
+    selectedDeal?.id,
+    selectedDeal?.coGpCount,
+    selectedDeal?.extraCompanyUsersDue,
+    seatBand,
+  ]);
 
   useEffect(() => {
     if (!wizardMode || !selectedDeal) return;
@@ -1369,58 +1466,6 @@ function BillingPricingPanel({
             </p>
           ) : null}
         </div>
-
-        <div
-          className={`cp_billing_filter_row${
-            membersEnabled ? "" : " cp_billing_filter_row_disabled"
-          }`}
-        >
-          <span
-            className="cp_billing_filter_heading"
-            id="cp-billing-extra-users-label"
-          >
-            Extra company users
-          </span>
-          <div
-            className="cp_billing_extra_users"
-            role="group"
-            aria-labelledby="cp-billing-extra-users-label"
-          >
-            <button
-              type="button"
-              className="cp_billing_extra_users_btn"
-              disabled={!membersEnabled || extraCompanyUsers <= 0}
-              aria-label="Remove extra company user"
-              onClick={() =>
-                setExtraCompanyUsers((n) => Math.max(0, n - 1))
-              }
-            >
-              <Minus size={16} aria-hidden="true" />
-            </button>
-            <span className="cp_billing_extra_users_count">{extraCompanyUsers}</span>
-            <button
-              type="button"
-              className="cp_billing_extra_users_btn"
-              disabled={!membersEnabled || extraCompanyUsers >= 23}
-              aria-label="Add extra company user"
-              onClick={() =>
-                setExtraCompanyUsers((n) => Math.min(23, n + 1))
-              }
-            >
-              <Plus size={16} aria-hidden="true" />
-            </button>
-            <span className="cp_billing_extra_users_fee">
-              ${EXTRA_COMPANY_USER_FEE_DOLLARS} each
-              {extraCompanyUsers > 0
-                ? ` · +$${extraCompanyUsers * EXTRA_COMPANY_USER_FEE_DOLLARS}`
-                : ""}
-            </span>
-          </div>
-          <p className="cp_billing_filter_hint" style={{ margin: 0 }}>
-            Plans include 1–3 company users. Each extra user on this deal is a
-            one-time ${EXTRA_COMPANY_USER_FEE_DOLLARS} payment.
-          </p>
-        </div>
       </div>
 
       <div className="cp_billing_plans">
@@ -1481,9 +1526,6 @@ function BillingPricingPanel({
                   {displayCycle === "annually" && seatsSelected
                     ? " · billed yearly"
                     : ""}
-                  {extraCompanyUsers > 0
-                    ? ` · +$${extraCompanyUsers * EXTRA_COMPANY_USER_FEE_DOLLARS} extra users`
-                    : ""}
                 </p>
               </div>
               <div className="cp_billing_plan_body">
@@ -1495,10 +1537,11 @@ function BillingPricingPanel({
                   <li>
                     <Check size={16} aria-hidden="true" />
                     <span>
-                      {tier.companyUsers} company user
-                      {tier.companyUsers === 1 ? "" : "s"}
-                      {"; extra users $"}
-                      {EXTRA_COMPANY_USER_FEE_DOLLARS} each
+                      {displaySeat === "10plus"
+                        ? "10+ co-sponsors are included"
+                        : `Beyond the ${
+                            displaySeat === "10" ? "10" : "5"
+                          } co-sponsors are $${EXTRA_COMPANY_USER_FEE_DOLLARS} each`}
                     </span>
                   </li>
                   <li>
@@ -1770,7 +1813,7 @@ function DealMrrPaymentHistory({
   deal: CompanyDealBillingRow;
   invoices: CompanyBillingInvoice[];
 }) {
-  const extra = extraCompanyUserAmountParts(deal);
+  const extra = extraCoGpDetail(deal);
   const mrrInvoices = invoices.filter(
     (inv) => inv.billingScope !== "extra_company_user",
   );
@@ -1816,44 +1859,87 @@ function DealMrrPaymentHistory({
           </tbody>
         </table>
       )}
-      <p className="cp_billing_deal_mrr_history_title">Extra company users</p>
-      {extra.paidLabel || extra.dueLabel || extraInvoices.length > 0 ? (
-        <>
-          {extra.paidLabel || extra.dueLabel ? (
-            <p className="cp_billing_deal_mrr_history_empty">
-              {[extra.paidLabel, extra.dueLabel].filter(Boolean).join(" · ")}
-            </p>
-          ) : null}
-          {extraInvoices.length > 0 ? (
-            <table className="cp_billing_deal_mrr_table">
-              <thead>
-                <tr>
-                  <th scope="col">Date</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {extraInvoices.map((inv) => (
-                  <tr key={inv.id}>
-                    <td>
-                      {inv.invoiceDate
-                        ? formatDealListDateDisplay(inv.invoiceDate)
-                        : "—"}
-                    </td>
-                    <td>{inv.status}</td>
-                    <td>{inv.amount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-        </>
-      ) : (
+      <p className="cp_billing_deal_mrr_history_title">Extra Co-GPs</p>
+      <table className="cp_billing_deal_mrr_table">
+        <thead>
+          <tr>
+            <th scope="col">Co-GPs</th>
+            <th scope="col">Included</th>
+            <th scope="col">Extra</th>
+            <th scope="col">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{extra.count}</td>
+            <td>{extra.included == null ? "10+" : extra.included}</td>
+            <td>{extra.extra}</td>
+            <td className="cp_billing_mrr_amount">
+              {extra.extra > 0 && catalogPlanAmountDollars(deal) != null ? (
+                <BillingAmountBreakdown
+                  total={
+                    (catalogPlanAmountDollars(deal) ?? 0) + extra.dueDollars
+                  }
+                  base={catalogPlanAmountDollars(deal)}
+                  extra={extra.dueDollars}
+                  period={
+                    /annual|year/i.test(String(deal.billingCycle ?? ""))
+                      ? "/yr"
+                      : "/mo"
+                  }
+                />
+              ) : extra.extra > 0 ? (
+                <span className="cp_billing_amount_stack">
+                  <span className="cp_billing_amount_total">
+                    {formatBillingDollars(extra.dueDollars)}
+                    {/annual|year/i.test(String(deal.billingCycle ?? ""))
+                      ? "/yr"
+                      : "/mo"}
+                  </span>
+                  <span className="cp_billing_amount_extra">
+                    <span>extra users</span>
+                  </span>
+                </span>
+              ) : extra.paid > 0 ? (
+                `${formatBillingDollars(extra.paidDollars)} paid`
+              ) : (
+                "$0"
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {extra.extra === 0 ? (
         <p className="cp_billing_deal_mrr_history_empty">
-          No extra company user charges for this deal.
+          {extra.included == null
+            ? "10+ co-sponsors are included in this plan. No per-Co-GP add-on."
+            : `The ${extra.included} co-sponsors in this plan are included. No extra Co-GP fee.`}
         </p>
-      )}
+      ) : null}
+      {extraInvoices.length > 0 ? (
+        <table className="cp_billing_deal_mrr_table">
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Status</th>
+              <th scope="col">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {extraInvoices.map((inv) => (
+              <tr key={inv.id}>
+                <td>
+                  {inv.invoiceDate
+                    ? formatDealListDateDisplay(inv.invoiceDate)
+                    : "—"}
+                </td>
+                <td>{inv.status}</td>
+                <td>{inv.amount}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </div>
   );
 }
@@ -2460,8 +2546,8 @@ function BillingDealDetailsPanel({
         id: "amount",
         header: "Amount",
         align: "right" as const,
-        thClassName: "deals_th_align_right",
-        tdClassName: "um_td_numeric cp_billing_amount_td",
+        thClassName: "deals_th_align_right cp_billing_amount_col",
+        tdClassName: "um_td_numeric cp_billing_amount_td cp_billing_amount_col",
         sortValue: (row) => dealAmountLabel(row, invoices).toLowerCase(),
         cell: (row) => <DealAmountCell row={row} invoices={invoices} />,
       },

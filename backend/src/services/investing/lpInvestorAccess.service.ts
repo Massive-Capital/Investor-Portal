@@ -598,9 +598,9 @@ export async function isDealInInvestingParticipantListForUser(
 
 /**
  * Investing dashboard + `/investing/deals`.
- * A CRM contact only sees deals in organizations where that email is a
- * contact, filtered by that organization's visibility. Sponsor rosters and
- * other companies are not added.
+ * Offerings from companies where this email is a contact, plus any deal
+ * they were added to directly (a shared offering link). Other companies'
+ * full sponsor rosters are not added on top of that.
  */
 export async function listInvestingParticipantDealIdsForUser(params: {
   userId: string;
@@ -613,11 +613,9 @@ export async function listInvestingParticipantDealIdsForUser(params: {
   const applyContactOfferingVisibility =
     params.applyContactOfferingVisibility !== false;
 
-  if (emailNorm.includes("@")) {
-    const organizationDeals =
-      await listContactOrganizationInvestingDealIds(emailNorm);
-    if (organizationDeals) return organizationDeals;
-  }
+  const organizationDeals = emailNorm.includes("@")
+    ? await listContactOrganizationInvestingDealIds(emailNorm)
+    : null;
 
   const [direct, sponsorScoped] = await Promise.all([
     listDirectInvestingParticipantDealIdsForUser({
@@ -632,6 +630,9 @@ export async function listInvestingParticipantDealIdsForUser(params: {
       : Promise.resolve([] as string[]),
   ]);
 
+  if (organizationDeals) {
+    return [...new Set([...organizationDeals, ...direct])];
+  }
   return [...new Set([...direct, ...sponsorScoped])];
 }
 

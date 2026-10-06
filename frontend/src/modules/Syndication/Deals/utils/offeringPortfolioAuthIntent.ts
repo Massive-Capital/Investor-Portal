@@ -103,7 +103,12 @@ export async function claimOfferingPortfolioAccess(
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify({ previewToken }),
+    body: JSON.stringify({
+      previewToken,
+      ...(intent.sponsorRef?.trim()
+        ? { sponsorRef: intent.sponsorRef.trim() }
+        : {}),
+    }),
   })
   const data = (await response.json().catch(() => ({}))) as {
     dealId?: string

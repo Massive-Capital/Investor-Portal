@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   deleteContactEmailTemplate,
   getContact,
@@ -21,11 +22,18 @@ import {
   patchContactStatus,
   postContact,
   postContactEmailTemplate,
+  postContactImportConfirm,
+  postContactImportParse,
+  postContactImportPreview,
   postContactInvitation,
 } from "../controllers/contact.controller.js";
 import { postContactsExportNotify } from "../controllers/exportNotify.controller.js";
 
 const router = Router();
+const contactImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+});
 
 router.get("/contacts", getContacts);
 router.get("/contacts/deal-stats", getContactDealStats);
@@ -37,6 +45,13 @@ router.get("/contacts/owner-sponsors", getContactOwnerSponsors);
 router.get("/contacts/investor-invite-link", getInvestorInviteLink);
 router.get("/contacts/platform-contacts", getPlatformContacts);
 router.get("/contacts/member-invitees", getMemberInviteeContacts);
+router.post(
+  "/contacts/import/parse",
+  contactImportUpload.single("file"),
+  postContactImportParse,
+);
+router.post("/contacts/import/:batchId/preview", postContactImportPreview);
+router.post("/contacts/import/:batchId/confirm", postContactImportConfirm);
 router.get("/contacts/:contactId", getContact);
 router.post("/contacts", postContact);
 router.post("/contacts/email-templates", postContactEmailTemplate);

@@ -14,6 +14,7 @@ const STORAGE_PREFIX = "sx_table_page_size:v1"
 export const TABLE_PAGE_SIZE_ID = {
   contacts: "contacts",
   customerContacts: "customer-contacts",
+  customerPlatformContacts: "customer-platform-contacts",
   deals: "deals",
   dealInvestors: "deal-investors",
   dealMembers: "deal-members",

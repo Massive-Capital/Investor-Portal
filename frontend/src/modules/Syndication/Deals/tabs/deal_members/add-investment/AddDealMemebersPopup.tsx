@@ -2495,8 +2495,10 @@ export function AddInvestmentModal({
                       className="add_contact_modal_btn_spin"
                       aria-hidden
                     />
-                    Adding...
+                    {mode === "edit" ? "Saving..." : "Adding..."}
                   </>
+                ) : mode === "edit" ? (
+                  "Save"
                 ) : (
                   <>
                     <Plus size={16} strokeWidth={2} aria-hidden />

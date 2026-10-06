@@ -150,6 +150,7 @@ export type CreateContactInput = {
   tags: string[];
   lists: string[];
   owners: string[];
+  importSource?: "manual" | "csv" | "excel" | "invite_link" | "portal_signup" | "ghl";
 };
 
 export const SELF_REGISTERED_CONTACT_ADDED_BY_LABEL = "Self Registered";
@@ -467,17 +468,37 @@ export function isOptedInSelfRegisteredContactRow(
 }
 
 /**
+ * Platform contacts that belong to one company: rows stored on that company,
+ * legacy rows created by a member, and self-signups invited by a member.
+ */
+async function platformContactsForOrganizationWhere(orgId: string): Promise<SQL> {
+  const memberIds = await userIdsInOrganization(orgId);
+  const legacyMemberContacts =
+    memberIds.length > 0
+      ? and(
+          isNull(contact.organizationId),
+          inArray(contact.createdBy, memberIds),
+        )!
+      : null;
+  const orgScope = legacyMemberContacts
+    ? or(eq(contact.organizationId, orgId), legacyMemberContacts)!
+    : eq(contact.organizationId, orgId);
+  return or(orgScope, contactsReferredByOrganizationMembersWhere(orgId))!;
+}
+
+/**
  * Platform Contacts section.
- * Company users see opted-in self-registered rows only (`platform_admin_only`
- * + `visible_to_users`) — org CRM stays on the Contact tab.
+ * Company users see opted-in self-registered rows only (`visible_to_users`).
  * Platform admins see every self-registered row, plus any org contact who
  * answered Yes to “visible to users”. A No keeps that person on the org list
  * only. Own row is omitted.
+ * Pass `organizationId` to limit the list to one company (Customers → organization).
  */
 export async function listPlatformVisibleContacts(
   viewerUserId: string,
   sort: ContactListSort = "createdAt",
   viewerRole?: string | null,
+  organizationId?: string | null,
 ): Promise<ContactRow[]> {
   const [viewer] = await db
     .select({ email: users.email, role: users.role })
@@ -496,6 +517,10 @@ export async function listPlatformVisibleContacts(
   if (viewerEmailNorm.includes("@")) {
     parts.push(sql`lower(trim(${contact.email})) <> ${viewerEmailNorm}`);
   }
+  const orgId = normalizeOrganizationUuid(organizationId);
+  if (orgId) {
+    parts.push(await platformContactsForOrganizationWhere(orgId));
+  }
   return db
     .select()
     .from(contact)
@@ -507,16 +532,23 @@ export async function listPlatformVisibleContactsCached(
   viewerUserId: string,
   sort: ContactListSort = "createdAt",
   viewerRole?: string | null,
+  organizationId?: string | null,
 ): Promise<ContactRow[]> {
-  const key = ["platform", viewerUserId, String(viewerRole ?? ""), sort].join(
-    ":",
-  );
+  const orgKey = normalizeOrganizationUuid(organizationId) ?? "";
+  const key = [
+    "platform",
+    viewerUserId,
+    String(viewerRole ?? ""),
+    sort,
+    orgKey,
+  ].join(":");
   const cached = contactDirectoryCache.get(key) as ContactRow[] | undefined;
   if (cached) return cached;
   const rows = await listPlatformVisibleContacts(
     viewerUserId,
     sort,
     viewerRole,
+    orgKey || null,
   );
   contactDirectoryCache.set(key, rows);
   return rows;
@@ -621,6 +653,7 @@ export async function ensureSelfRegisteredInvestorContact(params: {
       platformAdminOnly: true,
       visibleToUsers: false,
       relationship506b: "NO",
+      importSource: "portal_signup",
     })
     .returning();
   if (inserted) queueGhlContactRowSync(inserted);
@@ -910,6 +943,134 @@ export async function resolveInvitedByDisplayNameByContactId(
   return invitedBy;
 }
 
+/**
+ * First person who invited this contact into `organizationId`.
+ * A signup link counts only for the inviter's own company. A CRM row or deal
+ * counts only when that row or deal belongs to this company.
+ */
+export async function resolveFirstOrganizationInviterByContactId(
+  rows: Array<Pick<ContactRow, "id" | "email">>,
+  organizationId: string,
+): Promise<Map<string, ContactInvitedBy>> {
+  const invitedBy = new Map<string, ContactInvitedBy>();
+  const orgId = normalizeOrganizationUuid(organizationId);
+  if (!orgId || rows.length === 0) return invitedBy;
+
+  const emails = [
+    ...new Set(
+      rows
+        .map((row) => normalizeContactEmailForScope(row.email))
+        .filter((email) => email.includes("@")),
+    ),
+  ];
+  if (emails.length === 0) return invitedBy;
+
+  const found = await pool.query<{ email: string; inviter_id: string }>(
+    `WITH events AS (
+       SELECT lower(trim(invitee.email)) AS email,
+              invitee.referred_by_user_id AS inviter_id,
+              invitee.created_at AS at
+       FROM users invitee
+       INNER JOIN users sponsor ON sponsor.id = invitee.referred_by_user_id
+       WHERE lower(trim(invitee.email)) = ANY($2::text[])
+         AND sponsor.organization_id = $1::uuid
+
+       UNION ALL
+
+       SELECT lower(trim(c.email)) AS email,
+              c.created_by AS inviter_id,
+              c.created_at AS at
+       FROM contact c
+       INNER JOIN users creator ON creator.id = c.created_by
+       WHERE lower(trim(c.email)) = ANY($2::text[])
+         AND (
+           c.organization_id = $1::uuid
+           OR (
+             c.organization_id IS NULL
+             AND creator.organization_id = $1::uuid
+           )
+         )
+         AND (
+           creator.organization_id = $1::uuid
+           OR EXISTS (
+             SELECT 1
+             FROM user_company_membership membership
+             WHERE membership.user_id = creator.id
+               AND membership.company_id = $1::uuid
+           )
+         )
+
+       UNION ALL
+
+       SELECT lower(trim(c.email)) AS email,
+              c.created_by AS inviter_id,
+              c.created_at AS at
+       FROM contact c
+       INNER JOIN add_deal_form deal ON deal.id = c.referred_by_deal_id
+       WHERE lower(trim(c.email)) = ANY($2::text[])
+         AND deal.organization_id = $1::uuid
+         AND c.created_by IS NOT NULL
+
+       UNION ALL
+
+       SELECT lower(trim(investor.email)) AS email,
+              investor.added_by AS inviter_id,
+              investor.created_at AS at
+       FROM deal_lp_investor investor
+       INNER JOIN add_deal_form deal ON deal.id = investor.deal_id
+       WHERE deal.organization_id = $1::uuid
+         AND investor.added_by IS NOT NULL
+         AND position('@' in trim(coalesce(investor.email, ''))) > 1
+         AND lower(trim(investor.email)) = ANY($2::text[])
+     )
+     SELECT DISTINCT ON (email) email, inviter_id
+     FROM events
+     WHERE inviter_id IS NOT NULL
+     ORDER BY email, at ASC NULLS LAST`,
+    [orgId, emails],
+  );
+
+  const inviterIds = [
+    ...new Set(
+      found.rows.map((row) => String(row.inviter_id ?? "").trim()).filter(Boolean),
+    ),
+  ];
+  if (inviterIds.length === 0) return invitedBy;
+
+  const inviters = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+      username: users.username,
+    })
+    .from(users)
+    .where(inArray(users.id, inviterIds));
+  const nameById = new Map(
+    inviters.map((user) => [String(user.id), portalUserDisplayName(user)]),
+  );
+  const inviterByEmail = new Map<string, ContactInvitedBy>();
+  for (const row of found.rows) {
+    const email = normalizeContactEmailForScope(row.email ?? "");
+    const inviterId = String(row.inviter_id ?? "").trim();
+    if (!email || !inviterId) continue;
+    inviterByEmail.set(email, {
+      userId: inviterId,
+      displayName: nameById.get(inviterId)?.trim() ?? "",
+    });
+  }
+
+  for (const row of rows) {
+    const contactId = String(row.id).trim().toLowerCase();
+    const email = normalizeContactEmailForScope(row.email);
+    const inviter = inviterByEmail.get(email);
+    if (!contactId || !inviter?.userId) continue;
+    invitedBy.set(contactId, inviter);
+  }
+  return invitedBy;
+}
+
 export async function loadContactCreatorUsersById(
   userIds: string[],
 ): Promise<Map<string, ContactCreatorUserSnapshot>> {
@@ -1043,6 +1204,7 @@ export async function insertContact(params: {
     organizationId: organizationId ?? null,
     isPortalUser,
     relationship506b: "NO",
+    importSource: params.input.importSource ?? "manual",
   };
   const [inserted] = await db.insert(contact).values(row).returning();
   if (!inserted) throw new Error("INSERT_CONTACT_FAILED");
@@ -1386,7 +1548,7 @@ export async function listInviteeContactsForOrganization(
   const orgId = String(organizationId ?? "").trim();
   if (!orgId) return [];
   const found = await pool.query<{ id: string }>(
-    `SELECT DISTINCT c.id
+    `SELECT DISTINCT ON (lower(trim(c.email))) c.id
      FROM contact c
      INNER JOIN users invitee
        ON lower(trim(invitee.email)) = lower(trim(c.email))
@@ -1402,7 +1564,10 @@ export async function listInviteeContactsForOrganization(
            WHERE membership.user_id = sponsor.id
              AND membership.company_id = $1::uuid
          )
-       )`,
+       )
+     ORDER BY lower(trim(c.email)),
+       c.platform_admin_only ASC,
+       c.created_at ASC NULLS LAST`,
     [orgId],
   );
   const ids = found.rows.map((row) => String(row.id)).filter(Boolean);
@@ -1422,11 +1587,67 @@ export async function listContactsForViewerScoped(
     requestedOrganizationId,
   );
   if (!where) return [];
-  return db
+  const rows = await db
     .select()
     .from(contact)
     .where(where)
     .orderBy(...contactListOrderBy(sort));
+  return dedupeOrgScopedContactsByEmail(
+    rows,
+    normalizeOrganizationUuid(requestedOrganizationId),
+  );
+}
+
+function contactCreatedAtMs(row: ContactRow): number {
+  const raw = row.createdAt;
+  const t = raw instanceof Date ? raw.getTime() : new Date(raw).getTime();
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * One row per email. Platform admin otherwise sees both the company CRM row
+ * and the offering-link / self-signup row for the same person.
+ */
+function dedupeOrgScopedContactsByEmail(
+  rows: ContactRow[],
+  orgId: string | null,
+): ContactRow[] {
+  const indexByEmail = new Map<string, number>();
+  const out: ContactRow[] = [];
+  const prefer = (current: ContactRow, next: ContactRow): ContactRow => {
+    const rank = (row: ContactRow) => {
+      const inOrg =
+        orgId &&
+        String(row.organizationId ?? "").trim().toLowerCase() === orgId
+          ? 1
+          : 0;
+      const crm = row.platformAdminOnly ? 0 : 2;
+      return crm + inOrg;
+    };
+    const currentRank = rank(current);
+    const nextRank = rank(next);
+    if (currentRank !== nextRank) return nextRank > currentRank ? next : current;
+    return contactCreatedAtMs(current) <= contactCreatedAtMs(next)
+      ? current
+      : next;
+  };
+  for (const row of rows) {
+    const email = normalizeContactEmailForScope(String(row.email ?? ""));
+    if (!email.includes("@")) {
+      out.push(row);
+      continue;
+    }
+    const existingIndex = indexByEmail.get(email);
+    if (existingIndex == null) {
+      indexByEmail.set(email, out.length);
+      out.push(row);
+      continue;
+    }
+    const current = out[existingIndex];
+    if (!current) continue;
+    out[existingIndex] = prefer(current, row);
+  }
+  return out;
 }
 
 /** Columns the Contacts search box matches against. */

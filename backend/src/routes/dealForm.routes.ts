@@ -133,8 +133,6 @@ router.post(
   postDealInvestorsExportNotify,
 );
 router.post("/deals/:dealId/lp-investors", postDealLpInvestor);
-router.get("/deals/:dealId/lp-investors/:lpInvestorId", getDealLpInvestor);
-router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
 router.patch(
   "/deals/:dealId/lp-investors/my-commitment",
   patchDealLpInvestorMyCommitment,
@@ -151,6 +149,8 @@ router.post(
   "/deals/:dealId/lp-investors/my-invest-now-esign-send",
   postDealLpInvestorMyInvestNowEsignSend,
 );
+router.get("/deals/:dealId/lp-investors/:lpInvestorId", getDealLpInvestor);
+router.put("/deals/:dealId/lp-investors/:lpInvestorId", putDealLpInvestor);
 router.get(
   "/deals/:dealId/investor-communication/mails",
   getDealInvestorCommunicationMails,

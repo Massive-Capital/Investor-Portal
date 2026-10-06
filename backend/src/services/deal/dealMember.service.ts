@@ -1,5 +1,6 @@
-import { and, desc, eq, or, sql, type AnyColumn } from "drizzle-orm";
+import { and, desc, eq, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { db } from "../../database/db.js";
+import { addDealForm } from "../../schema/deal.schema/add-deal-form.schema.js";
 import {
   dealMember,
   type DealMemberRow,
@@ -314,17 +315,120 @@ function normalizeRosterContactId(raw: string | null | undefined): string {
   return String(raw ?? "").trim().toLowerCase();
 }
 
+const ROSTER_CONTACT_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Same placeholders as deal-name uniqueness on create/edit. */
+const DEAL_NAME_UNIQUENESS_EXEMPT = new Set(["untitled deal", "pending"]);
+
+type DealWriteTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Organization for a roster id: the portal user's company, or the CRM contact's
+ * company when that contact is not a portal user.
+ */
+async function resolveOrganizationIdForRosterContact(
+  contactMemberId: string,
+): Promise<string | null> {
+  const id = contactMemberId.trim();
+  if (!ROSTER_CONTACT_UUID_RE.test(id)) return null;
+
+  const [userRow] = await db
+    .select({ organizationId: users.organizationId })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  if (userRow) {
+    const org = String(userRow.organizationId ?? "").trim();
+    return org || null;
+  }
+
+  const [contactRow] = await db
+    .select({
+      organizationId: contact.organizationId,
+      email: contact.email,
+    })
+    .from(contact)
+    .where(eq(contact.id, id))
+    .limit(1);
+  if (!contactRow) return null;
+
+  const email = String(contactRow.email ?? "").trim().toLowerCase();
+  if (email.includes("@")) {
+    const [matchedUser] = await db
+      .select({ organizationId: users.organizationId })
+      .from(users)
+      .where(sql`lower(trim(${users.email})) = ${email}`)
+      .limit(1);
+    const userOrg = String(matchedUser?.organizationId ?? "").trim();
+    if (userOrg) return userOrg;
+  }
+
+  const contactOrg = String(contactRow.organizationId ?? "").trim();
+  return contactOrg || null;
+}
+
+async function alignDealOrganizationWithLeadSponsor(
+  tx: DealWriteTx,
+  dealId: string,
+  leadSponsorContactId: string,
+): Promise<void> {
+  const orgId = await resolveOrganizationIdForRosterContact(leadSponsorContactId);
+  if (!orgId) return;
+
+  const [deal] = await tx
+    .select({
+      organizationId: addDealForm.organizationId,
+      dealName: addDealForm.dealName,
+    })
+    .from(addDealForm)
+    .where(eq(addDealForm.id, dealId))
+    .limit(1);
+  if (!deal) return;
+  if (
+    String(deal.organizationId ?? "").trim().toLowerCase() ===
+    orgId.toLowerCase()
+  ) {
+    return;
+  }
+
+  const dealName = String(deal.dealName ?? "").trim();
+  if (!DEAL_NAME_UNIQUENESS_EXEMPT.has(dealName.toLowerCase())) {
+    const [dup] = await tx
+      .select({ id: addDealForm.id })
+      .from(addDealForm)
+      .where(
+        and(
+          sql`lower(trim(${addDealForm.dealName})) = ${dealName.toLowerCase()}`,
+          eq(addDealForm.organizationId, orgId),
+          ne(addDealForm.id, dealId),
+        ),
+      )
+      .limit(1);
+    if (dup) {
+      throw new DealLeadSponsorValidationError(
+        "This deal cannot move to the Lead Sponsor's organization because that organization already has a deal with this name.",
+      );
+    }
+  }
+
+  await tx
+    .update(addDealForm)
+    .set({ organizationId: orgId })
+    .where(eq(addDealForm.id, dealId));
+}
+
 export async function saveDealMemberRoleForDeal(
   dealId: string,
   input: UpsertDealMemberInput & {
     replacementLeadSponsorContactId?: string;
   },
-): Promise<void> {
+): Promise<{ newLeadSponsorContactId: string | null }> {
   const cid = input.contactMemberId.trim();
-  if (!cid) return;
+  if (!cid) return { newLeadSponsorContactId: null };
   if (input.isDraft === true) {
     await upsertDealMemberForDeal(dealId, input);
-    return;
+    return { newLeadSponsorContactId: null };
   }
 
   const members = await db
@@ -453,7 +557,28 @@ export async function saveDealMemberRoleForDeal(
           ),
         );
     }
+
+    const leadSponsorContactId =
+      currentWasLead && !currentWillBeLead && replacementKey
+        ? input.replacementLeadSponsorContactId!.trim()
+        : currentWillBeLead
+          ? cid
+          : "";
+    if (leadSponsorContactId) {
+      await alignDealOrganizationWithLeadSponsor(
+        tx,
+        dealId,
+        leadSponsorContactId,
+      );
+    }
   });
+
+  if (currentWasLead && !currentWillBeLead && replacementKey) {
+    return {
+      newLeadSponsorContactId: input.replacementLeadSponsorContactId!.trim(),
+    };
+  }
+  return { newLeadSponsorContactId: null };
 }
 
 export async function assertDealMemberLeadSponsorRoleAllowed(

@@ -6,8 +6,9 @@ import type {
   FeedbackPageOption,
   FeedbackReviewAction,
   FeedbackStatus,
+  FeedbackType,
 } from "../types"
-import { parseFeedbackPriority } from "../types"
+import { parseFeedbackPriority, parseFeedbackType } from "../types"
 
 export const FEEDBACK_PENDING_CHANGED_EVENT =
   "syndicationx:feedback-pending-changed"
@@ -62,6 +63,7 @@ function asFeedback(raw: unknown): FeedbackItem | null {
     subPageLabel: String(r.subPageLabel ?? "").trim(),
     description: String(r.description ?? ""),
     priority: parseFeedbackPriority(r.priority),
+    feedbackType: parseFeedbackType(r.feedbackType ?? r.type),
     status,
     adminResponse:
       typeof r.adminResponse === "string" && r.adminResponse.trim()
@@ -497,6 +499,44 @@ export async function setFeedbackPriority(
     return { ok: true, feedback }
   } catch {
     return { ok: false, message: "Could not update priority." }
+  }
+}
+
+export async function setFeedbackType(
+  feedbackId: string,
+  feedbackType: FeedbackType,
+): Promise<
+  { ok: true; feedback: FeedbackItem } | { ok: false; message: string }
+> {
+  const base = getApiV1Base()
+  try {
+    const res = await fetch(
+      `${base}/feedback/${encodeURIComponent(feedbackId)}/type`,
+      {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ feedbackType }),
+      },
+    )
+    const data: unknown = await res.json().catch(() => null)
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: messageFromBody(data, "Could not update feedback type."),
+      }
+    }
+    const feedback = asFeedback(
+      data && typeof data === "object"
+        ? (data as { feedback?: unknown }).feedback
+        : null,
+    )
+    if (!feedback) {
+      return { ok: false, message: "Could not update feedback type." }
+    }
+    return { ok: true, feedback }
+  } catch {
+    return { ok: false, message: "Could not update feedback type." }
   }
 }
 

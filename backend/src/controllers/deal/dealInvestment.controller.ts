@@ -48,7 +48,10 @@ import {
   assertEligibleForNewDealRosterAdd,
   isDealRosterEligibilityError,
 } from "../../services/user/portalUserRosterGuard.service.js";
-import { sendDealMemberInviteForInvestmentIfRequested } from "../../services/deal/dealMemberInvitationEmail.service.js";
+import {
+  sendDealMemberInviteForInvestmentIfRequested,
+  sendNewLeadSponsorInvitationIfAssigned,
+} from "../../services/deal/dealMemberInvitationEmail.service.js";
 import { viewerCanApproveDealFundOnDeal } from "../../services/deal/dealMemberScope.service.js";
 import { dealInvestmentEsignIsFullyCompleted } from "../../constants/deal-investor-esign-status.js";
 import { logSocDealInvestmentWrite } from "../../audit/index.js";
@@ -609,8 +612,9 @@ export async function putDealInvestment(
       res.status(404).json({ message: "Investment not found" });
       return;
     }
+    let newLeadSponsorContactId: string | null = null;
     if (!contactIsPlaceholder && !isLpInvestorRole(investor_role)) {
-      await saveDealMemberRoleForDeal(dealId, {
+      const savedRole = await saveDealMemberRoleForDeal(dealId, {
         contactMemberId: contactId,
         dealMemberRole: investor_role,
         sendInvitationMail,
@@ -618,6 +622,7 @@ export async function putDealInvestment(
         isDraft: autosave,
         replacementLeadSponsorContactId,
       });
+      newLeadSponsorContactId = savedRole.newLeadSponsorContactId;
     }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
     /* Invitation email only on explicit Save — not on debounced autosave (would spam). */
@@ -630,6 +635,12 @@ export async function putDealInvestment(
         dealMemberRole: investor_role,
          contactEmail: contactEmail.trim() || null,
         invitationSource: "deal_member",
+      });
+      await sendNewLeadSponsorInvitationIfAssigned({
+        dealId,
+        newLeadSponsorContactId,
+        alreadyNotifiedContactId: contactId,
+        alreadyNotified: sendInvitationMail.toLowerCase() === "yes",
       });
     }
     const fundNewlyApproved =
@@ -896,8 +907,9 @@ export async function postDealInvestment(
       },
     });
 
+    let newLeadSponsorContactId: string | null = null;
     if (!contactIsPlaceholder) {
-      await saveDealMemberRoleForDeal(dealId, {
+      const savedRole = await saveDealMemberRoleForDeal(dealId, {
         contactMemberId: contactId,
         dealMemberRole: investor_role,
         sendInvitationMail,
@@ -905,6 +917,7 @@ export async function postDealInvestment(
         isDraft: autosave,
         replacementLeadSponsorContactId,
       });
+      newLeadSponsorContactId = savedRole.newLeadSponsorContactId;
     }
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
     if (!autosave && !contactIsPlaceholder) {
@@ -916,6 +929,12 @@ export async function postDealInvestment(
         dealMemberRole: investor_role,
         contactEmail: contactEmail.trim() || null,
         invitationSource: "deal_member",
+      });
+      await sendNewLeadSponsorInvitationIfAssigned({
+        dealId,
+        newLeadSponsorContactId,
+        alreadyNotifiedContactId: contactId,
+        alreadyNotified: sendInvitationMail.toLowerCase() === "yes",
       });
     }
     if (!autosave && !contactIsPlaceholder && fundApproved) {

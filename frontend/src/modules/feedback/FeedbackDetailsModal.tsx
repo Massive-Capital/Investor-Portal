@@ -191,6 +191,13 @@ export function FeedbackDetailsModal({
                   value={feedbackPriorityLabel(item.priority)}
                 />
               ) : null}
+              {item.feedbackType ? (
+                <ViewReadonlyField
+                  Icon={ClipboardList}
+                  label="Feedback Type"
+                  value={item.feedbackType}
+                />
+              ) : null}
               <ViewReadonlyField
                 Icon={CalendarClock}
                 label="Submitted"

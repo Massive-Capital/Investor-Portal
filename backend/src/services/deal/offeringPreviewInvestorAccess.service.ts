@@ -11,8 +11,10 @@ import {
   resolvePublicPreviewDealId,
 } from "../../utils/offeringPreviewCrypto.js";
 import { dealSaasLockHttpPayload } from "../billing/dealBilling.service.js";
-import { isDealAllowedByContactOfferingVisibility } from "../contact/contactOfferingVisibility.service.js";
-import { invalidateContactDirectoryCache } from "../cache/listReadCache.js";
+import {
+  invalidateContactDirectoryCache,
+  invalidateDealsListCache,
+} from "../cache/listReadCache.js";
 import { ensureReferredInvestorContact } from "../contact/investorInviteLink.service.js";
 import { resolveOrganizationIdForUserId } from "../org/orgResolution.service.js";
 import {
@@ -116,15 +118,26 @@ export async function applyOfferingPreviewSignupContact(params: {
   firstName: string;
   lastName: string;
   phone: string;
-}): Promise<{ applied: boolean; contactId: string | null }> {
+}): Promise<{
+  applied: boolean;
+  contactId: string | null;
+  sponsorUserId: string | null;
+}> {
   const userId = String(params.userId ?? "").trim();
-  if (!userId) return { applied: false, contactId: null };
+  if (!userId) return { applied: false, contactId: null, sponsorUserId: null };
 
   const referrer = await resolveOfferingPreviewSignupSponsor({
     previewToken: String(params.previewToken ?? "").trim(),
     sponsorRef: String(params.sponsorRef ?? "").trim(),
   });
-  if (!referrer) return { applied: false, contactId: null };
+  if (!referrer) return { applied: false, contactId: null, sponsorUserId: null };
+  if (userId.toLowerCase() === referrer.sponsorUserId.toLowerCase()) {
+    return {
+      applied: false,
+      contactId: null,
+      sponsorUserId: referrer.sponsorUserId,
+    };
+  }
 
   try {
     const [existing] = await db
@@ -150,22 +163,51 @@ export async function applyOfferingPreviewSignupContact(params: {
       lastName: params.lastName,
       phone: params.phone,
     });
-    if (!contactId) return { applied: false, contactId: null };
+    if (!contactId) {
+      return {
+        applied: false,
+        contactId: null,
+        sponsorUserId: referrer.sponsorUserId,
+      };
+    }
+    const [current] = await db
+      .select({
+        organizationId: contact.organizationId,
+      })
+      .from(contact)
+      .where(eq(contact.id, contactId))
+      .limit(1);
+    const currentOrg = String(current?.organizationId ?? "").trim().toLowerCase();
+    const targetOrg = String(referrer.organizationId ?? "").trim().toLowerCase();
+    const claimForThisOrg = !currentOrg || currentOrg === targetOrg;
     await db
       .update(contact)
       .set({
-        organizationId: referrer.organizationId,
-        createdBy: referrer.sponsorUserId,
-        platformAdminOnly: false,
+        ...(claimForThisOrg
+          ? {
+              organizationId: referrer.organizationId,
+              createdBy: referrer.sponsorUserId,
+              platformAdminOnly: false,
+            }
+          : {}),
         visibleToUsers: false,
         isPortalUser: true,
       })
       .where(eq(contact.id, contactId));
     invalidateContactDirectoryCache();
-    return { applied: true, contactId };
+    invalidateDealsListCache();
+    return {
+      applied: true,
+      contactId,
+      sponsorUserId: referrer.sponsorUserId,
+    };
   } catch (e) {
     console.error("ensure offering preview signup contact:", e);
-    return { applied: false, contactId: null };
+    return {
+      applied: false,
+      contactId: null,
+      sponsorUserId: referrer.sponsorUserId,
+    };
   }
 }
 
@@ -180,9 +222,11 @@ export type OfferingPreviewAccessGrantResult =
 export async function grantOfferingPreviewInvestorAccess(params: {
   userId: string;
   previewToken: string;
+  sponsorRef?: string;
 }): Promise<OfferingPreviewAccessGrantResult> {
   const userId = String(params.userId ?? "").trim();
   const previewToken = String(params.previewToken ?? "").trim();
+  const sponsorRef = String(params.sponsorRef ?? "").trim();
   if (!userId || !previewToken) {
     return { ok: false, status: 400, message: "Preview token is required." };
   }
@@ -200,6 +244,7 @@ export async function grantOfferingPreviewInvestorAccess(params: {
         firstName: users.firstName,
         lastName: users.lastName,
         username: users.username,
+        phone: users.phone,
         role: users.role,
       })
       .from(users)
@@ -230,19 +275,22 @@ export async function grantOfferingPreviewInvestorAccess(params: {
   }
 
   const emailNorm = String(user.email ?? "").trim().toLowerCase();
-  if (
-    !(await isDealAllowedByContactOfferingVisibility({
-      emailNorm,
-      dealId,
-      secType: deal.secType,
-    }))
-  ) {
-    return {
-      ok: false,
-      status: 403,
-      message: "This offering is hidden by your contact preferences.",
-    };
-  }
+
+  const previewContact = isPlatformAdminRole(user.role)
+    ? { applied: false, contactId: null, sponsorUserId: null }
+    : await applyOfferingPreviewSignupContact({
+        previewToken,
+        sponsorRef,
+        userId,
+        emailNorm,
+        firstName: String(user.firstName ?? "").trim(),
+        lastName: String(user.lastName ?? "").trim(),
+        phone: String(user.phone ?? "").trim(),
+      }).catch((e) => {
+        console.error("applyOfferingPreviewSignupContact during claim:", e);
+        return { applied: false, contactId: null, sponsorUserId: null };
+      });
+  const sharingSponsorUserId = String(previewContact.sponsorUserId ?? "").trim();
 
   const resolved = await resolveInvestNowViewerContactOnDeal({
     dealId,
@@ -297,7 +345,7 @@ export async function grantOfferingPreviewInvestorAccess(params: {
       .values({
         dealId,
         investorName,
-        addedBy: null,
+        addedBy: sharingSponsorUserId || null,
         contactMemberId,
         email: emailNorm || null,
         role: "LP Investor",
@@ -313,5 +361,6 @@ export async function grantOfferingPreviewInvestorAccess(params: {
   }
 
   await reconcileAssigningDealUsersForDeal(dealId, userId);
+  invalidateDealsListCache();
   return { ok: true, dealId };
 }

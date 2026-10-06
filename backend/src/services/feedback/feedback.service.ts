@@ -22,10 +22,12 @@ import {
   feedbackPageCatalog,
   userFeedback,
   parseFeedbackPriority,
+  parseFeedbackType,
   type FeedbackPriority,
   type FeedbackReviewAction,
   type FeedbackStatus,
   type FeedbackSubPageOption,
+  type FeedbackType,
   type UserFeedbackRow,
 } from "../../schema/feedback.schema.js";
 import { users } from "../../schema/auth.schema/signin.js";
@@ -49,6 +51,7 @@ export type FeedbackPublicRow = {
   subPageLabel: string;
   description: string;
   priority: FeedbackPriority | null;
+  feedbackType: FeedbackType | null;
   status: FeedbackStatus;
   adminResponse: string | null;
   createdAt: string;
@@ -108,6 +111,7 @@ function toPublic(
     subPageLabel: row.subPageLabel,
     description: row.description,
     priority: parseFeedbackPriority(row.priority),
+    feedbackType: parseFeedbackType(row.feedbackType),
     status: normalizeStatus(row.status),
     adminResponse: response || null,
     createdAt: row.createdAt.toISOString(),
@@ -429,6 +433,34 @@ export async function setUserFeedbackPriority(input: {
   return toPublicOne(updated);
 }
 
+export async function setUserFeedbackType(input: {
+  feedbackId: string;
+  feedbackType: unknown;
+}): Promise<FeedbackPublicRow> {
+  const parsed = parseFeedbackType(input.feedbackType);
+  if (!parsed) {
+    throw new Error("Select a feedback type");
+  }
+
+  const [existing] = await db
+    .select()
+    .from(userFeedback)
+    .where(eq(userFeedback.id, input.feedbackId))
+    .limit(1);
+  if (!existing) {
+    throw new Error("Feedback not found");
+  }
+
+  const [updated] = await db
+    .update(userFeedback)
+    .set({ feedbackType: parsed })
+    .where(eq(userFeedback.id, input.feedbackId))
+    .returning();
+
+  if (!updated) throw new Error("Could not update feedback type");
+  return toPublicOne(updated);
+}
+
 export async function listFeedbackForAdmin(
   status?: FeedbackStatus,
 ): Promise<FeedbackPublicRow[]> {
@@ -477,6 +509,7 @@ const feedbackSearchColumns = [
   searchableColumn(userFeedback.description),
   searchableColumn(userFeedback.status),
   searchableColumn(userFeedback.priority),
+  searchableColumn(userFeedback.feedbackType),
   searchableColumn(userFeedback.adminResponse),
 ];
 
@@ -491,6 +524,7 @@ const feedbackSortColumns: Record<string, SQL | AnyColumn> = {
   page: userFeedback.pageLabel,
   subPage: userFeedback.subPageLabel,
   priority: userFeedback.priority,
+  feedbackType: userFeedback.feedbackType,
   description: userFeedback.description,
   status: userFeedback.status,
   submitted: userFeedback.createdAt,

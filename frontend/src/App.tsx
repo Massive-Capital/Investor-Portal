@@ -64,6 +64,7 @@ import EmailTemplateNewPage from "./modules/Syndication/contacts/EmailTemplateNe
 import CrmPage from "./modules/Syndication/contacts/CrmPage";
 import CrmOverviewPage from "./modules/Syndication/contacts/CrmOverviewPage";
 import CrmSectionPlaceholderPage from "./modules/Syndication/contacts/CrmSectionPlaceholderPage";
+import ContactImportPage from "./modules/Syndication/contacts/ContactImportPage";
 import CreateReusableTemplatePage from "./modules/Syndication/Templates/CreateReusableTemplatePage";
 import { usePortalMode } from "./modules/Investing/context/PortalModeContext";
 import { MyAccountLayout } from "./modules/myaccount/MyAccountLayout";
@@ -309,6 +310,10 @@ function App() {
               />
               <Route path="members" element={<CompanyMembersPage />} />
               <Route path="contacts" element={<CompanyContactsPage />} />
+              <Route
+                path="platform-contacts"
+                element={<Navigate to="../contacts" replace />}
+              />
               <Route path="deals" element={<CompanyDealsPage />} />
             </Route>
             <Route path="customers" element={<CustomersRoute />} />
@@ -373,12 +378,7 @@ function App() {
             />
             <Route
               path="contacts/import"
-              element={
-                <CrmSectionPlaceholderPage
-                  title="Import"
-                  description="Bring contacts from spreadsheets, forms, or connected CRMs."
-                />
-              }
+              element={<ContactImportPage />}
             />
             <Route
               path="contacts/investor-view"

@@ -353,6 +353,7 @@ export function DealOfferingPortfolioPage() {
         const claimed = await claimOfferingPortfolioAccess({
           dealId: id,
           previewToken: preview,
+          sponsorRef: sponsorRefQueryValue,
           createdAt: Date.now(),
         })
         if (cancelled || claimed?.userDetails == null) return
@@ -372,6 +373,7 @@ export function DealOfferingPortfolioPage() {
     isPublicOfferingRoute,
     isSessionAuthenticated,
     previewQueryValue,
+    sponsorRefQueryValue,
   ])
 
   useEffect(() => {

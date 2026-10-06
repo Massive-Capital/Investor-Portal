@@ -175,7 +175,6 @@ const SigninForm = () => {
           JSON.stringify(data.userDetails),
         );
         ensureActiveCompanyInitialized();
-        openSyndicatingForInvestorSponsor(data.userDetails);
       } else {
         sessionStorage.removeItem(SESSION_USER_DETAILS_KEY);
       }
@@ -188,6 +187,15 @@ const SigninForm = () => {
         sessionStorage.removeItem(SESSION_ACTIVITY_SESSION_ID_KEY);
       }
       const pendingPortfolioIntent = readOfferingPortfolioAuthIntent();
+      if (pendingPortfolioIntent?.dealId) {
+        try {
+          sessionStorage.setItem(SESSION_PORTAL_MODE_KEY, "investing");
+        } catch {
+          /* sessionStorage unavailable */
+        }
+      } else if (data.userDetails != null) {
+        openSyndicatingForInvestorSponsor(data.userDetails);
+      }
       if (pendingPortfolioIntent?.previewToken) {
         try {
           const claimed = await claimOfferingPortfolioAccess(

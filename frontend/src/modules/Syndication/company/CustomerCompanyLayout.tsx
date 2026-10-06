@@ -185,7 +185,7 @@ export default function CustomerCompanyLayout() {
             to={`${base}/contacts`}
             id="cp-company-tab-contacts"
             role="tab"
-            aria-label={`Contacts, ${contactCount}`}
+            aria-label={`All Contacts, ${contactCount}`}
             className={({ isActive }) =>
               `um_members_tab cp_company_detail_tab${
                 isActive ? " um_members_tab_active" : ""
@@ -193,7 +193,7 @@ export default function CustomerCompanyLayout() {
             }
           >
             <Contact size={18} strokeWidth={1.75} aria-hidden />
-            <span>Contacts</span>
+            <span>All Contacts</span>
             <span className="cp_company_detail_tab_count" aria-hidden>
               ({contactCount})
             </span>

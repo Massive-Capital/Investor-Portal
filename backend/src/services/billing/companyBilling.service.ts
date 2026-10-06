@@ -546,15 +546,24 @@ export async function createCompanyCheckoutSession(params: {
     }
 
     const {
+      descriptionForExtraCompanyUserCharge,
+      extraCompanyUserChargeDescription,
       extraCompanyUserCheckoutLineItems,
       extraCompanyUsersToCharge,
       getDealCompanyUserSnapshot,
     } = await import("./dealExtraCompanyUser.service.js");
-    const snapshot = await getDealCompanyUserSnapshot(String(deal.id));
-    const extraUsers = snapshot
-      ? extraCompanyUsersToCharge(snapshot, params.extraCompanyUsers)
-      : Math.max(0, Math.floor(params.extraCompanyUsers ?? 0));
-    const extraLineItems = extraCompanyUserCheckoutLineItems(extraUsers);
+    const snapshot = await getDealCompanyUserSnapshot(String(deal.id), {
+      seatBand: resolvedSeat,
+    });
+    const extraUsers = snapshot ? extraCompanyUsersToCharge(snapshot) : 0;
+    const extraUserComment = snapshot
+      ? descriptionForExtraCompanyUserCharge(snapshot, extraUsers)
+      : extraCompanyUserChargeDescription({ quantity: extraUsers });
+    const extraLineItems = extraCompanyUserCheckoutLineItems(
+      extraUsers,
+      extraUserComment,
+      cycle,
+    );
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -576,6 +585,7 @@ export async function createCompanyCheckoutSession(params: {
         seatBand: resolvedSeat,
         billingScope: "deal",
         extraCompanyUsers: String(extraUsers),
+        extraUserComment: extraUserComment.slice(0, 500),
         payerUserId: params.actorUserId,
       },
       subscription_data: {
@@ -588,6 +598,7 @@ export async function createCompanyCheckoutSession(params: {
           seatBand: resolvedSeat,
           billingScope: "deal",
           extraCompanyUsers: String(extraUsers),
+          extraUserComment: extraUserComment.slice(0, 500),
           payerUserId: params.actorUserId,
         },
       },
@@ -1297,24 +1308,32 @@ export async function createCompanySubscriptionPaymentElement(params: {
     });
 
     const {
-      attachExtraCompanyUserInvoiceItems,
+      descriptionForExtraCompanyUserCharge,
+      extraCoGpSubscriptionItem,
+      extraCompanyUserChargeDescription,
       extraCompanyUsersToCharge,
       getDealCompanyUserSnapshot,
     } = await import("./dealExtraCompanyUser.service.js");
-    const snapshot = await getDealCompanyUserSnapshot(String(deal.id));
-    const extraUsers = snapshot
-      ? extraCompanyUsersToCharge(snapshot, params.extraCompanyUsers)
-      : Math.max(0, Math.floor(params.extraCompanyUsers ?? 0));
-    await attachExtraCompanyUserInvoiceItems({
-      stripe,
-      customerId,
-      quantity: extraUsers,
-      dealId: String(deal.id),
+    const snapshot = await getDealCompanyUserSnapshot(String(deal.id), {
+      seatBand: selection.seatBand,
     });
+    const extraUsers = snapshot ? extraCompanyUsersToCharge(snapshot) : 0;
+    const extraUserComment = snapshot
+      ? descriptionForExtraCompanyUserCharge(snapshot, extraUsers)
+      : extraCompanyUserChargeDescription({ quantity: extraUsers });
+    const extraItem = await extraCoGpSubscriptionItem(
+      stripe,
+      extraUsers,
+      selection.cycle,
+      extraUserComment,
+    );
 
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: selection.priceId, quantity: 1 }],
+      items: [
+        { price: selection.priceId, quantity: 1 },
+        ...(extraItem ? [extraItem] : []),
+      ],
       payment_behavior: "default_incomplete",
       payment_settings: {
         save_default_payment_method: "on_subscription",
@@ -1334,6 +1353,7 @@ export async function createCompanySubscriptionPaymentElement(params: {
         checkoutMode: "payment_element",
         billingScope: "deal",
         extraCompanyUsers: String(extraUsers),
+        extraUserComment: extraUserComment.slice(0, 500),
         payerUserId: params.actorUserId,
       },
     });
@@ -1652,6 +1672,7 @@ export type BillingInvoiceRow = {
   dealId: string | null;
   dealName: string | null;
   billingScope?: "deal" | "extra_company_user" | null;
+  comment?: string | null;
 };
 
 function extrasFromStripeInvoice(inv: Stripe.Invoice): {
@@ -1749,6 +1770,7 @@ function extraCompanyUserInvoiceRow(params: {
   dealId: string | null;
   dealName: string | null;
   hostedInvoiceUrl?: string | null;
+  comment?: string | null;
 }): BillingInvoiceRow {
   const date = isoDateOnly(new Date(params.createdUnix * 1000));
   return {
@@ -1768,6 +1790,7 @@ function extraCompanyUserInvoiceRow(params: {
     dealId: params.dealId,
     dealName: params.dealName,
     billingScope: "extra_company_user",
+    comment: params.comment?.trim() || null,
   };
 }
 
@@ -1824,6 +1847,7 @@ async function listExtraCompanyUserInvoiceRows(params: {
           dealId: deal.dealId,
           dealName: deal.dealName,
           hostedInvoiceUrl: session.url,
+          comment: String(session.metadata?.extraUserComment ?? ""),
         }),
       );
     }
@@ -1856,6 +1880,9 @@ async function listExtraCompanyUserInvoiceRows(params: {
           status: succeeded ? "paid" : String(pi.status ?? "open"),
           dealId: deal.dealId,
           dealName: deal.dealName,
+          comment: String(
+            pi.metadata?.extraUserComment ?? pi.description ?? "",
+          ),
         }),
       );
     }
@@ -2902,11 +2929,13 @@ async function resolveExtraCompanyUserCharge(params: {
       dealName: string;
       extraUsersToPay: number;
       amountDueCents: number;
+      description: string;
     }
   | { ok: false; status: number; message: string }
 > {
   const cid = normalizeCompanyId(params.companyId);
   const {
+    descriptionForExtraCompanyUserCharge,
     getDealCompanyUserSnapshot,
     extraCompanyUsersToCharge,
   } = await import("./dealExtraCompanyUser.service.js");
@@ -2936,15 +2965,12 @@ async function resolveExtraCompanyUserCharge(params: {
       message: dealSaasBillingNotYetDueMessage(snapshot),
     };
   }
-  const extraUsersToPay = extraCompanyUsersToCharge(
-    snapshot,
-    params.quantity,
-  );
+  const extraUsersToPay = extraCompanyUsersToCharge(snapshot);
   if (extraUsersToPay <= 0) {
     return {
       ok: false,
       status: 400,
-      message: "No extra company users need payment for this deal.",
+      message: "No extra Co-GPs need the $10 payment for this deal.",
     };
   }
   return {
@@ -2953,6 +2979,7 @@ async function resolveExtraCompanyUserCharge(params: {
     dealName: snapshot.dealName,
     extraUsersToPay,
     amountDueCents: extraUsersToPay * snapshot.extraUserFeeCents,
+    description: descriptionForExtraCompanyUserCharge(snapshot, extraUsersToPay),
   };
 }
 
@@ -3008,7 +3035,10 @@ export async function createExtraCompanyUserCheckoutSession(params: {
       mode: "payment",
       customer: customerId,
       payment_method_types: ["card", "us_bank_account"],
-      line_items: extraCompanyUserCheckoutLineItems(charge.extraUsersToPay),
+      line_items: extraCompanyUserCheckoutLineItems(
+        charge.extraUsersToPay,
+        charge.description,
+      ),
       success_url: `${frontend}/deals/${encodeURIComponent(charge.dealId)}?tab=deal_members&extraCompanyUser=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontend}/deals/${encodeURIComponent(charge.dealId)}?tab=deal_members&extraCompanyUser=cancel`,
       client_reference_id: cid,
@@ -3018,16 +3048,18 @@ export async function createExtraCompanyUserCheckoutSession(params: {
         dealName: charge.dealName,
         billingScope: "extra_company_user",
         extraCompanyUsers: String(charge.extraUsersToPay),
+        extraUserComment: charge.description.slice(0, 500),
         payerUserId: params.actorUserId,
       },
       payment_intent_data: {
-        description: `${charge.extraUsersToPay} extra company user${charge.extraUsersToPay === 1 ? "" : "s"} at $10 each`,
+        description: charge.description,
         metadata: {
           companyId: cid,
           dealId: charge.dealId,
           dealName: charge.dealName,
           billingScope: "extra_company_user",
           extraCompanyUsers: String(charge.extraUsersToPay),
+          extraUserComment: charge.description.slice(0, 500),
           payerUserId: params.actorUserId,
         },
       },
@@ -3128,13 +3160,14 @@ export async function payExtraCompanyUserWithSavedMethod(params: {
       payment_method: paymentMethodId,
       confirm: true,
       off_session: true,
-      description: `${charge.extraUsersToPay} extra company user${charge.extraUsersToPay === 1 ? "" : "s"} at $10 each`,
+      description: charge.description,
       metadata: {
         companyId: cid,
         dealId: charge.dealId,
         dealName: charge.dealName,
         billingScope: "extra_company_user",
         extraCompanyUsers: String(charge.extraUsersToPay),
+        extraUserComment: charge.description.slice(0, 500),
         payerUserId: params.actorUserId,
       },
     });
