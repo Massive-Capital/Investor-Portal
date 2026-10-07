@@ -37,6 +37,7 @@ import { TabsScrollStrip } from "../../../common/components/tabs-scroll-strip/Ta
 import { ViewReadonlyField } from "../../../common/components/ViewReadonlyField";
 import { toast } from "../../../common/components/Toast";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
+import { formatCount } from "@/common/utils/formatCount";
 import {
   SESSION_BEARER_KEY,
   SESSION_USER_DETAILS_KEY,
@@ -624,7 +625,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         colWidth: "9%",
         sortValue: (row) => Number(row.dealCount ?? 0),
         align: "center",
-        cell: (row) => String(row.dealCount ?? 0),
+        cell: (row) => formatCount(row.dealCount ?? 0),
       },
       {
         id: "members",
@@ -633,7 +634,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
         sortValue: (row) => Number(row.userCount ?? 0),
         align: "center",
         tdClassName: "um_td_numeric",
-        cell: (row) => String(row.userCount ?? 0),
+        cell: (row) => formatCount(row.userCount ?? 0),
       },
       {
         id: "contacts",
@@ -648,10 +649,10 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
               className="um_user_meta_username cp_company_name_link"
               to={`/customers/${encodeURIComponent(row.id)}/contacts`}
             >
-              {String(row.contactCount ?? 0)}
+              {formatCount(row.contactCount ?? 0)}
             </Link>
           ) : (
-            String(row.contactCount ?? 0)
+            formatCount(row.contactCount ?? 0)
           ),
       },
       {
@@ -1059,7 +1060,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                 role="tab"
                 aria-selected={customersListTab === "active"}
                 aria-controls="cp-customers-panel-active"
-                aria-label={`Active companies, ${customersActiveCount}`}
+                aria-label={`Active companies, ${formatCount(customersActiveCount)}`}
                 className={`um_members_tab deals_tabs_tab um_segmented_tab${
                   customersListTab === "active" ? " um_members_tab_active" : ""
                 }`}
@@ -1078,7 +1079,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   Active
                 </span>
                 <span className="deals_tabs_count" aria-hidden>
-                  ({customersActiveCount})
+                  ({formatCount(customersActiveCount)})
                 </span>
               </button>
               <button
@@ -1087,7 +1088,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                 role="tab"
                 aria-selected={customersListTab === "archived"}
                 aria-controls="cp-customers-panel-archived"
-                aria-label={`Archived companies, ${customersArchivedCount}`}
+                aria-label={`Archived companies, ${formatCount(customersArchivedCount)}`}
                 className={`um_members_tab deals_tabs_tab um_segmented_tab${
                   customersListTab === "archived" ? " um_members_tab_active" : ""
                 }`}
@@ -1106,7 +1107,7 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   Archived
                 </span>
                 <span className="deals_tabs_count" aria-hidden>
-                  ({customersArchivedCount})
+                  ({formatCount(customersArchivedCount)})
                 </span>
               </button>
             </div>
@@ -1536,17 +1537,17 @@ export default function CompanyPage({ variant = "default" }: CompanyPageProps = 
                   <ViewReadonlyField
                     Icon={Users}
                     label="Members"
-                    value={String(viewRow.userCount ?? 0)}
+                    value={formatCount(viewRow.userCount ?? 0)}
                   />
                   <ViewReadonlyField
                     Icon={Contact2}
                     label="No. of contacts"
-                    value={String(viewRow.contactCount ?? 0)}
+                    value={formatCount(viewRow.contactCount ?? 0)}
                   />
                   <ViewReadonlyField
                     Icon={LayoutGrid}
                     label="Deals"
-                    value={String(viewRow.dealCount ?? 0)}
+                    value={formatCount(viewRow.dealCount ?? 0)}
                   />
                 </div>
               </div>

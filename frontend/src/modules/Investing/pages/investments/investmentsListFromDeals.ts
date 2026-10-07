@@ -111,8 +111,9 @@ function splitListInvestmentProfile(combined: string): {
 }
 
 /**
- * Viewer rows for the Profile and investment tab: completed/visible commitments plus
- * in-progress Invest Now drafts (profile saved, e-sign pending, etc.).
+ * Viewer rows for the Profile and investment tab: one line per commitment,
+ * including a second investment on the same profile and an in-progress
+ * Invest now row that already has a saved profile.
  */
 function viewerRowsForProfileBreakdown(
   investors: DealInvestorRow[],
@@ -127,11 +128,10 @@ function viewerRowsForProfileBreakdown(
       if (seen.has(rowId)) continue
       seen.add(rowId)
     }
-    if (isInvestNowDraftInvestorRow(inv, viewerEmailNorm)) {
-      out.push(inv)
-      continue
-    }
-    if (investorRowCommittedAmountNumeric(inv) <= 0) continue
+    const hasProfile = Boolean(String(inv.userInvestorProfileId ?? "").trim())
+    const hasAmount = investorRowCommittedAmountNumeric(inv) > 0
+    const draft = isInvestNowDraftInvestorRow(inv, viewerEmailNorm)
+    if (!hasProfile && !hasAmount && !draft) continue
     out.push(inv)
   }
   return out

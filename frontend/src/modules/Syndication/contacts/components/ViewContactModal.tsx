@@ -20,6 +20,7 @@ import { isPlatformAdmin } from "../../../../common/auth/roleUtils"
 import { ViewReadonlyField } from "../../../../common/components/ViewReadonlyField"
 import { formatUsPhoneStoredForUi } from "../../../../common/phone/usPhoneNumber"
 import { displayEmail } from "../../../../common/utils/displayEmail"
+import { formatCount } from "@/common/utils/formatCount"
 import "../../Deals/tabs/investors/add-investment-modal.css"
 import "../../usermanagement/user_management.css"
 import "../contacts.css"
@@ -177,7 +178,7 @@ export function ViewContactModal({
                 label="Deals"
                 value={
                   <span title="Distinct syndication deals where a portal member with this contact’s email has an investment.">
-                    {String(contact.dealCount ?? 0)}
+                    {formatCount(contact.dealCount ?? 0)}
                   </span>
                 }
               />

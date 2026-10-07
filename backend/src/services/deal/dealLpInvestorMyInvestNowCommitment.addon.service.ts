@@ -203,39 +203,75 @@ const SAVED_INVESTOR_PROFILE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 function isUuidV4Like(s: string) {
   return SAVED_INVESTOR_PROFILE_UUID_RE.test(String(s ?? "").trim());
 }
-/**
- * `kind` = commitment profile key (individual, joint_tenancy, etc.).
- * `profileType` on a saved book row: Individual, Joint tenancy, or Entity.
- */
-function bookTypeMatchesProfileKind(
-  bookType: string,
-  kind: string,
-) {
-  const t = (bookType ?? "").trim();
-  if (kind === "individual")
-    return t === "Individual";
-  if (kind === "joint_tenancy")
-    return t === "Joint tenancy";
-  if (kind === "custodian_ira_401k" || kind === "llc_corp_trust_etc")
-    return t === "Entity";
-  return false;
+function wizardSnapshotRecord(raw: unknown): Record<string, unknown> | null {
+  let v: unknown = raw;
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t) return null;
+    try {
+      v = JSON.parse(t) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  return v as Record<string, unknown>;
 }
+
+function custodianIraFromWizard(raw: unknown): boolean {
+  const parsed = wizardSnapshotRecord(raw);
+  if (!parsed) return false;
+  const v = String(parsed.custodianIra ?? parsed.custodian_ira ?? "")
+    .trim()
+    .toLowerCase();
+  return v === "yes" || v === "true" || v === "1";
+}
+
+/**
+ * Commitment key for the profile the investor chose in Invest now.
+ * Independent of the profile type stored when the sponsor added the investor.
+ */
+function commitmentKindFromSavedProfile(
+  profileType: string,
+  formSnapshot: unknown,
+): string | null {
+  const raw = String(profileType ?? "").trim();
+  const t = raw.toLowerCase();
+  if (!t || t === "—") return null;
+  if (t === "individual") return "individual";
+  if (t === "joint tenancy" || t === "joint_tenancy" || t.includes("joint"))
+    return "joint_tenancy";
+  const custodian =
+    custodianIraFromWizard(formSnapshot) ||
+    raw === "__entity_custodian_ira_401k__" ||
+    (t.includes("custodian") && (t.includes("ira") || t.includes("401")));
+  if (
+    t === "entity" ||
+    raw === "__entity_llc_corp_trust_etc__" ||
+    t.includes("llc") ||
+    t.includes("corp") ||
+    t.includes("trust") ||
+    t.includes("partnership") ||
+    custodian
+  ) {
+    return custodian ? "custodian_ira_401k" : "llc_corp_trust_etc";
+  }
+  return null;
+}
+
 type SavedProfileResolve =
-  | { ok: true; value: string | null; skip: boolean }
+  | { ok: true; value: string | null; skip: boolean; kind: string | null }
   | { ok: false; message: string };
 async function resolveUserInvestorProfileIdForCommit(
   viewerUserId: string,
-  kind: string | null,
   inBody: boolean,
   raw: string | null | undefined,
 ): Promise<SavedProfileResolve> {
   if (!inBody)
-    return { ok: true, value: null, skip: true } as const;
+    return { ok: true, value: null, skip: true, kind: null } as const;
   const s = String(raw ?? "").trim();
   if (!s)
-    return { ok: true, value: null, skip: false } as const;
-  if (!kind)
-    return { ok: false, message: "Select an investor profile type that matches the saved profile name." };
+    return { ok: true, value: null, skip: false, kind: null } as const;
   if (!isUuidV4Like(s))
     return { ok: false, message: "Invalid profile name selection." };
   const [p] = await db
@@ -254,13 +290,17 @@ async function resolveUserInvestorProfileIdForCommit(
   if (p.archived) {
     return { ok: false, message: "That profile is archived. Choose an active profile or unarchive it first." };
   }
-  if (!bookTypeMatchesProfileKind(p.profileType, kind)) {
+  if (p.isDraft) {
+    return { ok: false, message: "Finish saving that profile before investing with it." };
+  }
+  const kind = commitmentKindFromSavedProfile(p.profileType, p.formSnapshot);
+  if (!kind) {
     return {
       ok: false,
-      message: "The selected profile name does not match the chosen investor profile type.",
+      message: "This profile cannot be used for an investment. Choose another profile.",
     };
   }
-  return { ok: true, value: s, skip: false } as const;
+  return { ok: true, value: s, skip: false, kind } as const;
 }
 export async function applyMyInvestNowCommitmentAddon(
   params: ApplyMyInvestNowCommitmentInput
@@ -305,7 +345,7 @@ export async function applyMyInvestNowCommitmentAddon(
         return { ok: false, message: "Invalid funding method." };
     }
     const rawProfile = String(params.profileId ?? "").trim();
-    const profileOpt = normalizeLpCommitmentProfileId(rawProfile ? rawProfile : undefined);
+    let profileOpt = normalizeLpCommitmentProfileId(rawProfile ? rawProfile : undefined);
     if (rawProfile && !profileOpt) {
         return { ok: false, message: "Invalid investor profile." };
     }
@@ -318,6 +358,18 @@ export async function applyMyInvestNowCommitmentAddon(
         };
     }
     const viewerUserId = String(params.viewerUserId ?? "").trim();
+    const inBodyUip = Boolean(params.userInvestorProfileInBody);
+    const sUipRes = await resolveUserInvestorProfileIdForCommit(
+        viewerUserId,
+        inBodyUip,
+        params.userInvestorProfileId ?? null,
+    );
+    if (!sUipRes.ok) {
+        return { ok: false, message: sUipRes.message };
+    }
+    const sUip = sUipRes;
+    if (!sUip.skip && sUip.kind)
+        profileOpt = sUip.kind;
     const referringSponsor = params.referringSponsorRef
       ? await resolveOfferingPreviewSponsorAttribution(
           params.dealId,
@@ -414,21 +466,6 @@ export async function applyMyInvestNowCommitmentAddon(
             }
         }
     }
-    const inBodyUip = Boolean(params.userInvestorProfileInBody);
-    const kindForSavedUip = inv
-        ? (profileOpt ??
-            (normalizeLpCommitmentProfileId(String(inv.profileId ?? "")) as string | null))
-        : (profileOpt ?? null);
-    const sUipRes = await resolveUserInvestorProfileIdForCommit(
-        viewerUserId,
-        kindForSavedUip,
-        inBodyUip,
-        params.userInvestorProfileId ?? null,
-    );
-    if (!sUipRes.ok) {
-        return { ok: false, message: sUipRes.message };
-    }
-    const sUip = sUipRes;
     const now = new Date();
     if (!inv) {
         if (!profileOpt) {

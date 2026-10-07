@@ -694,6 +694,13 @@
       "when": 1895500000000,
       "tag": "0099_contact_import_source",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1895550000000,
+      "tag": "0100_deal_stripe_payer_customer",
+      "breakpoints": true
     }
   ]
 }

@@ -62,6 +62,7 @@ import { dealStageChipCompactClassName } from "../Deals/utils/dealStageChip";
 import { DealAvatarIconRing } from "../../../common/components/entity-avatar/EntityAvatarNameCell";
 import { ToolStyleCard } from "../../../common/components/tool-style-card/ToolStyleCard";
 import { cardCompactAmountOrDash } from "../../../common/components/card-compact-amount/CardCompactAmount";
+import { formatCount } from "@/common/utils/formatCount";
 import { parseMoneyDigits } from "../Deals/utils/offeringMoneyFormat";
 import {
   dealSaasBillingHasStarted,
@@ -69,6 +70,7 @@ import {
   platformSaasBillingHasStarted,
 } from "../Deals/utils/saasBillingStartDate";
 import { toast } from "../../../common/components/Toast";
+import { getDefaultBccFromEnv } from "../../../common/features/send-mail";
 import "../Deals/components/deal-stage-change-modal.css";
 
 type BillingSubTab = "pricing" | "deals" | "payment-methods" | "payment-history";
@@ -154,8 +156,16 @@ const PRICE_ENV_HINT: Record<
   },
 };
 
-const CUSTOM_PLAN_CONTACT_HREF =
-  "mailto:support@syndicationx.com?subject=Custom%20plan%20inquiry%20%E2%80%93%20SyndicationX";
+const CUSTOM_PLAN_CONTACT_TO = "support@syndicationx.com";
+const CUSTOM_PLAN_CONTACT_SUBJECT = "Custom plan inquiry – SyndicationX";
+
+function customPlanContactHref(bcc: string[]): string {
+  const q = new URLSearchParams();
+  const uniqueBcc = [...new Set(bcc.map((x) => x.trim()).filter((x) => x.includes("@")))];
+  if (uniqueBcc.length > 0) q.set("bcc", uniqueBcc.join(","));
+  q.set("subject", CUSTOM_PLAN_CONTACT_SUBJECT);
+  return `mailto:${CUSTOM_PLAN_CONTACT_TO}?${q.toString()}`;
+}
 
 const EXTRA_COMPANY_USER_FEE_DOLLARS = 10;
 const EXTRA_CO_GP_ANNUAL_MONTHS = 10;
@@ -969,7 +979,22 @@ function BillingPricingPanel({
   );
   const [payModalError, setPayModalError] = useState("");
   const [extraCompanyUsers, setExtraCompanyUsers] = useState(0);
+  const [salesBcc, setSalesBcc] = useState<string[]>([]);
   const payOnceRef = useRef(false);
+  const contactSalesHref = useMemo(
+    () => customPlanContactHref(salesBcc),
+    [salesBcc],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void getDefaultBccFromEnv().then((list) => {
+      if (!cancelled) setSalesBcc(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const platformAdmin = isPlatformAdmin();
@@ -1631,7 +1656,15 @@ function BillingPricingPanel({
           </div>
           <a
             className="cp_billing_plan_cta um_btn_primary"
-            href={CUSTOM_PLAN_CONTACT_HREF}
+            href={contactSalesHref}
+            onClick={(event) => {
+              event.preventDefault();
+              void (async () => {
+                const bcc =
+                  salesBcc.length > 0 ? salesBcc : await getDefaultBccFromEnv();
+                window.location.href = customPlanContactHref(bcc);
+              })();
+            }}
           >
             Contact sales
           </a>
@@ -1871,7 +1904,7 @@ function DealMrrPaymentHistory({
         </thead>
         <tbody>
           <tr>
-            <td>{extra.count}</td>
+            <td>{formatCount(extra.count)}</td>
             <td>{extra.included == null ? "10+" : extra.included}</td>
             <td>{extra.extra}</td>
             <td className="cp_billing_mrr_amount">
@@ -2756,7 +2789,7 @@ function BillingDealDetailsPanel({
           thClassName: "deals_th_align_center",
           tdClassName: "deals_td_align_center",
           sortValue: (row) => row.deals.length,
-          cell: (row) => String(row.deals.length),
+          cell: (row) => formatCount(row.deals.length),
         },
         {
           id: "billed",
@@ -2765,7 +2798,7 @@ function BillingDealDetailsPanel({
           thClassName: "deals_th_align_center",
           tdClassName: "deals_td_align_center",
           sortValue: (row) => row.billedCount,
-          cell: (row) => String(row.billedCount),
+          cell: (row) => formatCount(row.billedCount),
         },
         {
           id: "totalPaid",
@@ -2813,7 +2846,7 @@ function BillingDealDetailsPanel({
             icon={Building2}
             title="Organizations"
             loading={loading}
-            description={String(organizationRows.length)}
+            description={formatCount(organizationRows.length)}
           />
         ) : null}
         <ToolStyleCard
@@ -2821,14 +2854,14 @@ function BillingDealDetailsPanel({
           icon={Briefcase}
           title="Total deals"
           loading={loading}
-          description={String(deals.length)}
+          description={formatCount(deals.length)}
         />
         <ToolStyleCard
           variant="metric"
           icon={Receipt}
           title="Billed deals"
           loading={loading}
-          description={String(billedCount)}
+          description={formatCount(billedCount)}
         />
         <ToolStyleCard
           variant="metric"

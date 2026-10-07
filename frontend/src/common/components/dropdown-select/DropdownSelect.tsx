@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
+import { formatCount } from "@/common/utils/formatCount"
 import "./dropdown-select.css"
 
 function isAddActionLabel(label: string): boolean {
@@ -183,7 +184,9 @@ export function DropdownSelect({
           o.label.toLowerCase().includes(q),
         ).length
       : total
-    const segment = q ? `${visibleCount} of ${total}` : `${total}`
+    const segment = q
+      ? `${formatCount(visibleCount)} of ${formatCount(total)}`
+      : formatCount(total)
     const placeholder = `${searchPlaceholder} (${segment})`
     const ariaLabel =
       searchAriaLabel != null && searchAriaLabel.trim() !== ""

@@ -27,6 +27,7 @@ import {
   type PagedResult,
 } from "@/common/hooks/useServerPagedTable"
 import { formatDateDdMmmYyyy } from "@/common/utils/formatDateDisplay"
+import { formatCount } from "@/common/utils/formatCount"
 import { ExportFeedbackModal } from "./ExportFeedbackModal"
 import { FeedbackDetailsModal } from "./FeedbackDetailsModal"
 import { FeedbackFormModal } from "./FeedbackFormModal"
@@ -688,7 +689,7 @@ export default function FeedbackPage() {
                     <span className="deals_tabs_label um_segmented_tab_label">
                       Pending
                     </span>
-                    <span className="feedback_tab_count">{pendingCount}</span>
+                    <span className="feedback_tab_count">{formatCount(pendingCount)}</span>
                   </button>
                   <button
                     type="button"
@@ -709,7 +710,7 @@ export default function FeedbackPage() {
                     <span className="deals_tabs_label um_segmented_tab_label">
                       Reviewed
                     </span>
-                    <span className="feedback_tab_count">{reviewedCount}</span>
+                    <span className="feedback_tab_count">{formatCount(reviewedCount)}</span>
                   </button>
                   <button
                     type="button"
@@ -730,7 +731,7 @@ export default function FeedbackPage() {
                     <span className="deals_tabs_label um_segmented_tab_label">
                       Resolved
                     </span>
-                    <span className="feedback_tab_count">{resolvedCount}</span>
+                    <span className="feedback_tab_count">{formatCount(resolvedCount)}</span>
                   </button>
                 </div>
               </TabsScrollStrip>

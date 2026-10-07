@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Briefcase, Contact, Users } from "lucide-react";
 import { getApiV1Base } from "../../../common/utils/apiBaseUrl";
+import { formatCount } from "@/common/utils/formatCount";
 import { SESSION_BEARER_KEY } from "../../../common/auth/sessionKeys";
 import {
   canAccessCompanyPage,
@@ -168,7 +169,7 @@ export default function CustomerCompanyLayout() {
             to={`${base}/members`}
             id="cp-company-tab-members"
             role="tab"
-            aria-label={`Members, ${memberCount}`}
+            aria-label={`Members, ${formatCount(memberCount)}`}
             className={({ isActive }) =>
               `um_members_tab cp_company_detail_tab${
                 isActive ? " um_members_tab_active" : ""
@@ -178,14 +179,14 @@ export default function CustomerCompanyLayout() {
             <Users size={18} strokeWidth={1.75} aria-hidden />
             <span>Members</span>
             <span className="cp_company_detail_tab_count" aria-hidden>
-              ({memberCount})
+              ({formatCount(memberCount)})
             </span>
           </NavLink>
           <NavLink
             to={`${base}/contacts`}
             id="cp-company-tab-contacts"
             role="tab"
-            aria-label={`All Contacts, ${contactCount}`}
+            aria-label={`All Contacts, ${formatCount(contactCount)}`}
             className={({ isActive }) =>
               `um_members_tab cp_company_detail_tab${
                 isActive ? " um_members_tab_active" : ""
@@ -195,14 +196,14 @@ export default function CustomerCompanyLayout() {
             <Contact size={18} strokeWidth={1.75} aria-hidden />
             <span>All Contacts</span>
             <span className="cp_company_detail_tab_count" aria-hidden>
-              ({contactCount})
+              ({formatCount(contactCount)})
             </span>
           </NavLink>
           <NavLink
             to={`${base}/deals`}
             id="cp-company-tab-deals"
             role="tab"
-            aria-label={`Deals, ${dealCount}`}
+            aria-label={`Deals, ${formatCount(dealCount)}`}
             className={({ isActive }) =>
               `um_members_tab cp_company_detail_tab${
                 isActive ? " um_members_tab_active" : ""
@@ -212,7 +213,7 @@ export default function CustomerCompanyLayout() {
             <Briefcase size={18} strokeWidth={1.75} aria-hidden />
             <span>Deals</span>
             <span className="cp_company_detail_tab_count" aria-hidden>
-              ({dealCount})
+              ({formatCount(dealCount)})
             </span>
           </NavLink>
         </div>

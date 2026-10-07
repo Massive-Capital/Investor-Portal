@@ -169,6 +169,7 @@ export function DealInvestNowPage() {
     investNowNav.referringSponsorDisplayName ??
     storedSponsorAttribution?.sponsorDisplayName
   const entryMode = investNowNav.mode ?? "fresh"
+  const addNewCommitment = investNowNav.addCommitment === true
   const resumeScope = useMemo(
     () => ({
       investmentId: investNowNav.investmentId,
@@ -589,7 +590,14 @@ export function DealInvestNowPage() {
           setSavedUserProfileId(resumeProfileId)
         }
       }
-      if (saved.profileId) setProfileId(saved.profileId)
+      const resumeBookProfile = saved.userInvestorProfileId
+        ? bookProfileRows.find((p) => p.id === saved.userInvestorProfileId.trim())
+        : undefined
+      const resumeCommitmentProfileId = resumeBookProfile
+        ? commitmentProfileIdFromBookProfile(resumeBookProfile)
+        : ""
+      if (resumeCommitmentProfileId) setProfileId(resumeCommitmentProfileId)
+      else if (saved.profileId) setProfileId(saved.profileId)
       if (saved.investmentId) {
         investNowInvestmentIdRef.current = saved.investmentId
         setInvestNowInvestmentId(saved.investmentId)
@@ -611,6 +619,14 @@ export function DealInvestNowPage() {
         setQuestionnaireAnswers(saved.questionnaireAnswers)
       }
       const profileIdForPrefill = saved.userInvestorProfileId?.trim() ?? ""
+      const savedW9Name = String(saved.w9Form?.name ?? "").trim()
+      if (savedW9Name && profileIdForPrefill) {
+        w9NameSourceRef.current = {
+          profileId: profileIdForPrefill,
+          appliedName: savedW9Name,
+        }
+        w9NameLockRef.current = true
+      }
       setW9Values((prev) => {
         let next = prev
         if (saved.w9Form) {
@@ -650,7 +666,31 @@ export function DealInvestNowPage() {
     }
   }, [entryMode, dealId, loading, resumeScope, bookProfileRows, bookAddresses, investorClasses, selectableInvestorClasses])
 
+  const w9NameSourceRef = useRef({ profileId: "", appliedName: "" })
+  const w9NameLockRef = useRef(false)
   const profileScopeRef = useRef({ savedUserProfileId: "", profileId: "" })
+  const freshProfilePreselectRef = useRef(false)
+
+  useEffect(() => {
+    if (entryMode !== "fresh" || freshProfilePreselectRef.current || bookLoading) {
+      return
+    }
+    const selectedId = investNowNav.userInvestorProfileId?.trim() ?? ""
+    if (!selectedId) return
+    const profile = bookProfileRows.find((p) => p.id === selectedId)
+    if (!profile || isInvestorProfileListRowIncomplete(profile)) return
+    freshProfilePreselectRef.current = true
+    setSavedUserProfileId(selectedId)
+    const derived = commitmentProfileIdFromBookProfile(profile)
+    if (derived) setProfileId(derived)
+    else if (investNowNav.profileId?.trim()) setProfileId(investNowNav.profileId.trim())
+  }, [
+    bookLoading,
+    bookProfileRows,
+    entryMode,
+    investNowNav.profileId,
+    investNowNav.userInvestorProfileId,
+  ])
 
   useEffect(() => {
     if (!savedUserProfileId.trim()) return
@@ -694,15 +734,28 @@ export function DealInvestNowPage() {
     [savedUserProfileId, investNowInvestmentId, profileId],
   )
 
+  /** Type comes from the profile the investor picked, not the Add Investors selection. */
+  const selectedCommitmentProfileId = useMemo(() => {
+    const selectedId = savedUserProfileId.trim()
+    if (selectedId) {
+      const profile = bookProfileRows.find((p) => p.id === selectedId)
+      const derived = profile
+        ? commitmentProfileIdFromBookProfile(profile)
+        : ""
+      if (derived) return derived
+    }
+    return profileId.trim()
+  }, [bookProfileRows, profileId, savedUserProfileId])
+
   const selectedProfileUseKey = useMemo(
-    () => lpProfileUseKey(profileId, savedUserProfileId),
-    [profileId, savedUserProfileId],
+    () => lpProfileUseKey(selectedCommitmentProfileId, savedUserProfileId),
+    [selectedCommitmentProfileId, savedUserProfileId],
   )
 
   const selectedProfileAlreadyUsed = useMemo(() => {
     const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
     const key = selectedProfileUseKey.trim()
-    if (!em || !key || !profileId.trim() || !savedUserProfileId.trim()) {
+    if (!em || !key || !selectedCommitmentProfileId || !savedUserProfileId.trim()) {
       return false
     }
     const currentInvestmentId = investNowInvestmentId?.trim().toLowerCase() ?? ""
@@ -725,7 +778,7 @@ export function DealInvestNowPage() {
   }, [
     dealInvestors,
     investNowInvestmentId,
-    profileId,
+    selectedCommitmentProfileId,
     savedUserProfileId,
     selectedProfileUseKey,
   ])
@@ -733,7 +786,7 @@ export function DealInvestNowPage() {
   const selectedProfileExistingInvestmentId = useMemo(() => {
     const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
     const key = selectedProfileUseKey.trim()
-    if (!em || !key || !profileId.trim() || !savedUserProfileId.trim()) {
+    if (!em || !key || !selectedCommitmentProfileId || !savedUserProfileId.trim()) {
       return ""
     }
     const row = dealInvestors.find((investor) => {
@@ -746,7 +799,7 @@ export function DealInvestNowPage() {
       ) === key
     })
     return String(row?.id ?? "").trim()
-  }, [dealInvestors, profileId, savedUserProfileId, selectedProfileUseKey])
+  }, [dealInvestors, selectedCommitmentProfileId, savedUserProfileId, selectedProfileUseKey])
 
   useEffect(() => {
     const nextSaved = savedUserProfileId.trim()
@@ -826,7 +879,35 @@ export function DealInvestNowPage() {
       savedUserProfileId,
       questionnaireAnswers,
     })
-    setW9Values((prev) => mergeInvestNowW9Values(prev, prefill))
+    const profileChanged =
+      w9NameSourceRef.current.profileId !== savedUserProfileId
+    if (profileChanged) w9NameLockRef.current = false
+    setW9Values((prev) => {
+      const merged = mergeInvestNowW9Values(prev, prefill)
+      const nextName = prefill.name.trim()
+      const currentName = prev.name.trim()
+      const autoFilled =
+        !currentName || currentName === w9NameSourceRef.current.appliedName
+      const mayApplyName =
+        Boolean(nextName) &&
+        !w9NameLockRef.current &&
+        (profileChanged || autoFilled) &&
+        currentName !== nextName
+      if (!mayApplyName) {
+        if (profileChanged) {
+          w9NameSourceRef.current = {
+            profileId: savedUserProfileId,
+            appliedName: currentName || nextName,
+          }
+        }
+        return merged
+      }
+      w9NameSourceRef.current = {
+        profileId: savedUserProfileId,
+        appliedName: nextName,
+      }
+      return { ...merged, name: nextName }
+    })
   }, [
     savedUserProfileId,
     bookProfileRows,
@@ -944,7 +1025,7 @@ export function DealInvestNowPage() {
         const em = getSessionUserEmail()?.trim().toLowerCase() ?? ""
         const rowId = investNowCommitmentRowIdForScope(investors.investors, {
           email: em,
-          profileId: profileId.trim(),
+          profileId: selectedCommitmentProfileId,
           userInvestorProfileId: savedUserProfileId.trim(),
         })
         if (rowId) {
@@ -954,7 +1035,7 @@ export function DealInvestNowPage() {
       }
       sessionDraftRef.current = true
     },
-    [profileId, savedUserProfileId],
+    [selectedCommitmentProfileId, savedUserProfileId],
   )
 
   const persistInvestNowProgress = useCallback(
@@ -963,18 +1044,20 @@ export function DealInvestNowPage() {
       progressOnly?: boolean
       skipCommittedAmount?: boolean
       fundingMethod?: string
+      status?: string
       questionnaireAnswers?: Record<string, string>
       w9Form?: Record<string, string>
       allowDuplicateProfile?: boolean
     }): Promise<string | null> => {
-      const submitStatus = status.trim() || "Open to investment"
+      const submitStatus =
+        opts.status?.trim() || status.trim() || "Open to investment"
       setSubmitting(true)
       setError("")
       const res = await patchMyLpDealInvestNowCommitment(
         dealId,
         opts.committedAmount,
         {
-          profileId: profileId.trim(),
+          profileId: selectedCommitmentProfileId,
           status: submitStatus,
           docSignedDate: parseInvestNowDocSignedCalendarDate(docSignedDate),
           includeUserInvestorProfileInBody: true,
@@ -982,8 +1065,13 @@ export function DealInvestNowPage() {
           progressOnly: opts.progressOnly,
           skipCommittedAmount: opts.skipCommittedAmount,
           replaceCommittedAmount: true,
-          investmentId: investNowInvestmentIdRef.current?.trim() || undefined,
-          allowDuplicateProfile: opts.allowDuplicateProfile,
+          investmentId:
+            addNewCommitment && !investNowInvestmentIdRef.current?.trim()
+              ? undefined
+              : investNowInvestmentIdRef.current?.trim() || undefined,
+          allowDuplicateProfile:
+            opts.allowDuplicateProfile ||
+            (addNewCommitment && !investNowInvestmentIdRef.current?.trim()),
           ...(opts.fundingMethod !== undefined
             ? { fundingMethod: opts.fundingMethod }
             : fundingMethod.trim()
@@ -1011,7 +1099,7 @@ export function DealInvestNowPage() {
       status,
       docSignedDate,
       dealId,
-      profileId,
+      selectedCommitmentProfileId,
       savedUserProfileId,
       fundingMethod,
       questionnaireInFlow,
@@ -1019,6 +1107,7 @@ export function DealInvestNowPage() {
       selectedInvestorClassId,
       trackInvestmentRowAfterSave,
       referringSponsorRef,
+      addNewCommitment,
     ],
   )
 
@@ -1027,7 +1116,7 @@ export function DealInvestNowPage() {
       validateInvestNowInvestorFields({
         bookLoading,
         savedUserProfileId,
-        profileId,
+        profileId: selectedCommitmentProfileId,
         bookProfileRows,
         blockedProfileKeys,
         selectedInvestorClassId,
@@ -1042,14 +1131,20 @@ export function DealInvestNowPage() {
     clearInvestNowFieldErrors()
     const selectedKey = selectedProfileUseKey.trim()
     const existingInvestmentId = selectedProfileExistingInvestmentId.trim()
-    if (!investNowInvestmentIdRef.current?.trim() && existingInvestmentId) {
+    if (
+      !addNewCommitment &&
+      !investNowInvestmentIdRef.current?.trim() &&
+      existingInvestmentId
+    ) {
       investNowInvestmentIdRef.current = existingInvestmentId
       setInvestNowInvestmentId(existingInvestmentId)
     }
     let allowDuplicateProfile =
-      Boolean(selectedKey) &&
-      duplicateProfileOverrideKeyRef.current === selectedKey
+      addNewCommitment ||
+      (Boolean(selectedKey) &&
+        duplicateProfileOverrideKeyRef.current === selectedKey)
     if (
+      !addNewCommitment &&
       !investNowInvestmentIdRef.current?.trim() &&
       selectedProfileAlreadyUsed &&
       !allowDuplicateProfile
@@ -1087,6 +1182,7 @@ export function DealInvestNowPage() {
     selectedProfileExistingInvestmentId,
     selectedProfileAlreadyUsed,
     selectedProfileUseKey,
+    addNewCommitment,
   ])
 
   const validateAllQuestionnaireAndW9Fields = useCallback((): {
@@ -1514,6 +1610,7 @@ export function DealInvestNowPage() {
       committedAmount: Number.isFinite(n) && n > 0 ? String(n) : undefined,
       skipCommittedAmount: !(Number.isFinite(n) && n > 0),
       progressOnly: !(Number.isFinite(n) && n > 0),
+      status: "Soft committed",
       w9Form: investNowW9FormApiPayload(w9Values),
       ...(Object.keys(questionnaireAnswers).length > 0
         ? { questionnaireAnswers }
@@ -1533,7 +1630,7 @@ export function DealInvestNowPage() {
       distributedAmount: 0,
       currentValuation: offeringSize || "—",
       dealCloseDate: formatDealCloseDateForInvestments(closeDate?.trim()),
-      status: "Active",
+      status: "Soft committed",
       actionRequired: "Resume investing",
       onboardingBucket: "pending",
       hasInvestNowDraft: true,
@@ -1613,7 +1710,7 @@ export function DealInvestNowPage() {
       const investorValidation = validateInvestNowInvestorFields({
         bookLoading,
         savedUserProfileId,
-        profileId,
+        profileId: selectedCommitmentProfileId,
         bookProfileRows,
         blockedProfileKeys,
         selectedInvestorClassId,
@@ -1700,12 +1797,6 @@ export function DealInvestNowPage() {
       const esignSetupMissing =
         !esignTemplate || (!isDealEsignTemplateReady(esignTemplate) && !esignCompleted)
       if (esignSetupMissing) {
-        const draftErr = await saveDraftForMissingEsign()
-        if (draftErr) {
-          setError(draftErr)
-          focusFirstFormErrorAfterUpdate({ container: investNowFormRef.current })
-          return
-        }
         setError("")
         setFieldErrors({})
         setDraftSavedModalOpen(true)
@@ -1791,7 +1882,6 @@ export function DealInvestNowPage() {
     validateEsignaturesStep,
     esignTemplate,
     esignCompleted,
-    saveDraftForMissingEsign,
     esignStepIndex,
     dealId,
     profileId,
@@ -1803,6 +1893,21 @@ export function DealInvestNowPage() {
     navigate,
     switchToInvesting,
   ])
+
+  const onSaveSoftCommitment = useCallback(async () => {
+    const draftErr = await saveDraftForMissingEsign()
+    if (draftErr) {
+      setDraftSavedModalOpen(false)
+      setError(draftErr)
+      focusFirstFormErrorAfterUpdate({ container: investNowFormRef.current })
+      return
+    }
+    setError("")
+    setFieldErrors({})
+    setDraftSavedModalOpen(false)
+    toast.success("Saved as soft commit", "Proceed to pending")
+    goToPendingInvestments()
+  }, [saveDraftForMissingEsign, goToPendingInvestments])
 
   const onEsignSignedComplete = useCallback(
     async (result: { esignCompleted: boolean }) => {
@@ -2048,7 +2153,7 @@ export function DealInvestNowPage() {
             if (clearedKeys.length > 0) clearInvestNowFieldErrors(...clearedKeys)
             if (error) setError("")
           }}
-          disabled={submitting || documentsLoading}
+          disabled={submitting}
           error={error}
           fieldErrors={{
             "w9-name": fieldErrors[INVEST_NOW_FIELD.w9Name],
@@ -2065,7 +2170,6 @@ export function DealInvestNowPage() {
         esignScope={investNowEsignScope}
         esignCategoryId={esignCategoryId}
         profileTemplate={esignTemplate}
-        profileLabel={esignProfileLabel}
         commitmentProfileId={profileId}
         questionnaireInFlow={questionnaireInFlow}
         investorDisplayName={investorDisplayName}
@@ -2162,7 +2266,7 @@ export function DealInvestNowPage() {
             className="um_modal_overlay deals_add_inv_modal_overlay portal_modal_z_boost"
             role="presentation"
             onMouseDown={(e) => {
-              if (e.target === e.currentTarget) goToPendingInvestments()
+              if (e.target === e.currentTarget) setDraftSavedModalOpen(false)
             }}
           >
             <div
@@ -2176,12 +2280,12 @@ export function DealInvestNowPage() {
                   id="invest-now-draft-saved-title"
                   className="um_modal_title add_contact_modal_title"
                 >
-                  Saved as draft
+                  Soft commitment
                 </h3>
                 <button
                   type="button"
                   className="um_modal_close"
-                  onClick={goToPendingInvestments}
+                  onClick={() => setDraftSavedModalOpen(false)}
                   aria-label="Close"
                 >
                   <X size={20} strokeWidth={2} aria-hidden />
@@ -2189,10 +2293,9 @@ export function DealInvestNowPage() {
               </div>
               <div className="deals_add_inv_modal_scroll">
                 <p className="deals_suspend_all_modal_message">
-                  Your investment information has been saved as a draft because
-                  the eSign document is not ready for this investor profile yet.
-                  You can continue from the Pending tab once the sponsor uploads
-                  or completes the eSign setup.
+                  No documents are uploaded for this deal yet. You can contact
+                  your Sponsor & they will let you know when it is ready to
+                  complete the investment.
                 </p>
               </div>
               <div className="um_modal_actions add_contact_modal_actions">
@@ -2200,9 +2303,22 @@ export function DealInvestNowPage() {
                   <button
                     type="button"
                     className="um_btn_primary"
-                    onClick={goToPendingInvestments}
+                    disabled={submitting}
+                    onClick={() => void onSaveSoftCommitment()}
                   >
-                    Go to Pending investments
+                    {submitting ? (
+                      <>
+                        <Loader2
+                          size={16}
+                          strokeWidth={2}
+                          className="deals_create_loading_icon"
+                          aria-hidden
+                        />
+                        Saving…
+                      </>
+                    ) : (
+                      "Save soft commitment"
+                    )}
                   </button>
                 </div>
               </div>

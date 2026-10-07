@@ -627,6 +627,12 @@ export async function putDealInvestment(
     await reconcileAssigningDealUsersForDeal(dealId, user.id);
     /* Invitation email only on explicit Save — not on debounced autosave (would spam). */
     if (!autosave && !contactIsPlaceholder) {
+      const editingLeadSponsor =
+        currentContactIsLeadSponsor ||
+        isLeadSponsorRoleLabel(existing.investor_role) ||
+        isLeadSponsorRoleLabel(investor_role) ||
+        Boolean(replacementLeadSponsorContactId.trim());
+      const notifyYes = sendInvitationMail.toLowerCase() === "yes";
       await sendDealMemberInviteForInvestmentIfRequested({
         dealId,
         contactId,
@@ -635,12 +641,16 @@ export async function putDealInvestment(
         dealMemberRole: investor_role,
          contactEmail: contactEmail.trim() || null,
         invitationSource: "deal_member",
+        ccUserId:
+          editingLeadSponsor && !newLeadSponsorContactId ? user.id : null,
       });
       await sendNewLeadSponsorInvitationIfAssigned({
         dealId,
         newLeadSponsorContactId,
         alreadyNotifiedContactId: contactId,
-        alreadyNotified: sendInvitationMail.toLowerCase() === "yes",
+        alreadyNotified: notifyYes,
+        requireNotifyChoice: editingLeadSponsor,
+        ccUserId: editingLeadSponsor ? user.id : null,
       });
     }
     const fundNewlyApproved =

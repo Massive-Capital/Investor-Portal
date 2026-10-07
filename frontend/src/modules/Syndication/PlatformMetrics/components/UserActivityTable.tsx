@@ -6,6 +6,7 @@ import {
   TABLE_PAGE_SIZE_ID,
   usePersistedTablePageSize,
 } from "../../../../common/hooks/usePersistedTablePageSize"
+import { formatCount } from "@/common/utils/formatCount"
 import {
   formatActivityDateTime,
   // formatRoleLabel,
@@ -74,12 +75,12 @@ export function UserActivityTable({ rows, loading, error }: Props) {
             />
           </div>
           <span className="pm_panel_badge">
-            Users: <strong>{loading ? "…" : visibleRows.length}</strong>
+            Users: <strong>{loading ? "…" : formatCount(visibleRows.length)}</strong>
             {searching && !loading ? (
-              <span className="pm_ua_muted"> of {rows.length}</span>
+              <span className="pm_ua_muted"> of {formatCount(rows.length)}</span>
             ) : null}
             {" · "}
-            Active: <strong>{loading ? "…" : activeCount}</strong>
+            Active: <strong>{loading ? "…" : formatCount(activeCount)}</strong>
           </span>
         </div>
       </div>
@@ -153,7 +154,7 @@ export function UserActivityTable({ rows, loading, error }: Props) {
                         {row.pageNavigations.map((p) => (
                           <li key={`${row.userId}-${p.pagePath}`}>
                             <span className="pm_ua_page_label">{p.pageLabel}</span>
-                            <span className="pm_ua_page_count">{p.count}</span>
+                            <span className="pm_ua_page_count">{formatCount(p.count)}</span>
                           </li>
                         ))}
                       </ul>

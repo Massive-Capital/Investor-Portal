@@ -41,6 +41,11 @@ import {
 import { formatDdMmmYyyy } from "../../utils/formatDdMmmYyyy.js";
 import { formatPortalUserDisplayLabel } from "../../utils/portalUsernameDisplay.js";
 import { userInvestorProfiles } from "../../schema/investing.schema/userProfileBook.schema.js";
+import {
+  applyContactOverlaysById,
+  canonicalRosterPersonKey,
+  type RosterResolvedPerson,
+} from "./dealRosterPersonIdentity.js";
 
 const UPLOAD_SUBDIR = DEAL_ASSETS_UPLOAD_SUBDIR;
 
@@ -403,25 +408,10 @@ function emailFromContactIdLiteral(contactId: string): string | null {
   return t.includes("@") ? t : null;
 }
 
-function isUsableInvestorEmail(raw: string | null | undefined): boolean {
-  const em = String(raw ?? "").trim();
-  if (!em || !em.includes("@")) return false;
-  if (/redacted/i.test(em)) return false;
-  return true;
-}
-
-function personNameKey(first: string, last: string, full?: string): string {
-  const fromParts = `${String(first ?? "").trim()} ${String(last ?? "").trim()}`
-    .trim()
-    .toLowerCase();
-  if (fromParts) return fromParts;
-  return String(full ?? "").trim().toLowerCase();
-}
-
 export async function resolveUsersByContactIds(
   rows: DealInvestmentRow[],
 ): Promise<Map<string, ResolvedPortalUser>> {
-  const m = new Map<string, ResolvedPortalUser>();
+  const m = new Map<string, RosterResolvedPerson>();
   const need = new Set<string>();
   for (const r of rows) {
     const id = r.contactId?.trim();
@@ -465,15 +455,6 @@ export async function resolveUsersByContactIds(
       lastName: String(u.lastName ?? "").trim(),
     });
   }
-  const nameKeys = new Set<string>();
-  for (const r of rows) {
-    const fromRow = personNameKey("", "", r.contactDisplayName ?? "");
-    if (fromRow) nameKeys.add(fromRow);
-  }
-  for (const resolved of m.values()) {
-    const fromUser = personNameKey(resolved.firstName, resolved.lastName);
-    if (fromUser) nameKeys.add(fromUser);
-  }
 
   const contactRows = await db
     .select({
@@ -484,55 +465,14 @@ export async function resolveUsersByContactIds(
       fullName: contact.fullName,
     })
     .from(contact)
-    .where(
-      nameKeys.size > 0
-        ? sql`${inArray(contact.id, ids)} OR lower(trim(${contact.fullName})) in (${sql.join(
-            [...nameKeys].map((k) => sql`${k}`),
-            sql`, `,
-          )}) OR lower(trim(concat_ws(' ', ${contact.firstName}, ${contact.lastName}))) in (${sql.join(
-            [...nameKeys].map((k) => sql`${k}`),
-            sql`, `,
-          )})`
-        : inArray(contact.id, ids),
-    );
+    .where(inArray(contact.id, ids));
 
   const contactById = new Map<string, (typeof contactRows)[number]>();
-  const contactByName = new Map<string, (typeof contactRows)[number]>();
   for (const c of contactRows) {
     contactById.set(String(c.id).toLowerCase(), c);
-    const name = personNameKey(c.firstName, c.lastName, c.fullName);
-    if (name && isUsableInvestorEmail(c.email)) contactByName.set(name, c);
   }
 
-  for (const id of ids) {
-    const key = id.toLowerCase();
-    const existing = m.get(key);
-    const c = contactById.get(key);
-    const byName = existing
-      ? contactByName.get(personNameKey(existing.firstName, existing.lastName))
-      : undefined;
-    const source = c ?? byName;
-    if (!source) continue;
-    const firstName = String(source.firstName ?? "").trim();
-    const lastName = String(source.lastName ?? "").trim();
-    const displayName =
-      [firstName, lastName].filter(Boolean).join(" ").trim() ||
-      existing?.displayName ||
-      "—";
-    const email = isUsableInvestorEmail(source.email)
-      ? String(source.email).trim()
-      : isUsableInvestorEmail(existing?.userEmail)
-        ? String(existing?.userEmail).trim()
-        : String(source.email ?? "").trim() || "—";
-    m.set(key, {
-      displayName,
-      userDisplayName: existing?.userDisplayName ?? "—",
-      userEmail: email,
-      firstName: firstName || existing?.firstName || "",
-      lastName: lastName || existing?.lastName || "",
-    });
-  }
-
+  applyContactOverlaysById(ids, m, contactById);
   return m;
 }
 
@@ -1154,8 +1094,7 @@ export async function mapContactIdsToCanonicalCommitmentKeys(
 
   for (const raw of cleaned) {
     const rk = rosterContactKey(raw);
-    const em = looksLikeUuid(raw) ? idToEmail.get(rk) : undefined;
-    out.set(rk, em ? `em:${em}` : `id:${rk}`);
+    out.set(rk, canonicalRosterPersonKey(rk, idToEmail));
   }
   return out;
 }

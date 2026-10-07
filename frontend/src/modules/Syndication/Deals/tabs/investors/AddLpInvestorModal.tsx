@@ -179,11 +179,8 @@ function percentValuesEqual(a: string, b: string): boolean {
 
 function validateLpInvestorForm(input: {
   contactId: string
-  profileId: string
   investorClassId: string
-  sendInvitationMail: "yes" | "no"
   dealClasses: DealInvestorClass[]
-  dealBlocksInvitationEmails: boolean
   selectedContactAlreadyOnDeal: boolean
 }): LpInvestorFieldErrors {
   const errors: LpInvestorFieldErrors = {}
@@ -202,14 +199,6 @@ function validateLpInvestorForm(input: {
     } else if (!input.dealClasses.some((c) => c.id === classId)) {
       errors.investorClass = "Select a valid investor class from this deal."
     }
-  }
-  if (
-    !input.dealBlocksInvitationEmails &&
-    input.sendInvitationMail === "yes" &&
-    !input.profileId.trim()
-  ) {
-    errors.profileId =
-      "Select an investor profile before choosing to send the invitation email."
   }
   return errors
 }
@@ -409,9 +398,6 @@ export function AddLpInvestorModal({
   )
   const lpPostInFlightRef = useRef(false)
   const lpAutosaveInFlightRef = useRef(false)
-
-  const profileRequiredForInvite =
-    !dealBlocksInvitationEmails && sendInvitationMail === "yes"
 
   const clearFieldError = useCallback(
     (key: keyof LpInvestorFieldErrors) => {
@@ -1141,11 +1127,8 @@ export function AddLpInvestorModal({
     setError(null)
     const validationErrors = validateLpInvestorForm({
       contactId,
-      profileId,
       investorClassId,
-      sendInvitationMail,
       dealClasses,
-      dealBlocksInvitationEmails,
       selectedContactAlreadyOnDeal,
     })
     if (Object.keys(validationErrors).length > 0) {
@@ -1390,10 +1373,7 @@ export function AddLpInvestorModal({
               <div className="um_field">
                 <label htmlFor="lp-inv-profile" className="um_field_label_row">
                   <IdCard className="um_field_label_icon" size={17} aria-hidden />
-                  <span>
-                    Profile
-                    {profileRequiredForInvite ? <RequiredMark /> : null}
-                  </span>
+                  <span>Profile</span>
                 </label>
                 <DropdownSelect
                   {...MODAL_DROPDOWN_SELECT_PROPS}

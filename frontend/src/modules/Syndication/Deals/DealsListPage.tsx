@@ -27,6 +27,7 @@ import {
   isSponsorWorkspaceInvestingViewer,
 } from "@/common/auth/roleUtils"
 import { usePortalMode } from "@/modules/Investing/context/PortalModeContext"
+import { formatCount } from "@/common/utils/formatCount"
 import {
   dealRowSupportsRosterApiPrefetch,
   filterDealListRowsVisibleToInvestors,
@@ -1332,7 +1333,7 @@ export function DealsListPage({
                   aria-hidden
                 />
                 <span className="deals_tabs_label um_segmented_tab_label">Deals</span>
-                <span className="deals_tabs_count">({activeDealsCount})</span>
+                <span className="deals_tabs_count">({formatCount(activeDealsCount)})</span>
               </button>
               <button
                 type="button"
@@ -1352,7 +1353,7 @@ export function DealsListPage({
                   aria-hidden
                 />
                 <span className="deals_tabs_label um_segmented_tab_label">Archives</span>
-                <span className="deals_tabs_count">({archivedDealsCount})</span>
+                <span className="deals_tabs_count">({formatCount(archivedDealsCount)})</span>
               </button>
             </div>
           </TabsScrollStrip>

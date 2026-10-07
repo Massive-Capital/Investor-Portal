@@ -1,6 +1,6 @@
 import Stripe from "stripe";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { db } from "../../database/db.js";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { db, pool } from "../../database/db.js";
 import {
   addDealForm,
   companies,
@@ -314,8 +314,26 @@ async function ensureStripeCustomer(params: {
     .limit(1);
   if (!company) throw new Error("Company not found");
 
+  let replacedCustomerId = "";
   if (company.stripeCustomerId?.trim()) {
-    return company.stripeCustomerId.trim();
+    const existingId = company.stripeCustomerId.trim();
+    const stripe = getStripeClient();
+    try {
+      const existing = await stripe.customers.retrieve(existingId);
+      if (!existing.deleted) return existingId;
+    } catch (err) {
+      const missing =
+        err instanceof Stripe.errors.StripeInvalidRequestError &&
+        err.code === "resource_missing";
+      if (!missing) throw err;
+    }
+    replacedCustomerId = existingId;
+    await db
+      .update(companies)
+      .set({ stripeCustomerId: null, updatedAt: new Date() })
+      .where(
+        and(eq(companies.id, cid), eq(companies.stripeCustomerId, existingId)),
+      );
   }
 
   const [actor] = await db
@@ -334,7 +352,11 @@ async function ensureStripeCustomer(params: {
         companyName: company.name,
       },
     },
-    { idempotencyKey: `company_customer_${cid}` },
+    {
+      idempotencyKey: replacedCustomerId
+        ? `company_customer_${cid}_replaces_${replacedCustomerId}`
+        : `company_customer_${cid}`,
+    },
   );
 
   // Race-safe: only write if still empty; another request may have won.
@@ -352,6 +374,260 @@ async function ensureStripeCustomer(params: {
     .where(eq(companies.id, cid))
     .limit(1);
   return after?.stripeCustomerId?.trim() || customer.id;
+}
+
+const SQL_ROLE_IS_LEAD = `(
+  lower(trim(%COL%)) IN ('lead sponsor', 'lead_sponsor')
+  OR (
+    position('lead' in lower(trim(%COL%))) > 0
+    AND position('sponsor' in lower(trim(%COL%))) > 0
+    AND position('admin' in lower(trim(%COL%))) = 0
+  )
+)`;
+
+function sqlRoleIsLead(columnSql: string): string {
+  return SQL_ROLE_IS_LEAD.replaceAll("%COL%", columnSql);
+}
+
+/** Stripe Customer.phone must be E.164. Blank or unusable values are omitted. */
+function stripeE164Phone(raw: string | null | undefined): string | undefined {
+  const text = String(raw ?? "").trim();
+  if (!text) return undefined;
+  const digits = text.replace(/\D/g, "");
+  if (digits.length < 8 || digits.length > 15) return undefined;
+  if (text.startsWith("+")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return `+${digits}`;
+}
+
+type DealPayerContact = {
+  email: string;
+  phone?: string;
+  name: string;
+};
+
+/**
+ * Lead sponsor for this deal. The paying user's own row wins when they are
+ * the lead sponsor; otherwise the roster lead sponsor is used.
+ */
+async function resolveDealPayerContact(params: {
+  dealId: string;
+  actorUserId: string;
+}): Promise<DealPayerContact | null> {
+  const dealId = normalizeCompanyId(params.dealId);
+  if (!dealId) return null;
+  const actorId = normalizeCompanyId(params.actorUserId);
+  const leadMember = sqlRoleIsLead("dm.deal_member_role");
+  const leadInvestment = sqlRoleIsLead("di.investor_role");
+  const res = await pool.query<{
+    email: string;
+    phone: string | null;
+    display_name: string | null;
+  }>(
+    `SELECT email, phone, display_name FROM (
+       SELECT lower(trim(u.email)) AS email,
+              trim(u.phone) AS phone,
+              trim(concat_ws(' ', nullif(trim(u.first_name), ''), nullif(trim(u.last_name), ''))) AS display_name,
+              CASE WHEN $2::uuid IS NOT NULL AND u.id = $2::uuid THEN 0 ELSE 1 END AS priority
+       FROM deal_member dm
+       INNER JOIN users u ON u.id::text = trim(dm.contact_member_id)
+       WHERE dm.deal_id = $1::uuid
+         AND dm.is_draft = false
+         AND ${leadMember}
+         AND u.email IS NOT NULL AND trim(u.email) <> ''
+       UNION ALL
+       SELECT lower(trim(c.email)) AS email,
+              COALESCE(NULLIF(trim(u.phone), ''), NULLIF(trim(c.phone), ''), '') AS phone,
+              COALESCE(
+                NULLIF(trim(c.full_name), ''),
+                trim(concat_ws(' ', nullif(trim(c.first_name), ''), nullif(trim(c.last_name), '')))
+              ) AS display_name,
+              CASE WHEN $2::uuid IS NOT NULL AND u.id = $2::uuid THEN 0 ELSE 2 END AS priority
+       FROM deal_member dm
+       INNER JOIN contact c ON c.id::text = trim(dm.contact_member_id)
+       LEFT JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE dm.deal_id = $1::uuid
+         AND dm.is_draft = false
+         AND ${leadMember}
+         AND c.email IS NOT NULL AND trim(c.email) <> ''
+       UNION ALL
+       SELECT lower(trim(u.email)) AS email,
+              trim(u.phone) AS phone,
+              trim(concat_ws(' ', nullif(trim(u.first_name), ''), nullif(trim(u.last_name), ''))) AS display_name,
+              CASE WHEN $2::uuid IS NOT NULL AND u.id = $2::uuid THEN 0 ELSE 1 END AS priority
+       FROM deal_investment di
+       INNER JOIN users u ON u.id::text = trim(di.contact_id)
+       WHERE di.deal_id = $1::uuid
+         AND di.is_draft = false
+         AND trim(di.contact_id) <> '__portal_investment_autosave__'
+         AND ${leadInvestment}
+         AND u.email IS NOT NULL AND trim(u.email) <> ''
+       UNION ALL
+       SELECT lower(trim(c.email)) AS email,
+              COALESCE(NULLIF(trim(u.phone), ''), NULLIF(trim(c.phone), ''), '') AS phone,
+              COALESCE(
+                NULLIF(trim(c.full_name), ''),
+                trim(concat_ws(' ', nullif(trim(c.first_name), ''), nullif(trim(c.last_name), '')))
+              ) AS display_name,
+              CASE WHEN $2::uuid IS NOT NULL AND u.id = $2::uuid THEN 0 ELSE 2 END AS priority
+       FROM deal_investment di
+       INNER JOIN contact c ON c.id::text = trim(di.contact_id)
+       LEFT JOIN users u ON lower(trim(u.email)) = lower(trim(c.email))
+       WHERE di.deal_id = $1::uuid
+         AND di.is_draft = false
+         AND trim(di.contact_id) <> '__portal_investment_autosave__'
+         AND ${leadInvestment}
+         AND c.email IS NOT NULL AND trim(c.email) <> ''
+     ) payers
+     WHERE position('@' in email) > 1
+     ORDER BY priority
+     LIMIT 1`,
+    [dealId, actorId],
+  );
+  const row = res.rows[0];
+  if (!row?.email?.includes("@")) return null;
+  const email = row.email.trim().toLowerCase();
+  const name = String(row.display_name ?? "").trim() || email;
+  return {
+    email,
+    phone: stripeE164Phone(row.phone),
+    name,
+  };
+}
+
+async function fallbackActorPayer(
+  actorUserId: string,
+): Promise<DealPayerContact | null> {
+  const actorId = normalizeCompanyId(actorUserId);
+  if (!actorId) return null;
+  const [actor] = await db
+    .select({
+      email: users.email,
+      phone: users.phone,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+    .from(users)
+    .where(eq(users.id, actorId))
+    .limit(1);
+  const email = actor?.email?.trim().toLowerCase() ?? "";
+  if (!email.includes("@")) return null;
+  const name =
+    [actor?.firstName, actor?.lastName]
+      .map((part) => String(part ?? "").trim())
+      .filter(Boolean)
+      .join(" ") || email;
+  return { email, phone: stripeE164Phone(actor?.phone), name };
+}
+
+/**
+ * Stripe Customer for this deal's lead sponsor. Email and phone are refreshed
+ * on every payment so Link and the contact field follow the current sponsor.
+ */
+async function ensureDealPayerStripeCustomer(params: {
+  companyId: string;
+  dealId: string;
+  actorUserId: string;
+}): Promise<string> {
+  const cid = normalizeCompanyId(params.companyId);
+  const dealId = normalizeCompanyId(params.dealId);
+  if (!cid || !dealId) throw new Error("Invalid company or deal id");
+
+  const payer =
+    (await resolveDealPayerContact({
+      dealId,
+      actorUserId: params.actorUserId,
+    })) ?? (await fallbackActorPayer(params.actorUserId));
+  if (!payer) {
+    throw new Error(
+      "This deal has no lead sponsor email, so Stripe cannot open checkout.",
+    );
+  }
+
+  const [deal] = await db
+    .select({
+      stripePayerCustomerId: addDealForm.stripePayerCustomerId,
+      dealName: addDealForm.dealName,
+    })
+    .from(addDealForm)
+    .where(eq(addDealForm.id, dealId))
+    .limit(1);
+  if (!deal) throw new Error("Deal not found");
+
+  const stripe = getStripeClient();
+  const profile = {
+    email: payer.email,
+    name: payer.name,
+    ...(payer.phone ? { phone: payer.phone } : {}),
+    metadata: {
+      companyId: cid,
+      dealId,
+      dealName: deal.dealName ?? "",
+      payerRole: "lead_sponsor",
+    },
+  };
+
+  const storedId = deal.stripePayerCustomerId?.trim() ?? "";
+  if (storedId) {
+    try {
+      const existing = await stripe.customers.retrieve(storedId);
+      if (!existing.deleted) {
+        const phoneChanged = payer.phone
+          ? existing.phone !== payer.phone
+          : false;
+        if (
+          existing.email?.trim().toLowerCase() !== payer.email ||
+          existing.name !== payer.name ||
+          phoneChanged
+        ) {
+          await stripe.customers.update(storedId, profile);
+        }
+        return storedId;
+      }
+    } catch (err) {
+      const missing =
+        err instanceof Stripe.errors.StripeInvalidRequestError &&
+        err.code === "resource_missing";
+      if (!missing) throw err;
+    }
+  }
+
+  const customer = await stripe.customers.create(profile, {
+    idempotencyKey: storedId
+      ? `deal_payer_${dealId}_replaces_${storedId}`
+      : `deal_payer_${dealId}`,
+  });
+
+  await db
+    .update(addDealForm)
+    .set({ stripePayerCustomerId: customer.id })
+    .where(eq(addDealForm.id, dealId));
+  return customer.id;
+}
+
+/**
+ * Saved cards that already belong to the company customer stay there so other
+ * deals can still use them. A card with no customer is attached to the lead sponsor.
+ */
+async function customerForSavedDealPayment(params: {
+  companyId: string;
+  dealId: string;
+  actorUserId: string;
+  paymentMethodId: string;
+}): Promise<string> {
+  const payerCustomerId = await ensureDealPayerStripeCustomer(params);
+  const stripe = getStripeClient();
+  const pm = await stripe.paymentMethods.retrieve(params.paymentMethodId);
+  const attached =
+    typeof pm.customer === "string" ? pm.customer : pm.customer?.id ?? "";
+  if (attached && attached !== payerCustomerId) return attached;
+  if (!attached) {
+    await stripe.paymentMethods.attach(params.paymentMethodId, {
+      customer: payerCustomerId,
+    });
+  }
+  return payerCustomerId;
 }
 
 export type CheckoutResult =
@@ -498,8 +774,9 @@ export async function createCompanyCheckoutSession(params: {
       };
     }
 
-    const customerId = await ensureStripeCustomer({
+    const customerId = await ensureDealPayerStripeCustomer({
       companyId: cid,
+      dealId: String(deal.id),
       actorUserId: params.actorUserId,
     });
     const stripe = getStripeClient();
@@ -827,24 +1104,12 @@ export async function payCompanyDealWithSavedMethod(params: {
       await clearDealSaasSubscription(String(deal.id));
     }
 
-    const customerId = await ensureStripeCustomer({
+    const customerId = await customerForSavedDealPayment({
       companyId: cid,
+      dealId: String(deal.id),
       actorUserId: params.actorUserId,
+      paymentMethodId,
     });
-
-    try {
-      await stripe.paymentMethods.attach(paymentMethodId, {
-        customer: customerId,
-      });
-    } catch (attachErr) {
-      const alreadyAttached =
-        attachErr instanceof Stripe.errors.StripeInvalidRequestError &&
-        (attachErr.code === "resource_already_exists" ||
-          /already been attached/i.test(attachErr.message ?? ""));
-      if (!alreadyAttached) {
-        throw attachErr;
-      }
-    }
 
     const existingActive =
       (deal.stripeSubscriptionId?.trim() ?? "") &&
@@ -1302,8 +1567,9 @@ export async function createCompanySubscriptionPaymentElement(params: {
       };
     }
 
-    const customerId = await ensureStripeCustomer({
+    const customerId = await ensureDealPayerStripeCustomer({
       companyId: cid,
+      dealId: String(deal.id),
       actorUserId: params.actorUserId,
     });
 
@@ -2255,18 +2521,25 @@ export async function applySubscriptionToCompany(
   const isDealScoped = Boolean(dealIdRaw);
 
   const [existing] = await db
-    .select({ stripeSubscriptionId: companies.stripeSubscriptionId })
+    .select({
+      stripeSubscriptionId: companies.stripeSubscriptionId,
+      stripeCustomerId: companies.stripeCustomerId,
+    })
     .from(companies)
     .where(eq(companies.id, cid))
     .limit(1);
   const existingSub = existing?.stripeSubscriptionId?.trim() ?? "";
   const writeCompanySub =
     !existingSub || existingSub === sub.id || !isDealScoped;
+  // Deal payments use the lead sponsor's customer. Do not replace the
+  // company customer, or the next deal would inherit that sponsor's email.
+  const existingCustomer = existing?.stripeCustomerId?.trim() ?? "";
+  const writeCompanyCustomer = !existingCustomer && Boolean(customerId);
 
   await db
     .update(companies)
     .set({
-      stripeCustomerId: customerId,
+      ...(writeCompanyCustomer ? { stripeCustomerId: customerId } : {}),
       ...(writeCompanySub
         ? {
             stripeSubscriptionId: sub.id,
@@ -2530,7 +2803,13 @@ async function findCompanyIdForStripeCustomer(
     .from(companies)
     .where(eq(companies.stripeCustomerId, id))
     .limit(1);
-  return row?.id ?? null;
+  if (row?.id) return row.id;
+  const [deal] = await db
+    .select({ organizationId: addDealForm.organizationId })
+    .from(addDealForm)
+    .where(eq(addDealForm.stripePayerCustomerId, id))
+    .limit(1);
+  return normalizeCompanyId(String(deal?.organizationId ?? ""));
 }
 
 async function findCompanyIdForSubscription(
@@ -2810,38 +3089,70 @@ export async function syncCompanyPaymentMethodsFromStripe(
   if (!co) {
     return { ok: false, status: 404, message: "Company not found" };
   }
-  const customerId = co.stripeCustomerId?.trim() ?? "";
-  if (!customerId) {
+  const payerRows = await db
+    .select({
+      stripePayerCustomerId: addDealForm.stripePayerCustomerId,
+    })
+    .from(addDealForm)
+    .where(
+      and(
+        eq(addDealForm.organizationId, cid),
+        isNotNull(addDealForm.stripePayerCustomerId),
+      ),
+    );
+  const customerIds = [
+    ...new Set(
+      [co.stripeCustomerId?.trim() ?? "", ...payerRows.map((row) => row.stripePayerCustomerId?.trim() ?? "")]
+        .filter(Boolean),
+    ),
+  ];
+  if (customerIds.length === 0) {
     return { ok: true, paymentMethods: [] };
   }
+  const customerId = co.stripeCustomerId?.trim() || customerIds[0];
 
   try {
     const stripe = getStripeClient();
     const defaultPmId = await resolveDefaultPaymentMethodId(customerId);
-    const listed = await stripe.customers.listPaymentMethods(customerId, {
-      limit: 100,
-    });
     const activeIds = new Set<string>();
+    const unreachableCustomers = new Set<string>();
 
-    for (const pm of listed.data) {
-      activeIds.add(pm.id);
-      await upsertPaymentMethodFromStripe({
-        companyId: cid,
-        paymentMethod: pm,
-        isDefault: defaultPmId ? pm.id === defaultPmId : false,
-      });
+    for (const listedCustomerId of customerIds) {
+      try {
+        const listed = await stripe.customers.listPaymentMethods(
+          listedCustomerId,
+          { limit: 100 },
+        );
+        for (const pm of listed.data) {
+          activeIds.add(pm.id);
+          await upsertPaymentMethodFromStripe({
+            companyId: cid,
+            paymentMethod: pm,
+            isDefault: defaultPmId ? pm.id === defaultPmId : false,
+          });
+        }
+      } catch (listErr) {
+        const missing =
+          listErr instanceof Stripe.errors.StripeInvalidRequestError &&
+          listErr.code === "resource_missing";
+        if (!missing) throw listErr;
+        unreachableCustomers.add(listedCustomerId);
+      }
     }
 
     const existing = await db
       .select({
         stripePaymentMethodId:
           companyBillingPaymentMethods.stripePaymentMethodId,
+        stripeCustomerId: companyBillingPaymentMethods.stripeCustomerId,
         detachedAt: companyBillingPaymentMethods.detachedAt,
       })
       .from(companyBillingPaymentMethods)
       .where(eq(companyBillingPaymentMethods.companyId, cid));
 
     for (const row of existing) {
+      const owner = row.stripeCustomerId?.trim() ?? "";
+      if (owner && unreachableCustomers.has(owner)) continue;
       if (!activeIds.has(row.stripePaymentMethodId) && !row.detachedAt) {
         await markPaymentMethodDetached(row.stripePaymentMethodId);
       }
@@ -2876,9 +3187,9 @@ export async function syncCompanyPaymentMethodsFromStripe(
       companyId: cid,
       eventType: "payment_method.synced",
       stripeCustomerId: customerId,
-      message: `Synced ${listed.data.length} payment method(s) from Stripe`,
+      message: `Synced ${activeIds.size} payment method(s) from Stripe`,
       payload: {
-        count: listed.data.length,
+        count: activeIds.size,
         defaultPaymentMethodId: defaultPmId,
       },
     });
@@ -3023,8 +3334,9 @@ export async function createExtraCompanyUserCheckoutSession(params: {
   }
 
   try {
-    const customerId = await ensureStripeCustomer({
+    const customerId = await ensureDealPayerStripeCustomer({
       companyId: cid,
+      dealId: charge.dealId,
       actorUserId: params.actorUserId,
     });
     const stripe = getStripeClient();
@@ -3136,22 +3448,13 @@ export async function payExtraCompanyUserWithSavedMethod(params: {
       };
     }
     const paymentMethodId = found.stripePaymentMethodId;
-    const customerId = await ensureStripeCustomer({
+    const customerId = await customerForSavedDealPayment({
       companyId: cid,
+      dealId: charge.dealId,
       actorUserId: params.actorUserId,
+      paymentMethodId,
     });
     const stripe = getStripeClient();
-    try {
-      await stripe.paymentMethods.attach(paymentMethodId, {
-        customer: customerId,
-      });
-    } catch (attachErr) {
-      const alreadyAttached =
-        attachErr instanceof Stripe.errors.StripeInvalidRequestError &&
-        (attachErr.code === "resource_already_exists" ||
-          /already been attached/i.test(attachErr.message ?? ""));
-      if (!alreadyAttached) throw attachErr;
-    }
 
     const intent = await stripe.paymentIntents.create({
       amount: charge.amountDueCents,
@@ -3496,6 +3799,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         : null;
       if (!companyId && subId) {
         companyId = await findCompanyIdForSubscription(subId);
+      }
+      if (!companyId && subId) {
+        try {
+          const stripe = getStripeClient();
+          const sub = await stripe.subscriptions.retrieve(subId);
+          companyId = normalizeCompanyId(sub.metadata?.companyId ?? null);
+        } catch {
+          /* ignore */
+        }
       }
       if (!companyId) {
         console.warn(

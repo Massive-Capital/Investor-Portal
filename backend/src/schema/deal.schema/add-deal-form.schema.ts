@@ -122,9 +122,11 @@ export const addDealForm = pgTable("add_deal_form", {
     { withTimezone: true },
   ),
   /**
-   * Per-deal SaaS subscription (company still owns the Stripe Customer).
+   * Per-deal SaaS subscription. Checkout uses `stripePayerCustomerId`
+   * (the lead sponsor). The company customer stays for saved company cards.
    * Draft / archived / liquidated deals are not billed.
    */
+  stripePayerCustomerId: varchar("stripe_payer_customer_id", { length: 255 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
   stripePlanId: varchar("stripe_plan_id", { length: 64 }),
   stripeBillingCycle: varchar("stripe_billing_cycle", { length: 32 }),

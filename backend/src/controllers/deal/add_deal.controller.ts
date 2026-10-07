@@ -408,13 +408,23 @@ export async function getDeals(req: Request, res: Response): Promise<void> {
          * Intersect viewer-scoped deals with the requested organization.
          */
         const scoped = await listDealsForViewer(scope);
-        rows = scoped.filter(
-          (r) =>
-            String(r.organizationId ?? "").trim() === orgParam ||
-            scope.organizationId == null ||
-            String(r.organizationId ?? "").trim() ===
-              String(scope.organizationId ?? "").trim(),
+        const [leadAdminIds, coSponsorIds] = await Promise.all([
+          listDealIdsWhereViewerIsLeadOrAdminSponsor(user.id),
+          listDealIdsWhereViewerIsCoSponsor(user.id),
+        ]);
+        const rosterDealIds = new Set(
+          [...leadAdminIds, ...coSponsorIds].map((id) =>
+            String(id).trim().toLowerCase(),
+          ),
         );
+        const viewerOrg = String(scope.organizationId ?? "").trim();
+        rows = scoped.filter((r) => {
+          const dealOrg = String(r.organizationId ?? "").trim();
+          if (dealOrg === orgParam) return true;
+          if (viewerOrg && dealOrg === viewerOrg) return true;
+          // Lead / Admin / Co deals stay visible even when the deal belongs to another company.
+          return rosterDealIds.has(String(r.id).trim().toLowerCase());
+        });
         // If org filter emptied a valid co-sponsor/LP set (legacy null org_id),
         // keep the viewer-scoped list instead of falling back to all org deals.
         if (rows.length === 0 && scoped.length > 0) rows = scoped;

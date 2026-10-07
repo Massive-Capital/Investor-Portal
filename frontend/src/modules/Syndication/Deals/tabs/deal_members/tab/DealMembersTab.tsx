@@ -96,6 +96,7 @@ import {
   parseEmailInput,
 } from "../../../../../../common/features/send-mail"
 import { useNavigate } from "react-router-dom"
+import { formatCount } from "@/common/utils/formatCount"
 import "../../../deal-investors-tab.css"
 import "../../../deals-list.css"
 import "../../../../usermanagement/user_management.css"
@@ -1504,8 +1505,8 @@ export function DealMembersTab({
                       <span className="deal_gp_totals_bar_kicker">Total</span>
                       <span className="deal_gp_totals_bar_meta">
                         {gpMoneyTotals.filtered
-                          ? `${gpMoneyTotals.count} matching`
-                          : `${gpMoneyTotals.count} general partner${
+                          ? `${formatCount(gpMoneyTotals.count)} matching`
+                          : `${formatCount(gpMoneyTotals.count)} general partner${
                               gpMoneyTotals.count === 1 ? "" : "s"
                             }`}
                       </span>

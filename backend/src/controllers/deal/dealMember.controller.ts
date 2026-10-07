@@ -719,6 +719,11 @@ export async function putDealMember(
       addedByUserId: user.id,
       replacementLeadSponsorContactId,
     });
+    const editingLeadSponsor =
+      isLeadSponsorRoleLabel(existing.dealMemberRole) ||
+      isLeadSponsorRoleLabel(investorRole) ||
+      Boolean(replacementLeadSponsorContactId.trim());
+    const notifyYes = sendInvitationMail.toLowerCase() === "yes";
     await sendDealMemberInviteForInvestmentIfRequested({
       dealId,
       contactId: existing.contactMemberId,
@@ -727,12 +732,18 @@ export async function putDealMember(
       dealMemberRole: investorRole,
       contactEmail: contactEmail.trim() || null,
       invitationSource: "deal_member",
+      ccUserId:
+        editingLeadSponsor && !savedRole.newLeadSponsorContactId
+          ? user.id
+          : null,
     });
     await sendNewLeadSponsorInvitationIfAssigned({
       dealId,
       newLeadSponsorContactId: savedRole.newLeadSponsorContactId,
       alreadyNotifiedContactId: existing.contactMemberId,
-      alreadyNotified: sendInvitationMail.toLowerCase() === "yes",
+      alreadyNotified: notifyYes,
+      requireNotifyChoice: editingLeadSponsor,
+      ccUserId: editingLeadSponsor ? user.id : null,
     });
     res.status(200).json({ message: "Member updated" });
   } catch (err) {

@@ -1515,13 +1515,6 @@ export function AddInvestmentModal({
     ) {
       return "Select a new Lead Sponsor before saving."
     }
-    if (
-      isInvestorEntry &&
-      form.sendInvitationMail === "yes" &&
-      !String(form.profileId ?? "").trim()
-    ) {
-      return "Select an investor profile before choosing to send the invitation email."
-    }
     return null
   }
 

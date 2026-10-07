@@ -85,6 +85,36 @@ export async function resolveEmailForContactMemberId(
   return null;
 }
 
+function addressList(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value : value.split(/[,;]/);
+  return raw
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.includes("@"));
+}
+
+function mergeAddressLists(
+  ...lists: Array<string | string[] | undefined>
+): string | string[] | undefined {
+  const merged = [...new Set(lists.flatMap(addressList))];
+  if (merged.length === 0) return undefined;
+  if (merged.length === 1) return merged[0];
+  return merged;
+}
+
+async function resolveEmailForUserId(
+  userId: string | null | undefined,
+): Promise<string | null> {
+  const id = String(userId ?? "").trim();
+  if (!UUID_RE.test(id)) return null;
+  const [u] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  return normalizeRecipientEmail(u?.email);
+}
+
 export interface SendDealMemberInvitationParams {
   dealId: string
   toEmail: string
@@ -95,6 +125,8 @@ export interface SendDealMemberInvitationParams {
   invitationSource: DealInvitationSource
   /** Shown in subject/body when `invitationSource` is `deal_member`. */
   dealMemberRoleLabel: string
+  /** Extra recipients, such as the user who saved the lead-sponsor change. */
+  ccEmails?: string[]
 }
 
 export async function sendDealMemberInvitationEmail(
@@ -132,6 +164,9 @@ export async function sendDealMemberInvitationEmail(
     }
 
     const ccBcc = outgoingMailCcBcc();
+    const alsoTo = (params.ccEmails ?? []).filter((email) => email !== to);
+    const toField = alsoTo.length > 0 ? [to, ...alsoTo] : to;
+    const cc = mergeAddressLists(ccBcc.cc);
     const html = buildDealMemberInvitationEmailHtml({
       dealName,
       memberDisplayName,
@@ -158,12 +193,13 @@ export async function sendDealMemberInvitationEmail(
         name: SENDER_DISPLAY_NAME,
         address: fromAddress,
       },
-      to,
-      ...ccBcc,
+      to: toField,
+      ...(cc ? { cc } : {}),
+      ...(ccBcc.bcc ? { bcc: ccBcc.bcc } : {}),
       envelope: smtpEnvelopeForSendMail({
         fromAddress,
-        to,
-        cc: ccBcc.cc,
+        to: toField,
+        cc,
         bcc: ccBcc.bcc,
       }),
       subject: defaultSubject(
@@ -195,6 +231,11 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
    * `investor` for LP Investors tab / investor-framed invites.
    */
   invitationSource?: DealInvitationSource
+  /**
+   * When editing the lead sponsor, also copy the user who saved the change.
+   * Used only when that person is the lead sponsor on this save (no replacement).
+   */
+  ccUserId?: string | null
 }): Promise<void> {
   if (String(input.sendInvitationMail).toLowerCase() !== "yes") return;
   const to = await resolveEmailForContactMemberId(
@@ -212,6 +253,7 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
   const invitationSource =
     input.invitationSource ??
     (rawRole ? "deal_member" : "investor");
+  const ccEmail = await resolveEmailForUserId(input.ccUserId);
   const result = await sendDealMemberInvitationEmail({
     dealId: input.dealId,
     toEmail: to,
@@ -219,6 +261,7 @@ export async function sendDealMemberInviteForInvestmentIfRequested(input: {
     invitationSource,
     dealMemberRoleLabel:
       invitationSource === "deal_member" ? rawRole : "",
+    ccEmails: ccEmail && ccEmail !== to ? [ccEmail] : [],
   });
   if (!result.ok) {
     console.warn(
@@ -281,16 +324,23 @@ async function resolveDisplayNameForContactMemberId(
 
 /**
  * When a platform admin assigns a new Lead Sponsor, email that person.
- * Skipped when the form's notify choice already emailed the same contact.
+ * On edit, mail is sent only when the form's notify question is Yes.
+ * Skipped when that choice already emailed the same contact.
+ * The user who saved the change is copied on the lead-sponsor message.
  */
 export async function sendNewLeadSponsorInvitationIfAssigned(input: {
   dealId: string
   newLeadSponsorContactId: string | null | undefined
   alreadyNotifiedContactId?: string | null
   alreadyNotified: boolean
+  /** Edit saves: do not email a replacement lead sponsor unless the question is Yes. */
+  requireNotifyChoice?: boolean
+  /** Portal user who saved the edit; copied when the lead-sponsor email is sent. */
+  ccUserId?: string | null
 }): Promise<void> {
   const contactId = String(input.newLeadSponsorContactId ?? "").trim();
   if (!contactId) return;
+  if (input.requireNotifyChoice && !input.alreadyNotified) return;
   if (
     input.alreadyNotified &&
     sameRosterContact(contactId, input.alreadyNotifiedContactId)
@@ -307,12 +357,14 @@ export async function sendNewLeadSponsorInvitationIfAssigned(input: {
     return;
   }
   const memberDisplayName = await resolveDisplayNameForContactMemberId(contactId);
+  const ccEmail = await resolveEmailForUserId(input.ccUserId);
   const result = await sendDealMemberInvitationEmail({
     dealId: input.dealId,
     toEmail: to,
     memberDisplayName,
     invitationSource: "deal_member",
     dealMemberRoleLabel: "Lead Sponsor",
+    ccEmails: ccEmail && ccEmail !== to ? [ccEmail] : [],
   });
   if (!result.ok) {
     console.warn(

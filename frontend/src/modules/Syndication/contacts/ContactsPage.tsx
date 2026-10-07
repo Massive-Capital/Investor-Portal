@@ -50,6 +50,7 @@ import {
   displayEmail,
   isDisplayableEmail,
 } from "../../../common/utils/displayEmail"
+import { formatCount } from "@/common/utils/formatCount"
 import {
   formatUsPhoneStoredForUi,
   nationalDigitsFromStoredPhone,
@@ -1819,9 +1820,9 @@ function ContactsPage({
               type="button"
               className="deals_table_name_link contacts_catalog_count_btn"
               onClick={() => openContactsForTag(r.name)}
-              aria-label={`View ${count} contact${count === 1 ? "" : "s"} with tag ${r.name}`}
+              aria-label={`View ${formatCount(count)} contact${count === 1 ? "" : "s"} with tag ${r.name}`}
             >
-              {count}
+              {formatCount(count)}
             </button>
           )
         },
@@ -2002,7 +2003,7 @@ function ContactsPage({
               className="contacts_deals_count_num contacts_deals_count_num--value"
               title="Distinct deals where this contact id or a portal user with the same email has an investment (your visible deals only)."
             >
-              {n}
+              {formatCount(n)}
             </span>
           )
         },
@@ -2556,7 +2557,7 @@ function ContactsPage({
                           role="tab"
                           aria-selected={contactsListTab === "active"}
                           aria-controls="contacts-main-panel-contacts"
-                          aria-label={`Active, ${activeCount}`}
+                          aria-label={`Active, ${formatCount(activeCount)}`}
                           className={`contacts_status_pill${
                             contactsListTab === "active"
                               ? " contacts_status_pill_active"
@@ -2570,7 +2571,7 @@ function ContactsPage({
                           <ContactRound size={14} strokeWidth={2} aria-hidden />
                           <span>Active</span>
                           <span className="contacts_status_pill_count" aria-hidden>
-                            {activeCount}
+                            {formatCount(activeCount)}
                           </span>
                         </button>
                         <button
@@ -2579,7 +2580,7 @@ function ContactsPage({
                           role="tab"
                           aria-selected={contactsListTab === "archived"}
                           aria-controls="contacts-main-panel-contacts"
-                          aria-label={`Archived, ${archivedCount}`}
+                          aria-label={`Archived, ${formatCount(archivedCount)}`}
                           className={`contacts_status_pill${
                             contactsListTab === "archived"
                               ? " contacts_status_pill_active"
@@ -2593,7 +2594,7 @@ function ContactsPage({
                           <Archive size={14} strokeWidth={2} aria-hidden />
                           <span>Archived</span>
                           <span className="contacts_status_pill_count" aria-hidden>
-                            {archivedCount}
+                            {formatCount(archivedCount)}
                           </span>
                         </button>
                       </div>
